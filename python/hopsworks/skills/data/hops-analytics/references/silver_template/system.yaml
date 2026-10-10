@@ -1,0 +1,49 @@
+# A silver analytics layer: its specification, and what runs.
+# Written by `hops factory run analytics-silver` from the Factory's answers, then by /hops-silver.
+# The `layer` block marks this system.yaml as an analytics layer, not an ML system.
+layer:
+  kind: silver
+  name: ""            # title shown in the Factory
+  slug: ""            # this directory's name
+  description: ""     # what the silver tables are for
+  lifecycle: dev      # dev | staging | prod, mirrored in each table's analytics_table tag
+  status: draft       # draft | building | built | failed
+  repo: {}            # {name, url, provider}: the analytics pipeline's repository (provider github, gitlab, bitbucket or git), hops-<prefix>, shared with its gold layers
+sources: []           # bronze feature groups: {name, version, cadence, arrival_column}
+tasks: []             # deduplicate, cast_types, standardize, handle_nulls, validate,
+                      # mask_pii, conform_entities, surrogate_keys, referential_checks
+extra_tasks: ""       # the user's own tasks, in their words
+engine: dbt_trino     # dbt_trino | pyspark
+schedule:
+  cadence: daily      # the default for a source that names none
+  catchup: true       # replay the windows missed while the scheduler was down
+  cadences: {}        # one job per cadence the sources use: {hourly: {cron, max_catchup_runs}, ...}
+history: latest       # latest: one row per business key | full: every version, by event_time
+deletes: ignore       # ignore | propagate: rows deleted or soft-deleted in bronze leave silver
+schema_changes: fail  # fail: stop the run on a bronze schema change | evolve: add new columns
+late_data:
+  lookback: "0"       # also re-read this much before each window: 0, 1d, 7d
+quality:
+  max_reject_pct: 5   # a run with more rejected rows than this fails
+  alert_on_failure: true
+freshness:
+  max_age_hours: {}   # per cadence; a silver table not written for longer is stale
+partitioning: {}      # decided by the build: {decision, column, granularity, why}
+phases:               # each {status: pending | running | done | failed, started, finished, note}
+  profile: {status: pending}
+  design: {status: pending}
+  code: {status: pending}
+  backfill: {status: pending}
+  schedule: {status: pending}
+  verify: {status: pending}
+outputs:
+  tables: []          # silver feature groups: {name, version, cadence, sources, primary_key, event_time, tasks}
+  rejects: []         # rejects feature groups, if validate is a task
+  jobs: []            # one per cadence: {name, cadence, cron, environment, tables}
+  applied_spec: {}    # the spec the tables were last built from: sources, tasks,
+                      # extra_tasks, engine, schedule, lifecycle; a difference is a pending change
+additions: []         # tables asked for after the build, by an Add tables change request:
+                      # {at, description, sources, status: pending | applied}
+progress:
+  now: ""             # what the build is doing, one line
+decisions: []         # append-only: {at, by, what, why}

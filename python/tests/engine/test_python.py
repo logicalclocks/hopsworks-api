@@ -3884,6 +3884,59 @@ class TestPython:
             await_termination=False,
         )
 
+    @pytest.mark.parametrize("multi_part", [False, True])
+    def test_materialization_schedule_is_attached_when_the_group_is_created(
+        self, mocker, multi_part
+    ):
+        # Arrange: a new group's topic already exists, so offsets come back and the
+        # first-ingestion branch, which used to be the only one scheduling, is skipped.
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
+        mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._kafka_produce")
+        mocker.patch(
+            "hsfs.core.kafka_engine._kafka_get_offsets", return_value="topic,0:0"
+        )
+        mocker.patch("hsfs.util._get_job_url")
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=True,
+            time_travel_format="DELTA",
+        )
+        fg.feature_store = mocker.Mock()
+        fg._online_topic_name = "test_topic"
+        fg._multi_part_insert = multi_part
+        job_mock = mocker.MagicMock()
+        job_mock.config = {"defaultArgs": "defaults"}
+        fg._materialization_job = job_mock
+        mocker.patch.object(python_engine, "_write_dataframe_kafka")
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=pd.DataFrame(data={"col1": [1]}),
+            offline_write_options={
+                "offline_backfill_every_hr": 1,
+                "start_offline_materialization": False,
+            },
+            storage=None,
+        )
+
+        # Assert: scheduled hourly, and no materialization run was started for it.
+        job_mock.schedule.assert_called_once()
+        cron = job_mock.schedule.call_args.kwargs["cron_expression"]
+        assert cron.split()[0] == "0"
+        assert cron.split()[2] == "0/1"
+        job_mock.run.assert_not_called()
+
     def test_materialization_kafka_first_job_execution(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})

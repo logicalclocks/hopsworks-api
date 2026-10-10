@@ -1,0 +1,410 @@
+# The example ML systems: the ML factories' presets (`hops factory run <factory> --preset`) and `/hops-ml`.
+# `new_system.py <dir>/<slug> --example <slug>` merges one entry into a new system.yaml.
+# An example runs on synthetic or public data and always gets a Python app with a JavaScript UI,
+# so neither the data sources nor the app are asked for.
+
+churn-example:
+  label: "Churn: which customers will cancel next month (batch)"
+  system:
+    name: Churn next month
+  requirements:
+    description: which telco customers will churn in the next 30 days
+    system_type: batch
+    sla:
+      batch: {cadence: weekly}
+    consumers: ui
+    # The story's volume, confirmed by the example's author so the data phase asks nothing:
+    # 5,000 customers is above the small tier's 2,000 event entities, and 60 days of usage
+    # before the first snapshot plus the snapshots' span is about 3 million events.
+    sizing:
+      tier: small
+      confirmed_above_cap: >-
+        ~5,000 customers x ~21 weekly snapshots (~105k rows); ~3M usage events (~300 MB offline)
+        over ~5,000 entities; no live stream and no online store, since weekly batch scoring reads
+        only the offline store
+    data_sources:
+      - {name: customers, kind: synthetic, shape: batch, status: needs_generation}
+      - {name: usage_events, kind: synthetic, shape: events, status: needs_generation}
+  data:
+    customers:
+      generator:
+        story: >-
+          5,000 telco customers with plan, tenure, monthly charges and support calls, as a weekly
+          snapshot of every active customer taken on Mondays at 00:00 UTC; about 15% churn within
+          a month, more often on month-to-month plans with rising charges and many support calls.
+          The feature view is rooted at the snapshot, so the weekly batch scoring reads the newest
+          snapshot by time range, and the labels (customer, snapshot, churned within 30 days) join
+          on both keys. A scheduled snapshot job writes exactly the snapshots on the Monday grid
+          inside its window, so a weekly fire never writes seven
+      writes:
+        feature_group: customers
+        version: 1
+        online: false
+        time_travel_format: DELTA
+        primary_key: [customer_id, snapshot_date]
+        event_time: snapshot_date
+    usage_events:
+      generator:
+        story: >-
+          daily calls, data use and top-ups per customer; churners' usage decays over their last
+          60 days. Backfill only: a batch system has no live stream
+      writes:
+        feature_group: usage_events
+        version: 1
+        online: false
+        time_travel_format: DELTA
+        primary_key: [event_id]
+        event_time: ts
+    status: pending
+  app:
+    wanted: true
+    kind: query_ui
+    name: churn-example-app
+    description: >-
+      A churn-risk console for the retention team: headline numbers, risk by plan, the highest-risk
+      customers ranked with a risk bar and exportable as CSV, and a search by customer id showing
+      the score and the features behind it with a what-if score for a different tenure. It reads
+      the prediction feature group the batch job writes, and the what-if score loads the same
+      registered model into the app; a batch system has no deployment
+    status: pending
+
+recs-example:
+  label: "Personalized recommendations: the products each shopper is likely to buy next (real-time)"
+  system:
+    name: Personalized recommendations
+  requirements:
+    description: >-
+      which H&M products a shopper is most likely to buy next, per request: a PyTorch two-tower
+      model retrieves candidates for the customer, steered by the articles they clicked or bought
+      in the last day, and a CatBoost classifier ranks them by purchase probability from the
+      article's attributes and the customer's taste (the share of their purchases with the
+      article's colour, group and type). Half the slots follow the session, half the customer's
+      taste, and a fifth explore lower-ranked articles; the articles a customer bought or the
+      session already showed them are left out. Jobs and the deployment run on CPU
+    reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/recommender
+    system_type: realtime
+    problem:
+      task: ranking
+    sla:
+      realtime: {p99_ms: 500, throughput_qps: 10}
+    consumers: ui
+    data_sources:
+      - {name: customers, kind: url, location: "https://repo.hops.works/dev/jdowling/h-and-m/customers.csv",
+         grain: one row per customer, entity: customer_id, status: needs_download}
+      - {name: articles, kind: url, location: "https://repo.hops.works/dev/jdowling/h-and-m/articles.csv",
+         grain: one row per article, entity: article_id, status: needs_download}
+      - {name: transactions, kind: url,
+         location: "https://repo.hops.works/dev/jdowling/h-and-m/transactions_train.csv",
+         grain: one row per purchase, entity: customer_id, event_time: t_dat, status: needs_download}
+  data:
+    # Built as hops-reqs/references/recommender.md says, from its recommender/ files: the
+    # public H&M files, sampled to 5,000 customers, with 30 synthetic purchases per customer in
+    # the shape of their own, and clicks and ignores generated around all purchases.
+    customers:
+      writes: {feature_group: customers, version: 1, online: true, primary_key: [customer_id]}
+    articles:
+      writes: {feature_group: articles, version: 1, online: true, primary_key: [article_id]}
+    transactions:
+      writes:
+        feature_group: transactions
+        version: 1
+        online: true
+        primary_key: [customer_id, article_id, t_dat]
+        event_time: t_dat
+        # synthetic marks the generated purchases; the deployment reads a customer's rows online
+        online_config: {secondary_indexes: [[customer_id]]}
+    interactions:
+      writes:
+        feature_group: interactions
+        version: 1
+        online: true
+        primary_key: [customer_id, article_id, t_dat, interaction_score]
+        event_time: t_dat
+        online_config: {secondary_indexes: [[customer_id]]}
+    job: {name: recs-example-features, args: "--customers 5000 --synthetic 30"}
+    status: pending
+  training:
+    models:
+      # The query tower, with the item tower and the catalogue's mean embedding for the
+      # session; recall@100 is measured on real purchases only.
+      - {name: query_model, kind: two-tower query and item towers, metric: recall_at_100,
+         job: recs-example-train-retrieval}
+      # Labels are each customer's latest fifth of purchases, negatives drawn by popularity.
+      - {name: ranking_model, kind: catboost classifier with taste features, metric: roc_auc,
+         target: 0.8, job: recs-example-train-ranker}
+    status: pending
+  inference:
+    mode: realtime
+    deployment: recsexample
+    request: {customer_id: string, k: int, recent: "list of article ids, newest first"}
+    steps: [session, query, retrieve, filter, rank, select]
+    status: pending
+  app:
+    wanted: true
+    kind: query_ui
+    name: recs-example-app
+    description: >-
+      A JavaScript storefront: pick a customer and see the products the deployment ranks for
+      them as cards with the H&M picture, marked "Like your clicks" or "Discover" when chosen for
+      the session or to explore; Click and Buy write the shopper's interactions (and Buy a
+      purchase) and ask for new recommendations with the page's session, so clicking a shoe shows
+      more shoes; the cards left untouched are recorded as ignores; a history panel shows the
+      customer's interactions, and the last lookup's time is the deployment's own
+    status: pending
+
+fraud-example:
+  label: "Credit card fraud: flags fraudulent card transactions as they happen, from streaming features (real-time)"
+  system:
+    name: Credit card fraud detection
+  requirements:
+    description: >-
+      whether a credit card transaction is fraud, per request, as it happens: an XGBoost classifier
+      scores the transaction's amount, IP address and card presence with the card's sliding-window
+      aggregates over the last 10 minutes and hour, written every minute by a Spark Structured
+      Streaming job, and the card's, account's, bank's and merchant's details. The data is the
+      book Building Machine Learning Systems with a Feature Store's synthetic transactions, with
+      chain attacks and impossible travel as fraud, backfilled for 30 days and then streamed at
+      100 transactions a minute. Jobs and the deployment run on CPU
+    reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/ccfraud
+    system_type: realtime
+    problem:
+      task: classification
+      target: is_fraud
+    sla:
+      realtime: {p99_ms: 300, throughput_qps: 10}
+    consumers: ui
+    monitoring: {feature_logging: true, watch: drift in the transaction amount}
+    data_sources:
+      - {name: credit_card_transactions, kind: synthetic, shape: events, status: needs_generation}
+      - {name: cards, kind: synthetic, shape: batch, status: needs_generation}
+      - {name: merchants, kind: synthetic, shape: batch, status: needs_generation}
+  data:
+    # Built as hops-reqs/references/ccfraud.md says, from the book's code at a pinned commit
+    # and its ccfraud/ files: generated by the book's generator, never by a generator of this build.
+    credit_card_transactions:
+      generator:
+        story: >-
+          500,000 transactions over the last 30 days for 2,000 cards with 0.5% fraud, labelled in
+          cc_fraud, then 100 a minute from a job that runs until stopped
+      writes:
+        feature_group: credit_card_transactions
+        version: 1
+        online: true
+        primary_key: [t_id]
+        event_time: ts
+    cards:
+      generator:
+        story: 2,000 cards on 1,000 accounts at 50 banks, written to card_details, account_details and bank_details
+      writes: {feature_group: card_details, version: 1, online: true, primary_key: [cc_num]}
+    merchants:
+      generator:
+        story: 50 merchants with a category and a country
+      writes: {feature_group: merchant_details, version: 1, online: true, primary_key: [merchant_id]}
+    job: {name: fraud-example-datamart}
+    status: pending
+  features:
+    groups:
+      - {name: cc_trans_fg, version: 1, job: fraud-example-features}
+      - {name: cc_trans_aggs_fg, version: 2, jobs: [fraud-example-backfill-aggs, fraud-example-streaming-aggs]}
+    status: pending
+  training:
+    models:
+      - {name: cc_fraud_xgboost_model, kind: xgboost classifier in an sklearn pipeline, metric: pr_auc,
+         target: 0.5, job: fraud-example-train}
+    status: pending
+  inference:
+    mode: realtime
+    deployment: fraudexample
+    request: {inputs: "[[cc_num, amount, merchant_id, ip_address, card_present, t_id]]"}
+    status: pending
+  app:
+    wanted: true
+    kind: query_ui
+    name: fraud-example-app
+    description: >-
+      A fraud console: the deployment's and the streaming jobs' state, a form that generates a
+      batch of transactions for real cards with injected chain attacks and scores each with the
+      deployment, optionally writing them through Kafka into the streaming job, then tiles of the predicted and
+      the injected fraud caught and the prediction latency, the transactions with predicted fraud highlighted, and each
+      card's live window features
+    status: pending
+
+helpdesk-example:
+  label: "Help desk agent: answers support questions from your documents and the customer's recent events (agentic)"
+  system:
+    name: Help desk agent
+  requirements:
+    description: >-
+      answer a customer's support question from the help desk documents the user uploads and the
+      customer's recent purchases and returns, citing the document, page and paragraph
+    reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/rag_agent
+    system_type: agent
+    problem:
+      task: rag
+    sla:
+      agent: {p99_ms: 8000, throughput_qps: 2}
+    consumers: ui
+    data_sources:
+      - {name: docs, kind: file, status: needs_download}
+      - {name: user_events, kind: synthetic, shape: events, status: needs_generation}
+  data:
+    # Built as hops-reqs/references/rag-agent.md says, from its rag_agent/ files.
+    docs:
+      path: Resources/helpdesk-docs
+      formats: [pdf, txt, md, docx, odt]
+      ask: >-
+        the build creates the directory, then asks the user to upload documents there, or to use the
+        sample documents
+    user_events:
+      generator:
+        story: >-
+          500 customers, each with a few purchases over the last 90 days (product_name, amount); some
+          purchases are later returned, refunded, delivered late or complained about, each an event with
+          its event_time
+      writes:
+        feature_group: user_events
+        version: 1
+        online: true
+        primary_key: [user_id, event_id]
+        event_time: event_time
+    status: pending
+  features:
+    pipelines:
+      - name: doc_chunks
+        run: scheduled
+        reads: [docs]
+        writes:
+          feature_group: helpdesk_doc_chunks
+          version: 1
+          online: true
+          primary_key: [chunk_id]
+          embedding_index: {feature: embedding, similarity: cosine}
+          columns: [chunk_id, doc_name, path, url, page, offset, text, embedding]
+        job: {name: helpdesk-example-ingest-docs}
+        status: pending
+    status: pending
+  training:
+    required: false
+    embedding_model:
+      repo: sentence-transformers/all-MiniLM-L6-v2
+      name: helpdesk_embedder
+    job: {name: helpdesk-example-register-embedder}
+    status: pending
+  inference:
+    mode: agent
+    agent:
+      deployment: helpdeskagent
+      framework: langgraph
+      request: {user_id: int, query: string, k: 25}
+      steps: [events, retrieve, answer]
+    status: pending
+  app:
+    wanted: true
+    kind: chat
+    name: helpdesk-example-app
+    description: >-
+      A JavaScript help desk UI: pick a user id from the users with events, write a question and press
+      Send; it shows the agent's answer, the cited passages with a link to each document (page and
+      paragraph), and the user's recent events the agent read
+    status: pending
+
+gis-example:
+  label: "GIS military infrastructure finder: outlines aircraft, ships and harbours on a map of Sweden with a pretrained YOLO model (real-time)"
+  system:
+    name: GIS military infrastructure finder
+  requirements:
+    description: >-
+      the military infrastructure visible on a satellite map of Sweden, outlined as the user pans
+      and zooms: aircraft, helicopters, ships, harbours, storage tanks, bridges and large vehicles.
+      The page sends the map on screen to a pretrained YOLO26 aerial object detector from Hugging
+      Face, registered in the Model Registry and embedded in the app, and draws the rotated boxes
+      it returns. Nothing is trained and no data is ingested, so there are no feature or training
+      pipelines
+    system_type: realtime
+    problem:
+      task: detection
+    sla:
+      realtime: {p99_ms: 3000, throughput_qps: 0.5}
+    consumers: ui
+    data_sources: []
+  data:
+    # Built as hops-reqs/references/gis-detector.md says; it has no reference code.
+    status: skipped
+  features:
+    status: skipped
+  training:
+    required: false
+    pretrained:
+      repo: openvision/yolo26-s-obb
+      revision: 567278bad4cc58dde7efe31eb58de8c7732c198b
+      name: infrastructure_detector
+      format: onnx
+    job: {name: gis-example-register-detector}
+    status: pending
+  inference:
+    mode: embedded
+    embedded: {app: gis-example-app, model: infrastructure_detector, runtime: onnxruntime}
+    request: {image: "JPEG data URL of the map on screen", threshold: float}
+    status: pending
+  app:
+    wanted: true
+    kind: custom
+    name: gis-example-app
+    description: >-
+      A JavaScript GIS app: a satellite map of Sweden (Leaflet, Esri World Imagery) with air and
+      naval bases and ports to jump to; after each pan or zoom it sends the map on screen to the
+      embedded detector and outlines the aircraft, ships, harbours, storage tanks, bridges and
+      large vehicles it finds, coloured by kind, with each one's confidence, a legend of the counts
+      in view and the model's time for the last detection
+    status: pending
+
+run-example:
+  label: "Hops Run with Kumo Tabular: a racing game flown by NVIDIA's pretrained in-context classifier, served as a deployment (real-time)"
+  system:
+    name: Hops Run with Kumo Tabular
+  requirements:
+    description: >-
+      Hops Run, a low-poly racing game: the hops flies a generated track through rows of walls,
+      low blocks and bars, and a player changes lane, jumps and ducks, or hands the game to NVIDIA
+      Kumo Tabular, which decides every move. Kumo Tabular is a pretrained in-context tabular
+      classifier from Hugging Face, registered in the Model Registry and served as a deployment;
+      each request carries the game state and a context of situations labelled by the game's rules.
+      Nothing is trained and no data is ingested, so there are no feature or training pipelines.
+      Players and the model share a leaderboard
+    reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/kumo_run
+    system_type: realtime
+    problem:
+      task: classification
+      target: move
+    sla:
+      realtime: {p99_ms: 1000, throughput_qps: 2}
+    consumers: ui
+    data_sources: []
+  data:
+    # Built as hops-reqs/references/kumo-run.md says, from its kumo_run/ files.
+    status: skipped
+  features:
+    status: skipped
+  training:
+    required: false
+    pretrained:
+      repo: nvidia/Kumo-Tabular
+      revision: 4f0dca60610d68f933b978e17ff8f66be3ec3b5b
+      name: kumo_tabular
+      file: small/classifier.pt
+    job: {name: run-example-register-kumo}
+    status: pending
+  inference:
+    mode: realtime
+    deployment: runexample
+    request: {context: "situations labelled with their move", query: "the game state as a row", target: move}
+    status: pending
+  app:
+    wanted: true
+    kind: custom
+    name: run-example-app
+    description: >-
+      Hops Run, a three.js racing game: a player flies it with the arrow keys, or hands it to Kumo
+      Tabular, which the page asks for every move through the app; the page shows the model's move
+      probabilities and its time per decision, and players and the model share a leaderboard
+    status: pending

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import joinspec, lineage, output, session
+from hopsworks.cli import joinspec, lineage, output, session, versions
 
 
 @click.group("fv")
@@ -53,9 +53,12 @@ def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
     """Resolve a feature view or fail with a clean CLI error."""
     fs = session.get_feature_store(ctx)
     try:
-        return fs.get_feature_view(name, version=version)
+        fv = versions.feature_view(fs, name, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    if fv is None:
+        raise click.ClickException(f"Feature view '{name}' not found.")
+    return fv
 
 
 @fv_group.command("info")
@@ -279,9 +282,11 @@ def fv_create(
     fs = session.get_feature_store(ctx)
     base_name, base_ver = _split_name_version(base_fg)
     try:
-        base = fs.get_feature_group(base_name, version=base_ver)
+        base = versions.feature_group(fs, base_name, base_ver)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+    if base is None:
+        raise click.ClickException(f"Base FG '{base_fg}' not found.")
 
     query = base.select_all()
     for raw in joins:
@@ -290,11 +295,13 @@ def fv_create(
         except joinspec.JoinSpecError as exc:
             raise click.BadParameter(str(exc), param_hint="--join") from exc
         try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
+            other = versions.feature_group(fs, spec.fg_name, spec.version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
                 f"Joined FG '{spec.fg_name}' not found: {exc}"
             ) from exc
+        if other is None:
+            raise click.ClickException(f"Joined FG '{spec.fg_name}' not found.")
         query = query.join(
             other.select_all(),
             on=[spec.on] if not spec.right_on else None,

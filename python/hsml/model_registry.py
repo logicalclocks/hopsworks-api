@@ -209,6 +209,7 @@ class ModelRegistry:
         selected_filenames: list[str] | None = None,
         timeout: int = 36000,
         poll_interval: int = 5,
+        revision: str | None = None,
     ) -> model.Model:
         """Import a model from HuggingFace into this Model Registry.
 
@@ -250,9 +251,11 @@ class ModelRegistry:
                 downloads exactly these paths.
             timeout: Maximum seconds to wait for the import to reach a terminal state.
             poll_interval: Seconds between status polls.
+            revision: Hub branch, tag or commit sha to import; the default branch when omitted.
+                Every file is downloaded from the commit this resolves to, and that commit sha is recorded in the registered model's description.
 
         Returns:
-            The newly registered model entity.
+            The newly registered model entity; its description names the Hub commit its files came from.
 
         Raises:
             hopsworks.client.exceptions.HuggingFaceImportException: If the backend
@@ -274,6 +277,7 @@ class ModelRegistry:
                 selected_formats=selected_formats,
                 selected_variants=selected_variants,
                 selected_filenames=selected_filenames,
+                revision=revision,
             )
         except RestAPIError as e:
             self._raise_hf_exception_from_rest_error(e)
@@ -320,9 +324,11 @@ class ModelRegistry:
                         if total > last_completed:
                             pbar.update(total - last_completed)
                         pbar.close()
+                    resolved = last_status.get("revision")
+                    at_revision = f" at revision {resolved}" if resolved else ""
                     print(
                         f"✔ HuggingFace import succeeded: "
-                        f"'{hugging_face_model_id}' downloaded "
+                        f"'{hugging_face_model_id}'{at_revision} downloaded "
                         f"({done}/{total} files)."
                     )
                     return self._resolve_imported_model(

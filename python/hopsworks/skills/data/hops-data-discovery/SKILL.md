@@ -26,9 +26,9 @@ hops fv list                              # feature views
 ### Free-text search
 
 ```bash
-hops search ls <term>                     # match FGs, FVs, training datasets, features
-hops search ls <term> --type feature_group   # restrict by type
-hops search ls <term> --global            # search across shared/other projects
+hops search <term>                     # match FGs, FVs, training datasets, features
+hops search <term> --type feature_group   # restrict by type
+hops search <term> --global            # search across shared/other projects
 ```
 
 ### Data sources (external connectors)

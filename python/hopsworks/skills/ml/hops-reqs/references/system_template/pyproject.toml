@@ -1,0 +1,27 @@
+# pytest configuration for this ML system. Nothing here is installed anywhere:
+# the pipelines are self-contained job entrypoints and the unit tests import
+# their functions from src/.
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests/unit"]
+markers = ["integration: needs a Hopsworks connection; run only with pytest tests/integration"]
+
+# Lint and format rules for every file here: tests/unit/test_lint.py fails on a
+# finding, and /hops-build runs `ruff format` and `ruff check --fix` before it
+# tests a phase.
+[tool.ruff]
+target-version = "py313"
+# The hops CLI loads set.py (and through it the system.yaml rules) and runs
+# status.py with its own Python, which may be 3.10 on an external client.
+per-file-target-version = { "**/set.py" = "py310", "**/status.py" = "py310", "**/tests/unit/test_system_yaml.py" = "py310" }
+line-length = 100
+extend-exclude = ["runs", "status", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+# The formatter owns line length; long literals and URLs are left to it.
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["slug_pkg"]

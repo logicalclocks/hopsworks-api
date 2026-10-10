@@ -114,7 +114,7 @@ fg = fs.get_or_create_feature_group(
 | `online_enabled=True` | Need online feature serving or real-time lookups |
 | `stream=True` | Always set when `online_enabled=True`; enables unified write API |
 | `parents=[...]` | FG is derived from other FGs — pass list of parent FG objects |
-| `statistics_config=False` | Large data volumes (see Statistics section) |
+| `statistics_config=False` | Large data volumes (see Statistics section), and every feature group written from a Python job: the Python engine computes statistics in a PySpark job after each insert |
 | `event_time="col"` | Need time-travel queries or incremental reads |
 | `embedding_index=EmbeddingIndex(...)` | FG contains vector embeddings (see Embeddings section) |
 | `offline_backfill_every_hr=N` | Schedule automatic materialization every N hours |

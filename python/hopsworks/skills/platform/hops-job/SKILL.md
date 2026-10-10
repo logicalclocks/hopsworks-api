@@ -42,9 +42,9 @@ hops job deploy feature-pipeline feature_pipeline.py \
   --env python-feature-pipeline --cron @daily --run --wait --overwrite
 ```
 
-Key fact: `hops job create` (and a bare job config) **cannot set the Python
-environment** — a job created without one silently takes the job type's default.
-Set it with `hops job deploy --env`, or, from a program, via the SDK:
+Key fact: a job created without an environment silently takes the job type's
+default. Name it with `--env` on `hops job create` or `hops job deploy`, or,
+from a program, via the SDK:
 
 ```python
 api = project.get_job_api()
@@ -55,9 +55,139 @@ job = api.create_job(name="feature-pipeline", config=config)
 job.run(await_termination=True)
 ```
 
+`hops job deploy` sets no memory or cores (a Python job gets the default,
+2048 MB and 1 core). Set them once after the deploy; a later `--overwrite`
+deploy keeps them:
+
+```python
+job = hopsworks.login().get_job_api().get_job("telco-churn-features")
+job.config["resourceConfig"]["memory"] = 4096      # MB; "cores" beside it
+job.save()
+```
+
 Pick the environment for the job's role: `python-feature-pipeline` (feature
 pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 `pandas-inference-pipeline`) are deployment-only and cannot run as jobs.
+
+## No Spark statistics jobs from a Python job
+
+A Python job that computes with Polars, Pandas or DuckDB never starts a Spark
+job. From the Python client, these start one:
+
+- `fg.insert(...)` on a feature group with statistics enabled: after the
+  ingestion the backend runs a statistics job over the feature group.
+- `fv.create_training_data(...)`, `create_train_test_split(...)` and
+  `create_train_validation_test_split(...)`: writing a materialized training
+  dataset is itself a Spark job, whatever its statistics setting.
+- `compute_statistics()` on a feature group or training dataset.
+
+Reading training data never does: `get_training_data(version)` of a
+materialized dataset reads its files without statistics, and the in-memory
+`training_data()`, `train_test_split()` and `train_validation_test_split()`
+compute their statistics in the job's own process, which still costs the job
+time and memory on every call.
+
+So a Python job turns statistics off on what it writes, uses in-memory
+training data, and never calls `compute_statistics()`:
+
+```python
+fg = fs.get_or_create_feature_group(
+    name="customer_features", version=1, primary_key=["customer_id"],
+    online_enabled=False, statistics_config=False,   # no statistics job after insert
+)
+X_train, X_test, y_train, y_test = fv.train_test_split(
+    test_size=0.2, statistics_config=False,          # in memory, no statistics
+)
+```
+
+A feature group created before with statistics on is turned off once, before
+the job inserts: `fg.statistics_config = False; fg.update_statistics_config()`.
+Statistics a project needs are computed by a Spark job of their own, scheduled
+where it is wanted.
+
+## Windows and backfill
+
+A scheduled program processes one data window per fire. The scheduler sets
+`HOPS_START_TIME` and `HOPS_END_TIME` (ISO-8601 with a trailing `Z`) on every
+execution; the window is the previous fire to this one. A scheduled run also
+gets `-start_time <fire instant>` (and may get `-end_time`) appended to its
+arguments: that is the instant the schedule fired, the end of the window, not
+its start. A program that parses its arguments strictly must accept those two
+and ignore them, or argparse exits with "unrecognized arguments" before any
+code runs: `parser.add_argument("-start_time", dest="_fired_at",
+help=argparse.SUPPRESS)` and the same for `-end_time`. Never read the window
+from them; and name them rather than switching to `parse_known_args`, so a
+mistyped option still fails. Every scheduled program gets a unit test that
+calls `main([..., "-start_time", "<fire>"])` with the two variables set and
+checks the window comes from the variables. Do not move it with
+offsets: current servers refuse a negative `--start-offset-seconds`
+("startTimeOffsetSeconds must be non-negative") and no longer honour
+`--end-offset-seconds`, although the CLI help still describes both. When the
+data a fire needs is not the interval (a month closed on the 1st and scored on
+the 4th, a weekly snapshot scored daily), keep the default window and derive
+the read window in the program from `HOPS_END_TIME`, for example "the newest
+snapshot in the 8 days before the window's end", recorded in `system.yaml`:
+
+```bash
+hops job schedule telco-churn-inference "0 0 4 1 * ?"         # server default window
+hops job schedule-info telco-churn-inference                  # verify cron, enabled, next fire
+```
+
+The **same program** serves history: `hops job backfill` runs it once over a past
+interval with the same two variables set, so there is one code path.
+
+```bash
+hops job backfill telco-churn-features --start-time 2025-01-01 --end-time 2026-09-01 --wait
+```
+
+`--catchup` with `--max-catchup-runs` replays fires missed during an outage
+instead of skipping them; `--max-active-runs 1` (the default) keeps a slow run
+from overlapping the next. Write the program so a replayed or retried window is
+an upsert on the sink's primary key and event time, never a duplicate.
+
+## Continuous jobs
+
+A 24x7 program consuming a stream is a PySpark Structured Streaming job in
+`spark-feature-pipeline`: it reads a Kafka connector or an online-enabled feature
+group's topic, applies the model-independent transformations, and writes with
+`fg.insert_stream(...)`, checkpointing under `Resources/<slug>/checkpoints/<job>`
+so a restart resumes where it stopped.
+
+```python
+query = fg.insert_stream(
+    features_df,
+    query_name="usage_stream",
+    output_mode="append",
+    await_termination=True,
+    checkpoint_dir="Resources/telco-churn/checkpoints/usage-stream",
+)
+```
+
+```bash
+hops job deploy telco-churn-usage-stream usage_stream.py --type pyspark --env spark-feature-pipeline --overwrite
+hops job run telco-churn-usage-stream          # never scheduled: an execution that stays up
+hops job history telco-churn-usage-stream      # the check is a RUNNING execution
+hops job stop telco-churn-usage-stream
+```
+
+Hopsworks jobs have no restart policy. Whatever checks the system (`/hops verify`,
+`/hops status`) looks for a running execution and, when there is none, reports it
+and starts it again with `hops job run`; the failure alert covers the time in
+between. A continuous job holds a driver and its executors for as long as it
+runs, so count it against the system's `budget.operations.streams`.
+
+## Alerts
+
+Every job a system owns gets a failure alert, so a failed run reaches a person
+without anyone watching a terminal:
+
+```bash
+hops alert receiver list
+hops alert receiver create ml-oncall --email oncall@acme.example --slack "#ml-alerts"
+hops alert job create telco-churn-features --receiver ml-oncall --status failed --severity critical
+hops alert job create telco-churn-train --receiver ml-oncall --status long_running --severity warning
+hops alert job list telco-churn-features
+```
 
 ## Orchestrating Hopsworks Jobs with Airflow
 
@@ -96,3 +226,4 @@ with DAG(
 - What goes in the script: **hops-features** (feature pipeline), **hops-train** (training), **hops-batch-inference** (scoring).
 - Custom libraries for the job: [hops-environments](../hops-environments/SKILL.md) — clone a base env and install requirements.
 - Inspect runs: `hops job list`, `hops job info <name>`, `hops job logs <name>`, `hops job history <name>`.
+  `hops job logs` downloads `logs-job-<name>-exec-<id>_*` into the working directory unless given `--stdout` (print, no files) or `--dir <dir>`; never download logs into a git work tree such as an ML system's directory (factory logs go to `${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>/`).

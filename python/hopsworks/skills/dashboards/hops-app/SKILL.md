@@ -138,8 +138,66 @@ three things are app-specific:
 
 - **A just-created feature group is not queryable via Trino/`hops sql` immediately.** The offline table syncs into the Trino catalog with a short lag, so a `SELECT ... FROM <fresh_fg>` right after `insert` can return `TABLE_NOT_FOUND`. Online feature-vector reads are available before the Trino table is, so make the app not-found-safe (warn on an empty online vector) instead of trusting a range from a fresh query.
 - **Embedded model** (predict locally instead of calling a deployment): `model_dir = mr.get_model("fraud_model", version=1).download()`; cache the loaded model and its feature view in `@st.cache_resource` so the download happens once, and read through the feature view so the same MDTs/ODTs the model saw in training are applied (no training/serving skew).
-- **Calling a deployment:** check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
+- **An app over a batch ML system** reads the prediction feature group the batch job writes and
+  never calls a deployment, because a batch system has none; a what-if score uses the embedded
+  model above.
+- **Calling a deployment** (real-time systems only): check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
 - **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Keep app tables there with an `app_` prefix and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, privileges per role, and RonDB table rules: **hops-app-db**.
+
+### Reading Trino from a JavaScript app
+
+The browser cannot query Trino itself: `trino.service.consul` resolves only
+inside the cluster, Trino takes passwords only over HTTPS (port 8080 answers
+`403 Authentication over HTTP is not enabled`), and the password must not reach
+the page. A Node server in the app holds the connection and answers the UI's
+relative `fetch("api/...")` calls with fixed queries, so the browser sends
+parameters, never SQL. `python-agent-pipeline` ships Node.
+
+The connection comes from the SDK: `trino_env.py` logs in, which writes the
+cluster CA to `/tmp/ca_chain.pem`, and writes the coordinator URL, the user
+`<project>__<username>`, its password from the secrets store and the schema
+`<project>_featurestore` to `/tmp/trino.json`, readable only by the app's user.
+Never print the password or export it as an environment variable: both leak it
+into logs and every child process. A feature group is the table
+`<name>_<version>` in catalog `delta` (or `hudi`/`iceberg`, per its format).
+
+```javascript
+import { readFileSync } from "node:fs";
+import pkg from "trino-client";
+const { Trino, BasicAuth } = pkg;
+
+const conn = JSON.parse(readFileSync("/tmp/trino.json", "utf8")); // from trino_env.py
+const trino = Trino.create({
+  server: conn.server, // https://coordinator.trino.service.consul:8443
+  catalog: "delta",
+  schema: conn.schema, // <project>_featurestore
+  auth: new BasicAuth(conn.user, conn.password),
+  ssl: { ca: readFileSync(conn.ca) }, // the cluster CA, not in Node's trust store
+});
+
+const query = await trino.query("SELECT * FROM customers_1 LIMIT 100");
+for await (const result of query) {
+  if (result.error) throw new Error(result.error.message);
+  console.log(result.columns?.map((c) => c.name), result.data); // rows arrive in pages
+}
+```
+
+The whole app (server with `/health`, `/api/rows` and the static UI) is
+[references/trino_js/](references/trino_js/). Install `trino-client` into the
+app directory before the upload, so the app starts without the network, and
+copy `app.css` from the skeleton (`<skills>` is
+`/opt/hopsworks-api/python/hopsworks/skills` in a Hopsworks terminal):
+
+```bash
+cp -r <skills>/dashboards/hops-app/references/trino_js apps/customers
+cp <skills>/dashboards/hops-app/references/app_skeleton/static/app.css apps/customers/static/
+(cd apps/customers && npm install --no-audit --no-fund)
+hops files upload apps/customers Users/<user>/apps/ --overwrite
+hops app create customers --path /Projects/<project>/Users/<user>/apps/customers/server.js \
+  --app-kind custom --app-port 8080 --readiness-probe-path /health \
+  --environment python-agent-pipeline --start \
+  --entrypoint-command "bash -lc 'python trino_env.py && APP_TABLE=customers_1 exec node server.js'"
+```
 
 ### Streamlit caching and cold start
 
@@ -219,6 +277,90 @@ A full dashboard (statistics, monitoring history, data sample) is in
 [references/monitoring_dashboard.md](references/monitoring_dashboard.md).
 
 ---
+
+## Apps built by `/hops app`
+
+`/hops app` turns a description in natural language into a running app from
+[references/app_skeleton/](references/app_skeleton/):
+
+- **Shape.** A `custom` app: `app.py` (FastAPI) serves a JSON API under `/api`
+  and a static UI from `static/` (`index.html`, `app.js` as plain ES modules,
+  `app.css`) in one process on `0.0.0.0:$APP_PORT`, with `/health` for the
+  readiness probe. No build step and no CDN, because the app runs air-gapped;
+  every URL in the UI is relative (`fetch("api/top")`, `src="static/app.js"`),
+  and `index.html` adds the trailing slash relative URLs need under the proxy
+  mount. A framework that needs a build (React, Vue, Svelte) only for a
+  git-backed app whose repository can hold the built assets. Streamlit when the
+  description is a data view with no custom interaction.
+- **Nothing moves on interaction.** A list or panel that reloads (a filter, a
+  selection) keeps its current content, dimmed with `aria-busy`, until the new
+  content replaces it; placeholders only on the first load. The skeleton's
+  `app.css` reserves the scrollbar gutter, so content that shrinks for a moment
+  never shifts the page sideways.
+- **The description is the module docstring** of `app.py`, updated on every
+  edit, so the next edit starts from what the app is now.
+- **Each request reads only what it returns.** The skeleton's routes query the
+  feature group through Trino: the latest row per entity with
+  `ROW_NUMBER() OVER (PARTITION BY <id> ORDER BY <ts> DESC)`, the top k with
+  `ORDER BY ... LIMIT ?`, one entity with `WHERE <id> = ? ORDER BY <ts> DESC
+  LIMIT 1`. Values are bound as `?` parameters, never formatted into the SQL;
+  `limit` is capped (`MAX_LIMIT`), and results are cached for `CACHE_SECONDS`.
+  Never read a whole feature group into pandas to sort or filter it per request.
+- **Where the source lives.** `Users/<user>/apps/<name>/` (`~/apps/<name>/` in a
+  terminal; `./apps/<name>/` from a laptop, mirrored with `hops files upload`),
+  or a git-backed app when the working directory is a GitHub repository
+  (`--git-url`, `--git-branch`, `--git-auto-redeploy`, so a push is a
+  redeploy). An ML system's app keeps its source in the system's repository
+  under `<slug>/app/`.
+- **Environment.** `python-agent-pipeline` ships FastAPI and uvicorn; the
+  skeleton's `app-requirements.txt` adds the Trino client where it is missing. A library neither base has goes into
+  `app-requirements.txt` and a clone `<name>-app-env` (see **Custom libraries**).
+
+```bash
+find apps/customer-lookup -name __pycache__ -prune -exec rm -rf {} +
+hops files mkdir Users/<user>/apps                    # the parent must exist; the upload copies the directory
+hops files upload apps/customer-lookup Users/<user>/apps/
+hops app create customer-lookup --path /Projects/<project>/Users/<user>/apps/customer-lookup/app.py \
+  --app-kind custom --entrypoint-command "python app.py" --app-port 8080 \
+  --readiness-probe-path /health --environment python-agent-pipeline --start
+hops app url customer-lookup
+```
+
+**Smoke tests** go to the app itself, not the proxy URL, which needs a browser
+session (an API key gets a 401). `--start` returning `serving=yes` means the
+readiness probe on `/health` passed. In a Hopsworks terminal, whose `kubectl`
+reaches the project namespace, then call the page and each API route the
+description implies:
+
+```bash
+POD=$(kubectl get pods -o name | grep customer-lookup)
+kubectl port-forward "$POD" 18080:8080 &
+curl -s localhost:18080/health; curl -s localhost:18080/ | head; curl -s localhost:18080/api/top
+```
+
+From an external client without `kubectl`, the readiness probe is the smoke
+test, and the URL is handed to the user to open.
+
+## Fix loop
+
+When the app fails to start, stops serving, or a smoke test fails, fix it
+without asking, at most five attempts:
+
+1. `hops app logs <name>`: read the error and name the cause in one line.
+2. Change the source. A missing library is an environment fix (a pin in
+   `app-requirements.txt` installed into the clone), never a workaround in the
+   code. Out of memory: raise `--memory` once and say so.
+3. Upload (`hops files upload ... --overwrite`), or push for a git-backed app.
+4. A running app: `hops app redeploy <name>`. An app that failed to start:
+   `hops app start <name>` (redeploy refuses an app that is not running). Wait
+   for `RUNNING` and serving, and rerun the smoke tests.
+
+After the fifth attempt, stop with the last lines of the logs and what was tried.
+
+**Edit** changes the source as asked, updates the docstring, redeploys and
+reruns the smoke tests. **Delete** confirms the exact name, runs
+`hops app delete <name> --yes`, and removes the source directory and the
+environment clone when one was created for the app.
 
 ## Custom libraries
 

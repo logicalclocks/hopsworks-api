@@ -31,6 +31,7 @@ def _fake_app(**overrides):
     a.monitoringConfig = overrides.get("monitoringConfig")
     a.description = overrides.get("description")
     a.app_base_path = overrides.get("app_base_path")
+    a.proxy_path_mode = overrides.get("proxy_path_mode")
     a.readiness_probe_path = overrides.get("readiness_probe_path")
     a.db_access = overrides.get("db_access", True)
     a.app_url = overrides.get("app_url")
@@ -167,6 +168,17 @@ def test_app_info_shows_custom_metadata(mock_project):
     assert "/myapp" in result.output
     assert "/health" in result.output
     assert 'python -m uvicorn dash:app --port "$APP_PORT"' in result.output
+
+
+def test_app_info_shows_the_routing_mode(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(name="dash", proxy_path_mode="PREFIX")
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "compatibility prefix" in result.output
+    apps.get_app.return_value = _fake_app(name="dash", proxy_path_mode="ROOT")
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert "root (the app serves at its base path)" in result.output
 
 
 def test_app_info_shows_monitoring_routes(mock_project):

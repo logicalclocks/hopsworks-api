@@ -5,6 +5,8 @@ description: Mount or ingest a table from a supported datasource. Mount tables f
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
 
+A secret option of `hops datasource create` (`--password`, `--api-key`, ...) takes the value itself, `-` to read it from stdin, or `account:NAME` to read your account variable `NAME`. Use `account:NAME` for a credential the user saved in their account (the Factory's forms do): the value goes to the data source without a shell, a file or a printout, and never through `$(...)` around a command that also prints, such as `hopsworks.login()`.
+
 Mounting and ingesting both build a feature pipeline's input side: an external feature group leaves data in the source (no copy, no copy-time MITs); a DLTHub ingest copies the source into a managed feature group. Mounting is the lower-cost path when the source already holds the data you want, since reuse beats rebuilding a pipeline.
 
 ## Contract
@@ -172,6 +174,15 @@ class MyTransformer(HopsIngestionTransformer):
 ```
 
 `from dlt.destinations...` resolves only in that server environment. Importing it in the interactive venv raises `ModuleNotFoundError`, which is why the transform is referenced by path, never imported into your session.
+
+### Tag the ingested table as bronze
+
+A table ingested raw is a bronze table of an analytics layer; tag it so the Factory offers it as a source for a silver layer (**hops-analytics**).
+The UI's ingestion review has a "Tag as a bronze table" checkbox, off by default; from code, tag each feature group after it is created:
+
+```python
+fg.add_tag("analytics_table", {"layer": "bronze", "lifecycle": "dev"})
+```
 
 ## Ingest many tables with one job
 

@@ -1,0 +1,8 @@
+# Installed into <slug>-jobs-env, a clone of python-feature-pipeline (which ships
+# polars, pandas and the Hopsworks client), for the generator, the feature jobs and
+# training. Faker and geoip2 are the generator's; scikit-learn and xgboost must
+# match inference-requirements.txt, since the deployment unpickles the pipeline.
+Faker==38.2.0
+geoip2==5.2.0
+scikit-learn==1.6.1
+xgboost==2.1.4

@@ -120,11 +120,14 @@ def _connector_to_dict(sc: Any) -> dict[str, Any]:
 # Every secret option also reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` from the
 # environment, scoped to the connector type so a variable exported for one
 # connector cannot ride along on another.
-# It also accepts ``-`` to read one line from stdin.
+# It also accepts ``-`` to read one line from stdin, and ``account:NAME`` to
+# read the user's account variable NAME, so a credential saved there (as the
+# Factory's forms do) reaches the data source without passing through a shell.
 # When required and stdin is a terminal, it asks for the value without echo.
 
 _SECRET_ENV_PREFIX = "HOPSWORKS_DS_"
 _STDIN_SECRET_KEY = "hops.datasource.secret_from_stdin"
+_ACCOUNT_SECRET_PREFIX = "account:"
 
 
 def _dest(flag: str) -> str:
@@ -147,6 +150,8 @@ def _read_secret(
     agent gets an error instead of a hang.
     """
     flag = param.opts[0]
+    if value and value.startswith(_ACCOUNT_SECRET_PREFIX):
+        return _account_secret(ctx, param, value[len(_ACCOUNT_SECRET_PREFIX) :])
     if value == "-":
         taken = ctx.meta.get(_STDIN_SECRET_KEY)
         if taken:
@@ -166,6 +171,19 @@ def _read_secret(
     return value
 
 
+def _account_secret(ctx: click.Context, param: click.Parameter, name: str) -> str:
+    """The value of the user's account variable `name`, for a secret option."""
+    from hopsworks_common.core import env_var_api
+
+    session.get_project(ctx)
+    var = env_var_api.EnvVarsApi().get_env_var(name)
+    if var is None or not var.value:
+        raise click.BadParameter(
+            f"your account has no variable {name}", ctx=ctx, param=param
+        )
+    return var.value
+
+
 def _interactive() -> bool:
     return sys.stdin.isatty()
 
@@ -178,7 +196,7 @@ def _secret_option(
     def callback(ctx: click.Context, param: click.Parameter, value: str | None):
         return _read_secret(ctx, param, value, required)
 
-    text = f"{help} Pass - to read it from stdin."
+    text = f"{help} Pass - to read it from stdin, or account:NAME to read your account variable NAME."
     if required:
         # Click cannot flag a callback-enforced secret as required, so say it here.
         text += "  [required]"

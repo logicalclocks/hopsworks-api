@@ -227,6 +227,10 @@ class AppApi:
         config = {
             "type": "pythonAppJobConfiguration",
             "appName": name,
+            # Root routing, as the UI creates apps: the proxy strips the browser mount,
+            # so the app serves at its base path. Without it the backend falls back to
+            # the compatibility prefix and forwards /hopsworks-api/pythonapp/... as is.
+            "proxyPathMode": "ROOT",
             "resourceConfig": {
                 "memory": memory,
                 "cores": cores,

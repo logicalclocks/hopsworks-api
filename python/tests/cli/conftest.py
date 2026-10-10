@@ -63,8 +63,25 @@ def mock_project(authed_config):
     fs.name = "demo_featurestore"
     project.get_feature_store.return_value = fs
 
+    # The CLI resolves an omitted version through the list of a name's versions, so
+    # a test that shapes the single-version getter gets the same object, or error,
+    # there. A listing without a name keeps the list's own return value.
+    def versions_of(getter):
+        def listed(name=None, *args, **kwargs):
+            if name is None:
+                return mock.DEFAULT
+            return [item for item in [getter(name)] if item is not None]
+
+        return listed
+
+    fs.get_feature_groups.side_effect = versions_of(fs.get_feature_group)
+    fs.get_feature_views.side_effect = versions_of(fs.get_feature_view)
+
     with (
         mock.patch.object(session, "get_project", return_value=project),
         mock.patch.object(session, "get_feature_store", return_value=fs),
+        # A logged-in session has a client; these tests have none, and run as
+        # if inside the cluster unless a test says otherwise.
+        mock.patch("hopsworks_common.client._is_external", return_value=False),
     ):
         yield project
