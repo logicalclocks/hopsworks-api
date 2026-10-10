@@ -51,6 +51,7 @@ may be absent on older deployed `hops` binaries.
 - Does the app still depend on `APP_BASE_URL_PATH`? Then it is a **migration** task (see **Routing and readiness**); confirm whether the code can switch to root routing.
 - Does the app need **monitoring** narrowed to specific routes? Monitoring is on by default and routes are optional.
 - Does the app need **public access**? Streamlit sharing is feature-flagged; only ask for it when the platform has it enabled.
+- Does the app keep **its own state** (sessions, notes, agent memory)? Database access is on by default (`db_access=True`): the project's online feature store database is created at start and `MYSQL_*` variables are injected. Only a **Data Owner** start gets write privileges; a Data Scientist start is read-only. Pass `db_access=False` for an app that needs no database. Details in **hops-app-db**.
 - **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
 
 ## Routing and readiness
@@ -138,6 +139,7 @@ three things are app-specific:
 - **A just-created feature group is not queryable via Trino/`hops sql` immediately.** The offline table syncs into the Trino catalog with a short lag, so a `SELECT ... FROM <fresh_fg>` right after `insert` can return `TABLE_NOT_FOUND`. Online feature-vector reads are available before the Trino table is, so make the app not-found-safe (warn on an empty online vector) instead of trusting a range from a fresh query.
 - **Embedded model** (predict locally instead of calling a deployment): `model_dir = mr.get_model("fraud_model", version=1).download()`; cache the loaded model and its feature view in `@st.cache_resource` so the download happens once, and read through the feature view so the same MDTs/ODTs the model saw in training are applied (no training/serving skew).
 - **Calling a deployment:** check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
+- **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Keep app tables there with an `app_` prefix and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, privileges per role, and RonDB table rules: **hops-app-db**.
 
 ### Streamlit caching and cold start
 
@@ -262,6 +264,7 @@ app = apps.create_app(
     environment="python-app-pipeline",    # or the clone from Custom libraries
     memory=2048,                          # MB
     cores=1.0,
+    db_access=True,                       # default: project database created at start, MYSQL_* injected
 )
 
 app.run(await_serving=True)   # blocks until ready; await_serving=False returns immediately
@@ -353,4 +356,5 @@ unless you want it counted.
 ## Next Steps
 
 - Read features in the app: **hops-fg** / **hops-fv**. Query via SQL: **hops-trino-sql**.
+- App state, or SQL against the online store from inside the pod: **hops-app-db**.
 - Dashboards instead of an app: **hops-superset**.

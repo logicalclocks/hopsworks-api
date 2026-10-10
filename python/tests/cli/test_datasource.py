@@ -73,6 +73,7 @@ _MINIMAL: dict[str, list[str]] = {
         "m",
     ],
     "opensearch": ["--host", "h", "--port", "9200"],
+    "elasticsearch": ["--host", "h"],
     "sql": [
         "--database-type",
         "MYSQL",
@@ -106,6 +107,7 @@ _DTOS: dict[str, tuple[str, str]] = {
     "gcs": ("featureStoreGcsConnectorDTO", "GCS"),
     "bigquery": ("featurestoreBigqueryConnectorDTO", "BIGQUERY"),
     "opensearch": ("featurestoreOpensearchConnectorDTO", "OPENSEARCH"),
+    "elasticsearch": ("featurestoreElasticsearchConnectorDTO", "ELASTICSEARCH"),
     "sql": ("featurestoreSqlConnectorDTO", "SQL"),
     "crm": ("featurestoreCRMConnectorDTO", "CRM"),
     "rest": ("featurestoreRESTConnectorDTO", "REST"),
@@ -775,3 +777,35 @@ def test_an_unknown_choice_is_refused_before_any_request():
             "SQLITE",
         ]
     )
+
+
+@pytest.mark.parametrize(
+    "argv,message",
+    [
+        (
+            ["--auth-type", "NONE", "--api-key", "k"],
+            "--auth-type NONE does not take --api-key",
+        ),
+        (
+            [
+                "--auth-type",
+                "API_KEY",
+                "--api-key",
+                "k",
+                "--user",
+                "u",
+                "--password",
+                "p",
+            ],
+            "--auth-type API_KEY does not take --user, --password",
+        ),
+        (
+            ["--user", "u", "--password", "p", "--api-key", "k"],
+            "basic authentication does not take --api-key",
+        ),
+        (["--user", "u"], "basic authentication needs --password"),
+    ],
+)
+def test_elasticsearch_auth_modes_are_exclusive(argv, message):
+    output = _refused(["elasticsearch", "n", "--host", "h", *argv])
+    assert message in output
