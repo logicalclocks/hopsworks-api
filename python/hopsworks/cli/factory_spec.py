@@ -437,6 +437,9 @@ def _check_changes(changes: Any, found: list[str]) -> None:
 
 
 def _option_value(option: Any) -> str | None:
+    # An unquoted comma in a flow mapping's label makes extra keys and cuts the label.
+    if isinstance(option, dict) and not set(option) <= {"value", "label"}:
+        return None
     value = option.get("value") if isinstance(option, dict) else option
     return value if _text(value) else None
 

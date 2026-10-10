@@ -84,6 +84,13 @@ def test_a_well_formed_definition_has_no_problems():
         (("type: slug", "type: text"), "needs a field of type slug"),
         (("options: [daily, weekly]", "options: []"), "options must be"),
         (
+            (
+                "options: [daily, weekly]",
+                "options: [{value: daily, label: Daily, at 2}]",
+            ),
+            "options must be",
+        ),
+        (
             ("min: 1}", "min: 1, when: {field: cadence, equals: weekly}}"),
             "when is not supported",
         ),
