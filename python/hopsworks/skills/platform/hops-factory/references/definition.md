@@ -40,6 +40,7 @@ Every field has a unique `id`, a `type` and a `label`, and may have `help`, `req
 | `slug` | text checked against `[a-z][a-z0-9-]*`, unique among the project's systems; every form has one | string |
 | `text`, `textarea` | input, text area | string |
 | `number` | number input; `min`, `max` | number |
+| `datetime` | a date and time picker, in UTC | `YYYY-MM-DDTHH:MMZ` |
 | `boolean` | checkbox | true or false |
 | `choice` | one of `options` | string |
 | `multichoice` | some of `options` | list of strings |

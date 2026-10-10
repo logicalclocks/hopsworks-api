@@ -544,6 +544,7 @@ def _prompt(field: dict, default: Any, label: str) -> Any:
         "multichoice": f" ({', '.join(options)}; comma-separated)",
         "feature_group": " (name or name:version)",
         "feature_groups": " (name or name:version, comma-separated)",
+        "datetime": " (UTC, such as 2025-01-01 or 2025-01-01T06:00Z)",
     }.get(kind, "")
     raw = click.prompt(
         label + hint, default=shown, show_default=bool(shown), type=str
@@ -554,6 +555,8 @@ def _prompt(field: dict, default: Any, label: str) -> Any:
         except ValueError:
             return raw or None
         return int(number) if number.is_integer() else number
+    if kind == "datetime":
+        return factory_spec.utc_instant(raw) or raw or None
     if kind == "multichoice":
         return [v.strip() for v in raw.split(",") if v.strip()]
     if kind == "feature_group":

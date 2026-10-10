@@ -7,6 +7,7 @@ stores; `hops factory validate` runs them here, without a cluster.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -45,6 +46,7 @@ FIELD_TYPES = (
     "list",
     "account_env",
     "secrets",
+    "datetime",
     "entry",
     "repository",
 )
@@ -569,6 +571,22 @@ def _empty(value: Any) -> bool:
     return value is None or value == "" or value == []
 
 
+def utc_instant(value: Any) -> str | None:
+    """`value`, an ISO 8601 date or time, as `YYYY-MM-DDTHH:MMZ` in UTC; None when it is not one.
+
+    A time without a zone is taken as UTC.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        moment = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(timezone.utc)
+    return moment.strftime("%Y-%m-%dT%H:%MZ")
+
+
 def _field_problems(field: dict, value: Any, label: str) -> list[str]:
     kind = field["type"]
     if _empty(value):
@@ -587,6 +605,8 @@ def _field_problems(field: dict, value: Any, label: str) -> list[str]:
             "max" in field and value > field["max"]
         ):
             return [f"{label} is out of range."]
+    if kind == "datetime" and utc_instant(value) is None:
+        return [f"{label} must be a date or time in UTC, such as 2025-01-01T06:00Z."]
     if kind == "boolean" and not isinstance(value, bool):
         return [f"{label} must be true or false."]
     if kind == "choice" and value not in options:

@@ -729,3 +729,21 @@ def test_a_clone_of_a_built_in_builds_with_it_and_records_itself(
 
 
 # endregion
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2025-01-01", "2025-01-01T00:00Z"),
+        ("2025-01-01T06:30Z", "2025-01-01T06:30Z"),
+        ("2025-01-01T08:30+02:00", "2025-01-01T06:30Z"),
+        ("2025-01-01 06:30", "2025-01-01T06:30Z"),
+        ("yesterday", None),
+        ("", None),
+    ],
+)
+def test_a_datetime_answer_is_an_instant_in_utc(value, expected):
+    assert factory_spec.utc_instant(value) == expected
+    field = {"id": "start", "type": "datetime", "label": "Start"}
+    problems = factory_spec._field_problems(field, value or None, "Start")
+    assert bool(problems) == (bool(value) and expected is None)
