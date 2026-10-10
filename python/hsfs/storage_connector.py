@@ -81,6 +81,7 @@ class StorageConnector(ABC):
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
     TERADATA = "TERADATA"
+    SQLSERVER = "SQLSERVER"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
@@ -3434,6 +3435,7 @@ class SqlConnector(StorageConnector):
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
     TERADATA = "TERADATA"
+    SQLSERVER = "SQLSERVER"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
@@ -3441,6 +3443,7 @@ class SqlConnector(StorageConnector):
         ORACLE: "oracle.jdbc.driver.OracleDriver",
         CLICKHOUSE: "com.clickhouse.jdbc.ClickHouseDriver",
         TERADATA: "com.teradata.jdbc.TeraDriver",
+        SQLSERVER: "com.microsoft.sqlserver.jdbc.SQLServerDriver",
     }
     # Connection settings the connector's own fields supply, so a free-form argument must never be
     # able to replace them.
@@ -3450,6 +3453,11 @@ class SqlConnector(StorageConnector):
             "port",
             "dbs_port",
             "database",
+            "databasename",
+            # SQL Server's JDBC driver reads the host and port under these names too.
+            "server",
+            "servername",
+            "portnumber",
             "database_type",
             "user",
             "username",
@@ -3463,6 +3471,7 @@ class SqlConnector(StorageConnector):
         # No protocol in the scheme: the 0.9.x driver defaults to HTTP (port 8123).
         CLICKHOUSE: "clickhouse",
         TERADATA: "teradata",
+        SQLSERVER: "sqlserver",
     }
 
     def __init__(
@@ -3671,6 +3680,11 @@ class SqlConnector(StorageConnector):
             if self._port:
                 params.append(f"DBS_PORT={self._port}")
             opts["url"] = f"jdbc:{scheme}://{self._host}/" + ",".join(params)
+        elif self._database_type == self.SQLSERVER:
+            # The database is a ;-separated property, not a path, braced so a ; or = in it cannot
+            # start another property; }} is a literal } inside braces.
+            database = (self._database or "").replace("}", "}}")
+            opts["url"] = f"jdbc:{scheme}://{host_port};databaseName={{{database}}}"
         else:
             opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
         return opts

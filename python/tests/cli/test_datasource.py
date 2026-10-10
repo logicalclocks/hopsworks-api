@@ -598,6 +598,29 @@ def test_sql_teradata_is_a_database_type_of_the_sql_connector():
     assert body["port"] == 1025
 
 
+def test_sql_sqlserver_is_a_database_type_of_the_sql_connector():
+    body = _create(
+        [
+            "sql",
+            "n",
+            "--database-type",
+            "SQLSERVER",
+            "--host",
+            "mssql",
+            "--port",
+            "1433",
+            "--database",
+            "sales",
+            "--user",
+            "u",
+        ]
+    )
+
+    assert body["type"] == "featurestoreSqlConnectorDTO"
+    assert body["databaseType"] == "SQLSERVER"
+    assert body["port"] == 1433
+
+
 def test_unity_catalog_defaults_to_a_personal_access_token():
     body = _create(["unity-catalog", "n", *_MINIMAL["unity-catalog"]])
 
