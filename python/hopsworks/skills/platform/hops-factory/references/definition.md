@@ -7,7 +7,7 @@ The cluster refuses a definition that breaks a rule below, and `hops factory val
 
 | key | required | rule |
 | --- | --- | --- |
-| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-agent`, `analytics-bronze`, `analytics-silver`, `analytics-gold`, `analytics-pipeline`) |
+| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-agent`, `analytics-bronze`, `analytics-silver`, `analytics-gold`, `analytics-pipeline`, `analytics-ingestion`) |
 | `title` | yes | text, at most 255 |
 | `description` | no | text |
 | `form.sections` | yes | a non-empty list |
@@ -46,6 +46,7 @@ Every field has a unique `id`, a `type` and a `label`, and may have `help`, `req
 | `feature_groups` | several of them, with the same `filter` | list of `{name, version}` |
 | `list` | entries added and removed by the user, each asking its own `fields`; `item_label`, `min_items` | list of objects |
 | `account_env` | an input (`secret: true` hides it) saved as the user's account variable `env`; not inside a list | nothing: it never reaches the answers |
+| `secrets` | rows of a name (`[A-Z][A-Z0-9_]*`, at most 63) and a hidden value, each value saved as the user's private account variable of that name; a row left without a value keeps the account's variable; not inside a list | list of the names, never the values |
 | `entry` | in a change's form only: one item of the list at `from` in `system.yaml` (a dotted path; a list met on the way is walked through, so `marts.jobs` is every mart's jobs), named by its `value` key (default `slug`) and shown by `show` (default `name`); with `fill: true` the chosen item's values prefill the change's other fields, read at their keys | the item's `value` |
 
 An option is a value, or `{value, label}` to show a label.

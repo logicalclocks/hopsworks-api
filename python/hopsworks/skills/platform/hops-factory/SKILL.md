@@ -7,7 +7,7 @@ description: Use when creating, editing, cloning, importing, exporting or deleti
 
 A factory is a YAML definition: the questions of a creation form, the phases of the build, and the instructions Claude Code follows to build what the answers describe.
 The Hopsworks UI generates the form, the Factory page section and the progress bar from it.
-Seven factories are built in and read-only: `ml-batch`, `ml-realtime` and `ml-agent` (ML systems), `analytics-bronze`, `analytics-silver` and `analytics-gold` (analytics layers), and `analytics-pipeline` (a data pipeline in PySpark, DuckDB, Polars or dbt on Trino, built from its written instructions, whose system.yaml has only the `features` block); `analytics-bronze` builds only its examples, generated data from a generator in the hops-analytics references.
+Eight factories are built in and read-only: `ml-batch`, `ml-realtime` and `ml-agent` (ML systems), `analytics-bronze`, `analytics-silver` and `analytics-gold` (analytics layers), `analytics-pipeline` (a data pipeline in PySpark, DuckDB, Polars or dbt on Trino, built from its written instructions, whose system.yaml has only the `features` block), and `analytics-ingestion` (dlt ingestion of data sources into feature groups, built from its written instructions, whose system.yaml has only the `ingestion` block); `analytics-bronze` builds only its examples, generated data from a generator in the hops-analytics references.
 A project's data owners add its own: written from scratch, cloned from any factory, or imported from a YAML file.
 
 ## Contract
@@ -75,6 +75,7 @@ build:
 - A form has no conditions: every question of a section is shown. Put optional questions in a `collapsed: true` section, which shows a summary of its answers with Edit.
 - `key` puts an answer at a dotted path of the answers the build gets; the id when absent.
 - `account_env` fields (`env: LLM_API_KEY`, `secret: true`) are saved as the user's account variables, never in `system.yaml`.
+- `secrets` fields ask for rows of a variable name and a hidden value; each value is saved as a private account variable, and only the names reach `system.yaml`.
 - `presets` are named starting answers, listed under the factory's New button: `{id, label, answers: {<field id>: ...}, fixed: {...}}`.
 - A phase key cannot be `system`, `factory` or `schema_version`.
 - To extend a built-in instead of replacing it, clone it: the clone keeps `build.builtin` (`mlsystem`, `analytics-bronze`, `analytics-silver` or `analytics-gold`) and its questions; answers the built-in build does not read land in `requirements.extra` and the clone's instructions in `factory.instructions` of each system's `system.yaml`.

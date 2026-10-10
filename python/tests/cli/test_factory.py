@@ -173,6 +173,136 @@ def test_a_new_repository_needs_no_url_and_an_existing_one_a_clean_url():
         assert problem in factory_spec.repository_problems(answer, "Repo")[0]
 
 
+INGEST = """\
+apiVersion: hopsworks.ai/factory/v1
+kind: Factory
+name: crm-ingest
+title: CRM ingestion
+form:
+  sections:
+    - id: basics
+      title: Basics
+      fields:
+        - {id: slug, type: slug, label: Name, required: true}
+        - {id: credentials, type: secrets, label: Credentials, required: true}
+phases:
+  - {key: ingest, label: Ingest}
+build:
+  instructions: Ingest the CRM with the credentials named in requirements.credentials.
+"""
+
+
+def test_a_secrets_field_is_top_level_only():
+    assert factory_spec.text_problems(INGEST) == []
+    nested = INGEST.replace(
+        "        - {id: credentials, type: secrets, label: Credentials, required: true}",
+        "        - id: sources\n"
+        "          type: list\n"
+        "          label: Sources\n"
+        "          fields:\n"
+        "            - {id: credentials, type: secrets, label: Credentials}",
+    )
+    assert any(
+        "cannot be a secrets inside a list" in p
+        for p in factory_spec.text_problems(nested)
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "problem"),
+    [
+        (["CRM_PASSWORD", "HUBSPOT_TOKEN"], None),
+        (None, "Credentials is required."),
+        (["crm_password"], "is not an environment variable name"),
+        ([{"name": "CRM_PASSWORD", "value": "hunter2"}], "must be a list of"),
+        ({"CRM_PASSWORD": "hunter2"}, "must be a list of"),
+    ],
+)
+def test_a_secrets_answer_is_only_variable_names(answer, problem):
+    spec = yaml.safe_load(INGEST)
+    found = factory_spec.answer_problems(spec, {"slug": "crm", "credentials": answer})
+    if problem is None:
+        assert found == []
+    else:
+        assert len(found) == 1 and problem in found[0], found
+
+
+def test_an_answers_file_with_secret_values_is_refused(
+    tmp_path, monkeypatch, logged_in
+):
+    registered, launched = _recording(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(INGEST)
+    )
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "slug": "crm",
+                "credentials": [{"name": "CRM_PASSWORD", "value": "hunter2"}],
+            }
+        )
+    )
+    refused = CliRunner().invoke(
+        cli, ["factory", "run", "crm-ingest", "--answers", str(answers)]
+    )
+    assert refused.exit_code != 0 and "must be a list of" in refused.output
+    assert not (tmp_path / "crm").exists()
+    answers.write_text(json.dumps({"slug": "crm", "credentials": ["CRM_PASSWORD"]}))
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "crm-ingest", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "crm" / "system.yaml").read_text())
+    assert doc["requirements"] == {"slug": "crm", "credentials": ["CRM_PASSWORD"]}
+    assert launched == ["/hops-factory-crm-ingest crm"]
+
+
+def test_secrets_asked_here_are_saved_privately_and_only_their_names_recorded(
+    tmp_path, monkeypatch, logged_in
+):
+    from hopsworks_common.core import env_var_api
+
+    registered, launched = _recording(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(INGEST)
+    )
+    api = mock.Mock()
+    api.get_env_vars.return_value = [mock.Mock()]
+    api.get_env_vars.return_value[0].name = "HUBSPOT_TOKEN"
+    monkeypatch.setattr(env_var_api, "EnvVarsApi", lambda: api)
+    typed = [
+        "crm",
+        "",  # required: asked again
+        "crm_password",  # not a variable name: asked again
+        "CRM_PASSWORD",
+        "hunter2",
+        "HUBSPOT_TOKEN",
+        "",  # saved in the account: kept
+        "",
+    ]
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "crm-ingest"], input="\n".join(typed) + "\n"
+    )
+    assert done.exit_code == 0, done.output
+    assert "Credentials is required" in done.output
+    assert "crm_password is not an environment variable name" in done.output
+    assert "HUBSPOT_TOKEN (saved in your account; empty keeps it)" in done.output
+    api.set_env_var.assert_called_once_with(
+        "CRM_PASSWORD", "hunter2", visibility="PRIVATE"
+    )
+    text = (tmp_path / "crm" / "system.yaml").read_text()
+    assert "hunter2" not in text
+    assert yaml.safe_load(text)["requirements"]["credentials"] == [
+        "CRM_PASSWORD",
+        "HUBSPOT_TOKEN",
+    ]
+
+
+def test_analytics_ingestion_is_a_built_in():
+    assert "analytics-ingestion" in factory_spec.BUILTINS
+
+
 @pytest.mark.parametrize("name", factory_spec.BUILTINS)
 def test_the_shipped_built_ins_are_valid(name):
     resources = (

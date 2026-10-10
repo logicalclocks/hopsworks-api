@@ -154,6 +154,56 @@ def test_the_inventory_takes_what_the_system_created_downstream_first():
     }
 
 
+INGESTION = {
+    "requirements": {"credentials": ["CRM_PASSWORD"]},
+    "ingestion": {
+        "sources": [
+            {
+                "name": "crm",
+                "kind": "sql",
+                "reused": False,
+                "credentials": ["CRM_PASSWORD"],
+                "tables": [
+                    {
+                        "source": "public.customers",
+                        "ingested": {"feature_group": "crm_customers", "version": 1},
+                    }
+                ],
+            },
+            {
+                "name": "warehouse",
+                "kind": "snowflake",
+                "reused": True,
+                "tables": [
+                    {
+                        "source": "sales.orders",
+                        "ingested": {"feature_group": "warehouse_orders", "version": 2},
+                    }
+                ],
+            },
+        ],
+        "environment": {"name": "dlthub-ingestion-pipeline", "cloned": False},
+        "job": {"name": "crm-ingestion-ingest", "type": "ingestion"},
+    },
+}
+
+
+def test_the_inventory_of_an_ingestion_keeps_the_data_sources_it_reused():
+    from hopsworks.cli import teardown
+
+    plan = [str(a) for a in teardown.inventory(INGESTION, "crm-ingestion")]
+    assert plan == [
+        "job crm-ingestion-ingest",
+        "jobs crm-ingestion-* (any not named above)",
+        "feature group warehouse_orders v2",
+        "feature group warehouse_orders (every other version crm-ingestion made)",
+        "feature group crm_customers v1",
+        "feature group crm_customers (every other version crm-ingestion made)",
+        "data source crm",
+        "directory Resources/crm-ingestion",
+    ]
+
+
 @pytest.fixture
 def system_dir(tmp_path, monkeypatch):
     import yaml

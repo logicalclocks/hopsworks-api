@@ -28,6 +28,7 @@ BUILTINS = (
     "analytics-silver",
     "analytics-gold",
     "analytics-pipeline",
+    "analytics-ingestion",
 )
 # The builds a factory can hand its answers to instead of writing its own instructions.
 BUILTIN_BUILDS = ("mlsystem", "analytics-bronze", "analytics-silver", "analytics-gold")
@@ -43,6 +44,7 @@ FIELD_TYPES = (
     "feature_groups",
     "list",
     "account_env",
+    "secrets",
     "entry",
     "repository",
 )
@@ -284,6 +286,8 @@ def _check_field(
             found.append(f"{where} cannot be an account_env inside a list.")
         if "secret" in field and not isinstance(field["secret"], bool):
             found.append(f"{where}.secret must be true or false.")
+    if kind == "secrets" and not top:
+        found.append(f"{where} cannot be a secrets inside a list.")
     if kind == "entry":
         if not change or not top:
             found.append(
@@ -530,6 +534,30 @@ def repo_record(value: Any) -> dict:
     return {"url": url, "provider": repo_provider(url)}
 
 
+def secrets_problems(value: Any, label: str) -> list[str]:
+    """What is wrong with a secrets answer, the names of the account variables holding the secrets.
+
+    The values are saved in the account before the answers are written, so an
+    answer carrying anything but names is refused: it would put a secret in system.yaml.
+
+    Args:
+        value: The answer.
+        label: The question, for the messages.
+
+    Returns:
+        The problems.
+    """
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        return [
+            f"{label} must be a list of account variable names; the values are saved in your account, never in the answers."
+        ]
+    return [
+        f"{label}: {name!r} is not an environment variable name (capitals, digits and underscores, starting with a letter)."
+        for name in value
+        if not ENV.match(name)
+    ]
+
+
 def _empty(value: Any) -> bool:
     return value is None or value == "" or value == []
 
@@ -569,6 +597,8 @@ def _field_problems(field: dict, value: Any, label: str) -> list[str]:
         return [f"{label} must be a list of feature groups."]
     if kind == "repository":
         return repository_problems(value, label)
+    if kind == "secrets":
+        return secrets_problems(value, label)
     if kind == "list":
         if not isinstance(value, list):
             return [f"{label} must be a list."]
@@ -595,7 +625,8 @@ def answer_problems(
     `form` is a change's form, the create form when None; `system` is the system.yaml a
     change's entry fields pick from, which are not checked without it.
     The answers are nested by each field's key (its id when it has none); an account_env field's
-    value never reaches the answers, since the UI saves it as an account variable.
+    value never reaches the answers, since the UI saves it as an account variable, and a
+    secrets field's answer is only the names of the account variables the UI saved.
 
     Args:
         doc: The parsed definition.

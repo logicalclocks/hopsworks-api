@@ -1,9 +1,10 @@
-"""``hops factory`` — the software factories of this project, and the systems they build.
+"""``hops factory``: the software factories of this project, and the systems they build.
 
-Seven are built in, as YAML definitions the cluster ships: ``ml-batch``,
+Eight are built in, as YAML definitions the cluster ships: ``ml-batch``,
 ``ml-realtime`` and ``ml-agent`` build ML systems, ``analytics-bronze``,
-``analytics-silver`` and ``analytics-gold`` build analytics layers, and
-``analytics-pipeline`` builds a data pipeline from its written instructions. A
+``analytics-silver`` and ``analytics-gold`` build analytics layers,
+``analytics-pipeline`` builds a data pipeline and ``analytics-ingestion`` the
+ingestion of data sources into feature groups, each from its written instructions. A
 project's own factories are YAML definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
 import, clone and delete. ``hops factory run <name>`` builds a system with a
 factory, and ``hops factory system ...`` lists, reports on and deletes the
@@ -457,7 +458,9 @@ def _ask(form: dict, start: dict, system: dict | None = None) -> dict:
             if field["type"] == "account_env":
                 _account_env(field)
                 continue
-            if field["type"] == "entry":
+            if field["type"] == "secrets":
+                value = _secrets(field)
+            elif field["type"] == "entry":
                 value, entry = _ask_entry(field, system or {}, start.get(field["id"]))
                 if field.get("fill"):
                     filled = entry
@@ -640,6 +643,58 @@ def _account_env(field: dict) -> None:
     if value:
         api.set_env_var(env, value, visibility="PRIVATE")
         output.success(f"Saved {env} in your account settings.")
+
+
+def _secrets(field: dict) -> list[str] | None:
+    """Ask for secrets by name, save each value as a private account variable, and return the names.
+
+    A name the account already holds keeps its value when none is typed; only the
+    names reach the answers, so no value enters system.yaml or a Claude session.
+    """
+    from hopsworks_common.core import env_var_api
+
+    if field.get("help"):
+        click.echo(click.style(f"  {field['help']}", dim=True))
+    api = env_var_api.EnvVarsApi()
+    try:
+        present = {v.name for v in api.get_env_vars(include_value=False)}
+    except Exception as exc:  # noqa: BLE001 - every name is then asked with its value
+        output.warn(f"Could not read your account environment variables ({exc}).")
+        present = set()
+    names: list[str] = []
+    while True:
+        name = click.prompt(
+            f"{field['label']}: secret variable name (empty to finish)",
+            default="",
+            show_default=False,
+        ).strip()
+        if not name:
+            if names or not field.get("required"):
+                return names or None
+            output.warn(f"{field['label']} is required.")
+            continue
+        if not factory_spec.ENV.match(name):
+            output.warn(
+                f"{name} is not an environment variable name (capitals, digits and underscores, starting with a letter)."
+            )
+            continue
+        saved = name in present
+        hint = " (saved in your account; empty keeps it)" if saved else ""
+        value = click.prompt(
+            f"  {name}{hint} (not shown)",
+            default="",
+            hide_input=True,
+            show_default=False,
+        ).strip()
+        if value:
+            api.set_env_var(name, value, visibility="PRIVATE")
+            present.add(name)
+            output.success(f"Saved {name} in your account settings.")
+        elif not saved:
+            output.warn(f"{name} needs a value: it is not saved in your account.")
+            continue
+        if name not in names:
+            names.append(name)
 
 
 def _built_with(definition: dict, target: Path) -> tuple[dict, dict]:

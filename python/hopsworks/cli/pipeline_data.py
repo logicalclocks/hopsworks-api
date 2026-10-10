@@ -12,6 +12,10 @@ For every pipeline in `features.pipelines` of system.yaml, each output it
 What the pipeline `reads` is measured the same way, so the report sets the
 rows (or bytes) that came in against what went out. A data source outside
 Hopsworks is listed but not measured.
+
+An ingestion system records no `features` block: each data source of its
+`ingestion.sources` is reported as a pipeline that reads the source and writes
+the feature groups its tables are `ingested` into.
 """
 
 from __future__ import annotations
@@ -334,6 +338,33 @@ def _output(
     return fact
 
 
+def _ingestion_pipelines(doc: dict) -> list[dict]:
+    ingestion = doc.get("ingestion") if isinstance(doc.get("ingestion"), dict) else {}
+    found = []
+    for source in _as_list(ingestion.get("sources")):
+        if not isinstance(source, dict):
+            continue
+        writes = [
+            {
+                **table["ingested"],
+                "primary_key": table.get("primary_key"),
+                "event_time": table.get("event_time"),
+            }
+            for table in _as_list(source.get("tables"))
+            if isinstance(table, dict) and isinstance(table.get("ingested"), dict)
+        ]
+        found.append(
+            {
+                "name": source.get("name") or "ingestion",
+                "engine": "dlt",
+                "reads": [{"data_source": source.get("name")}],
+                "writes": writes,
+                "job": ingestion.get("job"),
+            }
+        )
+    return found
+
+
 def collect(project: Any, doc: dict, hours: int = 24) -> list[dict]:
     """One fact per pipeline that writes: what came in, what went out, and the problems in what went out.
 
@@ -349,7 +380,7 @@ def collect(project: Any, doc: dict, hours: int = 24) -> list[dict]:
         p
         for p in _as_list((doc.get("features") or {}).get("pipelines"))
         if isinstance(p, dict)
-    ]
+    ] + _ingestion_pipelines(doc)
     pipelines = [p for p in pipelines if p.get("writes")]
     if not pipelines:
         return []

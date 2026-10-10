@@ -4,7 +4,7 @@ The assets come from the system's ``system.yaml``, conservatively: only what the
 build writes or names as its own (feature groups it writes, its feature view,
 its models, jobs, deployments and app, environments named after the system,
 data sources it created, ``Resources/<slug>``), never a feature group it only
-reads or a base environment it runs on.
+reads, a data source it reused or a base environment it runs on.
 
 Every step treats an asset that is already gone as done, and the steps run
 downstream first (an app before the model it serves, a feature view before the
@@ -164,6 +164,13 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
         if path[:1] == ("inference",) and isinstance(node.get("deployment"), str):
             add(Asset("deployment", node["deployment"]))
         if parent == "connector" and node.get("created") and node.get("name"):
+            add(Asset("data source", str(node["name"])))
+        # An ingestion's data source is the system's only when the build created it.
+        if (
+            path == ("ingestion", "sources")
+            and node.get("reused") is False
+            and node.get("name")
+        ):
             add(Asset("data source", str(node["name"])))
         # Only environments cloned for this system; a shared base keeps its own name.
         name = node.get("name")

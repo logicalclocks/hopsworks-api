@@ -239,3 +239,37 @@ def test_a_pipeline_problem_degrades_the_system_and_shows_on_the_page(
     assert facts["overall"] == "degraded"
     assert facts["counts"]["pipeline_problems"] == 1
     assert "pipelinesSection" in health.render(facts, None)
+
+
+def test_an_ingestion_reports_each_source_as_a_pipeline(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOPSFS_MOUNT", str(tmp_path))
+    monkeypatch.setattr(pipeline_data.silver_status, "_layout", lambda table: None)
+    _table(tmp_path, "crm_orders_1", [(3, {"numOutputRows": "100"})])
+    doc = {
+        "ingestion": {
+            "sources": [
+                {
+                    "name": "crm",
+                    "reused": True,
+                    "tables": [
+                        {
+                            "source": "public.orders",
+                            "ingested": {"feature_group": "crm_orders", "version": 1},
+                            "primary_key": ["order_id"],
+                            "event_time": "ts",
+                        }
+                    ],
+                }
+            ],
+            "job": {"name": "crm-ingest", "schedule": {"cron": "0 0 * * * ?"}},
+        }
+    }
+    [pipeline] = pipeline_data.collect(_project(_Trino(24)), doc, hours=24)
+    assert pipeline["name"] == "crm" and pipeline["engine"] == "dlt"
+    assert pipeline["inputs"] == [{"name": "crm", "kind": "data source"}]
+    [orders] = pipeline["outputs"]
+    assert orders["name"] == "crm_orders v1" and orders["rows"] == 100
+    assert "missing data: coupon is null in every row" in orders["problems"]
+    assert any(
+        p.startswith("missing data: no rows for 1 hours") for p in orders["problems"]
+    )
