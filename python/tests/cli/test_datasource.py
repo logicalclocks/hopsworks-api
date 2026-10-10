@@ -311,6 +311,52 @@ def test_secrets_are_read_from_the_connector_scoped_environment_variable():
     assert body["password"] == "from-env"
 
 
+def test_a_secret_is_read_from_an_account_variable_without_a_shell():
+    var = mock.Mock(value="s3cret")
+    with (
+        mock.patch.object(ds.session, "get_project"),
+        mock.patch(
+            "hopsworks_common.core.env_var_api.EnvVarsApi.get_env_var",
+            return_value=var,
+        ) as get,
+    ):
+        body = _create(
+            ["sap-hana", "n", "--host", "h", "--user", "u"],
+            env={"HOPSWORKS_DS_SAP_HANA_PASSWORD": "account:CRM_PASSWORD"},
+        )
+
+    get.assert_called_once_with("CRM_PASSWORD")
+    assert body["password"] == "s3cret"
+
+
+def test_a_missing_account_variable_is_an_error():
+    with (
+        mock.patch.object(ds.session, "get_project"),
+        mock.patch(
+            "hopsworks_common.core.env_var_api.EnvVarsApi.get_env_var",
+            return_value=None,
+        ),
+    ):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "create",
+                "sap-hana",
+                "n",
+                "--host",
+                "h",
+                "--user",
+                "u",
+                "--password",
+                "account:NOPE",
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "no variable NOPE" in result.output
+
+
 def test_secret_options_name_their_environment_variable_and_stdin_in_help():
     result = CliRunner().invoke(cli, ["datasource", "create", "sql", "--help"])
 
