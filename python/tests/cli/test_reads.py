@@ -550,3 +550,50 @@ def test_login_banner_does_not_pollute_stdout(authed_config, capsys):
     captured = capsys.readouterr()
     assert "Logged in to project" not in captured.out
     assert "Logged in to project" not in captured.err
+
+
+def test_fg_list_shows_the_access_state_of_provided_external_feature_groups(
+    mock_project,
+):
+    fs = mock_project.get_feature_store.return_value
+    external = _feature_group("sales_external", 1)
+    external.data_source_access = {"status": "NO_ACCESS", "error_code": "ORA-00942"}
+    plain = _feature_group("transactions", 1)
+    plain.data_source_access = None
+    fs.get_feature_groups.return_value = [external, plain]
+
+    result = CliRunner().invoke(cli, ["--json", "fg", "list"])
+
+    assert result.exit_code == 0, result.output
+    access = {row["NAME"]: row["ACCESS"] for row in json.loads(result.stdout)}
+    assert access == {"sales_external": "no_access", "transactions": "-"}
+
+
+def test_fg_test_access_runs_the_check_and_prints_the_state(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("sales_external", 1)
+    fg.test_data_source_access.return_value = {
+        "status": "INVALID_CREDENTIALS",
+        "error_code": "ORA-01017",
+        "message": "invalid username/password; logon denied",
+        "checked_at": "2026-10-07T10:00:00Z",
+    }
+    fs.get_feature_group.return_value = fg
+
+    result = CliRunner().invoke(cli, ["fg", "test-access", "sales_external"])
+
+    assert result.exit_code == 0, result.output
+    fg.test_data_source_access.assert_called_once_with()
+    assert "INVALID_CREDENTIALS" in result.output
+    assert "ORA-01017" in result.output
+
+
+def test_fg_test_access_refuses_a_cached_feature_group(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.NonCallableMagicMock(spec=["id", "name", "version"])
+    fs.get_feature_group.return_value = fg
+
+    result = CliRunner().invoke(cli, ["fg", "test-access", "transactions"])
+
+    assert result.exit_code == 1, result.output
+    assert "not an external feature group" in result.output

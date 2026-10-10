@@ -126,6 +126,30 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 **Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
 
+## Provided credentials (Oracle)
+
+A data source has a credentials mode.
+`SHARED` (the default) stores one username and password on the data source and every member reads with them.
+`PROVIDED` stores only host, port and service name; each member adds their own credentials, which live in that member's account and are used whenever that member reads through the data source or an external feature group mounted from it.
+Only Oracle supports `PROVIDED` today, and the mode cannot be changed after creation.
+
+```bash
+hops datasource create sql oracle_sales --database-type ORACLE --credentials-mode provided --host H --port 1522 --database SVC   # no --user, no --password
+hops datasource credentials set oracle_sales --user SCOTT --password - < pw.txt     # validates, then saves to your account
+hops datasource credentials set oracle_sales --user SCOTT --password - --wallet ./Wallet_db.zip --wallet-password - < pw.txt   # HOPSWORKS_DS_CREDENTIALS_WALLET_PASSWORD for the second secret
+hops datasource credentials show oracle_sales                                       # status and the names of your secret and env var, never values
+hops datasource list                                                                 # CREDENTIALS column: shared, provided: yours set, provided: missing
+hops fg list                                                                         # ACCESS column per mounted table: ok, no_credentials, invalid_credentials, no_access, error
+hops fg test-access sales_external                                                   # re-check your access to one mounted table now
+```
+
+Reading a `PROVIDED` data source before adding your credentials fails with a message naming `set_credentials`; run `hops datasource credentials set` first.
+A Data owner who creates a `PROVIDED` data source must add their own credentials before `hops datasource tables` or mounting a feature group, since both run as the caller.
+A mounted table a member cannot read shows `no_access` in `hops fg list`; their database account lacks a grant the Data owner's has.
+Inside Hopsworks runtimes your credentials are also available as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, with `HOPS_DS_<NAME>_CONNECTOR_ID` naming the data source they belong to.
+A Trino catalog on a `PROVIDED` data source runs each member's queries with their own login when they connect through `project.get_trino_api()`; other Trino clients must send the extra credentials described in the reference.
+SDK equivalents, the naming rules and the access states are in [references/provided-credentials.md](references/provided-credentials.md).
+
 ## Ingest into a new feature group with DLTHub
 
 DLTHub copies a source into a managed feature group for the cases mounting cannot serve: loading the online store or a vector index, or pulling from an API/SaaS/REST endpoint. Ingestion runs server-side in the `dlthub-ingestion-pipeline` environment, driven by a `SinkJobConfiguration` attached to a sink-enabled feature group. It is configuration plus a server job, not an in-process `dlt` call.

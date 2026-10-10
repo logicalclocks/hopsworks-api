@@ -6395,6 +6395,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ttl_enabled: bool | None = None,
         online_disk: bool | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
+        data_source_access: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -6424,6 +6425,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         self._created = created
         self._creator = user.User.from_response_json(creator)
         self._data_format = data_format.upper() if data_format else None
+        self._data_source_access = data_source_access
 
         self._features = [
             feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
@@ -7029,6 +7031,44 @@ class ExternalFeatureGroup(FeatureGroupBase):
     def feature_store_name(self) -> str | None:
         """Name of the feature store in which the feature group is located."""
         return self._feature_store_name
+
+    @public
+    @property
+    def data_source_access(self) -> dict[str, Any] | None:
+        """Whether you can read the table behind this feature group with your own credentials.
+
+        Set only for feature groups mounted from a data source with provided credentials; `None` otherwise.
+        Carries `status` (`PENDING`, `OK`, `NO_CREDENTIALS`, `INVALID_CREDENTIALS`, `NO_ACCESS` or `ERROR`), `error_code`, `message` and `checked_at`.
+        The state informs you and does not gate reads: a read in `NO_ACCESS` still goes to the source and fails there.
+        """
+        return self._data_source_access
+
+    @public
+    def test_data_source_access(self) -> dict[str, Any]:
+        """Check now whether your credentials can read the table behind this feature group.
+
+        The check runs synchronously as you, with a limit of one row, and may take up to a minute.
+        For a data source with provided credentials the result is stored and shown in the catalog; for one with shared credentials the shared credentials are tested and nothing is stored.
+        Add your credentials with `set_credentials()` on the data source first when the state is `NO_CREDENTIALS`.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("sales_external", version=1)
+            access = fg.test_data_source_access()
+            if access["status"] != "OK":
+                print(access["status"], access["message"])
+            ```
+
+        Returns:
+            The access state: `status`, `error_code`, `message` and `checked_at`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._data_source_access = humps.decamelize(
+            self._feature_group_engine._test_data_source_access(self)
+        )
+        return self._data_source_access
 
 
 @public

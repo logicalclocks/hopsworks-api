@@ -229,6 +229,30 @@ class TrinoApi:
         password = self._get_password(user)
         return user, password
 
+    def _get_extra_credentials(self) -> list[tuple[str, str]]:
+        """The caller's own logins for the Trino catalogs built from data sources with provided credentials.
+
+        A backend without the endpoint, or any other failure, yields none, so that Trino stays usable for every other catalog.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "trino", "extra-credentials"]
+        try:
+            items = _client._send_request("GET", path_params).get("items") or []
+            return [(item["name"], item["value"]) for item in items]
+        except Exception as err:  # noqa: BLE001
+            _logger.debug(
+                "Connecting to Trino without data source credentials: %s", err
+            )
+            return []
+
+    def _with_extra_credentials(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Add the caller's data source logins to the connection arguments, keeping any the caller passed for the same name."""
+        merged = dict(self._get_extra_credentials())
+        merged.update(kwargs.get("extra_credential") or [])
+        if merged:
+            kwargs = {**kwargs, "extra_credential": list(merged.items())}
+        return kwargs
+
     @_uses_trino
     @public
     @usage._method_logger
@@ -244,6 +268,8 @@ class TrinoApi:
 
         Hopsworks automatically handles authentication, host resolution, and TLS.
         Any additional keyword arguments are forwarded directly to `trino.dbapi.connect`.
+        Queries on a catalog built from a data source with provided credentials run with your own database login for that data source, which Hopsworks sends to Trino as extra credentials.
+        An `extra_credential` entry you pass replaces the one Hopsworks would send under the same name.
 
         Parameters:
             source: Source identifier for Trino queries.
@@ -291,7 +317,7 @@ class TrinoApi:
             auth=basic_auth,
             http_scheme=HTTPS,
             verify=self._get_ca_chain_path(verify),
-            **kwargs,
+            **self._with_extra_credentials(kwargs),
         )
 
     @_uses_trino
@@ -310,6 +336,8 @@ class TrinoApi:
         Hopsworks automatically handles authentication, host resolution, and TLS.
         Any additional keyword arguments are forwarded as `connect_args` to the
         underlying `trino.dbapi.connect` call.
+        Queries on a catalog built from a data source with provided credentials run with your own database login for that data source, which Hopsworks sends to Trino as extra credentials.
+        An `extra_credential` entry you pass replaces the one Hopsworks would send under the same name.
 
         Parameters:
             source: Source identifier for Trino queries.
@@ -361,6 +389,6 @@ class TrinoApi:
             "http_scheme": HTTPS,
             "verify": self._get_ca_chain_path(verify),
             "source": source,
-            **kwargs,
+            **self._with_extra_credentials(kwargs),
         }
         return create_engine(connection_url, connect_args=connect_args)
