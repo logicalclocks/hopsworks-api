@@ -806,6 +806,32 @@ def test_an_ml_system_never_deletes_a_analytics_table(tmp_path, monkeypatch):
     assert events == []
 
 
+def test_an_ingestion_system_deletes_only_the_bronze_tables_it_loads(
+    tmp_path, monkeypatch
+):
+    ingested = {"feature_group": "shop_customers", "version": 1}
+    doc = {
+        "requirements": {"data_sources": []},
+        "ingestion": {"sources": [{"tables": [{"ingested": ingested}]}]},
+    }
+    bronze = '{"layer": "bronze"}'
+    tags = {
+        "shop_customers": {"analytics_table": bronze},
+        "orders": {"analytics_table": bronze},
+    }
+    target = _layer_dir(tmp_path, doc)
+    done, events = _run(
+        monkeypatch, target, tags, ["delete-assets", "L", "--table", "orders"]
+    )
+    assert done.exit_code != 0 and "bronze" in done.output
+    assert events == []
+    done, events = _run(
+        monkeypatch, target, tags, ["delete-assets", "L", "--table", "shop_customers"]
+    )
+    assert done.exit_code == 0, done.output
+    assert events == ["fg shop_customers"]
+
+
 def test_the_system_commands_are_the_same_for_every_factory():
     from hopsworks.cli.commands.factory import factory_group
 

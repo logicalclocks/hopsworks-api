@@ -761,6 +761,20 @@ def _protected(fg: Any, sources: set[tuple[str, int]], kind: str | None) -> str 
     return f"a {layer} table" if layer in lower else None
 
 
+def _ingested(doc: dict) -> set[tuple[str, int]]:
+    """The feature groups an ingestion system's `ingestion` block records it loading."""
+    ingestion = doc.get("ingestion") if isinstance(doc.get("ingestion"), dict) else {}
+    written = set()
+    for source in ingestion.get("sources") or []:
+        for table in (source.get("tables") if isinstance(source, dict) else None) or []:
+            ingested = table.get("ingested") if isinstance(table, dict) else None
+            if isinstance(ingested, dict) and ingested.get("feature_group"):
+                written.add(
+                    (ingested["feature_group"], int(ingested.get("version", 1)))
+                )
+    return written
+
+
 def delete_assets(
     ctx: click.Context, doc: dict, job_names: list[str], tables: list[dict]
 ) -> None:
@@ -768,7 +782,8 @@ def delete_assets(
 
     Every feature group is checked before anything is deleted: one the system reads (its
     `sources`, or a feature group among `requirements.data_sources`), or one tagged as a lower
-    analytics layer (any layer, for an ML system), stops the delete with nothing gone.
+    analytics layer (any layer, for an ML system), stops the delete with nothing gone. An
+    ingestion system may delete the bronze tables it loads itself, and no others.
 
     Args:
         ctx: Click context.
@@ -790,6 +805,7 @@ def delete_assets(
         ]
         if isinstance(s, dict)
     }
+    written = _ingested(doc) - sources
     fs = project.get_feature_store() if tables else None
     found = []
     for table in tables:
@@ -802,7 +818,8 @@ def delete_assets(
         if fg is None:
             output.info(f"feature group {name} v{version}: gone")
             continue
-        why = _protected(fg, sources, kind)
+        own = (fg.name, int(fg.version)) in written
+        why = _protected(fg, sources, "bronze" if own else kind)
         if why:
             raise click.ClickException(
                 f"{name} v{version} is {why}; a system never deletes it"
