@@ -78,3 +78,21 @@ class TestFeatureGroupApi:
 
         # Assert
         assert len(warning_record) == 1
+
+    def test_delete_content_follows_recreated_group(self, mocker, backend_fixtures):
+        # Arrange: clear recreates the group under a new id and returns it
+        fg_api = feature_group_api.FeatureGroupApi()
+        json = backend_fixtures["feature_group"]["get"]["response"]
+        fg = fg_mod.FeatureGroup.from_response_json(json)
+        recreated = dict(json, id=json["id"] + 1)
+        client_mock = Mock()
+        client_mock.configure_mock(**{"_send_request.return_value": recreated})
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        mocker.patch("hsfs.engine._get_instance")
+
+        # Act
+        fg_api._delete_content(fg)
+
+        # Assert: the cleared group's old id is requested, the instance now holds the new one
+        assert client_mock._send_request.call_args[0][1][5] == json["id"]
+        assert fg.id == json["id"] + 1
