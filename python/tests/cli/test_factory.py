@@ -90,6 +90,7 @@ def test_a_well_formed_definition_has_no_problems():
             ),
             "options must be",
         ),
+        (("kind: Factory", "kind: Factory\nchat: [ask]"), "chat must be text"),
         (
             ("min: 1}", "min: 1, when: {field: cadence, equals: weekly}}"),
             "when is not supported",

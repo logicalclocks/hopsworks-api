@@ -124,6 +124,10 @@ def problems(doc: dict) -> list[str]:
         found.append("title must be text of at most 255 characters.")
     if "description" in doc and not isinstance(doc["description"], str):
         found.append("description must be text.")
+    if "chat" in doc and not isinstance(doc["chat"], str):
+        found.append(
+            "chat must be text: what the requirements chat asks about, in prose."
+        )
     ids = _check_form(doc.get("form"), "form", False, found)
     _check_phases(doc.get("phases"), found)
     _check_build(doc.get("build"), found)
