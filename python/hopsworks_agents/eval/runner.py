@@ -80,6 +80,12 @@ class RunnerConfig:
     # self-inflicted load test on production capacity.
     readiness_timeout_s: float = 120.0
     readiness_poll_s: float = 2.0
+    #: How long to wait for the deployment itself to answer before giving up on
+    #: the run. Generous: a pod that has just been updated pulls an image and
+    #: starts a Python process, and five minutes of waiting is cheaper than a
+    #: canary that cries wolf every time someone deploys.
+    deployment_ready_timeout_s: float = 300.0
+    deployment_ready_poll_s: float = 5.0
     # Taken from the deployment's tracing config so an eval run is costed the
     # same way production traffic is. Absent means unpriced, which is reported
     # as such rather than as free.
@@ -402,6 +408,37 @@ def _cost(trial: Trial, config: RunnerConfig) -> float | None:
     ) / 1_000_000
 
 
+def _manifest_when_ready(
+    client: AgentClient, config: RunnerConfig, sleep=time.sleep
+) -> dict[str, Any]:
+    """The agent's manifest, waiting for it to answer at all.
+
+    A run can start while its deployment is still coming up -- a canary fired
+    by an update is exactly that, since the update is what restarted it. Asking
+    once and failing would report the restart as a broken agent, and grading
+    through it would be worse: every trial an infra error, a pass rate of zero,
+    and a gate that reads it as a regression.
+
+    Waits for the deployment, not for the answer. Once the manifest is served
+    the agent is up, and anything after that is the agent's own behaviour,
+    which is what the run is there to measure.
+    """
+    deadline = time.monotonic() + config.deployment_ready_timeout_s
+    last: Exception | None = None
+    while True:
+        try:
+            return client.manifest()
+        except Exception as err:  # noqa: BLE001 - any failure to reach it is "not up yet"
+            last = err
+            if time.monotonic() >= deadline:
+                raise SuiteRefused(
+                    "the deployment did not answer within "
+                    f"{config.deployment_ready_timeout_s:.0f}s of the run starting; "
+                    f"last error: {err}"
+                ) from last
+            sleep(config.deployment_ready_poll_s)
+
+
 def run_suite(
     client: AgentClient,
     suite: Suite,
@@ -421,7 +458,7 @@ def run_suite(
     nothing while looking complete.
     """
     config = config or RunnerConfig()
-    check_deployment_supports(suite, client.manifest())
+    check_deployment_supports(suite, _manifest_when_ready(client, config, sleep))
 
     unsupported = [t for t in suite.tasks if t.task_type not in TASK_TYPES]
     if unsupported:

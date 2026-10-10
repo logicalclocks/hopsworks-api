@@ -58,6 +58,7 @@ class FakeClient:
         blocked=False,
         error="",
         raises=None,
+        manifest_failures=0,
     ):
         self._answer = answer
         self._manifest = manifest if manifest is not None else CAPABLE
@@ -65,9 +66,15 @@ class FakeClient:
         self._blocked = blocked
         self._error = error
         self._raises = raises
+        self._manifest_failures = manifest_failures
         self.calls: list[dict] = []
 
     def manifest(self):
+        # A deployment that is still coming up refuses the manifest; the runner
+        # waits for it rather than reporting the restart as a broken agent.
+        if self._manifest_failures > 0:
+            self._manifest_failures -= 1
+            raise ConnectionError("connection refused")
         return self._manifest
 
     def call(self, prompt, *, traceparent, baggage, timeout_s):
@@ -647,3 +654,43 @@ class TestPassPolicyAndReview:
         ]
         assert len(pending) == 1
         assert "tone" in pending[0].reason
+
+
+class TestWaitingForTheDeployment:
+    """A run can start while its deployment is still restarting.
+
+    A canary fired by an update is exactly that: the update is what restarted it.
+    """
+
+    def test_it_waits_for_a_deployment_that_is_still_coming_up(self):
+        client = FakeClient(manifest_failures=3)
+        slept: list[float] = []
+        result = run_suite(
+            client,
+            suite(),
+            run_id="r1",
+            deployment_id=7,
+            evaluators=[],
+            # the trace poll is not what this is about, so it gives up at once
+            config=RunnerConfig(readiness_timeout_s=0.0, deployment_ready_poll_s=0.0),
+            sleep=slept.append,
+        )
+        assert result.trials
+        # it waited rather than failing on the first refusal
+        assert len(slept) >= 3
+
+    def test_it_gives_up_with_a_reason_rather_than_grading_zeros(self):
+        client = FakeClient(manifest_failures=10_000)
+        config = RunnerConfig(
+            deployment_ready_timeout_s=0.0, deployment_ready_poll_s=0.0
+        )
+        with pytest.raises(SuiteRefused, match="did not answer"):
+            run_suite(
+                client,
+                suite(),
+                run_id="r1",
+                deployment_id=7,
+                evaluators=[],
+                config=config,
+                sleep=lambda _s: None,
+            )
