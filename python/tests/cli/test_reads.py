@@ -172,10 +172,13 @@ def test_fg_preview_columns_projection(mock_project):
         "transactions",
         features=[_feature("id", "bigint"), _feature("emb", "array<double>")],
     )
-    fg.select.return_value.show.return_value = pd.DataFrame({"id": [1, 2]})
+    # The online vector-index read returns every column whatever was selected.
+    fg.select.return_value.show.return_value = pd.DataFrame(
+        {"id": [1, 2], "emb": [[0.1], [0.2]]}
+    )
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
-        cli, ["fg", "preview", "transactions", "--columns", "id"]
+        cli, ["fg", "preview", "transactions", "--columns", "id", "--online"]
     )
     assert result.exit_code == 0, result.output
     fg.select.assert_called_with(["id"])

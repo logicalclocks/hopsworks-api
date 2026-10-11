@@ -136,6 +136,7 @@ def fg_preview(
 
     fg = _get_fg(ctx, name, version, featurestore)
     query = fg.select_all()
+    wanted = None
     if columns:
         wanted = [c.strip() for c in columns.split(",") if c.strip()]
         known = {f.name for f in fg.features}
@@ -160,6 +161,9 @@ def fg_preview(
         )
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
         raise click.ClickException(f"Could not read feature group: {exc}") from exc
+    # The online vector-index read ignores the query's selection.
+    if wanted:
+        df = df[wanted]
 
     if output.JSON_MODE:
         output.print_json(df.to_dict(orient="records"))

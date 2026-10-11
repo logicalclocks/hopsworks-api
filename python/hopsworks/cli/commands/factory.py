@@ -897,34 +897,36 @@ def _create_own(
     system_file = target / "system.yaml"
     if system_file.exists():
         output.info(f"{slug} already exists here; resuming it.")
-    else:
-        target.mkdir(parents=True, exist_ok=True)
-        phases = [
-            {k: p[k] for k in ("key", "label", "minutes") if k in p}
-            for p in spec["phases"]
-        ]
-        doc: dict = {
-            "schema_version": 1,
-            "factory": {
-                "name": name,
-                "version": version,
-                "digest": _digest(definition),
-                "phases": phases,
-            },
-            "system": {
-                "name": slug.replace("-", " ").capitalize(),
-                "slug": slug,
-                "version": "0.1.0",
-                "status": "draft",
-            },
-            "requirements": {
-                **answers,
-                **((spec.get("build") or {}).get("answers") or {}),
-            },
-        }
-        for phase in phases:
-            doc.setdefault(phase["key"], {})["status"] = "pending"
-        system_doc.create(target, doc)
+        if launch:
+            system_doc.check(target)
+        _resume(ctx, definition, target, launch)
+        return target
+    target.mkdir(parents=True, exist_ok=True)
+    phases = [
+        {k: p[k] for k in ("key", "label", "minutes") if k in p} for p in spec["phases"]
+    ]
+    doc: dict = {
+        "schema_version": 1,
+        "factory": {
+            "name": name,
+            "version": version,
+            "digest": _digest(definition),
+            "phases": phases,
+        },
+        "system": {
+            "name": slug.replace("-", " ").capitalize(),
+            "slug": slug,
+            "version": "0.1.0",
+            "status": "draft",
+        },
+        "requirements": {
+            **answers,
+            **((spec.get("build") or {}).get("answers") or {}),
+        },
+    }
+    for phase in phases:
+        doc.setdefault(phase["key"], {})["status"] = "pending"
+    system_doc.create(target, doc)
     _write_build_files(target, definition, spec, slug)
     output.success(f"Recorded in {system_file}")
     try:

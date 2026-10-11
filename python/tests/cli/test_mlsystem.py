@@ -429,3 +429,48 @@ def test_the_inventory_takes_a_rag_system_from_the_helpdesk_example(tmp_path):
     } <= plan
     # The user's uploaded documents are theirs, not an asset the build created.
     assert not any("helpdesk-docs" in p for p in plan)
+
+
+def test_a_group_another_system_only_reads_is_kept():
+    from hopsworks.cli import teardown
+
+    reader = {
+        "requirements": {
+            "data_sources": [{"name": "billing", "kind": "feature_group"}]
+        },
+        "features": {"pipelines": [{"reads": ["events"]}]},
+        "batch": {"reads": {"feature_view": "churn_fv"}},
+    }
+    assets, kept = teardown.plan(SPEC, "churn-example", {"reader": reader})
+    names = {(a.kind, a.name) for a in assets}
+    for key in [
+        ("feature group", "billing"),
+        ("feature group", "events"),
+        ("feature view", "churn_fv"),
+    ]:
+        assert key not in names
+    assert any("billing" in line and "reader" in line for line in kept)
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        (None, ("telco", 3, "abc")),
+        ("telco", ("telco", 3, "abc")),
+        ("other", ("other", None, None)),
+    ],
+)
+def test_register_keeps_the_recorded_factory_unless_another_is_named(
+    monkeypatch, logged_in, tmp_path, given, expected
+):
+    from hopsworks.cli.commands import mlsystem
+
+    (tmp_path / "system.yaml").write_text(
+        "factory: {name: telco, version: 3, digest: abc}\n"
+    )
+    monkeypatch.setattr(mlsystem, "code_location", lambda path, project: str(path))
+    sent = mock.Mock(return_value={})
+    monkeypatch.setattr(ml_system_api, "_register", sent)
+    mlsystem.register(mock.Mock(), tmp_path, "Telco", given)
+    args, kwargs = sent.call_args
+    assert (args[2], kwargs["factory_version"], kwargs["factory_digest"]) == expected

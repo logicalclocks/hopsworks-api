@@ -135,17 +135,22 @@ def find_dashboard(api) -> int | None:
 
 
 def owned_charts(api, dashboard_id: int | None) -> list[int]:
-    """Charts this program made: linked to its dashboard, or unlinked and named as in CHARTS.
+    """Charts this program made: linked only to its dashboard, or unlinked and named as in CHARTS.
 
-    A chart of the same name on another dashboard belongs to that dashboard and is left alone.
+    A chart linked to another dashboard as well is detached from this one and kept, and a
+    chart of the same name on another dashboard belongs to that dashboard and is left alone.
     """
     names = {chart["slice_name"] for chart in CHARTS}
     owned = []
     for chart in list_all(api, "chart"):
         linked = {d.get("id") for d in api.get_chart(chart["id"])["result"].get("dashboards") or []}
-        if (dashboard_id is not None and dashboard_id in linked) or (
-            not linked and chart.get("slice_name") in names
-        ):
+        if dashboard_id is not None and dashboard_id in linked:
+            others = sorted(linked - {dashboard_id})
+            if others:
+                api.update_chart(chart["id"], dashboards=others)
+            else:
+                owned.append(chart["id"])
+        elif not linked and chart.get("slice_name") in names:
             owned.append(chart["id"])
     return owned
 

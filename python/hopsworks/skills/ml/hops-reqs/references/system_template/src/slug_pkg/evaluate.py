@@ -226,26 +226,33 @@ def _binary_inputs(y_true: Any, y_score: Any) -> tuple[np.ndarray, np.ndarray]:
 
 
 def pr_auc(y_true: Any, y_score: Any) -> float:
-    """Average precision: precision averaged over the rank of every positive."""
+    """Average precision over the distinct score thresholds, so tied scores count as one step."""
     y, s = _binary_inputs(y_true, y_score)
     positives = y.sum()
     if positives == 0:
         return 0.0
     order = np.argsort(-s, kind="mergesort")
-    hits = y[order]
-    precision_at_hit = np.cumsum(hits) / np.arange(1, len(hits) + 1)
-    return float((precision_at_hit * hits).sum() / positives)
+    s, y = s[order], y[order]
+    # The last row of each run of equal scores.
+    last = np.r_[np.flatnonzero(np.diff(s)), len(s) - 1]
+    tp = np.cumsum(y)[last]
+    precision = tp / (last + 1)
+    recall_step = np.diff(np.r_[0.0, tp]) / positives
+    return float((precision * recall_step).sum())
 
 
 def roc_auc(y_true: Any, y_score: Any) -> float:
     """Probability that a random positive outranks a random negative, ties halved."""
     y, s = _binary_inputs(y_true, y_score)
-    pos, neg = s[y == 1], s[y == 0]
-    if len(pos) == 0 or len(neg) == 0:
+    n_pos = int((y == 1).sum())
+    n_neg = int((y == 0).sum())
+    if n_pos == 0 or n_neg == 0:
         return 0.5
-    greater = (pos[:, None] > neg[None, :]).sum()
-    ties = (pos[:, None] == neg[None, :]).sum()
-    return float((greater + 0.5 * ties) / (len(pos) * len(neg)))
+    # Mann-Whitney U from average ranks.
+    _, inverse, counts = np.unique(s, return_inverse=True, return_counts=True)
+    average_rank = np.cumsum(counts) - (counts - 1) / 2
+    rank_sum = average_rank[inverse][y == 1].sum()
+    return float((rank_sum - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
 
 
 def precision_at_k(y_true: Any, y_score: Any, k: int) -> float:
@@ -275,8 +282,10 @@ def mape(y_true: Any, y_pred: Any) -> float:
 
 
 def accuracy(y_true: Any, y_pred: Any) -> float:
-    """Share of exact matches."""
+    """Share of exact matches; positive-class probabilities against 0/1 labels are cut at 0.5."""
     y, p = np.asarray(y_true).ravel(), np.asarray(y_pred).ravel()
+    if p.dtype.kind == "f" and y.dtype.kind in "biuf" and np.isin(y, (0, 1)).all():
+        p = (p >= 0.5).astype(int)
     return float((y == p).mean()) if len(y) else 0.0
 
 

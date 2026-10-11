@@ -101,7 +101,22 @@ def parse(text: str) -> dict:
         raise ValueError(f"The definition is not valid YAML: {exc}") from exc
     if not isinstance(doc, dict):
         raise ValueError("The definition must be a YAML mapping.")
+    if _cyclic(doc, set()):
+        raise ValueError("The definition must not contain itself through an alias.")
     return doc
+
+
+def _cyclic(node: Any, path: set[int]) -> bool:
+    # An alias inside its own anchor yields a collection that contains itself, which no JSON can carry.
+    if not isinstance(node, (dict, list)):
+        return False
+    if id(node) in path:
+        return True
+    path.add(id(node))
+    children = node.values() if isinstance(node, dict) else node
+    found = any(_cyclic(child, path) for child in children)
+    path.discard(id(node))
+    return found
 
 
 def problems(doc: dict) -> list[str]:
@@ -497,6 +512,16 @@ def repo_provider(url: str) -> str:
     return next((name for name in REPO_PROVIDERS if name in host), "git")
 
 
+# A password, a token-shaped user, or any user on GitHub, whose HTTPS URLs never carry one;
+# a bare username, as Bitbucket's clone URLs give, is not a credential.
+CREDENTIAL_URL = re.compile(
+    r"^https?://(?:[^/@\s]*:[^/@\s]*@"
+    r"|(?:gh[pousr]_|github_pat_|glpat-|x-access-token|x-token-auth|oauth2)[^/@\s]*@"
+    r"|[^/@\s]+@github\.com[/:])",
+    re.IGNORECASE,
+)
+
+
 def repository_problems(value: Any, label: str) -> list[str]:
     """What is wrong with a repository answer, {create: true} or {create: false, url}.
 
@@ -516,7 +541,7 @@ def repository_problems(value: Any, label: str) -> list[str]:
         return [
             f"{label} is unchecked: give the URL of the repository to store the code in."
         ]
-    if re.match(r"^https://[^/@\s]*:[^/@\s]*@", url):
+    if CREDENTIAL_URL.match(url):
         return [
             f"{label}: the URL must not carry a password or token; the build pushes with the terminal's git login."
         ]

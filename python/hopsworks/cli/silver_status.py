@@ -195,6 +195,8 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
         for r in j["runs"]
         if r.get("final_status") in ("FAILED", "KILLED")
     )
+    # A job that is gone or cannot be listed has no runs to fail.
+    broken = [j["name"] for j in jobs if j.get("missing") or j.get("error")]
     troubled = [t["name"] for t in tables if t.get("problems")]
     layer = doc.get("layer") or {}
     return {
@@ -206,14 +208,15 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
         "generated": now.isoformat(timespec="seconds"),
         "hours": hours,
         "overall": "failing"
-        if failed and troubled
+        if (failed or broken) and troubled
         else "degraded"
-        if failed or troubled
+        if failed or broken or troubled
         else "healthy",
         "counts": {
             "jobs": len(jobs),
             "runs": sum(len(j["runs"]) for j in jobs),
             "failed_runs": failed,
+            "broken_jobs": len(broken),
             "services": 0,
             "unhealthy_services": 0,
             "tables": len(tables),

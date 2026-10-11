@@ -188,6 +188,27 @@ def test_a_lease_is_held_renewed_released_and_taken_over_when_it_lapses(tmp_path
     assert sorted(p.name for p in target.iterdir()) == [".hops.lock", "system.yaml"]
 
 
+def test_a_takeover_leaves_a_lease_renewed_after_it_was_read(tmp_path):
+    target = _system(tmp_path)
+    read = system_doc.acquire(target, ttl=timedelta(seconds=-1))
+    # The holder's renewal lands between the takeover's read and its removal.
+    renewed = {**read, "expires": "2999-01-01T00:00:00Z"}
+    (target / ".hops.lock").write_text(json.dumps(renewed))
+    with system_doc._guard(target):
+        assert not system_doc._clear_expired(target, read)
+    assert system_doc.lease(target)["token"] == read["token"]
+
+
+def test_a_guard_left_by_a_dead_process_is_cleared(tmp_path):
+    target = _system(tmp_path)
+    guard = target / ".hops.lock.guard"
+    guard.mkdir()
+    old = time.time() - system_doc._GUARD_STALE - 5
+    os.utime(guard, (old, old))
+    assert system_doc.acquire(target)["token"]
+    assert not guard.exists()
+
+
 def test_an_old_agent_written_lock_counts_until_a_ttl_after_it_was_written(tmp_path):
     target = _system(tmp_path)
     (target / ".hops.lock").write_text(

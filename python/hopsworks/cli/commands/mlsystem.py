@@ -101,7 +101,9 @@ def register(
 
     project = session.get_project(ctx)
     recorded = system_doc.read(path)[0].get("factory") or {}
-    if not isinstance(recorded, dict) or recorded.get("name") not in (None, factory):
+    if not isinstance(recorded, dict) or (
+        factory is not None and recorded.get("name") not in (None, factory)
+    ):
         recorded = {}
     return ml_system_api._register(
         code_location(path, getattr(project, "name", None)),
@@ -489,6 +491,7 @@ def system_status(
     c = facts["counts"]
     output.success(
         f"{facts['overall']}: {c['failed_runs']} of {c['runs']} job runs failed in {hours} h, "
+        f"{c['broken_jobs']} jobs missing or unreadable, "
         f"{c['unhealthy_services']} of {c['services']} deployments and apps unhealthy; report in {target}"
     )
 

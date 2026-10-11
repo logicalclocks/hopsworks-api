@@ -114,11 +114,22 @@ def test_the_facts_hold_the_last_day_of_runs_and_the_pods(tmp_path, monkeypatch)
         "jobs": 1,
         "runs": 2,
         "failed_runs": 1,
+        "broken_jobs": 0,
         "services": 2,
         "unhealthy_services": 1,
         "pipelines": 0,
         "pipeline_problems": 0,
     }
+
+
+def test_a_deleted_job_is_not_healthy(tmp_path, monkeypatch):
+    monkeypatch.setattr(health, "_kubectl", lambda *a: "")
+    project = _project(tmp_path)
+    project.get_job_api = lambda: SimpleNamespace(get_job=lambda name: None)
+    facts = health.collect(project, SPEC, "churn-example")
+    assert facts["jobs"][0]["missing"]
+    assert facts["counts"]["broken_jobs"] == 1
+    assert facts["overall"] != "healthy"
 
 
 def test_the_page_carries_the_facts_and_cannot_be_broken_out_of(tmp_path, monkeypatch):

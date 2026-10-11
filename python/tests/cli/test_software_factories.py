@@ -1459,6 +1459,18 @@ def test_delete_removes_only_what_the_program_made():
     assert set(api.datasets) == {shared}
 
 
+def test_a_chart_shared_with_another_dashboard_survives_a_rebuild_and_a_delete():
+    program, api = _dashboard_program(), FakeSuperset()
+    ours = program.build(api, "p")
+    other = api.create_dashboard("Other", True, "{}")["id"]
+    shared = next(iter(api.charts))
+    api.update_chart(shared, dashboards=[ours, other])
+    program.build(api, "p")
+    assert api.charts[shared]["dashboards"] == [other]
+    program.delete(api, "p")
+    assert shared in api.charts
+
+
 def test_delete_keeps_a_dataset_another_chart_still_reads():
     program, api = _dashboard_program(), FakeSuperset()
     program.build(api, "p")
@@ -1835,3 +1847,16 @@ def test_kumo_is_registered_once_per_revision():
 
 
 # endregion
+
+
+def test_the_template_metrics_handle_ties_and_probabilities():
+    evaluate = _load(TEMPLATE / "src" / "slug_pkg" / "evaluate.py", "template_metrics")
+    # Tied scores give one threshold, whatever the row order.
+    assert evaluate.pr_auc([1, 0], [0.5, 0.5]) == 0.5
+    assert evaluate.pr_auc([0, 1], [0.5, 0.5]) == 0.5
+    assert evaluate.pr_auc([1, 0, 1], [0.9, 0.5, 0.1]) == pytest.approx((1 + 2 / 3) / 2)
+    assert evaluate.roc_auc([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9]) == 1.0
+    assert evaluate.roc_auc([0, 1], [0.5, 0.5]) == 0.5
+    assert evaluate.roc_auc([1, 0, 1, 0], [0.9, 0.5, 0.1, 0.3]) == 0.5
+    assert evaluate.accuracy([0, 1], [0.1, 0.9]) == 1.0
+    assert evaluate.accuracy(["a", "b"], ["a", "c"]) == 0.5

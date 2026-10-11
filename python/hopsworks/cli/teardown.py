@@ -208,6 +208,29 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
     )
 
 
+def _references(doc: dict) -> set[tuple[str, str]]:
+    """The feature groups and feature views `doc` reads, including those it did not create."""
+    found: set[tuple[str, str]] = set()
+
+    def names(value: Any):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, list):
+            yield from (v for v in value if isinstance(v, str))
+
+    for _path, node in _walk(doc):
+        for name in names(node.get("feature_group")):
+            found.add(("feature group", name))
+        for key in ("reads", "parents"):
+            for name in names(node.get(key)):
+                found.add(("feature group", name))
+        if isinstance(node.get("feature_view"), str):
+            found.add(("feature view", node["feature_view"]))
+        if node.get("kind") == "feature_group" and isinstance(node.get("name"), str):
+            found.add(("feature group", node["name"]))
+    return found
+
+
 def _derives(name: str, slug: str) -> bool:
     """Whether `name` carries the slug, as the build names what it creates (`<slug>-app`, `<slug_pkg>_predictions`, `<slug>model`)."""
     plain = re.sub(r"[-_]", "", name.lower())
@@ -237,6 +260,8 @@ def plan(
     for other, other_doc in others.items():
         for asset in inventory(other_doc, other):
             claimed.setdefault((asset.kind, asset.name), other)
+        for key in _references(other_doc):
+            claimed.setdefault(key, other)
     assets: list[Asset] = []
     kept: list[str] = []
     for asset in inventory(doc, slug):

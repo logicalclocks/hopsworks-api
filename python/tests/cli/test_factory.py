@@ -115,6 +115,8 @@ def test_each_rule_names_what_is_wrong(change, problem):
         ("a: 1\na: 2", "not valid YAML"),
         ("x" * (factory_spec.MAX_LENGTH + 1), "the limit is"),
         ("- a list", "mapping"),
+        ("build:\n  answers: &a {self: *a}", "not valid YAML"),
+        ("a: &l [1, *l]", "contain itself"),
     ],
 )
 def test_unsafe_or_oversized_yaml_is_refused(text, problem):
@@ -174,6 +176,10 @@ def test_a_new_repository_needs_no_url_and_an_existing_one_a_clean_url():
         ({"create": False, "url": "churn"}, "is not a git repository URL"),
         (
             {"create": False, "url": "https://me:token@github.com/a/b"},
+            "password or token",
+        ),
+        (
+            {"create": False, "url": "https://ghp_TOKEN@github.com/a/b.git"},
             "password or token",
         ),
         ("yes", "must say whether"),
@@ -550,6 +556,36 @@ def test_create_writes_the_system_and_its_build_command(
     assert "**hops-superset**" in command and "`build` (Build)" in command
     assert registered == [("q3-review", "q3-review", "churn-review")]
     assert launched == ["/hops-factory-churn-review q3-review"]
+
+
+def test_rerunning_the_answers_resumes_with_the_recorded_version(
+    tmp_path, monkeypatch, logged_in
+):
+    registered, launched = _recording(monkeypatch, tmp_path)
+    answers = tmp_path / "answers.json"
+    answers.write_text(json.dumps({"name": "q3-review", "question": "why"}))
+    run = ["factory", "run", "churn-review", "--answers", str(answers)]
+    assert CliRunner().invoke(cli, run).exit_code == 0
+    newer = REVIEW.replace(
+        "Build a {dashboard} over the chosen tables.", "Build something else."
+    )
+    asked = []
+
+    def get(name, version=None):
+        asked.append(version)
+        return _definition() if version == 2 else _definition(newer, 3)
+
+    monkeypatch.setattr(factory_api, "_get", get)
+    again = CliRunner().invoke(cli, run)
+    assert again.exit_code == 0, again.output
+    assert 2 in asked
+    command = (
+        tmp_path / "q3-review" / ".claude" / "commands" / "hops-factory-churn-review.md"
+    ).read_text()
+    assert "Build a {dashboard} over the chosen tables." in command
+    doc = yaml.safe_load((tmp_path / "q3-review" / "system.yaml").read_text())
+    assert doc["factory"]["version"] == 2
+    assert len(registered) == 1
 
 
 def test_create_refuses_answers_the_form_would_refuse(tmp_path, monkeypatch, logged_in):

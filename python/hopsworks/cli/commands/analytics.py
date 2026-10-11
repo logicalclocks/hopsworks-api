@@ -912,5 +912,6 @@ def layer_status(
     c = facts["counts"]
     output.success(
         f"{facts['overall']}: {c['failed_runs']} of {c['runs']} job runs failed in {hours} h, "
+        f"{c['broken_jobs']} jobs missing or unreadable, "
         f"{c['table_problems']} of {c['tables']} tables with problems; report in {target}"
     )

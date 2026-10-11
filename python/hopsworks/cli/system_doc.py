@@ -383,43 +383,65 @@ def acquire(
             return renew(directory, token, ttl)
         if held is not None and not expired(held):
             raise LeaseHeld(_held_message(directory, held))
-        if held is not None and not _clear_expired(directory, held):
-            continue
         record = {
             "owner": _owner(),
             "token": secrets.token_hex(16),
             "acquired": _stamp(_now()),
             "expires": _stamp(_now() + ttl),
         }
-        try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-        except FileExistsError:
-            continue
-        with os.fdopen(fd, "w", encoding="utf-8") as out:
-            json.dump(record, out)
-            out.flush()
-            os.fsync(out.fileno())
+        with _guard(directory):
+            if held is not None and not _clear_expired(directory, held):
+                continue
+            try:
+                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            except FileExistsError:
+                continue
+            with os.fdopen(fd, "w", encoding="utf-8") as out:
+                json.dump(record, out)
+                out.flush()
+                os.fsync(out.fileno())
         return record
     raise LeaseHeld(f"could not take the build lease {path}; try again")
 
 
 def _clear_expired(directory: Path, held: dict) -> bool:
-    """Move the expired lease `held` aside; False when another invocation changed it first."""
-    path = directory / LEASE
-    aside = directory / f"{LEASE}.expired-{secrets.token_hex(4)}"
-    try:
-        os.rename(path, aside)
-    except FileNotFoundError:
-        return False
-    moved = lease_at(aside)
-    if moved is not None and moved.get("token") != held.get("token"):
-        # Renewed or taken over between the read and the rename: put it back.
-        if not path.exists():
-            os.rename(aside, path)
+    """Remove the lease `held` if it is still there and still expired; the caller holds the guard."""
+    current = lease(directory)
+    if current is None:
+        return True
+    if current.get("token") != held.get("token") or not expired(current):
         return False
     with contextlib.suppress(FileNotFoundError):
-        aside.unlink()
+        (directory / LEASE).unlink()
     return True
+
+
+# A guard older than this was left by a process that died holding it.
+_GUARD_STALE = 30
+
+
+@contextlib.contextmanager
+def _guard(directory: Path):
+    """Serialize a renewal with a takeover: each reads the lease and replaces it under this guard."""
+    guard = directory / f"{LEASE}.guard"
+    deadline = time.monotonic() + 2 * _GUARD_STALE
+    while True:
+        try:
+            os.mkdir(guard)
+            break
+        except FileExistsError:
+            with contextlib.suppress(FileNotFoundError):
+                if time.time() - guard.stat().st_mtime > _GUARD_STALE:
+                    os.rmdir(guard)
+                    continue
+            if time.monotonic() > deadline:
+                raise LeaseHeld(f"{guard} is held; try again") from None
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.rmdir(guard)
 
 
 def lease_at(path: Path) -> dict | None:
@@ -452,23 +474,24 @@ def renew(directory: Path, token: str, ttl: timedelta = LEASE_TTL) -> dict:
     Raises:
         LeaseHeld: the lease is not `token`'s, or it expired (take it again with `acquire`).
     """
-    held = lease(directory)
-    if held is None or held.get("token") != token:
-        raise LeaseHeld(
-            f"the build lease of {directory.name} is not yours"
-            + (f"; {_held_message(directory, held)}" if held else "")
-        )
-    if expired(held):
-        raise LeaseHeld(
-            f"the build lease of {directory.name} expired at {held['expires']}; take it again"
-        )
-    held = {**held, "expires": _stamp(_now() + ttl)}
-    fd, tmp = tempfile.mkstemp(dir=directory, prefix=f"{LEASE}.", suffix=".tmp")
-    with os.fdopen(fd, "w", encoding="utf-8") as out:
-        json.dump(held, out)
-        out.flush()
-        os.fsync(out.fileno())
-    os.replace(tmp, directory / LEASE)
+    with _guard(directory):
+        held = lease(directory)
+        if held is None or held.get("token") != token:
+            raise LeaseHeld(
+                f"the build lease of {directory.name} is not yours"
+                + (f"; {_held_message(directory, held)}" if held else "")
+            )
+        if expired(held):
+            raise LeaseHeld(
+                f"the build lease of {directory.name} expired at {held['expires']}; take it again"
+            )
+        held = {**held, "expires": _stamp(_now() + ttl)}
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=f"{LEASE}.", suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            json.dump(held, out)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp, directory / LEASE)
     return held
 
 

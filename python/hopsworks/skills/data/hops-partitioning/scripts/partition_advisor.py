@@ -33,12 +33,44 @@ METADATA_DIRS = {"_delta_log", "metadata", ".hoodie", "_SUCCESS"}
 
 
 def data_files(table: Path) -> list[Path]:
-    """The table's Parquet data files, metadata directories left out."""
+    """The table's Parquet data files: a Delta table's current snapshot, otherwise every file outside the metadata directories."""
+    if (table / "_delta_log").is_dir():
+        return sorted(table / p for p in _delta_snapshot(table / "_delta_log"))
     return sorted(
         p
         for p in table.rglob("*.parquet")
         if not METADATA_DIRS.intersection(p.relative_to(table).parts)
     )
+
+
+def _delta_snapshot(log: Path) -> set[str]:
+    """The relative paths of the files a Delta log's latest version holds, replayed from its last checkpoint."""
+    from urllib.parse import unquote
+
+    live: set[str] = set()
+    after = -1
+    pointer = log / "_last_checkpoint"
+    if pointer.exists():
+        import pyarrow.parquet as pq
+
+        after = json.loads(pointer.read_text())["version"]
+        for part in sorted(log.glob(f"{after:020d}.checkpoint*.parquet")):
+            for row in pq.read_table(part, columns=["add"]).column("add").to_pylist():
+                if row and row.get("path"):
+                    live.add(unquote(row["path"]))
+    commits = sorted(
+        (int(p.stem), p) for p in log.glob("*.json") if p.stem.isdigit()
+    )
+    for version, path in commits:
+        if version <= after:
+            continue
+        for line in path.read_text().splitlines():
+            action = json.loads(line) if line.strip() else {}
+            if "add" in action:
+                live.add(unquote(action["add"]["path"]))
+            elif "remove" in action:
+                live.discard(unquote(action["remove"]["path"]))
+    return live
 
 
 def _seconds(value: object) -> float | None:

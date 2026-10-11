@@ -353,7 +353,9 @@ def test_status_reports_freshness_rejects_and_layout(tmp_path, monkeypatch):
     assert orders["layout"]["active_files"] == 1
     assert any(p.startswith("stale:") for p in orders["problems"])
     assert any(p.startswith("rejects: 10.0%") for p in orders["problems"])
-    assert facts["overall"] == "degraded" and facts["counts"]["table_problems"] == 1
+    # A missing job counts as a failure, with the table problems: failing.
+    assert facts["overall"] == "failing" and facts["counts"]["broken_jobs"] == 1
+    assert facts["counts"]["table_problems"] == 1
     # The job is gone, which the report shows as missing.
     assert facts["jobs"][0]["missing"] is True
     page = health.render(facts, None)
@@ -378,6 +380,30 @@ def test_partition_advisor_partitions_only_large_tables(tmp_path):
     assert advisor.recommend(sparse)["granularity"] == "week"
     tiny_rate = {**big, "total_bytes": 2 * gib}
     assert advisor.recommend(tiny_rate)["decision"] == "none"
+
+
+def test_partition_advisor_reads_only_the_current_delta_snapshot(tmp_path):
+    from datetime import datetime, timezone
+
+    write_deltalake = pytest.importorskip("deltalake").write_deltalake
+    pa = pytest.importorskip("pyarrow")
+    advisor = _load_advisor()
+    _delta_table(tmp_path / "t_1", 1000, 30, 0)
+    # An overwrite leaves the first file on disk until vacuum.
+    write_deltalake(
+        str(tmp_path / "t_1"),
+        pa.table({"id": [1, 2], "ts": [datetime(2026, 1, 1, tzinfo=timezone.utc)] * 2}),
+        mode="overwrite",
+    )
+    assert len(list((tmp_path / "t_1").glob("*.parquet"))) == 2
+    facts = advisor.evidence(tmp_path / "t_1", "ts")
+    assert facts["files"] == 1 and facts["rows"] == 2
+    from deltalake import DeltaTable
+
+    DeltaTable(str(tmp_path / "t_1")).create_checkpoint()
+    for commit in (tmp_path / "t_1" / "_delta_log").glob("*.json"):
+        commit.unlink()
+    assert advisor.evidence(tmp_path / "t_1", "ts")["rows"] == 2
 
 
 def _load_advisor():
