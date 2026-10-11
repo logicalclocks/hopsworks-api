@@ -1033,6 +1033,26 @@ class TestPython:
         for col in cast_df.columns:
             assert cast_df[col].dtype == expected[col]
 
+    def test_cast_columns_online_boolean(self):
+        # The online store keeps a boolean as TINYINT, so it arrives as 0 or 1.
+        df = pd.DataFrame({"flag": [1.0, 0.0, None], "count": [1, 2, 3]})
+        schema = [TrainingDatasetFeature("flag", type="boolean")]
+
+        cast_df = python.Engine._cast_columns(df, schema, online=True)
+
+        assert cast_df["flag"].tolist() == [True, False, None]
+        assert cast_df["count"].tolist() == [1, 2, 3]
+
+    @pytest.mark.skipif(not HAS_POLARS, reason="Polars is not installed.")
+    def test_cast_columns_online_boolean_polars(self):
+        df = pl.DataFrame({"flag": [1, 0, None]})
+        schema = [TrainingDatasetFeature("flag", type="boolean")]
+
+        cast_df = python.Engine._cast_columns(df, schema, online=True)
+
+        assert cast_df["flag"].dtype == pl.Boolean
+        assert cast_df["flag"].to_list() == [True, False, None]
+
     def test_register_external_temporary_table(self):
         # Arrange
         python_engine = python.Engine()

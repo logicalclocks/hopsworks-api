@@ -22,6 +22,7 @@ from unittest.mock import PropertyMock
 import pytest
 from hopsworks_common.core.constants import HAS_POLARS
 from hsfs.core.vector_server import VectorServer, _with_entry_values
+from hsfs.training_dataset_feature import TrainingDatasetFeature
 
 
 class TestVectorServer:
@@ -189,6 +190,35 @@ class TestVectorServer:
         server = VectorServer.__new__(VectorServer)
 
         assert server._handle_timestamp_based_on_dtype(timestamp_value) == expected
+
+    @pytest.mark.parametrize("client", ["rest", "sql"])
+    def test_boolean_feature_returned_as_bool(self, mocker, client):
+        # The online store keeps a boolean as TINYINT, so both clients return 0 or 1.
+        server = VectorServer.__new__(VectorServer)
+        fg = SimpleNamespace(id=1)
+        server._features = [
+            TrainingDatasetFeature("flag", type="boolean", featuregroup=fg),
+            TrainingDatasetFeature("count", type="tinyint", featuregroup=fg),
+        ]
+        server._skip_fg_ids = set()
+        server._return_feature_value_handlers = {}
+        server._feature_to_handle_if_rest = None
+        server._feature_to_handle_if_sql = None
+        mocker.patch.object(
+            VectorServer, "_build_complex_feature_decoders", return_value={}
+        )
+        server._set_return_feature_value_handlers(server._features)
+
+        rows = [
+            server._apply_return_value_handlers(
+                {"flag": flag, "count": 1}, client=client
+            )
+            for flag in (1, 0, None)
+        ]
+
+        assert [row["flag"] for row in rows] == [True, False, None]
+        assert all(type(row["flag"]) is bool for row in rows[:2])
+        assert all(row["count"] == 1 for row in rows)
 
 
 class TestRequestParametersAreRequestLocal:
