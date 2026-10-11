@@ -479,9 +479,9 @@ class Environment:
             flags: npm flags for the install; see `install_npm`.
             await_installation: If `True` the method returns only when the installation finishes.
             timeout: Seconds to wait for the installation to finish before raising; see `install_npm`.
+            path: The one package.json to read, relative to the repository root; see `inspect_npm_git`.
             skip_unresolved: Install what resolved and leave out what did not, instead of raising.
             include_optional_dependencies: Also install the `optionalDependencies`; see `install_npm_from_package_json`.
-            path: The one package.json to read, relative to the repository root; see `inspect_npm_git`.
                 The shorter form of `manifests=[path]` that also skips reading the rest of a monorepo.
 
         Returns:
