@@ -4806,6 +4806,11 @@ class TestPython:
             ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
         ]
 
+        # The batch query qualifies a key only when another output column has its name;
+        # pin that case so the rename to the logged name stays covered.
+        fv._FeatureView__fully_qualified_primary_keys = ["test_fs_test1_1_primary_key"]
+        fv._FeatureView__fully_qualified_event_time = ["test_fs_test1_1_event_time"]
+
         # Dataframes read has the fully qualified names for the primary key and event time.
         # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
         untransformed_df = pd.DataFrame(
@@ -5000,6 +5005,11 @@ class TestPython:
         fv._serving_keys = [
             ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
         ]
+
+        # The batch query qualifies a key only when another output column has its name;
+        # pin that case so the rename to the logged name stays covered.
+        fv._FeatureView__fully_qualified_primary_keys = ["test_fs_test1_1_primary_key"]
+        fv._FeatureView__fully_qualified_event_time = ["test_fs_test1_1_event_time"]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
         # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>

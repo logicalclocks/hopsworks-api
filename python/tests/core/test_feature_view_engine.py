@@ -4632,6 +4632,56 @@ class TestFeatureViewEngine:
         # Assert
         assert {"test_fs_test5_1_event_time", "event_time"} == set(fqn_primary_keys)
 
+    @pytest.mark.parametrize(
+        "legacy, expected_keys, expected_event_times",
+        [
+            (False, {"primary_key"}, {"event_time"}),
+            (True, {"test_fs_test5_1_primary_key"}, {"test_fs_test5_1_event_time"}),
+        ],
+    )
+    def test_get_helper_columns_from_query_unambiguous_keep_name(
+        self, mocker, legacy, expected_keys, expected_event_times
+    ):
+        # The backend qualifies an unselected key only when another output column has its
+        # name; training datasets written before that keep the fully qualified one (legacy).
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        query = fg5.select(["feature_1"])
+
+        assert expected_keys == set(
+            fv_engine._get_primary_keys_from_query(query, legacy=legacy)
+        )
+        assert expected_event_times == set(
+            fv_engine._get_eventtimes_from_query(query, legacy=legacy)
+        )
+
+    def test_get_helper_columns_from_query_prefixed_join_keeps_prefixed_name(
+        self, mocker
+    ):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        query = fg5.select(["feature_1"]).join(
+            fg6.select(["feature_2"]), on=["primary_key"], prefix="right_"
+        )
+
+        assert {"primary_key", "right_primary_key"} == set(
+            fv_engine._get_primary_keys_from_query(query)
+        )
+        assert {"event_time", "right_event_time"} == set(
+            fv_engine._get_eventtimes_from_query(query)
+        )
+
+    def test_get_primary_keys_from_query_selected_keys_ambiguous(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        query = fg5.select(["primary_key"]).join(fg6.select(["primary_key"]))
+
+        with pytest.raises(FeatureStoreException, match="ambiguous"):
+            fv_engine._get_primary_keys_from_query(query)
+
     def test_get_training_dataset_schema_no_transformations(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
