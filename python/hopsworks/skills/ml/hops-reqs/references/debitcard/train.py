@@ -24,7 +24,7 @@ def feature_view(fs):
     baselines = fs.get_feature_group("card_spending_baselines", version=1)
     if windows is None or baselines is None:
         raise RuntimeError("Run batch_features.py and streaming_features.py first.")
-    query = windows.select(list(fraud_model.WINDOW_FEATURES)).join(
+    query = windows.select(list(fraud_model.WINDOW_FEATURES + fraud_model.WINDOW_TIME)).join(
         baselines.select(list(fraud_model.BASELINE_FEATURES)), on=["card_number"], join_type="left"
     )
     fv = fs.get_or_create_feature_view(

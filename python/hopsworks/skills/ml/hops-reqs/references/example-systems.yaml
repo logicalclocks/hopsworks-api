@@ -304,9 +304,11 @@ debitcard-example:
     kind: query_ui
     name: debitcard-example-app
     description: >-
-      A fraud console: every card with an open window scored live from the online store, tiles for
-      the cards, those over a risk threshold and the read and scoring times, the riskiest cards with
-      their window against their baseline, and a box asking the deployment about one card
+      A JavaScript fraud console: every card with an open window scored live from the online store,
+      status chips for the deployment and the streaming jobs, tiles for the cards, those over a risk
+      threshold and the read and scoring times, a risk histogram with a threshold slider, the
+      riskiest cards, and a card panel asking the deployment about one card, with a risk gauge and
+      its window against its baseline
     status: pending
 
 helpdesk-example:

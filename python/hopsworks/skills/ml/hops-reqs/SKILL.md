@@ -44,7 +44,7 @@ deployment, a fraud console app), the `anomaly` debit card fraud detector of the
 `debitcard-example` as [references/debitcard.md](references/debitcard.md) says
 (synthetic European authorisations, batch features by dbt in Trino, streaming
 window features by Spark Structured Streaming, an Isolation Forest, one
-deployment, a Streamlit console), and the `detection` GIS app of the `gis-example` as
+deployment, a JavaScript console), and the `detection` GIS app of the `gis-example` as
 [references/gis-detector.md](references/gis-detector.md) says (a pretrained YOLO26
 aerial detector of military infrastructure, registered from Hugging Face and
 embedded in a JavaScript map app; no data, features, training or deployment, and no reference

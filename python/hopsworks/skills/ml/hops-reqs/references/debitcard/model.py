@@ -3,9 +3,11 @@
 An Isolation Forest scores a card's live window (from Spark Structured
 Streaming) against its spending baseline (from dbt): the window's amounts,
 velocity and distance divided by the baseline's say how unusual the hour is
-for this card. It is unsupervised, so it needs no labels at serving time; risk
-is the anomaly score rescaled to 0-1 on the training data's 5th and 99th
-percentiles.
+for the card. A tumbling window fills up over its hour, so its counts and sums
+are taken per hour of the window elapsed so far: a card scored late in the hour
+is comparable with the cards the model trained on early in it. The model is
+unsupervised, so it needs no labels at serving time; risk is the anomaly score
+rescaled to 0-1 on the training data's 5th and 99.9th percentiles.
 """
 
 from __future__ import annotations
@@ -43,6 +45,21 @@ WINDOW_FEATURES = (
     "avg_network_risk_score",
     "max_network_risk_score",
 )
+# When the window closes and how long it is, which turn its counts into rates.
+WINDOW_TIME = ("window_end", "window_seconds")
+# Counted or summed over the window, so taken per hour of it elapsed.
+PER_HOUR = (
+    "txn_count",
+    "approved_count",
+    "declined_count",
+    "queued_count",
+    "amount_sum_eur",
+    "declined_amount_eur",
+    "cash_withdrawals_sum_eur",
+    "high_risk_count",
+)
+# A window opened moments ago would turn one authorisation into a huge rate.
+MIN_ELAPSED_SECONDS = 600
 BASELINE_FEATURES = (
     "avg_daily_amount_eur_30d",
     "avg_daily_txn_count_7d",
@@ -59,14 +76,38 @@ RATIOS = {
 FEATURE_COLUMNS = WINDOW_FEATURES + BASELINE_FEATURES + tuple(RATIOS)
 
 
-def prepare_features(frame: pd.DataFrame, medians: dict[str, float] | None = None):
+def elapsed_hours(frame: pd.DataFrame, now: datetime | None = None) -> np.ndarray:
+    """The hours of each row's window passed at `now` (UTC), at least MIN_ELAPSED_SECONDS.
+
+    A window that has closed counts in full; a row without window times counts as a full hour.
+    """
+    now = pd.Timestamp(now or datetime.now(UTC)).tz_convert(None)
+    seconds = pd.to_numeric(frame["window_seconds"], errors="coerce").fillna(3600)
+    end = frame["window_end"]
+    # The online store returns timestamps as datetimes, a feature vector may as epoch milliseconds.
+    unit = "ms" if pd.api.types.is_numeric_dtype(end) else None
+    end = pd.to_datetime(end, errors="coerce", utc=True, unit=unit).dt.tz_convert(None)
+    passed = (now - (end - pd.to_timedelta(seconds, unit="s"))).dt.total_seconds()
+    passed = passed.fillna(seconds).clip(lower=MIN_ELAPSED_SECONDS)
+    return np.minimum(passed, seconds).to_numpy() / 3600
+
+
+def prepare_features(
+    frame: pd.DataFrame, medians: dict[str, float] | None = None, now: datetime | None = None
+):
     """The model's input from window and baseline columns, and the medians that filled its gaps.
 
-    Pass the medians training returned to fill a served row the same way.
+    `frame` carries window_end and window_seconds beside the features; without
+    them the counts are taken as a full hour's. Pass the medians training
+    returned to fill a served row the same way.
     """
     features = frame.reindex(columns=WINDOW_FEATURES + BASELINE_FEATURES).apply(
         pd.to_numeric, errors="coerce"
     )
+    if set(WINDOW_TIME) <= set(frame.columns):
+        hours = elapsed_hours(frame, now)
+        for name in PER_HOUR:
+            features[name] = features[name] / hours
     for name, (numerator, denominator) in RATIOS.items():
         features[name] = features[numerator] / features[denominator].replace(0, np.nan)
     features = features.replace([np.inf, -np.inf], np.nan)
@@ -86,7 +127,7 @@ def train(frame: pd.DataFrame, contamination: float = 0.02, random_state: int = 
         n_estimators=200, contamination=contamination, random_state=random_state, n_jobs=-1
     ).fit(features)
     anomaly = -model.decision_function(features)
-    low, high = float(np.quantile(anomaly, 0.05)), float(np.quantile(anomaly, 0.99))
+    low, high = float(np.quantile(anomaly, 0.05)), float(np.quantile(anomaly, 0.999))
     return {
         "model": model,
         "feature_names": list(FEATURE_COLUMNS),
@@ -99,11 +140,11 @@ def train(frame: pd.DataFrame, contamination: float = 0.02, random_state: int = 
     }
 
 
-def score(artifact: dict, frame: pd.DataFrame):
+def score(artifact: dict, frame: pd.DataFrame, now: datetime | None = None):
     """(risk in 0-1, the model's anomaly flag, raw anomaly score) per row of `frame`."""
     if artifact.get("feature_names") != list(FEATURE_COLUMNS):
         raise ValueError("the model was trained on other features than this code computes")
-    features, _ = prepare_features(frame, artifact["medians"])
+    features, _ = prepare_features(frame, artifact["medians"], now)
     model = artifact["model"]
     anomaly = -model.decision_function(features)
     scale = artifact["calibration_high"] - artifact["calibration_low"]

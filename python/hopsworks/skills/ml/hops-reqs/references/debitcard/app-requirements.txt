@@ -1,4 +1,5 @@
-# Installed into <slug>-app-env, a clone of python-app-pipeline (which ships
-# Streamlit): the versions the model was trained with in <slug>-jobs-env.
+# Installed into <slug>-app-env, a clone of python-agent-pipeline (which ships
+# FastAPI and uvicorn): the versions the model was trained with in
+# <slug>-jobs-env, since the app unpickles it.
 scikit-learn==1.8.0
 joblib==1.5.3
