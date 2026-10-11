@@ -11,6 +11,14 @@ from unittest import mock
 
 import pytest
 from hopsworks.cli import config, session
+from hopsworks.cli.commands import factory
+
+
+@pytest.fixture(autouse=True)
+def factory_enabled():
+    """Run `hops factory` commands as on a cluster with the Factory enabled; test_factory_enabled checks the check."""
+    with mock.patch.object(factory, "_require_enabled"):
+        yield
 
 
 @pytest.fixture

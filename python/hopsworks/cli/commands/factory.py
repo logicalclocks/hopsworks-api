@@ -17,6 +17,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +31,31 @@ TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "hops-factory.
 
 
 @click.group("factory")
-def factory_group() -> None:
-    """The software factories: the built-in ML system and analytics layer factories, and the project's own."""
+@click.pass_context
+def factory_group(ctx: click.Context) -> None:
+    """The software factories: the built-in ML system and analytics layer factories, and the project's own.
+
+    Every subcommand refuses to run unless the cluster's factory_enabled variable is true.
+    """
+    # Click runs this before a subcommand parses its own --help, which needs no cluster.
+    if ctx.invoked_subcommand and not {"--help", "-h"} & set(sys.argv[1:]):
+        _require_enabled(ctx)
+
+
+def _require_enabled(ctx: click.Context) -> None:
+    """Raise unless the cluster's factory_enabled variable is true; a cluster without it has no Factory."""
+    from hopsworks_common.client import exceptions
+    from hopsworks_common.core import variable_api
+
+    session.get_project(ctx)
+    try:
+        enabled = variable_api.VariableApi()._get_variable("factory_enabled")
+    except exceptions.RestAPIError:
+        enabled = None
+    if str(enabled).strip().lower() != "true":
+        raise click.ClickException(
+            "The Factory is not enabled for this Hopsworks cluster."
+        )
 
 
 factory_group.add_command(mlsystem.system_group)
