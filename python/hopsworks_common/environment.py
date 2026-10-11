@@ -205,13 +205,14 @@ class Environment:
         flags: list[str] | None = None,
         await_installation: bool | None = True,
         timeout: float | None = None,
-    ) -> list[library.Library]:
-        """Install npm packages into the environment as one image build.
+    ) -> library.Library:
+        """Install npm packages into the environment as one operation and one image build.
 
         The packages are installed globally with npm, so they are on `PATH` and importable from
-        any Node.js app, job or deployment the environment runs. Every package gets its own library
-        entry, but the whole list is one build: resolving and installing fifty packages takes one
-        image layer, not fifty.
+        any Node.js app, job or deployment the environment runs. The whole list is one operation
+        and one build: resolving and installing fifty packages takes one image layer, not fifty.
+        While it runs, a request of several packages is listed under one placeholder entry; once
+        the build has finished the installed packages replace it in the environment's listing.
 
         ```python
         import hopsworks
@@ -241,7 +242,8 @@ class Environment:
                 It also bounds the wait for any environment command already in flight, which happens before the install is submitted and therefore applies even when `await_installation` is `False`.
 
         Returns:
-            One library object per package, in the order given.
+            The library the operation is tracked under: the package itself for a request of one,
+            a placeholder entry for a request of several.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -257,11 +259,13 @@ class Environment:
         # Wait for any ongoing environment operations
         self._environment_engine._await_environment_command(self.name, timeout)
 
-        libraries = self._library_api._install_npm(self.name, request)
+        tracked = self._library_api._install_npm(self.name, request)
 
         if await_installation:
-            self._await_npm_libraries(request["packages"], timeout)
-        return libraries
+            self._environment_engine._await_library_command(
+                self.name, tracked._library, timeout
+            )
+        return tracked
 
     @public
     @usage._method_logger
@@ -340,7 +344,7 @@ class Environment:
         lockfile_content: str | None = None,
         lockfile_name: str | None = None,
         skip_unresolved: bool = False,
-    ) -> list[library.Library]:
+    ) -> library.Library:
         """Install the dependencies a package.json lists, resolved to exact versions, as one build.
 
         See `resolve_npm_package_json` for how versions are chosen. Dependencies the resolver
@@ -365,7 +369,7 @@ class Environment:
             skip_unresolved: Install what resolved and leave out what did not, instead of raising.
 
         Returns:
-            One library object per installed package.
+            The library the operation is tracked under; see `install_npm`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -442,7 +446,7 @@ class Environment:
         timeout: float | None = None,
         *,
         skip_unresolved: bool = False,
-    ) -> list[library.Library]:
+    ) -> library.Library:
         """Install what a git repository's package.json files depend on, and optionally the repository itself, as one build.
 
         ```python
@@ -471,7 +475,7 @@ class Environment:
             skip_unresolved: Install what resolved and leave out what did not, instead of raising.
 
         Returns:
-            One library object per installed package.
+            The library the operation is tracked under; see `install_npm`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -581,13 +585,6 @@ class Environment:
             return
         _client = client._get_instance()
         request[path_key] = util._convert_to_abs(path, _client._project_name)
-
-    def _await_npm_libraries(self, packages: list[dict], timeout: float | None):
-        """Waits for each package of one request. They share a build, so after the first the rest are quick."""
-        for entry in packages:
-            self._environment_engine._await_library_command(
-                self.name, entry["name"], timeout
-            )
 
     @public
     @usage._method_logger

@@ -45,27 +45,16 @@ class TestLibraryApi:
             headers={"content-type": "application/json"},
         )
 
-    def test_install_npm_posts_the_request_and_returns_the_items(self, mocker):
+    def test_install_npm_posts_the_request_and_returns_the_tracked_library(self, mocker):
         # Arrange
         api = library_api.LibraryApi()
         mock_client = mocker.MagicMock()
         mock_client._project_id = 99
         mock_client._send_request.return_value = {
-            "count": 2,
-            "items": [
-                {
-                    "library": "left-pad",
-                    "version": "1.3.0",
-                    "channel": "npm",
-                    "packageSource": "NPM",
-                },
-                {
-                    "library": "@angular/cli",
-                    "version": "latest",
-                    "channel": "npm",
-                    "packageSource": "NPM",
-                },
-            ],
+            "library": "npm-install-1a2b3c4d",
+            "version": "UNKNOWN",
+            "channel": "npm",
+            "packageSource": "NPM",
         }
         mocker.patch("hopsworks_common.client._get_instance", return_value=mock_client)
         request = {
@@ -77,7 +66,7 @@ class TestLibraryApi:
         }
 
         # Act
-        libraries = api._install_npm("myenv", request)
+        tracked = api._install_npm("myenv", request)
 
         # Assert
         mock_client._send_request.assert_called_once_with(
@@ -95,8 +84,8 @@ class TestLibraryApi:
             headers={"content-type": "application/json"},
             data=json.dumps(request),
         )
-        assert [lib._library for lib in libraries] == ["left-pad", "@angular/cli"]
-        assert libraries[0]._package_source == "NPM"
+        assert tracked._library == "npm-install-1a2b3c4d"
+        assert tracked._package_source == "NPM"
 
     def test_resolve_and_inspect_post_to_their_paths(self, mocker):
         # Arrange

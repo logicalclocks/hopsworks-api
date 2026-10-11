@@ -34,24 +34,18 @@ class TestEnvironmentNpm:
         mocker.patch.object(env._environment_engine, "_await_library_command")
         return env
 
-    def test_install_npm_accepts_every_entry_form_and_waits_per_package(
+    def test_install_npm_accepts_every_entry_form_and_waits_on_the_tracked_entry(
         self, env, mocker
     ):
         # Arrange
         mock_install = mocker.patch.object(
             env._library_api,
             "_install_npm",
-            return_value=[
-                _lib("express"),
-                _lib("lodash"),
-                _lib("@types/node"),
-                _lib("bare"),
-                _lib("tool"),
-            ],
+            return_value=_lib("npm-install-1a2b3c4d", "UNKNOWN"),
         )
 
         # Act
-        libraries = env.install_npm(
+        tracked = env.install_npm(
             [
                 "express@4.19.2",
                 ("lodash", "4.17.21"),
@@ -88,20 +82,15 @@ class TestEnvironmentNpm:
                 "flags": ["--no-fund"],
             },
         )
-        assert len(libraries) == 5
-        waited = [
-            c.args[1]
-            for c in env._environment_engine._await_library_command.call_args_list
-        ]
-        assert waited == ["express", "lodash", "@types/node", "bare", "tool"]
-        assert (
-            env._environment_engine._await_library_command.call_args_list[0].args[2]
-            == 12
+        assert tracked._library == "npm-install-1a2b3c4d"
+        # One operation, one wait: the placeholder entry disappears once the build has finished.
+        env._environment_engine._await_library_command.assert_called_once_with(
+            "myenv", "npm-install-1a2b3c4d", 12
         )
 
     def test_install_npm_scoped_name_keeps_its_scope(self, env, mocker):
         mock_install = mocker.patch.object(
-            env._library_api, "_install_npm", return_value=[]
+            env._library_api, "_install_npm", return_value=_lib("npm-install-x")
         )
         env.install_npm("@angular/cli@17.0.0", await_installation=False)
         assert mock_install.call_args.args[1]["packages"] == [
@@ -110,7 +99,7 @@ class TestEnvironmentNpm:
         env._environment_engine._await_library_command.assert_not_called()
 
     def test_install_npm_refuses_empty_and_malformed_entries(self, env, mocker):
-        mocker.patch.object(env._library_api, "_install_npm", return_value=[])
+        mocker.patch.object(env._library_api, "_install_npm", return_value=_lib("npm-install-x"))
         with pytest.raises(ValueError):
             env.install_npm([])
         with pytest.raises(ValueError):
@@ -194,7 +183,7 @@ class TestEnvironmentNpm:
         }
         mocker.patch.object(env._library_api, "_resolve_npm", return_value=resolved)
         mock_install = mocker.patch.object(
-            env._library_api, "_install_npm", return_value=[_lib("lodash")]
+            env._library_api, "_install_npm", return_value=_lib("lodash")
         )
 
         # Act / Assert: unresolved fails by default, naming the package
@@ -203,12 +192,12 @@ class TestEnvironmentNpm:
         mock_install.assert_not_called()
 
         # Act: skipping the unresolved installs the rest, skipped entries never counted
-        libraries = env.install_npm_from_package_json(
+        tracked = env.install_npm_from_package_json(
             content="{}", skip_unresolved=True, flags=["--no-audit"]
         )
 
         # Assert
-        assert [lib._library for lib in libraries] == ["lodash"]
+        assert tracked._library == "lodash"
         mock_install.assert_called_once_with(
             "myenv",
             {
@@ -261,7 +250,7 @@ class TestEnvironmentNpm:
             env._library_api, "_inspect_npm_git", return_value=info
         )
         mock_install = mocker.patch.object(
-            env._library_api, "_install_npm", return_value=[]
+            env._library_api, "_install_npm", return_value=_lib("npm-install-x")
         )
 
         # Act: everything, first manifest's version of a shared dependency wins, repository appended
@@ -316,7 +305,7 @@ class TestEnvironmentNpm:
             "_inspect_npm_git",
             return_value={"commit": "abc", "manifests": []},
         )
-        mocker.patch.object(env._library_api, "_install_npm", return_value=[])
+        mocker.patch.object(env._library_api, "_install_npm", return_value=_lib("npm-install-x"))
         with pytest.raises(ValueError, match="no name"):
             env.install_npm_from_git(
                 "https://github.com/acme/mono", install_repository=True

@@ -83,15 +83,17 @@ class LibraryApi:
         headers = {"content-type": "application/json"}
         _client._send_request("DELETE", path_params, headers=headers)
 
-    def _install_npm(self, name: str, request: dict) -> list[library.Library]:
-        """Install npm packages in the environment as one image build.
+    def _install_npm(self, name: str, request: dict) -> library.Library:
+        """Install npm packages in the environment as one command and one image build.
 
         Parameters:
             name: Name of the environment.
             request: The install request: ``{"packages": [...], "flags": [...]}``.
 
         Returns:
-            One library object per package, in request order.
+            The library the operation is tracked under: the package itself for a request of one,
+            a placeholder for a request of several, which the installed packages replace once the
+            build has finished.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -99,13 +101,12 @@ class LibraryApi:
         _client = client._get_instance()
         path_params = self._npm_path(_client, name, "install")
         headers = {"content-type": "application/json"}
-        response = _client._send_request(
-            "POST", path_params, headers=headers, data=json.dumps(request)
+        return library.Library.from_response_json(
+            _client._send_request(
+                "POST", path_params, headers=headers, data=json.dumps(request)
+            ),
+            environment=self,
         )
-        return [
-            library.Library.from_response_json(item, environment=self)
-            for item in (response or {}).get("items", []) or []
-        ]
 
     def _resolve_npm(self, name: str, request: dict) -> dict:
         """Resolve a package.json's dependencies to exact versions.
