@@ -344,13 +344,16 @@ class Environment:
         lockfile_content: str | None = None,
         lockfile_name: str | None = None,
         skip_unresolved: bool = False,
+        include_optional_dependencies: bool = False,
     ) -> library.Library:
         """Install the dependencies a package.json lists, resolved to exact versions, as one build.
 
         See `resolve_npm_package_json` for how versions are chosen. Dependencies the resolver
         skips (workspace siblings, aliases, git, file and URL specs) are left out. A dependency
         it cannot resolve (the registry has no matching version, or could not be reached) fails
-        the call unless `skip_unresolved` is set.
+        the call unless `skip_unresolved` is set. `optionalDependencies` are left out unless
+        asked for: npm skips an optional dependency it cannot install, but an explicit install
+        of one fails, and the common case is a platform-specific package such as `fsevents`.
 
         ```python
         env.install_npm_from_package_json("package.json", lockfile_path="package-lock.json")
@@ -367,6 +370,7 @@ class Environment:
             lockfile_content: The lockfile content, instead of `lockfile_path`; needs `lockfile_name`.
             lockfile_name: The lockfile's file name when passed as content.
             skip_unresolved: Install what resolved and leave out what did not, instead of raising.
+            include_optional_dependencies: Also install the `optionalDependencies`.
 
         Returns:
             The library the operation is tracked under; see `install_npm`.
@@ -383,7 +387,9 @@ class Environment:
             lockfile_content=lockfile_content,
             lockfile_name=lockfile_name,
         )
-        packages = self._installable(resolved, skip_unresolved)
+        packages = self._installable(
+            resolved, skip_unresolved, include_optional_dependencies
+        )
         return self.install_npm(
             packages,
             flags=flags,
@@ -446,6 +452,7 @@ class Environment:
         timeout: float | None = None,
         *,
         skip_unresolved: bool = False,
+        include_optional_dependencies: bool = False,
     ) -> library.Library:
         """Install what a git repository's package.json files depend on, and optionally the repository itself, as one build.
 
@@ -473,6 +480,7 @@ class Environment:
             await_installation: If `True` the method returns only when the installation finishes.
             timeout: Seconds to wait for the installation to finish before raising; see `install_npm`.
             skip_unresolved: Install what resolved and leave out what did not, instead of raising.
+            include_optional_dependencies: Also install the `optionalDependencies`; see `install_npm_from_package_json`.
 
         Returns:
             The library the operation is tracked under; see `install_npm`.
@@ -497,7 +505,9 @@ class Environment:
         seen: set[str] = set()
         for manifest in selected:
             for entry in self._installable(
-                manifest.get("resolved") or {}, skip_unresolved
+                manifest.get("resolved") or {},
+                skip_unresolved,
+                include_optional_dependencies,
             ):
                 if entry["name"] not in seen:
                     seen.add(entry["name"])
@@ -556,11 +566,18 @@ class Environment:
         return {"name": spec, "version": "latest"}
 
     @staticmethod
-    def _installable(resolved: dict, skip_unresolved: bool) -> list[dict]:
+    def _installable(
+        resolved: dict, skip_unresolved: bool, include_optional: bool = False
+    ) -> list[dict]:
         packages = []
         unresolved = []
         for entry in resolved.get("packages", []) or []:
             status = entry.get("status")
+            if (
+                entry.get("dependencyType") == "OPTIONAL_DEPENDENCY"
+                and not include_optional
+            ):
+                continue
             if status == "RESOLVED":
                 packages.append({"name": entry["name"], "version": entry["version"]})
             elif status == "UNRESOLVED":

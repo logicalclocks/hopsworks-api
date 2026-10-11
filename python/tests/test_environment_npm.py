@@ -99,7 +99,9 @@ class TestEnvironmentNpm:
         env._environment_engine._await_library_command.assert_not_called()
 
     def test_install_npm_refuses_empty_and_malformed_entries(self, env, mocker):
-        mocker.patch.object(env._library_api, "_install_npm", return_value=_lib("npm-install-x"))
+        mocker.patch.object(
+            env._library_api, "_install_npm", return_value=_lib("npm-install-x")
+        )
         with pytest.raises(ValueError):
             env.install_npm([])
         with pytest.raises(ValueError):
@@ -174,6 +176,13 @@ class TestEnvironmentNpm:
                     "reason": "workspace",
                 },
                 {
+                    "name": "fsevents",
+                    "requested": "^2.3.3",
+                    "version": "2.3.3",
+                    "status": "RESOLVED",
+                    "dependencyType": "OPTIONAL_DEPENDENCY",
+                },
+                {
                     "name": "ghost",
                     "requested": "^9",
                     "status": "UNRESOLVED",
@@ -205,6 +214,15 @@ class TestEnvironmentNpm:
                 "flags": ["--no-audit"],
             },
         )
+        # An optional dependency is left out unless asked for: installed explicitly it is no
+        # longer optional, and fsevents on Linux fails the whole build.
+        env.install_npm_from_package_json(
+            content="{}", skip_unresolved=True, include_optional_dependencies=True
+        )
+        assert mock_install.call_args.args[1]["packages"] == [
+            {"name": "lodash", "version": "4.17.21"},
+            {"name": "fsevents", "version": "2.3.3"},
+        ]
 
     def test_install_from_git_selects_manifests_and_adds_the_repository(
         self, env, mocker
@@ -305,7 +323,9 @@ class TestEnvironmentNpm:
             "_inspect_npm_git",
             return_value={"commit": "abc", "manifests": []},
         )
-        mocker.patch.object(env._library_api, "_install_npm", return_value=_lib("npm-install-x"))
+        mocker.patch.object(
+            env._library_api, "_install_npm", return_value=_lib("npm-install-x")
+        )
         with pytest.raises(ValueError, match="no name"):
             env.install_npm_from_git(
                 "https://github.com/acme/mono", install_repository=True
