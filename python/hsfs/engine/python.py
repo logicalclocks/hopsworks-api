@@ -2399,6 +2399,14 @@ class Engine:
                 df[_feat.name] = _cast_column_to_offline_type(
                     df[_feat.name], _feat.type
                 )
+            elif _feat.type == "boolean":
+                # The online store keeps a boolean as TINYINT, so it arrives as 0 or 1.
+                if isinstance(df, pd.DataFrame):
+                    df[_feat.name] = df[_feat.name].map(
+                        lambda x: None if pd.isna(x) else bool(x)
+                    )
+                else:
+                    df = df.with_columns(pl.col(_feat.name).cast(pl.Boolean))
             else:
                 df[_feat.name] = _cast_column_to_online_type(
                     df[_feat.name], _feat.online_type

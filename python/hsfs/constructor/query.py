@@ -453,6 +453,10 @@ class Query:
                 raise ValueError(
                     "Pandas types casting only supported for feature_group.read()/query.select_all()"
                 )
+        elif online:
+            # Only the booleans: the online store returns them as TINYINT 0 or 1,
+            # while an offline read of the same query returns True or False.
+            schema = [f for f in self._output_features() if f.type == "boolean"]
 
         return engine._get_instance()._sql(
             sql_query,

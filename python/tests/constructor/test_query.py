@@ -877,6 +877,37 @@ class TestQuery:
 
 
 class TestQueryRead:
+    @pytest.mark.parametrize("online", [True, False])
+    def test_read_passes_boolean_features_for_online_cast(self, mocker, online):
+        # The online store returns a boolean as TINYINT 0 or 1, so an online read
+        # hands the engine its boolean features to cast back to the declared type.
+        fg = feature_group.FeatureGroup(
+            name="test_fg_bool",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id", type="bigint", feature_group_id=13),
+                feature.Feature("flag", type="boolean", feature_group_id=13),
+            ],
+            id=13,
+            stream=False,
+        )
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_engine = mocker.patch("hsfs.engine._get_instance").return_value
+        mocker.patch.object(query.Query, "_check_read_supported")
+        mocker.patch.object(query.Query, "_prep_read", return_value=("SQL", None))
+        q = query.Query(left_feature_group=fg, left_features=fg.columns)
+
+        q.read(online=online)
+
+        schema = mock_engine._sql.call_args.args[5]
+        if online:
+            assert [f.name for f in schema] == ["flag"]
+        else:
+            assert schema is None
+
     def test_read_with_start_time_no_event_time_raises(self):
         # Arrange
         from unittest import mock

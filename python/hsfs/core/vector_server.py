@@ -2035,6 +2035,11 @@ class VectorServer:
                 self._return_feature_value_handlers[feature.name] = (
                     self._handle_timestamp_based_on_dtype
                 )
+            elif feature.type == "boolean":
+                # The online store keeps a boolean as TINYINT, so both clients return 0 or 1.
+                self._return_feature_value_handlers[feature.name] = lambda value: (
+                    None if value is None else bool(value)
+                )
 
     def _handle_timestamp_based_on_dtype(
         self, timestamp_value: str | int | datetime | None
@@ -2368,7 +2373,7 @@ class VectorServer:
     @property
     def feature_to_handle_if_rest(self) -> set[str]:
         # RonDB REST client already deserialize complex features
-        # Only timestamp need converting to datetime obj and
+        # Only timestamps need converting to datetime obj, booleans to bool, and
         # complex features retrieved via opensearch need to be deserialized
         if self._feature_to_handle_if_rest is None:
             self._feature_to_handle_if_rest = {
@@ -2376,7 +2381,7 @@ class VectorServer:
                 for f in self._features
                 if (
                     (
-                        f.type == "timestamp"
+                        f.type in ("timestamp", "boolean")
                         or (f.feature_group.id in self._skip_fg_ids and f.is_complex())
                     )
                     and not (
@@ -2395,7 +2400,7 @@ class VectorServer:
                 f.name
                 for f in self._features
                 if (
-                    f.is_complex()
+                    (f.is_complex() or f.type == "boolean")
                     and not (
                         f.label or f.training_helper_column or f.inference_helper_column
                     )
