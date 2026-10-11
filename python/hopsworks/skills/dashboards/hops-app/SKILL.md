@@ -1,26 +1,41 @@
 ---
 name: hops-app
-description: Use when writing Streamlit or custom Python apps for Hopsworks,
-  deploying from HopsFS or Git, migrating legacy apps off `APP_BASE_URL_PATH`,
-  or managing app routing/readiness, monitoring, and public sharing.
-  Auto-invoke when user wants to create a dashboard, deploy a Python app to
-  Hopsworks, configure app routing/readiness, or access the feature store from
-  an app. Input an app source + env + memory; output a running app and its URL.
+description: Use when writing Streamlit, Flask, Gradio, Node.js or custom apps
+  for Hopsworks, deploying from HopsFS or Git, migrating legacy apps off
+  `APP_BASE_URL_PATH`, or managing app routing/readiness, monitoring, and
+  public sharing. Auto-invoke when user wants to create a dashboard, deploy a
+  Python or Node.js app to Hopsworks, configure app routing/readiness, or
+  access the feature store from an app. Input an app source + env + memory;
+  output a running app and its URL.
 ---
 
 # Hopsworks Apps — Python SDK Best Practices
 
-Hopsworks runs **Streamlit** and **custom Python** web apps as managed apps backed
-by a Hopsworks job, sourced from HopsFS or a Git repository. A Streamlit app is a
+Hopsworks runs web apps as managed apps backed by a Hopsworks job, sourced from
+HopsFS or a Git repository. The app type (`app_kind`) decides how it starts:
+
+| Kind | App file | Started as | Port |
+|---|---|---|---|
+| `STREAMLIT` (default) | `.py` | `streamlit run <file>` | 8501, fixed |
+| `FLASK` (5.2+) | `.py` with an `app` object | `flask --app <file> run --host 0.0.0.0 --port $APP_PORT` | `app_port`, default 8080 |
+| `GRADIO` (5.2+) | `.py` that calls `demo.launch()` | `python <file>`; `GRADIO_SERVER_NAME`/`GRADIO_SERVER_PORT`/`GRADIO_ROOT_PATH` are set | `app_port`, default 8080 |
+| `NODEJS` (5.2+) | `.js`, `.mjs`, `.cjs`, `.ts`, `.mts` | `node <file>`; `PORT` and `HOST` are set | `app_port`, default 8080 |
+| `CUSTOM` | optional | your `entrypoint_command` | `app_port`, default 8080 |
+
+Every kind but `CUSTOM` is **launched from its app file** with a command Hopsworks
+generates: no `entrypoint_command`, and a git-backed app gives the file as
+`entrypoint_script` relative to the repository root. A Streamlit app is a
 **UI / consumer of the FTI pipelines**, not a pipeline: it reads features and
 predictions written by the feature, training, and inference pipelines and presents
-them, or embeds a downloaded model to predict locally. A custom app is a
-general-purpose web service (FastAPI, Flask, Gradio, any WSGI/ASGI app) that binds
-to `0.0.0.0` and the injected `$APP_PORT`.
+them, or embeds a downloaded model to predict locally. A custom app is any other
+web service (FastAPI, Django, any WSGI/ASGI server) that binds to `0.0.0.0` and the
+injected `$APP_PORT`. Node.js apps get their dependencies from the npm packages
+installed in the environment (see [hops-environments](../../platform/hops-environments/SKILL.md),
+*npm packages*): nothing is `npm install`ed at app start.
 
 ## Contract
 
-- **Input:** a Streamlit or custom app + environment + memory.
+- **Input:** an app (Streamlit, Flask, Gradio, Node.js or custom) + environment + memory.
 - **Output:** a running app and its URL.
 - **Pre-condition:** the app source is available in HopsFS or Git (project-relative path for the SDK, HopsFS-absolute for the CLI).
 
@@ -61,7 +76,7 @@ and forwards requests to the app container, so **write new apps as if they run
 at `/`** and do not read `APP_BASE_URL_PATH`.
 
 - The proxy forwards the browser mount, rewrites some HTML/CSS links, and preserves redirects. It does **not** rewrite arbitrary JavaScript string literals or client-side `fetch("/api/...")` calls; build API and asset URLs from the app mount, or derive the base path from `X-Forwarded-Prefix` / framework support (Next.js: a mount-aware `basePath` / `assetPrefix`).
-- Readiness is separate from routing: Streamlit probes `/_stcore/health`, custom apps probe `/`, and `readinessProbePath` overrides the probe path.
+- Readiness is separate from routing: Streamlit probes `/_stcore/health`, every other kind probes `/`, and `readinessProbePath` overrides the probe path (`/health` for a Flask or Node.js app that does not serve `/`).
 
 **Legacy apps** (created before the `App base path` migration, or still reading
 `APP_BASE_URL_PATH`) can stay on `Compatibility prefix` only as a bridge. To
@@ -104,6 +119,43 @@ st.subheader("Transaction Data")
 st.dataframe(df.head(100))
 st.subheader("Amount Distribution")
 st.bar_chart(df["amount"].value_counts().head(20))
+```
+
+### Flask, Gradio and Node.js (5.2+)
+
+Flask: an `app` object in the file; routes at `/` and `/health`; the app is served
+at its root, and `APP_PUBLIC_PATH` / `X-Forwarded-Prefix` carry the public path for
+an app that builds absolute links (`ProxyFix(app.wsgi_app, x_prefix=1)`).
+
+```python
+# Users/<username>/flaskapp.py  — app_kind="FLASK"
+from flask import Flask, jsonify
+
+app = Flask(__name__)
+
+@app.get("/health")
+def health():
+    return jsonify(status="ok")
+
+@app.get("/")
+def home():
+    return jsonify(status="ready")
+```
+
+Gradio: call `demo.launch()` with no `server_port` or `root_path`; Hopsworks sets
+`GRADIO_SERVER_NAME`, `GRADIO_SERVER_PORT` and `GRADIO_ROOT_PATH`, which `launch()`
+reads, and a hardcoded port breaks the readiness probe.
+
+Node.js: listen on `process.env.PORT`; `import` resolves the environment's npm
+packages (install them first, e.g. `env.install_npm(["express@latest"])`).
+
+```javascript
+// Users/<username>/server.mjs  — app_kind="NODEJS"
+import express from "express";
+const app = express();
+app.get("/health", (req, res) => res.json({ status: "ok" }));
+app.get("/", (req, res) => res.json({ status: "ready" }));
+app.listen(process.env.PORT, process.env.HOST ?? "0.0.0.0");
 ```
 
 ### Custom app
@@ -276,7 +328,7 @@ cloned again on each start, so a restart or redeploy picks up new commits;
 `git_auto_redeploy=True` rolls to the branch HEAD on every new commit. Supported
 providers: `GitHub`, `GitLab`, `BitBucket`.
 
-- Streamlit: `app_kind="STREAMLIT"` and `entrypoint_script` relative to the repository root.
+- Streamlit, Flask, Gradio, Node.js: the kind and `entrypoint_script` (the app file) relative to the repository root; `app_port` for all but Streamlit.
 - Custom: `app_kind="CUSTOM"`, an `entrypoint_command`, and `app_port`.
 
 ```python
@@ -289,6 +341,17 @@ streamlit_app = apps.create_app(
     git_auto_redeploy=True,
     entrypoint_script="streamlitapp.py",
     environment="python-app-pipeline",
+)
+
+node_app = apps.create_app(
+    name="greeterfromgithub",
+    app_kind="NODEJS",
+    git_url="https://github.com/<org>/<repo>.git",
+    git_provider="GitHub",
+    git_branch="main",
+    entrypoint_script="npm-packages/greeterapp.mjs",
+    app_port=8080,
+    environment="my_cloned_env",          # with express installed via install_npm
 )
 
 fastapi_app = apps.create_app(

@@ -300,7 +300,13 @@ class TestAppApiCreateKinds:
         assert "entrypointCommand" not in body
 
     def test_node_app_takes_javascript_and_typescript_files(self, mock_client, api):
-        for entry in ("server.js", "server.mjs", "server.cjs", "server.ts"):
+        for entry in (
+            "server.js",
+            "server.mjs",
+            "server.cjs",
+            "server.ts",
+            "server.mts",
+        ):
             api.create_app("api", app_path=f"Resources/{entry}", app_kind="NODEJS")
             assert self._body(mock_client)["appKind"] == "NODEJS"
         with pytest.raises(ValueError, match="app_path must be a .js"):

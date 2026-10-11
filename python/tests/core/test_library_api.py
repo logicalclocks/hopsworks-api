@@ -45,6 +45,30 @@ class TestLibraryApi:
             headers={"content-type": "application/json"},
         )
 
+    def test_uninstall_names_the_ecosystem_and_splits_a_scoped_name(self, mocker):
+        api = library_api.LibraryApi()
+        mock_client = mocker.MagicMock()
+        mock_client._project_id = 99
+        mocker.patch("hopsworks_common.client._get_instance", return_value=mock_client)
+
+        api._uninstall("@scope/tool", "myenv", "NPM")
+
+        mock_client._send_request.assert_called_once_with(
+            "DELETE",
+            [
+                "project",
+                99,
+                "python",
+                "environments",
+                "myenv",
+                "libraries",
+                "@scope",
+                "tool",
+            ],
+            headers={"content-type": "application/json"},
+            query_params={"packageSource": "NPM"},
+        )
+
     def test_install_npm_posts_the_request_and_returns_the_tracked_library(
         self, mocker
     ):

@@ -151,11 +151,11 @@ class EnvironmentEngine:
                 ),
             )
         except RestAPIError as e:
-            # A missing library is an answer: the operation that removed it is done. Anything
-            # else is not, and swallowing it (an ambiguous name, a forbidden environment) made
-            # the wait end as if the install had finished.
+            # A missing library is an answer: the operation that removed it is done.
+            # Anything else is not, and swallowing it (an ambiguous name, a forbidden environment) made the wait end as if the install had finished.
+            # The error code comes off the exception, which already read the body defensively; reading it again fails on an empty or HTML 404.
             if (
-                e.response.json().get("errorCode", "") == 300003
+                getattr(e, "error_code", None) == 300003
                 and e.response.status_code == 404
             ):
                 return None

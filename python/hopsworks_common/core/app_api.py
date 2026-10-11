@@ -38,7 +38,8 @@ _GIT_PROVIDER_ALIASES = {
 
 @public("hopsworks.core.app_api.AppApi")
 class AppApi:
-    # Mirrors PythonAppKind in the backend. Every kind but CUSTOM is launched from its app file.
+    # Mirrors PythonAppKind in the backend.
+    # Every kind but CUSTOM is launched from its app file.
     APP_KINDS = ("STREAMLIT", "CUSTOM", "FLASK", "GRADIO", "NODEJS")
     APP_KIND_LABELS = {
         "STREAMLIT": "Streamlit",
@@ -55,7 +56,9 @@ class AppApi:
     }
 
     @classmethod
-    def _check_entrypoint_extension(cls, app_kind: str, path: str, parameter: str):
+    def _check_entrypoint_extension(
+        cls, app_kind: str, path: str, parameter: str
+    ) -> None:
         extensions = cls.APP_KIND_EXTENSIONS.get(app_kind)
         if extensions and not path.lower().endswith(extensions):
             raise ValueError(
@@ -134,7 +137,7 @@ class AppApi:
         app_base_path: str | None = None,
         readiness_probe_path: str | None = None,
     ) -> app.App:
-        """Create a new Python app.
+        """Create a new app.
 
         Example:
             ```python
@@ -160,16 +163,15 @@ class AppApi:
             cores: CPU cores (default: 1.0).
             env_vars: Per-runtime env vars applied when the app is started.
                 These override account-level env vars for this app's executions.
-            app_kind: What the app is, which decides how it is started:
-                ``STREAMLIT`` (the default), ``FLASK`` and ``GRADIO`` run the given
-                Python file with their framework; ``NODEJS`` runs a JavaScript or
-                TypeScript file with Node.js (the app reads its port from
-                ``process.env.PORT``); ``CUSTOM`` runs ``entrypoint_command``.
-            entrypoint_command: Startup command for ``CUSTOM`` apps. The other kinds
-                generate theirs from the app file.
-            app_port: Port the app listens on, for every kind but ``STREAMLIT``. Flask
-                is started on it, Gradio and Node.js are told it through
-                ``GRADIO_SERVER_PORT`` and ``PORT``. Defaults to 8080.
+            app_kind: What the app is, which decides how it is started.
+                ``STREAMLIT``, ``FLASK`` and ``GRADIO`` run the given Python file with their framework.
+                ``NODEJS`` runs a JavaScript or TypeScript file with Node.js, and the app reads its port from ``process.env.PORT``.
+                ``CUSTOM`` runs ``entrypoint_command``.
+            entrypoint_command: Startup command for ``CUSTOM`` apps.
+                The other kinds generate theirs from the app file.
+            app_port: Port the app listens on, for every kind but ``STREAMLIT``.
+                Flask is started on it; Gradio and Node.js are told it through ``GRADIO_SERVER_PORT`` and ``PORT``.
+                Unset leaves the backend's default.
             description: Optional app description.
             git_url: Optional Git repository URL. When set, the app is cloned on
                 every start.

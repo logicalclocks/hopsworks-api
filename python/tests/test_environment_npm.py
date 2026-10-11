@@ -98,6 +98,19 @@ class TestEnvironmentNpm:
         ]
         env._environment_engine._await_library_command.assert_not_called()
 
+    def test_uninstall_names_the_ecosystem_for_npm(self, env, mocker):
+        mock_uninstall = mocker.patch.object(env._library_api, "_uninstall")
+
+        env.uninstall("semver", package_source="NPM")
+        mock_uninstall.assert_called_with("semver", "myenv", "NPM")
+        env._environment_engine._await_library_command.assert_called_with(
+            "myenv", "semver", None, package_source="NPM"
+        )
+
+        # A scoped name exists only on npm, so it needs no hint.
+        env.uninstall("@scope/tool")
+        mock_uninstall.assert_called_with("@scope/tool", "myenv", "NPM")
+
     def test_install_npm_refuses_empty_and_malformed_entries(self, env, mocker):
         mocker.patch.object(
             env._library_api, "_install_npm", return_value=_lib("npm-install-x")
@@ -108,6 +121,20 @@ class TestEnvironmentNpm:
             env.install_npm([("only-name",)])
         with pytest.raises(ValueError):
             env.install_npm([{"version": "1.0.0"}])
+        # A git package is a URL and a commit together, never one without the other.
+        with pytest.raises(ValueError, match="both git_url and git_ref"):
+            env.install_npm(
+                [{"name": "tool", "git_url": "https://github.com/acme/tool"}]
+            )
+        with pytest.raises(ValueError, match="both git_url and git_ref"):
+            env.install_npm(
+                [
+                    {
+                        "name": "tool",
+                        "git_ref": "0123456789abcdef0123456789abcdef01234567",
+                    }
+                ]
+            )
 
     def test_resolve_reads_local_files_and_sends_project_paths_otherwise(
         self, env, mocker, tmp_path

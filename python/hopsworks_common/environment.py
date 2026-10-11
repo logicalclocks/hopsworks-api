@@ -208,11 +208,10 @@ class Environment:
     ) -> library.Library:
         """Install npm packages into the environment as one operation and one image build.
 
-        The packages are installed globally with npm, so they are on `PATH` and importable from
-        any Node.js app, job or deployment the environment runs. The whole list is one operation
-        and one build: resolving and installing fifty packages takes one image layer, not fifty.
-        While it runs, a request of several packages is listed under one placeholder entry; once
-        the build has finished the installed packages replace it in the environment's listing.
+        The packages are installed globally with npm, so they are on `PATH` and importable from any Node.js app, job or deployment the environment runs.
+        The whole list is one operation and one build: resolving and installing fifty packages takes one image layer, not fifty.
+        While it runs, a request of several packages is listed under one placeholder entry.
+        Once the build has finished, the installed packages replace it in the environment's listing.
 
         ```python
         import hopsworks
@@ -281,11 +280,10 @@ class Environment:
     ) -> dict:
         """Resolve a package.json's dependencies to the exact versions `install_npm` takes, without installing.
 
-        Pinned versions stand. Where a lockfile is given its recorded versions win, since they are
-        what the project actually ran. Ranges and dist-tags without a lockfile entry resolve to
-        the newest matching registry release. Dependencies that are not registry packages
-        (workspace siblings, `npm:` aliases, git, file and URL specs) are reported as skipped with
-        the reason.
+        Pinned versions stand.
+        Where a lockfile is given its recorded versions win, since they are what the project actually ran.
+        Ranges and dist-tags without a lockfile entry resolve to the newest matching registry release.
+        Dependencies that are not registry packages (workspace siblings, `npm:` aliases, git, file and URL specs) are reported as skipped with the reason.
 
         ```python
         result = env.resolve_npm_package_json("package.json", lockfile_path="package-lock.json")
@@ -348,12 +346,10 @@ class Environment:
     ) -> library.Library:
         """Install the dependencies a package.json lists, resolved to exact versions, as one build.
 
-        See `resolve_npm_package_json` for how versions are chosen. Dependencies the resolver
-        skips (workspace siblings, aliases, git, file and URL specs) are left out. A dependency
-        it cannot resolve (the registry has no matching version, or could not be reached) fails
-        the call unless `skip_unresolved` is set. `optionalDependencies` are left out unless
-        asked for: npm skips an optional dependency it cannot install, but an explicit install
-        of one fails, and the common case is a platform-specific package such as `fsevents`.
+        See `resolve_npm_package_json` for how versions are chosen.
+        Dependencies the resolver skips (workspace siblings, aliases, git, file and URL specs) are left out.
+        A dependency it cannot resolve (the registry has no matching version, or could not be reached) fails the call unless `skip_unresolved` is set.
+        `optionalDependencies` are left out unless asked for: npm skips an optional dependency it cannot install, but an explicit install of one fails, and the common case is a platform-specific package such as `fsevents`.
 
         ```python
         env.install_npm_from_package_json("package.json", lockfile_path="package-lock.json")
@@ -362,7 +358,7 @@ class Environment:
         Parameters:
             path: The package.json: a local path, or a path in the project when no such local file exists.
             lockfile_path: The lockfile next to it, local or in the project.
-            include_dev_dependencies: Also install `devDependencies`. Off by default.
+            include_dev_dependencies: Also install `devDependencies`.
             flags: npm flags for the install; see `install_npm`.
             await_installation: If `True` the method returns only when the installation finishes.
             timeout: Seconds to wait for the installation to finish before raising; see `install_npm`.
@@ -408,11 +404,8 @@ class Environment:
     ) -> dict:
         """Read and resolve the package.json files of a git repository, without installing.
 
-        The repository is cloned, without checkout, by a short-lived job in the project with the
-        git credentials configured under your account settings, so a private repository works
-        once its provider is set up there. Every package.json in the tree is returned, one for a
-        plain repository and one per workspace for a monorepo, resolved against the nearest
-        lockfile.
+        The repository is cloned, without checkout, by a short-lived job in the project with the git credentials configured under your account settings, so a private repository works once its provider is set up there.
+        Every package.json in the tree is returned, one for a plain repository and one per workspace for a monorepo, resolved against the nearest lockfile.
 
         ```python
         info = env.inspect_npm_git("https://github.com/acme/mytool", ref="main")
@@ -482,7 +475,7 @@ class Environment:
             install_repository: Also install the repository itself as a package, by the name its root
                 package.json declares. The install runs npm; a repository that needs yarn, pnpm or
                 Bun to build is reported but still attempted.
-            include_dev_dependencies: Also install `devDependencies`. Off by default.
+            include_dev_dependencies: Also install `devDependencies`.
             flags: npm flags for the install; see `install_npm`.
             await_installation: If `True` the method returns only when the installation finishes.
             timeout: Seconds to wait for the installation to finish before raising; see `install_npm`.
@@ -542,24 +535,29 @@ class Environment:
         )
 
     @staticmethod
-    def _as_list(packages):
+    def _as_list(
+        packages: str | tuple[str, str] | dict | list[str | tuple[str, str] | dict],
+    ) -> list[str | tuple[str, str] | dict]:
         if isinstance(packages, (str, tuple, dict)):
             return [packages]
         return list(packages)
 
     @staticmethod
-    def _npm_package_entry(entry) -> dict:
+    def _npm_package_entry(entry: str | tuple[str, str] | dict) -> dict:
         """One install request entry from the forms `install_npm` accepts."""
         if isinstance(entry, dict):
             name = entry.get("name")
             if not name:
                 raise ValueError(f"A package entry needs a name: {entry!r}")
-            if entry.get("git_url") or entry.get("gitUrl"):
-                return {
-                    "name": name,
-                    "gitUrl": entry.get("git_url") or entry.get("gitUrl"),
-                    "gitRef": entry.get("git_ref") or entry.get("gitRef"),
-                }
+            git_url = entry.get("git_url") or entry.get("gitUrl")
+            git_ref = entry.get("git_ref") or entry.get("gitRef")
+            if git_url or git_ref:
+                # A git package is a URL and the commit it is pinned to, as a pair.
+                if not git_url or not git_ref:
+                    raise ValueError(
+                        f"A git package needs both git_url and git_ref: {entry!r}"
+                    )
+                return {"name": name, "gitUrl": git_url, "gitRef": git_ref}
             return {"name": name, "version": entry.get("version") or "latest"}
         if isinstance(entry, tuple):
             if len(entry) != 2:
@@ -603,7 +601,7 @@ class Environment:
 
     def _put_file_input(
         self, request: dict, path: str, content_key: str, path_key: str
-    ):
+    ) -> None:
         """A local file goes as content; anything else is a path in the project."""
         if os.path.isfile(path):
             with open(path, encoding="utf-8") as f:
@@ -619,6 +617,7 @@ class Environment:
         library_name: str,
         await_uninstallation: bool | None = True,
         timeout: float | None = None,
+        package_source: str | None = None,
     ) -> None:
         """Uninstall a library from the environment.
 
@@ -639,6 +638,8 @@ class Environment:
             timeout: Seconds to wait for the uninstallation to finish before raising.
                 Falls back to the engine's default when unset.
                 It also bounds the wait for any environment command already in flight, which happens before the removal is submitted and therefore applies even when `await_uninstallation` is `False`.
+            package_source: `PIP` or `NPM`, the ecosystem the library belongs to.
+                Needed when the same name is installed from both PyPI and npm, since the backend refuses to guess which one to remove; a scoped npm name is always npm.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -646,11 +647,13 @@ class Environment:
         # Wait for any ongoing environment operations
         self._environment_engine._await_environment_command(self.name, timeout)
 
-        self._library_api._uninstall(library_name, self.name)
+        if package_source is None and library_name.startswith("@"):
+            package_source = "NPM"
+        self._library_api._uninstall(library_name, self.name, package_source)
 
         if await_uninstallation:
             self._environment_engine._await_library_command(
-                self.name, library_name, timeout
+                self.name, library_name, timeout, package_source=package_source
             )
 
     @public
