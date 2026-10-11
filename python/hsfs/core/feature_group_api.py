@@ -154,6 +154,19 @@ class FeatureGroupApi:
         if not fgs_json:
             return fgs_json
 
+        fg_objs = self._from_response_jsons(fgs_json)
+        if version is not None:
+            self._check_features(fg_objs[0])
+            return fg_objs[0]
+        for fg_obj in fg_objs:
+            self._check_features(fg_obj)
+        return fg_objs
+
+    @staticmethod
+    def _from_response_jsons(
+        fgs_json: list[dict],
+    ) -> list[fg_mod.FeatureGroup | fg_mod.SpineGroup | fg_mod.ExternalFeatureGroup]:
+        """Build each feature group as the type the backend reports for it."""
         fg_objs = []
         # In principle unique names are enforced across fg type and this should therefore
         # return only list of the same type. But it cost nothing to check in case this gets forgotten.
@@ -182,11 +195,6 @@ class FeatureGroupApi:
                     + str(list_of_types)
                 )
 
-        if version is not None:
-            self._check_features(fg_objs[0])
-            return fg_objs[0]
-        for fg_obj in fg_objs:
-            self._check_features(fg_obj)
         return fg_objs
 
     @decorators._catch_not_found(
@@ -236,13 +244,11 @@ class FeatureGroupApi:
     def _get_all(
         self,
         feature_store_id: int,
-        with_features: bool = False,
     ) -> list[fg_mod.FeatureGroup | fg_mod.SpineGroup | fg_mod.ExternalFeatureGroup]:
         """Get a list of feature groups in a feature store.
 
         Parameters:
             feature_store_id: Feature store ID.
-            with_features: Whether to also retrieve the features of the feature groups.
 
         Returns:
             List of feature group metadata objects.
@@ -255,19 +261,18 @@ class FeatureGroupApi:
             feature_store_id,
             "featuregroups",
         ]
-        query_params = {}
-        if with_features:
-            query_params["expand"] = ["features"]
+        # Expanded as for a single feature group, so each handle can be read or queried.
+        query_params = {
+            "expand": [
+                "features",
+                "expectationsuite",
+                "transformationfunctions",
+                "mandatorytags",
+            ]
+        }
 
         res = _client._send_request("GET", path_params, query_params)
-
-        if "items" not in res:
-            try:
-                return [fg_mod.FeatureGroup.from_response_json(res)]
-            except TypeError:
-                return []
-
-        return [fg_mod.FeatureGroup.from_response_json(r) for r in res["items"]]
+        return self._from_response_jsons(res.get("items", []))
 
     def _delete_content(
         self,
