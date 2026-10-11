@@ -45,7 +45,9 @@ class TestLibraryApi:
             headers={"content-type": "application/json"},
         )
 
-    def test_install_npm_posts_the_request_and_returns_the_tracked_library(self, mocker):
+    def test_install_npm_posts_the_request_and_returns_the_tracked_library(
+        self, mocker
+    ):
         # Arrange
         api = library_api.LibraryApi()
         mock_client = mocker.MagicMock()
