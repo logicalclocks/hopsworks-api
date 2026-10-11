@@ -78,3 +78,43 @@ class TestFeatureGroupApi:
 
         # Assert
         assert len(warning_record) == 1
+
+    def test_get_all_expands_features_and_infers_type(self, mocker, backend_fixtures):
+        # Without the features a listed handle reads as `SELECT  FROM ...` (HWORKS-3418).
+        fg_api = feature_group_api.FeatureGroupApi()
+        client_mock = Mock()
+        client_mock._send_request.return_value = {
+            "count": 3,
+            "items": [
+                backend_fixtures["feature_group"]["get"]["response"],
+                backend_fixtures["external_feature_group"]["get"]["response"],
+                backend_fixtures["spine_group"]["get"]["response"],
+            ],
+        }
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=client_mock,
+        )
+        mocker.patch("hsfs.engine._get_instance")
+
+        fgs = fg_api._get_all(99)
+
+        query_params = client_mock._send_request.call_args.args[2]
+        assert "features" in query_params["expand"]
+        assert [type(fg) for fg in fgs] == [
+            fg_mod.FeatureGroup,
+            fg_mod.ExternalFeatureGroup,
+            fg_mod.SpineGroup,
+        ]
+        assert all(len(fg.features) > 0 for fg in fgs)
+
+    def test_get_all_empty(self, mocker):
+        fg_api = feature_group_api.FeatureGroupApi()
+        client_mock = Mock()
+        client_mock._send_request.return_value = {"count": 0}
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=client_mock,
+        )
+
+        assert fg_api._get_all(99) == []
