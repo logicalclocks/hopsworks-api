@@ -85,7 +85,7 @@ class TestEnvironmentNpm:
         assert tracked._library == "npm-install-1a2b3c4d"
         # One operation, one wait: the placeholder entry disappears once the build has finished.
         env._environment_engine._await_library_command.assert_called_once_with(
-            "myenv", "npm-install-1a2b3c4d", 12
+            "myenv", "npm-install-1a2b3c4d", 12, package_source="NPM"
         )
 
     def test_install_npm_scoped_name_keeps_its_scope(self, env, mocker):

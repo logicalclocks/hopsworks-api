@@ -263,7 +263,7 @@ class Environment:
 
         if await_installation:
             self._environment_engine._await_library_command(
-                self.name, tracked._library, timeout
+                self.name, tracked._library, timeout, package_source="NPM"
             )
         return tracked
 
