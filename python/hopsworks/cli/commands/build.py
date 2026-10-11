@@ -1,4 +1,4 @@
-"""The ML systems built by the ``ml-batch``, ``ml-realtime`` and ``ml-agent`` factories.
+"""The ML systems built by the ``ml-batch``, ``ml-realtime``, ``ml-streaming`` and ``ml-agent`` factories.
 
 ``hops factory run`` hands this the answers the factory's form collected: they
 are written to ``<slug>/system.yaml``, what they leave out is asked, and Claude

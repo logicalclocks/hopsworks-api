@@ -137,7 +137,9 @@ An example is a complete system on synthetic or public data: never ask for data 
 an app is wanted; it always gets a Python app with a JavaScript UI. The options are the labels in
 `hops-reqs/references/example-systems.yaml`, each with its slug: **Churn** (`churn-example`, batch),
 **Personalized recommendations** (`recs-example`, real-time), **Credit card fraud**
-(`fraud-example`, real-time, with a streaming feature pipeline), **GIS military infrastructure
+(`fraud-example`, real-time, with a streaming feature pipeline), **Debit card fraud**
+(`debitcard-example`, real-time, dbt batch features and Spark streaming features, with a Streamlit
+console), **GIS military infrastructure
 finder** (`gis-example`, real-time, a pretrained model with no feature or training pipeline), **Hops
 Run with Kumo Tabular** (`run-example`, real-time, a pretrained model served as a deployment, with no
 feature or training pipeline) and **Help desk agent** (`helpdesk-example`, agentic); use each `label`

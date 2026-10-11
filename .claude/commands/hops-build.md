@@ -20,7 +20,7 @@ Already known, no need to look again before the first question:
 | First word | Do |
 | --- | --- |
 | the slug of a system above | work on that system only, and dispatch the rest of the arguments by this table (`hops factory run` starts the build this way) |
-| none | with a `system.yaml` above: resume it (with several, ask which), starting with `reqs` while `requirements.status` is `pending`; without one: reply that the Factory (describe it, or **From Template > ML System**), `hops factory run ml-batch|ml-realtime|ml-agent` in a shell, or `/hops-ml` here records one first, and stop |
+| none | with a `system.yaml` above: resume it (with several, ask which), starting with `reqs` while `requirements.status` is `pending`; without one: reply that the Factory (describe it, or **From Template > ML System**), `hops factory run ml-batch|ml-realtime|ml-streaming|ml-agent` in a shell, or `/hops-ml` here records one first, and stop |
 | `reqs`, `data`, `features`, `train`, `infer`, `app` (and the old `f`, `t`, `i`) | that phase, then every later phase that is not met (below) |
 | `verify` | `verify`; `verify integration` or `verify benchmark` also runs those |
 | `release` | release the system as **Releases** in `hops-reqs/references/repo.md` says: the pending release once its pull request has merged, else the next version after asking its kind |
@@ -238,7 +238,11 @@ is built the same way by `hops-reqs/references/recommender.md`, from the referen
 its `train` and `infer` follow that page. The credit card fraud detector (the `fraud-example`) is
 built by `hops-reqs/references/ccfraud.md` from the book's code at a pinned commit and `ccfraud/`:
 its `data` runs the book's generator instead of generating data, its `features` start a Spark
-Structured Streaming job, and its `train`, `infer` and monitoring follow that page. The GIS military infrastructure finder (`task: detection`,
+Structured Streaming job, and its `train`, `infer` and monitoring follow that page. The debit card
+fraud detector (`task: anomaly`, the `debitcard-example`) is built by
+`hops-reqs/references/debitcard.md` from `debitcard/`: its `data` runs that generator instead of
+generating data, its `features` run dbt models in Trino daily and start a Spark Structured Streaming
+job, and its `train`, `infer` and `app` follow that page. The GIS military infrastructure finder (`task: detection`,
 the `gis-example`) has no reference code: every file is written from its requirements and
 `hops-reqs/references/gis-detector.md`, which gives each phase's contract, the facts the code
 depends on and the tests to write. `data` and `features` are `skipped`, `train` registers a

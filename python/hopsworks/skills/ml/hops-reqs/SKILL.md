@@ -40,14 +40,18 @@ retrieval over a vector index, a CatBoost ranker, one deployment, a storefront
 app), the credit card fraud detector of the `fraud-example` as
 [references/ccfraud.md](references/ccfraud.md) says (the book's synthetic
 transactions, streaming sliding-window features, an XGBoost classifier, one
-deployment, a fraud console app), and the `detection` GIS app of the `gis-example` as
+deployment, a fraud console app), the `anomaly` debit card fraud detector of the
+`debitcard-example` as [references/debitcard.md](references/debitcard.md) says
+(synthetic European authorisations, batch features by dbt in Trino, streaming
+window features by Spark Structured Streaming, an Isolation Forest, one
+deployment, a Streamlit console), and the `detection` GIS app of the `gis-example` as
 [references/gis-detector.md](references/gis-detector.md) says (a pretrained YOLO26
 aerial detector of military infrastructure, registered from Hugging Face and
 embedded in a JavaScript map app; no data, features, training or deployment, and no reference
 code: the build writes every file from the requirements), and Hops Run with
 Kumo Tabular, the `run-example`, as [references/kumo-run.md](references/kumo-run.md) says (a
 racing game flown by NVIDIA's pretrained in-context tabular classifier, registered from Hugging
-Face and served as a deployment; no data, features or training). Other `ranking` systems, `anomaly` and `agentic` tasks, and other agent
+Face and served as a deployment; no data, features or training). Other `ranking` and `anomaly` systems, `agentic` tasks, and other agent
 systems, are captured in full at `reqs` and stop there. The autonomous
 path runs only against `system.target.stage: development`.
 

@@ -24,6 +24,7 @@ MAX_LENGTH = 29000
 BUILTINS = (
     "ml-batch",
     "ml-realtime",
+    "ml-streaming",
     "ml-agent",
     "analytics-bronze",
     "analytics-silver",

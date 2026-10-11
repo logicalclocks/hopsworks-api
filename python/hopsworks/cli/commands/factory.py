@@ -1,7 +1,7 @@
 """``hops factory``: the software factories of this project, and the systems they build.
 
-Eight are built in, as YAML definitions the cluster ships: ``ml-batch``,
-``ml-realtime`` and ``ml-agent`` build ML systems, ``analytics-bronze``,
+Nine are built in, as YAML definitions the cluster ships: ``ml-batch``,
+``ml-realtime``, ``ml-streaming`` and ``ml-agent`` build ML systems, ``analytics-bronze``,
 ``analytics-silver`` and ``analytics-gold`` build analytics layers,
 ``analytics-pipeline`` builds a data pipeline and ``analytics-ingestion`` the
 ingestion of data sources into feature groups, each from its written instructions. A

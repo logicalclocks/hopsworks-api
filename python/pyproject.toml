@@ -178,6 +178,8 @@ include = [
     "skills/**/*.py",
     "skills/**/*.toml",
     "skills/**/*.yaml",
+    "skills/**/*.yml",
+    "skills/**/*.sql",
     "skills/**/*.txt",
     "skills/**/*.html",
     "skills/**/*.js",

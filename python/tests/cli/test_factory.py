@@ -728,6 +728,59 @@ def test_a_clone_of_a_built_in_builds_with_it_and_records_itself(
     assert doc["requirements"] == {"status": "pending", "extra": {"regulator": "FI"}}
 
 
+def test_the_streaming_factorys_example_builds_with_its_engines(
+    tmp_path, monkeypatch, logged_in
+):
+    resources = (
+        Path(__file__).resolve().parents[4]
+        / "hopsworks-ee/hopsworks-common/src/main/resources/factories"
+    )
+    if not resources.is_dir():
+        pytest.skip("hopsworks-ee is not beside this checkout")
+    text = (resources / "ml-streaming.yaml").read_text()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(text, version=1)
+    )
+    seen = {}
+
+    def built_in(ctx, answers, launch):
+        seen["answers"] = answers
+        target = tmp_path / answers["slug"]
+        target.mkdir()
+        (target / "system.yaml").write_text(
+            yaml.safe_dump({"system": {"slug": answers["slug"]}, "requirements": {}})
+        )
+        factory_spec.record_factory(ctx.meta.get(factory_spec.META), target)
+
+    monkeypatch.setattr(factory.build, "create", built_in)
+    done = CliRunner().invoke(
+        cli,
+        [
+            "factory",
+            "run",
+            "ml-streaming",
+            "--preset",
+            "debitcard-example",
+            "--no-launch",
+        ],
+        # Every question offers the preset's answer as its default.
+        input="\n" * 40,
+    )
+    assert done.exit_code == 0, done.output
+    answers = seen["answers"]
+    assert answers["example"] == "debitcard-example"
+    assert answers["system_type"] == "realtime"
+    assert answers["reference_code"].endswith("/references/debitcard")
+    doc = yaml.safe_load((tmp_path / "debitcard-example" / "system.yaml").read_text())
+    assert doc["requirements"]["extra"]["pipelines"] == {
+        "batch_cadence": "daily",
+        "window_minutes": 60,
+    }
+    instructions = doc["factory"]["instructions"]
+    assert "dbt" in instructions and "Structured Streaming" in instructions
+
+
 # endregion
 
 

@@ -1,0 +1,15 @@
+card_fraud:
+  target: hopsworks
+  outputs:
+    hopsworks:
+      type: trino
+      method: ldap
+      host: "{{ env_var('DBT_TRINO_HOST') }}"
+      port: "{{ env_var('DBT_TRINO_PORT') | int }}"
+      user: "{{ env_var('DBT_TRINO_USER') }}"
+      password: "{{ env_var('DBT_TRINO_PASSWORD') }}"
+      database: delta
+      schema: "{{ env_var('DBT_TRINO_SCHEMA') }}"
+      cert: "{{ env_var('DBT_TRINO_CA') }}"
+      threads: 4
+      prepared_statements_enabled: true
