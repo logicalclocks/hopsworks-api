@@ -110,7 +110,9 @@ agent_app = AgentApp(name="My agent", framework="langgraph")
 ## Memory
 
 The protocol keeps history server-side (`conversation_id`), so the SDK can own
-storage. One store, three tiers — each opt-in, all served by the same object:
+storage. One store, three tiers — each opt-in, all served by the same object.
+The tiers are the ones the agent-memory literature names, and the chat panel's
+Memory tab labels them the same way:
 
 ```python
 from hopsworks_agents.protocol import (
@@ -120,17 +122,25 @@ from hopsworks_agents.protocol import (
 agent_app = AgentApp(
     name="My agent",
     memory=ManagedMemoryService(          # zero-config in a deployment
-        summarize=anthropic_summarizer(),  # tier 2
-        long_term=True,                    # tier 3
+        summarize=anthropic_summarizer(),  # short-term memory
+        long_term=True,                    # semantic + episodic memory
     ),
 )
 ```
 
 | Tier | Holds | Turn on with |
 |---|---|---|
-| 1. Conversation buffer | this conversation's turns | `memory=` alone |
-| 2. Rolling summary | older turns, compacted instead of dropped | `summarize=` |
-| 3. Durable memory | facts about the user, across conversations | `long_term=True` |
+| 1. Working memory (in context) | the turns of this conversation the agent sees verbatim | `memory=` alone |
+| 2. Short-term memory | the rest of this conversation, compacted into a rolling summary instead of dropped | `summarize=` |
+| 3. Semantic memory | facts about the user, kept across conversations | `long_term=True` |
+| 3. Episodic memory | what was said in the user's earlier conversations, reached by `search` | `long_term=True` |
+
+Working memory is `ctx.history`, short-term memory is `ctx.summary`, and
+long-term memory is `remember` / `recall`
+/ `forget` / `search`. Two words that look alike and are not: *semantic memory*
+is the facts the agent stores, *semantic search* is one way `search` retrieves
+past turns. The keyword arguments keep their original names (`summarize=`,
+`long_term=`) so existing agents go on working.
 
 ### Reading it in a handler
 
@@ -142,7 +152,7 @@ async def chat(request, ctx):
     ...
 ```
 
-> **`ctx.history` stops meaning "the conversation" once tier 2 is on.** It is
+> **`ctx.history` stops meaning "the conversation" once short-term memory is on.** It is
 > the turns *since the last fold*; everything older is in `ctx.summary`. Passing
 > `ctx.history` alone silently drops the compacted part.
 > `ctx.system_context()` assembles the summary and this user's stored facts into
@@ -180,7 +190,7 @@ Anything else is just a function with that shape.
 
 ### Agent-callable memory tools
 
-Tier 3 adds `remember` / `recall` / `forget` / `search`, which the agent's own
+Long-term memory adds `remember` / `recall` / `forget` / `search`, which the agent's own
 LLM calls when it decides to — so there is no extraction model in the SDK
 guessing what is worth keeping. Register them in your agent's tool list; the SDK
 cannot reach into an arbitrary framework's tools, and appending to yours behind
@@ -199,8 +209,9 @@ agent = create_react_agent(llm, [*my_tools, *memory_tools("langgraph")])
 They take no store or user argument — those resolve from the request context, so
 the signature the model sees carries no plumbing.
 
-`search` looks over the user's own past conversations. It works as soon as tier 3
-is on, using keyword matching; add an `embedder` and a `vector_store` to upgrade
+`search` is the episodic side: it looks over the user's own past conversations.
+It works as soon as `long_term=True`, using keyword matching; add an `embedder`
+and a `vector_store` to upgrade
 it to semantic search over a Hopsworks embedding feature group, with no prompt
 change:
 
@@ -255,7 +266,7 @@ the turn span and the traces pick it up from there.
 
 - `InMemoryAgentMemory()` — zero-config for development. Lost on restart and
   per-replica; agent deployments can scale to zero, so not for production.
-  Tiers 2 and 3 are no-ops on it.
+  Short-term and long-term memory are no-ops on it.
 - `ManagedMemoryService()` — inside a Hopsworks agent deployment this is
   zero-config: the project MySQL URL is built from the platform-injected
   `MYSQL_*` env vars (password via the `MYSQL_PASSWORD_SECRET_NAME` secret)
@@ -272,7 +283,7 @@ the turn span and the traces pick it up from there.
 - **If your framework persists state itself** (LangGraph checkpointer,
   LlamaIndex chat store), key it by `conversation_id` and skip `memory=` —
   keep one source of truth for history.
-- **`subject` is client-asserted.** Tier 3 keys durable memory by
+- **`subject` is client-asserted.** Long-term memory is keyed by
   `ChatRequest.subject`; the ingress authenticates a project-wide serving key,
   not a person, so the agent cannot verify it. Without one it falls back to the
   conversation id (memory degrades to per-conversation durability). Fine between

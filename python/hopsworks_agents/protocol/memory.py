@@ -7,6 +7,12 @@ handlers read history with ``app.memory.get(request.conversation_id)``,
 already in the ``{"role", "content"}`` shape LangChain/LangGraph/LlamaIndex
 accept.
 
+Tiers, named as the agent-memory literature names them: working memory (the
+turns the agent sees verbatim, ``ctx.history``), short-term memory (the rest of
+this conversation, compacted into ``ctx.summary``) and long-term memory —
+semantic (durable facts about the subject) and episodic (search over the
+subject's past conversations).
+
 Backends:
 - :class:`InMemoryAgentMemory` — zero-config, for development. Conversations
   are lost on restart and not shared between replicas; note that Hopsworks
@@ -519,7 +525,7 @@ class ChatMemory(ABC):
         """
         return 0
 
-    # ── summarization (tier 2) ───────────────────────────────────────────
+    # ── short-term memory: summarization ─────────────────────────────────
 
     def get_summary(self, conversation_id: str) -> str | None:
         """The rolling summary of folded-away turns, or None."""
@@ -534,7 +540,7 @@ class ChatMemory(ABC):
         """
         return False
 
-    # ── scoped durable state (tier 3) ────────────────────────────────────
+    # ── semantic memory: scoped durable state ────────────────────────────
 
     def set_state(  # noqa: B027 -- a no-op default, not a hook every store must fill
         self,
@@ -568,7 +574,7 @@ class ChatMemory(ABC):
         """Scoped state rendered for ``ctx.system_context()``."""
         return ""
 
-    # ── semantic search (tier 3) ─────────────────────────────────────────
+    # ── episodic memory: search over past turns ──────────────────────────
 
     def search(
         self,
@@ -1031,7 +1037,7 @@ class ManagedMemoryService(ChatMemory):
                 )
                 sessions = None
                 if self._summarize is not None:
-                    # tier 2 only: no summarizer, no bookkeeping to keep
+                    # short-term memory only: no summarizer, nothing to keep
                     sessions = Table(
                         _companion(CONVERSATIONS_TABLE, suffix),
                         metadata,
@@ -1064,7 +1070,7 @@ class ManagedMemoryService(ChatMemory):
                     )
                 state = None
                 if self._long_term:
-                    # tier 3 only
+                    # long-term memory only
                     state = Table(
                         _companion(FACTS_TABLE, suffix),
                         metadata,
@@ -1985,7 +1991,7 @@ class ManagedMemoryService(ChatMemory):
     def summarized_through(self, conversation_id: str) -> int:
         return self._fold_state(conversation_id)[1] if self._ensure_engine() else 0
 
-    # ── summarization (tier 2) ───────────────────────────────────────────
+    # ── short-term memory: summarization ─────────────────────────────────
 
     def get_summary(self, conversation_id: str) -> str | None:
         if self._summarize is None or not self._ensure_engine():
@@ -2083,7 +2089,7 @@ class ManagedMemoryService(ChatMemory):
             )
         return bool(result.rowcount)
 
-    # ── scoped durable state (tier 3) ────────────────────────────────────
+    # ── semantic memory: scoped durable state ────────────────────────────
 
     def set_state(
         self,
@@ -2300,7 +2306,7 @@ class ManagedMemoryService(ChatMemory):
             )
         return "\n".join(lines)
 
-    # ── semantic search (tier 3) ─────────────────────────────────────────
+    # ── episodic memory: search over past turns ──────────────────────────
 
     def search(
         self,

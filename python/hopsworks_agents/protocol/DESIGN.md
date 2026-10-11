@@ -88,9 +88,11 @@ One consequence for existing deployments: the turn span is now the root, where p
 
 ### 4. Memory is opt-in, keyed by `conversation_id`, and tiered
 
-Three tiers behind one store: the conversation buffer, a rolling summary that
-compacts old turns instead of dropping them, and durable per-subject state the
-agent writes through model-callable tools. Full rationale — the turn lifecycle,
+Three tiers behind one store, named as the agent-memory literature names them:
+working memory (the conversation buffer the agent sees in context), short-term
+memory (a rolling summary that compacts old turns instead of dropping them), and
+long-term memory — semantic (durable per-subject facts the agent writes through
+model-callable tools) and episodic (its own past conversations, searchable). Full rationale — the turn lifecycle,
 the three-phase fold and why the summarizer cannot run inside the transaction,
 retention split by row type, and why the `app` scope is not model-writable —
 lives in `~/Work/hopsworks-agent-memory-design.md`.

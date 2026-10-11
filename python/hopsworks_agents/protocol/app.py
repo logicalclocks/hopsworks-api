@@ -241,9 +241,13 @@ class AgentApp(FastAPI):
     # ── internals ─────────────────────────────────────────────────────────
 
     def _memory_capabilities(self) -> dict[str, bool]:
-        """Which memory tiers this agent actually has, so the panel can light up.
+        """Which memory tiers this agent has, so the panel lights up the right.
 
-        the right inspector views instead of guessing.
+        inspector views instead of guessing.
+
+        The wire names predate the vocabulary the UI now uses: ``summary`` is
+        short-term memory, ``state`` is semantic memory and ``search`` is
+        episodic memory. They stay as they are — clients key off them.
         """
         if self.memory is None:
             return {

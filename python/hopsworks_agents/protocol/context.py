@@ -202,8 +202,8 @@ class HandlerContext:
 
             system = MY_PROMPT + ctx.system_context()
 
-        Carries the rolling summary (tier 2) and scoped durable state (tier 3),
-        each only once configured.
+        Carries short-term memory (the rolling summary) and semantic memory
+        (scoped durable state), each only once configured.
         """
         blocks = []
         summary = self.summary
