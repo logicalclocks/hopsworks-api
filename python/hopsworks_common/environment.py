@@ -404,6 +404,7 @@ class Environment:
         url: str,
         ref: str | None = None,
         include_dev_dependencies: bool = False,
+        path: str | None = None,
     ) -> dict:
         """Read and resolve the package.json files of a git repository, without installing.
 
@@ -424,6 +425,9 @@ class Environment:
             url: The https clone URL.
             ref: A branch, tag or commit; the repository's default branch when unset.
             include_dev_dependencies: Whether `devDependencies` are part of the result.
+            path: The package.json to read, relative to the repository root, for example
+                `apps/web/package.json` or its directory `apps/web`.
+                Unset reads every package.json in the repository.
 
         Returns:
             A dict with `url`, `commit`, `branch`, `rootPackageName`, `rootPackageVersion`,
@@ -436,6 +440,8 @@ class Environment:
         request = {"url": url, "includeDevDependencies": bool(include_dev_dependencies)}
         if ref:
             request["ref"] = ref
+        if path:
+            request["path"] = path
         return self._library_api._inspect_npm_git(self.name, request)
 
     @public
@@ -451,6 +457,7 @@ class Environment:
         await_installation: bool | None = True,
         timeout: float | None = None,
         *,
+        path: str | None = None,
         skip_unresolved: bool = False,
         include_optional_dependencies: bool = False,
     ) -> library.Library:
@@ -481,6 +488,8 @@ class Environment:
             timeout: Seconds to wait for the installation to finish before raising; see `install_npm`.
             skip_unresolved: Install what resolved and leave out what did not, instead of raising.
             include_optional_dependencies: Also install the `optionalDependencies`; see `install_npm_from_package_json`.
+            path: The one package.json to read, relative to the repository root; see `inspect_npm_git`.
+                The shorter form of `manifests=[path]` that also skips reading the rest of a monorepo.
 
         Returns:
             The library the operation is tracked under; see `install_npm`.
@@ -490,7 +499,7 @@ class Environment:
             ValueError: If a manifest is not in the repository, a dependency could not be resolved and
                 `skip_unresolved` is not set, the repository has no name to install it under, or nothing is left to install.
         """
-        info = self.inspect_npm_git(url, ref, include_dev_dependencies)
+        info = self.inspect_npm_git(url, ref, include_dev_dependencies, path=path)
         found = {m["path"]: m for m in info.get("manifests", []) or []}
         if manifests is None:
             selected = list(found.values())

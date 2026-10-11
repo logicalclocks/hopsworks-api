@@ -317,6 +317,43 @@ class TestEnvironmentNpm:
         with pytest.raises(ValueError, match="Nothing to install"):
             env.install_npm_from_git("https://github.com/acme/mono", manifests=[])
 
+    def test_install_from_git_with_a_path_reads_only_that_manifest(self, env, mocker):
+        info = {
+            "url": "https://github.com/acme/mono",
+            "commit": "0123456789abcdef0123456789abcdef01234567",
+            "manifests": [
+                {
+                    "path": "packages/cli/package.json",
+                    "resolved": {
+                        "packages": [
+                            {"name": "yargs", "version": "17.7.2", "status": "RESOLVED"}
+                        ]
+                    },
+                }
+            ],
+        }
+        mock_inspect = mocker.patch.object(
+            env._library_api, "_inspect_npm_git", return_value=info
+        )
+        mock_install = mocker.patch.object(
+            env._library_api, "_install_npm", return_value=_lib("yargs")
+        )
+
+        env.install_npm_from_git(
+            "https://github.com/acme/mono",
+            path="packages/cli",
+            await_installation=False,
+        )
+
+        assert mock_inspect.call_args.args[1] == {
+            "url": "https://github.com/acme/mono",
+            "includeDevDependencies": False,
+            "path": "packages/cli",
+        }
+        assert mock_install.call_args.args[1]["packages"] == [
+            {"name": "yargs", "version": "17.7.2"}
+        ]
+
     def test_install_from_git_repository_needs_a_name(self, env, mocker):
         mocker.patch.object(
             env._library_api,
