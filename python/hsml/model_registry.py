@@ -88,7 +88,9 @@ class ModelRegistry:
 
         Parameters:
             name: Name of the model to get.
-            version: Version of the model to retrieve, defaults to `None` and will return the `version=1`.
+            version: Version of the model to retrieve.
+                Defaults to `None`, which returns version 1 even when newer versions exist, and warns.
+                To get the latest version, pick the highest `version` from [`get_models`][hsml.model_registry.ModelRegistry.get_models].
 
         Returns:
             The model metadata object or `None` if it does not exist.
@@ -98,7 +100,8 @@ class ModelRegistry:
         """
         if version is None:
             warnings.warn(
-                f"No version provided for getting model `{name}`, defaulting to `{self.DEFAULT_VERSION}`.",
+                f"No version provided for getting model `{name}`, defaulting to `{self.DEFAULT_VERSION}` even if newer versions exist. "
+                "To get the latest version, pick the highest version from `get_models(name)`.",
                 util.VersionWarning,
                 stacklevel=1,
             )
