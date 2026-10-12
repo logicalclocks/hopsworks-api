@@ -409,6 +409,62 @@ def test_app_create_custom_forwards_args(mock_project):
     )
 
 
+def test_app_create_flask_git_forwards_entrypoint_script(mock_project):
+    """A Flask git app is launched from its file: an entrypoint script and a port, no command."""
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="web", app_kind="FLASK")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "web",
+            "--app-kind",
+            "FLASK",
+            "--git-url",
+            "https://github.com/gibchikafa/appshopsworkstests.git",
+            "--git-provider",
+            "GitHub",
+            "--entrypoint-script",
+            "flaskapp.py",
+            "--app-port",
+            "5000",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    apps.create_app.assert_called_once_with(
+        name="web",
+        app_kind="FLASK",
+        environment="python-app-pipeline",
+        memory=2048,
+        cores=1.0,
+        app_port=5000,
+        git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+        git_provider="GitHub",
+        entrypoint_script="flaskapp.py",
+    )
+
+
+def test_app_create_nodejs_rejects_an_entrypoint_command(mock_project):
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "api",
+            "--app-kind",
+            "NODEJS",
+            "--path",
+            "Resources/server.js",
+            "--entrypoint-command",
+            "node server.js",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Node.js apps do not accept --entrypoint-command" in result.output
+    mock_project.get_app_api.return_value.create_app.assert_not_called()
+
+
 def test_app_create_streamlit_git_forwards_args(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.create_app.return_value = _fake_app(name="dash")

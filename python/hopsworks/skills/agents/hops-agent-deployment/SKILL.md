@@ -85,6 +85,8 @@ print(deployment.predict(inputs={"prompt": "hello"}))
 # After editing the code: re-create, then deployment.restart()
 ```
 
+An agent scales like a model deployment: pass `scaling_configuration=PredictorScalingConfig(...)` to `deploy_agent` (instances, the metric and its target; `min_instances=0` rests at zero when idle and wakes on the first request, the SDK's default minimum being 1). The choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
+
 ### Git-backed Agents
 
 When the agent source lives in Git, provide the repository fields instead of a HopsFS path. Git-backed agents are cloned again on each start, so a restart or redeploy picks up new commits.
@@ -108,6 +110,7 @@ deployment = ms.deploy_agent(
 
 - Scheduled/batch coding agent instead of a served one: **hops-agent-task**.
 - Model-backed online predictor: **hops-online-inference**.
+- Instances, scale metric, scale to zero when idle: [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
 - Agent serving dependencies: [hops-environments](../../platform/hops-environments/SKILL.md) — clone an agent env and install requirements.
 - Give the agent feature-store access for RAG: **hops-fv** (online feature vectors). Pass entity IDs (e.g. `user_id`) in the query so the agent can look up application state from the feature store.
 - Agent memory or app state in the project database (`MYSQL_*` variables, password secret, privileges, RonDB table rules): **hops-app-db**.

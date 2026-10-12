@@ -1803,7 +1803,9 @@ class TestPredictor:
         # Assert
         assert serialized["requestedTransformerInstances"] == 0
 
-    def test_effective_knative_mode_default_true_for_non_vllm(self, mocker):
+    def test_effective_knative_mode_defaults_to_standard_for_every_model_server(
+        self, mocker
+    ):
         # Arrange: the pre-existing behavior (knative_mode=None, non-vLLM) is preserved.
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
@@ -1819,11 +1821,11 @@ class TestPredictor:
             serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
         )
 
-        # Assert
+        # Assert: at least one instance, the metric left to the backend's Standard-mode default.
         assert p.knative_mode is None
-        assert p.resources.num_instances == 0
-        assert p.scaling_configuration.min_instances == 0
-        assert p.scaling_configuration.scale_metric.name == "CONCURRENCY"
+        assert p.resources.num_instances == 1
+        assert p.scaling_configuration.min_instances == 1
+        assert p.scaling_configuration.scale_metric is None
 
     def test_llm_predictor_does_not_hardcode_knative_mode(self, mocker):
         # Arrange: the LLM predictor subclass must not force a client-side

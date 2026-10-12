@@ -23,6 +23,7 @@ import re
 import tempfile
 import time
 import uuid
+import warnings
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
@@ -73,6 +74,42 @@ def _render_chunk(chunk) -> str:
 
 # RESTCodes.ServingErrorCode.SCHEMA_NOT_FOUND: the id is not a published schema
 _SCHEMA_NOT_FOUND = 240037
+
+
+# The scaling fields a backend older than 5.2 does not know and silently drops (HWORKS-3106, HWORKS-3113).
+_SCALING_FIELDS_5_2 = (
+    "autoscaler",
+    "scale_down_stabilization_window_seconds",
+    "scale_up_stabilization_window_seconds",
+    "additional_scale_metrics",
+    "idle_scale_to_zero",
+    "idle_cooldown_seconds",
+    "cold_start_timeout_seconds",
+)
+
+
+def _scaling_json(component) -> dict | None:
+    """The scaling configuration of a predictor or transformer as sent, or None without one."""
+    if component is None or component.scaling_configuration is None:
+        return None
+    return component.scaling_configuration.to_json()
+
+
+def _dropped_scaling_fields(sent: dict | None, received: dict | None) -> list[str]:
+    """The 5.2 scaling fields present in `sent` and absent from `received`.
+
+    The backend reports every field it stores, so one that was sent and did not come back was dropped.
+    A false `idle_scale_to_zero` is the one value the backend leaves out on purpose.
+    """
+    if not sent or received is None:
+        return []
+    return [
+        field
+        for field in _SCALING_FIELDS_5_2
+        if field in sent
+        and field not in received
+        and not (field == "idle_scale_to_zero" and sent[field] is False)
+    ]
 
 
 class ServingEngine:
@@ -574,7 +611,7 @@ class ServingEngine:
 
     def _create(self, deployment_instance):
         try:
-            self._serving_api._put(deployment_instance)
+            self._put_and_check(deployment_instance)
             print("Deployment created, explore it at " + deployment_instance.get_url())
         except RestAPIError as re:
             raise_err = True
@@ -605,9 +642,36 @@ class ServingEngine:
     def _update(self, deployment_instance, await_update, new_version=False):
         self._apply(
             deployment_instance,
-            lambda: self._serving_api._put(deployment_instance, new_version),
+            lambda: self._put_and_check(deployment_instance, new_version),
             await_update,
         )
+
+    def _put_and_check(self, deployment_instance, new_version=False):
+        """Save the deployment and warn about scaling fields the backend did not keep.
+
+        The backend ignores JSON fields it does not know, so the KEDA and idle fields sent to a release that predates
+        them (5.1) are dropped without a word; the connection layer only warns on a major.minor mismatch.
+        The read-back says what was kept.
+        """
+        sent = {
+            component: _scaling_json(getattr(deployment_instance, component))
+            for component in ("predictor", "transformer")
+        }
+        self._serving_api._put(deployment_instance, new_version)
+        dropped = []
+        for component, before in sent.items():
+            after = _scaling_json(getattr(deployment_instance, component))
+            dropped += [
+                f"{component}.{field}"
+                for field in _dropped_scaling_fields(before, after)
+            ]
+        if dropped:
+            warnings.warn(
+                "The backend did not keep the scaling fields "
+                + ", ".join(dropped)
+                + "; they need Hopsworks 5.2 or later. The deployment was saved without them.",
+                stacklevel=3,
+            )
 
     def _rollback(self, deployment_instance, version, await_update):
         # Also refuses an unsaved deployment and a backend without versions.

@@ -16,9 +16,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import re
+import shutil
 import uuid
 import warnings
 from datetime import date, datetime, timezone
@@ -26,6 +28,8 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import great_expectations
     from hsfs.constructor import hudi_feature_group_alias
     from hsfs.constructor.filter import Filter, Logic
@@ -1703,6 +1707,51 @@ class Engine:
             )
         # Remove the 'file://' prefix for local file paths
         return file[7:]
+
+    def _add_file_as_url(self, file: str) -> str:
+        """Distribute `file` and return a `file:` URL that opens it on the driver and on every executor.
+
+        `SparkFiles.get` is the driver's own copy, an absolute path executors do not have, while executors keep added files in their working directory.
+        So the file is added under a content-derived name and copied into the driver JVM's working directory, where the same relative URL finds it.
+        """
+        shared = "APP_FILES" in os.environ and file in os.environ["APP_FILES"]
+        if self._is_connect and not shared:
+            raise FeatureStoreException(
+                f"Spark Connect cannot distribute '{file}' to the remote Spark driver and executors; "
+                "attach it to the job instead, or read without it."
+            )
+        local = self._add_file(file, distribute=False)
+        if shared:
+            return "file://" + local
+        with open(local, "rb") as f:
+            digest = hashlib.sha256(f.read()).hexdigest()[:16]
+        name = f".hopsworks-{digest}-{os.path.basename(local)}"
+        jvm_cwd = self._spark_context._jvm.java.lang.System.getProperty("user.dir")
+        target = os.path.join(jvm_cwd, name)
+        try:
+            if not os.path.exists(target):
+                shutil.copyfile(local, target)
+        except OSError as e:
+            raise FeatureStoreException(
+                f"Could not copy '{file}' into the Spark driver's working directory {jvm_cwd}, "
+                f"from where executors and the driver both read it: {e}"
+            ) from e
+        self._spark_context.addFile(target)
+        return "file:" + name
+
+    def _run_where_spark_runs(self, func: Callable[[], Any], return_type: str) -> Any:
+        """Return `func()`, called in a Spark task under Spark Connect, where this process may not reach what Spark reaches.
+
+        `func` must be self-contained, since Spark Connect pickles it by value; `return_type` is the Spark DDL type of its result.
+        """
+        if not self._is_connect:
+            return func()
+        from pyspark.sql import functions as F
+
+        task = F.udf(lambda _: func(), return_type)
+        return (
+            self._spark_session.range(1).select(task("id").alias("result")).first()[0]
+        )
 
     def _profile(
         self,

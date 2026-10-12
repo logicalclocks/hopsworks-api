@@ -220,6 +220,21 @@ class TestArrowFlightClient:
         # Assert
         assert supported
 
+    def test_supports_elasticsearch(self):
+        # Arrange
+        connector = storage_connector.ElasticsearchConnector(
+            0, "ElasticsearchConnector", 99
+        )
+        external_feature_group = feature_group.ExternalFeatureGroup(
+            primary_key=[""], data_source=ds.DataSource(storage_connector=connector)
+        )
+
+        # Act
+        supported = arrow_flight_client._supports([external_feature_group])
+
+        # Assert
+        assert supported
+
     def test_supports_s3(self):
         # Arrange
         connector = storage_connector.S3Connector(0, "S3Connector", 99)
