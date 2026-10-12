@@ -189,6 +189,117 @@ class TestAppApiCreate:
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
         assert body["dbAccess"] is False
 
+    def test_create_app_leaves_idle_scale_to_zero_to_the_cluster_default(
+        self, mock_client, api
+    ):
+        api.create_app("dash", app_path="Resources/dash.py")
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert "idleScaleToZero" not in body
+        assert "idleCooldownSeconds" not in body
+        assert "coldStartTimeoutSeconds" not in body
+
+    def test_create_app_with_idle_scale_to_zero_off_sends_it_off(
+        self, mock_client, api
+    ):
+        api.create_app("dash", app_path="Resources/dash.py", idle_scale_to_zero=False)
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["idleScaleToZero"] is False
+        assert "idleCooldownSeconds" not in body
+
+    def test_create_app_idle_timeouts_alone_turn_the_option_on(self, mock_client, api):
+        api.create_app("dash", app_path="Resources/dash.py", idle_cooldown_seconds=120)
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["idleScaleToZero"] is True
+        assert body["idleCooldownSeconds"] == 120
+
+    def test_create_app_with_idle_scale_to_zero_sends_the_timeouts(
+        self, mock_client, api
+    ):
+        api.create_app(
+            "dash",
+            app_path="Resources/dash.py",
+            idle_scale_to_zero=True,
+            idle_cooldown_seconds=120,
+            cold_start_timeout_seconds=45,
+        )
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["idleScaleToZero"] is True
+        assert body["idleCooldownSeconds"] == 120
+        assert body["coldStartTimeoutSeconds"] == 45
+
+    def test_create_app_with_idle_scale_to_zero_leaves_the_defaults_to_the_backend(
+        self, mock_client, api
+    ):
+        api.create_app("dash", app_path="Resources/dash.py", idle_scale_to_zero=True)
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["idleScaleToZero"] is True
+        assert "idleCooldownSeconds" not in body
+        assert "coldStartTimeoutSeconds" not in body
+
+    def test_create_app_rejects_idle_timeouts_with_the_option_off(
+        self, mock_client, api
+    ):
+        with pytest.raises(ValueError, match="idle_scale_to_zero"):
+            api.create_app(
+                "dash",
+                app_path="Resources/dash.py",
+                idle_scale_to_zero=False,
+                idle_cooldown_seconds=120,
+            )
+
+    def test_app_reads_idle_fields_from_the_response(self):
+        a = App.from_response_json(
+            {
+                "name": "dash",
+                "state": "IDLE",
+                "idleScaleToZero": True,
+                "idleCooldownSeconds": 120,
+                "coldStartTimeoutSeconds": 45,
+            }
+        )
+        assert a.state == "IDLE"
+        assert a.idle_scale_to_zero is True
+        assert a.idle_cooldown_seconds == 120
+        assert a.cold_start_timeout_seconds == 45
+
+    def test_idle_app_keeps_its_url(self, mock_client):
+        mock_client._base_url = "https://hopsworks.example.com"
+        a = App.from_response_json(
+            {
+                "name": "dash",
+                "state": "IDLE",
+                "serving": False,
+                "appUrl": "pythonapp/demo/dash/",
+                "idleScaleToZero": True,
+            }
+        )
+        assert (
+            a.app_url
+            == "https://hopsworks.example.com/hopsworks-api/pythonapp/demo/dash/"
+        )
+
+    def test_running_but_not_serving_app_has_no_url(self, mock_client):
+        mock_client._base_url = "https://hopsworks.example.com"
+        a = App.from_response_json(
+            {
+                "name": "dash",
+                "state": "RUNNING",
+                "serving": False,
+                "appUrl": "pythonapp/demo/dash/",
+            }
+        )
+        assert a.app_url is None
+
+    def test_app_from_an_older_server_does_not_scale_to_zero(self):
+        a = App.from_response_json({"name": "dash", "state": "RUNNING"})
+        assert a.idle_scale_to_zero is False
+        assert a.idle_cooldown_seconds is None
+
     def test_create_custom_app_without_path_omits_app_path(self, mock_client, api):
         api.create_app(
             "flask_app",

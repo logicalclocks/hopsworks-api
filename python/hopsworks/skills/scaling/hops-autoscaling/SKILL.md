@@ -7,6 +7,9 @@ description: Use when configuring or debugging how a Hopsworks deployment scales
 
 Every KServe deployment on Hopsworks, whether it serves a model (**hops-online-inference**) or an agent (**hops-agent-deployment**), carries a scaling configuration per component: the predictor, and the transformer when there is one. The configuration says how many instances run (`min_instances` to `max_instances`), which metric moves the count and what target it chases, and, in Standard mode, which autoscaler does the work. The same `PredictorScalingConfig` object goes into `model.deploy(...)`, `ms.create_predictor(...)`, `ms.create_endpoint(...)` and `ms.deploy_agent(...)`.
 
+## Apps are different
+A Hopsworks **app** (Streamlit, Flask, Gradio, Node.js, custom; **hops-app** territory) never scales out: it runs at most one replica. Its one option is **scale to zero when idle**, on by default wherever the cluster has KEDA: `apps.create_app(..., idle_cooldown_seconds=600, cold_start_timeout_seconds=120)` tunes it, `idle_scale_to_zero=False` or `hops app create ... --no-idle-scale-to-zero` keeps the app always on. The pod goes once no request has been in flight for the cooldown (an open Streamlit tab is a request in flight), the app reports the `IDLE` state with its URL still set, and the next request wakes it, held for up to the cold-start timeout, which the cluster caps at `pythonapp_cold_start_timeout_max_seconds` (300; the ingress read timeout, 60 unless raised, may fail the waking request earlier, and a refresh finds the app ready). The cooldown default is `pythonapp_idle_cooldown_seconds` (21600, six hours). Everything below is about deployments.
+
 ## Contract
 - **Input:** a deployment, existing or about to be created, and what its traffic looks like (steady, bursty, idle most of the day, GPU-bound LLM).
 - **Output:** a scaling configuration the backend accepts and that the deployment follows under load, with the instance count observed.
