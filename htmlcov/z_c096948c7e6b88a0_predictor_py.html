@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_c096948c7e6b88a0_predictor_state_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-12 11:35 +0000
+            created at 2026-10-12 12:57 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -370,12 +370,12 @@
     <p class="run"><span class="n"><a id="t288" href="#t288">288</a></span><span class="t">    <span class="key">def</span> <span class="nam">_get_effective_knative_mode</span><span class="op">(</span><span class="nam">cls</span><span class="op">,</span> <span class="nam">knative_mode</span><span class="op">,</span> <span class="nam">model_server</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t289" href="#t289">289</a></span><span class="t">        <span class="str">&quot;&quot;&quot;Resolve the effective Knative mode used for client-side scaling defaults.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t290" href="#t290">290</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t291" href="#t291">291</a></span><span class="t"><span class="str">        An explicit `knative_mode` value always wins.</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t292" href="#t292">292</a></span><span class="t"><span class="str">        Otherwise, every model server defaults to Knative mode except vLLM, which defaults to Standard.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t291" href="#t291">291</a></span><span class="t"><span class="str">        An explicit `knative_mode` value always wins. Otherwise every model server defaults to Standard mode,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t292" href="#t292">292</a></span><span class="t"><span class="str">        which KEDA scales (with scale-to-zero when idle) wherever KEDA is installed; Knative is the opt-in.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t293" href="#t293">293</a></span><span class="t"><span class="str">        &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t294" href="#t294">294</a></span><span class="t">        <span class="key">if</span> <span class="nam">knative_mode</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t295" href="#t295">295</a></span><span class="t">            <span class="key">return</span> <span class="nam">knative_mode</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t296" href="#t296">296</a></span><span class="t">        <span class="key">return</span> <span class="nam">model_server</span> <span class="op">!=</span> <span class="nam">PREDICTOR</span><span class="op">.</span><span class="nam">MODEL_SERVER_VLLM</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t296" href="#t296">296</a></span><span class="t">        <span class="key">return</span> <span class="key">False</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t297" href="#t297">297</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t298" href="#t298">298</a></span><span class="t">    <span class="op">@</span><span class="nam">classmethod</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t299" href="#t299">299</a></span><span class="t">    <span class="key">def</span> <span class="nam">_validate_resources</span><span class="op">(</span><span class="nam">cls</span><span class="op">,</span> <span class="nam">resources</span><span class="op">,</span> <span class="nam">serving_tool</span><span class="op">,</span> <span class="nam">effective_knative_mode</span><span class="op">=</span><span class="key">True</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -1615,7 +1615,7 @@
             <a class="nav" href="z_c096948c7e6b88a0_predictor_state_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-12 11:35 +0000
+            created at 2026-10-12 12:57 +0000
         </p>
     </div>
 </footer>
