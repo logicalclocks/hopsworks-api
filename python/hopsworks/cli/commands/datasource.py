@@ -135,11 +135,14 @@ def _connector_to_dict(sc: Any) -> dict[str, Any]:
 # Every secret option also reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` from the
 # environment, scoped to the connector type so a variable exported for one
 # connector cannot ride along on another.
-# It also accepts ``-`` to read one line from stdin.
+# It also accepts ``-`` to read one line from stdin, and ``account:NAME`` to
+# read the user's account variable NAME, so a credential saved there (as the
+# Factory's forms do) reaches the data source without passing through a shell.
 # When required and stdin is a terminal, it asks for the value without echo.
 
 _SECRET_ENV_PREFIX = "HOPSWORKS_DS_"
 _STDIN_SECRET_KEY = "hops.datasource.secret_from_stdin"
+_ACCOUNT_SECRET_PREFIX = "account:"
 
 
 def _dest(flag: str) -> str:
@@ -162,6 +165,8 @@ def _read_secret(
     agent gets an error instead of a hang.
     """
     flag = param.opts[0]
+    if value and value.startswith(_ACCOUNT_SECRET_PREFIX):
+        return _account_secret(ctx, param, value[len(_ACCOUNT_SECRET_PREFIX) :])
     if value == "-":
         taken = ctx.meta.get(_STDIN_SECRET_KEY)
         if taken:
@@ -181,6 +186,19 @@ def _read_secret(
     return value
 
 
+def _account_secret(ctx: click.Context, param: click.Parameter, name: str) -> str:
+    """The value of the user's account variable `name`, for a secret option."""
+    from hopsworks_common.core import env_var_api
+
+    session.get_project(ctx)
+    var = env_var_api.EnvVarsApi().get_env_var(name)
+    if var is None or not var.value:
+        raise click.BadParameter(
+            f"your account has no variable {name}", ctx=ctx, param=param
+        )
+    return var.value
+
+
 def _interactive() -> bool:
     return sys.stdin.isatty()
 
@@ -193,7 +211,7 @@ def _secret_option(
     def callback(ctx: click.Context, param: click.Parameter, value: str | None):
         return _read_secret(ctx, param, value, required)
 
-    text = f"{help} Pass - to read it from stdin."
+    text = f"{help} Pass - to read it from stdin, or account:NAME to read your account variable NAME."
     if required:
         # Click cannot flag a callback-enforced secret as required, so say it here.
         text += "  [required]"
@@ -1343,7 +1361,11 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     """Build the ``create <name>`` command for one connector type."""
 
     def run(
-        ctx: click.Context, connector_name: str, description: str, **values: Any
+        ctx: click.Context,
+        connector_name: str,
+        description: str,
+        test: bool,
+        **values: Any,
     ) -> None:
         problem = spec.check(values) if spec.check else None
         if problem:
@@ -1373,7 +1395,10 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
             if opt.kind == "args":
                 value = _parse_arguments(opt.flag, value)
             _set_path(body, opt.json, value)
-        _create_connector(ctx, body)
+        if test:
+            _test_connector(ctx, body)
+        else:
+            _create_connector(ctx, body)
 
     # Click renders a command's docstring as its help, so the docstring is the
     # summary alone; the options carry their own help and the parameters are
@@ -1381,6 +1406,11 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     run.__doc__ = spec.summary
     cmd = click.pass_context(run)
     cmd = click.option("--description", default="", help="Free-form description.")(cmd)
+    cmd = click.option(
+        "--test",
+        is_flag=True,
+        help="Only test the connection; create nothing. Exits 1 when it fails.",
+    )(cmd)
     for opt in reversed(spec.opts):
         cmd = _option(opt, name)(cmd)
     cmd = click.argument("connector_name", metavar="NAME")(cmd)
@@ -1874,6 +1904,33 @@ def connector_infer_metadata(
         click.echo(f"Suggested event time: {inferred.suggested_event_time}")
     if inferred.suggested_description:
         click.echo(f"Suggested description: {inferred.suggested_description}")
+
+
+def _test_connector(ctx: click.Context, body: dict[str, Any]) -> None:
+    fs = session.get_feature_store(ctx)
+    from hopsworks_common.core import rest
+
+    try:
+        result = rest._send_request(
+            "POST",
+            rest._project_path(
+                "featurestores",
+                getattr(fs, "id", None),
+                "storageconnectors",
+                "testConnection",
+            ),
+            json_body=body,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Connection test failed: {exc}") from exc
+    result = result if isinstance(result, dict) else {}
+    message = (result.get("connectionOutput") or "").strip()
+    # The checkers report success as exit code 0, or 200 for HTTP sources.
+    if result.get("statusCode") not in (0, 200):
+        raise click.ClickException(f"Connection test failed: {message or 'no output'}")
+    output.success(
+        "✓ Connection to %s works%s", body["name"], f": {message}" if message else ""
+    )
 
 
 def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
