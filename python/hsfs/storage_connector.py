@@ -3796,7 +3796,7 @@ class SqlConnector(StorageConnector):
         Only a data source with `credentials_mode` `PROVIDED` takes member credentials.
         The backend validates the credentials first and stores nothing when they are rejected.
         On success the password and wallet password become secrets in your account and the username an env var, both private to you, and every external feature group mounted from this data source is re-checked for your access.
-        From then on your reads through this data source use these credentials, starting with this object, which reloads them from the backend before returning.
+        From then on your reads through this data source use these credentials, starting with this object, which reloads them from the backend before returning; if that reload fails, a warning is issued and the credentials stay saved.
         Runtimes you start afterwards receive them as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, next to `HOPS_DS_<NAME>_CONNECTOR_ID`, the id of the data source they belong to.
         A runtime that is already running keeps the values it started with, and the SDK inside it prefers them over the saved ones until it restarts.
         A name given for an entry that already exists in your account updates that entry.
@@ -3857,7 +3857,15 @@ class SqlConnector(StorageConnector):
                 ) from err
             raise
         self._user_credentials = humps.decamelize(binding)
-        self._refresh_credentials()
+        # The credentials are saved by now, so a failed reload must not report the save as failed.
+        try:
+            self._refresh_credentials()
+        except Exception as err:  # noqa: BLE001
+            warnings.warn(
+                f"Saved your credentials for data source '{self._name}', but could not reload them: {err}. "
+                "Fetch the data source again to read with them.",
+                stacklevel=2,
+            )
         return self._user_credentials
 
     def _refresh_credentials(self) -> None:

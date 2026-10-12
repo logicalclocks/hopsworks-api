@@ -2231,6 +2231,21 @@ class TestSqlConnectorProvidedCredentials:
 
         assert "oracle-sales" in str(exc.value)
 
+    def test_a_failed_reload_after_saving_still_returns_the_binding(
+        self, backend_fixtures, mocker
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        mocker.patch.object(sc, "_data_source_credentials_api")
+        sc._data_source_credentials_api._set.return_value = {"status": "VALID"}
+        mocker.patch.object(
+            sc, "_storage_connector_api"
+        )._get.side_effect = RuntimeError("timeout")
+
+        with pytest.warns(UserWarning, match="could not reload"):
+            binding = sc.set_credentials(user="u", password="p")
+
+        assert binding == {"status": "VALID"}
+
     def test_an_incomplete_binding_says_what_is_gone(self, backend_fixtures):
         from hopsworks_common.client.exceptions import FeatureStoreException
 
