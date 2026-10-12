@@ -211,7 +211,7 @@ class AppApi:
             idle_cooldown_seconds: Seconds without a request before the app scales to zero.
                 Turns the option on when given; the default is the cluster's `pythonapp_idle_cooldown_seconds` (21600, six hours).
             cold_start_timeout_seconds: Seconds the first request waits for the app to wake.
-                Turns the option on when given; the default and ceiling is the cluster's `pythonapp_cold_start_timeout_max_seconds` (300, matched by the ingress read timeout the chart sets).
+                Turns the option on when given; the default and ceiling is the cluster's `pythonapp_cold_start_timeout_max_seconds` (300). The ingress read timeout (60 unless raised) may fail the waking request earlier; the pod keeps starting and the next request finds it ready.
 
         Returns:
             The created App object.
