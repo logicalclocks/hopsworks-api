@@ -1,0 +1,4 @@
+# Installed into <slug>-jobs-env, a clone of python-feature-pipeline, for the
+# registration job, which downloads the checkpoint from Hugging Face; nothing is
+# trained or run, so no torch.
+huggingface_hub==2.0.0

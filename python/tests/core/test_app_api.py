@@ -181,6 +181,7 @@ class TestAppApiCreate:
         assert body["description"] == "FastAPI demo"
         assert body["appBasePath"] == "/myapp"
         assert body["readinessProbePath"] == "/health"
+        assert body["proxyPathMode"] == "ROOT"
         assert body["dbAccess"] is True
 
     def test_create_app_without_db_access(self, mock_client, api):

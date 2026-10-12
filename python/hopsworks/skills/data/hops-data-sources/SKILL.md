@@ -5,6 +5,19 @@ description: Mount or ingest a table from a supported datasource. Mount tables f
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
 
+A secret option of `hops datasource create` (`--password`, `--api-key`, ...) takes the value itself, `-` to read it from stdin, or `account:NAME` to read your account variable `NAME`. Use `account:NAME` for a credential the user saved in their account (the Factory's forms do): the value goes to the data source without a shell, a file or a printout, and never through `$(...)` around a command that also prints, such as `hopsworks.login()`.
+
+Never ask the user for a password, token or key in the conversation, in a message or with AskUserQuestion: whatever is typed there reaches the model. In the Factory's chat, end your reply with a `hops-secret` block instead. It is a form: the secret as a hidden field, the plain settings that go with it (`fields`, never a secret) and, for a data source, a `test` command the form's Test button runs:
+
+```hops-secret
+{"name": "CRM_PASSWORD", "label": "CRM password", "description": "Password of the hopsworks_reader user",
+ "fields": [{"name": "host", "label": "Host"}, {"name": "port", "label": "Port", "default": "5432"},
+            {"name": "database", "label": "Database"}, {"name": "user", "label": "User"}],
+ "test": "hops datasource create sql crm --database-type POSTGRESQL --host {{host}} --port {{port}} --database {{database}} --user {{user}} --password account:CRM_PASSWORD --test"}
+```
+
+`name` is in capitals, digits and underscores. `test` is a `hops datasource create ... --test` command, which checks the connection and creates nothing; `{{field}}` stands for a field's value. The chat saves the secret as the user's private account variable `name`, and replies with the settings and the secret's name, never its value. Then create the data source with the same command without `--test`. Outside the chat, ask the user to add the account variable in their account settings and tell you its name.
+
 Mounting and ingesting both build a feature pipeline's input side: an external feature group leaves data in the source (no copy, no copy-time MITs); a DLTHub ingest copies the source into a managed feature group. Mounting is the lower-cost path when the source already holds the data you want, since reuse beats rebuilding a pipeline.
 
 ## Contract
@@ -172,6 +185,15 @@ class MyTransformer(HopsIngestionTransformer):
 ```
 
 `from dlt.destinations...` resolves only in that server environment. Importing it in the interactive venv raises `ModuleNotFoundError`, which is why the transform is referenced by path, never imported into your session.
+
+### Tag the ingested table as bronze
+
+A table ingested raw is a bronze table of an analytics layer; tag it so the Factory offers it as a source for a silver layer (**hops-analytics**).
+The UI's ingestion review has a "Tag as a bronze table" checkbox, off by default; from code, tag each feature group after it is created:
+
+```python
+fg.add_tag("analytics_table", {"layer": "bronze", "lifecycle": "dev"})
+```
 
 ## Ingest many tables with one job
 

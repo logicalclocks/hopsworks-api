@@ -185,7 +185,7 @@ hops deployment delete <name> --yes
 ```bash
 hops job list
 hops job info <name>
-hops job create <name> --type python --app-path Resources/jobs/x.py
+hops job create <name> --type python --app-path Resources/jobs/x.py [--env <environment>]
 hops job run <name> [--wait] [--args "..."]
 hops job stop <name>
 hops job logs <name> [--execution ID]

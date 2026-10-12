@@ -98,6 +98,7 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
         ["App base path", getattr(a, "app_base_path", None) or "-"],
+        ["Routing", _routing_text(a)],
         ["Readiness", getattr(a, "readiness_probe_path", None) or "Default"],
         ["Database access", "Yes" if getattr(a, "db_access", True) else "No"],
         ["Scale to zero when idle", _idle_text(a)],
@@ -755,6 +756,7 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "latest_commit": getattr(a, "latest_commit", None),
         "entrypoint_script": getattr(a, "entrypoint_script", None),
         "app_base_path": getattr(a, "app_base_path", None),
+        "proxy_path_mode": getattr(a, "proxy_path_mode", None),
         "readiness_probe_path": getattr(a, "readiness_probe_path", None),
         "db_access": bool(getattr(a, "db_access", True)),
         "idle_scale_to_zero": bool(getattr(a, "idle_scale_to_zero", False)),
@@ -769,6 +771,15 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }
+
+
+def _routing_text(app: Any) -> str:
+    mode = getattr(app, "proxy_path_mode", None)
+    if mode == "ROOT":
+        return "root (the app serves at its base path)"
+    if mode == "PREFIX":
+        return "compatibility prefix (the app receives /hopsworks-api/pythonapp/...)"
+    return "-"
 
 
 def _idle_text(a: Any) -> str:
