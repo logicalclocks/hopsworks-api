@@ -19,7 +19,7 @@ Already known, no need to look again before the first question:
 
 | First word | Do |
 | --- | --- |
-| the slug of a system above | work on that system only, and dispatch the rest of the arguments by this table (`hops factory run` starts the build this way) |
+| the slug of a system above | work on that system only, and dispatch the rest of the arguments by this table (`hops factory run` starts the build this way); text after the slug that is no phase or command here is the user's instruction for the build, such as the Factory's confirmation that it may create the system's new GitHub repository |
 | none | with a `system.yaml` above: resume it (with several, ask which), starting with `reqs` while `requirements.status` is `pending`; without one: reply that the Factory (describe it, or **From Template > ML System**), `hops factory run ml-batch|ml-realtime|ml-streaming|ml-agent` in a shell, or `/hops-ml` here records one first, and stop |
 | `reqs`, `data`, `features`, `train`, `infer`, `app` (and the old `f`, `t`, `i`) | that phase, then every later phase that is not met (below) |
 | `verify` | `verify`; `verify integration` or `verify benchmark` also runs those |

@@ -430,7 +430,7 @@ def test_delete_reports_what_the_cluster_refuses(monkeypatch, logged_in):
 
     response = mock.Mock(status_code=409, content=b"x")
     response.json.return_value = {
-        "errorCode": 150108,
+        "errorCode": 150109,
         "usrMsg": "Delete these systems first: q3-review",
     }
 
