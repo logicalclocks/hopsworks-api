@@ -383,8 +383,29 @@ def test_app_create_idle_scale_to_zero_forwards_the_timeouts(mock_project):
     assert kwargs["cold_start_timeout_seconds"] == 45
 
 
-def test_app_create_idle_timeouts_need_the_option(mock_project):
+def test_app_create_idle_timeouts_reject_the_option_off(mock_project):
     apps = mock_project.get_app_api.return_value
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--path",
+            "Resources/app.py",
+            "--no-idle-scale-to-zero",
+            "--idle-cooldown-seconds",
+            "120",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "--no-idle-scale-to-zero" in result.output
+    apps.create_app.assert_not_called()
+
+
+def test_app_create_idle_timeouts_alone_are_forwarded(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
     result = CliRunner().invoke(
         cli,
         [
@@ -397,12 +418,13 @@ def test_app_create_idle_timeouts_need_the_option(mock_project):
             "120",
         ],
     )
-    assert result.exit_code != 0
-    assert "--idle-scale-to-zero" in result.output
-    apps.create_app.assert_not_called()
+    assert result.exit_code == 0, result.output
+    kwargs = apps.create_app.call_args.kwargs
+    assert "idle_scale_to_zero" not in kwargs
+    assert kwargs["idle_cooldown_seconds"] == 120
 
 
-def test_app_create_defaults_to_no_idle_scale_to_zero(mock_project):
+def test_app_create_leaves_idle_scale_to_zero_to_the_cluster_default(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.create_app.return_value = _fake_app(name="dash")
     result = CliRunner().invoke(
@@ -412,10 +434,31 @@ def test_app_create_defaults_to_no_idle_scale_to_zero(mock_project):
     assert "idle_scale_to_zero" not in apps.create_app.call_args.kwargs
 
 
+def test_app_create_no_idle_scale_to_zero_opts_out(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--path",
+            "Resources/app.py",
+            "--no-idle-scale-to-zero",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert apps.create_app.call_args.kwargs["idle_scale_to_zero"] is False
+
+
 def test_app_info_shows_idle_scale_to_zero(mock_project):
     apps = mock_project.get_app_api.return_value
     apps.get_app.return_value = _fake_app(
-        name="dash", idle_scale_to_zero=True, idle_cooldown_seconds=120, cold_start_timeout_seconds=45
+        name="dash",
+        idle_scale_to_zero=True,
+        idle_cooldown_seconds=120,
+        cold_start_timeout_seconds=45,
     )
     result = CliRunner().invoke(cli, ["app", "info", "dash"])
     assert result.exit_code == 0, result.output

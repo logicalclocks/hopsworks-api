@@ -314,24 +314,25 @@ def _report_running(name: str, a: Any) -> None:
     ),
 )
 @click.option(
-    "--idle-scale-to-zero",
-    is_flag=True,
+    "--idle-scale-to-zero/--no-idle-scale-to-zero",
+    default=None,
     help=(
         "Scale the app to zero when idle: the pod goes away after a quiet period and "
-        "comes back on the next request. Needs KEDA on the cluster."
+        "comes back on the next request. On by default wherever the cluster has KEDA; "
+        "--no-idle-scale-to-zero keeps the app always on."
     ),
 )
 @click.option(
     "--idle-cooldown-seconds",
     type=int,
     default=None,
-    help="Seconds without a request before an idle app scales to zero (backend default: 300).",
+    help="Seconds without a request before an idle app scales to zero (backend default: 300). Turns the option on.",
 )
 @click.option(
     "--cold-start-timeout-seconds",
     type=int,
     default=None,
-    help="Seconds the first request waits for an idle app to wake (backend default and ceiling: the cluster's).",
+    help="Seconds the first request waits for an idle app to wake (backend default and ceiling: the cluster's). Turns the option on.",
 )
 @click.option(
     "--description",
@@ -369,7 +370,7 @@ def app_create(
     app_base_path: str | None,
     readiness_probe_path: str | None,
     db_access: bool,
-    idle_scale_to_zero: bool,
+    idle_scale_to_zero: bool | None,
     idle_cooldown_seconds: int | None,
     cold_start_timeout_seconds: int | None,
     description: str | None,
@@ -399,7 +400,8 @@ def app_create(
         readiness_probe_path: Optional readiness probe path override.
         db_access: Whether the app gets the project's online feature store
             database (MYSQL_*). Trino access (TRINO_*) does not depend on it.
-        idle_scale_to_zero: Scale the app to zero when idle and wake it on the next request.
+        idle_scale_to_zero: Scale the app to zero when idle and wake it on the next request;
+            None leaves the choice to the cluster (on wherever it has KEDA).
         idle_cooldown_seconds: Quiet seconds before an idle app scales to zero.
         cold_start_timeout_seconds: Seconds the first request waits for the app to wake.
         description: Optional app description.
@@ -474,16 +476,19 @@ def app_create(
         create_kwargs["readiness_probe_path"] = readiness_probe_path
     if not db_access:
         create_kwargs["db_access"] = False
-    if idle_scale_to_zero:
-        create_kwargs["idle_scale_to_zero"] = True
-        if idle_cooldown_seconds is not None:
-            create_kwargs["idle_cooldown_seconds"] = idle_cooldown_seconds
-        if cold_start_timeout_seconds is not None:
-            create_kwargs["cold_start_timeout_seconds"] = cold_start_timeout_seconds
-    elif idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None:
+    has_idle_timeouts = (
+        idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None
+    )
+    if idle_scale_to_zero is False and has_idle_timeouts:
         raise click.ClickException(
-            "--idle-cooldown-seconds and --cold-start-timeout-seconds need --idle-scale-to-zero."
+            "--idle-cooldown-seconds and --cold-start-timeout-seconds cannot go with --no-idle-scale-to-zero."
         )
+    if idle_scale_to_zero is not None:
+        create_kwargs["idle_scale_to_zero"] = idle_scale_to_zero
+    if idle_cooldown_seconds is not None:
+        create_kwargs["idle_cooldown_seconds"] = idle_cooldown_seconds
+    if cold_start_timeout_seconds is not None:
+        create_kwargs["cold_start_timeout_seconds"] = cold_start_timeout_seconds
     create_kwargs = _accepted_kwargs(apps.create_app, create_kwargs)
     try:
         a = apps.create_app(**create_kwargs)
@@ -766,7 +771,6 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
     }
 
 
-
 def _idle_text(a: Any) -> str:
     if not getattr(a, "idle_scale_to_zero", False):
         return "No"
@@ -776,6 +780,7 @@ def _idle_text(a: Any) -> str:
         f"Yes (after {cooldown if cooldown is not None else 'default'} s idle, "
         f"wakes within {cold_start if cold_start is not None else 'default'} s)"
     )
+
 
 def _auto_redeploy_text(a: Any) -> str:
     """Auto-redeploy state, or "-" for an app that is not git-backed.

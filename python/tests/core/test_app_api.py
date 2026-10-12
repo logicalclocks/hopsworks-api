@@ -189,15 +189,35 @@ class TestAppApiCreate:
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
         assert body["dbAccess"] is False
 
-    def test_create_app_without_idle_scale_to_zero_sends_it_off(self, mock_client, api):
+    def test_create_app_leaves_idle_scale_to_zero_to_the_cluster_default(
+        self, mock_client, api
+    ):
         api.create_app("dash", app_path="Resources/dash.py")
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert "idleScaleToZero" not in body
+        assert "idleCooldownSeconds" not in body
+        assert "coldStartTimeoutSeconds" not in body
+
+    def test_create_app_with_idle_scale_to_zero_off_sends_it_off(
+        self, mock_client, api
+    ):
+        api.create_app("dash", app_path="Resources/dash.py", idle_scale_to_zero=False)
 
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
         assert body["idleScaleToZero"] is False
         assert "idleCooldownSeconds" not in body
-        assert "coldStartTimeoutSeconds" not in body
 
-    def test_create_app_with_idle_scale_to_zero_sends_the_timeouts(self, mock_client, api):
+    def test_create_app_idle_timeouts_alone_turn_the_option_on(self, mock_client, api):
+        api.create_app("dash", app_path="Resources/dash.py", idle_cooldown_seconds=120)
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["idleScaleToZero"] is True
+        assert body["idleCooldownSeconds"] == 120
+
+    def test_create_app_with_idle_scale_to_zero_sends_the_timeouts(
+        self, mock_client, api
+    ):
         api.create_app(
             "dash",
             app_path="Resources/dash.py",
@@ -221,10 +241,15 @@ class TestAppApiCreate:
         assert "idleCooldownSeconds" not in body
         assert "coldStartTimeoutSeconds" not in body
 
-    def test_create_app_rejects_idle_timeouts_without_the_option(self, mock_client, api):
-        with pytest.raises(ValueError, match="idle_scale_to_zero=True"):
+    def test_create_app_rejects_idle_timeouts_with_the_option_off(
+        self, mock_client, api
+    ):
+        with pytest.raises(ValueError, match="idle_scale_to_zero"):
             api.create_app(
-                "dash", app_path="Resources/dash.py", idle_cooldown_seconds=120
+                "dash",
+                app_path="Resources/dash.py",
+                idle_scale_to_zero=False,
+                idle_cooldown_seconds=120,
             )
 
     def test_app_reads_idle_fields_from_the_response(self):
