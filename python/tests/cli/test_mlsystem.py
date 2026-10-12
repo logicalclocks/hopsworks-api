@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import click
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli import session
@@ -39,7 +40,10 @@ SYSTEMS = [
 
 @pytest.fixture
 def logged_in(monkeypatch):
+    from hopsworks.cli import teardown
+
     monkeypatch.setattr(session, "get_project", lambda ctx: mock.Mock(name="churndemo"))
+    monkeypatch.setattr(teardown, "require_data_owner", lambda project: None)
 
 
 def test_list_shows_each_system_with_its_code_access(monkeypatch, logged_in):
@@ -474,3 +478,67 @@ def test_register_keeps_the_recorded_factory_unless_another_is_named(
     mlsystem.register(mock.Mock(), tmp_path, "Telco", given)
     args, kwargs = sent.call_args
     assert (args[2], kwargs["factory_version"], kwargs["factory_digest"]) == expected
+
+
+@pytest.mark.parametrize(
+    ("role", "allowed"), [("Data owner", True), ("Data scientist", False)]
+)
+def test_only_a_data_owner_may_delete_a_systems_assets(monkeypatch, role, allowed):
+    from hopsworks.cli import teardown
+    from hopsworks_common.core import project_api
+
+    monkeypatch.setattr(
+        project_api.ProjectApi,
+        "_get_project_teams",
+        lambda self: [
+            {"project": {"id": 3, "name": "other"}, "teamRole": "Data owner"},
+            {"project": {"id": 5, "name": "churndemo"}, "teamRole": role},
+        ],
+    )
+    project = mock.Mock(id=5)
+    project.name = "churndemo"
+    if allowed:
+        teardown.require_data_owner(project)
+    else:
+        with pytest.raises(click.ClickException, match="ask a data owner"):
+            teardown.require_data_owner(project)
+
+
+def test_a_data_scientist_is_refused_before_anything_is_deleted(
+    monkeypatch, system_dir
+):
+    from hopsworks.cli import teardown
+
+    monkeypatch.setattr(session, "get_project", lambda ctx: mock.Mock(name="churndemo"))
+
+    def refuse(project):
+        raise click.ClickException("only a Data owner can delete")
+
+    monkeypatch.setattr(teardown, "require_data_owner", refuse)
+    deleted = []
+    monkeypatch.setattr(teardown.Deleter, "delete", lambda self, a: deleted.append(a))
+    monkeypatch.setattr(ml_system_api, "_remove", deleted.append)
+    done = CliRunner().invoke(
+        cli, ["factory", "system", "delete", "7", "--assets", "--yes"]
+    )
+    assert done.exit_code != 0 and "Data owner" in done.output
+    assert deleted == [] and system_dir.exists()
+
+
+@pytest.mark.parametrize("command", ["delete", "delete-assets"])
+def test_a_path_that_is_not_the_systems_directory_is_refused(
+    monkeypatch, logged_in, system_dir, command
+):
+    other = system_dir.parent / "recs-example"
+    other.mkdir()
+    (other / "system.yaml").write_text("system: {name: Recs}\n")
+    removed = []
+    monkeypatch.setattr(ml_system_api, "_remove", removed.append)
+    done = CliRunner().invoke(
+        cli,
+        ["factory", "system", command, "7", "--path", str(other), "--yes"]
+        if command == "delete"
+        else ["factory", "system", command, "7", "--path", str(other)],
+    )
+    assert done.exit_code != 0 and "not the directory of" in done.output
+    assert removed == [] and other.exists()

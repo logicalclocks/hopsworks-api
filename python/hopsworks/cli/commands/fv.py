@@ -49,11 +49,15 @@ def fv_list(ctx: click.Context) -> None:
     output.print_table(["ID", "NAME", "VERSION", "LABELS", "DESCRIPTION"], rows)
 
 
-def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
+def _get_fv(
+    ctx: click.Context, name: str, version: int | None, exact: bool = False
+) -> Any:
     """Resolve a feature view or fail with a clean CLI error."""
     fs = session.get_feature_store(ctx)
     try:
-        fv = versions.feature_view(fs, name, version)
+        fv = versions.feature_view(fs, name, version, exact=exact)
+    except versions.AmbiguousVersionError:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
     if fv is None:
@@ -517,7 +521,9 @@ def fv_read(
 
 @fv_group.command("delete")
 @click.argument("name")
-@click.option("--version", type=int, help="Feature view version.")
+@click.option(
+    "--version", type=int, help="Feature view version; required when multiple exist."
+)
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
 @click.option("--force", is_flag=True, help="Delete even when training data exists.")
 @click.pass_context
@@ -537,7 +543,7 @@ def fv_delete(
         yes: Skip confirmation when True.
         force: Pass ``force=True`` to the SDK.
     """
-    fv = _get_fv(ctx, name, version)
+    fv = _get_fv(ctx, name, version, exact=True)
 
     if not yes and not output.JSON_MODE:
         click.confirm(
@@ -600,7 +606,9 @@ def fv_add_tag(
 @fv_group.command("remove-tag")
 @click.argument("name")
 @click.argument("tag")
-@click.option("--version", type=int, help="Feature view version.")
+@click.option(
+    "--version", type=int, help="Feature view version; required when multiple exist."
+)
 @click.pass_context
 def fv_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
     """Remove a tag from a feature view.
@@ -611,7 +619,7 @@ def fv_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) 
         tag: Tag name.
         version: Feature view version.
     """
-    fv = _get_fv(ctx, name, version)
+    fv = _get_fv(ctx, name, version, exact=True)
     try:
         fv.delete_tag(tag)
     except Exception as exc:  # noqa: BLE001
@@ -673,7 +681,9 @@ def fv_add_keyword(
 @fv_group.command("remove-keyword")
 @click.argument("name")
 @click.argument("keyword")
-@click.option("--version", type=int, help="Feature view version.")
+@click.option(
+    "--version", type=int, help="Feature view version; required when multiple exist."
+)
 @click.pass_context
 def fv_remove_keyword(
     ctx: click.Context, name: str, keyword: str, version: int | None
@@ -686,7 +696,7 @@ def fv_remove_keyword(
         keyword: The keyword.
         version: Feature view version.
     """
-    fv = _get_fv(ctx, name, version)
+    fv = _get_fv(ctx, name, version, exact=True)
     try:
         fv.delete_keyword(keyword)
     except Exception as exc:  # noqa: BLE001

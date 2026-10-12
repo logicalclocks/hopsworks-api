@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 from click.testing import CliRunner
-from hopsworks.cli import session
+from hopsworks.cli import session, teardown
 from hopsworks.cli.commands import analytics, mlsystem
 from hopsworks.cli.main import cli
 from hopsworks_common.core import factory_api
@@ -187,6 +187,7 @@ def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
     monkeypatch.setattr(ml_system_api, "_list", lambda: [entry])
     monkeypatch.setattr(ml_system_api, "_remove", lambda i: events.append(f"entry {i}"))
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
+    monkeypatch.setattr(teardown, "require_data_owner", lambda project: None)
 
     done = CliRunner().invoke(
         cli, ["factory", "system", "delete", "Customers silver", "--assets", "--yes"]
@@ -428,7 +429,7 @@ def _layer_dir(tmp_path, doc):
     return target
 
 
-def _run(monkeypatch, target, tags, argv):
+def _run(monkeypatch, target, tags, argv, versions=(1,)):
     """Run `hops factory system <argv>` on the layer at `target`, recording what is deleted."""
     from hopsworks_common.core import ml_system_api
 
@@ -439,7 +440,10 @@ def _run(monkeypatch, target, tags, argv):
             version=version,
             get_tags=lambda: tags.get(name, {}),
             delete=lambda: events.append(f"fg {name}"),
-        )
+        ),
+        get_feature_groups=lambda name: [
+            SimpleNamespace(name=name, version=v) for v in versions
+        ],
     )
     monkeypatch.setattr(
         session,
@@ -458,6 +462,7 @@ def _run(monkeypatch, target, tags, argv):
     )
     monkeypatch.setattr(ml_system_api, "_remove", lambda i: events.append("entry"))
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
+    monkeypatch.setattr(teardown, "require_data_owner", lambda project: None)
     done = CliRunner().invoke(cli, ["factory", "system", *argv])
     return done, events
 
@@ -1001,3 +1006,51 @@ def test_gold_names_its_first_mart_after_the_layer_when_the_form_does_not(
     assert mart["cadence"] == "hourly"
     # Requirements left blank are drafted by the build, not refused here.
     assert "example_queries" not in mart["requirements"]
+
+
+def test_delete_assets_refuses_a_job_that_is_not_this_systems(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _run(
+        monkeypatch, target, {}, ["delete-assets", "L", "--job", "nightly-export"]
+    )
+    assert (
+        done.exit_code != 0 and "not in customers-silver's system.yaml" in done.output
+    )
+    assert events == []
+
+
+def test_delete_assets_refuses_what_another_system_names(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    monkeypatch.setattr(
+        mlsystem,
+        "_other_docs",
+        lambda entry: {"fraud": {"features": {"job": "g-churn-weekly"}}},
+    )
+    done, events = _run(
+        monkeypatch, target, {}, ["delete-assets", "L", "--job", "g-churn-weekly"]
+    )
+    assert done.exit_code != 0 and "named by the system fraud" in done.output
+    assert events == []
+
+
+def test_delete_assets_takes_a_job_carrying_the_slug(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _run(
+        monkeypatch,
+        target,
+        {},
+        ["delete-assets", "L", "--job", "customers-silver-backfill"],
+    )
+    assert done.exit_code == 0, done.output
+    assert events == ["job customers-silver-backfill"]
+
+
+def test_delete_assets_needs_a_table_version_when_several_exist(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    argv = ["delete-assets", "L", "--table", "fct_churn"]
+    one, events = _run(monkeypatch, target, {}, argv)
+    assert one.exit_code == 0, one.output
+    assert events == ["fg fct_churn"]
+    two, events = _run(monkeypatch, target, {}, argv, versions=(1, 2))
+    assert two.exit_code != 0 and "has versions 1, 2" in two.output
+    assert events == []

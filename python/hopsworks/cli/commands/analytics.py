@@ -20,11 +20,15 @@ import shlex
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import output, session
 from hopsworks.cli.factory_spec import repo_record, repository_problems
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 REFERENCES = (
@@ -259,6 +263,15 @@ def _repo_dir(cwd: Path, answers: dict, kind: str) -> Path:
     return cwd / f"hops-{_repo_prefix(answers['slug'])}"
 
 
+def _trust_new(repo: Path, answers: dict, fresh: bool) -> None:
+    """Trust a work tree this layer created, never one the user named or an existing repository."""
+    from hopsworks.cli import factory_spec
+
+    value = answers.get("repo")
+    if fresh and not isinstance(value, str) and factory_spec.creates_repo(value):
+        factory_spec.trust(repo)
+
+
 def _layer_repo(repo: Path, answers: dict) -> dict:
     """What a layer's system.yaml records of its repository: the work tree's name, and the URL and provider of an existing one."""
     record = {"name": repo.name}
@@ -328,8 +341,10 @@ def _sync_cadences(doc: dict, hours: Any = None) -> None:
 def _create(cwd: Path, answers: dict) -> Path:
     """Copy the silver template into ``cwd/<slug>`` and write the answers into its system.yaml."""
     repo = _repo_dir(cwd, answers, "silver")
+    fresh = not repo.exists()
     target, doc = _copy_template(repo, answers["slug"], TEMPLATE)
     doc["layer"]["repo"] = _layer_repo(repo, answers)
+    _trust_new(repo, answers, fresh)
     cadence = answers.get("cadence", "daily")
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
@@ -437,8 +452,10 @@ def _mart(answers: dict) -> dict:
 def _create_gold(cwd: Path, answers: dict) -> Path:
     """Copy the gold template into ``cwd/<slug>`` and write the answers, with the first data mart, into its system.yaml."""
     repo = _repo_dir(cwd, answers, "gold")
+    fresh = not repo.exists()
     target, doc = _copy_template(repo, answers["slug"], GOLD_TEMPLATE)
     doc["layer"]["repo"] = _layer_repo(repo, answers)
+    _trust_new(repo, answers, fresh)
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
         slug=answers["slug"],
@@ -485,6 +502,7 @@ def _create_bronze(cwd: Path, answers: dict) -> Path:
     import yaml
 
     repo = _repo_dir(cwd, answers, "bronze")
+    fresh = not repo.exists()
     target, doc = _copy_template(repo, answers["slug"], BRONZE_TEMPLATE)
     source = REFERENCES / answers["reference_code"]
     generator = yaml.safe_load((source / "bronze.yaml").read_text(encoding="utf-8"))
@@ -495,6 +513,7 @@ def _create_bronze(cwd: Path, answers: dict) -> Path:
         ignore=shutil.ignore_patterns("bronze.yaml", "__pycache__", ".pytest_cache"),
     )
     doc["layer"]["repo"] = _layer_repo(repo, answers)
+    _trust_new(repo, answers, fresh)
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
         slug=answers["slug"],
@@ -553,7 +572,10 @@ def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
     try:
         factory_spec.record_factory(ctx.meta.get(factory_spec.META), target)
         mlsystem.register(
-            ctx, target, name, factory_spec.factory_name(ctx, f"analytics-{layer}")
+            ctx,
+            target,
+            name,
+            factory_spec.factory_name(ctx, f"analytics-{layer}", target),
         )
     except Exception as exc:  # noqa: BLE001 - the layer is recorded either way
         output.warn(
@@ -776,7 +798,11 @@ def _ingested(doc: dict) -> set[tuple[str, int]]:
 
 
 def delete_assets(
-    ctx: click.Context, doc: dict, job_names: list[str], tables: list[dict]
+    ctx: click.Context,
+    doc: dict,
+    job_names: list[str],
+    tables: list[dict],
+    check: Callable[[str, str], None] | None = None,
 ) -> None:
     """Delete some of what a system built: jobs, then feature groups; what is gone is skipped.
 
@@ -790,6 +816,8 @@ def delete_assets(
         doc: The system's system.yaml.
         job_names: The jobs to delete.
         tables: The feature groups to delete, each `{name, version}`.
+        check: Called with each job's and feature group's kind and name before anything
+            is deleted; raises to refuse one.
     """
     project = session.get_project(ctx)
     kind = (doc.get("layer") or {}).get("kind")
@@ -825,6 +853,11 @@ def delete_assets(
                 f"{name} v{version} is {why}; a system never deletes it"
             )
         found.append(fg)
+    if check is not None:
+        for job_name in job_names:
+            check("job", job_name)
+        for fg in found:
+            check("feature group", fg.name)
     for job_name in job_names:
         job = project.get_job_api().get_job(job_name)
         if job is None:

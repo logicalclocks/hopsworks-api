@@ -815,18 +815,74 @@ def record_factory(meta: dict | None, target: Path) -> None:
     system_doc.update(target, change)
 
 
-def factory_name(ctx: Any, default: str) -> str:
-    """The factory a built-in's create registers with: the project factory delegating to it, else the built-in.
+TRUSTED_DIRS = ".hops/claude-trusted-dirs"
+
+
+def trust(directory: Path) -> None:
+    """Record `directory` as one the platform created, so the terminal's Claude Code trusts it.
+
+    The Claude wrapper trusts only the home, `factory-drafts/*` and the directories
+    listed in `${HOPSFS_USER_HOME_DIR:-$HOME}/.hops/claude-trusted-dirs`, one per line, so a
+    repository the user cloned keeps the trust check on its `.claude/settings.json`.
+    Never call it for an existing repository the user named.
+
+    Args:
+        directory: The system's directory or work tree.
+    """
+    import os
+    from pathlib import Path
+
+    home = os.environ.get("HOPSFS_USER_HOME_DIR") or os.path.expanduser("~")
+    listing = Path(home) / TRUSTED_DIRS
+    resolved = str(directory.resolve())
+    try:
+        known = listing.read_text("utf-8").splitlines() if listing.exists() else []
+        if resolved in known:
+            return
+        listing.parent.mkdir(parents=True, exist_ok=True)
+        with listing.open("a", encoding="utf-8") as f:
+            f.write(resolved + "\n")
+    except OSError:
+        # Untrusted only means the project's Claude permissions are not applied.
+        pass
+
+
+def creates_repo(value: Any) -> bool:
+    """Whether a repository answer has the build create a new repository, not use an existing one.
+
+    Args:
+        value: The answer.
+
+    Returns:
+        True for a new repository.
+    """
+    return repo_record(value).get("url") == "new"
+
+
+def factory_name(ctx: Any, default: str, target: Path | None = None) -> str:
+    """The factory a built-in's create registers with.
+
+    That is the project factory delegating to it in this run, else the factory the
+    system's system.yaml records (a resumed build has no run context), else the built-in.
 
     Args:
         ctx: Click context.
         default: The built-in's own name.
+        target: The system's directory.
 
     Returns:
         The factory's name.
     """
     meta = getattr(ctx, "meta", {}).get(META) if ctx is not None else None
-    return meta["name"] if meta else default
+    if meta:
+        return meta["name"]
+    if target is not None:
+        from hopsworks.cli import system_doc
+
+        recorded = system_doc.read(target)[0].get("factory")
+        if isinstance(recorded, dict) and recorded.get("name"):
+            return recorded["name"]
+    return default
 
 
 META = "hops.factory"

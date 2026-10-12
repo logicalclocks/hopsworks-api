@@ -32,7 +32,7 @@ hops factory system list [--factory <name>]        # the systems built, with the
 hops factory system status|register|remove|delete <system>
 hops factory run <name> <slug> --change <id> [--answers F]  # request one of the factory's changes; the build carries it out
 hops factory system dir <slug>                     # the system's directory
-hops factory system delete-assets <system> --job J --table T:V  # what a build deletes with; refuses what the system reads
+hops factory system delete-assets <system> --job J --table T:V  # what a build deletes with; refuses what the system reads, what another system names, and what is not this system's
 ```
 
 ## Writing a definition

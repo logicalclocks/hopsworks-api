@@ -264,12 +264,14 @@ def _get_fg(
     name: str,
     version: int | None,
     featurestore: str | None = None,
+    exact: bool = False,
 ) -> Any:
     """Resolve a feature group across the project's accessible feature stores.
 
     Searches the project's own store first, then shared stores, so a shared
     feature group resolves just like a local one. ``featurestore`` pins the
     lookup to a single store by name when the same name exists in several.
+    ``exact`` refuses a missing version when several exist.
     """
     stores = session.get_accessible_feature_stores(ctx)
     if featurestore is not None:
@@ -281,7 +283,9 @@ def _get_fg(
     last_exc: Exception | None = None
     for fs in stores:
         try:
-            fg = versions.feature_group(fs, name, version)
+            fg = versions.feature_group(fs, name, version, exact=exact)
+        except versions.AmbiguousVersionError:
+            raise
         except Exception as exc:  # noqa: BLE001 - not in this store, try the next
             last_exc = exc
             continue
@@ -806,7 +810,7 @@ def fg_delete(
         force: Delete even if feature views depend on it, leaving them in place.
         delete_feature_views: Also delete the dependent feature views and their training data.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, exact=True)
     if not yes and not output.JSON_MODE:
         if delete_feature_views:
             extra = " Any feature views using it (and their training data) will also be deleted."
@@ -1019,7 +1023,9 @@ def fg_add_keyword(
 @fg_group.command("remove-keyword")
 @click.argument("name")
 @click.argument("keyword")
-@click.option("--version", type=int, help="Feature group version.")
+@click.option(
+    "--version", type=int, help="Feature group version; required when multiple exist."
+)
 @click.pass_context
 def fg_remove_keyword(
     ctx: click.Context, name: str, keyword: str, version: int | None
@@ -1033,7 +1039,7 @@ def fg_remove_keyword(
         version: Feature group version.
     """
     output.warn(_KEYWORD_SEMANTICS_CHANGED)
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, exact=True)
     try:
         fg.delete_keyword(keyword)
     except Exception as exc:  # noqa: BLE001
@@ -1090,7 +1096,9 @@ def fg_add_tag(
 @fg_group.command("remove-tag")
 @click.argument("name")
 @click.argument("tag")
-@click.option("--version", type=int, help="Feature group version.")
+@click.option(
+    "--version", type=int, help="Feature group version; required when multiple exist."
+)
 @click.pass_context
 def fg_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
     """Remove a tag from a feature group.
@@ -1101,7 +1109,7 @@ def fg_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) 
         tag: Tag name.
         version: Feature group version.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, exact=True)
     try:
         fg.delete_tag(tag)
     except Exception as exc:  # noqa: BLE001

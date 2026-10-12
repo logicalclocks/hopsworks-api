@@ -16,9 +16,10 @@ import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import output, session, versions
 
 
 def hopsfs_mount() -> Path | None:
@@ -324,7 +325,11 @@ def system_delete(
 
     project = session.get_project(ctx)
     entry = _find(system)
+    if path is not None:
+        _check_path(path, entry, project)
     assets = assets or repo
+    if assets:
+        teardown.require_data_owner(project)
     steps: list = []
     kept: list[str] = []
     doc: dict = {}
@@ -709,10 +714,14 @@ def system_delete_assets(
         path: The system's directory.
     """
     import yaml
+    from hopsworks.cli import teardown
     from hopsworks.cli.commands import analytics
 
-    session.get_project(ctx)
+    project = session.get_project(ctx)
     entry = _find(system)
+    if path is not None:
+        _check_path(path, entry, project)
+    teardown.require_data_owner(project)
     directory = path or _local_dir(entry)
     spec = directory / "system.yaml" if directory else None
     if spec is None or not spec.is_file():
@@ -720,12 +729,64 @@ def system_delete_assets(
             f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
         )
     doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+    requested = [
+        (name, version) for name, _, version in (t.partition(":") for t in tables)
+    ]
+    fs = project.get_feature_store() if requested else None
+    resolved = []
+    for name, version in requested:
+        if version:
+            resolved.append({"name": name, "version": int(version)})
+            continue
+        # Never a silent v1: one version is that one, several need NAME:VERSION.
+        fg = versions.feature_group(fs, name, None, exact=True)
+        if fg is None:
+            output.info(f"feature group {name}: gone")
+        else:
+            resolved.append({"name": name, "version": int(fg.version)})
     analytics.delete_assets(
         ctx,
         doc,
         list(jobs),
-        [
-            {"name": name, "version": int(version or 1)}
-            for name, _, version in (t.partition(":") for t in tables)
-        ],
+        resolved,
+        _owned_check(doc, directory.name, _other_docs(entry)),
     )
+
+
+def _check_path(path: Path, entry: dict, project: Any) -> None:
+    """Refuse a --path that is not the directory of the registry entry `entry`."""
+    location = code_location(path, getattr(project, "name", None))
+    if location.rstrip("/") != str(entry.get("pathToCode") or "").rstrip("/"):
+        raise click.ClickException(
+            f"{path} is {location}, not the directory of {entry.get('name')} ({entry.get('pathToCode')})"
+        )
+
+
+def _owned_check(doc: dict, slug: str, others: dict[str, dict]):
+    """A check refusing a job or feature group that is not this system's.
+
+    One is the system's when its system.yaml records it or its name carries the slug,
+    and no other registered system's system.yaml names it.
+    """
+    from hopsworks.cli import teardown
+    from hopsworks.cli.commands import analytics
+
+    if "layer" in doc:
+        own = {("job", j["name"]) for j in analytics.layer_jobs(doc)}
+        own |= {("feature group", t["name"]) for t in analytics.layer_tables(doc)}
+    else:
+        own = {(a.kind, a.name) for a in teardown.inventory(doc, slug)}
+    claimed = teardown.claims(others)
+
+    def check(kind: str, name: str) -> None:
+        other = claimed.get((kind, name))
+        if other:
+            raise click.ClickException(
+                f"{kind} {name} is named by the system {other}; nothing was deleted"
+            )
+        if (kind, name) not in own and not teardown.derives(name, slug):
+            raise click.ClickException(
+                f"{kind} {name} is not in {slug}'s system.yaml and does not carry its name; nothing was deleted"
+            )
+
+    return check

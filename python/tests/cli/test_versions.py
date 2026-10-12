@@ -73,3 +73,49 @@ def test_model_info_without_a_version_shows_the_latest(mock_project):
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["version"] == 3
     registry.get_model.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("resolve", "lister"),
+    [
+        (versions.feature_group, "get_feature_groups"),
+        (versions.feature_view, "get_feature_views"),
+        (versions.model, "get_models"),
+    ],
+)
+def test_an_exact_lookup_refuses_to_guess_between_versions(resolve, lister):
+    source = mock.MagicMock()
+    getattr(source, lister).return_value = _versioned(2, 1)
+    with pytest.raises(versions.AmbiguousVersionError, match="versions 1, 2"):
+        resolve(source, "fraud", None, exact=True)
+
+    getattr(source, lister).return_value = _versioned(4)
+    assert resolve(source, "fraud", None, exact=True).version == 4
+
+
+@pytest.mark.parametrize("command", ["delete", "remove-tag", "remove-keyword"])
+def test_a_destructive_fv_command_needs_a_version_when_several_exist(
+    mock_project, command
+):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_feature_views.side_effect = None
+    fs.get_feature_views.return_value = _versioned(1, 2)
+    extra = {"delete": ["--yes"], "remove-tag": ["t"], "remove-keyword": ["k"]}[command]
+    result = CliRunner().invoke(cli, ["fv", command, "fraud_fv", *extra])
+    assert result.exit_code != 0
+    assert "has versions 1, 2; pass --version" in result.output
+    for item in fs.get_feature_views.return_value:
+        item.delete.assert_not_called()
+
+
+def test_fg_delete_needs_a_version_when_several_exist(mock_project, monkeypatch):
+    from hopsworks.cli import session
+
+    fs = mock.MagicMock()
+    fs.get_feature_groups.return_value = _versioned(1, 2)
+    monkeypatch.setattr(session, "get_accessible_feature_stores", lambda ctx: [fs])
+    result = CliRunner().invoke(cli, ["fg", "delete", "orders", "--yes"])
+    assert result.exit_code != 0
+    assert "has versions 1, 2; pass --version" in result.output
+    for item in fs.get_feature_groups.return_value:
+        item.delete.assert_not_called()

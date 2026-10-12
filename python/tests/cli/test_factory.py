@@ -836,3 +836,77 @@ def test_a_datetime_answer_is_an_instant_in_utc(value, expected):
     field = {"id": "start", "type": "datetime", "label": "Start"}
     problems = factory_spec._field_problems(field, value or None, "Start")
     assert bool(problems) == (bool(value) and expected is None)
+
+
+@pytest.mark.parametrize("recorded", ["ml-streaming", "churn-review"])
+def test_a_resumed_build_registers_with_the_factory_its_system_yaml_records(
+    tmp_path, monkeypatch, recorded
+):
+    from hopsworks.cli.commands import build
+
+    (tmp_path / "system.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "factory": {"name": recorded, "version": 3, "digest": "d"},
+                "system": {"name": "Fraud"},
+                "requirements": {"system_type": "realtime"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    registered = []
+    monkeypatch.setattr(
+        mlsystem, "register", lambda ctx, path, name, f: registered.append(f)
+    )
+    # A resumed build has no `hops factory run` context.
+    build._register(mock.Mock(meta={}), build._System(tmp_path))
+    assert registered == [recorded]
+
+
+def test_without_a_recorded_factory_the_built_in_name_is_used(tmp_path):
+    assert factory_spec.factory_name(None, "ml-batch", tmp_path) == "ml-batch"
+
+
+def test_trust_records_a_directory_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(tmp_path))
+    system = tmp_path / "fraud"
+    system.mkdir()
+    factory_spec.trust(system)
+    factory_spec.trust(system)
+    listing = tmp_path / ".hops" / "claude-trusted-dirs"
+    assert listing.read_text().splitlines() == [str(system.resolve())]
+
+
+@pytest.mark.parametrize(
+    ("answer", "new"),
+    [
+        (None, True),
+        ({"create": True}, True),
+        ({"create": False, "url": "https://github.com/acme/thirdparty"}, False),
+        ("https://github.com/acme/thirdparty", False),
+    ],
+)
+def test_only_a_new_repository_counts_as_created(answer, new):
+    assert factory_spec.creates_repo(answer) is new
+
+
+@pytest.mark.parametrize(
+    ("answer", "trusted"),
+    [
+        (None, True),
+        ({"create": False, "url": "https://github.com/acme/thirdparty"}, False),
+    ],
+)
+def test_a_layer_trusts_only_a_work_tree_it_created(
+    tmp_path, monkeypatch, answer, trusted
+):
+    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(tmp_path))
+    repo = tmp_path / "hops-sales"
+    analytics._trust_new(repo, {"repo": answer} if answer else {}, fresh=True)
+    listing = tmp_path / ".hops" / "claude-trusted-dirs"
+    assert listing.exists() is trusted
+    # A work tree that was already there is never added.
+    analytics._trust_new(tmp_path / "old", {}, fresh=False)
+    assert not listing.exists() or str((tmp_path / "old").resolve()) not in (
+        listing.read_text()
+    )

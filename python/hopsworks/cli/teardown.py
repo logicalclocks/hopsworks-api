@@ -231,7 +231,7 @@ def _references(doc: dict) -> set[tuple[str, str]]:
     return found
 
 
-def _derives(name: str, slug: str) -> bool:
+def derives(name: str, slug: str) -> bool:
     """Whether `name` carries the slug, as the build names what it creates (`<slug>-app`, `<slug_pkg>_predictions`, `<slug>model`)."""
     plain = re.sub(r"[-_]", "", name.lower())
     return re.sub(r"[-_]", "", slug.lower()) in plain
@@ -256,23 +256,67 @@ def plan(
     Returns:
         The assets to delete, and a line for each asset kept.
     """
-    claimed: dict[tuple[str, str], str] = {}
-    for other, other_doc in others.items():
-        for asset in inventory(other_doc, other):
-            claimed.setdefault((asset.kind, asset.name), other)
-        for key in _references(other_doc):
-            claimed.setdefault(key, other)
+    claimed = claims(others)
     assets: list[Asset] = []
     kept: list[str] = []
     for asset in inventory(doc, slug):
         owner = claimed.get((asset.kind, asset.name))
         if owner:
             kept.append(f"kept {asset}: {owner} names it too")
-        elif asset.owned_by or _derives(asset.name, slug):
+        elif asset.owned_by or derives(asset.name, slug):
             assets.append(asset)
         else:
             assets.append(replace(asset, owned_by=slug))
     return assets, kept
+
+
+def require_data_owner(project: Any) -> None:
+    """Refuse before anything is deleted when the caller is not a Data owner of `project`.
+
+    Deleting apps, jobs and deployments is allowed to data owners only, so a delete by
+    anyone else would stop at its first asset.
+
+    Args:
+        project: The project.
+
+    Raises:
+        click.ClickException: when the caller's role in the project is not Data owner.
+    """
+    import click
+    from hopsworks_common.core import project_api
+
+    teams = project_api.ProjectApi()._get_project_teams() or []
+    role = next(
+        (
+            t.get("teamRole")
+            for t in teams
+            if (t.get("project") or {}).get("id") == getattr(project, "id", None)
+        ),
+        None,
+    )
+    if role != "Data owner":
+        raise click.ClickException(
+            f"only a Data owner of {getattr(project, 'name', 'the project')} can delete a "
+            f"system's assets, and your role is {role or 'unknown'}; ask a data owner to delete it"
+        )
+
+
+def claims(others: dict[str, dict]) -> dict[tuple[str, str], str]:
+    """What other systems create or read, as `(kind, name)` mapped to the first system naming it.
+
+    Args:
+        others: Every other registered system's system.yaml, by slug.
+
+    Returns:
+        The claimed assets.
+    """
+    claimed: dict[tuple[str, str], str] = {}
+    for other, other_doc in others.items():
+        for asset in inventory(other_doc, other):
+            claimed.setdefault((asset.kind, asset.name), other)
+        for key in _references(other_doc):
+            claimed.setdefault(key, other)
+    return claimed
 
 
 def _names(slug: str):

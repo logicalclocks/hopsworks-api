@@ -842,7 +842,10 @@ def _register(ctx: click.Context, system: _System) -> None:
         factory_spec.record_factory(ctx.meta.get(factory_spec.META), system.target)
         kind = system.requirements.get("system_type") or "batch"
         mlsystem.register(
-            ctx, system.target, name, factory_spec.factory_name(ctx, f"ml-{kind}")
+            ctx,
+            system.target,
+            name,
+            factory_spec.factory_name(ctx, f"ml-{kind}", system.target),
         )
     except Exception as exc:  # noqa: BLE001 - the interview is recorded either way
         output.warn(
@@ -851,9 +854,14 @@ def _register(ctx: click.Context, system: _System) -> None:
 
 
 def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
+    from hopsworks.cli import factory_spec
     from hopsworks.cli.commands import analytics
 
     output.success(f"Interview recorded in {system.target / 'system.yaml'}")
+    # The interview made the directory from the template; an existing repository is the user's.
+    repo = (system.doc.get("system") or {}).get("repo")
+    if isinstance(repo, dict) and repo.get("url") == "new":
+        factory_spec.trust(system.target)
     _register(ctx, system)
     subprocess.run([sys.executable, str(system.target / "status.py")], check=False)
     analytics._launch(system.target, launch, f"/hops-build {system.target.name}")

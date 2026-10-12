@@ -933,6 +933,8 @@ def _create_own(
     for phase in phases:
         doc.setdefault(phase["key"], {})["status"] = "pending"
     system_doc.create(target, doc)
+    if factory_spec.creates_repo(answers.get("repo")):
+        factory_spec.trust(target)
     _write_build_files(target, definition, spec, slug)
     output.success(f"Recorded in {system_file}")
     try:
