@@ -71,7 +71,7 @@ hopsworks = "hopsworks.cli.main:main"
 
 [project.optional-dependencies]
 python = [
-    "pyarrow>=17.0",
+    "pyarrow>=17.0,<26",
     "confluent-kafka<=2.15.1",
     "fastavro>=1.4.11,<=1.12.1",
     "tqdm",
@@ -115,7 +115,7 @@ dev-pandas1 = [
 dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
 polars = [
     "polars>=0.20.31,<=1.40.1",
-    "pyarrow>=17.0",
+    "pyarrow>=17.0,<26",
 ]
 mcp = [
     "fastmcp>=2.10.5,<=2.13.3",

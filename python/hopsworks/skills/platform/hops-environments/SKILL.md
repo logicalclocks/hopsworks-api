@@ -134,95 +134,82 @@ env.uninstall("some-package")              # remove a library
 env.delete()                               # remove the environment
 ```
 
-## npm packages (requires Hopsworks 5.1+)
+## npm packages (requires Hopsworks 5.1+; bulk, package.json and git imports need 5.2+)
 
 Environments also carry npm packages, installed globally in the image so they
-are on PATH for jobs, Jupyter and the terminal — the way to get a CLI tool or a
-JS dependency into a workload. Same rules as Python libraries: install into a
-**clone**, never a base, and the backend queues a build that applies it.
+are on PATH for jobs, Jupyter and the terminal and importable from any Node.js
+app the environment runs — the way to get a CLI tool or a JS dependency into a
+workload. Same rules as Python libraries: install into a **clone**, never a
+base, and the backend queues a build that applies it.
 
-The SDK has no npm method yet; the install goes through the same library
-endpoint the SDK uses internally, with `packageSource: "NPM"`:
+A list of packages is **one operation and one build**, however long it is:
+the environment is rebuilt once with `npm install -g a@1 b@2 …`, not once per
+package. While it runs, a request of several packages shows as one placeholder
+entry (`npm-install-<hex>`); after the build the installed packages replace it
+in the listing, each removable on its own.
 
 ```python
-import json
-import time
 import hopsworks
-from hopsworks_common import client
-from hopsworks_common.client.exceptions import RestAPIError
 
 project = hopsworks.login()
-_client = client._get_instance()
+env = project.get_environment_api().get_environment("my_app_env")
 
-def _npm_path(env_name, package):
-    # A scoped name (@scope/name) is two path segments; splitting keeps both
-    # forms on the route the backend expects.
-    return ["project", _client._project_id, "python", "environments",
-            env_name, "libraries", *package.split("/")]
+# 1. A list: "name@version", (name, version) or {"name": ..., "version": ...}.
+#    Versions are exact (1.3.0) or a dist-tag (latest); ranges are refused.
+env.install_npm(["express@4.19.2", "lodash@4.17.21", "@types/node@20.11.0"],
+                flags=["--no-fund"])
 
-def npm_install(env_name, package, version="latest", flags=None):
-    spec = {"packageSource": "NPM", "channelUrl": "npm",
-            "version": version, "flags": flags or []}
-    return _client._send_request(
-        "POST", _npm_path(env_name, package),
-        headers={"content-type": "application/json"}, data=json.dumps(spec))
+# 2. A package.json, local or in the project, with its lockfile when there is
+#    one (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lock). Pinned versions
+#    stand, the lockfile's versions win, ranges fall back to the newest matching
+#    registry release; devDependencies and optionalDependencies are opt-in.
+env.install_npm_from_package_json("package.json", lockfile_path="package-lock.json")
 
-def npm_uninstall(env_name, package):
-    # packageSource on every name-addressed call: the same name can exist as a
-    # Python package too, and the backend refuses the ambiguity otherwise.
-    _client._send_request("DELETE", _npm_path(env_name, package),
-                          query_params={"packageSource": "NPM"})
+# 3. A git repository: its package.json files at a branch, tag or commit, and
+#    optionally the repository itself as a package pinned to that commit.
+#    Private repositories use the git providers under the user's account settings.
+env.install_npm_from_git("https://github.com/acme/mytool", ref="main",
+                         install_repository=True)
+# A monorepo package, by the path of its package.json (directory or file):
+env.install_npm_from_git("https://github.com/acme/mono", path="packages/cli")
 
-def npm_await(env_name, package, timeout_s=900):
-    # Polls the npm row's own commands; an environment-level await returns
-    # before a library build starts. The row can 404 for a moment right after
-    # queueing, so not-found is retried until the deadline; anything else
-    # raises immediately rather than being retried into silence.
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        try:
-            row = _client._send_request(
-                "GET", _npm_path(env_name, package),
-                query_params={"packageSource": "NPM", "expand": "commands"})
-        except RestAPIError as e:
-            if e.response.status_code != 404:
-                raise
-            time.sleep(5)
-            continue
-        cmds = (row.get("commands") or {}).get("items") or []
-        failed = [c for c in cmds if c.get("status") == "FAILED"]
-        if failed:
-            raise RuntimeError(failed[0].get("errorMessage")
-                               or "npm install FAILED")
-        if not cmds:
-            return row   # commands swept: the install is applied
-        time.sleep(5)
-    raise TimeoutError(f"{package} still building after {timeout_s}s")
+# Dry runs: what would be installed, without installing.
+env.resolve_npm_package_json("package.json", lockfile_path="package-lock.json")
+env.inspect_npm_git("https://github.com/acme/mono")   # commit + every package.json, resolved
 
-npm_install("my_app_env", "left-pad", version="1.3.0",
-            flags=["--ignore-scripts"])
-row = npm_await("my_app_env", "left-pad")
-print(row["library"], row["version"])   # version is the resolved one, e.g. 1.3.0
-
-libs = _client._send_request(
-    "GET", ["project", _client._project_id, "python", "environments",
-            "my_app_env", "libraries"], query_params={"limit": 500})
-[(i["library"], i["version"]) for i in libs["items"]
- if i.get("packageSource") == "NPM"]
+# Remove: name the ecosystem when the same name is also a Python package.
+env.uninstall("lodash", package_source="NPM")
 ```
+
+Each method returns the library entry the operation is tracked under (the
+package itself for one package, the placeholder for several) and, with
+`await_installation=True` (the default), waits for the build. A dependency a
+`package.json` import cannot resolve fails the call; pass `skip_unresolved=True`
+to install the rest. Entries that are not registry packages (workspace
+siblings, `npm:` aliases, git/file/URL specs) are reported as skipped with the
+reason in the dry-run result.
 
 Rules the backend enforces:
 - **Versions are exact (`1.3.0`) or a dist-tag (`latest`).** Ranges (`^1.0.0`)
-  are refused; they are not reproducible.
+  are refused in `install_npm`; the package.json and git imports resolve them
+  to exact versions first.
 - **Flags come from a closed allowlist:** `--ignore-scripts`,
   `--legacy-peer-deps`, `--no-audit`, `--no-fund`, `--no-optional`,
   `--strict-peer-deps`. Anything else is refused with the list in the message.
 - **A package the image already carries is refused** with "already installed";
   uninstall it first to change the version. The base image's own npm packages
   (e.g. `corepack`) cannot be uninstalled.
+- **A git package is pinned to a commit** (`git_url` + `git_ref`, the 40-hex SHA
+  `inspect_npm_git` returns); a branch name is not accepted there.
 - The registry is the cluster's `npm_registry_url` variable (empty means
   registry.npmjs.org), applied at build time and baked into the image so the
   runtime resolves from the same registry.
+
+On a cluster older than 5.2 only single-package installs exist, through the
+library REST endpoint with `packageSource: "NPM"` (POST
+`project/<id>/python/environments/<env>/libraries/<name>`, body
+`{"packageSource": "NPM", "channelUrl": "npm", "version": "1.3.0", "flags": []}`;
+a scoped `@scope/name` is two path segments).
 
 ## Ask the user (only when state is ambiguous)
 - Which base matches the workload (training vs inference vs app vs agent)?
@@ -253,7 +240,7 @@ Rules the backend enforces:
 ## Toolset
 - **CLI:** `hops env list`, `hops env clone <new> --from <base> [--description]`, `hops env install <env> -f <local-file-or-project-path> [--upload-dir] [--no-overwrite]`.
 - **SDK:** `project.get_environment_api()` → `create_environment(base_environment_name=, await_creation=)`, `env.install_requirements()`, `env.install_wheel()`, `env.uninstall()`, `env.delete()`.
-- **npm:** no SDK method yet — POST the library endpoint with `packageSource: "NPM"` as in *npm packages* above.
+- **npm (5.2+):** `env.install_npm()`, `env.install_npm_from_package_json()` / `env.resolve_npm_package_json()`, `env.install_npm_from_git()` / `env.inspect_npm_git()`, `env.uninstall(name, package_source="NPM")`, as in *npm packages* above.
 - **Source:** `python/hopsworks_common/core/environment_api.py`, `python/hopsworks_common/environment.py`, `python/hopsworks/cli/commands/env.py` (see `env_install` — a local `-f` is uploaded, any other string is passed through as a project path).
 
 ## Next steps

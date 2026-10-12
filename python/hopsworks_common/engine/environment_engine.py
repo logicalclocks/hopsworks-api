@@ -41,11 +41,21 @@ class EnvironmentEngine:
     POLL_REQUEST_TIMEOUT = 60
 
     def _await_library_command(
-        self, environment_name, library_name, timeout: float | None = None
+        self,
+        environment_name,
+        library_name,
+        timeout: float | None = None,
+        package_source: str | None = None,
     ):
+        """Wait for the library's command to finish.
+
+        `package_source` names the ecosystem (`NPM` or `PIP`) when the caller knows it.
+        A name can exist on both PyPI and npm, and the backend refuses to guess which row a
+        name-only lookup means, so a poll without it would not be an answer about this install.
+        """
         self._await_command(
             lambda request_timeout: self._poll_commands_library(
-                environment_name, library_name, request_timeout
+                environment_name, library_name, request_timeout, package_source
             ),
             f"library '{library_name}' in environment '{environment_name}'",
             timeout,
@@ -106,7 +116,11 @@ class EnvironmentEngine:
         return command.status == "SUCCESS"
 
     def _poll_commands_library(
-        self, environment_name, library_name, request_timeout: float | None = None
+        self,
+        environment_name,
+        library_name,
+        request_timeout: float | None = None,
+        package_source: str | None = None,
     ):
         _client = client._get_instance()
 
@@ -117,10 +131,13 @@ class EnvironmentEngine:
             "environments",
             environment_name,
             "libraries",
-            library_name,
+            # A scoped npm name (@scope/name) is two path segments on the backend's route.
+            *library_name.split("/"),
         ]
 
         query_params = {"expand": "commands"}
+        if package_source:
+            query_params["packageSource"] = package_source
         headers = {"content-type": "application/json"}
 
         try:
@@ -134,11 +151,15 @@ class EnvironmentEngine:
                 ),
             )
         except RestAPIError as e:
+            # A missing library is an answer: the operation that removed it is done.
+            # Anything else is not, and swallowing it (an ambiguous name, a forbidden environment) made the wait end as if the install had finished.
+            # The error code comes off the exception, which already read the body defensively; reading it again fails on an empty or HTML 404.
             if (
-                e.response.json().get("errorCode", "") == 300003
+                getattr(e, "error_code", None) == 300003
                 and e.response.status_code == 404
             ):
                 return None
+            raise
 
     def _poll_commands_environment(
         self, environment_name, request_timeout: float | None = None

@@ -1127,3 +1127,34 @@ class TestSchemaIsRetryable:
         assert p.schema is None
         assert p.schema is None
         assert read.call_count == 1
+
+
+def test_dropped_scaling_fields_names_what_an_older_backend_left_out():
+    from hsml.engine.serving_engine import _dropped_scaling_fields
+
+    sent = {
+        "min_instances": 0,
+        "autoscaler": "KEDA",
+        "idle_scale_to_zero": True,
+        "idle_cooldown_seconds": 60,
+        "scale_metric": "CPU",
+    }
+    # A 5.2 backend keeps everything.
+    assert _dropped_scaling_fields(sent, dict(sent)) == []
+    # A 5.1 backend keeps the fields it knows and drops the rest without a word.
+    assert _dropped_scaling_fields(
+        sent, {"min_instances": 0, "scale_metric": "CPU"}
+    ) == [
+        "autoscaler",
+        "idle_scale_to_zero",
+        "idle_cooldown_seconds",
+    ]
+    # A false idle flag is left out of the stored configuration on purpose.
+    assert (
+        _dropped_scaling_fields(
+            {"min_instances": 1, "idle_scale_to_zero": False}, {"min_instances": 1}
+        )
+        == []
+    )
+    assert _dropped_scaling_fields(None, {}) == []
+    assert _dropped_scaling_fields(sent, None) == []

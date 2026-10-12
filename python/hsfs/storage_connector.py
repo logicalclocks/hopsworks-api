@@ -41,7 +41,7 @@ from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import engine
 from hsfs.core import data_source as ds
-from hsfs.core import data_source_api, storage_connector_api
+from hsfs.core import data_source_api, elasticsearch_api, storage_connector_api
 
 
 if TYPE_CHECKING:
@@ -85,6 +85,7 @@ class StorageConnector(ABC):
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
     GLUE = "GLUE"
+    ELASTICSEARCH = "ELASTICSEARCH"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -103,7 +104,8 @@ class StorageConnector(ABC):
         BIGQUERY: "featurestoreBigqueryConnectorDTO",
         SQL: "featurestoreSqlConnectorDTO",
         ORACLE: "featurestoreSqlConnectorDTO",
-        OPENSEARCH: "featurestoreOpenSearchConnectorDTO",
+        OPENSEARCH: "featurestoreOpensearchConnectorDTO",
+        ELASTICSEARCH: "featurestoreElasticsearchConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
@@ -146,6 +148,7 @@ class StorageConnector(ABC):
         | SapHanaConnector
         | MongoDBConnector
         | GlueConnector
+        | ElasticsearchConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -177,6 +180,7 @@ class StorageConnector(ABC):
         | SapHanaConnector
         | MongoDBConnector
         | GlueConnector
+        | ElasticsearchConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -666,6 +670,7 @@ class StorageConnector(ABC):
                 StorageConnector.S3,
                 StorageConnector.GCS,
                 StorageConnector.GOOGLE_SHEETS,
+                StorageConnector.ELASTICSEARCH,
             ]:
                 pass
             else:
@@ -3976,6 +3981,479 @@ class OpenSearchConnector(StorageConnector):
         raise NotImplementedError(
             "Cannot read from OpenSearch connector. Please use feature_group.read() instead."
         )
+
+
+@public
+class ElasticsearchConnector(StorageConnector):
+    """Elasticsearch storage connector.
+
+    Use this connector to browse the indices, aliases and data streams of an Elasticsearch cluster and to register an external feature group on one of them.
+    With the Python engine, external feature groups are read through the Hopsworks Query Service; with the Spark engine, through the `elasticsearch-spark` connector, whose jar must be on the Spark classpath.
+    The password or API key is kept in the Hopsworks secret store.
+
+    Example:
+        ```python
+        fs = ...
+        sc = fs.get_storage_connector("my_elasticsearch")
+        events = sc.get_tables()
+        fg = fs.create_external_feature_group(
+            name="events",
+            version=1,
+            primary_key=["event_id"],
+            data_source=events[0],
+        )
+        fg.save()
+        ```
+    """
+
+    type = StorageConnector.ELASTICSEARCH
+    ELASTICSEARCH_FORMAT = "org.elasticsearch.spark.sql"
+    AUTH_NONE = "NONE"
+    AUTH_BASIC = "BASIC"
+    AUTH_API_KEY = "API_KEY"
+    _FEATURE_NAME_MAX_LENGTH = 63
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        scheme: str | None = None,
+        verify: bool | None = None,
+        auth_type: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        api_key: str | None = None,
+        default_index: str | None = None,
+        trust_store_path: str | None = None,
+        trust_store_password: str | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._scheme = scheme
+        self._verify = verify
+        self._auth_type = auth_type
+        self._username = username
+        self._password = password
+        self._api_key = api_key
+        self._default_index = default_index
+        self._trust_store_path = trust_store_path
+        self._trust_store_password = trust_store_password
+        self._elasticsearch_api = elasticsearch_api.ElasticsearchApi()
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else dict(arguments)
+            if isinstance(arguments, dict)
+            else {}
+        )
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Hostname or IP address of an Elasticsearch node or load balancer."""
+        return self._host
+
+    @public
+    @property
+    def port(self) -> int | None:
+        """HTTP port of the cluster; 9200 when unset."""
+        return self._port
+
+    @public
+    @property
+    def scheme(self) -> str | None:
+        """`https` (the default) or `http`."""
+        return self._scheme
+
+    @public
+    @property
+    def verify(self) -> bool | None:
+        """Whether the server certificate and hostname are verified; true when unset.
+
+        Spark reads honour `False` only for a single self-signed certificate; use a truststore for a private CA.
+        """
+        return self._verify
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`NONE`, `BASIC` (username and password) or `API_KEY`."""
+        return self._auth_type
+
+    @public
+    @property
+    def username(self) -> str | None:
+        """Username for `BASIC` authentication."""
+        return self._username
+
+    @public
+    @property
+    def password(self) -> str | None:
+        """Password for `BASIC` authentication, resolved from the secret store."""
+        return self._password
+
+    @public
+    @property
+    def api_key(self) -> str | None:
+        """Encoded API key for `API_KEY` authentication, resolved from the secret store."""
+        return self._api_key
+
+    @public
+    @property
+    def default_index(self) -> str | None:
+        """Index, alias, data stream or pattern read when the data source names none."""
+        return self._default_index
+
+    @public
+    @property
+    def trust_store_path(self) -> str | None:
+        """HopsFS path of a JKS truststore holding the CA of a cluster with a private certificate."""
+        return self._trust_store_path
+
+    @public
+    @property
+    def arguments(self) -> dict[str, Any]:
+        """Extra options, e.g. `page_size` and `request_timeout` for the Query Service, or `es.*` Spark settings."""
+        return self._arguments
+
+    def _ensure_full(self) -> None:
+        """Refetch the connector when it is the basic-info copy a data source or feature group carries.
+
+        The index chosen through ``DataSource.table`` survives the refetch, which reinitialises every field.
+        """
+        if self._host:
+            return
+        index = self._default_index
+        self._refetch()
+        if index:
+            self._default_index = index
+
+    def _base_url(self) -> str:
+        host = self._host or ""
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"{(self._scheme or 'https').lower()}://{host}:{self._port or 9200}"
+
+    def _resolved_auth_type(self) -> str:
+        if self._auth_type:
+            return self._auth_type.upper()
+        if self._username:
+            return self.AUTH_BASIC
+        return self.AUTH_API_KEY if self._api_key else self.AUTH_NONE
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "scheme": self._scheme,
+                "verify": self._verify,
+                "authType": self._auth_type,
+                "username": self._username,
+                "password": self._password,
+                "apiKey": self._api_key,
+                "defaultIndex": self._default_index,
+                "trustStorePath": self._trust_store_path,
+                "trustStorePassword": self._trust_store_password,
+                "arguments": [
+                    {"name": k, "value": v} for k, v in self._arguments.items()
+                ]
+                or None,
+            }
+        )
+        return payload
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return keyword arguments for the official `elasticsearch` Python client.
+
+        ```python
+        from elasticsearch import Elasticsearch
+
+        sc = fs.get_storage_connector("my_elasticsearch")
+        es = Elasticsearch(**sc.connector_options())
+        ```
+
+        The client library is not a Hopsworks dependency; install the major version that matches the cluster.
+        """
+        self._ensure_full()
+        opts: dict[str, Any] = {"hosts": [self._base_url()]}
+        auth_type = self._resolved_auth_type()
+        if auth_type == self.AUTH_BASIC:
+            opts["basic_auth"] = (self._username, self._password)
+        elif auth_type == self.AUTH_API_KEY:
+            opts["api_key"] = self._api_key
+        if (self._scheme or "https").lower() == "https":
+            if self._verify is False:
+                opts["verify_certs"] = False
+                opts["ssl_show_warn"] = False
+            else:
+                ca_certs = self._create_ca_certs()
+                if ca_certs:
+                    opts["ca_certs"] = ca_certs
+        return opts
+
+    def spark_options(self) -> dict[str, Any]:
+        """Return options for `spark.read.format("org.elasticsearch.spark.sql")`.
+
+        With `verify=False` the Spark connector accepts a single self-signed certificate only; a cluster whose certificate chains to a private CA needs `trust_store_path` instead.
+        """
+        self._ensure_full()
+        # Arguments first, so the address, TLS and secret-backed auth settings below always win.
+        opts: dict[str, Any] = {
+            k: v for k, v in self._arguments.items() if k.startswith("es.")
+        }
+        opts |= {
+            "es.nodes": self._host,
+            "es.port": str(self._port or 9200),
+            # Talk to the given address only: cluster-internal node addresses are rarely reachable from Spark.
+            "es.nodes.wan.only": "true",
+            "es.net.ssl": str((self._scheme or "https").lower() == "https").lower(),
+        }
+        auth_type = self._resolved_auth_type()
+        if auth_type == self.AUTH_BASIC:
+            opts["es.net.http.auth.user"] = self._username
+            opts["es.net.http.auth.pass"] = self._password
+        elif auth_type == self.AUTH_API_KEY:
+            opts["es.net.http.header.Authorization"] = f"ApiKey {self._api_key}"
+        if self._verify is False:
+            opts["es.net.ssl.cert.allow.self.signed"] = "true"
+        elif self._trust_store_path:
+            opts["es.net.ssl.truststore.location"] = (
+                engine._get_instance()._add_file_as_url(self._trust_store_path)
+            )
+            if self._trust_store_password:
+                opts["es.net.ssl.truststore.pass"] = self._trust_store_password
+        return opts
+
+    def _create_ca_certs(self) -> str | None:
+        if getattr(self, "_ca_certs_path", None):
+            return self._ca_certs_path
+        if not self._trust_store_path:
+            return None
+        local_trust_store_path = engine._get_instance()._add_file(
+            self._trust_store_path
+        )
+        self._ca_certs_path, _, _ = client._get_instance()._write_pem(
+            local_trust_store_path,
+            self._trust_store_password,
+            local_trust_store_path,
+            self._trust_store_password,
+            f"elasticsearch_sc_{client._get_instance()._project_id}_{self._id}",
+        )
+        return self._ca_certs_path
+
+    @classmethod
+    def _to_feature_name(cls, path: str) -> str:
+        # Must match flyingduck's elasticsearch_reader.to_feature_name, so Spark and the Query Service agree on names.
+        name = re.sub(r"[^a-z0-9_]", "_", path.lower()).strip("_")
+        name = re.sub(r"__+", "_", name)
+        if not name or not name[0].isalpha():
+            name = "f_" + name
+        return name[: cls._FEATURE_NAME_MAX_LENGTH]
+
+    def _get_mapping(self, index: str, spark_options: dict[str, Any]) -> dict[str, Any]:
+        """Fetch the `_mapping` of every index behind `index`, connecting as the Spark reader does.
+
+        The address, path prefix, headers and credentials come from `spark_options`, so overrides passed to the read apply here too.
+        """
+        node = str(spark_options.get("es.nodes") or self._host).split(",")[0].strip()
+        ssl = str(spark_options.get("es.net.ssl", "true")).lower() == "true"
+        scheme, _, address = node.rpartition("://")
+        scheme = scheme or ("https" if ssl else "http")
+        address = address.rstrip("/")
+        # A node without its own port takes es.port, scheme-qualified or not, as elasticsearch-hadoop does.
+        if re.search(r"(^[^:]*|\])(:\d+)$", address) is None:
+            port = spark_options.get("es.port") or 9200
+            bracketed = ":" in address and not address.startswith("[")
+            address = f"[{address}]:{port}" if bracketed else f"{address}:{port}"
+        node = f"{scheme}://{address}"
+        prefix = str(spark_options.get("es.nodes.path.prefix") or "").strip("/")
+        base_url = node.rstrip("/") + (f"/{prefix}" if prefix else "")
+        user = spark_options.get("es.net.http.auth.user")
+        headers = {
+            key[len("es.net.http.header.") :]: str(value)
+            for key, value in spark_options.items()
+            if key.startswith("es.net.http.header.")
+        }
+        verify: bool | str = True
+        if (
+            ssl
+            and str(
+                spark_options.get("es.net.ssl.cert.allow.self.signed", "false")
+            ).lower()
+            == "true"
+        ):
+            verify = False
+        elif ssl:
+            verify = self._create_ca_certs() or True
+        return self._elasticsearch_api._get_mapping(
+            base_url,
+            index,
+            (user, spark_options.get("es.net.http.auth.pass")) if user else None,
+            headers,
+            verify,
+            engine._get_instance()._run_where_spark_runs,
+        )
+
+    @staticmethod
+    def _object_paths(mapping_response: dict[str, Any]) -> set[str]:
+        """Return the dotted paths mapped as objects with properties in any index, which the Query Service flattens.
+
+        Every other field, `nested` and `geo_point` included, is one feature even when Spark reads it as a struct.
+        """
+        paths: set[str] = set()
+
+        def visit(properties, prefix):
+            for field, spec in properties.items():
+                if "properties" in spec and spec.get("type", "object") == "object":
+                    paths.add(prefix + field)
+                    visit(spec["properties"], prefix + field + ".")
+
+        for index_mapping in mapping_response.values():
+            visit((index_mapping.get("mappings") or {}).get("properties") or {}, "")
+        return paths
+
+    @classmethod
+    def _flatten_columns(cls, dataframe: Any, object_paths: set[str]) -> Any:
+        """Flatten object fields into one column per leaf, named and shaped as the Query Service returns them.
+
+        An object field holding an array of objects gives one array column per leaf, and arrays met along the way are concatenated into one list.
+        Any other struct or array of structs, such as a `nested` or `geo_point` field, becomes a JSON string.
+        """
+        from pyspark.sql import functions as F
+        from pyspark.sql.types import ArrayType, StructType
+
+        columns = []
+        sources: dict[str, str] = {}
+
+        def visit(fields, parents, parent, in_array):
+            # parent is a struct column, or an array of structs once an array has been crossed.
+            for field in fields:
+                parts = [*parents, field.name]
+                path = ".".join(parts)
+                column = (
+                    F.col("`" + field.name.replace("`", "``") + "`")
+                    if parent is None
+                    else parent.getField(field.name)
+                )
+                data_type = field.dataType
+                is_array = isinstance(data_type, ArrayType)
+                element = data_type.elementType if is_array else data_type
+                # Spark nests one array level per array crossed; the Query Service returns one flat list.
+                # flatten() is null when any inner array is, so an element missing the field is dropped first.
+                if in_array and is_array:
+                    column = F.flatten(
+                        F.filter(column, lambda inner: inner.isNotNull())
+                    )
+                if path in object_paths and isinstance(element, StructType):
+                    visit(element.fields, parts, column, in_array or is_array)
+                    continue
+                name = cls._to_feature_name(path)
+                if name in sources:
+                    raise ValueError(
+                        f"Elasticsearch fields '{sources[name]}' and '{path}' both map to "
+                        f"feature name '{name}'; rename one of the fields in Elasticsearch"
+                    )
+                sources[name] = path
+                if in_array:
+                    # The Query Service skips elements without the leaf and gives null when none has it. An
+                    # array-valued leaf already lost its missing elements before flatten(), and keeps explicit nulls.
+                    if not is_array:
+                        column = F.filter(column, lambda value: value.isNotNull())
+                    column = F.when(F.size(column) > 0, column)
+                if isinstance(element, StructType):
+                    column = F.to_json(column)
+                columns.append(column.alias(name))
+
+        visit(dataframe.schema.fields, [], None, False)
+        return dataframe.select(*columns)
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Read an index into a dataframe with the Spark engine.
+
+        With the Python engine, create an external feature group on the index and read it with [`FeatureGroup.read`][hsfs.feature_group.FeatureGroup.read].
+
+        Parameters:
+            query: Index, alias, data stream or pattern to read, or a JSON query DSL document (a bare query clause or a body with a `query` key) applied to the default index.
+            data_format: Not used for Elasticsearch.
+            options: Extra `es.*` options for the Spark reader; fields holding arrays must be listed in `es.read.field.as.array.include`.
+                The truststore comes from the connector's `trust_store_path` only.
+            path: Not used for Elasticsearch.
+            dataframe_type: Type of the returned dataframe.
+
+        Returns:
+            `DataFrame` with object fields flattened into `parent_child` columns.
+
+        Raises:
+            NotImplementedError: With the Python engine.
+            ValueError: If neither the query nor the connector names an index, or the options or connector arguments set a truststore.
+        """
+        if engine._get_type() != "spark":
+            raise NotImplementedError(
+                "Reading an Elasticsearch connector directly needs the Spark engine. "
+                "With the Python engine, create an external feature group on the index and use feature_group.read()."
+            )
+        import json
+
+        self._ensure_full()
+        # The mapping request trusts the connector's truststore, so Spark must not be handed another.
+        truststore_overrides = [
+            key
+            for key in ("es.net.ssl.truststore.location", "es.net.ssl.truststore.pass")
+            if key in (options or {}) or key in self._arguments
+        ]
+        if truststore_overrides:
+            raise ValueError(
+                f"Elasticsearch read does not take {', '.join(truststore_overrides)}: "
+                "set trust_store_path and trust_store_password on the connector instead."
+            )
+        merged = {**self.spark_options(), **(options or {})}
+        index = self._default_index
+        text = (query or "").strip()
+        if text.startswith("{"):
+            body = json.loads(text)
+            merged["es.query"] = json.dumps(
+                body if "query" in body else {"query": body}
+            )
+        elif text:
+            index = text
+        if not index:
+            raise ValueError(
+                "Elasticsearch read needs an index: pass it as the query or set a default index on the connector."
+            )
+        merged["es.resource"] = index
+        dataframe = engine._get_instance()._read(
+            self, self.ELASTICSEARCH_FORMAT, merged, None, "spark"
+        )
+        dataframe = self._flatten_columns(
+            dataframe, self._object_paths(self._get_mapping(index, merged))
+        )
+        return engine._get_instance()._return_dataframe_type(dataframe, dataframe_type)
 
 
 class CRMSource(Enum):
