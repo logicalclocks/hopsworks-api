@@ -87,6 +87,9 @@ class App:
         public_access=None,
         public_token=None,
         db_access=None,
+        idle_scale_to_zero=None,
+        idle_cooldown_seconds=None,
+        cold_start_timeout_seconds=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -123,6 +126,9 @@ class App:
         self._public_token = public_token
         # Backend default is True; None only happens for responses from older servers.
         self._db_access = True if db_access is None else bool(db_access)
+        self._idle_scale_to_zero = bool(idle_scale_to_zero)
+        self._idle_cooldown_seconds = idle_cooldown_seconds
+        self._cold_start_timeout_seconds = cold_start_timeout_seconds
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -154,7 +160,10 @@ class App:
     @public
     @property
     def state(self) -> str:
-        """Current state of the app (RUNNING, KILLED, FAILED, STOPPED, etc.)."""
+        """Current state of the app (RUNNING, IDLE, KILLED, FAILED, STOPPED, etc.).
+
+        `IDLE` is an app that scales to zero when idle and has no pod right now; opening it wakes it.
+        """
         return self._state
 
     @public
@@ -166,7 +175,9 @@ class App:
     @public
     @property
     def app_url(self) -> str | None:
-        """URL to the Streamlit UI, or None if not serving.
+        """URL to the app, or None while it is not serving.
+
+        An app that scales to zero when idle keeps its URL in the `IDLE` state: a request to it is what wakes it.
 
         Example:
             ```python
@@ -176,7 +187,7 @@ class App:
                 print(app.app_url)
             ```
         """
-        if self._serving and self._app_url:
+        if (self._serving or self._state == "IDLE") and self._app_url:
             _client = client._get_instance()
             base_url = _client._base_url.rstrip("/")
             app_url = self._app_url.lstrip("/")
@@ -375,6 +386,27 @@ class App:
 
     @public
     @property
+    def idle_scale_to_zero(self) -> bool:
+        """Whether the app scales to zero when idle.
+
+        The pod goes away once no request has been in flight for `idle_cooldown_seconds`, the app shows the `IDLE` state, and the next request brings the pod back, held for up to `cold_start_timeout_seconds`.
+        """
+        return self._idle_scale_to_zero
+
+    @public
+    @property
+    def idle_cooldown_seconds(self) -> int | None:
+        """Seconds without a request before the app scales to zero, when `idle_scale_to_zero` is set."""
+        return self._idle_cooldown_seconds
+
+    @public
+    @property
+    def cold_start_timeout_seconds(self) -> int | None:
+        """Seconds the first request waits for the app to wake, when `idle_scale_to_zero` is set."""
+        return self._cold_start_timeout_seconds
+
+    @public
+    @property
     def public_url(self) -> str | None:
         """Public share URL.
 
@@ -534,6 +566,9 @@ class App:
         self._public_access = updated._public_access
         self._public_token = updated._public_token
         self._db_access = updated._db_access
+        self._idle_scale_to_zero = updated._idle_scale_to_zero
+        self._idle_cooldown_seconds = updated._idle_cooldown_seconds
+        self._cold_start_timeout_seconds = updated._cold_start_timeout_seconds
         return self
 
     def _wait_for_serving(self) -> App:

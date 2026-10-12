@@ -137,6 +137,9 @@ class AppApi:
         app_base_path: str | None = None,
         readiness_probe_path: str | None = None,
         db_access: bool = True,
+        idle_scale_to_zero: bool | None = None,
+        idle_cooldown_seconds: int | None = None,
+        cold_start_timeout_seconds: int | None = None,
     ) -> app.App:
         """Create a new app.
 
@@ -200,6 +203,15 @@ class AppApi:
                 `TRINO_PASSWORD_SECRET_NAME` and `TRINO_SCHEMA` to read the offline
                 feature group tables with SQL (the catalog is the feature group's
                 format, `delta` or `hudi`, chosen by the app).
+            idle_scale_to_zero: Scale the app to zero when idle.
+                The app's pod goes away once no request has been in flight for `idle_cooldown_seconds` and comes back on the next request, which is held for up to `cold_start_timeout_seconds`.
+                The app shows the `IDLE` state meanwhile, and opening it is what wakes it.
+                On by default wherever the cluster has KEDA (`None` leaves the choice to the cluster); pass `False` for an app that must stay up, and `True` to insist, which fails on a cluster without KEDA.
+                An open WebSocket, such as a Streamlit session in an open tab, counts as in flight, so the app stays up while someone has it open.
+            idle_cooldown_seconds: Seconds without a request before the app scales to zero.
+                Turns the option on when given; the default is the cluster's `pythonapp_idle_cooldown_seconds` (21600, six hours).
+            cold_start_timeout_seconds: Seconds the first request waits for the app to wake.
+                Turns the option on when given; the default and ceiling is the cluster's `pythonapp_cold_start_timeout_max_seconds` (300). The ingress read timeout (60 unless raised) may fail the waking request earlier; the pod keeps starting and the next request finds it ready.
 
         Returns:
             The created App object.
@@ -230,6 +242,17 @@ class AppApi:
             raise ValueError(
                 "git_auto_redeploy is only supported for Git repository apps."
             )
+        # The backend ignores the two timeouts with the option off; saying so here beats
+        # a silent no-op. Given without the flag, they mean the option is wanted.
+        has_idle_timeouts = (
+            idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None
+        )
+        if idle_scale_to_zero is False and has_idle_timeouts:
+            raise ValueError(
+                "idle_cooldown_seconds and cold_start_timeout_seconds are only used with idle_scale_to_zero on."
+            )
+        if idle_scale_to_zero is None and has_idle_timeouts:
+            idle_scale_to_zero = True
 
         if file_launched_app:
             if entrypoint_command:
@@ -304,6 +327,14 @@ class AppApi:
         if readiness_probe_path is not None:
             config["readinessProbePath"] = readiness_probe_path
         config["dbAccess"] = bool(db_access)
+        # Unset is left out: the backend turns the option on wherever KEDA is installed.
+        if idle_scale_to_zero is not None:
+            config["idleScaleToZero"] = bool(idle_scale_to_zero)
+        if idle_scale_to_zero:
+            if idle_cooldown_seconds is not None:
+                config["idleCooldownSeconds"] = int(idle_cooldown_seconds)
+            if cold_start_timeout_seconds is not None:
+                config["coldStartTimeoutSeconds"] = int(cold_start_timeout_seconds)
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}
