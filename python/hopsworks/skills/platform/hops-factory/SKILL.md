@@ -76,6 +76,7 @@ build:
 - `key` puts an answer at a dotted path of the answers the build gets; the id when absent.
 - `account_env` fields (`env: LLM_API_KEY`, `secret: true`) are saved as the user's account variables, never in `system.yaml`.
 - `secrets` fields ask for rows of a variable name and a hidden value; each value is saved as a private account variable, and only the names reach `system.yaml`.
+- A credential the answers lack is asked for in the chat with a `hops-secret` block, never in a message or with AskUserQuestion (see `hops-data-sources`): the chat saves it as a private account variable and you get its name.
 - `presets` are named starting answers, listed under the factory's New button: `{id, label, answers: {<field id>: ...}, fixed: {...}}`.
 - A phase key cannot be `system`, `factory` or `schema_version`.
 - To extend a built-in instead of replacing it, clone it: the clone keeps `build.builtin` (`mlsystem`, `analytics-bronze`, `analytics-silver` or `analytics-gold`) and its questions; answers the built-in build does not read land in `requirements.extra` and the clone's instructions in `factory.instructions` of each system's `system.yaml`.

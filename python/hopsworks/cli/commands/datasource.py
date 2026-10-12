@@ -1326,7 +1326,11 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     """Build the ``create <name>`` command for one connector type."""
 
     def run(
-        ctx: click.Context, connector_name: str, description: str, **values: Any
+        ctx: click.Context,
+        connector_name: str,
+        description: str,
+        test: bool,
+        **values: Any,
     ) -> None:
         problem = spec.check(values) if spec.check else None
         if problem:
@@ -1356,7 +1360,10 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
             if opt.kind == "args":
                 value = _parse_arguments(opt.flag, value)
             _set_path(body, opt.json, value)
-        _create_connector(ctx, body)
+        if test:
+            _test_connector(ctx, body)
+        else:
+            _create_connector(ctx, body)
 
     # Click renders a command's docstring as its help, so the docstring is the
     # summary alone; the options carry their own help and the parameters are
@@ -1364,6 +1371,11 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     run.__doc__ = spec.summary
     cmd = click.pass_context(run)
     cmd = click.option("--description", default="", help="Free-form description.")(cmd)
+    cmd = click.option(
+        "--test",
+        is_flag=True,
+        help="Only test the connection; create nothing. Exits 1 when it fails.",
+    )(cmd)
     for opt in reversed(spec.opts):
         cmd = _option(opt, name)(cmd)
     cmd = click.argument("connector_name", metavar="NAME")(cmd)
@@ -1542,6 +1554,33 @@ def connector_infer_metadata(
         click.echo(f"Suggested event time: {inferred.suggested_event_time}")
     if inferred.suggested_description:
         click.echo(f"Suggested description: {inferred.suggested_description}")
+
+
+def _test_connector(ctx: click.Context, body: dict[str, Any]) -> None:
+    fs = session.get_feature_store(ctx)
+    from hopsworks_common.core import rest
+
+    try:
+        result = rest._send_request(
+            "POST",
+            rest._project_path(
+                "featurestores",
+                getattr(fs, "id", None),
+                "storageconnectors",
+                "testConnection",
+            ),
+            json_body=body,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Connection test failed: {exc}") from exc
+    result = result if isinstance(result, dict) else {}
+    message = (result.get("connectionOutput") or "").strip()
+    # The checkers report success as exit code 0, or 200 for HTTP sources.
+    if result.get("statusCode") not in (0, 200):
+        raise click.ClickException(f"Connection test failed: {message or 'no output'}")
+    output.success(
+        "✓ Connection to %s works%s", body["name"], f": {message}" if message else ""
+    )
 
 
 def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:

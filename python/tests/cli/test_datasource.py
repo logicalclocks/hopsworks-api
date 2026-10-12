@@ -832,3 +832,36 @@ def test_an_unknown_choice_is_refused_before_any_request():
 def test_elasticsearch_auth_modes_are_exclusive(argv, message):
     output = _refused(["elasticsearch", "n", "--host", "h", *argv])
     assert message in output
+
+
+def _tested(response: dict) -> tuple:
+    """Run ``datasource create sql ... --test`` against a mocked REST call."""
+    from hopsworks_common.core import rest
+
+    with (
+        mock.patch.object(ds.session, "get_feature_store") as fs,
+        mock.patch.object(rest, "_project_path", side_effect=lambda *p: list(p)),
+        mock.patch.object(rest, "_send_request", return_value=response) as send,
+        mock.patch.object(ds, "_create_connector") as create,
+    ):
+        fs.return_value.id = 7
+        result = CliRunner().invoke(
+            cli, ["datasource", "create", "sql", "n", *_MINIMAL["sql"], "--test"]
+        )
+    return result, send, create
+
+
+def test_test_only_checks_the_connection_and_creates_nothing():
+    result, send, create = _tested({"statusCode": 0, "connectionOutput": "OK"})
+
+    assert result.exit_code == 0, result.output
+    create.assert_not_called()
+    assert send.call_args.args[1][-1] == "testConnection"
+    assert send.call_args.kwargs["json_body"]["storageConnectorType"] == "SQL"
+
+
+def test_a_failed_test_exits_with_the_checkers_output():
+    result, _, _ = _tested({"statusCode": 1, "connectionOutput": "refused"})
+
+    assert result.exit_code == 1
+    assert "refused" in result.output

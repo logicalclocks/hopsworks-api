@@ -7,6 +7,17 @@ Prefer the `hops` CLI for mounting or ingesting external tables from a datasourc
 
 A secret option of `hops datasource create` (`--password`, `--api-key`, ...) takes the value itself, `-` to read it from stdin, or `account:NAME` to read your account variable `NAME`. Use `account:NAME` for a credential the user saved in their account (the Factory's forms do): the value goes to the data source without a shell, a file or a printout, and never through `$(...)` around a command that also prints, such as `hopsworks.login()`.
 
+Never ask the user for a password, token or key in the conversation, in a message or with AskUserQuestion: whatever is typed there reaches the model. In the Factory's chat, end your reply with a `hops-secret` block instead. It is a form: the secret as a hidden field, the plain settings that go with it (`fields`, never a secret) and, for a data source, a `test` command the form's Test button runs:
+
+```hops-secret
+{"name": "CRM_PASSWORD", "label": "CRM password", "description": "Password of the hopsworks_reader user",
+ "fields": [{"name": "host", "label": "Host"}, {"name": "port", "label": "Port", "default": "5432"},
+            {"name": "database", "label": "Database"}, {"name": "user", "label": "User"}],
+ "test": "hops datasource create sql crm --database-type POSTGRESQL --host {{host}} --port {{port}} --database {{database}} --user {{user}} --password account:CRM_PASSWORD --test"}
+```
+
+`name` is in capitals, digits and underscores. `test` is a `hops datasource create ... --test` command, which checks the connection and creates nothing; `{{field}}` stands for a field's value. The chat saves the secret as the user's private account variable `name`, and replies with the settings and the secret's name, never its value. Then create the data source with the same command without `--test`. Outside the chat, ask the user to add the account variable in their account settings and tell you its name.
+
 Mounting and ingesting both build a feature pipeline's input side: an external feature group leaves data in the source (no copy, no copy-time MITs); a DLTHub ingest copies the source into a managed feature group. Mounting is the lower-cost path when the source already holds the data you want, since reuse beats rebuilding a pipeline.
 
 ## Contract
