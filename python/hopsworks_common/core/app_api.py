@@ -38,6 +38,33 @@ _GIT_PROVIDER_ALIASES = {
 
 @public("hopsworks.core.app_api.AppApi")
 class AppApi:
+    # Mirrors PythonAppKind in the backend.
+    # Every kind but CUSTOM is launched from its app file.
+    APP_KINDS = ("STREAMLIT", "CUSTOM", "FLASK", "GRADIO", "NODEJS")
+    APP_KIND_LABELS = {
+        "STREAMLIT": "Streamlit",
+        "CUSTOM": "custom",
+        "FLASK": "Flask",
+        "GRADIO": "Gradio",
+        "NODEJS": "Node.js",
+    }
+    APP_KIND_EXTENSIONS = {
+        "STREAMLIT": (".py",),
+        "FLASK": (".py",),
+        "GRADIO": (".py",),
+        "NODEJS": (".js", ".mjs", ".cjs", ".ts", ".mts"),
+    }
+
+    @classmethod
+    def _check_entrypoint_extension(
+        cls, app_kind: str, path: str, parameter: str
+    ) -> None:
+        extensions = cls.APP_KIND_EXTENSIONS.get(app_kind)
+        if extensions and not path.lower().endswith(extensions):
+            raise ValueError(
+                f"{parameter} must be a {', '.join(extensions)} file for {cls.APP_KIND_LABELS[app_kind]} apps: {path}"
+            )
+
     def __init__(self):
         self._log = logging.getLogger(__name__)
 
@@ -111,7 +138,7 @@ class AppApi:
         readiness_probe_path: str | None = None,
         db_access: bool = True,
     ) -> app.App:
-        """Create a new Python app.
+        """Create a new app.
 
         Example:
             ```python
@@ -137,9 +164,15 @@ class AppApi:
             cores: CPU cores (default: 1.0).
             env_vars: Per-runtime env vars applied when the app is started.
                 These override account-level env vars for this app's executions.
-            app_kind: App kind to create. Defaults to ``STREAMLIT``.
-            entrypoint_command: Startup command for non-Streamlit apps.
-            app_port: Port exposed by non-Streamlit apps.
+            app_kind: What the app is, which decides how it is started.
+                ``STREAMLIT``, ``FLASK`` and ``GRADIO`` run the given Python file with their framework.
+                ``NODEJS`` runs a JavaScript or TypeScript file with Node.js, and the app reads its port from ``process.env.PORT``.
+                ``CUSTOM`` runs ``entrypoint_command``.
+            entrypoint_command: Startup command for ``CUSTOM`` apps.
+                The other kinds generate theirs from the app file.
+            app_port: Port the app listens on, for every kind but ``STREAMLIT``.
+                Flask is started on it; Gradio and Node.js are told it through ``GRADIO_SERVER_PORT`` and ``PORT``.
+                Unset leaves the backend's default.
             description: Optional app description.
             git_url: Optional Git repository URL. When set, the app is cloned on
                 every start.
@@ -149,7 +182,8 @@ class AppApi:
             git_auto_redeploy: Roll the app to the branch HEAD whenever a new commit is pushed.
                 Only valid for git-backed apps.
                 The running app keeps serving until the new version is ready.
-            entrypoint_script: Relative entrypoint script for Streamlit git apps.
+            entrypoint_script: The app file relative to the repository root, for git
+                repository apps of every kind but ``CUSTOM``.
             app_base_path: Public mount path for the app, for example ``/`` or
                 ``/myapp``.
             readiness_probe_path: Optional readiness probe path to use instead of
@@ -182,7 +216,13 @@ class AppApi:
         app_base_path = self._trim_to_none(app_base_path)
         readiness_probe_path = self._trim_to_none(readiness_probe_path)
         git_repo_app = bool(git_url)
-        streamlit_app = app_kind_name == "STREAMLIT"
+        if app_kind_name not in self.APP_KINDS:
+            raise ValueError(
+                f"Unknown app_kind {app_kind_name!r}; one of {', '.join(self.APP_KINDS)}."
+            )
+        # Every kind but CUSTOM is started from its app file with a generated command.
+        file_launched_app = app_kind_name != "CUSTOM"
+        kind_label = self.APP_KIND_LABELS[app_kind_name]
 
         # Mirrors PythonAppJobValidator: the backend rejects the flag without a git
         # source. Fail here so the caller gets the reason instead of a REST error.
@@ -191,9 +231,11 @@ class AppApi:
                 "git_auto_redeploy is only supported for Git repository apps."
             )
 
-        if streamlit_app:
+        if file_launched_app:
             if entrypoint_command:
-                raise ValueError("entrypoint_command is only used for custom apps.")
+                raise ValueError(
+                    f"entrypoint_command is only used for custom apps; {kind_label} apps are started from the app file."
+                )
             if git_repo_app:
                 if not git_provider:
                     raise ValueError(
@@ -201,14 +243,19 @@ class AppApi:
                     )
                 if not entrypoint_script:
                     raise ValueError(
-                        "entrypoint_script is required for Streamlit Git repository apps."
+                        f"entrypoint_script is required for {kind_label} Git repository apps."
                     )
+                self._check_entrypoint_extension(
+                    app_kind_name, entrypoint_script, "entrypoint_script"
+                )
             elif not app_path:
-                raise ValueError("app_path is required for Streamlit apps.")
+                raise ValueError(f"app_path is required for {kind_label} apps.")
             elif entrypoint_script:
                 raise ValueError(
-                    "entrypoint_script is only used for Streamlit Git repository apps."
+                    "entrypoint_script is only used for Git repository apps."
                 )
+            else:
+                self._check_entrypoint_extension(app_kind_name, app_path, "app_path")
         else:
             if not entrypoint_command:
                 raise ValueError("entrypoint_command is required for custom apps.")
@@ -216,7 +263,7 @@ class AppApi:
                 raise ValueError("git_provider is required for Git repository apps.")
             if entrypoint_script:
                 raise ValueError(
-                    "entrypoint_script is only used for Streamlit Git repository apps."
+                    "entrypoint_script is only used for Git repository apps of the other kinds."
                 )
 
         if app_path and not git_repo_app:
@@ -248,9 +295,9 @@ class AppApi:
             config["gitAutoRedeploy"] = bool(git_auto_redeploy)
             if git_branch:
                 config["gitBranch"] = git_branch
-            if streamlit_app:
+            if file_launched_app:
                 config["entrypointScript"] = entrypoint_script
-        if not streamlit_app and entrypoint_command:
+        if not file_launched_app and entrypoint_command:
             config["entrypointCommand"] = entrypoint_command
         if app_kind_name != "STREAMLIT" and app_port is not None:
             config["appPort"] = app_port

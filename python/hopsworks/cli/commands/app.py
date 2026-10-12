@@ -248,7 +248,9 @@ def _report_running(name: str, a: Any) -> None:
 )
 @click.option(
     "--app-kind",
-    type=click.Choice(["STREAMLIT", "CUSTOM", "FLASK", "GRADIO"], case_sensitive=False),
+    type=click.Choice(
+        ["STREAMLIT", "FLASK", "GRADIO", "NODEJS", "CUSTOM"], case_sensitive=False
+    ),
     default="STREAMLIT",
     show_default=True,
     help="App type to create.",
@@ -262,7 +264,7 @@ def _report_running(name: str, a: Any) -> None:
     "--app-port",
     type=int,
     default=None,
-    help="Port exposed by custom apps.",
+    help="Port the app listens on, for every kind but STREAMLIT.",
 )
 @click.option(
     "--git-url",
@@ -289,7 +291,7 @@ def _report_running(name: str, a: Any) -> None:
 @click.option(
     "--entrypoint-script",
     default=None,
-    help="Relative .py entrypoint script for Streamlit Git repository apps.",
+    help="App file relative to the repository root, for Git repository apps of every kind but CUSTOM.",
 )
 @click.option(
     "--app-base-path",
@@ -364,12 +366,12 @@ def app_create(
         app_path: HopsFS path to the app script.
         app_kind: App type.
         entrypoint_command: Startup command for custom apps.
-        app_port: Port for custom apps.
+        app_port: Port the app listens on, for every kind but Streamlit.
         git_url: Git repository URL for git-backed apps.
         git_provider: Git provider for git-backed apps.
         git_branch: Optional Git branch.
         git_auto_redeploy: Roll the app to the branch HEAD on new commits.
-        entrypoint_script: Relative entrypoint script for Streamlit git apps.
+        entrypoint_script: App file relative to the repository root, for git apps of every kind but custom.
         app_base_path: Public mount path for the app.
         readiness_probe_path: Optional readiness probe path override.
         db_access: Whether the app gets the project's online feature store
@@ -382,25 +384,27 @@ def app_create(
     """
     app_kind = app_kind.upper()
     git_repo_app = bool(git_url)
-    if app_kind == "STREAMLIT":
+    # Every kind but CUSTOM is launched from its app file with a command the backend generates.
+    if app_kind != "CUSTOM":
+        label = app_kind.capitalize() if app_kind != "NODEJS" else "Node.js"
         if entrypoint_command:
             raise click.ClickException(
-                "Streamlit apps do not accept --entrypoint-command."
+                f"{label} apps do not accept --entrypoint-command."
             )
         if git_repo_app:
             if not git_provider:
                 raise click.ClickException(
-                    "Streamlit Git repository apps require --git-provider."
+                    f"{label} Git repository apps require --git-provider."
                 )
             if not entrypoint_script:
                 raise click.ClickException(
-                    "Streamlit Git repository apps require --entrypoint-script."
+                    f"{label} Git repository apps require --entrypoint-script."
                 )
         elif not app_path:
-            raise click.ClickException("Streamlit apps require --path.")
+            raise click.ClickException(f"{label} apps require --path.")
         elif entrypoint_script:
             raise click.ClickException(
-                "--entrypoint-script is only supported for Streamlit Git apps."
+                "--entrypoint-script is only supported for Git repository apps."
             )
     else:
         if not entrypoint_command:
@@ -409,7 +413,7 @@ def app_create(
             raise click.ClickException("Git repository apps require --git-provider.")
         if entrypoint_script:
             raise click.ClickException(
-                "--entrypoint-script is only supported for Streamlit Git apps."
+                "--entrypoint-script is only supported for Git repository apps of the other kinds."
             )
 
     apps = _get_app_api(ctx)

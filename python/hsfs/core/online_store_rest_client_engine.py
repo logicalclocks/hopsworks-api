@@ -262,6 +262,15 @@ class OnlineStoreRestClientEngine:
                 )
         return feature_values
 
+    @staticmethod
+    def _without_null_keys(entry: dict[str, Any]) -> dict[str, Any]:
+        """Drop keys whose value is null, so a null key reads as an omitted one.
+
+        The RonDB Rest Server rejects the whole request with HTTP 400 on a null key value,
+        while an omitted key is looked up as missing, which is what the SQL client does with a null.
+        """
+        return {key: value for key, value in entry.items() if value is not None}
+
     def _get_single_feature_vector(
         self,
         entry: dict[str, Any],
@@ -318,7 +327,7 @@ class OnlineStoreRestClientEngine:
             # Only necessary to get the detailed status if we are not allowing missing features.
             include_detailed_status=drop_missing,
         )
-        payload["entries"] = entry
+        payload["entries"] = self._without_null_keys(entry)
         payload["passedFeatures"] = passed_features
 
         response = self._online_store_rest_client_api._get_single_raw_feature_vector(
@@ -391,7 +400,7 @@ class OnlineStoreRestClientEngine:
             # Only necessary to get the detailed status if we are not allowing missing features.
             include_detailed_status=drop_missing,
         )
-        payload["entries"] = entries
+        payload["entries"] = [self._without_null_keys(entry) for entry in entries]
         if isinstance(passed_features, list) and (
             len(passed_features) == len(entries) or len(passed_features) == 0
         ):
