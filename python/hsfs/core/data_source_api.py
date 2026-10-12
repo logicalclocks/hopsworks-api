@@ -47,21 +47,23 @@ class DataSourceApi:
         path_params: list,
         query_params: dict | None = None,
     ):
-        """A GET on the data source as the caller, whose missing provided credentials are the one error worth rephrasing."""
+        """A GET on the data source as the caller, whose missing or incomplete provided credentials are the errors worth rephrasing."""
         _client = client._get_instance()
         try:
             return _client._send_request("GET", path_params, query_params)
         except RestAPIError as err:
-            if (
-                err.error_code
-                == RestAPIError.FeatureStoreErrorCode.DATA_SOURCE_CREDENTIALS_NOT_PROVIDED
-            ):
-                raise FeatureStoreException(
-                    data_source_credentials_api._not_provided_message(
-                        storage_connector._name
-                    )
-                ) from err
-            raise
+            codes = RestAPIError.FeatureStoreErrorCode
+            if err.error_code == codes.DATA_SOURCE_CREDENTIALS_NOT_PROVIDED:
+                status = "MISSING"
+            elif err.error_code == codes.DATA_SOURCE_CREDENTIALS_INCOMPLETE:
+                status = "INCOMPLETE"
+            else:
+                raise
+            raise FeatureStoreException(
+                data_source_credentials_api._not_provided_message(
+                    storage_connector._name, status
+                )
+            ) from err
 
     def _get_databases(self, storage_connector: sc.StorageConnector) -> list[str]:
         _client = client._get_instance()

@@ -3539,6 +3539,8 @@ class SqlConnector(StorageConnector):
         self._wallet_password = wallet_password
         self._credentials_mode = (credentials_mode or self.SHARED).upper()
         self._user_credentials = user_credentials
+        # Set once this object saves or deletes credentials, which makes the values the runtime started with stale.
+        self._runtime_env_stale = False
 
     @property
     def database_type(self) -> str | None:
@@ -3582,7 +3584,10 @@ class SqlConnector(StorageConnector):
 
     @property
     def wallet_path(self) -> str | None:
-        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE)."""
+        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE).
+
+        Inside a Hopsworks runtime that mounts your wallet for a data source with provided credentials, this is the local `/hopsfs/...` path of the mounted file rather than its HopsFS path, so it cannot be passed to HopsFS APIs such as the dataset API.
+        """
         return self._local_wallet_path() or self._wallet_path
 
     @property
@@ -3601,15 +3606,19 @@ class SqlConnector(StorageConnector):
 
         Only the runtime's own feature store is injected, so a data source of the same name read from another feature store has a different id and must not pick these values up.
         """
-        if self._credentials_mode != self.PROVIDED or self._id is None:
+        if (
+            self._credentials_mode != self.PROVIDED
+            or self._id is None
+            or self._runtime_env_stale
+        ):
             return None
         if os.environ.get(self._env_var("CONNECTOR_ID")) != str(self._id):
             return None
         return os.environ.get(self._env_var(suffix)) or None
 
     def _resolve(self, suffix: str, dto_value: str | None) -> str | None:
-        """A provided credential comes from the runtime's env var first, then from the caller's own values in the DTO."""
-        return self._runtime_env(suffix) or dto_value
+        """A provided credential comes from the caller's own values, which the backend resolves into the DTO, and from the runtime's env var only when the DTO has none."""
+        return dto_value or self._runtime_env(suffix)
 
     def _local_wallet_path(self) -> str | None:
         """The wallet mounted into a Hopsworks runtime, which is a local path rather than one in HopsFS.
@@ -3617,15 +3626,20 @@ class SqlConnector(StorageConnector):
         Not every runtime mounts HopsFS (Spark does not), so the path is only used when it can be read here.
         """
         path = self._runtime_env("WALLET_PATH")
-        if path and os.access(path, os.R_OK):
-            return path
-        return None
+        if not path or not os.access(path, os.R_OK):
+            return None
+        # A wallet bound after the runtime started has another file name, and the mount would serve the old one.
+        if self._wallet_path and os.path.basename(path) != os.path.basename(
+            self._wallet_path
+        ):
+            return None
+        return path
 
     def _require_credentials(self) -> None:
-        if self._credentials_mode != self.PROVIDED or self._runtime_env("USER"):
+        if self._credentials_mode != self.PROVIDED:
             return
         status = (self._user_credentials or {}).get("status")
-        if status != "VALID":
+        if status != "VALID" and not self._runtime_env("USER"):
             raise FeatureStoreException(
                 data_source_credentials_api._not_provided_message(self._name, status)
             )
@@ -3663,15 +3677,21 @@ class SqlConnector(StorageConnector):
         password_secret: str | None,
         wallet_password_secret: str | None,
     ) -> dict[str, Any]:
-        if not (user or user_env_var) or not (password or password_secret):
+        """The CredentialsDTO, where an entry not given keeps the one already bound, and a username falls back to the default env var."""
+        bound = self._user_credentials or {}
+        password_secret = password_secret or (
+            None if password else bound.get("password_secret_name")
+        )
+        if not (password or password_secret):
             raise ValueError(
-                "A username (`user` or `user_env_var`) and a password (`password` or "
-                "`password_secret`) are required."
+                "A password (`password` or `password_secret`) is required."
             )
         body = {
             "username": _credential_entry(
                 "envVarName",
-                user_env_var or f"DS_{self._env_name()}_{self._featurestore_id}_USER",
+                user_env_var
+                or (None if user else bound.get("username_env_var"))
+                or f"DS_{self._env_name()}_{self._featurestore_id}_USER",
                 user,
             ),
             "password": _credential_entry(
@@ -3680,8 +3700,12 @@ class SqlConnector(StorageConnector):
                 password,
             ),
         }
+        wallet_path = wallet_path or bound.get("wallet_path")
         if wallet_path:
             body["walletPath"] = wallet_path
+            wallet_password_secret = wallet_password_secret or (
+                None if wallet_password else bound.get("wallet_password_secret_name")
+            )
         if wallet_password or wallet_password_secret:
             body["walletPassword"] = _credential_entry(
                 "secretName",
@@ -3744,23 +3768,24 @@ class SqlConnector(StorageConnector):
             wallet_path:
                 An Oracle wallet zip already uploaded to your home directory in this project, under `/Projects/<project>/Users/<username>/.datasources/<name>/`, where `<name>` is the lower-cased form of `<NAME>`.
                 The wallet has to be in HopsFS for the test to read it.
+                Defaults to the wallet already bound.
             wallet_password: The password of the wallet, when it has one.
             user_env_var:
                 The name of an env var in your account to take the username from, or to store it under.
-                Defaults to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
+                Defaults to the env var already bound when no `user` is given, else to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
             password_secret:
                 The name of a secret in your account to take the password from, or to store it under.
-                Defaults to `ds_<name>_<feature store id>_password`.
+                Defaults to the secret already bound when no `password` is given, else to `ds_<name>_<feature store id>_password`.
             wallet_password_secret:
                 The name of a secret in your account to take the wallet password from, or to store it under.
-                Defaults to `ds_<name>_<feature store id>_wallet_password`.
+                Defaults to the secret already bound when no `wallet_password` is given, else to `ds_<name>_<feature store id>_wallet_password`.
 
         Returns:
             Whether the data source accepted the credentials.
             The reason for a rejection is logged as a warning.
 
         Raises:
-            ValueError: If no username or no password is given, by value or by account entry name.
+            ValueError: If no password is given, by value or by account entry name, and none is bound yet.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
         """
         result = self._validate_credentials(
@@ -3798,8 +3823,10 @@ class SqlConnector(StorageConnector):
         On success the password and wallet password become secrets in your account and the username an env var, both private to you, and every external feature group mounted from this data source is re-checked for your access.
         From then on your reads through this data source use these credentials, starting with this object, which reloads them from the backend before returning; if that reload fails, a warning is issued and the credentials stay saved.
         Runtimes you start afterwards receive them as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, next to `HOPS_DS_<NAME>_CONNECTOR_ID`, the id of the data source they belong to.
-        A runtime that is already running keeps the values it started with, and the SDK inside it prefers them over the saved ones until it restarts.
+        A runtime that is already running keeps those env vars as they were, but the SDK inside it reads with the saved credentials, which the backend returns with the data source, and only falls back to the env vars when it returns none.
         A name given for an entry that already exists in your account updates that entry.
+        An entry you do not give keeps the one already bound: `set_credentials(password="...")` rotates only the password, and keeps your username, your wallet and its password.
+        A username never bound and not given is read from the default env var `DS_<NAME>_<feature store id>_USER` in your account.
 
         Example:
             ```python
@@ -3816,22 +3843,23 @@ class SqlConnector(StorageConnector):
             wallet_path:
                 An Oracle wallet zip already uploaded to your home directory in this project, under `/Projects/<project>/Users/<username>/.datasources/<name>/`, where `<name>` is the lower-cased form of `<NAME>`.
                 A wallet anywhere else is refused.
+                Defaults to the wallet already bound; to drop a bound wallet, call `delete_credentials()` first.
             wallet_password: The password of the wallet, when it has one.
             user_env_var:
                 The name of an env var in your account to take the username from, or to store it under.
-                Defaults to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
+                Defaults to the env var already bound when no `user` is given, else to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
             password_secret:
                 The name of a secret in your account to take the password from, or to store it under.
-                Defaults to `ds_<name>_<feature store id>_password`.
+                Defaults to the secret already bound when no `password` is given, else to `ds_<name>_<feature store id>_password`.
             wallet_password_secret:
                 The name of a secret in your account to take the wallet password from, or to store it under.
-                Defaults to `ds_<name>_<feature store id>_wallet_password`.
+                Defaults to the secret already bound when no `wallet_password` is given, else to `ds_<name>_<feature store id>_wallet_password`.
 
         Returns:
             Your binding: its `status`, the names of the account entries it references, the wallet path and `validated_at`.
 
         Raises:
-            ValueError: If no username or no password is given, by value or by account entry name.
+            ValueError: If no password is given, by value or by account entry name, and none is bound yet.
             hopsworks.client.exceptions.FeatureStoreException: If the data source rejected the credentials; the message carries the data source's own error.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
         """
@@ -3852,11 +3880,12 @@ class SqlConnector(StorageConnector):
                 == RestAPIError.FeatureStoreErrorCode.DATA_SOURCE_CREDENTIALS_INVALID
             ):
                 raise FeatureStoreException(
-                    f"Data source '{self._name}' rejected the credentials: "
-                    f"{err.user_message}"
+                    err.user_message
+                    or f"Data source '{self._name}' rejected the credentials."
                 ) from err
             raise
         self._user_credentials = humps.decamelize(binding)
+        self._runtime_env_stale = True
         # The credentials are saved by now, so a failed reload must not report the save as failed.
         try:
             self._refresh_credentials()
@@ -3908,9 +3937,10 @@ class SqlConnector(StorageConnector):
 
     @public
     def delete_credentials(self) -> None:
-        """Remove your binding for this data source and the wallet file it referenced.
+        """Remove your binding for this data source, the wallet file it referenced and its default-named account entries.
 
-        The secret and env var in your account are kept, since you may use them elsewhere.
+        The env var `DS_<NAME>_<feature store id>_USER` and the secrets `ds_<name>_<feature store id>_password` and `ds_<name>_<feature store id>_wallet_password` are deleted from your account.
+        An entry you named yourself with `user_env_var`, `password_secret` or `wallet_password_secret` is kept, since you may use it elsewhere.
         Your access state on every external feature group mounted from this data source becomes `NO_CREDENTIALS`.
 
         Example:
@@ -3923,6 +3953,7 @@ class SqlConnector(StorageConnector):
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
         """
         self._data_source_credentials_api._delete(self)
+        self._runtime_env_stale = True
         self._user_credentials = {"status": "MISSING"}
         self._user = None
         self._password = None

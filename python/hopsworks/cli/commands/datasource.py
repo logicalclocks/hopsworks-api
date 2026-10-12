@@ -1421,7 +1421,8 @@ def _credential_options(command: Callable[..., Any]) -> Callable[..., Any]:
         click.option(
             "--user-env-var",
             help="Name of an env var in your account holding the username, or to save it under. "
-            "Default DS_<NAME>_<feature store id>_USER.",
+            "Default: the one already bound when --user is not given, else "
+            "DS_<NAME>_<feature store id>_USER.",
         ),
         _secret_option(
             "credentials",
@@ -1431,14 +1432,16 @@ def _credential_options(command: Callable[..., Any]) -> Callable[..., Any]:
         click.option(
             "--password-secret",
             help="Name of a secret in your account holding the password, or to save it under. "
-            "Default ds_<name>_<feature store id>_password.",
+            "Default: the one already bound when --password is not given, else "
+            "ds_<name>_<feature store id>_password.",
         ),
         click.option(
             "--wallet",
             type=click.Path(exists=True, dir_okay=False),
             help="Local Oracle wallet zip; uploaded as a new .datasources/<name>/wallet-<id>.zip "
             "in your home directory in the project, so the wallet you already use stays "
-            "untouched until the new one is saved.",
+            "untouched until the new one is saved. Without it, the wallet already bound is "
+            "kept.",
         ),
         _secret_option(
             "credentials",
@@ -1448,7 +1451,8 @@ def _credential_options(command: Callable[..., Any]) -> Callable[..., Any]:
         click.option(
             "--wallet-password-secret",
             help="Name of a secret in your account holding the wallet password, or to save it "
-            "under. Default ds_<name>_<feature store id>_wallet_password.",
+            "under. Default: the one already bound when --wallet-password is not given, else "
+            "ds_<name>_<feature store id>_wallet_password.",
         ),
     )
     for option in reversed(options):
@@ -1456,28 +1460,39 @@ def _credential_options(command: Callable[..., Any]) -> Callable[..., Any]:
     return command
 
 
-def _credential_arguments(ctx: click.Context, values: dict[str, Any]) -> dict[str, Any]:
-    """Turn the options into ``set_credentials`` keyword arguments, prompting for a missing password."""
+def _credential_arguments(
+    ctx: click.Context, sc: Any, values: dict[str, Any]
+) -> dict[str, Any]:
+    """Turn the options into ``set_credentials`` keyword arguments, prompting for a missing password.
+
+    An option not given keeps what is already bound, which ``set_credentials`` fills in.
+    """
     for value_flag, name_flag in _CREDENTIAL_PAIRS:
         if _given(values, value_flag) and _given(values, name_flag):
             raise click.UsageError(
                 f"{value_flag} and {name_flag} are alternatives; pass one.", ctx
             )
-    if not _given(values, "--user") and not _given(values, "--user-env-var"):
-        raise click.UsageError("Pass --user or --user-env-var.", ctx)
+    bound = getattr(sc, "user_credentials", None) or {}
     if not _given(values, "--password") and not _given(values, "--password-secret"):
-        if not _interactive():
+        if _interactive():
+            values["password"] = click.prompt("password", hide_input=True)
+        elif not bound.get("password_secret_name"):
             raise click.UsageError(
                 "Pass --password (- reads it from stdin), --password-secret, or export "
                 f"${_env('credentials', '--password')}.",
                 ctx,
             )
-        values["password"] = click.prompt("password", hide_input=True)
-    if not _given(values, "--wallet") and (
-        _given(values, "--wallet-password")
-        or _given(values, "--wallet-password-secret")
+    if (
+        not _given(values, "--wallet")
+        and not bound.get("wallet_path")
+        and (
+            _given(values, "--wallet-password")
+            or _given(values, "--wallet-password-secret")
+        )
     ):
-        raise click.UsageError("A wallet password needs --wallet.", ctx)
+        raise click.UsageError(
+            "A wallet password needs --wallet, or a wallet already bound.", ctx
+        )
     return {
         key: values.get(key) or None
         for key in (
@@ -1551,6 +1566,7 @@ def _discard_wallet(ctx: click.Context, relative: str | None) -> None:
 
 
 def _validate(sc: Any, name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """The backend's verdict on the credentials, as a click error when they are rejected."""
     try:
         result = sc._validate_credentials(**args)
     except Exception as exc:  # noqa: BLE001
@@ -1577,34 +1593,33 @@ def _binding_rows(binding: dict[str, Any]) -> list[list[Any]]:
     ]
 
 
+# D417 asks for an Args entry for **values, which docsig (ignore_kwargs) refuses.
 @connector_credentials.command("set")
 @click.argument("name")
 @_credential_options
 @click.pass_context
-def credentials_set(ctx: click.Context, name: str, **values: Any) -> None:
-    """Validate your credentials for a data source, then save them to your account.
+def credentials_set(ctx: click.Context, name: str, **values: Any) -> None:  # noqa: D417
+    """Save your credentials for a data source to your account, once the data source accepts them.
 
     Nothing is saved when the data source rejects them.
+    An option not given keeps what is already bound, so `--password` alone rotates the password and keeps the username and wallet.
+    Each credential option is given by value or by account entry name.
 
     Args:
         ctx: Click context.
         name: Data source name.
-        **values: The credential options, each by value or by account entry name.
     """
     sc = _provided_connector(ctx, name)
-    args = _credential_arguments(ctx, values)
+    args = _credential_arguments(ctx, sc, values)
     staged = None
     if values.get("wallet"):
         args["wallet_path"], staged = _upload_wallet(ctx, sc, values["wallet"])
     # Once saved, the backend owns the staged wallet and removes the one it replaced.
     try:
-        _validate(sc, name, args)
-        try:
-            binding = sc.set_credentials(**args)
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(
-                f"Could not save the credentials: {exc}"
-            ) from exc
+        binding = sc.set_credentials(**args)
+    except Exception as exc:  # noqa: BLE001
+        _discard_wallet(ctx, staged)
+        raise click.ClickException(f"Could not save the credentials: {exc}") from exc
     except BaseException:
         _discard_wallet(ctx, staged)
         raise
@@ -1619,19 +1634,19 @@ def credentials_set(ctx: click.Context, name: str, **values: Any) -> None:
 @click.argument("name")
 @_credential_options
 @click.pass_context
-def credentials_validate(ctx: click.Context, name: str, **values: Any) -> None:
+def credentials_validate(ctx: click.Context, name: str, **values: Any) -> None:  # noqa: D417
     """Test your credentials against a data source without saving them.
 
     A wallet is uploaded under a new name for the test, which reads it from HopsFS,
     and removed again afterwards.
+    Each credential option is given by value or by account entry name.
 
     Args:
         ctx: Click context.
         name: Data source name.
-        **values: The credential options, each by value or by account entry name.
     """
     sc = _provided_connector(ctx, name)
-    args = _credential_arguments(ctx, values)
+    args = _credential_arguments(ctx, sc, values)
     staged = None
     if values.get("wallet"):
         args["wallet_path"], staged = _upload_wallet(ctx, sc, values["wallet"])
@@ -1671,9 +1686,9 @@ def credentials_show(ctx: click.Context, name: str) -> None:
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
 @click.pass_context
 def credentials_delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Remove your binding for a data source and its wallet file.
+    """Remove your binding for a data source, its wallet file and its default-named account entries.
 
-    The secret and env var stay in your account.
+    The default env var and secrets (DS_<NAME>_<feature store id>_USER, ds_<name>_<feature store id>_password and ds_<name>_<feature store id>_wallet_password) are deleted from your account; ones you named yourself stay.
 
     Args:
         ctx: Click context.

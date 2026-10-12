@@ -579,7 +579,7 @@ class TestTrinoApi:
         ]
 
     def test_connect_without_the_endpoint_sends_no_extra_credentials(
-        self, mocker, trino_api
+        self, mocker, trino_api, caplog
     ):
         from hopsworks_common.client.exceptions import RestAPIError
 
@@ -590,13 +590,32 @@ class TestTrinoApi:
             "hopsworks_common.core.trino_api._trino_connect"
         )
 
-        trino_api.connect(catalog="iceberg")
+        with caplog.at_level("WARNING"):
+            trino_api.connect(catalog="iceberg")
 
         assert "extra_credential" not in mock_trino_connect.call_args.kwargs
+        assert not caplog.records
 
-    def test_connect_without_the_endpoint_keeps_the_callers_extra_credential(
-        self, mocker, trino_api
+    @pytest.mark.parametrize("status_code", [401, 500])
+    def test_a_failed_fetch_of_the_credentials_is_a_warning(
+        self, mocker, trino_api, caplog, status_code
     ):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = Mock(status_code=status_code, reason="Err", content=b"")
+        response.json.return_value = {}
+        self._client_with_credentials(mocker, side_effect=RestAPIError("url", response))
+        mock_trino_connect = mocker.patch(
+            "hopsworks_common.core.trino_api._trino_connect"
+        )
+
+        with caplog.at_level("WARNING"):
+            trino_api.connect(catalog="oracle_sales")
+
+        assert "extra_credential" not in mock_trino_connect.call_args.kwargs
+        assert "without your data source credentials" in caplog.text
+
+    def test_a_failed_fetch_keeps_the_callers_extra_credential(self, mocker, trino_api):
         self._client_with_credentials(mocker, side_effect=RuntimeError("down"))
         mock_trino_connect = mocker.patch(
             "hopsworks_common.core.trino_api._trino_connect"

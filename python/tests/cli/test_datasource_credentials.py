@@ -1,6 +1,6 @@
 """``hops datasource credentials`` acts on the caller's own binding.
 
-``set`` stages the wallet under a new name, validates, then saves, and saves nothing
+``set`` stages the wallet under a new name and saves, which the backend refuses
 when the data source rejects the credentials; ``validate`` stops after the test and
 removes the staged wallet; ``show`` and ``delete`` read and remove the binding.
 """
@@ -23,6 +23,7 @@ def connector(mock_project):
     fs = mock_project.get_feature_store.return_value
     sc = mock.MagicMock(name="SqlConnector")
     sc.credentials_mode = "PROVIDED"
+    sc.user_credentials = {"status": "MISSING"}
     sc._env_name.return_value = "ORACLE_SALES"
     sc._validate_credentials.return_value = {"valid": True}
     sc.set_credentials.return_value = {
@@ -40,40 +41,53 @@ def _run(argv, **kwargs):
     return CliRunner().invoke(cli, ["datasource", "credentials", *argv], **kwargs)
 
 
-def test_set_validates_then_saves(connector):
+def _rejected():
+    from hopsworks_common.client.exceptions import FeatureStoreException
+
+    return FeatureStoreException(
+        "The credentials were rejected by the data source: "
+        "ORA-01017: invalid username/password; logon denied"
+    )
+
+
+def test_set_saves_without_a_separate_validation(connector):
     result = _run(["set", "oracle-sales", "--user", "SCOTT", "--password", "tiger"])
 
     assert result.exit_code == 0, result.output
-    expected = {
-        "user": "SCOTT",
-        "password": "tiger",
-        "wallet_password": None,
-        "user_env_var": None,
-        "password_secret": None,
-        "wallet_password_secret": None,
-    }
-    connector._validate_credentials.assert_called_once_with(**expected)
-    connector.set_credentials.assert_called_once_with(**expected)
-    assert connector.mock_calls.index(
-        mock.call._validate_credentials(**expected)
-    ) < connector.mock_calls.index(mock.call.set_credentials(**expected))
+    connector.set_credentials.assert_called_once_with(
+        user="SCOTT",
+        password="tiger",
+        wallet_password=None,
+        user_env_var=None,
+        password_secret=None,
+        wallet_password_secret=None,
+    )
+    # The backend validates on save, so a second login first would only double the wait.
+    connector._validate_credentials.assert_not_called()
     assert "DS_ORACLE_SALES_67_USER" in result.output
     assert "tiger" not in result.output
 
 
-def test_set_saves_nothing_when_validation_fails(connector):
-    connector._validate_credentials.return_value = {
-        "valid": False,
-        "errorCode": "ORA-01017",
-        "message": "invalid username/password; logon denied",
-    }
+def test_a_rejected_save_reports_the_data_source_error_once(connector):
+    connector.set_credentials.side_effect = _rejected()
 
     result = _run(["set", "oracle-sales", "--user", "SCOTT", "--password", "wrong"])
 
     assert result.exit_code == 1, result.output
-    assert "ORA-01017" in result.output
     assert "logon denied" in result.output
-    connector.set_credentials.assert_not_called()
+    assert result.output.count("rejected") == 1
+
+
+def test_a_password_alone_keeps_what_is_bound(connector, monkeypatch):
+    monkeypatch.setattr(ds, "_interactive", lambda: False)
+
+    result = _run(["set", "oracle-sales", "--password", "lion"])
+
+    assert result.exit_code == 0, result.output
+    kwargs = connector.set_credentials.call_args.kwargs
+    assert kwargs["password"] == "lion"
+    assert kwargs["user"] is None
+    assert "wallet_path" not in kwargs
 
 
 _BOUND_WALLET = "Users/scott/.datasources/oracle_sales/wallet-bound.zip"
@@ -133,9 +147,6 @@ def test_set_stages_the_wallet_under_a_new_name_in_the_callers_home(
     assert re.fullmatch(r"wallet-[0-9a-f]{32}\.zip", file_name)
     assert dataset_api.upload.call_args.kwargs == {}
     wallet_path = f"/Projects/demo/{target_dir}/{file_name}"
-    assert (
-        connector._validate_credentials.call_args.kwargs["wallet_path"] == wallet_path
-    )
     assert connector.set_credentials.call_args.kwargs["wallet_path"] == wallet_path
     assert connector.set_credentials.call_args.kwargs["wallet_password"] == "wp"
     dataset_api.remove.assert_not_called()
@@ -156,7 +167,7 @@ def test_a_rejected_wallet_is_removed_and_the_bound_one_untouched(
         "status": "VALID",
         "wallet_path": f"/Projects/demo/{_BOUND_WALLET}",
     }
-    connector._validate_credentials.return_value = {"valid": False, "message": "no"}
+    connector.set_credentials.side_effect = _rejected()
 
     result = _run(_with_wallet("set", wallet))
 
@@ -168,7 +179,6 @@ def test_a_rejected_wallet_is_removed_and_the_bound_one_untouched(
     ]
     assert not any(path.endswith(_BOUND_WALLET) for path in touched)
     assert not any(path.endswith("/wallet.zip") for path in touched)
-    connector.set_credentials.assert_not_called()
 
 
 def test_a_failed_save_removes_the_staged_wallet(connector, dataset_api, wallet):
@@ -227,7 +237,6 @@ def test_set_takes_account_entry_names_instead_of_values(connector):
             ["--user", "u", "--password", "p", "--password-secret", "s"],
             "--password and --password-secret are alternatives",
         ),
-        (["--password", "p"], "Pass --user or --user-env-var"),
         (
             ["--user", "u", "--password", "p", "--wallet-password", "w"],
             "needs --wallet",
@@ -241,6 +250,33 @@ def test_conflicting_or_missing_options_are_refused(connector, argv, refused):
     assert refused in result.output
     connector._validate_credentials.assert_not_called()
     connector.set_credentials.assert_not_called()
+
+
+def test_a_wallet_password_alone_rotates_that_of_the_bound_wallet(connector):
+    connector.user_credentials = {
+        "status": "VALID",
+        "password_secret_name": "ds_oracle_sales_67_password",
+        "wallet_path": f"/Projects/demo/{_BOUND_WALLET}",
+    }
+
+    result = _run(["set", "oracle-sales", "--password", "p", "--wallet-password", "w"])
+
+    assert result.exit_code == 0, result.output
+    assert connector.set_credentials.call_args.kwargs["wallet_password"] == "w"
+
+
+def test_a_bound_password_needs_no_new_one_off_a_terminal(connector, monkeypatch):
+    monkeypatch.setattr(ds, "_interactive", lambda: False)
+    connector.user_credentials = {
+        "status": "VALID",
+        "password_secret_name": "ds_oracle_sales_67_password",
+    }
+
+    result = _run(["set", "oracle-sales", "--user", "SCOTT2"])
+
+    assert result.exit_code == 0, result.output
+    kwargs = connector.set_credentials.call_args.kwargs
+    assert (kwargs["user"], kwargs["password"]) == ("SCOTT2", None)
 
 
 def test_a_missing_password_is_an_error_off_a_terminal(connector, monkeypatch):

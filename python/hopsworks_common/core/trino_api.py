@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage
-from hopsworks_common.client.exceptions import TrinoException
+from hopsworks_common.client.exceptions import RestAPIError, TrinoException
 from hopsworks_common.core import project_api, secret_api
 from hopsworks_common.core.constants import HAS_TRINO
 from hopsworks_common.core.variable_api import VariableApi
@@ -232,7 +232,8 @@ class TrinoApi:
     def _get_extra_credentials(self) -> list[tuple[str, str]]:
         """The caller's own logins for the Trino catalogs built from data sources with provided credentials.
 
-        A backend without the endpoint, or any other failure, yields none, so that Trino stays usable for every other catalog.
+        Any failure yields none, so that Trino stays usable for every other catalog.
+        Only a backend without the endpoint fails quietly; any other failure is a warning, since the member's next read from such a catalog is otherwise an unexplained authentication error.
         """
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "trino", "extra-credentials"]
@@ -240,9 +241,15 @@ class TrinoApi:
             items = _client._send_request("GET", path_params).get("items") or []
             return [(item["name"], item["value"]) for item in items]
         except Exception as err:  # noqa: BLE001
-            _logger.debug(
-                "Connecting to Trino without data source credentials: %s", err
-            )
+            if not (
+                isinstance(err, RestAPIError)
+                and err.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
+            ):
+                _logger.warning(
+                    "Connecting to Trino without your data source credentials, so catalogs "
+                    "of data sources with provided credentials will reject you: %s",
+                    err,
+                )
             return []
 
     def _with_extra_credentials(self, kwargs: dict[str, Any]) -> dict[str, Any]:

@@ -81,9 +81,12 @@ class TestDataSourceCredentialsApi:
         method, path = client_mock._send_request.call_args.args
         assert (method, path) == ("POST", [*_PATH, "validate"])
         body = json.loads(client_mock._send_request.call_args.kwargs["data"])
+        # The bound wallet and its password are tested along, as a save would keep them.
         assert body == {
             "username": {"envVarName": "DS_ORACLE_SALES_67_USER", "value": "SCOTT"},
             "password": {"secretName": "ds_oracle_sales_67_password", "value": "tiger"},
+            "walletPath": "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip",
+            "walletPassword": {"secretName": "ds_oracle_sales_67_wallet_password"},
         }
 
     def test_validate_credentials_returns_false_on_a_rejection(
@@ -178,8 +181,10 @@ class TestDataSourceCredentialsApi:
         )
         sc = _connector(backend_fixtures)
 
-        with pytest.raises(FeatureStoreException, match="ORA-01017"):
+        with pytest.raises(FeatureStoreException) as exc:
             sc.set_credentials(user="SCOTT", password="wrong")
+
+        assert str(exc.value) == "ORA-01017: invalid username/password"
 
     def test_set_credentials_lets_other_errors_through(self, mocker, backend_fixtures):
         _client(mocker, side_effect=_rest_error(270337, "not supported"))
@@ -190,18 +195,57 @@ class TestDataSourceCredentialsApi:
 
     @pytest.mark.parametrize(
         "kwargs",
-        [{}, {"user": "SCOTT"}, {"password": "tiger"}, {"user_env_var": "X"}],
+        [{}, {"user": "SCOTT"}, {"user_env_var": "X"}],
     )
-    def test_a_username_and_a_password_are_required(
+    def test_a_password_is_required_when_none_is_bound(
         self, mocker, backend_fixtures, kwargs
     ):
         client_mock = _client(mocker)
-        sc = _connector(backend_fixtures)
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_oracle_provided_missing"][
+                "response"
+            ]
+        )
 
-        with pytest.raises(ValueError, match="username"):
+        with pytest.raises(ValueError, match="password"):
             sc.set_credentials(**kwargs)
 
         client_mock._send_request.assert_not_called()
+
+    def test_a_password_alone_keeps_the_bound_username_and_wallet(
+        self, mocker, backend_fixtures
+    ):
+        client_mock = _client(mocker, side_effect=[{"status": "VALID"}, None])
+        sc = _connector(backend_fixtures)
+
+        sc.set_credentials(password="lion")
+
+        body = json.loads(client_mock._send_request.call_args_list[0].kwargs["data"])
+        assert body == {
+            "username": {"envVarName": "DS_ORACLE_SALES_67_USER"},
+            "password": {"secretName": "ds_oracle_sales_67_password", "value": "lion"},
+            "walletPath": "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip",
+            "walletPassword": {"secretName": "ds_oracle_sales_67_wallet_password"},
+        }
+
+    def test_custom_bound_names_are_kept_when_no_value_is_given(
+        self, mocker, backend_fixtures
+    ):
+        client_mock = _client(mocker, side_effect=[{"status": "VALID"}, None])
+        sc = _connector(backend_fixtures)
+        sc._user_credentials = {
+            "status": "VALID",
+            "username_env_var": "MY_USER",
+            "password_secret_name": "my_pwd",
+        }
+
+        sc.set_credentials(user="SCOTT2")
+
+        body = json.loads(client_mock._send_request.call_args_list[0].kwargs["data"])
+        assert body == {
+            "username": {"envVarName": "DS_ORACLE_SALES_67_USER", "value": "SCOTT2"},
+            "password": {"secretName": "my_pwd"},
+        }
 
     def test_delete_credentials(self, mocker, backend_fixtures):
         client_mock = _client(mocker)
@@ -223,6 +267,15 @@ class TestMissingCredentialsFromTheBackend:
         sc = _connector(backend_fixtures)
 
         with pytest.raises(FeatureStoreException, match="set_credentials"):
+            data_source_api.DataSourceApi()._get_databases(sc)
+
+    def test_browse_rephrases_a_270335_naming_what_is_gone(
+        self, mocker, backend_fixtures
+    ):
+        _client(mocker, side_effect=_rest_error(270335, "incomplete"))
+        sc = _connector(backend_fixtures)
+
+        with pytest.raises(FeatureStoreException, match="no longer exists"):
             data_source_api.DataSourceApi()._get_databases(sc)
 
     def test_browse_lets_other_errors_through(self, mocker, backend_fixtures):

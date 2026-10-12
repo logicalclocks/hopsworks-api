@@ -2106,7 +2106,9 @@ class TestSqlConnectorProvidedCredentials:
         assert sc.to_dict()["credentialsMode"] == "SHARED"
         assert sc.to_dict()["user"] == "test_user"
 
-    def test_env_vars_take_precedence_over_the_dto(self, backend_fixtures, monkeypatch):
+    def test_the_dto_takes_precedence_over_env_vars(
+        self, backend_fixtures, monkeypatch
+    ):
         sc = self._provided(backend_fixtures)
         self._inject(
             monkeypatch,
@@ -2115,16 +2117,87 @@ class TestSqlConnectorProvidedCredentials:
             wallet_password="env_wallet_pass",
         )
 
-        assert sc.user == "env_user"
-        assert sc.password == "env_pass"
-        assert sc.wallet_password == "env_wallet_pass"
+        assert sc.user == "scott"
+        assert sc.password == "tiger"
+        assert sc.wallet_password == "wallet_pass"
         opts = sc.spark_options()
-        assert opts["user"] == "env_user"
-        assert opts["password"] == "env_pass"
+        assert (opts["user"], opts["password"]) == ("scott", "tiger")
         props = sc.connector_options()
-        assert props["user"] == "env_user"
-        assert props["password"] == "env_pass"
-        assert props["wallet_password"] == "env_wallet_pass"
+        assert (props["user"], props["password"]) == ("scott", "tiger")
+        assert props["wallet_password"] == "wallet_pass"
+
+    def _saved_and_reloaded(self, backend_fixtures, mocker, sc, **dto):
+        """Make set_credentials succeed and the reload return the DTO with these values."""
+        json = dict(
+            backend_fixtures["storage_connector"]["get_oracle_provided"]["response"],
+            **dto,
+        )
+        mocker.patch.object(sc, "_data_source_credentials_api")
+        sc._data_source_credentials_api._set.return_value = json["userCredentials"]
+        mocker.patch.object(
+            sc, "_storage_connector_api"
+        )._get.return_value = storage_connector.StorageConnector.from_response_json(
+            json
+        )
+
+    def test_a_rotation_inside_a_runtime_reads_with_the_new_password(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        self._inject(monkeypatch, user="scott", password="tiger")
+        self._saved_and_reloaded(backend_fixtures, mocker, sc, password="lion")
+
+        sc.set_credentials(password="lion")
+
+        assert sc.spark_options()["password"] == "lion"
+        assert sc.connector_options()["password"] == "lion"
+
+    def test_a_rotation_whose_reload_fails_ignores_the_stale_env_vars(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(monkeypatch, user="scott", password="tiger")
+        mocker.patch.object(sc, "_data_source_credentials_api")
+        sc._data_source_credentials_api._set.return_value = {"status": "VALID"}
+        mocker.patch.object(
+            sc, "_storage_connector_api"
+        )._get.side_effect = RuntimeError("timeout")
+
+        with pytest.warns(UserWarning, match="could not reload"):
+            sc.set_credentials(password="lion")
+
+        assert sc.password is None
+
+    def test_deleted_credentials_are_not_read_from_the_env_vars(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        sc = self._provided(backend_fixtures)
+        self._inject(monkeypatch, user="scott", password="tiger")
+        mocker.patch.object(sc, "_data_source_credentials_api")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch.object(sc, "_refetch")
+
+        sc.delete_credentials()
+
+        assert (sc.user, sc.password) == (None, None)
+        with pytest.raises(FeatureStoreException, match="set_credentials"):
+            sc.spark_options()
+        with pytest.raises(FeatureStoreException, match="set_credentials"):
+            sc.read(query="SELECT 1")
+
+    def test_a_mounted_wallet_of_another_file_name_is_not_used(
+        self, backend_fixtures, monkeypatch, tmp_path
+    ):
+        stale = tmp_path / "wallet-old.zip"
+        stale.write_bytes(b"PK")
+        sc = self._provided(backend_fixtures)
+        self._inject(monkeypatch, wallet_path=str(stale))
+
+        assert sc.wallet_path == (
+            "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip"
+        )
 
     def test_env_vars_are_ignored_for_a_shared_data_source(
         self, backend_fixtures, monkeypatch
@@ -2152,7 +2225,7 @@ class TestSqlConnectorProvidedCredentials:
     def test_get_tables_defaults_to_the_resolved_user_schema(
         self, backend_fixtures, monkeypatch, mocker
     ):
-        sc = self._provided(backend_fixtures)
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
         self._inject(monkeypatch, user="env_user")
         mock_get_tables = mocker.patch.object(
             sc._data_source_api, "_get_tables", return_value=[]
@@ -2267,11 +2340,13 @@ class TestSqlConnectorProvidedCredentials:
         self, backend_fixtures, monkeypatch
     ):
         # The runtime's own feature store has an oracle-sales with id 9; this one is id 2.
-        here = self._provided(backend_fixtures)
+        here = self._provided(backend_fixtures, "get_oracle_provided_missing")
         json = dict(
-            backend_fixtures["storage_connector"]["get_oracle_provided"]["response"]
+            backend_fixtures["storage_connector"]["get_oracle_provided_missing"][
+                "response"
+            ]
         )
-        json.update(id=9, featurestoreId=68, user="own_user", password="own_pass")
+        json.update(id=9, featurestoreId=68)
         own = storage_connector.StorageConnector.from_response_json(json)
         self._inject(
             monkeypatch,
@@ -2282,9 +2357,7 @@ class TestSqlConnectorProvidedCredentials:
         )
 
         assert (own.user, own.password) == ("env_user", "env_pass")
-        assert (here.user, here.password) == ("scott", "tiger")
-        assert here.wallet_password == "wallet_pass"
-        assert here.spark_options()["user"] == "scott"
+        assert (here.user, here.password, here.wallet_password) == (None, None, None)
 
     def test_env_vars_without_a_connector_id_are_ignored(
         self, backend_fixtures, monkeypatch

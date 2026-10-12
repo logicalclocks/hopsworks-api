@@ -18,7 +18,9 @@ The feature store id keeps the defaults of same-named data sources in two projec
 
 Instead of typing a value, a member can reference an existing env var or secret from their account.
 The binding records names and the wallet path, never values.
-Removing the binding keeps the secret and the env var, which the member may use elsewhere, and deletes the wallet file.
+Removing the binding deletes the wallet file and the default-named env var and secrets above.
+An env var or secret the member named themselves stays, since they may use it elsewhere.
+Removing a member from the project and deleting the data source clean up the same way.
 
 ## SDK
 
@@ -30,6 +32,7 @@ sc.user_credentials              # your binding as the backend returned it with 
 sc.validate_credentials(user="SCOTT", password="...")        # True or False, stores nothing
 sc.set_credentials(user="SCOTT", password="...")             # validates, saves, reloads sc's credentials; FeatureStoreException when rejected
 sc.set_credentials(user_env_var="MY_USER", password_secret="my_oracle_pwd")   # reuse account entries
+sc.set_credentials(password="...")                          # rotate the password; the bound username and wallet are kept
 sc.set_credentials(user="SCOTT", password="...",
                    wallet_path="/Projects/p/Users/scott/.datasources/oracle_sales/wallet-1.zip",
                    wallet_password="...")                   # upload the wallet to that path first
@@ -42,6 +45,7 @@ The CLI uploads a local zip there for you; from the SDK, upload it with `project
 Upload a replacement under a new file name rather than over the bound one: a rejected replacement then leaves the wallet you use untouched.
 The CLI does this itself, uploading to `wallet-<random hex>.zip`; `credentials validate` removes that file afterwards, and `credentials set` removes it when the credentials are rejected.
 After a successful save the backend binds the new file and deletes the one it replaces.
+A call without `wallet_path` (or the CLI without `--wallet`) keeps the wallet already bound; to drop it, remove the binding first.
 
 A `PROVIDED` data source is created without any credentials.
 `SqlConnector(credentials_mode="PROVIDED", user=...).save()` raises `ValueError` before contacting the backend; create it without them and call `set_credentials` once it exists.
@@ -63,10 +67,11 @@ Every job, notebook, terminal, app and Ray cluster a member starts receives, for
 
 Model deployments receive none of these, since a deployment is shared by the whole project.
 
-The SDK takes these over the values returned with the data source only when `HOPS_DS_<NAME>_CONNECTOR_ID` equals that data source's `id`.
-A same-named data source read from another project's feature store has another id and keeps the credentials returned with it.
-The SDK reads the wallet from `HOPS_DS_<NAME>_WALLET_PATH` only when that file exists and is readable; Spark does not mount `/hopsfs`, so there the SDK downloads the bound wallet from HopsFS instead.
-A runtime keeps the values it started with: after `set_credentials`, restart it to pick up the new ones.
+The SDK reads with the credentials the backend returns with the data source, and falls back to these variables only when it returns none and `HOPS_DS_<NAME>_CONNECTOR_ID` equals that data source's `id`.
+A same-named data source read from another project's feature store has another id and never picks them up.
+The SDK reads the wallet from `HOPS_DS_<NAME>_WALLET_PATH` when that file exists, is readable and has the bound wallet's file name; Spark does not mount `/hopsfs`, so there the SDK downloads the bound wallet from HopsFS instead.
+`sc.wallet_path` then returns that local `/hopsfs/...` path, which HopsFS APIs such as the dataset API do not accept.
+A runtime keeps the variables it started with: after `set_credentials`, the SDK reads with the new credentials, while code that reads the variables itself needs a restart.
 Code that connects to the database itself (`oracledb`, a JDBC driver) should use these names; the member's own `DS_<NAME>_<feature store id>_USER` env var is also injected under its own name.
 Two `PROVIDED` data sources in one feature store cannot normalise to the same `<NAME>`; the second create is rejected.
 
