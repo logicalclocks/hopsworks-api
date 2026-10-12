@@ -149,7 +149,8 @@ A Data owner who creates a `PROVIDED` data source must add their own credentials
 A mounted table a member cannot read shows `no_access` in `hops fg list`; their database account lacks a grant the Data owner's has.
 Fetching a `PROVIDED` data source never returns credential values, only the names of your secrets and env var; the SDK reads the values from your account when it connects.
 Inside Hopsworks runtimes your credentials are also available as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, with `HOPS_DS_<NAME>_CONNECTOR_ID` naming the data source they belong to.
-A Trino catalog on a `PROVIDED` data source runs each member's queries with their own login when they connect through `project.get_trino_api()`; other Trino clients must send the extra credentials described in the reference.
+A Trino catalog on a `PROVIDED` data source is private to the member who creates it (`_<username>__<name>`), so each member creates their own with `sc.create_trino_catalog()`.
+It runs the owner's queries with their own login when they connect through `project.get_trino_api()`; other Trino clients must send the extra credentials described in the reference.
 SDK equivalents, the naming rules and the access states are in [references/provided-credentials.md](references/provided-credentials.md).
 
 ## Ingest into a new feature group with DLTHub

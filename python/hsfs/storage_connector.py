@@ -291,7 +291,7 @@ class StorageConnector(ABC):
 
         Returns:
             `supported`, and `reason` when it is false. Otherwise `suggestedName`,
-            `connectorType` and `properties`.
+            `connectorType`, `properties` and `scope`, which is `PRIVATE` for a data source whose credentials each member provides.
         """
         return self._trino_catalog_api.get_catalog_template(
             self._name, self._featurestore_id
@@ -309,6 +309,10 @@ class StorageConnector(ABC):
         The catalog is derived from this data source, so nothing has to be supplied: credentials are read from the data source when the catalog is created and stored as a reference, never as a plaintext copy.
         It becomes queryable once the query engine restarts, on the cluster's schedule or immediately via `project.get_trino_catalog_api().restart()` as an administrator.
 
+        A data source whose credentials each member provides (`credentials_mode="PROVIDED"`) always yields a private catalog, named `_<username>__...` and owned by the caller.
+        It is available in every project the caller belongs to, it reads with the caller's own credentials, and only the caller can use it, so each member creates their own.
+        Its connection is secured with the caller's own wallet, kept in their personal credential-file store.
+
         Example:
             ```python
             import hopsworks
@@ -322,8 +326,8 @@ class StorageConnector(ABC):
             ```
 
         Parameters:
-            name: Catalog name, which must start with `<project>__` in lowercase. Defaults to the
-                name the template suggests, derived from this data source's own name.
+            name: Catalog name, which must start with `<project>__` in lowercase, or with `_<username>__` for a data source whose credentials each member provides.
+                Defaults to the name the template suggests, derived from this data source's own name.
             properties: Replace the derived properties entirely; keys are not merged with the template's.
                 Start from the template's `properties` and apply your edits.
             test_connection: Verify the definition can reach the source before creating it, where the cluster supports it.
@@ -350,6 +354,7 @@ class StorageConnector(ABC):
             properties if properties is not None else template["properties"]
         )
         connector_type = template["connectorType"]
+        scope = template.get("scope")
 
         if test_connection and self._trino_catalog_api.get_capabilities().get(
             "testConnectionAvailable"
@@ -360,6 +365,7 @@ class StorageConnector(ABC):
                 catalog_properties,
                 data_source_name=self._name,
                 featurestore_id=self._featurestore_id,
+                scope=scope,
             )
 
         return self._trino_catalog_api.create_catalog(
@@ -368,6 +374,7 @@ class StorageConnector(ABC):
             catalog_properties,
             data_source_name=self._name,
             featurestore_id=self._featurestore_id,
+            scope=scope,
         )
 
     @public

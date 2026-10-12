@@ -82,7 +82,10 @@ Two `PROVIDED` data sources in one feature store cannot normalise to the same `<
 
 ## Trino
 
-A Trino catalog built from a `PROVIDED` data source works, and each member's queries on it run with that member's own login.
+A Trino catalog built from a `PROVIDED` data source is always private: it is named `_<username>__<name>`, owned by the member who creates it, and available in every project they belong to.
+Only its owner can use it, and it cannot be shared, so each member who wants to query the data source through Trino creates their own with `sc.create_trino_catalog()`.
+Asking for a project catalog on a `PROVIDED` data source is refused with error 270337.
+Its connection is secured with the owner's own wallet, kept in their personal mountable-secret store; the copy is rebuilt when they replace their wallet and deleted when they remove their credentials or delete their last catalog on the data source.
 The catalog holds no credentials; Trino takes them from the extra credentials `hops_ds_<data source id>_user` and `hops_ds_<data source id>_password` sent with each query.
 `project.get_trino_api().connect()` and `create_engine()` fetch your own credentials and send them for you; the extra-credentials endpoint they use returns only your own values.
 Any other Trino client (the Trino CLI, JDBC, Superset, dbt) must send those two extra credentials itself, for example `--extra-credential hops_ds_42_user=SCOTT --extra-credential hops_ds_42_password=...` for data source id 42; without them the query fails with an authentication error from the database.

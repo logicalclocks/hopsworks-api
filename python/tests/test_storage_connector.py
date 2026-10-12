@@ -2514,6 +2514,34 @@ class TestSqlConnectorProvidedCredentials:
         assert body["walletPath"] is None
         assert body["walletPassword"] is None
 
+    def test_create_trino_catalog_creates_the_private_catalog_the_template_names(
+        self, backend_fixtures, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        template = {
+            "supported": True,
+            "suggestedName": "_meb10000__oracle_sales",
+            "connectorType": "oracle",
+            "properties": {"user-credential-name": "hops_ds_2_user"},
+            "scope": "PRIVATE",
+        }
+        mocker.patch.object(
+            sc._trino_catalog_api, "get_catalog_template", return_value=template
+        )
+        mocker.patch.object(
+            sc._trino_catalog_api,
+            "get_capabilities",
+            return_value={"testConnectionAvailable": True},
+        )
+        test_connection = mocker.patch.object(sc._trino_catalog_api, "test_connection")
+        create = mocker.patch.object(sc._trino_catalog_api, "create_catalog")
+
+        sc.create_trino_catalog()
+
+        for call in (test_connection.call_args, create.call_args):
+            assert call.args[0] == "_meb10000__oracle_sales"
+            assert call.kwargs["scope"] == "PRIVATE"
+
 
 class TestSapHanaConnector:
     def test_from_response_json(self, backend_fixtures):
