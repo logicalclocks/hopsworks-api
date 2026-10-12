@@ -232,7 +232,17 @@ def _references(doc: dict) -> set[tuple[str, str]]:
 
 
 def derives(name: str, slug: str) -> bool:
-    """Whether `name` carries the slug, as the build names what it creates (`<slug>-app`, `<slug_pkg>_predictions`, `<slug>model`)."""
+    """Whether `name` carries the slug, as the build names what it creates (`<slug>-app`, `<slug_pkg>_predictions`, `<slug>model`).
+
+    Dashes and underscores are ignored, and so is case.
+
+    Args:
+        name: The asset's name.
+        slug: The system's slug.
+
+    Returns:
+        True when `name` contains `slug`.
+    """
     plain = re.sub(r"[-_]", "", name.lower())
     return re.sub(r"[-_]", "", slug.lower()) in plain
 

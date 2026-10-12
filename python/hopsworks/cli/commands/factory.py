@@ -38,6 +38,9 @@ def factory_group(ctx: click.Context) -> None:
     """The software factories: the built-in ML system and analytics layer factories, and the project's own.
 
     Every subcommand but validate refuses to run unless the cluster's factory_enabled variable is true.
+
+    Args:
+        ctx: Click context.
     """
     # Click runs this before a subcommand parses its own --help, which needs no cluster.
     if (

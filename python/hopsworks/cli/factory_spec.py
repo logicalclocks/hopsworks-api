@@ -601,6 +601,12 @@ def utc_instant(value: Any) -> str | None:
     """`value`, an ISO 8601 date or time, as `YYYY-MM-DDTHH:MMZ` in UTC; None when it is not one.
 
     A time without a zone is taken as UTC.
+
+    Args:
+        value: The answer to read, usually a string.
+
+    Returns:
+        The instant as `YYYY-MM-DDTHH:MMZ`, or None.
     """
     if not isinstance(value, str) or not value.strip():
         return None
