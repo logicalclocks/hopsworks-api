@@ -1849,6 +1849,7 @@ def test_kumo_is_registered_once_per_revision():
 # endregion
 
 
+@needs_cluster_python
 def test_the_template_metrics_handle_ties_and_probabilities():
     evaluate = _load(TEMPLATE / "src" / "slug_pkg" / "evaluate.py", "template_metrics")
     # Tied scores give one threshold, whatever the row order.

@@ -7,8 +7,10 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 import pytest
+
+
+pl = pytest.importorskip("polars")
 
 
 DEBITCARD = (
@@ -147,6 +149,10 @@ def test_the_live_stream_uses_the_historys_cards(code):
     assert frame.columns == expected
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="the system code runs on the cluster's Python 3.13 and imports datetime.UTC",
+)
 def test_the_dbt_models_return_the_feature_groups_columns_in_order(code, monkeypatch):
     # dbt_run_graph ships only in the dbt-pipeline image.
     monkeypatch.setitem(sys.modules, "dbt_run_graph", type(sys)("dbt_run_graph"))
