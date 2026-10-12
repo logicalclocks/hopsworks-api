@@ -905,10 +905,6 @@
             "port": 1521,
             "database": "test_database",
             "credentialsMode": "PROVIDED",
-            "user": "scott",
-            "password": "tiger",
-            "walletPath": "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip",
-            "walletPassword": "wallet_pass",
             "userCredentials": {
                 "status": "VALID",
                 "usernameEnvVar": "DS_ORACLE_SALES_67_USER",

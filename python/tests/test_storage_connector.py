@@ -2067,6 +2067,21 @@ class TestSqlConnectorProvidedCredentials:
         json = backend_fixtures["storage_connector"][key]["response"]
         return storage_connector.StorageConnector.from_response_json(json)
 
+    _ACCOUNT = {
+        "DS_ORACLE_SALES_67_USER": "scott",
+        "ds_oracle_sales_67_password": "tiger",
+        "ds_oracle_sales_67_wallet_password": "wallet_pass",
+    }
+
+    def _account(self, mocker, sc, account=None, error=None):
+        """Serve the caller's account entries from `account`, or fail every lookup with `error`."""
+        account = self._ACCOUNT if account is None else account
+        return mocker.patch.object(
+            sc._data_source_credentials_api,
+            "_account_value",
+            side_effect=error or (lambda kind, name: account.get(name)),
+        )
+
     def _inject(self, monkeypatch, connector_id="2", **values):
         """Set the variables a runtime gets for the data source named oracle-sales."""
         monkeypatch.setenv("HOPS_DS_ORACLE_SALES_CONNECTOR_ID", connector_id)
@@ -2084,10 +2099,11 @@ class TestSqlConnectorProvidedCredentials:
         assert (
             sc.user_credentials["password_secret_name"] == "ds_oracle_sales_67_password"
         )
-        # The backend fills the DTO with the caller's own values, which the read paths use.
-        assert sc.user == "scott"
-        assert sc.password == "tiger"
-        assert sc.wallet_password == "wallet_pass"
+        assert sc.user_credentials["wallet_path"] == (
+            "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip"
+        )
+        # The backend returns no credential values for a PROVIDED data source.
+        assert (sc._user, sc._password, sc._wallet_password) == (None, None, None)
 
         d = sc.to_dict()
 
@@ -2106,10 +2122,30 @@ class TestSqlConnectorProvidedCredentials:
         assert sc.to_dict()["credentialsMode"] == "SHARED"
         assert sc.to_dict()["user"] == "test_user"
 
-    def test_the_dto_takes_precedence_over_env_vars(
-        self, backend_fixtures, monkeypatch
+    def test_values_are_read_from_the_account_entries_the_binding_names(
+        self, backend_fixtures, mocker
+    ):
+        from hsfs.core import data_source_credentials_api as api
+
+        sc = self._provided(backend_fixtures)
+        lookup = self._account(mocker, sc)
+
+        assert (sc.user, sc.password, sc.wallet_password) == (
+            "scott",
+            "tiger",
+            "wallet_pass",
+        )
+        assert [c.args for c in lookup.call_args_list] == [
+            (api.ENV_VAR, "DS_ORACLE_SALES_67_USER"),
+            (api.SECRET, "ds_oracle_sales_67_password"),
+            (api.SECRET, "ds_oracle_sales_67_wallet_password"),
+        ]
+
+    def test_the_account_takes_precedence_over_env_vars(
+        self, backend_fixtures, monkeypatch, mocker
     ):
         sc = self._provided(backend_fixtures)
+        self._account(mocker, sc)
         self._inject(
             monkeypatch,
             user="env_user",
@@ -2117,56 +2153,95 @@ class TestSqlConnectorProvidedCredentials:
             wallet_password="env_wallet_pass",
         )
 
-        assert sc.user == "scott"
-        assert sc.password == "tiger"
-        assert sc.wallet_password == "wallet_pass"
         opts = sc.spark_options()
         assert (opts["user"], opts["password"]) == ("scott", "tiger")
         props = sc.connector_options()
         assert (props["user"], props["password"]) == ("scott", "tiger")
         assert props["wallet_password"] == "wallet_pass"
 
-    def _saved_and_reloaded(self, backend_fixtures, mocker, sc, **dto):
-        """Make set_credentials succeed and the reload return the DTO with these values."""
-        json = dict(
-            backend_fixtures["storage_connector"]["get_oracle_provided"]["response"],
-            **dto,
+    def test_env_vars_are_used_when_the_account_cannot_be_read(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        self._account(mocker, sc, error=RuntimeError("no USER scope"))
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_password="env_wallet_pass",
         )
-        mocker.patch.object(sc, "_data_source_credentials_api")
-        sc._data_source_credentials_api._set.return_value = json["userCredentials"]
+
+        assert (sc.user, sc.password, sc.wallet_password) == (
+            "env_user",
+            "env_pass",
+            "env_wallet_pass",
+        )
+
+    def test_an_account_entry_that_is_gone_is_not_replaced_by_env_vars(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        self._account(mocker, sc, account={"DS_ORACLE_SALES_67_USER": "scott"})
+        self._inject(monkeypatch, user="env_user", password="stale")
+
+        assert sc.user == "scott"
+        assert sc.password is None
+
+    def _saved(self, mocker, sc, binding, account):
+        """Make set_credentials succeed with `binding` and the account then hold `account`."""
         mocker.patch.object(
-            sc, "_storage_connector_api"
-        )._get.return_value = storage_connector.StorageConnector.from_response_json(
-            json
-        )
+            sc._data_source_credentials_api, "_set"
+        ).return_value = binding
+        self._account(mocker, sc, account)
 
     def test_a_rotation_inside_a_runtime_reads_with_the_new_password(
         self, backend_fixtures, monkeypatch, mocker
     ):
         sc = self._provided(backend_fixtures)
         self._inject(monkeypatch, user="scott", password="tiger")
-        self._saved_and_reloaded(backend_fixtures, mocker, sc, password="lion")
+        self._saved(
+            mocker,
+            sc,
+            backend_fixtures["storage_connector"]["get_oracle_provided"]["response"][
+                "userCredentials"
+            ],
+            dict(self._ACCOUNT, ds_oracle_sales_67_password="lion"),
+        )
 
         sc.set_credentials(password="lion")
 
         assert sc.spark_options()["password"] == "lion"
         assert sc.connector_options()["password"] == "lion"
 
-    def test_a_rotation_whose_reload_fails_ignores_the_stale_env_vars(
+    def test_a_rotation_whose_account_lookup_fails_ignores_the_stale_env_vars(
         self, backend_fixtures, monkeypatch, mocker
     ):
         sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
         self._inject(monkeypatch, user="scott", password="tiger")
-        mocker.patch.object(sc, "_data_source_credentials_api")
-        sc._data_source_credentials_api._set.return_value = {"status": "VALID"}
-        mocker.patch.object(
-            sc, "_storage_connector_api"
-        )._get.side_effect = RuntimeError("timeout")
+        mocker.patch.object(sc._data_source_credentials_api, "_set").return_value = {
+            "status": "VALID",
+            "passwordSecretName": "ds_oracle_sales_67_password",
+        }
+        self._account(mocker, sc, error=RuntimeError("timeout"))
 
-        with pytest.warns(UserWarning, match="could not reload"):
-            sc.set_credentials(password="lion")
+        sc.set_credentials(password="lion")
 
         assert sc.password is None
+
+    def test_set_credentials_returns_the_binding_without_reloading(
+        self, backend_fixtures, mocker
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        mocker.patch.object(sc._data_source_credentials_api, "_set").return_value = {
+            "status": "VALID",
+            "usernameEnvVar": "U",
+        }
+        get = mocker.patch.object(sc._storage_connector_api, "_get")
+
+        binding = sc.set_credentials(user="u", password="p")
+
+        assert binding == {"status": "VALID", "username_env_var": "U"}
+        get.assert_not_called()
 
     def test_deleted_credentials_are_not_read_from_the_env_vars(
         self, backend_fixtures, monkeypatch, mocker
@@ -2303,21 +2378,6 @@ class TestSqlConnectorProvidedCredentials:
             use(sc)
 
         assert "oracle-sales" in str(exc.value)
-
-    def test_a_failed_reload_after_saving_still_returns_the_binding(
-        self, backend_fixtures, mocker
-    ):
-        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
-        mocker.patch.object(sc, "_data_source_credentials_api")
-        sc._data_source_credentials_api._set.return_value = {"status": "VALID"}
-        mocker.patch.object(
-            sc, "_storage_connector_api"
-        )._get.side_effect = RuntimeError("timeout")
-
-        with pytest.warns(UserWarning, match="could not reload"):
-            binding = sc.set_credentials(user="u", password="p")
-
-        assert binding == {"status": "VALID"}
 
     def test_an_incomplete_binding_says_what_is_gone(self, backend_fixtures):
         from hopsworks_common.client.exceptions import FeatureStoreException

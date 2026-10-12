@@ -653,13 +653,14 @@ class StorageConnector(ABC):
                     # (or TNS alias when using a wallet), not a schema, while
                     # the backend filters tables by OWNER (schema).
                     # Default to the connecting user's own schema.
-                    if not self.user:
+                    user = self.user
+                    if not user:
                         raise ValueError(
                             "A schema/owner is required for Oracle connectors "
                             "without a configured user. Pass it as the "
                             "`database` argument to get_tables()."
                         )
-                    database = self.user.upper()
+                    database = user.upper()
                 else:
                     database = self.database
             elif self.type == StorageConnector.UNITY_CATALOG:
@@ -3588,7 +3589,7 @@ class SqlConnector(StorageConnector):
 
         Inside a Hopsworks runtime that mounts your wallet for a data source with provided credentials, this is the local `/hopsfs/...` path of the mounted file rather than its HopsFS path, so it cannot be passed to HopsFS APIs such as the dataset API.
         """
-        return self._local_wallet_path() or self._wallet_path
+        return self._local_wallet_path() or self._hopsfs_wallet_path()
 
     @property
     def wallet_password(self) -> str | None:
@@ -3616,9 +3617,44 @@ class SqlConnector(StorageConnector):
             return None
         return os.environ.get(self._env_var(suffix)) or None
 
+    # The entry of the caller's binding that names the account entry holding each provided credential.
+    _ACCOUNT_ENTRIES = {
+        "USER": ("username_env_var", data_source_credentials_api.ENV_VAR),
+        "PASSWORD": ("password_secret_name", data_source_credentials_api.SECRET),
+        "WALLET_PASSWORD": (
+            "wallet_password_secret_name",
+            data_source_credentials_api.SECRET,
+        ),
+    }
+
     def _resolve(self, suffix: str, dto_value: str | None) -> str | None:
-        """A provided credential comes from the caller's own values, which the backend resolves into the DTO, and from the runtime's env var only when the DTO has none."""
-        return dto_value or self._runtime_env(suffix)
+        """A provided credential is read from the caller's own account at each use, so a rotation made anywhere is picked up.
+
+        The backend never returns a provided credential with the data source.
+        The runtime's env var, set when the runtime started, is used only when the account cannot be asked.
+        """
+        if self._credentials_mode != self.PROVIDED:
+            return dto_value
+        key, kind = self._ACCOUNT_ENTRIES[suffix]
+        name = (self._user_credentials or {}).get(key)
+        if name:
+            try:
+                return self._data_source_credentials_api._account_value(kind, name)
+            except Exception as err:  # noqa: BLE001
+                _logger.debug(
+                    "Could not read %s of data source '%s' from your account: %s",
+                    key,
+                    self._name,
+                    err,
+                )
+        return self._runtime_env(suffix)
+
+    def _hopsfs_wallet_path(self) -> str | None:
+        """The bound wallet's HopsFS path, which for provided credentials is in the caller's binding."""
+        bound = (self._user_credentials or {}).get("wallet_path")
+        if self._credentials_mode == self.PROVIDED and bound:
+            return bound
+        return self._wallet_path
 
     def _local_wallet_path(self) -> str | None:
         """The wallet mounted into a Hopsworks runtime, which is a local path rather than one in HopsFS.
@@ -3629,9 +3665,8 @@ class SqlConnector(StorageConnector):
         if not path or not os.access(path, os.R_OK):
             return None
         # A wallet bound after the runtime started has another file name, and the mount would serve the old one.
-        if self._wallet_path and os.path.basename(path) != os.path.basename(
-            self._wallet_path
-        ):
+        bound = self._hopsfs_wallet_path()
+        if bound and os.path.basename(path) != os.path.basename(bound):
             return None
         return path
 
@@ -3821,9 +3856,10 @@ class SqlConnector(StorageConnector):
         Only a data source with `credentials_mode` `PROVIDED` takes member credentials.
         The backend validates the credentials first and stores nothing when they are rejected.
         On success the password and wallet password become secrets in your account and the username an env var, both private to you, and every external feature group mounted from this data source is re-checked for your access.
-        From then on your reads through this data source use these credentials, starting with this object, which reloads them from the backend before returning; if that reload fails, a warning is issued and the credentials stay saved.
-        Runtimes you start afterwards receive them as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, next to `HOPS_DS_<NAME>_CONNECTOR_ID`, the id of the data source they belong to.
-        A runtime that is already running keeps those env vars as they were, but the SDK inside it reads with the saved credentials, which the backend returns with the data source, and only falls back to the env vars when it returns none.
+        From then on your reads through this data source use these credentials, starting with this object.
+        The backend never returns the values with the data source: the SDK reads the username, password and wallet password from your account entries each time it builds a connection, so a rotation is picked up at once.
+        Runtimes you start afterwards also receive them as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, next to `HOPS_DS_<NAME>_CONNECTOR_ID`, the id of the data source they belong to.
+        The SDK uses those env vars only when it cannot read your account, and never on an object whose credentials were set or deleted after the runtime started.
         A name given for an entry that already exists in your account updates that entry.
         An entry you do not give keeps the one already bound: `set_credentials(password="...")` rotates only the password, and keeps your username, your wallet and its password.
         A username never bound and not given is read from the default env var `DS_<NAME>_<feature store id>_USER` in your account.
@@ -3886,27 +3922,7 @@ class SqlConnector(StorageConnector):
             raise
         self._user_credentials = humps.decamelize(binding)
         self._runtime_env_stale = True
-        # The credentials are saved by now, so a failed reload must not report the save as failed.
-        try:
-            self._refresh_credentials()
-        except Exception as err:  # noqa: BLE001
-            warnings.warn(
-                f"Saved your credentials for data source '{self._name}', but could not reload them: {err}. "
-                "Fetch the data source again to read with them.",
-                stacklevel=2,
-            )
         return self._user_credentials
-
-    def _refresh_credentials(self) -> None:
-        """Take the credentials the backend now resolves for the caller, so this object reads with what was just saved."""
-        fresh = self._storage_connector_api._get(self._featurestore_id, self._name)
-        if fresh is None:
-            return
-        self._user = fresh._user
-        self._password = fresh._password
-        self._wallet_path = fresh._wallet_path
-        self._wallet_password = fresh._wallet_password
-        self._user_credentials = fresh._user_credentials or self._user_credentials
 
     @public
     def get_credentials(self) -> dict[str, Any]:
@@ -3955,10 +3971,7 @@ class SqlConnector(StorageConnector):
         self._data_source_credentials_api._delete(self)
         self._runtime_env_stale = True
         self._user_credentials = {"status": "MISSING"}
-        self._user = None
-        self._password = None
         self._wallet_path = None
-        self._wallet_password = None
 
     def _inline_tns_url(self, wallet_dir: str) -> str:
         """Build a JDBC URL with the TNS descriptor inlined from tnsnames.ora.
@@ -4007,19 +4020,18 @@ class SqlConnector(StorageConnector):
         """
         local_path = self._local_wallet_path()
         if not local_path:
-            if not self._wallet_path:
+            hopsfs_path = self._hopsfs_wallet_path()
+            if not hopsfs_path:
                 return None
-            local_path = engine._get_instance()._add_file(
-                self._wallet_path, distribute=False
-            )
+            local_path = engine._get_instance()._add_file(hopsfs_path, distribute=False)
         if local_path.endswith(".zip") and os.path.isfile(local_path):
             return util._extract_zip(local_path)
         return local_path
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
-        # The backend fills a PROVIDED connector's credential fields with the caller's own
-        # values on read and refuses them on write, so they never travel back.
+        # The backend refuses credential fields on a PROVIDED connector, whose credentials live in
+        # each member's account.
         provided = self._credentials_mode == self.PROVIDED
         payload.update(
             {
@@ -4102,17 +4114,20 @@ class SqlConnector(StorageConnector):
             "database": self.database,
             "database_type": self.database_type,
         }
-        if self.user:
-            props["user"] = self.user
-        if self.password:
-            props["password"] = self.password
+        # Each read of a provided credential asks the caller's account, so read it once.
+        user, password = self.user, self.password
+        if user:
+            props["user"] = user
+        if password:
+            props["password"] = password
         if self._database_type == self.ORACLE:
             # Oracle Python drivers (e.g. oracledb) expect ``service_name``.
             props["service_name"] = self.database
-            if self.wallet_path:
-                props["wallet_path"] = self.wallet_path
-            if self.wallet_password:
-                props["wallet_password"] = self.wallet_password
+            wallet_path, wallet_password = self.wallet_path, self.wallet_password
+            if wallet_path:
+                props["wallet_path"] = wallet_path
+            if wallet_password:
+                props["wallet_password"] = wallet_password
         if self._database_type == self.CLICKHOUSE:
             # clickhouse-connect's name for the JDBC ``ssl=true`` argument.
             props["secure"] = str(self._arguments.get("ssl", "false")).lower() == "true"
@@ -4181,6 +4196,7 @@ class SqlConnector(StorageConnector):
         if self._database_type == self.ORACLE:
             wallet_dir = self._prepare_wallet()
             if wallet_dir:
+                wallet_password = self.wallet_password
                 jks = os.path.join(wallet_dir, "keystore.jks")
                 trust_jks = os.path.join(wallet_dir, "truststore.jks")
                 if os.path.isfile(jks) and os.path.isfile(trust_jks):
@@ -4192,11 +4208,9 @@ class SqlConnector(StorageConnector):
                         options["url"] = self._inline_tns_url(wallet_dir)
                     options["javax.net.ssl.keyStore"] = jks
                     options["javax.net.ssl.trustStore"] = trust_jks
-                    if self.wallet_password:
-                        options["javax.net.ssl.keyStorePassword"] = self.wallet_password
-                        options["javax.net.ssl.trustStorePassword"] = (
-                            self.wallet_password
-                        )
+                    if wallet_password:
+                        options["javax.net.ssl.keyStorePassword"] = wallet_password
+                        options["javax.net.ssl.trustStorePassword"] = wallet_password
                     return engine._get_instance()._read_jdbc_on_driver(
                         options, dataframe_type
                     )
@@ -4206,8 +4220,8 @@ class SqlConnector(StorageConnector):
                 options["oracle.net.wallet_location"] = (
                     f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
                 )
-                if self.wallet_password:
-                    options["oracle.net.wallet_password"] = self.wallet_password
+                if wallet_password:
+                    options["oracle.net.wallet_password"] = wallet_password
                 return engine._get_instance()._read_jdbc_on_driver(
                     options, dataframe_type
                 )

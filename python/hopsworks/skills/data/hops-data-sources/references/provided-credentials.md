@@ -28,9 +28,10 @@ Removing a member from the project and deleting the data source clean up the sam
 sc = fs.get_data_source("oracle-sales").storage_connector
 sc.credentials_mode              # "SHARED" or "PROVIDED"
 sc.user_credentials              # your binding as the backend returned it with the data source, names only
+sc.user, sc.password             # read from your own account entries at each access; the data source GET carries no values
 
 sc.validate_credentials(user="SCOTT", password="...")        # True or False, stores nothing
-sc.set_credentials(user="SCOTT", password="...")             # validates, saves, reloads sc's credentials; FeatureStoreException when rejected
+sc.set_credentials(user="SCOTT", password="...")             # validates, saves; sc reads with them at once; FeatureStoreException when rejected
 sc.set_credentials(user_env_var="MY_USER", password_secret="my_oracle_pwd")   # reuse account entries
 sc.set_credentials(password="...")                          # rotate the password; the bound username and wallet are kept
 sc.set_credentials(user="SCOTT", password="...",
@@ -67,11 +68,15 @@ Every job, notebook, terminal, app and Ray cluster a member starts receives, for
 
 Model deployments receive none of these, since a deployment is shared by the whole project.
 
-The SDK reads with the credentials the backend returns with the data source, and falls back to these variables only when it returns none and `HOPS_DS_<NAME>_CONNECTOR_ID` equals that data source's `id`.
+Getting or listing a `PROVIDED` data source never returns a username, password or wallet password, only the names in `user_credentials`.
+The SDK reads the values from your own account each time it builds a connection: the username from the env var named `username_env_var`, the password and wallet password from the secrets named `password_secret_name` and `wallet_password_secret_name`.
+It falls back to these variables only when it cannot read your account (for example with an API key that lacks the `USER` scope), and only when `HOPS_DS_<NAME>_CONNECTOR_ID` equals that data source's `id`.
+An account entry that was deleted is not replaced by a variable: the binding is `INCOMPLETE` until you set the credentials again.
 A same-named data source read from another project's feature store has another id and never picks them up.
 The SDK reads the wallet from `HOPS_DS_<NAME>_WALLET_PATH` when that file exists, is readable and has the bound wallet's file name; Spark does not mount `/hopsfs`, so there the SDK downloads the bound wallet from HopsFS instead.
 `sc.wallet_path` then returns that local `/hopsfs/...` path, which HopsFS APIs such as the dataset API do not accept.
-A runtime keeps the variables it started with: after `set_credentials`, the SDK reads with the new credentials, while code that reads the variables itself needs a restart.
+A runtime keeps the variables it started with: after `set_credentials` or a rotation made anywhere else, the SDK reads with the new credentials, while code that reads the variables itself needs a restart.
+After `set_credentials` or `delete_credentials` on an object, that object never falls back to the variables.
 Code that connects to the database itself (`oracledb`, a JDBC driver) should use these names; the member's own `DS_<NAME>_<feature store id>_USER` env var is also injected under its own name.
 Two `PROVIDED` data sources in one feature store cannot normalise to the same `<NAME>`; the second create is rejected.
 
@@ -79,7 +84,7 @@ Two `PROVIDED` data sources in one feature store cannot normalise to the same `<
 
 A Trino catalog built from a `PROVIDED` data source works, and each member's queries on it run with that member's own login.
 The catalog holds no credentials; Trino takes them from the extra credentials `hops_ds_<data source id>_user` and `hops_ds_<data source id>_password` sent with each query.
-`project.get_trino_api().connect()` and `create_engine()` fetch your own credentials and send them for you.
+`project.get_trino_api().connect()` and `create_engine()` fetch your own credentials and send them for you; the extra-credentials endpoint they use returns only your own values.
 Any other Trino client (the Trino CLI, JDBC, Superset, dbt) must send those two extra credentials itself, for example `--extra-credential hops_ds_42_user=SCOTT --extra-credential hops_ds_42_password=...` for data source id 42; without them the query fails with an authentication error from the database.
 
 ## Access states on mounted tables

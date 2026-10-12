@@ -19,10 +19,16 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common import client
+from hopsworks_common.core import env_var_api, secret_api
 
 
 if TYPE_CHECKING:
     from hsfs import storage_connector as sc
+
+
+# The kinds of account entry a binding references.
+ENV_VAR = "ENV_VAR"
+SECRET = "SECRET"
 
 
 def _not_provided_message(name: str, status: str | None = None) -> str:
@@ -84,6 +90,13 @@ class DataSourceCredentialsApi:
             headers={"content-type": "application/json"},
             data=json.dumps(credentials),
         )
+
+    def _account_value(self, kind: str, name: str) -> str | None:
+        """The value of an entry in the caller's own account, or None when the entry no longer exists."""
+        if kind == ENV_VAR:
+            return env_var_api.EnvVarsApi().get(name)
+        secret = secret_api.SecretsApi().get_secret(name)
+        return secret.value if secret else None
 
     def _delete(self, storage_connector: sc.StorageConnector) -> None:
         _client = client._get_instance()

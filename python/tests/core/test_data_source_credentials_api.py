@@ -21,7 +21,7 @@ from unittest.mock import Mock
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs import storage_connector
-from hsfs.core import data_source_api
+from hsfs.core import data_source_api, data_source_credentials_api
 
 
 _PATH = [
@@ -50,13 +50,89 @@ def _client(mocker, response=None, side_effect=None):
     return client_mock
 
 
-def _rest_error(error_code, usr_msg):
+def _rest_error(error_code, usr_msg, status_code=400):
     response = Mock()
     response.json.return_value = {"errorCode": error_code, "usrMsg": usr_msg}
-    response.status_code = 400
+    response.status_code = status_code
     response.reason = "Bad Request"
     response.content = b""
     return RestAPIError("url", response)
+
+
+def _account_client(mocker, account, responses=()):
+    """A client that serves the caller's env vars and secrets from `account` and every other request from `responses` in order."""
+    queue = list(responses)
+
+    def send(method, path, **kwargs):
+        if path[:2] == ["users", "envvars"]:
+            if path[2] not in account:
+                raise _rest_error(160070, "env var not found", 404)
+            return {"items": [{"name": path[2], "value": account[path[2]]}]}
+        if path[:2] == ["users", "secrets"]:
+            if path[2] not in account:
+                raise _rest_error(160048, "secret not found", 404)
+            return {"items": [{"name": path[2], "secret": account[path[2]]}]}
+        return queue.pop(0)
+
+    return _client(mocker, side_effect=send)
+
+
+_ACCOUNT = {
+    "DS_ORACLE_SALES_67_USER": "scott",
+    "ds_oracle_sales_67_password": "tiger",
+    "ds_oracle_sales_67_wallet_password": "wallet_pass",
+}
+
+
+class TestAccountValues:
+    def test_a_username_is_read_from_the_env_var(self, mocker):
+        client_mock = _account_client(mocker, _ACCOUNT)
+
+        value = data_source_credentials_api.DataSourceCredentialsApi()._account_value(
+            data_source_credentials_api.ENV_VAR, "DS_ORACLE_SALES_67_USER"
+        )
+
+        assert value == "scott"
+        client_mock._send_request.assert_called_once_with(
+            "GET", ["users", "envvars", "DS_ORACLE_SALES_67_USER"]
+        )
+
+    def test_a_password_is_read_from_the_secret(self, mocker):
+        client_mock = _account_client(mocker, _ACCOUNT)
+
+        value = data_source_credentials_api.DataSourceCredentialsApi()._account_value(
+            data_source_credentials_api.SECRET, "ds_oracle_sales_67_password"
+        )
+
+        assert value == "tiger"
+        assert client_mock._send_request.call_args.args == (
+            "GET",
+            ["users", "secrets", "ds_oracle_sales_67_password"],
+        )
+
+    @pytest.mark.parametrize(
+        "kind",
+        [data_source_credentials_api.ENV_VAR, data_source_credentials_api.SECRET],
+    )
+    def test_an_entry_that_is_gone_is_none(self, mocker, kind):
+        _account_client(mocker, {})
+
+        api = data_source_credentials_api.DataSourceCredentialsApi()
+
+        assert api._account_value(kind, "gone") is None
+
+    def test_the_connector_reads_every_value_from_the_account(
+        self, mocker, backend_fixtures
+    ):
+        _account_client(mocker, _ACCOUNT)
+        sc = _connector(backend_fixtures)
+
+        opts = sc.spark_options()
+        props = sc.connector_options()
+
+        assert (opts["user"], opts["password"]) == ("scott", "tiger")
+        assert (props["user"], props["password"]) == ("scott", "tiger")
+        assert props["wallet_password"] == "wallet_pass"
 
 
 class TestDataSourceCredentialsApi:
@@ -99,11 +175,7 @@ class TestDataSourceCredentialsApi:
 
     def test_set_credentials_puts_references_and_values(self, mocker, backend_fixtures):
         binding = {"status": "VALID", "usernameEnvVar": "MY_USER"}
-        reread = dict(
-            backend_fixtures["storage_connector"]["get_oracle_provided"]["response"],
-            userCredentials=binding,
-        )
-        client_mock = _client(mocker, side_effect=[binding, reread])
+        client_mock = _client(mocker, binding)
         sc = _connector(backend_fixtures)
 
         result = sc.set_credentials(
@@ -136,34 +208,36 @@ class TestDataSourceCredentialsApi:
             fixtures["get_oracle_provided_missing"]["response"]
         )
         binding = fixtures["get_oracle_provided"]["response"]["userCredentials"]
-        client_mock = _client(
-            mocker,
-            side_effect=[binding, fixtures["get_oracle_provided"]["response"]],
-        )
+        client_mock = _account_client(mocker, _ACCOUNT, [binding])
 
         sc.set_credentials(user="scott", password="tiger")
 
-        reread = client_mock._send_request.call_args_list[1]
-        assert reread.args == ("GET", _PATH[:-1])
         opts = sc.spark_options()
         assert (opts["user"], opts["password"]) == ("scott", "tiger")
         assert sc.wallet_password == "wallet_pass"
         assert sc.user_credentials["status"] == "VALID"
+        # Nothing reloads the data source, whose GET carries no credential values.
+        assert ("GET", _PATH[:-1]) not in [
+            c.args for c in client_mock._send_request.call_args_list
+        ]
 
     def test_set_credentials_rotates_the_credentials_of_the_same_object(
         self, mocker, backend_fixtures
     ):
-        fixtures = backend_fixtures["storage_connector"]
+        account = dict(_ACCOUNT, MY_USER="scott2", my_pwd="lion")
         sc = _connector(backend_fixtures)
-        assert sc.spark_options()["user"] == "scott"
-        rotated = dict(
-            fixtures["get_oracle_provided"]["response"],
-            user="scott2",
-            password="lion",
-            walletPath=None,
-            walletPassword=None,
+        _account_client(
+            mocker,
+            account,
+            [
+                {
+                    "status": "VALID",
+                    "usernameEnvVar": "MY_USER",
+                    "passwordSecretName": "my_pwd",
+                }
+            ],
         )
-        _client(mocker, side_effect=[{"status": "VALID"}, rotated])
+        assert sc.spark_options()["user"] == "scott"
 
         sc.set_credentials(user_env_var="MY_USER", password_secret="my_pwd")
 
@@ -171,6 +245,18 @@ class TestDataSourceCredentialsApi:
         assert (opts["user"], opts["password"]) == ("scott2", "lion")
         assert sc.wallet_path is None
         assert sc.wallet_password is None
+
+    def test_a_password_rotated_elsewhere_is_read_by_an_existing_object(
+        self, mocker, backend_fixtures
+    ):
+        account = dict(_ACCOUNT)
+        _account_client(mocker, account)
+        sc = _connector(backend_fixtures)
+        assert sc.password == "tiger"
+
+        account["ds_oracle_sales_67_password"] = "lion"
+
+        assert sc.spark_options()["password"] == "lion"
 
     def test_set_credentials_raises_with_the_backend_message_when_rejected(
         self, mocker, backend_fixtures
