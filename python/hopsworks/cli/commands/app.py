@@ -326,7 +326,7 @@ def _report_running(name: str, a: Any) -> None:
     "--idle-cooldown-seconds",
     type=int,
     default=None,
-    help="Seconds without a request before an idle app scales to zero (cluster default: 3600). Turns the option on.",
+    help="Seconds without a request before an idle app scales to zero (cluster default: 21600, six hours). Turns the option on.",
 )
 @click.option(
     "--cold-start-timeout-seconds",

@@ -209,7 +209,7 @@ class AppApi:
                 On by default wherever the cluster has KEDA (`None` leaves the choice to the cluster); pass `False` for an app that must stay up, and `True` to insist, which fails on a cluster without KEDA.
                 An open WebSocket, such as a Streamlit session in an open tab, counts as in flight, so the app stays up while someone has it open.
             idle_cooldown_seconds: Seconds without a request before the app scales to zero.
-                Turns the option on when given; the default is the cluster's `pythonapp_idle_cooldown_seconds` (3600, one hour).
+                Turns the option on when given; the default is the cluster's `pythonapp_idle_cooldown_seconds` (21600, six hours).
             cold_start_timeout_seconds: Seconds the first request waits for the app to wake.
                 Turns the option on when given; the default and ceiling is the cluster's `pythonapp_cold_start_timeout_max_seconds` (300, matched by the ingress read timeout the chart sets).
 
