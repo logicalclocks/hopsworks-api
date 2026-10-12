@@ -61,3 +61,13 @@ def test_help_needs_no_cluster(variable, monkeypatch):
     result = CliRunner().invoke(cli, ["factory", "list", "--help"])
     assert result.exit_code == 0
     variable.assert_not_called()
+
+
+def test_validate_needs_no_cluster(variable, tmp_path):
+    from tests.cli.test_factory import REVIEW
+
+    definition = tmp_path / "review.yaml"
+    definition.write_text(REVIEW)
+    result = CliRunner().invoke(cli, ["factory", "validate", str(definition)])
+    assert result.exit_code == 0, result.output
+    variable.assert_not_called()

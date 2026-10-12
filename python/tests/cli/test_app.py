@@ -238,6 +238,7 @@ def test_app_info_json_includes_custom_metadata(mock_project):
         description="FastAPI demo",
         app_base_path="/myapp",
         readiness_probe_path="/health",
+        proxy_path_mode="ROOT",
     )
     result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
     assert result.exit_code == 0, result.output
@@ -250,6 +251,7 @@ def test_app_info_json_includes_custom_metadata(mock_project):
     assert payload["description"] == "FastAPI demo"
     assert payload["app_base_path"] == "/myapp"
     assert payload["readiness_probe_path"] == "/health"
+    assert payload["proxy_path_mode"] == "ROOT"
     assert payload["source"] == "Project file"
 
 

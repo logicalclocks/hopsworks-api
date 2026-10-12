@@ -710,6 +710,7 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "latest_commit": getattr(a, "latest_commit", None),
         "entrypoint_script": getattr(a, "entrypoint_script", None),
         "app_base_path": getattr(a, "app_base_path", None),
+        "proxy_path_mode": getattr(a, "proxy_path_mode", None),
         "readiness_probe_path": getattr(a, "readiness_probe_path", None),
         "db_access": bool(getattr(a, "db_access", True)),
         "entrypoint_command": getattr(a, "entrypoint_command", None),

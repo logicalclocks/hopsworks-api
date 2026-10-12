@@ -41,7 +41,7 @@ SELECT customer_id, score FROM (
   SELECT customer_id, score,
          ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY predicted_at DESC) AS newest
   FROM {table}
-) WHERE newest = 1
+) AS latest WHERE newest = 1
 ORDER BY score DESC
 LIMIT ?
 """

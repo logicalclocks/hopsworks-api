@@ -136,6 +136,8 @@ def _board_path() -> Path | None:
 
 board = Board(_board_path())
 started_runs: dict[str, float] = {}
+# start_run runs in FastAPI's thread pool, post_run on the event loop.
+started_runs_lock = threading.Lock()
 
 ROBOT = (
     '<svg class="bot" viewBox="0 0 16 16" aria-label="model"><path d="M8 1.5V4M3 4h10v8.5H3z'
@@ -311,11 +313,12 @@ def get_board() -> dict:
 def start_run() -> dict:
     """A key for the run taking off, timed from now: the run posted with it may not last longer."""
     now = time.time()
-    for key, at in list(started_runs.items()):
-        if now - at > STARTS_KEPT_S:
-            del started_runs[key]
     run_key = str(uuid.uuid4())
-    started_runs[run_key] = now
+    with started_runs_lock:
+        for key, at in list(started_runs.items()):
+            if now - at > STARTS_KEPT_S:
+                del started_runs[key]
+        started_runs[run_key] = now
     return {"runKey": run_key}
 
 
@@ -342,7 +345,8 @@ async def post_run(request: Request) -> JSONResponse:
         error = f"Pilot: player or {', '.join(PILOTS)}."
     elif pilot == "player" and not board.find(run_key):
         # A player's run is timed by the server; a model pilot draws its own key.
-        at = started_runs.get(run_key)
+        with started_runs_lock:
+            at = started_runs.get(run_key)
         if at is None:
             error = "Unknown run. Fly a run to put it on the board."
         elif duration > (time.time() - at) * 1000 + CLOCK_SLACK_MS:

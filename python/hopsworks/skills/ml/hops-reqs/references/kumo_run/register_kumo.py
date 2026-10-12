@@ -29,11 +29,12 @@ FILES = [f"{SIZE}/classifier.pt", "README.md", "LICENSE"]
 
 
 def already_registered(registry, name: str, revision: str, size: str = SIZE) -> bool:
-    """Whether a version of `name` holds the `size` checkpoint at `revision`; its description says so."""
-    try:
-        models = registry.get_models(name) or []
-    except Exception:  # noqa: BLE001 - no such model yet
-        return False
+    """Whether a version of `name` holds the `size` checkpoint at `revision`; its description says so.
+
+    A model not registered yet lists no versions; a failed lookup raises, so a
+    transient error never registers a duplicate.
+    """
+    models = registry.get_models(name) or []
     return any(
         revision in (model.description or "") and f"({size})" in (model.description or "")
         for model in models

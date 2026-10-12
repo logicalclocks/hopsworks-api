@@ -9,6 +9,7 @@ cluster CA to /tmp/ca_chain.pem.
 
 import json
 import os
+import tempfile
 
 import hopsworks
 
@@ -27,9 +28,17 @@ def _main():
     if not os.path.exists(connection["ca"]):
         raise SystemExit("trino_env.py: no cluster CA at /tmp/ca_chain.pem")
     path = os.environ.get("TRINO_CONNECTION", "/tmp/trino.json")
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(connection, f)
+    # A new file, created 0600 and renamed over the old one: an existing file
+    # keeps its mode under O_TRUNC, and the rename replaces a symlink rather
+    # than writing through it.
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".", prefix=".trino-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(connection, f)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
     print(f"trino_env.py: connection for {user} written to {path}")
 
 

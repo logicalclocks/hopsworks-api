@@ -28,6 +28,8 @@ from hopsworks.cli.commands import analytics, build, mlsystem
 
 
 TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "hops-factory.md"
+# Subcommands that read only local files, so they run without a cluster.
+CLUSTER_FREE = {"validate"}
 
 
 @click.group("factory")
@@ -35,10 +37,14 @@ TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "hops-factory.
 def factory_group(ctx: click.Context) -> None:
     """The software factories: the built-in ML system and analytics layer factories, and the project's own.
 
-    Every subcommand refuses to run unless the cluster's factory_enabled variable is true.
+    Every subcommand but validate refuses to run unless the cluster's factory_enabled variable is true.
     """
     # Click runs this before a subcommand parses its own --help, which needs no cluster.
-    if ctx.invoked_subcommand and not {"--help", "-h"} & set(sys.argv[1:]):
+    if (
+        ctx.invoked_subcommand
+        and ctx.invoked_subcommand not in CLUSTER_FREE
+        and not {"--help", "-h"} & set(sys.argv[1:])
+    ):
         _require_enabled(ctx)
 
 
