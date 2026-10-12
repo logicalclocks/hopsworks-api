@@ -33,6 +33,9 @@ def _fake_app(**overrides):
     a.app_base_path = overrides.get("app_base_path")
     a.readiness_probe_path = overrides.get("readiness_probe_path")
     a.db_access = overrides.get("db_access", True)
+    a.idle_scale_to_zero = overrides.get("idle_scale_to_zero", False)
+    a.idle_cooldown_seconds = overrides.get("idle_cooldown_seconds")
+    a.cold_start_timeout_seconds = overrides.get("cold_start_timeout_seconds")
     a.app_url = overrides.get("app_url")
     return a
 
@@ -353,6 +356,72 @@ def test_app_create_no_db_access(mock_project):
     )
     assert result.exit_code == 0, result.output
     assert apps.create_app.call_args.kwargs["db_access"] is False
+
+
+def test_app_create_idle_scale_to_zero_forwards_the_timeouts(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--path",
+            "Resources/app.py",
+            "--idle-scale-to-zero",
+            "--idle-cooldown-seconds",
+            "120",
+            "--cold-start-timeout-seconds",
+            "45",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = apps.create_app.call_args.kwargs
+    assert kwargs["idle_scale_to_zero"] is True
+    assert kwargs["idle_cooldown_seconds"] == 120
+    assert kwargs["cold_start_timeout_seconds"] == 45
+
+
+def test_app_create_idle_timeouts_need_the_option(mock_project):
+    apps = mock_project.get_app_api.return_value
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "dash",
+            "--path",
+            "Resources/app.py",
+            "--idle-cooldown-seconds",
+            "120",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "--idle-scale-to-zero" in result.output
+    apps.create_app.assert_not_called()
+
+
+def test_app_create_defaults_to_no_idle_scale_to_zero(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.create_app.return_value = _fake_app(name="dash")
+    result = CliRunner().invoke(
+        cli, ["app", "create", "dash", "--path", "Resources/app.py"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "idle_scale_to_zero" not in apps.create_app.call_args.kwargs
+
+
+def test_app_info_shows_idle_scale_to_zero(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(
+        name="dash", idle_scale_to_zero=True, idle_cooldown_seconds=120, cold_start_timeout_seconds=45
+    )
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "Scale to zero when idle" in result.output
+    assert "after 120 s idle" in result.output
+    assert "wakes within 45 s" in result.output
 
 
 def test_app_create_defaults_to_db_access(mock_project):

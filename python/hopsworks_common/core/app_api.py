@@ -137,6 +137,9 @@ class AppApi:
         app_base_path: str | None = None,
         readiness_probe_path: str | None = None,
         db_access: bool = True,
+        idle_scale_to_zero: bool = False,
+        idle_cooldown_seconds: int | None = None,
+        cold_start_timeout_seconds: int | None = None,
     ) -> app.App:
         """Create a new app.
 
@@ -200,6 +203,15 @@ class AppApi:
                 `TRINO_PASSWORD_SECRET_NAME` and `TRINO_SCHEMA` to read the offline
                 feature group tables with SQL (the catalog is the feature group's
                 format, `delta` or `hudi`, chosen by the app).
+            idle_scale_to_zero: Scale the app to zero when idle.
+                The app's pod goes away once no request has been in flight for `idle_cooldown_seconds` and comes back on the next request, which is held for up to `cold_start_timeout_seconds`.
+                The app shows the `IDLE` state meanwhile, and opening it is what wakes it.
+                Needs KEDA on the cluster.
+                An open WebSocket, such as a Streamlit session in an open tab, counts as in flight, so the app stays up while someone has it open.
+            idle_cooldown_seconds: Seconds without a request before the app scales to zero.
+                Only with `idle_scale_to_zero`; the backend default is 300.
+            cold_start_timeout_seconds: Seconds the first request waits for the app to wake.
+                Only with `idle_scale_to_zero`; the backend default and ceiling is the cluster's `pythonapp_cold_start_timeout_max_seconds` (60 unless the ingress timeout was raised).
 
         Returns:
             The created App object.
@@ -229,6 +241,14 @@ class AppApi:
         if git_auto_redeploy and not git_repo_app:
             raise ValueError(
                 "git_auto_redeploy is only supported for Git repository apps."
+            )
+        # The backend ignores the two timeouts without the option; saying so here beats
+        # a silent no-op.
+        if not idle_scale_to_zero and (
+            idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None
+        ):
+            raise ValueError(
+                "idle_cooldown_seconds and cold_start_timeout_seconds are only used with idle_scale_to_zero=True."
             )
 
         if file_launched_app:
@@ -304,6 +324,12 @@ class AppApi:
         if readiness_probe_path is not None:
             config["readinessProbePath"] = readiness_probe_path
         config["dbAccess"] = bool(db_access)
+        config["idleScaleToZero"] = bool(idle_scale_to_zero)
+        if idle_scale_to_zero:
+            if idle_cooldown_seconds is not None:
+                config["idleCooldownSeconds"] = int(idle_cooldown_seconds)
+            if cold_start_timeout_seconds is not None:
+                config["coldStartTimeoutSeconds"] = int(cold_start_timeout_seconds)
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}
