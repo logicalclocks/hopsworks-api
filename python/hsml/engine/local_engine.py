@@ -30,9 +30,9 @@ class LocalEngine:
 
     @property
     def _hdfs_api(self):
-        # HdfsApi() starts a libhdfs JVM (hundreds of MB) wherever
-        # LIBHDFS_DEFAULT_FS is set, which includes every model-less serving
-        # pod; only pay for it on the first file transfer.
+        # HdfsApi() loads libhdfs through PyArrow wherever LIBHDFS_DEFAULT_FS is set, which includes every model-less serving pod.
+        # PyArrow loads libjvm first, and Java's libhdfs, where it is found first, starts a JVM (hundreds of MB).
+        # Only pay for it on the first file transfer.
         if not self._hdfs_api_resolved:
             self._hdfs_api_resolved = True
             try:

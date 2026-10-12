@@ -194,6 +194,8 @@ def _make_ephemeral_catalog(name: str, properties: dict[str, str]):
         list_views = _unsupported
         drop_view = _unsupported
         view_exists = _unsupported
+        load_view = _unsupported
+        register_view = _unsupported
 
     return _EphemeralCatalog(name, **properties)
 
