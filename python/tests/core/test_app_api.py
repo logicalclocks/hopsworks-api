@@ -278,12 +278,20 @@ class TestAppApiCreate:
                 "idleScaleToZero": True,
             }
         )
-        assert a.app_url == "https://hopsworks.example.com/hopsworks-api/pythonapp/demo/dash/"
+        assert (
+            a.app_url
+            == "https://hopsworks.example.com/hopsworks-api/pythonapp/demo/dash/"
+        )
 
     def test_running_but_not_serving_app_has_no_url(self, mock_client):
         mock_client._base_url = "https://hopsworks.example.com"
         a = App.from_response_json(
-            {"name": "dash", "state": "RUNNING", "serving": False, "appUrl": "pythonapp/demo/dash/"}
+            {
+                "name": "dash",
+                "state": "RUNNING",
+                "serving": False,
+                "appUrl": "pythonapp/demo/dash/",
+            }
         )
         assert a.app_url is None
 
