@@ -1213,7 +1213,7 @@ class VectorServer:
         ):
             return None
 
-        self._echo_entry_keys(result_dict, entry)
+        self._echo_entry_keys(result_dict, entry, passed_values)
         if not allow_missing:
             # Only this branch reads it, and the names it is built from are fixed by the schema.
             # Building the set per row cost a batch two set constructions for every vector it assembled.
@@ -1265,18 +1265,23 @@ class VectorServer:
         ]
 
     def _echo_entry_keys(
-        self, result_dict: dict[str, Any], entry: dict[str, Any] | None
+        self,
+        result_dict: dict[str, Any],
+        entry: dict[str, Any] | None,
+        passed_values: dict[str, Any] | None,
     ) -> None:
         """Fill the vector slot of each serving key the caller supplied and the lookup did not return.
 
         The row that carries a key can be missing while the caller still asked about that key's value.
-        A key already in the result is never overwritten, even with a null, so a fetched or passed null wins.
-        A null key value in the entry is not echoed.
+        A REST lookup of a missing row returns every feature as null, so a null result counts as not returned.
+        A passed value is never overwritten, even with a null, and a null key value in the entry is not echoed.
         """
+        passed_values = passed_values or {}
         for key, value in (entry or {}).items():
             if (
                 value is not None
-                and key not in result_dict
+                and key not in passed_values
+                and result_dict.get(key) is None
                 and key in self._required_feature_names
             ):
                 result_dict[key] = value
