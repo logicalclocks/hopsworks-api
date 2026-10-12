@@ -271,6 +271,7 @@ class App:
         """Configured app base path."""
         return self._app_base_path
 
+    @public
     @property
     def proxy_path_mode(self) -> str | None:
         """ROOT when the proxy strips the browser mount before the app sees a request, PREFIX when it forwards it."""
