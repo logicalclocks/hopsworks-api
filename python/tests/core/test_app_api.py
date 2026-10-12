@@ -181,6 +181,13 @@ class TestAppApiCreate:
         assert body["description"] == "FastAPI demo"
         assert body["appBasePath"] == "/myapp"
         assert body["readinessProbePath"] == "/health"
+        assert body["dbAccess"] is True
+
+    def test_create_app_without_db_access(self, mock_client, api):
+        api.create_app("dash", app_path="Resources/dash.py", db_access=False)
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["dbAccess"] is False
 
     def test_create_custom_app_without_path_omits_app_path(self, mock_client, api):
         api.create_app(
