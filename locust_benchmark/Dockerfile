@@ -1,11 +1,19 @@
-FROM locustio/locust:2.23.1
+FROM python:3.12-slim
 
-USER root
+RUN apt-get update -y \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update -y && apt-get upgrade -y && apt-get -y install gcc python3-dev librdkafka-dev git
+# The SDK build to benchmark.
+# build_images.sh sets both from sdk.env; the defaults build the upstream main branch.
+ARG SDK_REPO=https://github.com/logicalclocks/hopsworks-api.git
+ARG SDK_REF=main
+ENV SDK_REF=${SDK_REF}
 
-USER locust
-WORKDIR /home/locust
+RUN pip install --no-cache-dir \
+    "locust>=2.32,<3" \
+    "hopsworks[python] @ git+${SDK_REPO}@${SDK_REF}#subdirectory=python"
 
-COPY requirements.txt .
-RUN pip3 install -r requirements.txt
+WORKDIR /work
+ENTRYPOINT ["locust"]
