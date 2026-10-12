@@ -38,6 +38,9 @@ into bucket folders:
 - [hops-app-db](dashboards/hops-app-db/SKILL.md) — app / agent access to the project's online database (`db_access`) and, via Trino, the offline feature groups (Python, SQL, Node.js with `@hopsworks/app`).
 - [hops-superset](dashboards/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
 
+## scaling/ — how served workloads scale (models and agents alike)
+- [hops-autoscaling](scaling/hops-autoscaling/SKILL.md) — deployment mode, autoscaler and scale metric, scale to zero when idle, and how to prove a deployment scales.
+
 ## platform/ — cross-cutting platform knowledge and compute
 - [hops-job](platform/hops-job/SKILL.md) — jobs and Airflow DAGs.
 - [hops-environments](platform/hops-environments/SKILL.md) — clone a Python env, install custom libs.
