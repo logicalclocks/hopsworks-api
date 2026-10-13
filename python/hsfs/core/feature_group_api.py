@@ -474,6 +474,30 @@ class FeatureGroupApi:
             ),
         )
 
+    def _test_data_source_access(
+        self, feature_group_instance: fg_mod.ExternalFeatureGroup
+    ) -> dict:
+        """Check now whether the caller can read the table behind an external feature group.
+
+        Parameters:
+            feature_group_instance: Metadata object of the external feature group.
+
+        Returns:
+            The access state as the backend stored it: `status`, `errorCode`, `message` and `checkedAt`.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_group_instance.feature_store_id,
+            "featuregroups",
+            feature_group_instance.id,
+            "datasource",
+            "test",
+        ]
+        return _client._send_request("POST", path_params)
+
     def _update_table_schema(
         self,
         feature_group_instance: fg_mod.FeatureGroup,

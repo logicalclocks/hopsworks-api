@@ -45,12 +45,17 @@ class TrinoCatalogApi:
         properties: dict[str, str],
         data_source_name: str | None = None,
         featurestore_id: int | None = None,
+        scope: str | None = None,
     ) -> Any:
         payload: dict[str, Any] = {
             "name": name,
             "connectorType": connector_type,
             "properties": properties,
         }
+        # Absent means PROJECT to the backend, except for a data source whose credentials each member
+        # provides, whose catalog is always PRIVATE.
+        if scope is not None:
+            payload["scope"] = scope
         # Sent only when deriving from a data source. Their joint presence is what tells the backend
         # to resolve credential references out of that source; without them the properties are used
         # exactly as given, which is the hand-written case.
@@ -166,6 +171,7 @@ class TrinoCatalogApi:
         properties: dict[str, str],
         data_source_name: str | None = None,
         featurestore_id: int | None = None,
+        scope: str | None = None,
     ) -> dict[str, Any]:
         """Create a Trino catalog.
 
@@ -174,7 +180,8 @@ class TrinoCatalogApi:
         cluster administrator to do it immediately.
 
         Parameters:
-            name: Full catalog name. It must start with `<project>__` in lowercase.
+            name: Full catalog name.
+                It must start with `<project>__` in lowercase for a project catalog, or `_<username>__` for a private one.
             connector_type: A Trino connector from `get_capabilities()["connectors"]`.
             properties: Connector properties, without `connector.name`. A value may reference a
                 Hopsworks secret as `${HOPSWORKS_SECRET:<name>}`, or a credential-file bundle as
@@ -182,6 +189,8 @@ class TrinoCatalogApi:
             data_source_name: Derive credential properties from this data source, for a catalog
                 built from `get_catalog_template`. Leave unset for a hand-written catalog.
             featurestore_id: The data source's feature store. Required with `data_source_name`.
+            scope: `PROJECT` or `PRIVATE`, as the template's `scope` gives it.
+                Unset means `PROJECT`, except for a data source whose credentials each member provides, whose catalog is always `PRIVATE`.
 
         Returns:
             The created catalog, including the `status` it is waiting in.
@@ -198,6 +207,7 @@ class TrinoCatalogApi:
             properties,
             data_source_name,
             featurestore_id,
+            scope,
         )
 
     @public
@@ -258,6 +268,7 @@ class TrinoCatalogApi:
         properties: dict[str, str],
         data_source_name: str | None = None,
         featurestore_id: int | None = None,
+        scope: str | None = None,
     ) -> None:
         """Check that a catalog definition can actually reach its source, without creating it.
 
@@ -272,6 +283,7 @@ class TrinoCatalogApi:
             data_source_name: Resolve credential properties from this data source, exactly as
                 `create_catalog` would. Leave unset for a hand-written catalog.
             featurestore_id: The data source's feature store. Required with `data_source_name`.
+            scope: `PROJECT` or `PRIVATE`, as `create_catalog` takes it.
 
         Raises:
             ValueError: If only one of `data_source_name` and `featurestore_id` is passed.
@@ -286,6 +298,7 @@ class TrinoCatalogApi:
             properties,
             data_source_name,
             featurestore_id,
+            scope,
         )
 
     @public
