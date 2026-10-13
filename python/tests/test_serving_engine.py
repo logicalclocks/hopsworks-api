@@ -899,6 +899,128 @@ class TestPredictErrorMapping:
         assert "get_logs" in info.value.args[0]
 
 
+class TestPredictAwaitsTheRoute:
+    """An empty 404 is the ingress gateway without a route yet: retried for a while if the deployment runs."""
+
+    @pytest.fixture
+    def clock(self, mocker):
+        now = [0.0]
+        mocker.patch.object(
+            serving_engine.time, "monotonic", side_effect=lambda: now[0]
+        )
+        mocker.patch.object(
+            serving_engine.time,
+            "sleep",
+            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        )
+        return now
+
+    def _error(self, mocker, status=404, content=b"", body=None):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = mocker.Mock(status_code=status, content=content)
+        if body is None:
+            response.json.side_effect = ValueError("no JSON")
+        else:
+            response.json.return_value = body
+        error = RestAPIError.__new__(RestAPIError)
+        error.response = response
+        error.error_code = None
+        error.args = ("boom",)
+        return error
+
+    def _engine(self, mocker, outcomes, status=PREDICTOR_STATE.STATUS_RUNNING):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._send_inference_request.side_effect = outcomes
+        eng._serving_api._get_state.return_value = mocker.Mock(status=status)
+        return eng
+
+    def _deployment(self, mocker, serving_tool="KSERVE"):
+        d = mocker.Mock()
+        d.model_server = "PYTHON"
+        d.api_protocol = "REST"
+        d.predictor.serving_tool = serving_tool
+        d.schema = None
+        return d
+
+    def test_an_empty_404_from_a_running_deployment_is_retried(self, mocker, clock):
+        eng = self._engine(mocker, [self._error(mocker), {"predictions": [1]}])
+
+        assert eng._predict(self._deployment(mocker), None, [[1]]) == {
+            "predictions": [1]
+        }
+        assert eng._serving_api._send_inference_request.call_count == 2
+        eng._serving_api._get_state.assert_called_once()
+
+    def test_an_empty_404_past_the_wait_is_reported_as_before(self, mocker, clock):
+        error = self._error(mocker)
+        eng = self._engine(mocker, lambda *_: (_ for _ in ()).throw(error))
+
+        with pytest.raises(ModelServingException, match="not created or running"):
+            eng._predict(self._deployment(mocker), None, [[1]])
+        assert clock[0] == serving_engine._ROUTE_WAIT_SECONDS
+        assert eng._serving_api._send_inference_request.call_count > 2
+        eng._serving_api._get_state.assert_called_once()
+
+    def test_a_404_with_a_body_is_not_retried(self, mocker, clock):
+        error = self._error(
+            mocker, content=b'{"error": "x"}', body={"error": "model not found"}
+        )
+        eng = self._engine(mocker, [error])
+
+        with pytest.raises(ModelServingException, match="not created or running"):
+            eng._predict(self._deployment(mocker), None, [[1]])
+        eng._serving_api._send_inference_request.assert_called_once()
+        eng._serving_api._get_state.assert_not_called()
+
+    def test_an_empty_404_from_a_deployment_that_is_not_running_is_not_retried(
+        self, mocker, clock
+    ):
+        eng = self._engine(
+            mocker, [self._error(mocker)], status=PREDICTOR_STATE.STATUS_STOPPED
+        )
+
+        with pytest.raises(ModelServingException, match="not created or running"):
+            eng._predict(self._deployment(mocker), None, [[1]])
+        eng._serving_api._send_inference_request.assert_called_once()
+
+    def test_an_unreadable_state_is_not_waited_on(self, mocker, clock):
+        eng = self._engine(mocker, [self._error(mocker)])
+        eng._serving_api._get_state.side_effect = RuntimeError("down")
+
+        with pytest.raises(ModelServingException, match="not created or running"):
+            eng._predict(self._deployment(mocker), None, [[1]])
+        eng._serving_api._send_inference_request.assert_called_once()
+
+    def test_other_errors_are_not_retried(self, mocker, clock):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        error = self._error(mocker, status=503)
+        eng = self._engine(mocker, [error])
+
+        with pytest.raises(RestAPIError) as info:
+            eng._predict(self._deployment(mocker), None, [[1]])
+        assert info.value is error
+        eng._serving_api._get_state.assert_not_called()
+
+    def test_a_request_through_hopsworks_is_not_retried(self, mocker, clock):
+        eng = self._engine(mocker, [self._error(mocker)])
+
+        with pytest.raises(ModelServingException, match="not created or running"):
+            eng._predict(self._deployment(mocker, serving_tool="DEFAULT"), None, [[1]])
+        eng._serving_api._send_inference_request.assert_called_once()
+        eng._serving_api._get_state.assert_not_called()
+
+    def test_a_prediction_reads_no_state(self, mocker, clock):
+        eng = self._engine(mocker, [{"predictions": [1]}])
+
+        eng._predict(self._deployment(mocker), None, [[1]])
+
+        eng._serving_api._get_state.assert_not_called()
+        assert clock[0] == 0.0
+
+
 class TestStartWithoutWaiting:
     def test_start_with_zero_wait_returns_before_the_state_is_known(self, mocker):
         """`start(await_running=0)` used to dereference the None the poller returns for a zero wait."""

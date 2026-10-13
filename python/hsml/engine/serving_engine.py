@@ -57,6 +57,24 @@ def _structured_prediction_error(error: RestAPIError) -> dict | None:
     return None
 
 
+# The ingress gateway answers a request for a host it has no route for with an empty 404. A deployment can
+# report Running a moment before the gateway has its route (KServe creates the route once the predictor is
+# ready, and Istio pushes it to the gateway shortly after), so an empty 404 from a running deployment is
+# retried for a bounded time before it is reported as a deployment that is not running.
+_ROUTE_WAIT_SECONDS = 15
+_ROUTE_RETRY_MAX_INTERVAL_SECONDS = 4
+
+
+def _is_unrouted(error: RestAPIError) -> bool:
+    """Whether the ingress gateway had no route: a 404 with an empty body, unlike a model server's or Hopsworks' 404."""
+    response = error.response
+    return (
+        response is not None
+        and response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
+        and not response.content
+    )
+
+
 def _render_chunk(chunk) -> str:
     r"""Render a single log chunk's content with a trailing newline.
 
@@ -1542,7 +1560,7 @@ class ServingEngine:
         serving_tool = deployment_instance.predictor.serving_tool
         through_hopsworks = serving_tool != PREDICTOR.SERVING_TOOL_KSERVE
         try:
-            response = self._serving_api._send_inference_request(
+            response = self._send_inference_request_awaiting_route(
                 deployment_instance, payload, through_hopsworks
             )
             return (
@@ -1564,6 +1582,36 @@ class ServingEngine:
                 re.args[0] + "\n\n Check the model server logs by using `.get_logs()`",
             )
             raise re
+
+    def _send_inference_request_awaiting_route(
+        self, deployment_instance, payload, through_hopsworks: bool
+    ):
+        deadline = None
+        interval = 0.5
+        while True:
+            try:
+                return self._serving_api._send_inference_request(
+                    deployment_instance, payload, through_hopsworks
+                )
+            except RestAPIError as re:
+                if through_hopsworks or not _is_unrouted(re):
+                    raise
+                if deadline is None:
+                    if not self._is_running(deployment_instance):
+                        raise
+                    deadline = time.monotonic() + _ROUTE_WAIT_SECONDS
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(interval, remaining))
+                interval = min(interval * 2, _ROUTE_RETRY_MAX_INTERVAL_SECONDS)
+
+    def _is_running(self, deployment_instance) -> bool:
+        try:
+            state = self._get_state(deployment_instance)
+        except Exception:  # noqa: BLE001 - the state only decides whether to wait for the route
+            return False
+        return state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING
 
     def _validate_inference_payload(
         self,
