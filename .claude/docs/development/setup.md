@@ -2,7 +2,7 @@
 
 ## Python
 
-Prerequisites: Python 3.9–3.13, `uv` (recommended) or pip.
+Prerequisites: Python 3.10–3.14, `uv` (recommended) or pip.
 
 ```bash
 uv sync --extra dev --all-groups --project python

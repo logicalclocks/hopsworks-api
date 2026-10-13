@@ -17,7 +17,7 @@
 import pytest
 import requests
 from hopsworks_common import command
-from hopsworks_common.client.exceptions import EnvironmentException
+from hopsworks_common.client.exceptions import EnvironmentException, RestAPIError
 from hopsworks_common.engine import environment_engine
 
 
@@ -208,7 +208,7 @@ class TestEnvironmentEngine:
         engine._await_environment_command("myenv")
 
         library_poll.assert_called_once_with(
-            "myenv", "matplotlib", engine.POLL_REQUEST_TIMEOUT
+            "myenv", "matplotlib", engine.POLL_REQUEST_TIMEOUT, None
         )
         environment_poll.assert_called_once_with("myenv", engine.POLL_REQUEST_TIMEOUT)
 
@@ -245,3 +245,49 @@ class TestEnvironmentEngine:
         engine._poll_commands_library("myenv", "matplotlib", 30)
 
         assert mock_client._send_request.call_args.kwargs["timeout"] == 30
+
+
+class TestPollCommandsLibrary:
+    def test_names_the_ecosystem_and_splits_a_scoped_name(self, mocker):
+        # Arrange
+        mock_client = mocker.MagicMock()
+        mock_client._project_id = 7
+        mock_client._send_request.return_value = {
+            "library": "@scope/tool",
+            "version": "1.0.0",
+            "channel": "npm",
+            "packageSource": "NPM",
+        }
+        mocker.patch("hopsworks_common.client._get_instance", return_value=mock_client)
+        engine = environment_engine.EnvironmentEngine()
+
+        # Act
+        engine._poll_commands_library("myenv", "@scope/tool", 60, package_source="NPM")
+
+        # Assert: the same name can exist on PyPI, so the poll says which row it means.
+        call = mock_client._send_request.call_args
+        assert call.args[1][-2:] == ["@scope", "tool"]
+        assert call.kwargs["query_params"] == {
+            "expand": "commands",
+            "packageSource": "NPM",
+        }
+
+    def test_only_a_missing_library_ends_the_wait(self, mocker):
+        # Arrange
+        mock_client = mocker.MagicMock()
+        mock_client._project_id = 7
+        mocker.patch("hopsworks_common.client._get_instance", return_value=mock_client)
+        engine = environment_engine.EnvironmentEngine()
+
+        def error(status, code):
+            response = mocker.MagicMock()
+            response.status_code = status
+            response.json.return_value = {"errorCode": code}
+            return RestAPIError("url", response)
+
+        # Act / Assert: gone is an answer, an ambiguous name is not.
+        mock_client._send_request.side_effect = error(404, 300003)
+        assert engine._poll_commands_library("myenv", "lib", 60) is None
+        mock_client._send_request.side_effect = error(400, 300028)
+        with pytest.raises(RestAPIError):
+            engine._poll_commands_library("myenv", "lib", 60)

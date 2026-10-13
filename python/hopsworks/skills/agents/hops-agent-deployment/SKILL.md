@@ -81,7 +81,7 @@ Streaming, multimodal content, memory tiers, progress events and the structure g
 
 ```bash
 hops agent create my_agent.py --name my_agent \
-  --requirements requirements.txt --environment my_agent
+  --requirements requirements.txt --environment my_agent [--memory 3072]
 hops agent start my_agent                       # waits for RUNNING
 hops agent info my_agent                        # status + URL
 hops agent logs my_agent                        # follow startup / errors
@@ -90,6 +90,8 @@ hops agent delete my_agent --yes
 ```
 
 `create` re-run uploads the latest code and rewrites the predictor; a running agent is left untouched (`start`, or `restart` from Python, rolls it onto the new code). `hops agent query` posts a predictor-style body and is for the legacy `Predict` class contract; a protocol agent is spoken to with `agent.chat()` below or the UI chat panel.
+
+A model loaded inside the agent (torch, an embedder) needs more than the default 1 GB of memory: pass `--memory` to `hops agent create`, or the pod is OOM-killed while it loads.
 
 **Confirm before deleting.** `hops agent delete` tears down the served agent irreversibly; confirm the exact name with the user, and never tear down an agent you created as a side effect (temp or test ones included) unless they asked.
 
@@ -113,6 +115,8 @@ agent.start(await_running=600)
 ```
 
 `deploy_agent` here is model serving's call (`project.get_model_serving().deploy_agent(...)` takes the same arguments) returning an `Agent`. `agent.deployment` is the `hsml` deployment for resources, scaling and describe.
+
+An agent scales like a model deployment: pass `scaling_configuration=PredictorScalingConfig(...)` to `deploy_agent` (instances, the metric and its target; `min_instances=0` rests at zero when idle and wakes on the first request, the SDK's default minimum being 1). The choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
 
 ### Git-backed agents
 
@@ -164,5 +168,7 @@ address. See "End-user feedback" in `python/hopsworks_agents/protocol/README.md`
 - Evaluate, monitor and improve the deployed agent: **hops-agent-evals** (suites, online sampling, feedback, failure analysis).
 - Scheduled/batch coding agent instead of a served one: **hops-agent-task**.
 - Model-backed online predictor: **hops-online-inference**.
+- Instances, scale metric, scale to zero when idle: [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
 - Agent serving dependencies: [hops-environments](../../platform/hops-environments/SKILL.md) — clone `python-agent-pipeline` and install requirements.
 - Give the agent feature-store access for RAG: **hops-fv** (online feature vectors). Pass entity IDs (e.g. `user_id`) in the query so the agent can look up application state from the feature store.
+- Agent memory or app state in the project database (`MYSQL_*` variables, password secret, privileges, RonDB table rules): **hops-app-db**.

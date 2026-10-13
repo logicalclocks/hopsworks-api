@@ -288,12 +288,12 @@ class Predictor(DeployableComponent):
     def _get_effective_knative_mode(cls, knative_mode, model_server):
         """Resolve the effective Knative mode used for client-side scaling defaults.
 
-        An explicit `knative_mode` value always wins.
-        Otherwise, every model server defaults to Knative mode except vLLM, which defaults to Standard.
+        An explicit `knative_mode` value always wins. Otherwise every model server defaults to Standard mode,
+        which KEDA scales (with scale-to-zero when idle) wherever KEDA is installed; Knative is the opt-in.
         """
         if knative_mode is not None:
             return knative_mode
-        return model_server != PREDICTOR.MODEL_SERVER_VLLM
+        return False
 
     @classmethod
     def _validate_resources(cls, resources, serving_tool, effective_knative_mode=True):

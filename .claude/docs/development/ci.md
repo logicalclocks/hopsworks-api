@@ -36,7 +36,7 @@ uv run --project python python python/scripts/check_pep8_public.py
 
 ### Unit Tests — Main Matrix
 
-Python versions: 3.9, 3.10, 3.11, 3.12, 3.13.
+Python versions: 3.10, 3.11, 3.12, 3.13, 3.14.
 Full dev install.
 `PYSPARK_SUBMIT_ARGS` set to include the Avro package.
 Timezone set to `UTC`.

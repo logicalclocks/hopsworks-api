@@ -6,11 +6,18 @@ description: Use when writing code for model deployment, online inference, predi
 # Hopsworks Online Inference — Python SDK Best Practices
 
 An **online inference pipeline** is one of the three FTI pipelines (Feature, Training, Inference): a separate program that runs 24/7 behind a network endpoint, accepts prediction requests, builds feature vectors (precomputed features from the online store + on-demand + passed features), calls `model.predict`, and logs its inputs and outputs for monitoring and debugging. What you deploy is the pipeline, not the model alone. The model is one step inside it.
+Deploy only for predictions requested one at a time, as they happen. Predictions made on a
+schedule are batch inference: the job embeds the model and needs no deployment (see
+[hops-batch-inference](../hops-batch-inference/SKILL.md)).
 
 ## Contract
 
 - **Input:** a registered model + an online-serving feature view.
 - **Output:** a running KServe HTTP endpoint serving predictions.
+  Inside a `/hops-build` system the output is also the `inference` block of `system.yaml`
+  (`mode: realtime`, the deployment pinned to `realtime.model_version`): write that
+  block and preserve every other line
+  ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
 - **Pre-condition:** the model is registered in the model registry (**hops-train**), and every feature group backing the feature view is `online_enabled` (unless all features are on-demand).
 
 ## Smoke-test (cheap pre/post-flight)
@@ -21,7 +28,8 @@ The whole deploy→serve→smoke loop runs from the CLI — this is what the ter
 kickoff flow uses. The model must already be registered (`hops model list`):
 
 ```bash
-hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline
+hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline \
+  [--cores 2] [--memory 2048]                                  # limits per instance; default 1 core, 1024 MB
 hops deployment start <name>
 hops deployment status <name>                                   # poll until READY
 hops deployment predict <name> --data '{"instances": [{ <one known-good row> }]}'
@@ -37,7 +45,7 @@ deployment name via `--name`; recreate over a stale deployment with
 
 - **Resources:** CPU cores, memory, GPUs for the predictor (requests vs limits).
 - **Environment:** which Python environment the predictor runs in.
-- **Scaling:** KServe mode (`knative_mode`), min/max instances, and the scale metric and its target.
+- **Scaling:** min/max instances, the scale metric and its target, and whether it may rest at zero when idle; the choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
 - **Before deleting** — `deployment.delete()` / `hops deployment delete --yes` tears down the running endpoint irreversibly; confirm the exact name with the user, and never tear down a deployment you created as a side effect (temp or test ones included) unless they asked.
 
 ## Model Deployment Overview
@@ -124,8 +132,8 @@ deployment = model.deploy(
     scaling_configuration=PredictorScalingConfig(
         min_instances=1,
         max_instances=3,
-        scale_metric=ScaleMetric.CONCURRENCY,   # Knative-only metric; only valid for KServe Knative deployments
-        target=70,                              # target concurrent requests per pod
+        scale_metric=ScaleMetric.CONCURRENCY,   # concurrent requests per instance; Standard mode measures it at the gateway (KEDA HTTP add-on)
+        target=70,
     ),
     environment="pandas-inference-pipeline",  # Python environment name
 )
@@ -233,33 +241,22 @@ predictor_resources = PredictorResources(
 
 ### Scaling
 
-`model.deploy(knative_mode=...)` picks the KServe mode: `True` for Knative (supports scale-to-zero and `CONCURRENCY`/`RPS` metrics), `False` for Standard (minimum one instance, autoscales on `CPU`/`MEMORY` between min and max instances; equal min and max run a fixed replica count with no autoscaler, the default for LLM deployments).
-Leave it `None` (default) to let the backend decide: vLLM deployments default to Standard, everything else to Knative.
-On an update, `None` keeps the deployment's current mode.
+The scaling configuration (`min_instances`, `max_instances`, `scale_metric`, `target`, and the KEDA or Knative settings) is the same object for model and agent deployments; the modes, every metric with its unit and default, scale to zero when idle and how to verify that a deployment scales are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md). The short version:
 
-Knative mode (`CONCURRENCY`/`RPS` metrics; the Knative-only window/panic/retention parameters are rejected in Standard mode):
+- A new deployment runs in **Standard mode** (a plain Deployment, scaled by KEDA where the cluster has it, else by KServe's own cpu/memory HPA); `knative_mode=True` opts into Knative's autoscaler. The mode changes only while the deployment is stopped.
+- `min_instances=0` means scale to zero when idle in both modes; in Standard mode it needs KEDA and a predictor without a transformer, and the first request after an idle period pays the cold start.
+- Equal `min_instances` and `max_instances` run a fixed replica count with no autoscaler, the default for LLM deployments.
 
 ```python
 from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
 
 scaling = PredictorScalingConfig(
-    min_instances=0,              # 0 enables scale-to-zero (required on scale-to-zero clusters)
-    max_instances=5,              # maximum pods
-    scale_metric=ScaleMetric.CONCURRENCY,  # or ScaleMetric.RPS
-    target=70,                    # target concurrent requests per pod
-    stable_window_seconds=60,     # averaging interval
-    scale_to_zero_retention_seconds=300,  # keep last pod for 5 min
-)
-```
-
-Standard mode (`CPU`/`MEMORY` metrics; minimum one instance, no scale-to-zero):
-
-```python
-scaling = PredictorScalingConfig(
-    min_instances=1,              # at least 1 in Standard mode
-    max_instances=5,              # equal to min_instances runs a fixed replica count
-    scale_metric=ScaleMetric.CPU,  # or ScaleMetric.MEMORY
-    target=80,                    # target utilization percentage
+    min_instances=0,                        # rest at zero when idle, wake on the first request
+    max_instances=5,
+    scale_metric=ScaleMetric.CONCURRENCY,   # or CPU / MEMORY; vLLM: QUEUE_DEPTH, KV_CACHE_USAGE, ...
+    target=20,                              # concurrent requests per instance
+    idle_cooldown_seconds=300,              # quiet seconds before the last instance goes
+    cold_start_timeout_seconds=120,         # how long the first request is held while it wakes
 )
 ```
 
@@ -356,6 +353,54 @@ deployment.start()
 ```
 
 ---
+
+## Tests
+
+The inference row of [hops-reqs/references/tests.md](../hops-reqs/references/tests.md) for realtime.
+Unit, offline: request to feature vector assembly yields the model's columns in
+order, missing and extra fields are handled as designed, and the response has
+the declared schema. Integration: the benchmark at a short duration returns 200s
+and the schema, and **parity** (`tests/integration/test_parity.py` in the
+template): for a sample of entities at `tests.parity.at`, the offline and online
+stores give the same transformed features, and the downloaded model scoring
+those vectors matches the deployment's predictions, within
+`tests.parity.tolerance` (default `1e-6`, `max_mismatch: 0`). That is the
+training/serving skew check, and it is why the inference environment must hold
+`training.environment.transformation_libraries` at exactly those versions.
+
+Inside a `/hops-build` system the deployment is the registered model with the
+template's `src/<slug_pkg>/predictor.py`, a `DefaultPredict` subclass that keeps
+the default feature lookup, transformations and schema validation but returns
+the positive-class probability for a classifier, the number `evaluate.py` and
+the batch path compute; the default returns class labels, and parity would fail
+on every entity:
+
+```python
+model.deploy(name="telcochurnrt", script_file="src/telco_churn/predictor.py", default_predictor=True)
+```
+
+The predictor container defaults to a 1 GiB limit, which the default predictor
+outgrows even for a small scikit-learn model: an `OOMKilled` restart shows up
+as 502 `connection refused` from `predict`. Raise
+`deployment.resources.limits.memory` within `budget.inference.max_memory_mb`,
+`deployment.save(await_update=...)`, and measure again.
+
+### The benchmark contract
+
+`benchmarks/benchmark_inference.py` is how the SLA is measured, by the inference
+agent on every attempt, by the integration test at a short duration, and by
+`/hops verify benchmark` at full length:
+
+- Closed-loop load at `protocol.offered_qps` with a fixed `concurrency`, after
+  `warmup_s`, for `duration_s` and at least `min_requests`, every request with
+  `timeout_ms`, using real entity keys from the feature store.
+- A timed-out or failed request counts as an error and as the maximum latency, never dropped; the first three failures are kept as `error_samples` so an unmet SLA says why.
+- Reports p50, p95 and p99 against `sla.realtime.p99_ms`, offered and completed
+  qps against `throughput_qps`, and the error rate against `error_rate_max`;
+  exits 0 when all three hold and 1 otherwise.
+- Above about 50 qps it runs as the `<slug>-benchmark` job, so the path measured is the consumers'.
+- The protocol is frozen for a tuning round: an attempt changes the deployment
+  (replicas, batched lookups, resources), never how it is measured.
 
 ## Next Steps
 

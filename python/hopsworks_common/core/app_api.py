@@ -38,6 +38,33 @@ _GIT_PROVIDER_ALIASES = {
 
 @public("hopsworks.core.app_api.AppApi")
 class AppApi:
+    # Mirrors PythonAppKind in the backend.
+    # Every kind but CUSTOM is launched from its app file.
+    APP_KINDS = ("STREAMLIT", "CUSTOM", "FLASK", "GRADIO", "NODEJS")
+    APP_KIND_LABELS = {
+        "STREAMLIT": "Streamlit",
+        "CUSTOM": "custom",
+        "FLASK": "Flask",
+        "GRADIO": "Gradio",
+        "NODEJS": "Node.js",
+    }
+    APP_KIND_EXTENSIONS = {
+        "STREAMLIT": (".py",),
+        "FLASK": (".py",),
+        "GRADIO": (".py",),
+        "NODEJS": (".js", ".mjs", ".cjs", ".ts", ".mts"),
+    }
+
+    @classmethod
+    def _check_entrypoint_extension(
+        cls, app_kind: str, path: str, parameter: str
+    ) -> None:
+        extensions = cls.APP_KIND_EXTENSIONS.get(app_kind)
+        if extensions and not path.lower().endswith(extensions):
+            raise ValueError(
+                f"{parameter} must be a {', '.join(extensions)} file for {cls.APP_KIND_LABELS[app_kind]} apps: {path}"
+            )
+
     def __init__(self):
         self._log = logging.getLogger(__name__)
 
@@ -109,8 +136,12 @@ class AppApi:
         entrypoint_script: str | None = None,
         app_base_path: str | None = None,
         readiness_probe_path: str | None = None,
+        db_access: bool = True,
+        idle_scale_to_zero: bool | None = None,
+        idle_cooldown_seconds: int | None = None,
+        cold_start_timeout_seconds: int | None = None,
     ) -> app.App:
-        """Create a new Python app.
+        """Create a new app.
 
         Example:
             ```python
@@ -136,9 +167,15 @@ class AppApi:
             cores: CPU cores (default: 1.0).
             env_vars: Per-runtime env vars applied when the app is started.
                 These override account-level env vars for this app's executions.
-            app_kind: App kind to create. Defaults to ``STREAMLIT``.
-            entrypoint_command: Startup command for non-Streamlit apps.
-            app_port: Port exposed by non-Streamlit apps.
+            app_kind: What the app is, which decides how it is started.
+                ``STREAMLIT``, ``FLASK`` and ``GRADIO`` run the given Python file with their framework.
+                ``NODEJS`` runs a JavaScript or TypeScript file with Node.js, and the app reads its port from ``process.env.PORT``.
+                ``CUSTOM`` runs ``entrypoint_command``.
+            entrypoint_command: Startup command for ``CUSTOM`` apps.
+                The other kinds generate theirs from the app file.
+            app_port: Port the app listens on, for every kind but ``STREAMLIT``.
+                Flask is started on it; Gradio and Node.js are told it through ``GRADIO_SERVER_PORT`` and ``PORT``.
+                Unset leaves the backend's default.
             description: Optional app description.
             git_url: Optional Git repository URL. When set, the app is cloned on
                 every start.
@@ -148,11 +185,33 @@ class AppApi:
             git_auto_redeploy: Roll the app to the branch HEAD whenever a new commit is pushed.
                 Only valid for git-backed apps.
                 The running app keeps serving until the new version is ready.
-            entrypoint_script: Relative entrypoint script for Streamlit git apps.
+            entrypoint_script: The app file relative to the repository root, for git
+                repository apps of every kind but ``CUSTOM``.
             app_base_path: Public mount path for the app, for example ``/`` or
                 ``/myapp``.
             readiness_probe_path: Optional readiness probe path to use instead of
                 the platform default.
+
+            db_access: Give the app access to the project's online feature store
+                database. Defaults to True: starting the app creates the database
+                if the project does not have one yet and injects the `MYSQL_USER`,
+                `MYSQL_PASSWORD_SECRET_NAME`, `MYSQL_DB`, `MYSQL_HOST` and `MYSQL_PORT`
+                environment variables into the app container, the same way agent
+                deployments get them. Set to False for apps that do not need the
+                database. Independently of this flag, when Trino is enabled on the
+                cluster every app gets `TRINO_HOST`, `TRINO_PORT`, `TRINO_USER`,
+                `TRINO_PASSWORD_SECRET_NAME` and `TRINO_SCHEMA` to read the offline
+                feature group tables with SQL (the catalog is the feature group's
+                format, `delta` or `hudi`, chosen by the app).
+            idle_scale_to_zero: Scale the app to zero when idle.
+                The app's pod goes away once no request has been in flight for `idle_cooldown_seconds` and comes back on the next request, which is held for up to `cold_start_timeout_seconds`.
+                The app shows the `IDLE` state meanwhile, and opening it is what wakes it.
+                On by default wherever the cluster has KEDA (`None` leaves the choice to the cluster); pass `False` for an app that must stay up, and `True` to insist, which fails on a cluster without KEDA.
+                An open WebSocket, such as a Streamlit session in an open tab, counts as in flight, so the app stays up while someone has it open.
+            idle_cooldown_seconds: Seconds without a request before the app scales to zero.
+                Turns the option on when given; the default is the cluster's `pythonapp_idle_cooldown_seconds` (21600, six hours).
+            cold_start_timeout_seconds: Seconds the first request waits for the app to wake.
+                Turns the option on when given; the default and ceiling is the cluster's `pythonapp_cold_start_timeout_max_seconds` (300). The ingress read timeout (60 unless raised) may fail the waking request earlier; the pod keeps starting and the next request finds it ready.
 
         Returns:
             The created App object.
@@ -169,7 +228,13 @@ class AppApi:
         app_base_path = self._trim_to_none(app_base_path)
         readiness_probe_path = self._trim_to_none(readiness_probe_path)
         git_repo_app = bool(git_url)
-        streamlit_app = app_kind_name == "STREAMLIT"
+        if app_kind_name not in self.APP_KINDS:
+            raise ValueError(
+                f"Unknown app_kind {app_kind_name!r}; one of {', '.join(self.APP_KINDS)}."
+            )
+        # Every kind but CUSTOM is started from its app file with a generated command.
+        file_launched_app = app_kind_name != "CUSTOM"
+        kind_label = self.APP_KIND_LABELS[app_kind_name]
 
         # Mirrors PythonAppJobValidator: the backend rejects the flag without a git
         # source. Fail here so the caller gets the reason instead of a REST error.
@@ -177,10 +242,23 @@ class AppApi:
             raise ValueError(
                 "git_auto_redeploy is only supported for Git repository apps."
             )
+        # The backend ignores the two timeouts with the option off; saying so here beats
+        # a silent no-op. Given without the flag, they mean the option is wanted.
+        has_idle_timeouts = (
+            idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None
+        )
+        if idle_scale_to_zero is False and has_idle_timeouts:
+            raise ValueError(
+                "idle_cooldown_seconds and cold_start_timeout_seconds are only used with idle_scale_to_zero on."
+            )
+        if idle_scale_to_zero is None and has_idle_timeouts:
+            idle_scale_to_zero = True
 
-        if streamlit_app:
+        if file_launched_app:
             if entrypoint_command:
-                raise ValueError("entrypoint_command is only used for custom apps.")
+                raise ValueError(
+                    f"entrypoint_command is only used for custom apps; {kind_label} apps are started from the app file."
+                )
             if git_repo_app:
                 if not git_provider:
                     raise ValueError(
@@ -188,14 +266,19 @@ class AppApi:
                     )
                 if not entrypoint_script:
                     raise ValueError(
-                        "entrypoint_script is required for Streamlit Git repository apps."
+                        f"entrypoint_script is required for {kind_label} Git repository apps."
                     )
+                self._check_entrypoint_extension(
+                    app_kind_name, entrypoint_script, "entrypoint_script"
+                )
             elif not app_path:
-                raise ValueError("app_path is required for Streamlit apps.")
+                raise ValueError(f"app_path is required for {kind_label} apps.")
             elif entrypoint_script:
                 raise ValueError(
-                    "entrypoint_script is only used for Streamlit Git repository apps."
+                    "entrypoint_script is only used for Git repository apps."
                 )
+            else:
+                self._check_entrypoint_extension(app_kind_name, app_path, "app_path")
         else:
             if not entrypoint_command:
                 raise ValueError("entrypoint_command is required for custom apps.")
@@ -203,7 +286,7 @@ class AppApi:
                 raise ValueError("git_provider is required for Git repository apps.")
             if entrypoint_script:
                 raise ValueError(
-                    "entrypoint_script is only used for Streamlit Git repository apps."
+                    "entrypoint_script is only used for Git repository apps of the other kinds."
                 )
 
         if app_path and not git_repo_app:
@@ -214,6 +297,10 @@ class AppApi:
         config = {
             "type": "pythonAppJobConfiguration",
             "appName": name,
+            # Root routing, as the UI creates apps: the proxy strips the browser mount,
+            # so the app serves at its base path. Without it the backend falls back to
+            # the compatibility prefix and forwards /hopsworks-api/pythonapp/... as is.
+            "proxyPathMode": "ROOT",
             "resourceConfig": {
                 "memory": memory,
                 "cores": cores,
@@ -231,9 +318,9 @@ class AppApi:
             config["gitAutoRedeploy"] = bool(git_auto_redeploy)
             if git_branch:
                 config["gitBranch"] = git_branch
-            if streamlit_app:
+            if file_launched_app:
                 config["entrypointScript"] = entrypoint_script
-        if not streamlit_app and entrypoint_command:
+        if not file_launched_app and entrypoint_command:
             config["entrypointCommand"] = entrypoint_command
         if app_kind_name != "STREAMLIT" and app_port is not None:
             config["appPort"] = app_port
@@ -243,6 +330,15 @@ class AppApi:
             config["appBasePath"] = app_base_path
         if readiness_probe_path is not None:
             config["readinessProbePath"] = readiness_probe_path
+        config["dbAccess"] = bool(db_access)
+        # Unset is left out: the backend turns the option on wherever KEDA is installed.
+        if idle_scale_to_zero is not None:
+            config["idleScaleToZero"] = bool(idle_scale_to_zero)
+        if idle_scale_to_zero:
+            if idle_cooldown_seconds is not None:
+                config["idleCooldownSeconds"] = int(idle_cooldown_seconds)
+            if cold_start_timeout_seconds is not None:
+                config["coldStartTimeoutSeconds"] = int(cold_start_timeout_seconds)
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}

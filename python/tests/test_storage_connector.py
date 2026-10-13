@@ -19,6 +19,7 @@ import os
 from pathlib import WindowsPath
 
 import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import engine, storage_connector
 from hsfs.engine import python, spark
 from hsfs.storage_connector import BigQueryConnector
@@ -2059,6 +2060,489 @@ class TestOracleConnector:
             sc.get_tables()
 
 
+class TestSqlConnectorProvidedCredentials:
+    """A PROVIDED data source carries no credentials of its own: they come from the caller."""
+
+    def _provided(self, backend_fixtures, key="get_oracle_provided"):
+        json = backend_fixtures["storage_connector"][key]["response"]
+        return storage_connector.StorageConnector.from_response_json(json)
+
+    _ACCOUNT = {
+        "DS_ORACLE_SALES_67_USER": "scott",
+        "ds_oracle_sales_67_password": "tiger",
+        "ds_oracle_sales_67_wallet_password": "wallet_pass",
+    }
+
+    def _account(self, mocker, sc, account=None, error=None):
+        """Serve the caller's account entries from `account`, or fail every lookup with `error`."""
+        account = self._ACCOUNT if account is None else account
+        return mocker.patch.object(
+            sc._data_source_credentials_api,
+            "_account_value",
+            side_effect=error or (lambda kind, name: account.get(name)),
+        )
+
+    def _inject(self, monkeypatch, connector_id="2", **values):
+        """Set the variables a runtime gets for the data source named oracle-sales."""
+        monkeypatch.setenv("HOPS_DS_ORACLE_SALES_CONNECTOR_ID", connector_id)
+        for suffix, value in values.items():
+            monkeypatch.setenv(f"HOPS_DS_ORACLE_SALES_{suffix.upper()}", value)
+
+    def test_from_response_json_round_trips_the_mode_and_the_binding(
+        self, backend_fixtures
+    ):
+        sc = self._provided(backend_fixtures)
+
+        assert sc.credentials_mode == "PROVIDED"
+        assert sc.user_credentials["status"] == "VALID"
+        assert sc.user_credentials["username_env_var"] == "DS_ORACLE_SALES_67_USER"
+        assert (
+            sc.user_credentials["password_secret_name"] == "ds_oracle_sales_67_password"
+        )
+        assert sc.user_credentials["wallet_path"] == (
+            "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip"
+        )
+        # The backend returns no credential values for a PROVIDED data source.
+        assert (sc._user, sc._password, sc._wallet_password) == (None, None, None)
+
+        d = sc.to_dict()
+
+        assert d["credentialsMode"] == "PROVIDED"
+        # The caller's credentials never travel back to the backend.
+        assert d["user"] is None
+        assert d["password"] is None
+        assert d["walletPath"] is None
+        assert d["walletPassword"] is None
+
+    def test_an_old_backend_without_the_field_is_shared(self, backend_fixtures):
+        sc = self._provided(backend_fixtures, "get_oracle")
+
+        assert sc.credentials_mode == "SHARED"
+        assert sc.user_credentials is None
+        assert sc.to_dict()["credentialsMode"] == "SHARED"
+        assert sc.to_dict()["user"] == "test_user"
+
+    def test_values_are_read_from_the_account_entries_the_binding_names(
+        self, backend_fixtures, mocker
+    ):
+        from hsfs.core import data_source_credentials_api as api
+
+        sc = self._provided(backend_fixtures)
+        lookup = self._account(mocker, sc)
+
+        assert (sc.user, sc.password, sc.wallet_password) == (
+            "scott",
+            "tiger",
+            "wallet_pass",
+        )
+        assert [c.args for c in lookup.call_args_list] == [
+            (api.ENV_VAR, "DS_ORACLE_SALES_67_USER"),
+            (api.SECRET, "ds_oracle_sales_67_password"),
+            (api.SECRET, "ds_oracle_sales_67_wallet_password"),
+        ]
+
+    def test_the_account_takes_precedence_over_env_vars(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        self._account(mocker, sc)
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_password="env_wallet_pass",
+        )
+
+        opts = sc.spark_options()
+        assert (opts["user"], opts["password"]) == ("scott", "tiger")
+        props = sc.connector_options()
+        assert (props["user"], props["password"]) == ("scott", "tiger")
+        assert props["wallet_password"] == "wallet_pass"
+
+    def test_env_vars_are_used_when_the_account_cannot_be_read(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        self._account(mocker, sc, error=RuntimeError("no USER scope"))
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_password="env_wallet_pass",
+        )
+
+        assert (sc.user, sc.password, sc.wallet_password) == (
+            "env_user",
+            "env_pass",
+            "env_wallet_pass",
+        )
+
+    def test_an_account_entry_that_is_gone_is_not_replaced_by_env_vars(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        self._account(mocker, sc, account={"DS_ORACLE_SALES_67_USER": "scott"})
+        self._inject(monkeypatch, user="env_user", password="stale")
+
+        assert sc.user == "scott"
+        assert sc.password is None
+
+    def _saved(self, mocker, sc, binding, account):
+        """Make set_credentials succeed with `binding` and the account then hold `account`."""
+        mocker.patch.object(
+            sc._data_source_credentials_api, "_set"
+        ).return_value = binding
+        self._account(mocker, sc, account)
+
+    def test_a_rotation_inside_a_runtime_reads_with_the_new_password(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        self._inject(monkeypatch, user="scott", password="tiger")
+        self._saved(
+            mocker,
+            sc,
+            backend_fixtures["storage_connector"]["get_oracle_provided"]["response"][
+                "userCredentials"
+            ],
+            dict(self._ACCOUNT, ds_oracle_sales_67_password="lion"),
+        )
+
+        sc.set_credentials(password="lion")
+
+        assert sc.spark_options()["password"] == "lion"
+        assert sc.connector_options()["password"] == "lion"
+
+    def test_a_rotation_whose_account_lookup_fails_ignores_the_stale_env_vars(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(monkeypatch, user="scott", password="tiger")
+        mocker.patch.object(sc._data_source_credentials_api, "_set").return_value = {
+            "status": "VALID",
+            "passwordSecretName": "ds_oracle_sales_67_password",
+        }
+        self._account(mocker, sc, error=RuntimeError("timeout"))
+
+        sc.set_credentials(password="lion")
+
+        assert sc.password is None
+
+    def test_set_credentials_returns_the_binding_without_reloading(
+        self, backend_fixtures, mocker
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        mocker.patch.object(sc._data_source_credentials_api, "_set").return_value = {
+            "status": "VALID",
+            "usernameEnvVar": "U",
+        }
+        get = mocker.patch.object(sc._storage_connector_api, "_get")
+
+        binding = sc.set_credentials(user="u", password="p")
+
+        assert binding == {"status": "VALID", "username_env_var": "U"}
+        get.assert_not_called()
+
+    def test_deleted_credentials_are_not_read_from_the_env_vars(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        sc = self._provided(backend_fixtures)
+        self._inject(monkeypatch, user="scott", password="tiger")
+        mocker.patch.object(sc, "_data_source_credentials_api")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch.object(sc, "_refetch")
+
+        sc.delete_credentials()
+
+        assert (sc.user, sc.password) == (None, None)
+        with pytest.raises(FeatureStoreException, match="set_credentials"):
+            sc.spark_options()
+        with pytest.raises(FeatureStoreException, match="set_credentials"):
+            sc.read(query="SELECT 1")
+
+    def test_a_mounted_wallet_of_another_file_name_is_not_used(
+        self, backend_fixtures, monkeypatch, tmp_path
+    ):
+        stale = tmp_path / "wallet-old.zip"
+        stale.write_bytes(b"PK")
+        sc = self._provided(backend_fixtures)
+        self._inject(monkeypatch, wallet_path=str(stale))
+
+        assert sc.wallet_path == (
+            "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip"
+        )
+
+    def test_env_vars_are_ignored_for_a_shared_data_source(
+        self, backend_fixtures, monkeypatch
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle")
+        monkeypatch.setenv("HOPS_DS_TEST_ORACLE_USER", "env_user")
+
+        assert sc.user == "test_user"
+
+    def test_the_env_name_normalises_the_data_source_name(self):
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="my-oracle.sales 2",
+            featurestore_id=67,
+            database_type="ORACLE",
+            credentials_mode="PROVIDED",
+        )
+
+        assert sc._env_var("USER") == "HOPS_DS_MY_ORACLE_SALES_2_USER"
+        assert sc._default_secret_name("password") == "ds_my_oracle_sales_2_67_password"
+        assert sc._credentials_body("u", "p", None, None, None, None, None)[
+            "username"
+        ] == {"envVarName": "DS_MY_ORACLE_SALES_2_67_USER", "value": "u"}
+
+    def test_get_tables_defaults_to_the_resolved_user_schema(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(monkeypatch, user="env_user")
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "ENV_USER")
+
+    def test_spark_options_with_an_env_var_wallet_path_uses_tcps(
+        self, backend_fixtures, monkeypatch, tmp_path
+    ):
+        wallet_zip = tmp_path / "wallet-1.zip"
+        wallet_zip.write_bytes(b"PK")
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_path=str(wallet_zip),
+        )
+
+        opts = sc.spark_options()
+
+        assert opts["url"] == "jdbc:oracle:thin:@tcps://test_host:1521/test_database"
+        assert sc.wallet_path == str(wallet_zip)
+
+    def test_an_env_var_wallet_is_read_locally_not_through_the_engine(
+        self, backend_fixtures, monkeypatch, mocker, tmp_path
+    ):
+        import zipfile
+
+        wallet_zip = tmp_path / "wallet.zip"
+        with zipfile.ZipFile(str(wallet_zip), "w") as zf:
+            zf.writestr("cwallet.sso", "fake")
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_path=str(wallet_zip),
+            wallet_password="env_wallet_pass",
+        )
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mocker.patch.object(sc, "_refetch")
+
+        sc.read(query="SELECT 1")
+
+        mock_engine.return_value._add_file.assert_not_called()
+        call_options = mock_engine.return_value._read_jdbc_on_driver.call_args[0][0]
+        assert call_options["oracle.net.tns_admin"] == str(tmp_path / "wallet")
+        assert call_options["oracle.net.wallet_password"] == "env_wallet_pass"
+
+    @pytest.mark.parametrize(
+        "use",
+        [
+            lambda sc: sc.spark_options(),
+            lambda sc: sc.connector_options(),
+            lambda sc: sc.read(query="SELECT 1"),
+            lambda sc: sc.get_tables(),
+            lambda sc: sc.get_databases(),
+        ],
+    )
+    def test_use_without_credentials_names_set_credentials(
+        self, backend_fixtures, mocker, use
+    ):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch.object(sc, "_refetch")
+        mocker.patch.object(sc, "_data_source_api")
+
+        with pytest.raises(FeatureStoreException, match="set_credentials") as exc:
+            use(sc)
+
+        assert "oracle-sales" in str(exc.value)
+
+    def test_an_incomplete_binding_says_what_is_gone(self, backend_fixtures):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        sc._user_credentials = {"status": "INCOMPLETE"}
+
+        with pytest.raises(FeatureStoreException, match="no longer exists"):
+            sc.spark_options()
+
+    def test_env_vars_satisfy_the_credentials_check(
+        self, backend_fixtures, monkeypatch
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(monkeypatch, user="env_user", password="env_pass")
+
+        assert sc.spark_options()["user"] == "env_user"
+
+    def test_env_vars_of_a_same_named_data_source_elsewhere_are_ignored(
+        self, backend_fixtures, monkeypatch
+    ):
+        # The runtime's own feature store has an oracle-sales with id 9; this one is id 2.
+        here = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        json = dict(
+            backend_fixtures["storage_connector"]["get_oracle_provided_missing"][
+                "response"
+            ]
+        )
+        json.update(id=9, featurestoreId=68)
+        own = storage_connector.StorageConnector.from_response_json(json)
+        self._inject(
+            monkeypatch,
+            connector_id="9",
+            user="env_user",
+            password="env_pass",
+            wallet_password="env_wallet_pass",
+        )
+
+        assert (own.user, own.password) == ("env_user", "env_pass")
+        assert (here.user, here.password, here.wallet_password) == (None, None, None)
+
+    def test_env_vars_without_a_connector_id_are_ignored(
+        self, backend_fixtures, monkeypatch
+    ):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        monkeypatch.setenv("HOPS_DS_ORACLE_SALES_USER", "env_user")
+        monkeypatch.setenv("HOPS_DS_ORACLE_SALES_PASSWORD", "env_pass")
+
+        assert sc.user is None
+        with pytest.raises(FeatureStoreException, match="set_credentials"):
+            sc.spark_options()
+
+    def test_an_unreadable_env_var_wallet_is_downloaded_from_hopsfs(
+        self, backend_fixtures, monkeypatch, mocker, tmp_path
+    ):
+        sc = self._provided(backend_fixtures)
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_path=str(tmp_path / "not-mounted" / "wallet-1.zip"),
+        )
+        hopsfs_wallet = (
+            "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip"
+        )
+        downloaded = tmp_path / "downloaded"
+        downloaded.mkdir()
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._add_file.return_value = str(downloaded)
+
+        assert sc.wallet_path == hopsfs_wallet
+        assert sc._prepare_wallet() == str(downloaded)
+        mock_engine.return_value._add_file.assert_called_once_with(
+            hopsfs_wallet, distribute=False
+        )
+
+    def test_a_new_provided_data_source_refuses_credentials(self, mocker):
+        sc = storage_connector.SqlConnector(
+            id=None,
+            name="oracle-sales",
+            featurestore_id=67,
+            database_type="ORACLE",
+            host="h",
+            port=1521,
+            database="svc",
+            credentials_mode="PROVIDED",
+            user="SCOTT",
+            password="tiger",
+        )
+        create = mocker.patch.object(sc._storage_connector_api, "_create")
+
+        with pytest.raises(ValueError, match="set_credentials") as exc:
+            sc.save()
+
+        assert "user, password" in str(exc.value)
+        create.assert_not_called()
+
+    def test_a_new_provided_data_source_without_credentials_is_created(self, mocker):
+        sc = storage_connector.SqlConnector(
+            id=None,
+            name="oracle-sales",
+            featurestore_id=67,
+            database_type="ORACLE",
+            host="h",
+            port=1521,
+            database="svc",
+            credentials_mode="PROVIDED",
+        )
+        create = mocker.patch.object(sc._storage_connector_api, "_create")
+
+        sc.save()
+
+        create.assert_called_once_with(sc)
+
+    def test_an_update_never_sends_the_credentials_filled_in_on_read(
+        self, backend_fixtures, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        client_mock = mocker.MagicMock()
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        client_mock._send_request.return_value = backend_fixtures["storage_connector"][
+            "get_oracle_provided"
+        ]["response"]
+
+        sc.update()
+
+        import json as _json
+
+        body = _json.loads(client_mock._send_request.call_args.kwargs["data"])
+        assert body["user"] is None
+        assert body["password"] is None
+        assert body["walletPath"] is None
+        assert body["walletPassword"] is None
+
+    def test_create_trino_catalog_creates_the_private_catalog_the_template_names(
+        self, backend_fixtures, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        template = {
+            "supported": True,
+            "suggestedName": "_meb10000__oracle_sales",
+            "connectorType": "oracle",
+            "properties": {"user-credential-name": "hops_ds_2_user"},
+            "scope": "PRIVATE",
+        }
+        mocker.patch.object(
+            sc._trino_catalog_api, "get_catalog_template", return_value=template
+        )
+        mocker.patch.object(
+            sc._trino_catalog_api,
+            "get_capabilities",
+            return_value={"testConnectionAvailable": True},
+        )
+        test_connection = mocker.patch.object(sc._trino_catalog_api, "test_connection")
+        create = mocker.patch.object(sc._trino_catalog_api, "create_catalog")
+
+        sc.create_trino_catalog()
+
+        for call in (test_connection.call_args, create.call_args):
+            assert call.args[0] == "_meb10000__oracle_sales"
+            assert call.kwargs["scope"] == "PRIVATE"
+
+
 class TestSapHanaConnector:
     def test_from_response_json(self, backend_fixtures):
         json = backend_fixtures["storage_connector"]["get_sap_hana"]["response"]
@@ -2742,3 +3226,533 @@ class TestStorageConnectorSave:
 
         mock_update.assert_called_once_with(sc)
         assert result.bucket == "new-bucket"
+
+
+class TestElasticsearchConnector:
+    @staticmethod
+    def _connector(**kwargs):
+        defaults = {
+            "id": 1,
+            "name": "es",
+            "featurestore_id": 67,
+            "host": "es.example.com",
+        }
+        defaults.update(kwargs)
+        return storage_connector.ElasticsearchConnector(**defaults)
+
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_elasticsearch"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.ElasticsearchConnector)
+        assert sc.host == "es.example.com"
+        assert sc.port == 9243
+        assert sc.scheme == "https"
+        assert sc.verify is True
+        assert sc.auth_type == "BASIC"
+        assert sc.username == "elastic"
+        assert sc.password == "test_password"
+        assert sc.default_index == "events"
+        assert sc.arguments == {
+            "page_size": "500",
+            "es.read.field.as.array.include": "tags",
+        }
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_elasticsearch_basic_info"][
+            "response"
+        ]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert sc.host is None
+        assert sc.api_key is None
+        assert sc.arguments == {}
+
+    def test_to_dict_uses_the_backend_dto_name(self):
+        payload = self._connector(
+            auth_type="API_KEY", api_key="k==", arguments={"page_size": "10"}
+        ).to_dict()
+
+        assert payload["type"] == "featurestoreElasticsearchConnectorDTO"
+        assert payload["storageConnectorType"] == "ELASTICSEARCH"
+        assert payload["apiKey"] == "k=="
+        assert payload["arguments"] == [{"name": "page_size", "value": "10"}]
+
+    def test_opensearch_dto_name_matches_the_backend(self):
+        # The backend registers the subtype as featurestoreOpensearchConnectorDTO; any other spelling
+        # deserialises as the base DTO and the create call fails.
+        payload = storage_connector.OpenSearchConnector(
+            id=None, name="os", featurestore_id=1
+        ).to_dict()
+
+        assert payload["type"] == "featurestoreOpensearchConnectorDTO"
+
+    def test_connector_options_basic_auth(self, mocker):
+        sc = self._connector(port=9243, username="u", password="p")
+
+        assert sc.connector_options() == {
+            "hosts": ["https://es.example.com:9243"],
+            "basic_auth": ("u", "p"),
+        }
+
+    def test_connector_options_api_key_without_verification(self):
+        sc = self._connector(
+            scheme="https", auth_type="API_KEY", api_key="k==", verify=False
+        )
+
+        assert sc.connector_options() == {
+            "hosts": ["https://es.example.com:9200"],
+            "api_key": "k==",
+            "verify_certs": False,
+            "ssl_show_warn": False,
+        }
+
+    def test_connector_options_brackets_ipv6(self):
+        sc = self._connector(host="::1", scheme="http")
+
+        assert sc.connector_options() == {"hosts": ["http://[::1]:9200"]}
+
+    def test_spark_options(self):
+        sc = self._connector(
+            auth_type="API_KEY",
+            api_key="k==",
+            verify=False,
+            arguments={"es.read.field.as.array.include": "tags", "page_size": "10"},
+        )
+
+        assert sc.spark_options() == {
+            "es.nodes": "es.example.com",
+            "es.port": "9200",
+            "es.nodes.wan.only": "true",
+            "es.net.ssl": "true",
+            "es.net.http.header.Authorization": "ApiKey k==",
+            "es.net.ssl.cert.allow.self.signed": "true",
+            "es.read.field.as.array.include": "tags",
+        }
+
+    def test_read_needs_the_spark_engine(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.raises(NotImplementedError, match="external feature group"):
+            self._connector().read("events")
+
+    def test_read_query_document_targets_the_default_index(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        mocker.patch.object(
+            storage_connector.ElasticsearchConnector,
+            "_flatten_columns",
+            side_effect=lambda df, paths: df,
+        )
+        mocker.patch.object(
+            storage_connector.ElasticsearchConnector, "_get_mapping", return_value={}
+        )
+
+        self._connector(default_index="events").read('{"term": {"status": "ok"}}')
+
+        options = mock_engine._read.call_args.args[2]
+        assert options["es.resource"] == "events"
+        assert options["es.query"] == '{"query": {"term": {"status": "ok"}}}'
+
+    def test_read_without_an_index_is_refused(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+
+        with pytest.raises(ValueError, match="needs an index"):
+            self._connector().read()
+
+    @pytest.mark.parametrize(
+        "path,name",
+        [
+            ("user.name", "user_name"),
+            ("@timestamp", "timestamp"),
+            ("userId", "userid"),
+            ("9lives", "f_9lives"),
+        ],
+    )
+    def test_feature_names_match_the_query_service(self, path, name):
+        assert storage_connector.ElasticsearchConnector._to_feature_name(path) == name
+
+    def test_get_tables_needs_no_database(self, mocker):
+        sc = self._connector()
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, None)
+
+    def test_arguments_cannot_override_the_secret_backed_auth(self):
+        sc = self._connector(
+            username="u",
+            password="p",
+            arguments={"es.net.http.auth.pass": "plaintext", "es.port": "1"},
+        )
+
+        options = sc.spark_options()
+
+        assert options["es.net.http.auth.pass"] == "p"
+        assert options["es.port"] == "9200"
+
+    def test_an_api_key_alone_means_api_key_auth(self):
+        sc = self._connector(api_key="k==")
+
+        assert sc.connector_options()["api_key"] == "k=="
+
+    def test_spark_flattening_refuses_colliding_feature_names(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import LongType, StructField, StructType
+
+        schema = StructType(
+            [
+                StructField("user_name", LongType()),
+                StructField("user", StructType([StructField("name", LongType())])),
+            ]
+        )
+        dataframe = spark.Engine()._spark_session.createDataFrame([], schema)
+
+        with pytest.raises(ValueError, match="both map to feature name 'user_name'"):
+            storage_connector.ElasticsearchConnector._flatten_columns(
+                dataframe, {"user"}
+            )
+
+    def test_a_basic_info_connector_is_refetched_keeping_the_chosen_index(self, mocker):
+        sc = self._connector(host=None, default_index="events")
+
+        def refetch(connector):
+            connector.__init__(
+                id=1,
+                name="es",
+                featurestore_id=67,
+                host="es.example.com",
+                username="u",
+                password="p",
+            )
+
+        mocker.patch.object(sc._storage_connector_api, "_refetch", side_effect=refetch)
+
+        assert sc.connector_options()["hosts"] == ["https://es.example.com:9200"]
+        assert sc.default_index == "events"
+
+    def test_spark_flattening_names_leaves_and_serialises_nested_arrays(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import (
+            ArrayType,
+            DoubleType,
+            LongType,
+            StringType,
+            StructField,
+            StructType,
+        )
+
+        session = spark.Engine()._spark_session
+        schema = StructType(
+            [
+                StructField("@timestamp", StringType()),
+                StructField("user", StructType([StructField("id", LongType())])),
+                StructField(
+                    "items", ArrayType(StructType([StructField("sku", StringType())]))
+                ),
+                StructField(
+                    "location",
+                    StructType(
+                        [
+                            StructField("lat", DoubleType()),
+                            StructField("lon", DoubleType()),
+                        ]
+                    ),
+                ),
+            ]
+        )
+        dataframe = session.createDataFrame(
+            [("2026-01-01", (7,), [("a",), ("b",)], (1.5, 2.5))], schema
+        )
+
+        # items is mapped nested and location geo_point: neither is an object the Query Service flattens.
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(
+            dataframe, {"user"}
+        )
+
+        assert flat.columns == ["timestamp", "user_id", "items", "location"]
+        row = flat.collect()[0]
+        assert row["user_id"] == 7
+        assert row["items"] == '[{"sku":"a"},{"sku":"b"}]'
+        assert row["location"] == '{"lat":1.5,"lon":2.5}'
+
+    def test_spark_flattening_turns_object_arrays_into_leaf_arrays(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import ArrayType, StringType, StructField, StructType
+
+        session = spark.Engine()._spark_session
+        group = StructType(
+            [
+                StructField("name", StringType()),
+                StructField("tags", ArrayType(StringType())),
+            ]
+        )
+        schema = StructType(
+            [
+                StructField(
+                    "users",
+                    ArrayType(
+                        StructType(
+                            [
+                                StructField("name", StringType()),
+                                StructField("groups", ArrayType(group)),
+                            ]
+                        )
+                    ),
+                )
+            ]
+        )
+        dataframe = session.createDataFrame(
+            [
+                (
+                    [
+                        ("a", [("g1", ["x"]), ("g2", ["y", "z"])]),
+                        ("b", [("g3", ["w"])]),
+                    ],
+                )
+            ],
+            schema,
+        )
+
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(
+            dataframe, {"users", "users.groups"}
+        )
+
+        assert flat.columns == ["users_name", "users_groups_name", "users_groups_tags"]
+        row = flat.collect()[0]
+        assert row["users_name"] == ["a", "b"]
+        assert row["users_groups_name"] == ["g1", "g2", "g3"]
+        assert row["users_groups_tags"] == ["x", "y", "z", "w"]
+
+    def test_spark_flattening_keeps_values_when_an_element_lacks_the_array(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import ArrayType, StringType, StructField, StructType
+
+        session = spark.Engine()._spark_session
+        schema = StructType(
+            [
+                StructField(
+                    "users",
+                    ArrayType(
+                        StructType([StructField("tags", ArrayType(StringType()))])
+                    ),
+                )
+            ]
+        )
+        dataframe = session.createDataFrame(
+            [
+                ([(["x", None],), (None,)],),
+                ([([None],)],),
+                ([(None,), (None,)],),
+                (None,),
+            ],
+            schema,
+        )
+
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(
+            dataframe, {"users"}
+        )
+
+        assert [row["users_tags"] for row in flat.collect()] == [
+            ["x", None],
+            [None],
+            None,
+            None,
+        ]
+
+    def test_spark_flattening_skips_object_array_elements_without_the_leaf(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import ArrayType, StringType, StructField, StructType
+
+        session = spark.Engine()._spark_session
+        schema = StructType(
+            [
+                StructField(
+                    "users",
+                    ArrayType(StructType([StructField("name", StringType())])),
+                )
+            ]
+        )
+        dataframe = session.createDataFrame(
+            [([("a",), (None,)],), ([(None,)],)], schema
+        )
+
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(
+            dataframe, {"users"}
+        )
+
+        assert [row["users_name"] for row in flat.collect()] == [["a"], None]
+
+    def test_object_paths_follow_the_query_service_flattening(self):
+        mapping = {
+            "a": {
+                "mappings": {
+                    "properties": {
+                        "user": {"properties": {"name": {"type": "keyword"}}},
+                        "items": {
+                            "type": "nested",
+                            "properties": {"sku": {"type": "keyword"}},
+                        },
+                        "location": {"type": "geo_point"},
+                        "meta": {"type": "object"},
+                    }
+                }
+            },
+            "b": {
+                "mappings": {
+                    "properties": {
+                        "org": {
+                            "type": "object",
+                            "properties": {
+                                "unit": {"properties": {"id": {"type": "long"}}}
+                            },
+                        }
+                    }
+                }
+            },
+        }
+
+        paths = storage_connector.ElasticsearchConnector._object_paths(mapping)
+
+        assert paths == {"user", "org", "org.unit"}
+
+    @pytest.fixture
+    def local_engine(self, mocker):
+        mock_engine = mocker.Mock()
+        mock_engine._run_where_spark_runs.side_effect = lambda func, _: func()
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        return mock_engine
+
+    def test_get_mapping_connects_as_the_spark_reader(self, mocker, local_engine):
+        response = mocker.Mock(status_code=200, text='{"events": {"mappings": {}}}')
+        mock_get = mocker.patch("requests.get", return_value=response)
+        sc = self._connector(auth_type="API_KEY", api_key="k==", verify=False)
+        options = {
+            **sc.spark_options(),
+            "es.nodes.path.prefix": "/es/",
+            "es.net.http.header.X-Tenant": "t1",
+        }
+
+        assert sc._get_mapping("logs-*,other", options) == {"events": {"mappings": {}}}
+
+        assert (
+            mock_get.call_args.args[0]
+            == "https://es.example.com:9200/es/logs-*,other/_mapping"
+        )
+        headers = mock_get.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "ApiKey k=="
+        assert headers["X-Tenant"] == "t1"
+        assert mock_get.call_args.kwargs["verify"] is False
+        assert mock_get.call_args.kwargs["auth"] is None
+
+    @pytest.mark.parametrize(
+        "nodes,port,ssl,url",
+        [
+            ("es.example.com", "9243", "true", "https://es.example.com:9243"),
+            (
+                "a.example.com:9300,b.example.com",
+                "9200",
+                "false",
+                "http://a.example.com:9300",
+            ),
+            ("::1", "9200", "false", "http://[::1]:9200"),
+            ("[::1]:9201", "9200", "false", "http://[::1]:9201"),
+            (
+                "https://proxy.example.com",
+                "9200",
+                "true",
+                "https://proxy.example.com:9200",
+            ),
+            (
+                "https://proxy.example.com:443/",
+                "9200",
+                "true",
+                "https://proxy.example.com:443",
+            ),
+        ],
+    )
+    def test_get_mapping_resolves_the_spark_node_address(
+        self, mocker, local_engine, nodes, port, ssl, url
+    ):
+        mock_api = mocker.patch.object(
+            storage_connector.elasticsearch_api.ElasticsearchApi, "_get_mapping"
+        )
+        sc = self._connector(username="u", password="p")
+
+        sc._get_mapping(
+            "events",
+            {
+                "es.nodes": nodes,
+                "es.port": port,
+                "es.net.ssl": ssl,
+                "es.net.http.auth.user": "u",
+                "es.net.http.auth.pass": "p",
+            },
+        )
+
+        base_url, index, auth, headers, verify, _ = mock_api.call_args.args
+        assert (base_url, index, auth, headers) == (url, "events", ("u", "p"), {})
+        assert verify is True
+
+    def test_get_mapping_is_requested_where_spark_runs(self, mocker):
+        mock_engine = mocker.Mock()
+        mock_engine._run_where_spark_runs.return_value = (200, '{"events": {}}')
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        mock_get = mocker.patch("requests.get")
+        sc = self._connector(username="u", password="p")
+
+        assert sc._get_mapping("events", sc.spark_options()) == {"events": {}}
+
+        mock_get.assert_not_called()
+        assert (
+            mock_engine._run_where_spark_runs.call_args.args[1]
+            == "struct<status:int,text:string>"
+        )
+
+    @pytest.mark.parametrize(
+        "options,arguments",
+        [
+            ({"es.net.ssl.truststore.location": "file:other.jks"}, None),
+            (None, {"es.net.ssl.truststore.pass": "secret"}),
+        ],
+    )
+    def test_read_refuses_a_truststore_besides_the_connectors(
+        self, mocker, options, arguments
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.patch("hsfs.engine._get_instance").return_value
+        sc = self._connector(default_index="events", arguments=arguments)
+
+        with pytest.raises(ValueError, match="trust_store_path"):
+            sc.read(options=options)
+
+        mock_engine._read.assert_not_called()
+
+    def test_get_mapping_reports_the_cluster_error(self, mocker, local_engine):
+        mocker.patch(
+            "requests.get",
+            return_value=mocker.Mock(status_code=404, text="index_not_found"),
+        )
+        sc = self._connector(username="u", password="p")
+
+        with pytest.raises(FeatureStoreException, match="HTTP 404.*index_not_found"):
+            sc._get_mapping("missing", sc.spark_options())
+
+    def test_spark_truststore_is_a_url_every_executor_resolves(self, mocker):
+        mock_engine = mocker.Mock()
+        mock_engine._add_file_as_url.return_value = "file:.hopsworks-ab-ts.jks"
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        sc = self._connector(trust_store_path="/Projects/p/Resources/ts.jks")
+
+        options = sc.spark_options()
+
+        mock_engine._add_file_as_url.assert_called_once_with(
+            "/Projects/p/Resources/ts.jks"
+        )
+        assert options["es.net.ssl.truststore.location"] == "file:.hopsworks-ab-ts.jks"

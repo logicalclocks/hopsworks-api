@@ -890,6 +890,10 @@ class FeatureView:
             If the provided `serving_keys` can't be found in one or more of the feature groups used by this feature view the call to this method will raise an exception.
             Alternatively, setting `allow_missing` to `True` returns a feature vector with missing values.
 
+        Note: Supplied serving keys
+            A serving key passed in the entry is returned in its slot of the feature vector when it is a feature of the vector, also when `allow_missing` is `True` and no row matches it.
+            A key with a `None` value is treated as not provided.
+
         Example:
             ```python
             # get feature store instance
@@ -1156,6 +1160,10 @@ class FeatureView:
             If any of the rows in `serving_keys` can't be found in any of the feature groups, no feature vector for that primary key value will be returned.
             If it can be found in at least one but not all feature groups used by this feature view the call to this method will raise an exception.
             Alternatively, setting `allow_missing` to `True` returns feature vectors with missing values.
+
+        Note: Supplied serving keys
+            A serving key passed in the entry is returned in its slot of the feature vector when it is a feature of the vector, also when `allow_missing` is `True` and no row matches it.
+            A key with a `None` value is treated as not provided.
 
         Example:
             ```python

@@ -78,3 +78,34 @@ class TestFeatureGroupApi:
 
         # Assert
         assert len(warning_record) == 1
+
+    def test_test_data_source_access_posts_to_the_test_endpoint(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        fg_api = feature_group_api.FeatureGroupApi()
+        json = backend_fixtures["external_feature_group"]["get"]["response"]
+        fg = fg_mod.ExternalFeatureGroup.from_response_json(json)
+        client_mock = Mock()
+        client_mock._project_id = 119
+        client_mock._send_request.return_value = {"status": "OK"}
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+
+        # Act
+        result = fg_api._test_data_source_access(fg)
+
+        # Assert
+        assert result == {"status": "OK"}
+        client_mock._send_request.assert_called_once_with(
+            "POST",
+            [
+                "project",
+                119,
+                "featurestores",
+                fg.feature_store_id,
+                "featuregroups",
+                fg.id,
+                "datasource",
+                "test",
+            ],
+        )
