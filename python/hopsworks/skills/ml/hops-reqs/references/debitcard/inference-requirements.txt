@@ -1,0 +1,4 @@
+# Installed into <slug>-inference-env, a clone of minimal-inference-pipeline: the
+# versions the model was trained with in <slug>-jobs-env.
+scikit-learn==1.8.0
+joblib==1.5.3

@@ -306,6 +306,15 @@ def superset_dashboard_delete(ctx: click.Context, dashboard_id: int, yes: bool) 
 
 def _api(ctx: click.Context) -> Any:
     project = session.get_project(ctx)
+    from hopsworks_common import client
+
+    # The SDK reaches Superset over in-cluster service DNS, so from outside it
+    # fails on the first request with a traceback; say so before trying.
+    if client._is_external():
+        raise click.ClickException(
+            "Superset is reachable only inside the cluster: run this in a "
+            "Hopsworks terminal, or as a Hopsworks job from an external client."
+        )
     return project.get_superset_api()
 
 
