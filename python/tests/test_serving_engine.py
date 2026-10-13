@@ -926,15 +926,15 @@ class TestStartAndSaveAwaitTheRoute:
 
     @pytest.fixture
     def clock(self, mocker):
+        # The engine's own reference to time, not the time module: any other thread's
+        # time.sleep would otherwise advance this clock.
         now = [0.0]
-        mocker.patch.object(
-            serving_engine.time, "monotonic", side_effect=lambda: now[0]
+        fake_time = mocker.Mock(wraps=time)
+        fake_time.monotonic.side_effect = lambda: now[0]
+        fake_time.sleep.side_effect = lambda seconds: now.__setitem__(
+            0, now[0] + seconds
         )
-        mocker.patch.object(
-            serving_engine.time,
-            "sleep",
-            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
-        )
+        mocker.patch.object(serving_engine, "time", fake_time)
         return now
 
     def _engine(self, mocker, routed):
