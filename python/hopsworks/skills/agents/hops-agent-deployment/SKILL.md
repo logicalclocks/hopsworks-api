@@ -24,7 +24,7 @@ hops agent logs my_agent         # startup errors land here
 
 ## Ask the user (only when state is ambiguous)
 - **Framework.** `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`: picks the tracing instrumentation.
-- **Memory.** Conversation buffer only, a rolling summary, or durable per-user memory (needs a summariser key and, for durable memory, the agent to know who the user is).
+- **Memory.** Working memory only, plus a short-term rolling summary, plus long-term memory across conversations (the summary needs a summariser key; long-term memory needs the agent to know who the user is).
 - **Source.** A local script uploaded to HopsFS, or a Git repository (branch, and whether to auto-redeploy on push).
 - **Evaluation.** Whether the agent will be evaluated against a sandboxed suite while serving customers (`eval_per_request=True` and tools that check `in_evaluation()`), or in a deployment of its own (`EVAL_MODE=true`).
 
@@ -71,11 +71,11 @@ What matters in the handler:
 - `request.conversation_id` is always set; history is server-side, the request carries only the new message. `request.text` is the plain text; `request.to_framework_messages()` gives `[{"role", "content"}]`.
 - A `@chat` handler returning a `str` (or `AgentResponse.text(...)`) is enough when you do not stream. Only `@stream` gives token deltas in the panel.
 - **Tracing is automatic** when enabled on the deployment. Every LLM call, tool call and retrieval becomes a span; these traces are what evaluation, feedback and failure analysis read. An agent without tracing cannot be debugged or improved, so enable it.
-- **Memory:** `memory=ManagedMemoryService(summarize=anthropic_summarizer(), long_term=True)` gives a conversation buffer, a rolling summary and durable per-user memory with no storage to set up; read it with `ctx.system_context()` and `ctx.history`. Match the summarizer to the key the agent already has: `openai_summarizer()` for OpenAI, `openai_summarizer(model, base_url=...)` for a vLLM/Ollama/LiteLLM-proxy endpoint, `anthropic_summarizer()` for Claude, `hopsworks_summarizer("<deployment name>")` for an LLM deployed in the same project (no key to configure); any `(previous_summary, turns) -> str` callable also works.
+- **Memory:** `memory=ManagedMemoryService(summarize=anthropic_summarizer(), long_term=True)` gives all three tiers with no storage to set up — working memory (the turns in context), short-term memory (older turns folded into a rolling summary) and long-term memory, both semantic (facts about the person) and episodic (`search` over their past conversations); read it with `ctx.system_context()` and `ctx.history`. Match the summarizer to the key the agent already has: `openai_summarizer()` for OpenAI, `openai_summarizer(model, base_url=...)` for a vLLM/Ollama/LiteLLM-proxy endpoint, `anthropic_summarizer()` for Claude, `hopsworks_summarizer("<deployment name>")` for an LLM deployed in the same project (no key to configure); any `(previous_summary, turns) -> str` callable also works.
 - **Embedding models never download in a pod.** Register once where there is internet with `register_sentence_transformer("all-MiniLM-L6-v2")` (a notebook or the feature pipeline that embeds the data) and load with `load_sentence_transformer("all-MiniLM-L6-v2")` in the agent; `sentence_transformer_embedder()` does the same for memory search. An unregistered model falls back to the hub with a warning; `fallback=False` forbids it.
 - **Evaluation-safe writes:** an agent that writes (refunds, tickets) checks `hopsworks_agents.protocol.evaluation.in_evaluation()` in its tools and skips the real write, so a sandboxed suite can run against the production deployment (`eval_per_request=True` on the app). A deployment that exists only to be evaluated sets `EVAL_MODE=true` instead.
 
-Streaming, multimodal content, memory tiers, progress events and the structure graph are in the protocol README: `python/hopsworks_agents.protocol/README.md`.
+Streaming, multimodal content, memory tiers, progress events and the structure graph are in the protocol README: `python/hopsworks_agents/protocol/README.md`.
 
 ## Deploy — CLI (preferred for local sources)
 

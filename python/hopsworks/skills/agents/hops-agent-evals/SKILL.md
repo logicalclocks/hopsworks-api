@@ -31,7 +31,7 @@ agents.suites.list(); agents.runs.list(agent.id)
 - **What "good" means.** Exact strings and tool calls (deterministic checks) or a rubric (LLM judge)? A judge needs a provider and a key; deterministic checks need expectations per task.
 - **Read-only or sandboxed.** A suite whose tasks make the agent write (refunds, tickets) must be `sandboxed`; the agent must skip real writes under evaluation.
 - **Provider for judges and analysis.** `anthropic`, `openai`, `google`, `mistral`, `fireworks`, `groq`, `deepseek`, `xai` or `custom` (any OpenAI-compatible endpoint with `base_url`, optional `headers`).
-- **Schedule.** Run suites on demand, on every deploy (`run_on_update`), or from the per-agent evaluation job on a cron.
+- **Schedule.** Run suites on demand, on every deployment update (`run_on_update`, the canary), or from the per-agent evaluation job on a cron.
 
 ## 1. Suites: author, publish, run
 
@@ -75,6 +75,14 @@ agent.gates()                               # do the published suites' gates pas
 
 Check kinds, their configuration keys and how each reads a task's expectation are in [references/checks.md](references/checks.md). A check that needs an expected answer cannot grade live traces; the library tells you which.
 
+**Gate and canary.** A published suite created with `run_on_update=True` is a canary: updating the
+deployment starts it on its own, and `agent.canary()` starts the same suites by hand. A run that
+begins while the pod is still coming back waits for the agent to answer instead of failing, and
+refuses the suite only after five minutes of silence. `agent.gates()` reports every suite that
+declared a `gate_metric` and `gate_threshold`, each with `passed`, plus `has_evidence` for the whole
+deployment: a gating suite that has never run against it counts as no evidence rather than as a
+pass. Gates are advisory — they report, they do not block a deploy.
+
 **Draft vs published.** A draft is editable and cannot run; publishing freezes it. `suite.new_version()` copies a published suite into a new draft. Deleting a suite with runs needs `force=True`.
 
 **Human review of a judge.** `run.review_trial(trial, passed=..., reason=..., evaluator="quality")` records a person's verdict per judge; the UI shows judge agreement per evaluator from these.
@@ -86,6 +94,8 @@ agents.evaluators.install_defaults()                  # Hallucination, Faithfuln
 judge = agents.evaluators.find("Hallucination")       # Toxicity, Profanity, Bias and fairness,
 agent.sample(evaluator=judge).wait()                  # Answer relevance, Safety
 agent.sample(evaluator=judge, since=..., until=...)   # a window instead of "since last sample"
+agent.sample(evaluator=judge, sample=50)              # cap the conversations graded; each is a judge call
+agent.sample(suite=suite)                             # or grade live traffic with a suite's checks
 
 job = agents.jobs.ensure_eval_job(agent.id, suites=[suite], evaluators=[judge], monitor=True)
 agents.jobs.run_eval_job(job.name)                    # one run per suite, plus the monitor sample
@@ -128,7 +138,7 @@ The analysis files its own feedback rows (`detector:*`, `judge:*`) at run start,
 Metrics for dashboards: `agent.trace_metrics()`, `agent.llm_metrics()` (calls, tokens, cost), `agent.tool_metrics()` (calls, errors, latency per tool), each over `since`/`until`.
 
 ## Toolset
-- **SDK:** `project.get_agent_serving()` → `AgentServing` (`suites`, `tasks`, `evaluators`, `runs`, `jobs`, `get_agent`) and `Agent` (`run`, `sample`, `traces`, `feedback`, `triage`, `clusters`, `analyse`, `gates`, metrics). Import `check` from `hopsworks_agents.eval.sdk`.
+- **SDK:** `project.get_agent_serving()` → `AgentServing` (`suites`, `tasks`, `evaluators`, `runs`, `jobs`, `get_agent`) and `Agent` (`run`, `canary`, `sample`, `traces`, `feedback`, `triage`, `clusters`, `analyse`, `gates`, metrics). Import `check` from `hopsworks_agents.eval.sdk`.
 - **UI:** Deployments → agent → **Evals** tab (runs, feedback, failure analysis) and the **Evals** menu (suites, tasks, evaluator library, jobs).
 - **CLI:** none yet; `hops job` operates the evaluation and analysis jobs once created.
 - **REST:** `/project/{id}/agent-evals/*` and `/project/{id}/otel/servings/{deployment}/*`, only where the SDK does not cover it.
