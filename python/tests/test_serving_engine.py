@@ -899,128 +899,6 @@ class TestPredictErrorMapping:
         assert "get_logs" in info.value.args[0]
 
 
-class TestPredictAwaitsTheRoute:
-    """An empty 404 is the ingress gateway without a route yet: retried for a while if the deployment runs."""
-
-    @pytest.fixture
-    def clock(self, mocker):
-        now = [0.0]
-        mocker.patch.object(
-            serving_engine.time, "monotonic", side_effect=lambda: now[0]
-        )
-        mocker.patch.object(
-            serving_engine.time,
-            "sleep",
-            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
-        )
-        return now
-
-    def _error(self, mocker, status=404, content=b"", body=None):
-        from hopsworks_common.client.exceptions import RestAPIError
-
-        response = mocker.Mock(status_code=status, content=content)
-        if body is None:
-            response.json.side_effect = ValueError("no JSON")
-        else:
-            response.json.return_value = body
-        error = RestAPIError.__new__(RestAPIError)
-        error.response = response
-        error.error_code = None
-        error.args = ("boom",)
-        return error
-
-    def _engine(self, mocker, outcomes, status=PREDICTOR_STATE.STATUS_RUNNING):
-        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
-        eng._serving_api = mocker.Mock()
-        eng._serving_api._send_inference_request.side_effect = outcomes
-        eng._serving_api._get_state.return_value = mocker.Mock(status=status)
-        return eng
-
-    def _deployment(self, mocker, serving_tool="KSERVE"):
-        d = mocker.Mock()
-        d.model_server = "PYTHON"
-        d.api_protocol = "REST"
-        d.predictor.serving_tool = serving_tool
-        d.schema = None
-        return d
-
-    def test_an_empty_404_from_a_running_deployment_is_retried(self, mocker, clock):
-        eng = self._engine(mocker, [self._error(mocker), {"predictions": [1]}])
-
-        assert eng._predict(self._deployment(mocker), None, [[1]]) == {
-            "predictions": [1]
-        }
-        assert eng._serving_api._send_inference_request.call_count == 2
-        eng._serving_api._get_state.assert_called_once()
-
-    def test_an_empty_404_past_the_wait_is_reported_as_before(self, mocker, clock):
-        error = self._error(mocker)
-        eng = self._engine(mocker, lambda *_: (_ for _ in ()).throw(error))
-
-        with pytest.raises(ModelServingException, match="not created or running"):
-            eng._predict(self._deployment(mocker), None, [[1]])
-        assert clock[0] == serving_engine._ROUTE_WAIT_SECONDS
-        assert eng._serving_api._send_inference_request.call_count > 2
-        eng._serving_api._get_state.assert_called_once()
-
-    def test_a_404_with_a_body_is_not_retried(self, mocker, clock):
-        error = self._error(
-            mocker, content=b'{"error": "x"}', body={"error": "model not found"}
-        )
-        eng = self._engine(mocker, [error])
-
-        with pytest.raises(ModelServingException, match="not created or running"):
-            eng._predict(self._deployment(mocker), None, [[1]])
-        eng._serving_api._send_inference_request.assert_called_once()
-        eng._serving_api._get_state.assert_not_called()
-
-    def test_an_empty_404_from_a_deployment_that_is_not_running_is_not_retried(
-        self, mocker, clock
-    ):
-        eng = self._engine(
-            mocker, [self._error(mocker)], status=PREDICTOR_STATE.STATUS_STOPPED
-        )
-
-        with pytest.raises(ModelServingException, match="not created or running"):
-            eng._predict(self._deployment(mocker), None, [[1]])
-        eng._serving_api._send_inference_request.assert_called_once()
-
-    def test_an_unreadable_state_is_not_waited_on(self, mocker, clock):
-        eng = self._engine(mocker, [self._error(mocker)])
-        eng._serving_api._get_state.side_effect = RuntimeError("down")
-
-        with pytest.raises(ModelServingException, match="not created or running"):
-            eng._predict(self._deployment(mocker), None, [[1]])
-        eng._serving_api._send_inference_request.assert_called_once()
-
-    def test_other_errors_are_not_retried(self, mocker, clock):
-        from hopsworks_common.client.exceptions import RestAPIError
-
-        error = self._error(mocker, status=503)
-        eng = self._engine(mocker, [error])
-
-        with pytest.raises(RestAPIError) as info:
-            eng._predict(self._deployment(mocker), None, [[1]])
-        assert info.value is error
-        eng._serving_api._get_state.assert_not_called()
-
-    def test_a_request_through_hopsworks_is_not_retried(self, mocker, clock):
-        eng = self._engine(mocker, [self._error(mocker)])
-
-        with pytest.raises(ModelServingException, match="not created or running"):
-            eng._predict(self._deployment(mocker, serving_tool="DEFAULT"), None, [[1]])
-        eng._serving_api._send_inference_request.assert_called_once()
-        eng._serving_api._get_state.assert_not_called()
-
-    def test_a_prediction_reads_no_state(self, mocker, clock):
-        eng = self._engine(mocker, [{"predictions": [1]}])
-
-        eng._predict(self._deployment(mocker), None, [[1]])
-
-        eng._serving_api._get_state.assert_not_called()
-        assert clock[0] == 0.0
-
-
 class TestStartWithoutWaiting:
     def test_start_with_zero_wait_returns_before_the_state_is_known(self, mocker):
         """`start(await_running=0)` used to dereference the None the poller returns for a zero wait."""
@@ -1041,6 +919,162 @@ class TestStartWithoutWaiting:
         eng._start(deployment, await_status=0)
 
         eng._serving_api._post.assert_called_once()
+
+
+class TestStartAndSaveAwaitTheRoute:
+    """start() and save() wait for the ingress gateway to route a deployment that just reported Running."""
+
+    @pytest.fixture
+    def clock(self, mocker):
+        now = [0.0]
+        mocker.patch.object(
+            serving_engine.time, "monotonic", side_effect=lambda: now[0]
+        )
+        mocker.patch.object(
+            serving_engine.time,
+            "sleep",
+            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        )
+        return now
+
+    def _engine(self, mocker, routed):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._is_routed.side_effect = routed
+        return eng
+
+    def _deployment(self, mocker, serving_tool="KSERVE"):
+        deployment = mocker.Mock(model_server="PYTHON", has_model=True)
+        deployment.name = "fraud"
+        deployment.predictor.serving_tool = serving_tool
+        return deployment
+
+    def test_a_routed_deployment_costs_one_probe(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [True])
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 1
+        assert clock[0] == 0
+        assert not recwarn.list
+
+    def test_returns_once_the_route_appears(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [False, False, True])
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 3
+        assert clock[0] == 1.5  # 0.5 + 1
+        assert not recwarn.list
+
+    def test_a_route_that_never_appears_warns_after_the_cap(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment: False)
+
+        with pytest.warns(UserWarning, match="fraud"):
+            eng._await_route(self._deployment(mocker), 600)
+
+        assert clock[0] == serving_engine._ROUTE_WAIT_MAX_SECONDS
+
+    def test_the_wait_stays_within_the_callers_budget(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment: False)
+
+        with pytest.warns(UserWarning):
+            eng._await_route(self._deployment(mocker), 5)
+
+        assert clock[0] == 5
+
+    def test_an_exhausted_budget_probes_once(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment: False)
+
+        with pytest.warns(UserWarning):
+            eng._await_route(self._deployment(mocker), -3)
+
+        assert eng._serving_api._is_routed.call_count == 1
+        assert clock[0] == 0
+
+    def test_a_failing_probe_only_warns(self, mocker, clock):
+        import requests
+
+        eng = self._engine(
+            mocker, requests.exceptions.ConnectionError("no route to host")
+        )
+
+        with pytest.warns(UserWarning, match="no route to host"):
+            eng._await_route(self._deployment(mocker), 600)
+
+    def test_a_deployment_served_through_hopsworks_is_not_probed(self, mocker, clock):
+        eng = self._engine(mocker, [False])
+
+        eng._await_route(self._deployment(mocker, serving_tool="DEFAULT"), 600)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def _starting_engine(self, mocker, routed, status_before):
+        eng = self._engine(mocker, routed)
+        eng._check_status = mocker.Mock(
+            return_value=(
+                status_before == PREDICTOR_STATE.STATUS_RUNNING,
+                mocker.Mock(status=status_before),
+            )
+        )
+        eng._get_min_starting_instances = mocker.Mock(return_value=1)
+        eng._get_starting_progress = mocker.Mock(return_value=(0, None))
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+        return eng
+
+    def test_start_waits_for_the_route_after_running(self, mocker, clock):
+        eng = self._starting_engine(
+            mocker, [False, True], PREDICTOR_STATE.STATUS_STOPPED
+        )
+
+        eng._start(self._deployment(mocker), await_status=600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+
+    def test_start_of_a_running_deployment_does_not_probe(self, mocker, clock):
+        eng = self._starting_engine(mocker, [False], PREDICTOR_STATE.STATUS_RUNNING)
+
+        eng._start(self._deployment(mocker), await_status=600)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def test_start_without_waiting_does_not_probe(self, mocker, clock):
+        eng = self._starting_engine(mocker, [False], PREDICTOR_STATE.STATUS_STOPPED)
+        eng._poll_deployment_status.return_value = None
+
+        eng._start(self._deployment(mocker), await_status=0)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def _running_deployment(self, mocker):
+        deployment = self._deployment(mocker)
+        deployment.get_state.return_value = mocker.Mock(
+            status=PREDICTOR_STATE.STATUS_RUNNING
+        )
+        return deployment
+
+    def test_save_of_a_running_deployment_waits_for_the_route(self, mocker, clock):
+        eng = self._engine(mocker, [False, True])
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+
+        eng._update(self._running_deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+
+    @pytest.mark.parametrize("await_update", [0, None])
+    def test_save_without_waiting_does_not_probe(self, mocker, clock, await_update):
+        eng = self._engine(mocker, [False])
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(return_value=None)
+
+        eng._update(self._running_deployment(mocker), await_update)
+
+        eng._serving_api._is_routed.assert_not_called()
 
 
 class TestInitPredict:
@@ -1212,6 +1246,73 @@ class TestWarmRestTransport:
         serving_api.ServingApi()._warm_rest_transport(mocker.Mock(), True)
 
         istio.assert_not_called()
+
+
+class TestIsRouted:
+    """Only the gateway's empty 404 means the deployment has no route yet."""
+
+    def _probe(self, mocker, answer):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        if answer is not None:
+            istio.return_value._send_request.side_effect = answer
+        deployment = mocker.Mock()
+        deployment.name = "fraud"
+        deployment.project_namespace = "proj"
+        return serving_api.ServingApi()._is_routed(deployment), istio
+
+    def _error(self, mocker, status_code, content):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = mocker.Mock(status_code=status_code, content=content)
+        response.json.return_value = {}
+        return RestAPIError("url", response)
+
+    def test_the_gateways_empty_404_is_not_routed(self, mocker):
+        routed, istio = self._probe(mocker, self._error(mocker, 404, b""))
+
+        assert routed is False
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
+        )
+
+    @pytest.mark.parametrize(
+        ("status_code", "content"),
+        [
+            (404, b'{"error": "Model with name fraud does not exist."}'),
+            (503, b""),
+            (500, b"boom"),
+        ],
+    )
+    def test_any_answer_from_the_deployment_is_routed(
+        self, mocker, status_code, content
+    ):
+        routed, _ = self._probe(mocker, self._error(mocker, status_code, content))
+
+        assert routed is True
+
+    def test_a_metadata_answer_is_routed(self, mocker):
+        routed, _ = self._probe(mocker, None)
+
+        assert routed is True
+
+    def test_without_an_istio_client_it_counts_as_routed(self, mocker):
+        from hsml.core import serving_api
+
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance", return_value=None
+        )
+
+        assert serving_api.ServingApi()._is_routed(mocker.Mock()) is True
+
+    def test_an_unreachable_gateway_is_raised(self, mocker):
+        import requests
+
+        with pytest.raises(requests.exceptions.ConnectionError):
+            self._probe(mocker, requests.exceptions.ConnectionError("no route to host"))
 
 
 class TestSchemaIsRetryable:

@@ -587,15 +587,48 @@ class ServingApi:
         _client = client.istio._get_instance()
         if _client is None:
             return
-        path_params = self._get_istio_inference_path(
-            deployment_instance, base_only=True
-        ) + ["v1", "models", deployment_instance.name]
+        path_params = self._get_istio_model_metadata_path(deployment_instance)
         try:
             _client._send_request("GET", path_params, with_base_path_params=False)
         except RestAPIError as e:
             _logger.debug(
                 "Warm-up request to %s answered %s", path_params, e.response.status_code
             )
+
+    def _is_routed(self, deployment_instance) -> bool:
+        """Whether the ingress gateway routes requests to the deployment.
+
+        A `GET` of the model's metadata through the gateway, as `_warm_rest_transport` sends.
+        The gateway answers a host it has no route for with a 404 and an empty body.
+        Any other answer, an error status or a 404 with a body included, came from the deployment.
+        Without an Istio client, requests go through Hopsworks, which needs no gateway route.
+
+        Raises:
+            requests.exceptions.RequestException: The gateway could not be reached.
+        """
+        _client = client.istio._get_instance()
+        if _client is None:
+            return True
+        try:
+            _client._send_request(
+                "GET",
+                self._get_istio_model_metadata_path(deployment_instance),
+                with_base_path_params=False,
+            )
+        except RestAPIError as e:
+            return not (
+                e.response is not None
+                and e.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
+                and not e.response.content
+            )
+        return True
+
+    def _get_istio_model_metadata_path(self, deployment_instance) -> list[str]:
+        return self._get_istio_inference_path(deployment_instance, base_only=True) + [
+            "v1",
+            "models",
+            deployment_instance.name,
+        ]
 
     def _grpc_channel(self, deployment_instance):
         """The deployment's gRPC channel, created once and reused by every later call.

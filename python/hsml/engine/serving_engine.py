@@ -57,22 +57,10 @@ def _structured_prediction_error(error: RestAPIError) -> dict | None:
     return None
 
 
-# The ingress gateway answers a request for a host it has no route for with an empty 404. A deployment can
-# report Running a moment before the gateway has its route (KServe creates the route once the predictor is
-# ready, and Istio pushes it to the gateway shortly after), so an empty 404 from a running deployment is
-# retried for a bounded time before it is reported as a deployment that is not running.
-_ROUTE_WAIT_SECONDS = 15
+# KServe reports a deployment ready once its route object exists, and Istio pushes the route to the ingress gateway a
+# moment later. start() and save() wait for the gateway to route the deployment, for at most this long.
+_ROUTE_WAIT_MAX_SECONDS = 60
 _ROUTE_RETRY_MAX_INTERVAL_SECONDS = 4
-
-
-def _is_unrouted(error: RestAPIError) -> bool:
-    """Whether the ingress gateway had no route: a 404 with an empty body, unlike a model server's or Hopsworks' 404."""
-    response = error.response
-    return (
-        response is not None
-        and response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
-        and not response.content
-    )
 
 
 def _render_chunk(chunk) -> str:
@@ -228,6 +216,7 @@ class ServingEngine:
         return None
 
     def _start(self, deployment_instance, await_status: int) -> bool:
+        started = time.monotonic()
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_RUNNING
         )
@@ -276,6 +265,10 @@ class ServingEngine:
 
         # await_running=0 returns before the state is polled again
         if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+            if not done:
+                self._await_route(
+                    deployment_instance, await_status - (time.monotonic() - started)
+                )
             if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
                 print("Start prompting using any OpenAI API-compatible client.")
             elif not deployment_instance.has_model:
@@ -323,6 +316,36 @@ class ServingEngine:
 
         # free grpc channel
         deployment_instance._grpc_channel = None
+
+    def _await_route(self, deployment_instance, budget_seconds: float) -> None:
+        """Wait for the ingress gateway to route requests to a deployment that just reported Running.
+
+        A prediction sent before the gateway has the route gets its empty 404, which reads as a deployment that is not running.
+        The wait never fails a start or an update, since the deployment is running: running out of time, or a probe that fails, only warns.
+        """
+        if deployment_instance.predictor.serving_tool != PREDICTOR.SERVING_TOOL_KSERVE:
+            return  # requests go through Hopsworks, which needs no gateway route
+        deadline = time.monotonic() + max(
+            0.0, min(budget_seconds, _ROUTE_WAIT_MAX_SECONDS)
+        )
+        interval = 0.5
+        try:
+            while not self._serving_api._is_routed(deployment_instance):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    warnings.warn(
+                        f"The ingress gateway does not route requests to deployment '{deployment_instance.name}' yet, "
+                        "so predictions can fail with 'Deployment not created or running' for a few seconds.",
+                        stacklevel=2,
+                    )
+                    return
+                time.sleep(min(interval, remaining))
+                interval = min(interval * 2, _ROUTE_RETRY_MAX_INTERVAL_SECONDS)
+        except Exception as e:  # noqa: BLE001 - checking the route must never fail a start or an update
+            warnings.warn(
+                f"Could not check that the ingress gateway routes requests to deployment '{deployment_instance.name}': {e}",
+                stacklevel=2,
+            )
 
     def _check_status(self, deployment_instance, desired_status):
         state = deployment_instance.get_state()
@@ -727,6 +750,7 @@ class ServingEngine:
             # if running, it's fine
             change()
             print("Deployment updated, applying changes to running instances...")
+            started = time.monotonic()
             state = self._poll_deployment_status(  # wait for status
                 # save() and rollback() accept None, which skips the wait like 0.
                 deployment_instance,
@@ -734,6 +758,10 @@ class ServingEngine:
                 await_update or 0,
             )
             if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+                self._await_route(
+                    deployment_instance,
+                    (await_update or 0) - (time.monotonic() - started),
+                )
                 print("Running instances updated successfully")
             return
         if state.status == PREDICTOR_STATE.STATUS_UPDATING:
@@ -1560,7 +1588,7 @@ class ServingEngine:
         serving_tool = deployment_instance.predictor.serving_tool
         through_hopsworks = serving_tool != PREDICTOR.SERVING_TOOL_KSERVE
         try:
-            response = self._send_inference_request_awaiting_route(
+            response = self._serving_api._send_inference_request(
                 deployment_instance, payload, through_hopsworks
             )
             return (
@@ -1582,36 +1610,6 @@ class ServingEngine:
                 re.args[0] + "\n\n Check the model server logs by using `.get_logs()`",
             )
             raise re
-
-    def _send_inference_request_awaiting_route(
-        self, deployment_instance, payload, through_hopsworks: bool
-    ):
-        deadline = None
-        interval = 0.5
-        while True:
-            try:
-                return self._serving_api._send_inference_request(
-                    deployment_instance, payload, through_hopsworks
-                )
-            except RestAPIError as re:
-                if through_hopsworks or not _is_unrouted(re):
-                    raise
-                if deadline is None:
-                    if not self._is_running(deployment_instance):
-                        raise
-                    deadline = time.monotonic() + _ROUTE_WAIT_SECONDS
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise
-                time.sleep(min(interval, remaining))
-                interval = min(interval * 2, _ROUTE_RETRY_MAX_INTERVAL_SECONDS)
-
-    def _is_running(self, deployment_instance) -> bool:
-        try:
-            state = self._get_state(deployment_instance)
-        except Exception:  # noqa: BLE001 - the state only decides whether to wait for the route
-            return False
-        return state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING
 
     def _validate_inference_payload(
         self,
