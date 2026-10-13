@@ -20,6 +20,7 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 import time
 import uuid
@@ -61,6 +62,26 @@ def _structured_prediction_error(error: RestAPIError) -> dict | None:
 # moment later. start() and save() wait for the gateway to route the deployment, for at most this long.
 _ROUTE_WAIT_MAX_SECONDS = 60
 _ROUTE_RETRY_MAX_INTERVAL_SECONDS = 4
+# Each probe of the route waits at most this long, and never past the caller's budget.
+_ROUTE_PROBE_TIMEOUT_SECONDS = 5
+
+
+def _caller_stacklevel() -> int:
+    """The `stacklevel` that points a warning raised by the calling SDK function at the first frame outside the SDK.
+
+    How many SDK frames separate the user's call from the warning depends on the method (start, save, rollback) and on whether usage reporting wraps it, so a fixed `stacklevel` lands inside the SDK.
+    """
+    import hopsworks_common
+    import hsml
+
+    sdk = tuple(
+        os.path.dirname(package.__file__) + os.sep
+        for package in (hsml, hopsworks_common)
+    )
+    frame, level = sys._getframe(1), 1
+    while frame is not None and frame.f_code.co_filename.startswith(sdk):
+        frame, level = frame.f_back, level + 1
+    return level
 
 
 def _render_chunk(chunk) -> str:
@@ -329,22 +350,32 @@ class ServingEngine:
             0.0, min(budget_seconds, _ROUTE_WAIT_MAX_SECONDS)
         )
         interval = 0.5
+        probed = False
         try:
-            while not self._serving_api._is_routed(deployment_instance):
+            while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    warnings.warn(
-                        f"The ingress gateway does not route requests to deployment '{deployment_instance.name}' yet, "
-                        "so predictions can fail with 'Deployment not created or running' for a few seconds.",
-                        stacklevel=2,
-                    )
+                    if probed:
+                        warnings.warn(
+                            f"The ingress gateway does not route requests to deployment '{deployment_instance.name}' yet, "
+                            "so predictions can fail with 'Deployment not created or running' for a few seconds.",
+                            stacklevel=_caller_stacklevel(),
+                        )
                     return
-                time.sleep(min(interval, remaining))
-                interval = min(interval * 2, _ROUTE_RETRY_MAX_INTERVAL_SECONDS)
+                if self._serving_api._is_routed(
+                    deployment_instance,
+                    timeout=min(remaining, _ROUTE_PROBE_TIMEOUT_SECONDS),
+                ):
+                    return
+                probed = True
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    time.sleep(min(interval, remaining))
+                    interval = min(interval * 2, _ROUTE_RETRY_MAX_INTERVAL_SECONDS)
         except Exception as e:  # noqa: BLE001 - checking the route must never fail a start or an update
             warnings.warn(
                 f"Could not check that the ingress gateway routes requests to deployment '{deployment_instance.name}': {e}",
-                stacklevel=2,
+                stacklevel=_caller_stacklevel(),
             )
 
     def _check_status(self, deployment_instance, desired_status):

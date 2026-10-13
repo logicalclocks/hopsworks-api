@@ -943,8 +943,10 @@ class TestStartAndSaveAwaitTheRoute:
         eng._serving_api._is_routed.side_effect = routed
         return eng
 
-    def _deployment(self, mocker, serving_tool="KSERVE"):
-        deployment = mocker.Mock(model_server="PYTHON", has_model=True)
+    def _deployment(self, mocker, serving_tool="KSERVE", api_protocol="REST"):
+        deployment = mocker.Mock(
+            model_server="PYTHON", has_model=True, api_protocol=api_protocol
+        )
         deployment.name = "fraud"
         deployment.predictor.serving_tool = serving_tool
         return deployment
@@ -968,7 +970,7 @@ class TestStartAndSaveAwaitTheRoute:
         assert not recwarn.list
 
     def test_a_route_that_never_appears_warns_after_the_cap(self, mocker, clock):
-        eng = self._engine(mocker, lambda deployment: False)
+        eng = self._engine(mocker, lambda deployment, timeout: False)
 
         with pytest.warns(UserWarning, match="fraud"):
             eng._await_route(self._deployment(mocker), 600)
@@ -976,21 +978,69 @@ class TestStartAndSaveAwaitTheRoute:
         assert clock[0] == serving_engine._ROUTE_WAIT_MAX_SECONDS
 
     def test_the_wait_stays_within_the_callers_budget(self, mocker, clock):
-        eng = self._engine(mocker, lambda deployment: False)
+        eng = self._engine(mocker, lambda deployment, timeout: False)
 
         with pytest.warns(UserWarning):
             eng._await_route(self._deployment(mocker), 5)
 
         assert clock[0] == 5
 
-    def test_an_exhausted_budget_probes_once(self, mocker, clock):
-        eng = self._engine(mocker, lambda deployment: False)
+    def test_an_exhausted_budget_sends_no_probe(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+
+        eng._await_route(self._deployment(mocker), -3)
+
+        eng._serving_api._is_routed.assert_not_called()
+        assert not recwarn.list
+
+    def test_each_probe_waits_at_most_the_remaining_budget(self, mocker, clock):
+        calls = []
+
+        def probe(deployment, timeout):
+            calls.append((clock[0], timeout))
+            return False
+
+        eng = self._engine(mocker, probe)
 
         with pytest.warns(UserWarning):
-            eng._await_route(self._deployment(mocker), -3)
+            eng._await_route(self._deployment(mocker), 7)
+
+        assert [timeout for _, timeout in calls] == [5, 5, 5, 3.5]
+        assert all(timeout <= 7 - at for at, timeout in calls)
+
+    def test_a_probe_that_times_out_is_retried(self, mocker, clock, recwarn):
+        answers = iter([False, True])
+
+        def probe(deployment, timeout):
+            clock[0] += timeout  # the request used its whole timeout
+            return next(answers)
+
+        eng = self._engine(mocker, probe)
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+        assert not recwarn.list
+
+    def test_probes_that_keep_timing_out_stay_within_the_budget(self, mocker, clock):
+        def probe(deployment, timeout):
+            clock[0] += timeout
+            return False
+
+        eng = self._engine(mocker, probe)
+
+        with pytest.warns(UserWarning, match="does not route"):
+            eng._await_route(self._deployment(mocker), 12)
+
+        assert clock[0] == 12
+
+    def test_a_grpc_deployment_is_probed_too(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [True])
+
+        eng._await_route(self._deployment(mocker, api_protocol="GRPC"), 600)
 
         assert eng._serving_api._is_routed.call_count == 1
-        assert clock[0] == 0
+        assert not recwarn.list
 
     def test_a_failing_probe_only_warns(self, mocker, clock):
         import requests
@@ -1075,6 +1125,36 @@ class TestStartAndSaveAwaitTheRoute:
         eng._update(self._running_deployment(mocker), await_update)
 
         eng._serving_api._is_routed.assert_not_called()
+
+    def test_the_warning_points_at_the_callers_start(self, mocker, clock):
+        eng = self._starting_engine(
+            mocker, lambda deployment, timeout: False, PREDICTOR_STATE.STATUS_STOPPED
+        )
+
+        with pytest.warns(UserWarning, match="does not route") as warned:
+            eng._start(self._deployment(mocker), await_status=600)
+
+        assert warned[0].filename == __file__
+
+    def test_the_warning_points_at_the_callers_save(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+
+        with pytest.warns(UserWarning, match="does not route") as warned:
+            eng._update(self._running_deployment(mocker), 600)
+
+        assert warned[0].filename == __file__
+
+    def test_a_failing_probes_warning_points_at_the_caller(self, mocker, clock):
+        eng = self._engine(mocker, RuntimeError("boom"))
+
+        with pytest.warns(UserWarning, match="boom") as warned:
+            eng._await_route(self._deployment(mocker), 600)
+
+        assert warned[0].filename == __file__
 
 
 class TestInitPredict:
@@ -1251,16 +1331,16 @@ class TestWarmRestTransport:
 class TestIsRouted:
     """Only the gateway's empty 404 means the deployment has no route yet."""
 
-    def _probe(self, mocker, answer):
+    def _probe(self, mocker, answer, api_protocol="REST", timeout=None):
         from hsml.core import serving_api
 
         istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
         if answer is not None:
             istio.return_value._send_request.side_effect = answer
-        deployment = mocker.Mock()
+        deployment = mocker.Mock(api_protocol=api_protocol)
         deployment.name = "fraud"
         deployment.project_namespace = "proj"
-        return serving_api.ServingApi()._is_routed(deployment), istio
+        return serving_api.ServingApi()._is_routed(deployment, timeout=timeout), istio
 
     def _error(self, mocker, status_code, content):
         from hopsworks_common.client.exceptions import RestAPIError
@@ -1277,6 +1357,32 @@ class TestIsRouted:
             "GET",
             ["v1", "proj", "fraud", "v1", "models", "fraud"],
             with_base_path_params=False,
+            timeout=None,
+        )
+
+    def test_the_timeout_bounds_the_probe(self, mocker):
+        _, istio = self._probe(mocker, None, timeout=3.5)
+
+        assert istio.return_value._send_request.call_args.kwargs["timeout"] == 3.5
+
+    @pytest.mark.parametrize(
+        ("status_code", "content"),
+        [(200, b"{}"), (415, b"Unsupported Media Type"), (404, b"not found")],
+    )
+    def test_a_grpc_deployment_is_probed_over_rest(self, mocker, status_code, content):
+        """The route belongs to the host, so a gRPC deployment's server answers the REST metadata GET too."""
+        answer = (
+            None if status_code == 200 else self._error(mocker, status_code, content)
+        )
+
+        routed, istio = self._probe(mocker, answer, api_protocol="GRPC")
+
+        assert routed is True
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
+            timeout=None,
         )
 
     @pytest.mark.parametrize(
@@ -1308,11 +1414,18 @@ class TestIsRouted:
 
         assert serving_api.ServingApi()._is_routed(mocker.Mock()) is True
 
-    def test_an_unreachable_gateway_is_raised(self, mocker):
+    @pytest.mark.parametrize(
+        "failure",
+        ["ConnectionError", "ConnectTimeout", "ReadTimeout"],
+    )
+    def test_an_unreachable_or_silent_gateway_is_not_routed(self, mocker, failure):
         import requests
 
-        with pytest.raises(requests.exceptions.ConnectionError):
-            self._probe(mocker, requests.exceptions.ConnectionError("no route to host"))
+        routed, _ = self._probe(
+            mocker, getattr(requests.exceptions, failure)("no answer"), timeout=5
+        )
+
+        assert routed is False
 
 
 class TestSchemaIsRetryable:
