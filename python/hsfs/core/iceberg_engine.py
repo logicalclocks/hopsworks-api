@@ -300,7 +300,8 @@ class IcebergEngine:
         except (RestAPIError, requests.exceptions.RequestException) as e:
             # A 4xx is a backend without the endpoint or a feature group it does not mirror.
             quiet = isinstance(e, RestAPIError) and e.response.status_code < 500
-            (_logger.debug if quiet else _logger.warning)(
+            log = _logger.debug if quiet else _logger.warning
+            log(
                 "Could not register the Iceberg metadata of feature group %s v%s in the metastore: %s",
                 self._feature_group.name,
                 self._feature_group.version,
