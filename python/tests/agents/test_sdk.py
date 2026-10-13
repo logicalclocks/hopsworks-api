@@ -848,6 +848,33 @@ class TestConnectedClient:
         assert agent7.name == "support"
         assert fake.sent[0][:3] == ("GET", "/project/1/serving", {"name": "support"})
 
+    def test_an_attachment_rides_the_connected_client_as_bytes(self, monkeypatch):
+        """The wrapper has to take `data`, which is what Transport always passes.
+
+        It was once missing, so every call through a connected client -- not only
+        the ones carrying bytes -- died on an unexpected keyword argument.
+        """
+        from hopsworks_agents.eval.sdk._transport import (
+            HopsworksClientSession,
+            Transport,
+        )
+
+        fake = FakeHopsworksClient([b"\x89PNG...", {"ok": True}])
+        http = Transport("https://h", 1, session=HopsworksClientSession(fake))
+
+        got = http.request(
+            "POST",
+            "/agent-evals/tasks/7/attachments/chart.png",
+            data=b"\x89PNG...",
+            headers={"content-type": "image/png"},
+            raw=True,
+        )
+        assert got == b"\x89PNG..."
+        assert fake.sent[0][3] == b"\x89PNG..."
+
+        # and the ordinary JSON path still goes through as a JSON body
+        assert http.request("GET", "/agent-evals/evaluators") == {"ok": True}
+
     def test_the_connected_transport_is_none_when_nothing_is_connected(
         self, monkeypatch
     ):

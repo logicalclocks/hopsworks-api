@@ -213,6 +213,7 @@ class HopsworksClientSession:
         *,
         params: dict[str, Any] | None = None,
         json: Any = None,
+        data: bytes | None = None,
         headers: dict[str, str] | None = None,
         timeout: float | None = None,
         stream: bool = False,
@@ -228,13 +229,21 @@ class HopsworksClientSession:
         sent = dict(headers or {})
         if json is not None:
             sent.setdefault("content-type", "application/json")
+        # bytes win over json: an attachment is sent as it is, with the
+        # content type its caller chose
+        if data is not None:
+            payload: Any = data
+        elif json is not None:
+            payload = json_module.dumps(json)
+        else:
+            payload = None
         try:
             body = self._client._send_request(
                 method,
                 path_params,
                 query_params=params,
                 headers=sent or None,
-                data=None if json is None else json_module.dumps(json),
+                data=payload,
                 stream=stream,
                 timeout=timeout,
             )
@@ -249,7 +258,15 @@ class _ClientResponse:
     def __init__(self, status_code: int, body: Any):
         self.status_code = status_code
         self._body = body
-        self.content = b"" if body is None else b"x"
+        if body is None:
+            self.content = b""
+        elif isinstance(body, bytes):
+            self.content = body
+        elif isinstance(body, str):
+            self.content = body.encode()
+        else:
+            # a parsed JSON body: content only has to say "not empty"
+            self.content = b"x"
 
     def json(self) -> Any:
         return self._body
