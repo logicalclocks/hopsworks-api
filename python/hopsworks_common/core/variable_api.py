@@ -150,7 +150,7 @@ class VariableApi:
         try:
             return self._get_variable(f"loadbalancer_external_domain_{service}")
         except RestAPIError as err:
-            if err.STATUS_CODE_NOT_FOUND:
+            if err.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND:
                 raise FeatureStoreException(
                     f"Client could not get {LOADBALANCER_SERVICES[service]} service hostname from "
                     f"loadbalancer_external_domain_{service}. "
