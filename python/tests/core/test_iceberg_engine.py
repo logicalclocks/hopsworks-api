@@ -1680,6 +1680,19 @@ class TestPyIcebergEngine:
         mocker.patch("hopsworks_common.decorators.HAS_PYICEBERG", True)
         return _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
 
+    def test_get_pyiceberg_location_external_empty_namenode_lb(self, mocker):
+        # Arrange
+        client = mocker.patch("hopsworks_common.client._get_instance")
+        client.return_value._is_external.return_value = True
+        iceberg_engine = _make_engine(mocker, spark_session=_NO_SPARK)
+        iceberg_engine._variable_api._get_loadbalancer_external_domain.return_value = ""
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException) as e:
+            iceberg_engine._get_pyiceberg_location()
+        assert "namenode load balancer" in str(e.value)
+        assert "contact your system administrator" in str(e.value.__cause__)
+
     def test_get_pyiceberg_properties_gcs_sets_credentials_env(
         self, mocker, monkeypatch
     ):
