@@ -266,6 +266,76 @@ public class ColumnProfilerSmokeTest {
   }
 
   @Test
+  void sketchesOnlyTheFiniteValues() throws Exception {
+    // Spark's kll_sketch_agg_double skips NULL and NaN but keeps infinities.
+    // A sketch whose maximum is infinite has no usable bucket grid, so the kll sidecar would be
+    // dropped.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("v", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 1; i <= 10; i++) {
+      rows.add(RowFactory.create((double) i));
+    }
+    rows.add(RowFactory.create(Double.POSITIVE_INFINITY));
+    rows.add(RowFactory.create(Double.NEGATIVE_INFINITY));
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    JsonNode col = findColumn(new ObjectMapper().readTree(
+        new ColumnProfiler().profile(df, null, false, false, 20, false, true)).get("columns"), "v");
+
+    Assertions.assertTrue(col.has("kll"), "a sketch of the finite values must be emitted as kll");
+    KllDoublesSketch sketch = KllAggregator.heapify(
+        Base64.getDecoder().decode(col.get("kll").get("bytes").asText()));
+    Assertions.assertEquals(10, sketch.getN());
+    Assertions.assertEquals(1.0, sketch.getMinItem());
+    Assertions.assertEquals(10.0, sketch.getMaxItem());
+  }
+
+  @Test
+  void zeroHistogramBinsYieldEmptyNumericHistograms() throws Exception {
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("ranged", DataTypes.DoubleType, true),
+      DataTypes.createStructField("constant", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      rows.add(RowFactory.create((double) i, 3.0));
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    JsonNode columns = new ObjectMapper().readTree(
+        new ColumnProfiler().profile(df, null, false, true, 0, false, false)).get("columns");
+
+    for (String name : new String[] {"ranged", "constant"}) {
+      JsonNode histogram = findColumn(columns, name).get("histogram");
+      Assertions.assertNotNull(histogram, name + " must keep the histogram key");
+      Assertions.assertEquals(0, histogram.size(), name + " must have no bins");
+    }
+  }
+
+  @Test
+  @SuppressWarnings("deprecation")
+  void computeSketchKeepsItsContract() {
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("v", DataTypes.DoubleType, true),
+      DataTypes.createStructField("none_finite", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 1; i <= 10; i++) {
+      rows.add(RowFactory.create((double) i, Double.NaN));
+    }
+    rows.add(RowFactory.create(Double.POSITIVE_INFINITY, null));
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    KllDoublesSketch sketch = KllAggregator.heapify(new KllAggregator().computeSketch(df, "v"));
+    Assertions.assertEquals(10, sketch.getN());
+    Assertions.assertEquals(10.0, sketch.getMaxItem());
+    Assertions.assertTrue(
+        KllAggregator.heapify(new KllAggregator().computeSketch(df, "none_finite")).isEmpty());
+  }
+
+  @Test
   void binsPartlyNaNColumnOverItsFiniteRange() throws Exception {
     // Spark ranks NaN above every other double and counts it as non-null, so a column
     // holding one NaN reported maximum=NaN. Both bin grids were derived from that: the
