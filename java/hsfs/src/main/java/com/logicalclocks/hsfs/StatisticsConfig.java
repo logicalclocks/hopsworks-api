@@ -17,6 +17,7 @@
 
 package com.logicalclocks.hsfs;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -57,6 +58,12 @@ public class StatisticsConfig {
   @Getter
   @Setter
   private Integer histogramBins = null;
+
+  // null uses the cluster default; always sent, even as null, so the backend tells "reset" from "not set"
+  @Getter
+  @Setter
+  @JsonInclude(JsonInclude.Include.ALWAYS)
+  private Boolean incremental = null;
 
   public StatisticsConfig(Boolean enabled, Boolean histograms, Boolean correlations,
                           Boolean exactUniqueness) {

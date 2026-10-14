@@ -685,7 +685,15 @@ public class HudiEngine {
     FeatureGroupCommit fgCommit = getLastCommitMetadata(sparkSession, streamFeatureGroup.getLocation());
     if (fgCommit != null) {
       featureGroupApi.featureGroupCommit(streamFeatureGroup, fgCommit);
-      streamFeatureGroup.computeStatistics();
+      if (streamFeatureGroup.incrementalStatisticsEffective()) {
+        // The ingestion statistics run the commit triggers profiles the table and merges into the previous
+        // snapshot. A full profile saved here would be reused by that run as the commit's statistics, so no
+        // merge would ever happen.
+        LOGGER.info("Incremental statistics are on, leaving the statistics of commit "
+            + fgCommit.getCommitID() + " to the ingestion statistics run");
+      } else {
+        streamFeatureGroup.computeStatistics();
+      }
     }
   }
   
