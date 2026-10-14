@@ -54,7 +54,8 @@ h2 { font-size: 1.05rem; font-weight: 600; }
 
 main {
   max-width: 72rem; margin: 1.5rem auto; padding: 0 1.5rem;
-  display: grid; gap: 1.25rem;
+  /* minmax(0, 1fr): a grid column grows to its widest content unless told it may shrink. */
+  display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr);
 }
 .grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
 
@@ -93,6 +94,10 @@ th {
 td, th { padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--line); }
 tbody tr:hover { background: var(--accent-soft); }
 td.num { font-variant-numeric: tabular-nums; }
+/* A table wider than the page scrolls inside this frame. contain: inline-size keeps
+   the table's width out of every ancestor's size, so no grid or flex row around it
+   grows past the right edge of the page. */
+.table-wrap { overflow-x: auto; contain: inline-size; }
 
 .bar { display: flex; align-items: center; gap: 0.5rem; }
 .bar .track { flex: 1; height: 0.5rem; border-radius: 999px; background: var(--line); overflow: hidden; }

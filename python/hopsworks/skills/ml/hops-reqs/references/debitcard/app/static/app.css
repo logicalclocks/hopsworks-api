@@ -56,7 +56,7 @@ h2 { font-size: 1.05rem; font-weight: 600; }
 .chip.bad i { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 .chip.wait i { background: var(--warn); }
 
-main { max-width: 80rem; margin: 1.5rem auto; padding: 0 1.5rem; display: grid; gap: 1.25rem; }
+main { max-width: 80rem; margin: 1.5rem auto; padding: 0 1.5rem; display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.25rem; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
 
@@ -94,7 +94,7 @@ input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent)
 #lookup input { width: 13rem; font-family: var(--mono); }
 
 .split { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
-.scroll { max-height: 34rem; overflow: auto; }
+.scroll { max-height: 34rem; overflow: auto; contain: inline-size; }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; position: sticky; top: 0; background: var(--panel); }
 td, th { padding: 0.5rem 0.5rem; border-bottom: 1px solid var(--line); }
