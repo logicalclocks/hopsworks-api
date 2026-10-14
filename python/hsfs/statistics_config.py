@@ -33,6 +33,7 @@ class StatisticsConfig:
         columns=None,
         kll=False,
         histogram_bins=None,
+        incremental: bool | None = None,
         **kwargs,
     ):
         self._enabled = enabled
@@ -44,6 +45,7 @@ class StatisticsConfig:
         self._columns = columns or []
         self.kll = kll
         self.histogram_bins = histogram_bins
+        self.incremental = incremental
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -60,6 +62,7 @@ class StatisticsConfig:
             "histograms": self._histograms,
             "exactUniqueness": self._exact_uniqueness,
             "columns": self._columns,
+            "incremental": self._incremental,
         }
         if self._kll:
             the_dict["kll"] = self._kll
@@ -137,6 +140,21 @@ class StatisticsConfig:
     def histogram_bins(self, histogram_bins: int | None):
         self._histogram_bins = histogram_bins
 
+    @public
+    @property
+    def incremental(self) -> bool | None:
+        """Compute statistics of a commit by merging the new rows into the previous statistics, instead of profiling the whole table.
+
+        If `None`, the cluster default is used.
+        Incremental statistics apply to Delta and Hudi feature groups whose statistics config has no histograms, correlations or exact uniqueness.
+        A cluster administrator can disable incremental statistics for all feature groups.
+        """
+        return self._incremental
+
+    @incremental.setter
+    def incremental(self, incremental: bool | None):
+        self._incremental = incremental
+
     def __str__(self):
         return self.json()
 
@@ -145,5 +163,6 @@ class StatisticsConfig:
             f"StatisticsConfig({self._enabled}, {self._correlations}, {self._histograms},"
             f" {self._exact_uniqueness},"
             f" {self._columns},"
-            f" kll={self._kll}, histogram_bins={self._histogram_bins})"
+            f" kll={self._kll}, histogram_bins={self._histogram_bins},"
+            f" incremental={self._incremental})"
         )
