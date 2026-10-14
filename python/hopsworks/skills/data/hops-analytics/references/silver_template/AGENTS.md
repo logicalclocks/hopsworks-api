@@ -10,6 +10,7 @@ Every change you make to this layer updates `system.yaml` in the same commit, wh
 Record why in `decisions`.
 `system.yaml` must always reflect what runs: before you finish, check that every table, version, job and schedule it names is the one that exists, and correct it where it is not.
 Commit to this directory only (`git add -A -- .`, `git commit -- .`) and push every commit to the analytics pipeline's GitHub repository (`layer.repo`), which its gold layers share.
+With `layer.repo.url: local` the code stays in Hopsworks: commit, never push.
 
 ## When system.yaml has changed
 
