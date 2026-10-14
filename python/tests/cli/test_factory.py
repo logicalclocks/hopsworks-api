@@ -191,7 +191,8 @@ def test_code_kept_in_hopsworks_needs_no_url_and_creates_no_repository():
     answer = {"create": False, "local": True}
     assert factory_spec.repository_problems(answer, "Repo") == []
     assert factory_spec.repo_record(answer) == {"url": "local", "provider": "local"}
-    assert not factory_spec.creates_repo(answer)
+    # The build creates it, so its work tree is trusted like a new GitHub one's.
+    assert factory_spec.creates_repo(answer)
     assert (
         "Hopsworks only"
         in factory_spec.repository_problems({"create": False, "local": False}, "Repo")[

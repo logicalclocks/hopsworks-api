@@ -858,13 +858,15 @@ def trust(directory: Path) -> None:
 def creates_repo(value: Any) -> bool:
     """Whether a repository answer has the build create a new repository, not use an existing one.
 
+    A repository kept in Hopsworks only is one the build creates as well, so its work tree is trusted like a new GitHub one's.
+
     Args:
         value: The answer.
 
     Returns:
-        True for a new repository.
+        True for a new repository, on GitHub or local.
     """
-    return repo_record(value).get("url") == "new"
+    return repo_record(value).get("url") in ("new", "local")
 
 
 def factory_name(ctx: Any, default: str, target: Path | None = None) -> str:

@@ -861,7 +861,7 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
     output.success(f"Interview recorded in {system.target / 'system.yaml'}")
     # The interview made the directory from the template; an existing repository is the user's.
     repo = (system.doc.get("system") or {}).get("repo")
-    if isinstance(repo, dict) and repo.get("url") == "new":
+    if isinstance(repo, dict) and repo.get("url") in ("new", "local"):
         factory_spec.trust(system.target)
     _register(ctx, system)
     subprocess.run([sys.executable, str(system.target / "status.py")], check=False)
@@ -905,13 +905,17 @@ def resume(ctx: click.Context, target: Path, launch: bool) -> None:
 
 def _run(ctx: click.Context, launch: bool, open_system, ask: bool = True) -> Path:
     prefetch = _Prefetch(ctx)
-    prefetch.start()
+    # Without questions nothing reads the listing, and its login would race
+    # the registration's on the shared session.
+    if ask:
+        prefetch.start()
     try:
         system = open_system(prefetch)
         _finish(ctx, prefetch, system, launch, ask)
     finally:
         # A login still importing the SDK at interpreter exit fails noisily.
-        prefetch.join(timeout=15)
+        if prefetch.ident is not None:
+            prefetch.join(timeout=15)
     return system.target
 
 

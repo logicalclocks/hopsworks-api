@@ -6,8 +6,8 @@ GitHub repository the build creates (the Factory's **Create new GitHub repo**,
 checked), or `{url, provider}` for an existing repository the user gave, where
 `provider` is `github`, `gitlab`, `bitbucket` or `git` (any other host), or
 `{url: local, provider: local}` for code kept in Hopsworks only (the Factory's
-**Keep the code in Hopsworks only**). A GitHub
-Enterprise host works through `gh`'s `GH_HOST`, recorded as `system.repo.host`.
+**Keep the code in Hopsworks only**).
+A GitHub Enterprise host works through `gh`'s `GH_HOST`, recorded as `system.repo.host`.
 A repository on GitLab, Bitbucket or another host follows **Other git hosts**
 below instead of the GitHub steps, and code kept in Hopsworks follows
 **Kept in Hopsworks only**.
@@ -140,8 +140,10 @@ push-only over SSH does on GitHub, and opens no pull request itself.
 ## Kept in Hopsworks only
 
 A `system.repo.url` of `local` is a git repository in the system directory with
-no remote: the user has no GitHub login, or chose not to share the code. Skip
-**GitHub access** and every `gh` and `git push` step.
+no remote: the user has no GitHub login, or chose not to share the code.
+This section overrides **Branches and commits**, **The pull request** and **Releases** below:
+skip **GitHub access**, and never cut a `hops/<slug>` branch, push, open a pull request,
+request a review or run `gh release`.
 
 - **Layout.** The system directory is the repository root, as for a new
   repository: `git init -b main`, then the template's `.gitignore` and
