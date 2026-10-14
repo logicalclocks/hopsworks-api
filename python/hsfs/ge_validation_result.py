@@ -29,12 +29,8 @@ import dateutil
 import humps
 from hopsworks_apigen import public
 from hsfs import util
-from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import great_expectations_module
 from hsfs.decorators import _uses_great_expectations
-
-
-if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
 
 
 def _normalize_expectation_config_to_legacy_shape(
@@ -138,7 +134,7 @@ class ValidationResult:
         Returns:
             The validation result as a Great Expectations object.
         """
-        return great_expectations.core.ExpectationValidationResult(
+        return great_expectations_module().core.ExpectationValidationResult(
             success=self.success,
             exception_info=self.exception_info,
             expectation_config=self.expectation_config,

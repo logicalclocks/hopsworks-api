@@ -26,16 +26,16 @@ if TYPE_CHECKING:
 
 import humps
 from hsfs import util
-from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import (
+    GE_MAJOR,
+    HAS_GREAT_EXPECTATIONS,
+    great_expectations_module,
+)
 from hsfs.decorators import _uses_great_expectations
 from hsfs.ge_validation_result import (
     ValidationResult,
     _normalize_expectation_config_to_legacy_shape,
 )
-
-
-if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
 
 
 @public
@@ -133,6 +133,7 @@ class ValidationReport:
         Returns:
             The validation report in `great_expectations` format.
         """
+        great_expectations = great_expectations_module()
         if GE_MAJOR == 1:
             # GE 1.x renamed evaluation_parameters to suite_parameters and now
             # requires suite_name. The Hopsworks ValidationReport has no suite name,
@@ -194,9 +195,9 @@ class ValidationReport:
             self._results = results
         elif isinstance(results[0], dict):
             self._results = [ValidationResult(**result) for result in results]
-        elif isinstance(
+        elif HAS_GREAT_EXPECTATIONS and isinstance(
             results[0],
-            great_expectations.core.expectation_validation_result.ExpectationValidationResult,
+            great_expectations_module().core.expectation_validation_result.ExpectationValidationResult,
         ):
             # GE 1.x produces expectation_config dicts shaped {type, severity, ...};
             # the wire format and the frontend expect the legacy {expectation_type, ...} shape.

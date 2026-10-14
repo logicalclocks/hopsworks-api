@@ -32,6 +32,8 @@ from hsfs.core import expectation_suite_engine
 from hsfs.core.constants import (
     GE_MAJOR,
     HAS_GREAT_EXPECTATIONS,
+    expectation_configuration_class,
+    great_expectations_module,
     initialise_expectation_suite_for_single_expectation_api_message,
 )
 from hsfs.core.expectation_engine import ExpectationEngine
@@ -40,17 +42,6 @@ from hsfs.core.variable_api import VariableApi
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
 from hsfs.decorators import _uses_great_expectations
 from hsfs.ge_expectation import GeExpectation
-
-
-if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
-
-    if GE_MAJOR == 1:
-        from great_expectations.expectations.expectation_configuration import (
-            ExpectationConfiguration as _ExpectationConfiguration,
-        )
-    else:
-        _ExpectationConfiguration = great_expectations.core.ExpectationConfiguration
 
 
 @public
@@ -248,6 +239,7 @@ class ExpectationSuite:
         Returns:
             The Great Expectations native ExpectationSuite object.
         """
+        great_expectations = great_expectations_module()
         if GE_MAJOR == 1:
             # GE 1.x dropped data_asset_type and ge_cloud_id; renamed expectation_suite_name to name.
             return great_expectations.core.ExpectationSuite(
@@ -330,7 +322,7 @@ class ExpectationSuite:
             TypeError: If the expectation type is not supported.
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
-            expectation, _ExpectationConfiguration
+            expectation, expectation_configuration_class()
         ):
             json_dict = expectation.to_json_dict()
             # GE 1.x ships type/severity fields; map back to the legacy shape.
