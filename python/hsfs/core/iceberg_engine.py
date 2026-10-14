@@ -1637,7 +1637,18 @@ class IcebergEngine:
         if _client._is_external():
             parsed_url = urlparse(location)
             try:
-                pyiceberg_loc = f"hdfs://{self._variable_api._get_loadbalancer_external_domain('namenode')}:{parsed_url.port}{parsed_url.path}"
+                namenode = self._variable_api._get_loadbalancer_external_domain(
+                    "namenode"
+                )
+                if not namenode:
+                    raise FeatureStoreException(
+                        "Client could not get namenode service hostname from "
+                        "loadbalancer_external_domain_namenode. "
+                        "The variable is either not set or empty in Hopsworks cluster configuration. "
+                        "The datanode and namenode load balancers may not be enabled on this cluster; "
+                        "contact your system administrator."
+                    )
+                pyiceberg_loc = f"hdfs://{namenode}:{parsed_url.port}{parsed_url.path}"
                 _logger.debug(
                     f"External client, using namenode url + pyiceberg location: {pyiceberg_loc}"
                 )

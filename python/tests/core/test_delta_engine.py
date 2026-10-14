@@ -226,6 +226,45 @@ class TestDeltaEngine:
             )
         assert "datanode load balancer" in str(e.value)
 
+    def test_setup_delta_rs_external_empty_datanode_lb(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=True)
+        _patch_apis(mocker, datanode_lb="", username="user1")
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException) as e:
+            DeltaEngine(
+                feature_store_id=1,
+                feature_store_name="fs",
+                feature_group=fg,
+                spark_session=None,
+                spark_context=None,
+            )
+        assert "datanode load balancer" in str(e.value)
+        assert "contact your system administrator" in str(e.value.__cause__)
+
+    @pytest.mark.parametrize("spark_context", [mock.Mock(), None])
+    def test_setup_delta_rs_external_spark_skipped(self, mocker, spark_context):
+        # Arrange
+        cl = _patch_client(mocker, is_external=True)
+        var_api, proj_api = _patch_apis(mocker, lb_domain=None, username="user1")
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+
+        # Act
+        DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=fg,
+            spark_session=mock.Mock(),
+            spark_context=spark_context,
+        )
+
+        # Assert
+        cl._get_certs_folder.assert_not_called()
+        var_api._get_loadbalancer_external_domain.assert_not_called()
+        proj_api._get_user_info.assert_not_called()
+
     def test_setup_delta_rs_external_no_username(self, mocker):
         # Arrange
         _patch_client(mocker, is_external=True, project_name="prj")
@@ -286,6 +325,24 @@ class TestDeltaEngine:
         with pytest.raises(FeatureStoreException) as e:
             engine._get_delta_rs_location()
         assert "namenode load balancer" in str(e.value)
+
+    def test_get_delta_rs_location_external_empty_namenode_lb(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=True)
+        _patch_apis(
+            mocker,
+            username="user1",
+            datanode_lb="dn.example.com",
+            namenode_lb="",
+        )
+        fg = _make_fg("hopsfs://nn:8020/projects/p1")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException) as e:
+            engine._get_delta_rs_location()
+        assert "namenode load balancer" in str(e.value)
+        assert "contact your system administrator" in str(e.value.__cause__)
 
     def test_setup_delta_read_opts_snapshot_query(self, mocker):
         # Arrange
