@@ -888,7 +888,6 @@ def create(ctx: click.Context, answers: dict, launch: bool) -> Path:
         ctx,
         launch,
         lambda prefetch: _from_answers(prefetch, Path.cwd(), answers),
-        ask=os.environ.get("HOPS_NO_INPUT") != "1",
     )
 
 
@@ -904,6 +903,8 @@ def resume(ctx: click.Context, target: Path, launch: bool) -> None:
 
 
 def _run(ctx: click.Context, launch: bool, open_system, ask: bool = True) -> Path:
+    # Create and resume alike: where nobody can answer, the build asks in the chat.
+    ask = ask and os.environ.get("HOPS_NO_INPUT") != "1"
     prefetch = _Prefetch(ctx)
     # Without questions nothing reads the listing, and its login would race
     # the registration's on the shared session.

@@ -924,3 +924,23 @@ def test_a_layer_trusts_only_a_work_tree_it_created(
     assert not listing.exists() or str((tmp_path / "old").resolve()) not in (
         listing.read_text()
     )
+
+
+@pytest.mark.parametrize(
+    ("typed", "expected"),
+    [
+        ("local", {"create": False, "local": True}),
+        ("", {"create": False, "local": True}),
+        (
+            "https://gitlab.com/acme/churn.git",
+            {"create": False, "url": "https://gitlab.com/acme/churn.git"},
+        ),
+    ],
+)
+def test_the_repository_prompt_keeps_code_in_hopsworks_on_local(
+    monkeypatch, typed, expected
+):
+    monkeypatch.setattr(factory.click, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(factory.click, "prompt", lambda *a, **k: typed)
+    field = {"id": "repo", "type": "repository"}
+    assert factory._prompt(field, {"create": False, "local": True}, "Repo") == expected

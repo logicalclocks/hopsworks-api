@@ -273,12 +273,28 @@ def _trust_new(repo: Path, answers: dict, fresh: bool) -> None:
 
 
 def _layer_repo(repo: Path, answers: dict) -> dict:
-    """What a layer's system.yaml records of its repository: the work tree's name, and the URL and provider of an existing one."""
+    """What a layer's system.yaml records of its repository: the work tree's name, and the URL and provider of an existing one.
+
+    A layer with no repository answer that shares a work tree with another layer takes that layer's record, so a
+    pipeline kept in Hopsworks only stays local.
+    """
+    import yaml
+
     record = {"name": repo.name}
     if isinstance(answers.get("repo"), dict) and not answers["repo"].get(
         "create", True
     ):
         record.update(repo_record(answers["repo"]))
+    elif answers.get("repo") is None:
+        for sibling in sorted(repo.glob("*/system.yaml")):
+            try:
+                found = (yaml.safe_load(sibling.read_text()) or {}).get("layer", {})
+            except (OSError, yaml.YAMLError):
+                continue
+            known = (found or {}).get("repo") or {}
+            if known.get("url") and known.get("provider"):
+                record.update(url=known["url"], provider=known["provider"])
+                break
     return record
 
 
