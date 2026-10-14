@@ -212,11 +212,12 @@ def _from_answers(prefetch: _Prefetch, cwd: Path, answers: dict) -> _System:
 
     Keys are those of ANSWER_KEYS; `slug` is required, and names the
     directory and the repository. With `example`, the example is the draft and
-    the answers override it. What the answers leave out is asked as usual.
+    the answers override it.
     `llm: "account"` records that the agent's LLM is in the user's account
     environment variables, which the UI has set.
     `reference_code` is a path or URL of sample code the system is based on.
     `monitoring` is `{"feature_logging": bool, "watch": str}`, for batch and realtime systems: whether predictions log their features, and what to monitor and alert on.
+    What the answers leave out is asked as usual.
     An existing system of that slug is resumed and the answers are not applied again.
     """
     unknown = set(answers) - ANSWER_KEYS
@@ -870,6 +871,9 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
 def create(ctx: click.Context, answers: dict, launch: bool) -> Path:
     """Record the ML system the answers describe in ./<slug>/system.yaml, ask what they leave out, then build it.
 
+    With HOPS_NO_INPUT=1, as the Factory runs it in a Terminal tab no one sees, nothing is asked:
+    the build's Claude Code asks what the answers leave out in its first questions, which the
+    Factory shows in the system's chat.
     An existing system of that slug is resumed and the answers are not applied again.
 
     Args:
@@ -881,7 +885,10 @@ def create(ctx: click.Context, answers: dict, launch: bool) -> Path:
         The system's directory.
     """
     return _run(
-        ctx, launch, lambda prefetch: _from_answers(prefetch, Path.cwd(), answers)
+        ctx,
+        launch,
+        lambda prefetch: _from_answers(prefetch, Path.cwd(), answers),
+        ask=os.environ.get("HOPS_NO_INPUT") != "1",
     )
 
 
@@ -896,12 +903,12 @@ def resume(ctx: click.Context, target: Path, launch: bool) -> None:
     _run(ctx, launch, lambda prefetch: _System(target))
 
 
-def _run(ctx: click.Context, launch: bool, open_system) -> Path:
+def _run(ctx: click.Context, launch: bool, open_system, ask: bool = True) -> Path:
     prefetch = _Prefetch(ctx)
     prefetch.start()
     try:
         system = open_system(prefetch)
-        _finish(ctx, prefetch, system, launch)
+        _finish(ctx, prefetch, system, launch, ask)
     finally:
         # A login still importing the SDK at interpreter exit fails noisily.
         prefetch.join(timeout=15)
@@ -909,9 +916,22 @@ def _run(ctx: click.Context, launch: bool, open_system) -> Path:
 
 
 def _finish(
-    ctx: click.Context, prefetch: _Prefetch, system: _System, launch: bool
+    ctx: click.Context,
+    prefetch: _Prefetch,
+    system: _System,
+    launch: bool,
+    ask: bool = True,
 ) -> None:
     if system.requirements.get("status") == "met":
+        _launch(ctx, system, launch)
+        return
+    if not ask:
+        # A system in a Hopsworks home is a new repository of its own; anywhere
+        # else, the build asks where the code goes.
+        if not system.doc.get("system", {}).get("repo") and _in_hopsworks_home(
+            system.target.parent
+        ):
+            _repository(system)
         _launch(ctx, system, launch)
         return
     prefetch.ready()

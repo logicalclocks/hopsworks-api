@@ -195,7 +195,11 @@ records the repository URL) and is a no-op refresh when the interview already re
 The `/hops-ml` interview has recorded, quickly and on a fast model: the problem in the user's
 words, the system type, the cadence or the latency and throughput, the data sources (a new
 connector already created, its table chosen), how predictions are consumed, the app wanted, and
-where the code goes. Read them from `system.yaml`; never ask them again. Complete the rest with the
+where the code goes. Read them from `system.yaml`; never ask them again. A system created from the
+Factory's form records only what the form asked, and nothing is asked in the terminal: ask what it
+left unrecorded (no `requirements.data_sources`, no cadence or latency and throughput, no `app`, no
+`system.repo`) in the first `AskUserQuestion` call, offering the project's feature groups as the
+data options. Complete the rest with the
 user through `AskUserQuestion`, two or three questions per call with a recommended answer each,
 following "The requirements conversation" in `hops-reqs/SKILL.md`:
 
