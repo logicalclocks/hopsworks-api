@@ -52,6 +52,12 @@ _HOURLY_COMMIT_TIME = 1_700_000_000_000  # ms – an arbitrary "latest commit"
 _OLDER_COMMIT_TIME = 1_699_996_400_000  # ms – a different (older) commit
 
 
+@pytest.fixture(autouse=True)
+def python_engine(mocker):
+    # The windows only run at the same time on the Python engine.
+    return mocker.patch("hsfs.engine._get_type", return_value="python")
+
+
 def _make_fg(stream: bool = True) -> fg_mod.FeatureGroup:
     """Build a minimal FeatureGroup that satisfies isinstance checks."""
     return fg_mod.FeatureGroup(
@@ -791,8 +797,13 @@ class TestRunFeatureMonitoringIdeaD:
             "_get_latest_by_config_id",
             return_value=None,
         )
-        run_single = mocker.patch.object(
+        run_detection = mocker.patch.object(
             engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        run_reference = mocker.patch.object(
+            engine._reference_window_config_engine,
             "_run_single_window_monitoring",
             return_value=[_make_fds()],
         )
@@ -804,8 +815,9 @@ class TestRunFeatureMonitoringIdeaD:
 
         engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
-        assert run_single.call_count == 2
-        for call in run_single.call_args_list:
+        run_detection.assert_called_once()
+        run_reference.assert_called_once()
+        for call in (run_detection.call_args, run_reference.call_args):
             assert call.kwargs["event_time_feature"].name == "log_time"
 
     def test_model_monitoring_event_time_log_time_resolves_from_entity(self, mocker):
@@ -830,8 +842,13 @@ class TestRunFeatureMonitoringIdeaD:
             "_get_latest_by_config_id",
             return_value=None,
         )
-        run_single = mocker.patch.object(
+        run_detection = mocker.patch.object(
             engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        run_reference = mocker.patch.object(
+            engine._reference_window_config_engine,
             "_run_single_window_monitoring",
             return_value=[_make_fds()],
         )
@@ -843,8 +860,9 @@ class TestRunFeatureMonitoringIdeaD:
 
         engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
-        assert run_single.call_count == 2
-        for call in run_single.call_args_list:
+        run_detection.assert_called_once()
+        run_reference.assert_called_once()
+        for call in (run_detection.call_args, run_reference.call_args):
             assert call.kwargs["event_time_feature"].name == "log_time"
 
     def test_ingestion_config_ignores_event_time_on_both_windows(self, mocker):
@@ -864,8 +882,13 @@ class TestRunFeatureMonitoringIdeaD:
             "_get_by_name",
             return_value=config,
         )
-        run_single = mocker.patch.object(
+        run_detection = mocker.patch.object(
             engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        run_reference = mocker.patch.object(
+            engine._reference_window_config_engine,
             "_run_single_window_monitoring",
             return_value=[_make_fds()],
         )
@@ -877,8 +900,9 @@ class TestRunFeatureMonitoringIdeaD:
 
         engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
-        assert run_single.call_count == 2
-        for call in run_single.call_args_list:
+        run_detection.assert_called_once()
+        run_reference.assert_called_once()
+        for call in (run_detection.call_args, run_reference.call_args):
             assert call.kwargs["event_time_feature"] is None
 
 
@@ -945,8 +969,13 @@ class TestTrainingDatasetReferenceEntity:
 
         feature_view = MagicMock()
         fg, feature_store = self._setup(mocker, engine, config, feature_view)
-        run_single = mocker.patch.object(
+        run_detection = mocker.patch.object(
             engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        run_reference = mocker.patch.object(
+            engine._reference_window_config_engine,
             "_run_single_window_monitoring",
             return_value=[_make_fds()],
         )
@@ -954,7 +983,8 @@ class TestTrainingDatasetReferenceEntity:
         engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         feature_store.get_feature_view.assert_called_once_with(name="my_fv", version=1)
-        detection_call, reference_call = run_single.call_args_list
+        detection_call = run_detection.call_args
+        reference_call = run_reference.call_args
         assert detection_call.kwargs["entity"] is fg
         assert reference_call.kwargs["entity"] is feature_view
         # The model filter is meaningless against a training dataset.
@@ -969,8 +999,13 @@ class TestTrainingDatasetReferenceEntity:
         config.reference_window_config = reference_wc
 
         fg, feature_store = self._setup(mocker, engine, config)
-        run_single = mocker.patch.object(
+        run_detection = mocker.patch.object(
             engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        run_reference = mocker.patch.object(
+            engine._reference_window_config_engine,
             "_run_single_window_monitoring",
             return_value=[_make_fds()],
         )
@@ -978,7 +1013,7 @@ class TestTrainingDatasetReferenceEntity:
         engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         feature_store.get_feature_view.assert_not_called()
-        for call in run_single.call_args_list:
+        for call in (run_detection.call_args, run_reference.call_args):
             assert call.kwargs["entity"] is fg
 
     def test_a_missing_feature_view_name_fails_loudly(self, mocker):

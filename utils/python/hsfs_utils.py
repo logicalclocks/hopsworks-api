@@ -198,7 +198,7 @@ def compute_stats(job_conf: dict[Any, Any]) -> None:
     end_commit_time = job_conf.get("end_commit_time")
     if end_commit_time is not None and entity_type == "fg":
         # Commit-scoped: read the FG as-of the commit and persist stats against it.
-        entity._statistics_engine.compute_and_save_statistics(
+        entity._statistics_engine._compute_and_save_statistics(
             entity, feature_group_commit_id=int(end_commit_time)
         )
     else:
