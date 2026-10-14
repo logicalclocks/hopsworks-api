@@ -280,6 +280,27 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
     assert quiet == [(tmp_path / "late-orders", "Late orders")]
 
 
+def test_the_factory_ui_is_never_asked_in_the_terminal(tmp_path, monkeypatch, quiet):
+    # The Factory runs the create in a Terminal tab no one sees until the system is registered.
+    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(tmp_path))
+    monkeypatch.setenv("HOPS_NO_INPUT", "1")
+    path = _answers(
+        tmp_path,
+        slug="live-recs",
+        description="recommend articles while a customer browses",
+        system_type="realtime",
+    )
+    done = _run(tmp_path, monkeypatch, [], "--answers", path)
+    assert done.exit_code == 0, done.output
+    assert "Which data" not in done.output and "Latency" not in done.output
+    doc = _doc(tmp_path / "live-recs")
+    assert "data_sources" not in doc["requirements"]
+    assert "app" not in doc
+    # A Hopsworks home is always a new repository; nothing to ask.
+    assert doc["system"]["repo"] == {"url": "new"}
+    assert quiet == [(tmp_path / "live-recs", "Live recs")]
+
+
 def test_the_uis_answers_override_an_example(tmp_path, monkeypatch, quiet):
     monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(tmp_path))
     path = _answers(
