@@ -2129,23 +2129,6 @@ class Engine:
             debug_kafka=offline_write_options.get("debug_kafka", False),
         )
 
-    @staticmethod
-    def _wait_for_online_ingestion(
-        feature_group: FeatureGroup | ExternalFeatureGroup,
-        offline_write_options: dict[str, Any],
-        storage: str | None = None,
-    ) -> None:
-        # An offline-only write creates no online ingestion to wait for, so waiting would
-        # block on whichever ingestion happened to run before it.
-        if storage == kafka_engine._STORAGE_OFFLINE:
-            return
-        if feature_group.online_enabled and offline_write_options.get(
-            "wait_for_online_ingestion", False
-        ):
-            feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=offline_write_options.get("online_ingestion_options", {})
-            )
-
     def _write_dataframe_kafka(
         self,
         feature_group: FeatureGroup | ExternalFeatureGroup,
@@ -2237,7 +2220,9 @@ class Engine:
             del producer
             progress_bar.close()
 
-        self._wait_for_online_ingestion(feature_group, offline_write_options, storage)
+        kafka_engine._wait_for_online_ingestion(
+            feature_group, headers, offline_write_options
+        )
 
     def _delete_dataframe_kafka(
         self,
@@ -2308,7 +2293,9 @@ class Engine:
 
         # wait for online ingestion so callers that set wait_for_online_ingestion do not
         # return before OnlineFS has applied the deletes (matches the insert path).
-        self._wait_for_online_ingestion(feature_group, offline_write_options)
+        kafka_engine._wait_for_online_ingestion(
+            feature_group, headers, offline_write_options
+        )
 
     def _run_materialization_job(
         self,
@@ -2366,21 +2353,7 @@ class Engine:
                 ),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
-            offline_backfill_every_hr = offline_write_options.pop(
-                "offline_backfill_every_hr", None
-            )
-            if offline_backfill_every_hr:
-                if isinstance(offline_backfill_every_hr, str):
-                    cron_expression = offline_backfill_every_hr
-                elif isinstance(offline_backfill_every_hr, int):
-                    cron_expression = f"{now.second} {now.minute} {now.hour}/{offline_backfill_every_hr} ? * * *"
-                feature_group.materialization_job.schedule(
-                    cron_expression=cron_expression,
-                    # added 2 seconds after the current time to avoid retriggering the job directly
-                    start_time=now + timedelta(seconds=2),
-                )
-            else:
-                _logger.info("Materialisation job was not scheduled.")
+            self._schedule_materialization(feature_group, offline_write_options, now)
 
         elif self._start_offline_materialization(offline_write_options):
             if not offline_write_options.get(
@@ -2401,7 +2374,39 @@ class Engine:
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
 
+        if "offline_backfill_every_hr" in offline_write_options:
+            # Set only by the insert that creates the group. The branch above attaches it
+            # only when the topic did not exist yet, but a new group's topic already exists.
+            self._schedule_materialization(
+                feature_group, offline_write_options, datetime.now(timezone.utc)
+            )
+
         return feature_group.materialization_job
+
+    @staticmethod
+    def _schedule_materialization(
+        feature_group: FeatureGroup,
+        offline_write_options: dict[str, Any],
+        now: datetime,
+    ) -> None:
+        offline_backfill_every_hr = offline_write_options.pop(
+            "offline_backfill_every_hr", None
+        )
+        if not offline_backfill_every_hr:
+            _logger.info("Materialisation job was not scheduled.")
+            return
+        if isinstance(offline_backfill_every_hr, str):
+            cron_expression = offline_backfill_every_hr
+        else:
+            # The scheduler accepts only 0 in the seconds field. Quartz reads `h/n` as
+            # "from hour h", so start at h mod n to fire every n hours all day long.
+            every = offline_backfill_every_hr
+            cron_expression = f"0 {now.minute} {now.hour % every}/{every} ? * * *"
+        feature_group.materialization_job.schedule(
+            cron_expression=cron_expression,
+            # added 2 seconds after the current time to avoid retriggering the job directly
+            start_time=now + timedelta(seconds=2),
+        )
 
     @staticmethod
     def _cast_columns(

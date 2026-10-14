@@ -67,6 +67,7 @@ FIXTURES = [
     "storage_connector",
     "tag",
     "training_dataset",
+    "deployment_version",
     "training_dataset_feature",
     "training_dataset_split",
     "transformation_function",

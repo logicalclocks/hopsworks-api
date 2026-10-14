@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import joinspec, lineage, output, session
+from hopsworks.cli import joinspec, lineage, output, session, versions
 
 
 @click.group("fg")
@@ -32,7 +32,9 @@ def fg_list(ctx: click.Context) -> None:
     """List feature groups across every feature store the project can access.
 
     Includes feature groups in shared feature stores (as the UI does). The
-    STORE column shows which feature store each one lives in.
+    STORE column shows which feature store each one lives in. ACCESS is your
+    own access state on an external feature group whose data source takes
+    provided credentials, and ``-`` for every other feature group.
 
     Args:
         ctx: Click context.
@@ -48,10 +50,13 @@ def fg_list(ctx: click.Context) -> None:
                     getattr(fg, "version", "?"),
                     _fg_type_label(fg),
                     "yes" if getattr(fg, "online_enabled", False) else "no",
+                    _access_label(fg),
                     getattr(fs, "name", "?"),
                 ]
             )
-    output.print_table(["ID", "NAME", "VERSION", "TYPE", "ONLINE", "STORE"], rows)
+    output.print_table(
+        ["ID", "NAME", "VERSION", "TYPE", "ONLINE", "ACCESS", "STORE"], rows
+    )
 
 
 @fg_group.command("info")
@@ -87,6 +92,52 @@ def fg_info(
         ["Event time", getattr(fg, "event_time", None) or "-"],
         ["Description", output.first_line(getattr(fg, "description", ""))],
         ["Tags", output.format_mapping(output.read_tags(fg))],
+    ]
+    output.print_table(["FIELD", "VALUE"], rows)
+
+
+@fg_group.command("test-access")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
+@click.pass_context
+def fg_test_access(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
+    """Test whether your credentials can read the table behind an external feature group.
+
+    Runs the check now, as you, and shows the stored state (OK, NO_CREDENTIALS,
+    INVALID_CREDENTIALS, NO_ACCESS or ERROR). Add your credentials with
+    ``hops datasource credentials set <data source>`` first when the state is
+    NO_CREDENTIALS.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        version: Specific version to test; latest if omitted.
+        featurestore: Pin lookup to this feature store by name.
+    """
+    fg = _get_fg(ctx, name, version, featurestore)
+    if not hasattr(fg, "test_data_source_access"):
+        raise click.ClickException(
+            f"Feature group '{name}' is not an external feature group; only those read "
+            "through a data source."
+        )
+    try:
+        access = fg.test_data_source_access()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Access test failed: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json(access)
+        return
+    rows = [
+        ["Status", access.get("status", "?")],
+        ["Error code", access.get("error_code") or "-"],
+        ["Message", access.get("message") or "-"],
+        ["Checked at", output.format_ts(access.get("checked_at"))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
@@ -132,19 +183,37 @@ def fg_preview(
         featurestore: Pin lookup to this feature store by name.
         columns: Optional comma-separated column projection.
     """
-    fg = _get_fg(ctx, name, version, featurestore)
-    try:
-        df = fg.read(online=online, dataframe_type="pandas").head(n)
-    except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
-        raise click.ClickException(f"Could not read feature group: {exc}") from exc
+    import pandas as pd  # noqa: PLC0415 - pandas import cost is high
 
+    fg = _get_fg(ctx, name, version, featurestore)
+    query = fg.select_all()
+    wanted = None
     if columns:
         wanted = [c.strip() for c in columns.split(",") if c.strip()]
-        missing = [c for c in wanted if c not in df.columns]
+        known = {f.name for f in fg.features}
+        missing = [c for c in wanted if c not in known]
         if missing:
             raise click.BadParameter(
                 f"Unknown column(s): {', '.join(missing)}", param_hint="--columns"
             )
+        query = fg.select(wanted)
+    try:
+        # show() pushes the limit into the query, so a ten-row preview of a
+        # large table reads ten rows rather than the whole group.
+        shown = query.show(n, online=online)
+        # The Python engine returns a DataFrame; the online vector-index path
+        # returns plain rows, which take the selected features' names.
+        df = (
+            shown
+            if isinstance(shown, pd.DataFrame)
+            else pd.DataFrame(
+                shown, columns=[f.name for f in query._left_features] or None
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
+        raise click.ClickException(f"Could not read feature group: {exc}") from exc
+    # The online vector-index read ignores the query's selection.
+    if wanted:
         df = df[wanted]
 
     if output.JSON_MODE:
@@ -246,12 +315,14 @@ def _get_fg(
     name: str,
     version: int | None,
     featurestore: str | None = None,
+    exact: bool = False,
 ) -> Any:
     """Resolve a feature group across the project's accessible feature stores.
 
     Searches the project's own store first, then shared stores, so a shared
     feature group resolves just like a local one. ``featurestore`` pins the
     lookup to a single store by name when the same name exists in several.
+    ``exact`` refuses a missing version when several exist.
     """
     stores = session.get_accessible_feature_stores(ctx)
     if featurestore is not None:
@@ -263,7 +334,9 @@ def _get_fg(
     last_exc: Exception | None = None
     for fs in stores:
         try:
-            fg = fs.get_feature_group(name, version=version)
+            fg = versions.feature_group(fs, name, version, exact=exact)
+        except versions.AmbiguousVersionError:
+            raise
         except Exception as exc:  # noqa: BLE001 - not in this store, try the next
             last_exc = exc
             continue
@@ -296,13 +369,22 @@ def _fg_type_label(fg: Any) -> str:
     return "cached"
 
 
+def _access_label(fg: Any) -> str:
+    access = getattr(fg, "data_source_access", None)
+    if not isinstance(access, dict):
+        return "-"
+    return str(access.get("status", "-")).lower()
+
+
 def _fg_to_dict(fg: Any) -> dict[str, Any]:
+    access = getattr(fg, "data_source_access", None)
     return {
         "id": getattr(fg, "id", None),
         "name": getattr(fg, "name", None),
         "version": getattr(fg, "version", None),
         "type": _fg_type_label(fg),
         "online_enabled": getattr(fg, "online_enabled", False),
+        "data_source_access": access if isinstance(access, dict) else None,
         "primary_key": list(getattr(fg, "primary_key", []) or []),
         "event_time": getattr(fg, "event_time", None),
         "description": getattr(fg, "description", None),
@@ -668,20 +750,24 @@ def fg_derive(
     """
     fs = session.get_feature_store(ctx)
     try:
-        base = fs.get_feature_group(base_fg)
+        base = versions.feature_group(fs, base_fg, None)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+    if base is None:
+        raise click.ClickException(f"Base FG '{base_fg}' not found.")
 
     query = base.select_all()
     parents = [base]
     for raw in joins:
         spec = _parse_join(raw)
         try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
+            other = versions.feature_group(fs, spec.fg_name, spec.version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
                 f"Joined FG '{spec.fg_name}' not found: {exc}"
             ) from exc
+        if other is None:
+            raise click.ClickException(f"Joined FG '{spec.fg_name}' not found.")
         parents.append(other)
         query = query.join(
             other.select_all(),
@@ -784,7 +870,7 @@ def fg_delete(
         force: Delete even if feature views depend on it, leaving them in place.
         delete_feature_views: Also delete the dependent feature views and their training data.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, exact=True)
     if not yes and not output.JSON_MODE:
         if delete_feature_views:
             extra = " Any feature views using it (and their training data) will also be deleted."
@@ -997,7 +1083,9 @@ def fg_add_keyword(
 @fg_group.command("remove-keyword")
 @click.argument("name")
 @click.argument("keyword")
-@click.option("--version", type=int, help="Feature group version.")
+@click.option(
+    "--version", type=int, help="Feature group version; required when multiple exist."
+)
 @click.pass_context
 def fg_remove_keyword(
     ctx: click.Context, name: str, keyword: str, version: int | None
@@ -1011,7 +1099,7 @@ def fg_remove_keyword(
         version: Feature group version.
     """
     output.warn(_KEYWORD_SEMANTICS_CHANGED)
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, exact=True)
     try:
         fg.delete_keyword(keyword)
     except Exception as exc:  # noqa: BLE001
@@ -1068,7 +1156,9 @@ def fg_add_tag(
 @fg_group.command("remove-tag")
 @click.argument("name")
 @click.argument("tag")
-@click.option("--version", type=int, help="Feature group version.")
+@click.option(
+    "--version", type=int, help="Feature group version; required when multiple exist."
+)
 @click.pass_context
 def fg_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
     """Remove a tag from a feature group.
@@ -1079,7 +1169,7 @@ def fg_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) 
         tag: Tag name.
         version: Feature group version.
     """
-    fg = _get_fg(ctx, name, version)
+    fg = _get_fg(ctx, name, version, exact=True)
     try:
         fg.delete_tag(tag)
     except Exception as exc:  # noqa: BLE001

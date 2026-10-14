@@ -428,3 +428,25 @@ class TestDeleteDataframeKafka:
         )
 
         assert get_headers.call_args[0][1] is None
+
+    def test_waits_on_the_delete_online_ingestion(self, mocker):
+        fg = self._make_feature_group(mocker)
+        mocker.patch("hsfs.core.kafka_engine._kafka_produce")
+        mocker.patch(
+            "hsfs.core.kafka_engine._get_headers",
+            return_value={"onlineIngestionId": b"7"},
+        )
+        get_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_online_ingestion"
+        )
+        get_latest_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_latest_online_ingestion"
+        )
+
+        python.Engine()._delete_dataframe_kafka(
+            fg, pd.DataFrame({"id": [7]}), {"wait_for_online_ingestion": True}
+        )
+
+        get_online_ingestion.assert_called_once_with(7)
+        get_online_ingestion.return_value.wait_for_completion.assert_called_once()
+        get_latest_online_ingestion.assert_not_called()

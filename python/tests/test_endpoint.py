@@ -72,9 +72,9 @@ class TestEndpoint:
 
         assert e.scaling_configuration is not None
         assert isinstance(e.scaling_configuration, PredictorScalingConfig)
-        assert (
-            e.scaling_configuration.scale_metric.value == "CONCURRENCY"
-        )  # the default
+        # No mode given: Standard mode, whose metric the backend defaults (CPU
+        # under KEDA or the HPA), so the client sends none.
+        assert e.scaling_configuration.scale_metric is None
 
     def test_constructor_with_all_parameters(self, mocker, backend_fixtures):
         # Arrange

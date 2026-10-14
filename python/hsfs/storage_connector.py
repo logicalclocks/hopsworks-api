@@ -34,6 +34,7 @@ from hopsworks_common import client, util
 from hopsworks_common.client.exceptions import (
     DataSourceException,
     FeatureStoreException,
+    RestAPIError,
 )
 from hopsworks_common.core import trino_catalog_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
@@ -41,7 +42,12 @@ from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import engine
 from hsfs.core import data_source as ds
-from hsfs.core import data_source_api, storage_connector_api
+from hsfs.core import (
+    data_source_api,
+    data_source_credentials_api,
+    elasticsearch_api,
+    storage_connector_api,
+)
 
 
 if TYPE_CHECKING:
@@ -85,6 +91,7 @@ class StorageConnector(ABC):
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
     GLUE = "GLUE"
+    ELASTICSEARCH = "ELASTICSEARCH"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -103,7 +110,8 @@ class StorageConnector(ABC):
         BIGQUERY: "featurestoreBigqueryConnectorDTO",
         SQL: "featurestoreSqlConnectorDTO",
         ORACLE: "featurestoreSqlConnectorDTO",
-        OPENSEARCH: "featurestoreOpenSearchConnectorDTO",
+        OPENSEARCH: "featurestoreOpensearchConnectorDTO",
+        ELASTICSEARCH: "featurestoreElasticsearchConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
@@ -146,6 +154,7 @@ class StorageConnector(ABC):
         | SapHanaConnector
         | MongoDBConnector
         | GlueConnector
+        | ElasticsearchConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -177,6 +186,7 @@ class StorageConnector(ABC):
         | SapHanaConnector
         | MongoDBConnector
         | GlueConnector
+        | ElasticsearchConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -186,6 +196,14 @@ class StorageConnector(ABC):
         else:
             raise ValueError("Failed to update storage connector information.")
         return self
+
+    def _require_credentials(self) -> None:
+        """Refuse to use the data source while the caller still has to provide credentials for it."""
+        return
+
+    def _check_new(self) -> None:
+        """Refuse to create the data source when its fields cannot be stored as given."""
+        return
 
     def to_dict(self) -> dict[str, int | str | None]:
         return {
@@ -220,7 +238,11 @@ class StorageConnector(ABC):
 
         Returns:
             The saved storage connector with its assigned id.
+
+        Raises:
+            ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
         """
+        self._check_new()
         return self._storage_connector_api._create(self)
 
     @public
@@ -269,7 +291,7 @@ class StorageConnector(ABC):
 
         Returns:
             `supported`, and `reason` when it is false. Otherwise `suggestedName`,
-            `connectorType` and `properties`.
+            `connectorType`, `properties` and `scope`, which is `PRIVATE` for a data source whose credentials each member provides.
         """
         return self._trino_catalog_api.get_catalog_template(
             self._name, self._featurestore_id
@@ -287,6 +309,10 @@ class StorageConnector(ABC):
         The catalog is derived from this data source, so nothing has to be supplied: credentials are read from the data source when the catalog is created and stored as a reference, never as a plaintext copy.
         It becomes queryable once the query engine restarts, on the cluster's schedule or immediately via `project.get_trino_catalog_api().restart()` as an administrator.
 
+        A data source whose credentials each member provides (`credentials_mode="PROVIDED"`) always yields a private catalog, named `_<username>__...` and owned by the caller.
+        It is available in every project the caller belongs to, it reads with the caller's own credentials, and only the caller can use it, so each member creates their own.
+        Its connection is secured with the caller's own wallet, kept in their personal credential-file store.
+
         Example:
             ```python
             import hopsworks
@@ -300,8 +326,8 @@ class StorageConnector(ABC):
             ```
 
         Parameters:
-            name: Catalog name, which must start with `<project>__` in lowercase. Defaults to the
-                name the template suggests, derived from this data source's own name.
+            name: Catalog name, which must start with `<project>__` in lowercase, or with `_<username>__` for a data source whose credentials each member provides.
+                Defaults to the name the template suggests, derived from this data source's own name.
             properties: Replace the derived properties entirely; keys are not merged with the template's.
                 Start from the template's `properties` and apply your edits.
             test_connection: Verify the definition can reach the source before creating it, where the cluster supports it.
@@ -328,6 +354,7 @@ class StorageConnector(ABC):
             properties if properties is not None else template["properties"]
         )
         connector_type = template["connectorType"]
+        scope = template.get("scope")
 
         if test_connection and self._trino_catalog_api.get_capabilities().get(
             "testConnectionAvailable"
@@ -338,6 +365,7 @@ class StorageConnector(ABC):
                 catalog_properties,
                 data_source_name=self._name,
                 featurestore_id=self._featurestore_id,
+                scope=scope,
             )
 
         return self._trino_catalog_api.create_catalog(
@@ -346,6 +374,7 @@ class StorageConnector(ABC):
             catalog_properties,
             data_source_name=self._name,
             featurestore_id=self._featurestore_id,
+            scope=scope,
         )
 
     @public
@@ -588,6 +617,7 @@ class StorageConnector(ABC):
             StorageConnector.REST,
         ]:
             raise ValueError("This connector type does not support fetching databases.")
+        self._require_credentials()
         return self._data_source_api._get_databases(self)
 
     @public
@@ -616,6 +646,7 @@ class StorageConnector(ABC):
         """
         if self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching tables.")
+        self._require_credentials()
         if not database and self.type != StorageConnector.CRM:
             if self.type == StorageConnector.REDSHIFT:
                 database = self.database_name
@@ -629,13 +660,14 @@ class StorageConnector(ABC):
                     # (or TNS alias when using a wallet), not a schema, while
                     # the backend filters tables by OWNER (schema).
                     # Default to the connecting user's own schema.
-                    if not self.user:
+                    user = self.user
+                    if not user:
                         raise ValueError(
                             "A schema/owner is required for Oracle connectors "
                             "without a configured user. Pass it as the "
                             "`database` argument to get_tables()."
                         )
-                    database = self.user.upper()
+                    database = user.upper()
                 else:
                     database = self.database
             elif self.type == StorageConnector.UNITY_CATALOG:
@@ -666,6 +698,7 @@ class StorageConnector(ABC):
                 StorageConnector.S3,
                 StorageConnector.GCS,
                 StorageConnector.GOOGLE_SHEETS,
+                StorageConnector.ELASTICSEARCH,
             ]:
                 pass
             else:
@@ -728,6 +761,7 @@ class StorageConnector(ABC):
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
+        self._require_credentials()
         data = self._data_source_api._get_data(data_source)
         # When the source refuses the read, the backend still answers 200 and reports the failure
         # in schemaFetchFailed, so the UI can render the source's own message.
@@ -3424,6 +3458,9 @@ class SqlConnector(StorageConnector):
     type = StorageConnector.SQL
     JDBC_FORMAT = "jdbc"
 
+    SHARED = "SHARED"
+    PROVIDED = "PROVIDED"
+
     MYSQL = "MYSQL"
     POSTGRESQL = "POSTGRESQL"
     ORACLE = "ORACLE"
@@ -3477,9 +3514,14 @@ class SqlConnector(StorageConnector):
         # Oracle-specific optional fields
         wallet_path: str | None = None,
         wallet_password: str | None = None,
+        credentials_mode: str | None = None,
+        user_credentials: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
+        self._data_source_credentials_api = (
+            data_source_credentials_api.DataSourceCredentialsApi()
+        )
         if database_type is not None:
             database_type = database_type.upper()
             if database_type not in self._DRIVERS:
@@ -3503,11 +3545,25 @@ class SqlConnector(StorageConnector):
         # Oracle-specific fields
         self._wallet_path = wallet_path
         self._wallet_password = wallet_password
+        self._credentials_mode = (credentials_mode or self.SHARED).upper()
+        self._user_credentials = user_credentials
+        # Set once this object saves or deletes credentials, which makes the values the runtime started with stale.
+        self._runtime_env_stale = False
 
     @property
     def database_type(self) -> str | None:
         """The database type, e.g. MYSQL or POSTGRESQL."""
         return self._database_type
+
+    @property
+    def credentials_mode(self) -> str:
+        """`SHARED` when every member reads with the credentials stored on the data source, `PROVIDED` when each member brings their own."""
+        return self._credentials_mode
+
+    @property
+    def user_credentials(self) -> dict[str, Any] | None:
+        """Status and account entry names of your own credentials for a data source with provided credentials, never their values."""
+        return self._user_credentials
 
     @property
     def host(self) -> str | None:
@@ -3523,11 +3579,11 @@ class SqlConnector(StorageConnector):
 
     @property
     def user(self) -> str | None:
-        return self._user
+        return self._resolve("USER", self._user)
 
     @property
     def password(self) -> str | None:
-        return self._password
+        return self._resolve("PASSWORD", self._password)
 
     @property
     def arguments(self) -> dict[str, Any]:
@@ -3536,13 +3592,393 @@ class SqlConnector(StorageConnector):
 
     @property
     def wallet_path(self) -> str | None:
-        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE)."""
-        return self._wallet_path
+        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE).
+
+        Inside a Hopsworks runtime that mounts your wallet for a data source with provided credentials, this is the local `/hopsfs/...` path of the mounted file rather than its HopsFS path, so it cannot be passed to HopsFS APIs such as the dataset API.
+        """
+        return self._local_wallet_path() or self._hopsfs_wallet_path()
 
     @property
     def wallet_password(self) -> str | None:
         """Password for the Oracle wallet (only relevant when database_type is ORACLE)."""
-        return self._wallet_password
+        return self._resolve("WALLET_PASSWORD", self._wallet_password)
+
+    def _env_name(self) -> str:
+        return re.sub(r"[^A-Z0-9_]", "_", self._name.upper())
+
+    def _env_var(self, suffix: str) -> str:
+        return f"HOPS_DS_{self._env_name()}_{suffix}"
+
+    def _runtime_env(self, suffix: str) -> str | None:
+        """A provided credential injected into a Hopsworks runtime for this very data source.
+
+        Only the runtime's own feature store is injected, so a data source of the same name read from another feature store has a different id and must not pick these values up.
+        """
+        if (
+            self._credentials_mode != self.PROVIDED
+            or self._id is None
+            or self._runtime_env_stale
+        ):
+            return None
+        if os.environ.get(self._env_var("CONNECTOR_ID")) != str(self._id):
+            return None
+        return os.environ.get(self._env_var(suffix)) or None
+
+    # The entry of the caller's binding that names the account entry holding each provided credential.
+    _ACCOUNT_ENTRIES = {
+        "USER": ("username_env_var", data_source_credentials_api.ENV_VAR),
+        "PASSWORD": ("password_secret_name", data_source_credentials_api.SECRET),
+        "WALLET_PASSWORD": (
+            "wallet_password_secret_name",
+            data_source_credentials_api.SECRET,
+        ),
+    }
+
+    def _resolve(self, suffix: str, dto_value: str | None) -> str | None:
+        """A provided credential is read from the caller's own account at each use, so a rotation made anywhere is picked up.
+
+        The backend never returns a provided credential with the data source.
+        The runtime's env var, set when the runtime started, is used only when the account cannot be asked.
+        """
+        if self._credentials_mode != self.PROVIDED:
+            return dto_value
+        key, kind = self._ACCOUNT_ENTRIES[suffix]
+        name = (self._user_credentials or {}).get(key)
+        if name:
+            try:
+                return self._data_source_credentials_api._account_value(kind, name)
+            except Exception as err:  # noqa: BLE001
+                _logger.debug(
+                    "Could not read %s of data source '%s' from your account: %s",
+                    key,
+                    self._name,
+                    err,
+                )
+        return self._runtime_env(suffix)
+
+    def _hopsfs_wallet_path(self) -> str | None:
+        """The bound wallet's HopsFS path, which for provided credentials is in the caller's binding."""
+        bound = (self._user_credentials or {}).get("wallet_path")
+        if self._credentials_mode == self.PROVIDED and bound:
+            return bound
+        return self._wallet_path
+
+    def _local_wallet_path(self) -> str | None:
+        """The wallet mounted into a Hopsworks runtime, which is a local path rather than one in HopsFS.
+
+        Not every runtime mounts HopsFS (Spark does not), so the path is only used when it can be read here.
+        """
+        path = self._runtime_env("WALLET_PATH")
+        if not path or not os.access(path, os.R_OK):
+            return None
+        # A wallet bound after the runtime started has another file name, and the mount would serve the old one.
+        bound = self._hopsfs_wallet_path()
+        if bound and os.path.basename(path) != os.path.basename(bound):
+            return None
+        return path
+
+    def _require_credentials(self) -> None:
+        if self._credentials_mode != self.PROVIDED:
+            return
+        status = (self._user_credentials or {}).get("status")
+        if status != "VALID" and not self._runtime_env("USER"):
+            raise FeatureStoreException(
+                data_source_credentials_api._not_provided_message(self._name, status)
+            )
+
+    def _check_new(self) -> None:
+        if self._credentials_mode != self.PROVIDED or self._id is not None:
+            return
+        given = [
+            name
+            for name, value in (
+                ("user", self._user),
+                ("password", self._password),
+                ("wallet_path", self._wallet_path),
+                ("wallet_password", self._wallet_password),
+            )
+            if value
+        ]
+        if given:
+            raise ValueError(
+                f"Data source '{self._name}' has provided credentials, so it stores no "
+                f"{', '.join(given)}: each member adds their own with "
+                "`set_credentials()` once the data source exists. Create it without them."
+            )
+
+    def _default_secret_name(self, kind: str) -> str:
+        return f"ds_{self._env_name().lower()}_{self._featurestore_id}_{kind}"
+
+    def _credentials_body(
+        self,
+        user: str | None,
+        password: str | None,
+        wallet_path: str | None,
+        wallet_password: str | None,
+        user_env_var: str | None,
+        password_secret: str | None,
+        wallet_password_secret: str | None,
+    ) -> dict[str, Any]:
+        """The CredentialsDTO, where an entry not given keeps the one already bound, and a username falls back to the default env var."""
+        bound = self._user_credentials or {}
+        password_secret = password_secret or (
+            None if password else bound.get("password_secret_name")
+        )
+        if not (password or password_secret):
+            raise ValueError(
+                "A password (`password` or `password_secret`) is required."
+            )
+        body = {
+            "username": _credential_entry(
+                "envVarName",
+                user_env_var
+                or (None if user else bound.get("username_env_var"))
+                or f"DS_{self._env_name()}_{self._featurestore_id}_USER",
+                user,
+            ),
+            "password": _credential_entry(
+                "secretName",
+                password_secret or self._default_secret_name("password"),
+                password,
+            ),
+        }
+        wallet_path = wallet_path or bound.get("wallet_path")
+        if wallet_path:
+            body["walletPath"] = wallet_path
+            wallet_password_secret = wallet_password_secret or (
+                None if wallet_password else bound.get("wallet_password_secret_name")
+            )
+        if wallet_password or wallet_password_secret:
+            body["walletPassword"] = _credential_entry(
+                "secretName",
+                wallet_password_secret or self._default_secret_name("wallet_password"),
+                wallet_password,
+            )
+        return body
+
+    def _validate_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """The backend's verdict on the credentials, with its error code and message when they are rejected."""
+        return self._data_source_credentials_api._validate(
+            self,
+            self._credentials_body(
+                user,
+                password,
+                wallet_path,
+                wallet_password,
+                user_env_var,
+                password_secret,
+                wallet_password_secret,
+            ),
+        )
+
+    @public
+    def validate_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> bool:
+        """Test your own credentials against this data source without storing them.
+
+        Only a data source with `credentials_mode` `PROVIDED` takes member credentials.
+        The backend opens a connection with exactly these values and runs `SELECT 1 FROM DUAL`.
+        Nothing is written to your account, so a rejected set of credentials leaves your existing binding untouched.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            if sc.validate_credentials(user="SCOTT", password="..."):
+                sc.set_credentials(user="SCOTT", password="...")
+            ```
+
+        Parameters:
+            user: The database username, stored in your account as an env var when you save it.
+            password: The database password, stored in your account as a secret when you save it.
+            wallet_path:
+                An Oracle wallet zip already uploaded to your home directory in this project, under `/Projects/<project>/Users/<username>/.datasources/<name>/`, where `<name>` is the lower-cased form of `<NAME>`.
+                The wallet has to be in HopsFS for the test to read it.
+                Defaults to the wallet already bound.
+            wallet_password: The password of the wallet, when it has one.
+            user_env_var:
+                The name of an env var in your account to take the username from, or to store it under.
+                Defaults to the env var already bound when no `user` is given, else to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
+            password_secret:
+                The name of a secret in your account to take the password from, or to store it under.
+                Defaults to the secret already bound when no `password` is given, else to `ds_<name>_<feature store id>_password`.
+            wallet_password_secret:
+                The name of a secret in your account to take the wallet password from, or to store it under.
+                Defaults to the secret already bound when no `wallet_password` is given, else to `ds_<name>_<feature store id>_wallet_password`.
+
+        Returns:
+            Whether the data source accepted the credentials.
+            The reason for a rejection is logged as a warning.
+
+        Raises:
+            ValueError: If no password is given, by value or by account entry name, and none is bound yet.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        result = self._validate_credentials(
+            user,
+            password,
+            wallet_path,
+            wallet_password,
+            user_env_var,
+            password_secret,
+            wallet_password_secret,
+        )
+        if not result.get("valid"):
+            _logger.warning(
+                "Data source '%s' rejected the credentials: %s",
+                self._name,
+                result.get("message"),
+            )
+        return bool(result.get("valid"))
+
+    @public
+    def set_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """Store your own credentials for this data source and bind them to it.
+
+        Only a data source with `credentials_mode` `PROVIDED` takes member credentials.
+        The backend validates the credentials first and stores nothing when they are rejected.
+        On success the password and wallet password become secrets in your account and the username an env var, both private to you, and every external feature group mounted from this data source is re-checked for your access.
+        From then on your reads through this data source use these credentials, starting with this object.
+        The backend never returns the values with the data source: the SDK reads the username, password and wallet password from your account entries each time it builds a connection, so a rotation is picked up at once.
+        Runtimes you start afterwards also receive them as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, next to `HOPS_DS_<NAME>_CONNECTOR_ID`, the id of the data source they belong to.
+        The SDK uses those env vars only when it cannot read your account, and never on an object whose credentials were set or deleted after the runtime started.
+        A name given for an entry that already exists in your account updates that entry.
+        An entry you do not give keeps the one already bound: `set_credentials(password="...")` rotates only the password, and keeps your username, your wallet and its password.
+        A username never bound and not given is read from the default env var `DS_<NAME>_<feature store id>_USER` in your account.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            sc.set_credentials(user="SCOTT", password="...")
+
+            # reuse a secret you already keep in your account
+            sc.set_credentials(user="SCOTT", password_secret="my_oracle_pwd")
+            ```
+
+        Parameters:
+            user: The database username, stored in your account as an env var.
+            password: The database password, stored in your account as a secret.
+            wallet_path:
+                An Oracle wallet zip already uploaded to your home directory in this project, under `/Projects/<project>/Users/<username>/.datasources/<name>/`, where `<name>` is the lower-cased form of `<NAME>`.
+                A wallet anywhere else is refused.
+                Defaults to the wallet already bound; to drop a bound wallet, call `delete_credentials()` first.
+            wallet_password: The password of the wallet, when it has one.
+            user_env_var:
+                The name of an env var in your account to take the username from, or to store it under.
+                Defaults to the env var already bound when no `user` is given, else to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
+            password_secret:
+                The name of a secret in your account to take the password from, or to store it under.
+                Defaults to the secret already bound when no `password` is given, else to `ds_<name>_<feature store id>_password`.
+            wallet_password_secret:
+                The name of a secret in your account to take the wallet password from, or to store it under.
+                Defaults to the secret already bound when no `wallet_password` is given, else to `ds_<name>_<feature store id>_wallet_password`.
+
+        Returns:
+            Your binding: its `status`, the names of the account entries it references, the wallet path and `validated_at`.
+
+        Raises:
+            ValueError: If no password is given, by value or by account entry name, and none is bound yet.
+            hopsworks.client.exceptions.FeatureStoreException: If the data source rejected the credentials; the message carries the data source's own error.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        body = self._credentials_body(
+            user,
+            password,
+            wallet_path,
+            wallet_password,
+            user_env_var,
+            password_secret,
+            wallet_password_secret,
+        )
+        try:
+            binding = self._data_source_credentials_api._set(self, body)
+        except RestAPIError as err:
+            if (
+                err.error_code
+                == RestAPIError.FeatureStoreErrorCode.DATA_SOURCE_CREDENTIALS_INVALID
+            ):
+                raise FeatureStoreException(
+                    err.user_message
+                    or f"Data source '{self._name}' rejected the credentials."
+                ) from err
+            raise
+        self._user_credentials = humps.decamelize(binding)
+        self._runtime_env_stale = True
+        return self._user_credentials
+
+    @public
+    def get_credentials(self) -> dict[str, Any]:
+        """Your binding for this data source, as names only.
+
+        Only a data source with `credentials_mode` `PROVIDED` has member bindings.
+        Values are never returned: the password and wallet password live in your account's secrets and the username in your account's env vars.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            binding = sc.get_credentials()
+            if binding["status"] != "VALID":
+                sc.set_credentials(user="SCOTT", password="...")
+            ```
+
+        Returns:
+            The binding with its `status` (`VALID`, `MISSING` or `INCOMPLETE`), `username_env_var`, `password_secret_name`, `wallet_path`, `wallet_password_secret_name` and `validated_at`.
+            `INCOMPLETE` means a referenced secret or env var was deleted from your account since you saved the binding.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        self._user_credentials = humps.decamelize(
+            self._data_source_credentials_api._get(self)
+        )
+        return self._user_credentials
+
+    @public
+    def delete_credentials(self) -> None:
+        """Remove your binding for this data source, the wallet file it referenced and its default-named account entries.
+
+        The env var `DS_<NAME>_<feature store id>_USER` and the secrets `ds_<name>_<feature store id>_password` and `ds_<name>_<feature store id>_wallet_password` are deleted from your account.
+        An entry you named yourself with `user_env_var`, `password_secret` or `wallet_password_secret` is kept, since you may use it elsewhere.
+        Your access state on every external feature group mounted from this data source becomes `NO_CREDENTIALS`.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            sc.delete_credentials()
+            ```
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        self._data_source_credentials_api._delete(self)
+        self._runtime_env_stale = True
+        self._user_credentials = {"status": "MISSING"}
+        self._wallet_path = None
 
     def _inline_tns_url(self, wallet_dir: str) -> str:
         """Build a JDBC URL with the TNS descriptor inlined from tnsnames.ora.
@@ -3589,27 +4025,32 @@ class SqlConnector(StorageConnector):
         a single partition so no executor ever needs the wallet files.
         Returns ``None`` when no wallet path is configured.
         """
-        if not self._wallet_path:
-            return None
-        local_path = engine._get_instance()._add_file(
-            self._wallet_path, distribute=False
-        )
+        local_path = self._local_wallet_path()
+        if not local_path:
+            hopsfs_path = self._hopsfs_wallet_path()
+            if not hopsfs_path:
+                return None
+            local_path = engine._get_instance()._add_file(hopsfs_path, distribute=False)
         if local_path.endswith(".zip") and os.path.isfile(local_path):
             return util._extract_zip(local_path)
         return local_path
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
+        # The backend refuses credential fields on a PROVIDED connector, whose credentials live in
+        # each member's account.
+        provided = self._credentials_mode == self.PROVIDED
         payload.update(
             {
                 "databaseType": self._database_type,
                 "host": self._host,
                 "port": self._port,
                 "database": self._database,
-                "user": self._user,
-                "password": self._password,
-                "walletPath": self._wallet_path,
-                "walletPassword": self._wallet_password,
+                "credentialsMode": self._credentials_mode,
+                "user": None if provided else self._user,
+                "password": None if provided else self._password,
+                "walletPath": None if provided else self._wallet_path,
+                "walletPassword": None if provided else self._wallet_password,
                 "arguments": (
                     [{"name": k, "value": v} for k, v in self._arguments.items()]
                     if self._arguments
@@ -3620,6 +4061,7 @@ class SqlConnector(StorageConnector):
         return payload
 
     def spark_options(self) -> dict[str, Any]:
+        self._require_credentials()
         # The connection settings below are built from the connector's own fields, so an argument
         # repeating one is dropped rather than forwarded. Spark hands anything it does not
         # recognise to the JDBC driver as a connection property, where a stray ``dbs_port`` or
@@ -3644,9 +4086,9 @@ class SqlConnector(StorageConnector):
             # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
             # when a wallet is configured for mTLS.
             if host_port:
-                prefix = "tcps://" if self._wallet_path else ""
+                prefix = "tcps://" if self.wallet_path else ""
                 opts["url"] = f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
-            elif self._wallet_path:
+            elif self.wallet_path:
                 # Wallet-only: the database field is a TNS alias resolved via
                 # the wallet's tnsnames.ora — the URL carries only the alias.
                 opts["url"] = f"jdbc:{scheme}:@{self._database}"
@@ -3672,23 +4114,27 @@ class SqlConnector(StorageConnector):
 
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external SQL connector library."""
+        self._require_credentials()
         props = {
             "host": self.host,
             "port": self.port,
             "database": self.database,
             "database_type": self.database_type,
         }
-        if self.user:
-            props["user"] = self.user
-        if self.password:
-            props["password"] = self.password
+        # Each read of a provided credential asks the caller's account, so read it once.
+        user, password = self.user, self.password
+        if user:
+            props["user"] = user
+        if password:
+            props["password"] = password
         if self._database_type == self.ORACLE:
             # Oracle Python drivers (e.g. oracledb) expect ``service_name``.
             props["service_name"] = self.database
-            if self._wallet_path:
-                props["wallet_path"] = self._wallet_path
-            if self._wallet_password:
-                props["wallet_password"] = self._wallet_password
+            wallet_path, wallet_password = self.wallet_path, self.wallet_password
+            if wallet_path:
+                props["wallet_path"] = wallet_path
+            if wallet_password:
+                props["wallet_password"] = wallet_password
         if self._database_type == self.CLICKHOUSE:
             # clickhouse-connect's name for the JDBC ``ssl=true`` argument.
             props["secure"] = str(self._arguments.get("ssl", "false")).lower() == "true"
@@ -3757,6 +4203,7 @@ class SqlConnector(StorageConnector):
         if self._database_type == self.ORACLE:
             wallet_dir = self._prepare_wallet()
             if wallet_dir:
+                wallet_password = self.wallet_password
                 jks = os.path.join(wallet_dir, "keystore.jks")
                 trust_jks = os.path.join(wallet_dir, "truststore.jks")
                 if os.path.isfile(jks) and os.path.isfile(trust_jks):
@@ -3768,13 +4215,9 @@ class SqlConnector(StorageConnector):
                         options["url"] = self._inline_tns_url(wallet_dir)
                     options["javax.net.ssl.keyStore"] = jks
                     options["javax.net.ssl.trustStore"] = trust_jks
-                    if self._wallet_password:
-                        options["javax.net.ssl.keyStorePassword"] = (
-                            self._wallet_password
-                        )
-                        options["javax.net.ssl.trustStorePassword"] = (
-                            self._wallet_password
-                        )
+                    if wallet_password:
+                        options["javax.net.ssl.keyStorePassword"] = wallet_password
+                        options["javax.net.ssl.trustStorePassword"] = wallet_password
                     return engine._get_instance()._read_jdbc_on_driver(
                         options, dataframe_type
                     )
@@ -3784,14 +4227,22 @@ class SqlConnector(StorageConnector):
                 options["oracle.net.wallet_location"] = (
                     f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
                 )
-                if self._wallet_password:
-                    options["oracle.net.wallet_password"] = self._wallet_password
+                if wallet_password:
+                    options["oracle.net.wallet_password"] = wallet_password
                 return engine._get_instance()._read_jdbc_on_driver(
                     options, dataframe_type
                 )
         return engine._get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
+
+
+def _credential_entry(name_key: str, name: str, value: str | None) -> dict[str, str]:
+    """One CredentialsDTO entry: with a value it creates or updates the account entry, without one it references it."""
+    entry = {name_key: name}
+    if value:
+        entry["value"] = value
+    return entry
 
 
 class OpenSearchConnector(StorageConnector):
@@ -3976,6 +4427,479 @@ class OpenSearchConnector(StorageConnector):
         raise NotImplementedError(
             "Cannot read from OpenSearch connector. Please use feature_group.read() instead."
         )
+
+
+@public
+class ElasticsearchConnector(StorageConnector):
+    """Elasticsearch storage connector.
+
+    Use this connector to browse the indices, aliases and data streams of an Elasticsearch cluster and to register an external feature group on one of them.
+    With the Python engine, external feature groups are read through the Hopsworks Query Service; with the Spark engine, through the `elasticsearch-spark` connector, whose jar must be on the Spark classpath.
+    The password or API key is kept in the Hopsworks secret store.
+
+    Example:
+        ```python
+        fs = ...
+        sc = fs.get_storage_connector("my_elasticsearch")
+        events = sc.get_tables()
+        fg = fs.create_external_feature_group(
+            name="events",
+            version=1,
+            primary_key=["event_id"],
+            data_source=events[0],
+        )
+        fg.save()
+        ```
+    """
+
+    type = StorageConnector.ELASTICSEARCH
+    ELASTICSEARCH_FORMAT = "org.elasticsearch.spark.sql"
+    AUTH_NONE = "NONE"
+    AUTH_BASIC = "BASIC"
+    AUTH_API_KEY = "API_KEY"
+    _FEATURE_NAME_MAX_LENGTH = 63
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        scheme: str | None = None,
+        verify: bool | None = None,
+        auth_type: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        api_key: str | None = None,
+        default_index: str | None = None,
+        trust_store_path: str | None = None,
+        trust_store_password: str | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._scheme = scheme
+        self._verify = verify
+        self._auth_type = auth_type
+        self._username = username
+        self._password = password
+        self._api_key = api_key
+        self._default_index = default_index
+        self._trust_store_path = trust_store_path
+        self._trust_store_password = trust_store_password
+        self._elasticsearch_api = elasticsearch_api.ElasticsearchApi()
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments}
+            if isinstance(arguments, list)
+            else dict(arguments)
+            if isinstance(arguments, dict)
+            else {}
+        )
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Hostname or IP address of an Elasticsearch node or load balancer."""
+        return self._host
+
+    @public
+    @property
+    def port(self) -> int | None:
+        """HTTP port of the cluster; 9200 when unset."""
+        return self._port
+
+    @public
+    @property
+    def scheme(self) -> str | None:
+        """`https` (the default) or `http`."""
+        return self._scheme
+
+    @public
+    @property
+    def verify(self) -> bool | None:
+        """Whether the server certificate and hostname are verified; true when unset.
+
+        Spark reads honour `False` only for a single self-signed certificate; use a truststore for a private CA.
+        """
+        return self._verify
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`NONE`, `BASIC` (username and password) or `API_KEY`."""
+        return self._auth_type
+
+    @public
+    @property
+    def username(self) -> str | None:
+        """Username for `BASIC` authentication."""
+        return self._username
+
+    @public
+    @property
+    def password(self) -> str | None:
+        """Password for `BASIC` authentication, resolved from the secret store."""
+        return self._password
+
+    @public
+    @property
+    def api_key(self) -> str | None:
+        """Encoded API key for `API_KEY` authentication, resolved from the secret store."""
+        return self._api_key
+
+    @public
+    @property
+    def default_index(self) -> str | None:
+        """Index, alias, data stream or pattern read when the data source names none."""
+        return self._default_index
+
+    @public
+    @property
+    def trust_store_path(self) -> str | None:
+        """HopsFS path of a JKS truststore holding the CA of a cluster with a private certificate."""
+        return self._trust_store_path
+
+    @public
+    @property
+    def arguments(self) -> dict[str, Any]:
+        """Extra options, e.g. `page_size` and `request_timeout` for the Query Service, or `es.*` Spark settings."""
+        return self._arguments
+
+    def _ensure_full(self) -> None:
+        """Refetch the connector when it is the basic-info copy a data source or feature group carries.
+
+        The index chosen through ``DataSource.table`` survives the refetch, which reinitialises every field.
+        """
+        if self._host:
+            return
+        index = self._default_index
+        self._refetch()
+        if index:
+            self._default_index = index
+
+    def _base_url(self) -> str:
+        host = self._host or ""
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"{(self._scheme or 'https').lower()}://{host}:{self._port or 9200}"
+
+    def _resolved_auth_type(self) -> str:
+        if self._auth_type:
+            return self._auth_type.upper()
+        if self._username:
+            return self.AUTH_BASIC
+        return self.AUTH_API_KEY if self._api_key else self.AUTH_NONE
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "scheme": self._scheme,
+                "verify": self._verify,
+                "authType": self._auth_type,
+                "username": self._username,
+                "password": self._password,
+                "apiKey": self._api_key,
+                "defaultIndex": self._default_index,
+                "trustStorePath": self._trust_store_path,
+                "trustStorePassword": self._trust_store_password,
+                "arguments": [
+                    {"name": k, "value": v} for k, v in self._arguments.items()
+                ]
+                or None,
+            }
+        )
+        return payload
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return keyword arguments for the official `elasticsearch` Python client.
+
+        ```python
+        from elasticsearch import Elasticsearch
+
+        sc = fs.get_storage_connector("my_elasticsearch")
+        es = Elasticsearch(**sc.connector_options())
+        ```
+
+        The client library is not a Hopsworks dependency; install the major version that matches the cluster.
+        """
+        self._ensure_full()
+        opts: dict[str, Any] = {"hosts": [self._base_url()]}
+        auth_type = self._resolved_auth_type()
+        if auth_type == self.AUTH_BASIC:
+            opts["basic_auth"] = (self._username, self._password)
+        elif auth_type == self.AUTH_API_KEY:
+            opts["api_key"] = self._api_key
+        if (self._scheme or "https").lower() == "https":
+            if self._verify is False:
+                opts["verify_certs"] = False
+                opts["ssl_show_warn"] = False
+            else:
+                ca_certs = self._create_ca_certs()
+                if ca_certs:
+                    opts["ca_certs"] = ca_certs
+        return opts
+
+    def spark_options(self) -> dict[str, Any]:
+        """Return options for `spark.read.format("org.elasticsearch.spark.sql")`.
+
+        With `verify=False` the Spark connector accepts a single self-signed certificate only; a cluster whose certificate chains to a private CA needs `trust_store_path` instead.
+        """
+        self._ensure_full()
+        # Arguments first, so the address, TLS and secret-backed auth settings below always win.
+        opts: dict[str, Any] = {
+            k: v for k, v in self._arguments.items() if k.startswith("es.")
+        }
+        opts |= {
+            "es.nodes": self._host,
+            "es.port": str(self._port or 9200),
+            # Talk to the given address only: cluster-internal node addresses are rarely reachable from Spark.
+            "es.nodes.wan.only": "true",
+            "es.net.ssl": str((self._scheme or "https").lower() == "https").lower(),
+        }
+        auth_type = self._resolved_auth_type()
+        if auth_type == self.AUTH_BASIC:
+            opts["es.net.http.auth.user"] = self._username
+            opts["es.net.http.auth.pass"] = self._password
+        elif auth_type == self.AUTH_API_KEY:
+            opts["es.net.http.header.Authorization"] = f"ApiKey {self._api_key}"
+        if self._verify is False:
+            opts["es.net.ssl.cert.allow.self.signed"] = "true"
+        elif self._trust_store_path:
+            opts["es.net.ssl.truststore.location"] = (
+                engine._get_instance()._add_file_as_url(self._trust_store_path)
+            )
+            if self._trust_store_password:
+                opts["es.net.ssl.truststore.pass"] = self._trust_store_password
+        return opts
+
+    def _create_ca_certs(self) -> str | None:
+        if getattr(self, "_ca_certs_path", None):
+            return self._ca_certs_path
+        if not self._trust_store_path:
+            return None
+        local_trust_store_path = engine._get_instance()._add_file(
+            self._trust_store_path
+        )
+        self._ca_certs_path, _, _ = client._get_instance()._write_pem(
+            local_trust_store_path,
+            self._trust_store_password,
+            local_trust_store_path,
+            self._trust_store_password,
+            f"elasticsearch_sc_{client._get_instance()._project_id}_{self._id}",
+        )
+        return self._ca_certs_path
+
+    @classmethod
+    def _to_feature_name(cls, path: str) -> str:
+        # Must match flyingduck's elasticsearch_reader.to_feature_name, so Spark and the Query Service agree on names.
+        name = re.sub(r"[^a-z0-9_]", "_", path.lower()).strip("_")
+        name = re.sub(r"__+", "_", name)
+        if not name or not name[0].isalpha():
+            name = "f_" + name
+        return name[: cls._FEATURE_NAME_MAX_LENGTH]
+
+    def _get_mapping(self, index: str, spark_options: dict[str, Any]) -> dict[str, Any]:
+        """Fetch the `_mapping` of every index behind `index`, connecting as the Spark reader does.
+
+        The address, path prefix, headers and credentials come from `spark_options`, so overrides passed to the read apply here too.
+        """
+        node = str(spark_options.get("es.nodes") or self._host).split(",")[0].strip()
+        ssl = str(spark_options.get("es.net.ssl", "true")).lower() == "true"
+        scheme, _, address = node.rpartition("://")
+        scheme = scheme or ("https" if ssl else "http")
+        address = address.rstrip("/")
+        # A node without its own port takes es.port, scheme-qualified or not, as elasticsearch-hadoop does.
+        if re.search(r"(^[^:]*|\])(:\d+)$", address) is None:
+            port = spark_options.get("es.port") or 9200
+            bracketed = ":" in address and not address.startswith("[")
+            address = f"[{address}]:{port}" if bracketed else f"{address}:{port}"
+        node = f"{scheme}://{address}"
+        prefix = str(spark_options.get("es.nodes.path.prefix") or "").strip("/")
+        base_url = node.rstrip("/") + (f"/{prefix}" if prefix else "")
+        user = spark_options.get("es.net.http.auth.user")
+        headers = {
+            key[len("es.net.http.header.") :]: str(value)
+            for key, value in spark_options.items()
+            if key.startswith("es.net.http.header.")
+        }
+        verify: bool | str = True
+        if (
+            ssl
+            and str(
+                spark_options.get("es.net.ssl.cert.allow.self.signed", "false")
+            ).lower()
+            == "true"
+        ):
+            verify = False
+        elif ssl:
+            verify = self._create_ca_certs() or True
+        return self._elasticsearch_api._get_mapping(
+            base_url,
+            index,
+            (user, spark_options.get("es.net.http.auth.pass")) if user else None,
+            headers,
+            verify,
+            engine._get_instance()._run_where_spark_runs,
+        )
+
+    @staticmethod
+    def _object_paths(mapping_response: dict[str, Any]) -> set[str]:
+        """Return the dotted paths mapped as objects with properties in any index, which the Query Service flattens.
+
+        Every other field, `nested` and `geo_point` included, is one feature even when Spark reads it as a struct.
+        """
+        paths: set[str] = set()
+
+        def visit(properties, prefix):
+            for field, spec in properties.items():
+                if "properties" in spec and spec.get("type", "object") == "object":
+                    paths.add(prefix + field)
+                    visit(spec["properties"], prefix + field + ".")
+
+        for index_mapping in mapping_response.values():
+            visit((index_mapping.get("mappings") or {}).get("properties") or {}, "")
+        return paths
+
+    @classmethod
+    def _flatten_columns(cls, dataframe: Any, object_paths: set[str]) -> Any:
+        """Flatten object fields into one column per leaf, named and shaped as the Query Service returns them.
+
+        An object field holding an array of objects gives one array column per leaf, and arrays met along the way are concatenated into one list.
+        Any other struct or array of structs, such as a `nested` or `geo_point` field, becomes a JSON string.
+        """
+        from pyspark.sql import functions as F
+        from pyspark.sql.types import ArrayType, StructType
+
+        columns = []
+        sources: dict[str, str] = {}
+
+        def visit(fields, parents, parent, in_array):
+            # parent is a struct column, or an array of structs once an array has been crossed.
+            for field in fields:
+                parts = [*parents, field.name]
+                path = ".".join(parts)
+                column = (
+                    F.col("`" + field.name.replace("`", "``") + "`")
+                    if parent is None
+                    else parent.getField(field.name)
+                )
+                data_type = field.dataType
+                is_array = isinstance(data_type, ArrayType)
+                element = data_type.elementType if is_array else data_type
+                # Spark nests one array level per array crossed; the Query Service returns one flat list.
+                # flatten() is null when any inner array is, so an element missing the field is dropped first.
+                if in_array and is_array:
+                    column = F.flatten(
+                        F.filter(column, lambda inner: inner.isNotNull())
+                    )
+                if path in object_paths and isinstance(element, StructType):
+                    visit(element.fields, parts, column, in_array or is_array)
+                    continue
+                name = cls._to_feature_name(path)
+                if name in sources:
+                    raise ValueError(
+                        f"Elasticsearch fields '{sources[name]}' and '{path}' both map to "
+                        f"feature name '{name}'; rename one of the fields in Elasticsearch"
+                    )
+                sources[name] = path
+                if in_array:
+                    # The Query Service skips elements without the leaf and gives null when none has it. An
+                    # array-valued leaf already lost its missing elements before flatten(), and keeps explicit nulls.
+                    if not is_array:
+                        column = F.filter(column, lambda value: value.isNotNull())
+                    column = F.when(F.size(column) > 0, column)
+                if isinstance(element, StructType):
+                    column = F.to_json(column)
+                columns.append(column.alias(name))
+
+        visit(dataframe.schema.fields, [], None, False)
+        return dataframe.select(*columns)
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Read an index into a dataframe with the Spark engine.
+
+        With the Python engine, create an external feature group on the index and read it with [`FeatureGroup.read`][hsfs.feature_group.FeatureGroup.read].
+
+        Parameters:
+            query: Index, alias, data stream or pattern to read, or a JSON query DSL document (a bare query clause or a body with a `query` key) applied to the default index.
+            data_format: Not used for Elasticsearch.
+            options: Extra `es.*` options for the Spark reader; fields holding arrays must be listed in `es.read.field.as.array.include`.
+                The truststore comes from the connector's `trust_store_path` only.
+            path: Not used for Elasticsearch.
+            dataframe_type: Type of the returned dataframe.
+
+        Returns:
+            `DataFrame` with object fields flattened into `parent_child` columns.
+
+        Raises:
+            NotImplementedError: With the Python engine.
+            ValueError: If neither the query nor the connector names an index, or the options or connector arguments set a truststore.
+        """
+        if engine._get_type() != "spark":
+            raise NotImplementedError(
+                "Reading an Elasticsearch connector directly needs the Spark engine. "
+                "With the Python engine, create an external feature group on the index and use feature_group.read()."
+            )
+        import json
+
+        self._ensure_full()
+        # The mapping request trusts the connector's truststore, so Spark must not be handed another.
+        truststore_overrides = [
+            key
+            for key in ("es.net.ssl.truststore.location", "es.net.ssl.truststore.pass")
+            if key in (options or {}) or key in self._arguments
+        ]
+        if truststore_overrides:
+            raise ValueError(
+                f"Elasticsearch read does not take {', '.join(truststore_overrides)}: "
+                "set trust_store_path and trust_store_password on the connector instead."
+            )
+        merged = {**self.spark_options(), **(options or {})}
+        index = self._default_index
+        text = (query or "").strip()
+        if text.startswith("{"):
+            body = json.loads(text)
+            merged["es.query"] = json.dumps(
+                body if "query" in body else {"query": body}
+            )
+        elif text:
+            index = text
+        if not index:
+            raise ValueError(
+                "Elasticsearch read needs an index: pass it as the query or set a default index on the connector."
+            )
+        merged["es.resource"] = index
+        dataframe = engine._get_instance()._read(
+            self, self.ELASTICSEARCH_FORMAT, merged, None, "spark"
+        )
+        dataframe = self._flatten_columns(
+            dataframe, self._object_paths(self._get_mapping(index, merged))
+        )
+        return engine._get_instance()._return_dataframe_type(dataframe, dataframe_type)
 
 
 class CRMSource(Enum):

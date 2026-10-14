@@ -31,6 +31,9 @@ if TYPE_CHECKING:
 
 
 class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
+    def _test_data_source_access(self, feature_group) -> dict:
+        return self._feature_group_api._test_data_source_access(feature_group)
+
     def _save(self, feature_group):
         if not feature_group.data_source:
             raise FeatureStoreException(

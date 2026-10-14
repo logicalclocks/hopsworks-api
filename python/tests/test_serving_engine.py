@@ -20,6 +20,8 @@ import threading
 import time
 
 import pytest
+from hopsworks_common.client.exceptions import ModelServingException
+from hsml.constants import PREDICTOR_STATE
 from hsml.engine import serving_engine
 
 
@@ -256,8 +258,168 @@ class TestSave:
         eng._save(deployment, await_update=0)
 
         mock_upload.assert_called_once_with(deployment)
-        eng._update.assert_called_once_with(deployment, 0)
+        eng._update.assert_called_once_with(deployment, 0, False)
         eng._create.assert_not_called()
+
+    def test_new_version_is_passed_to_update(self, mocker):
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+
+        deployment = _FakeDeployment(
+            _FakePredictor(script_file="./p.py"), name="dep", id=7
+        )
+
+        eng._save(deployment, await_update=0, new_version=True)
+
+        eng._update.assert_called_once_with(deployment, 0, True)
+
+    def test_new_version_rejected_on_create(self, mocker):
+        eng = self._engine(mocker)
+        mock_upload = mocker.patch.object(eng, "_upload_local_serving_files")
+        mock_publish = mocker.patch.object(eng, "_publish_schema")
+
+        deployment = _FakeDeployment(
+            _FakePredictor(script_file="./p.py"), name="dep", id=None
+        )
+
+        with pytest.raises(ModelServingException):
+            eng._save(deployment, await_update=0, new_version=True)
+        # Rejected before anything is written to HopsFS.
+        mock_upload.assert_not_called()
+        mock_publish.assert_not_called()
+        eng._create.assert_not_called()
+
+
+class TestVersionedSave:
+    """A new version is only asked of a backend that keeps versions, and the refusal comes before any write."""
+
+    def _engine(self, mocker, supports):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._supports_versions.return_value = supports
+        eng._update = mocker.Mock()
+        eng._create = mocker.Mock()
+        return eng
+
+    def _deployment(self):
+        return _FakeDeployment(_FakePredictor(script_file="./p.py"), name="dep", id=7)
+
+    def test_old_backend_is_rejected_before_any_write(self, mocker):
+        eng = self._engine(mocker, supports=False)
+        mock_upload = mocker.patch.object(eng, "_upload_local_serving_files")
+        mock_publish = mocker.patch.object(eng, "_publish_schema")
+
+        with pytest.raises(ModelServingException, match="nothing was saved"):
+            eng._save(self._deployment(), await_update=0, new_version=True)
+        mock_upload.assert_not_called()
+        mock_publish.assert_not_called()
+        eng._update.assert_not_called()
+
+    def test_in_place_save_does_not_probe(self, mocker):
+        eng = self._engine(mocker, supports=False)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        mocker.patch.object(eng, "_publish_schema")
+        deployment = self._deployment()
+
+        eng._save(deployment, await_update=0)
+
+        eng._serving_api._supports_versions.assert_not_called()
+        eng._update.assert_called_once_with(deployment, 0, False)
+
+
+class TestRollback:
+    """Rollback goes through the update state gate, except that it is accepted while updating."""
+
+    def _engine(self, mocker, status):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._get_versions.return_value = []
+        eng._poll_deployment_status = mocker.Mock(return_value=None)
+        deployment = mocker.Mock()
+        deployment.get_state.return_value = mocker.Mock(status=status)
+        deployment.get_url.return_value = "http://x"
+        return eng, deployment
+
+    @pytest.mark.parametrize(
+        "status", [PREDICTOR_STATE.STATUS_RUNNING, PREDICTOR_STATE.STATUS_UPDATING]
+    )
+    def test_running_or_updating_deployment_is_rolled_and_awaited(self, mocker, status):
+        eng, deployment = self._engine(mocker, status)
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_called_once_with(deployment, 2)
+        eng._poll_deployment_status.assert_called_once_with(
+            deployment, PREDICTOR_STATE.STATUS_RUNNING, 9
+        )
+
+    def test_rollback_to_the_active_version_does_nothing(self, mocker, capsys):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_RUNNING)
+        eng._serving_api._get_versions.return_value = [
+            mocker.Mock(version=2, active=True),
+            mocker.Mock(version=1, active=False),
+        ]
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_not_called()
+        assert "Deployment updated" not in capsys.readouterr().out
+
+    def test_await_none_does_not_wait(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_RUNNING)
+
+        eng._rollback(deployment, 2, None)
+
+        eng._poll_deployment_status.assert_called_once_with(
+            deployment, PREDICTOR_STATE.STATUS_RUNNING, 0
+        )
+
+    def test_stopped_deployment_only_moves_the_pointer(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_STOPPED)
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_called_once_with(deployment, 2)
+        eng._poll_deployment_status.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            PREDICTOR_STATE.STATUS_STARTING,
+            PREDICTOR_STATE.STATUS_STOPPING,
+        ],
+    )
+    def test_busy_deployment_is_rejected(self, mocker, status):
+        eng, deployment = self._engine(mocker, status)
+
+        with pytest.raises(ModelServingException):
+            eng._rollback(deployment, 2, 9)
+        eng._serving_api._rollback.assert_not_called()
+
+    def test_save_is_still_rejected_while_updating(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_UPDATING)
+
+        with pytest.raises(ModelServingException):
+            eng._update(deployment, 9)
+        eng._serving_api._put.assert_not_called()
+
+
+class TestPollDeploymentStatus:
+    @pytest.mark.parametrize("await_status", [1, 4])
+    def test_short_await_polls_once_then_raises(self, mocker, await_status):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        mocker.patch("time.sleep")
+        eng._get_available_instances = mocker.Mock(return_value=0)
+        deployment = mocker.Mock()
+        deployment.get_state.return_value = mocker.Mock(
+            status=PREDICTOR_STATE.STATUS_UPDATING
+        )
+
+        with pytest.raises(ModelServingException):
+            eng._poll_deployment_status(
+                deployment, PREDICTOR_STATE.STATUS_RUNNING, await_status
+            )
+        assert deployment.get_state.call_count == 1
 
 
 class TestSchemaPublishing:
@@ -759,6 +921,242 @@ class TestStartWithoutWaiting:
         eng._serving_api._post.assert_called_once()
 
 
+class TestStartAndSaveAwaitTheRoute:
+    """start() and save() wait for the ingress gateway to route a deployment that just reported Running."""
+
+    @pytest.fixture
+    def clock(self, mocker):
+        # The engine's own reference to time, not the time module: any other thread's
+        # time.sleep would otherwise advance this clock.
+        now = [0.0]
+        fake_time = mocker.Mock(wraps=time)
+        fake_time.monotonic.side_effect = lambda: now[0]
+        fake_time.sleep.side_effect = lambda seconds: now.__setitem__(
+            0, now[0] + seconds
+        )
+        mocker.patch.object(serving_engine, "time", fake_time)
+        return now
+
+    def _engine(self, mocker, routed):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._is_routed.side_effect = routed
+        return eng
+
+    def _deployment(self, mocker, serving_tool="KSERVE", api_protocol="REST"):
+        deployment = mocker.Mock(
+            model_server="PYTHON", has_model=True, api_protocol=api_protocol
+        )
+        deployment.name = "fraud"
+        deployment.predictor.serving_tool = serving_tool
+        return deployment
+
+    def test_a_routed_deployment_costs_one_probe(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [True])
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 1
+        assert clock[0] == 0
+        assert not recwarn.list
+
+    def test_returns_once_the_route_appears(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [False, False, True])
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 3
+        assert clock[0] == 1.5  # 0.5 + 1
+        assert not recwarn.list
+
+    def test_a_route_that_never_appears_warns_after_the_cap(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+
+        with pytest.warns(UserWarning, match="fraud"):
+            eng._await_route(self._deployment(mocker), 600)
+
+        assert clock[0] == serving_engine._ROUTE_WAIT_MAX_SECONDS
+
+    def test_the_wait_stays_within_the_callers_budget(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+
+        with pytest.warns(UserWarning):
+            eng._await_route(self._deployment(mocker), 5)
+
+        assert clock[0] == 5
+
+    def test_an_exhausted_budget_sends_no_probe(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+
+        eng._await_route(self._deployment(mocker), -3)
+
+        eng._serving_api._is_routed.assert_not_called()
+        assert not recwarn.list
+
+    def test_each_probe_waits_at_most_the_remaining_budget(self, mocker, clock):
+        calls = []
+
+        def probe(deployment, timeout):
+            calls.append((clock[0], timeout))
+            return False
+
+        eng = self._engine(mocker, probe)
+
+        with pytest.warns(UserWarning):
+            eng._await_route(self._deployment(mocker), 7)
+
+        assert [timeout for _, timeout in calls] == [5, 5, 5, 3.5]
+        assert all(timeout <= 7 - at for at, timeout in calls)
+
+    def test_a_probe_that_times_out_is_retried(self, mocker, clock, recwarn):
+        answers = iter([False, True])
+
+        def probe(deployment, timeout):
+            clock[0] += timeout  # the request used its whole timeout
+            return next(answers)
+
+        eng = self._engine(mocker, probe)
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+        assert not recwarn.list
+
+    def test_probes_that_keep_timing_out_stay_within_the_budget(self, mocker, clock):
+        def probe(deployment, timeout):
+            clock[0] += timeout
+            return False
+
+        eng = self._engine(mocker, probe)
+
+        with pytest.warns(UserWarning, match="does not route"):
+            eng._await_route(self._deployment(mocker), 12)
+
+        assert clock[0] == 12
+
+    def test_a_grpc_deployment_is_probed_too(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [True])
+
+        eng._await_route(self._deployment(mocker, api_protocol="GRPC"), 600)
+
+        assert eng._serving_api._is_routed.call_count == 1
+        assert not recwarn.list
+
+    def test_a_failing_probe_only_warns(self, mocker, clock):
+        import requests
+
+        eng = self._engine(
+            mocker, requests.exceptions.ConnectionError("no route to host")
+        )
+
+        with pytest.warns(UserWarning, match="no route to host"):
+            eng._await_route(self._deployment(mocker), 600)
+
+    def test_a_deployment_served_through_hopsworks_is_not_probed(self, mocker, clock):
+        eng = self._engine(mocker, [False])
+
+        eng._await_route(self._deployment(mocker, serving_tool="DEFAULT"), 600)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def _starting_engine(self, mocker, routed, status_before):
+        eng = self._engine(mocker, routed)
+        eng._check_status = mocker.Mock(
+            return_value=(
+                status_before == PREDICTOR_STATE.STATUS_RUNNING,
+                mocker.Mock(status=status_before),
+            )
+        )
+        eng._get_min_starting_instances = mocker.Mock(return_value=1)
+        eng._get_starting_progress = mocker.Mock(return_value=(0, None))
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+        return eng
+
+    def test_start_waits_for_the_route_after_running(self, mocker, clock):
+        eng = self._starting_engine(
+            mocker, [False, True], PREDICTOR_STATE.STATUS_STOPPED
+        )
+
+        eng._start(self._deployment(mocker), await_status=600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+
+    def test_start_of_a_running_deployment_does_not_probe(self, mocker, clock):
+        eng = self._starting_engine(mocker, [False], PREDICTOR_STATE.STATUS_RUNNING)
+
+        eng._start(self._deployment(mocker), await_status=600)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def test_start_without_waiting_does_not_probe(self, mocker, clock):
+        eng = self._starting_engine(mocker, [False], PREDICTOR_STATE.STATUS_STOPPED)
+        eng._poll_deployment_status.return_value = None
+
+        eng._start(self._deployment(mocker), await_status=0)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def _running_deployment(self, mocker):
+        deployment = self._deployment(mocker)
+        deployment.get_state.return_value = mocker.Mock(
+            status=PREDICTOR_STATE.STATUS_RUNNING
+        )
+        return deployment
+
+    def test_save_of_a_running_deployment_waits_for_the_route(self, mocker, clock):
+        eng = self._engine(mocker, [False, True])
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+
+        eng._update(self._running_deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+
+    @pytest.mark.parametrize("await_update", [0, None])
+    def test_save_without_waiting_does_not_probe(self, mocker, clock, await_update):
+        eng = self._engine(mocker, [False])
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(return_value=None)
+
+        eng._update(self._running_deployment(mocker), await_update)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def test_the_warning_points_at_the_callers_start(self, mocker, clock):
+        eng = self._starting_engine(
+            mocker, lambda deployment, timeout: False, PREDICTOR_STATE.STATUS_STOPPED
+        )
+
+        with pytest.warns(UserWarning, match="does not route") as warned:
+            eng._start(self._deployment(mocker), await_status=600)
+
+        assert warned[0].filename == __file__
+
+    def test_the_warning_points_at_the_callers_save(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+
+        with pytest.warns(UserWarning, match="does not route") as warned:
+            eng._update(self._running_deployment(mocker), 600)
+
+        assert warned[0].filename == __file__
+
+    def test_a_failing_probes_warning_points_at_the_caller(self, mocker, clock):
+        eng = self._engine(mocker, RuntimeError("boom"))
+
+        with pytest.warns(UserWarning, match="boom") as warned:
+            eng._await_route(self._deployment(mocker), 600)
+
+        assert warned[0].filename == __file__
+
+
 class TestInitPredict:
     """Preparation happens once, off the request path, and never by predicting."""
 
@@ -930,6 +1328,106 @@ class TestWarmRestTransport:
         istio.assert_not_called()
 
 
+class TestIsRouted:
+    """Only the gateway's empty 404 means the deployment has no route yet."""
+
+    def _probe(self, mocker, answer, api_protocol="REST", timeout=None):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        if answer is not None:
+            istio.return_value._send_request.side_effect = answer
+        deployment = mocker.Mock(api_protocol=api_protocol)
+        deployment.name = "fraud"
+        deployment.project_namespace = "proj"
+        return serving_api.ServingApi()._is_routed(deployment, timeout=timeout), istio
+
+    def _error(self, mocker, status_code, content):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = mocker.Mock(status_code=status_code, content=content)
+        response.json.return_value = {}
+        return RestAPIError("url", response)
+
+    def test_the_gateways_empty_404_is_not_routed(self, mocker):
+        routed, istio = self._probe(mocker, self._error(mocker, 404, b""))
+
+        assert routed is False
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
+            timeout=None,
+        )
+
+    def test_the_timeout_bounds_the_probe(self, mocker):
+        _, istio = self._probe(mocker, None, timeout=3.5)
+
+        assert istio.return_value._send_request.call_args.kwargs["timeout"] == 3.5
+
+    @pytest.mark.parametrize(
+        ("status_code", "content"),
+        [(200, b"{}"), (415, b"Unsupported Media Type"), (404, b"not found")],
+    )
+    def test_a_grpc_deployment_is_probed_over_rest(self, mocker, status_code, content):
+        """The route belongs to the host, so a gRPC deployment's server answers the REST metadata GET too."""
+        answer = (
+            None if status_code == 200 else self._error(mocker, status_code, content)
+        )
+
+        routed, istio = self._probe(mocker, answer, api_protocol="GRPC")
+
+        assert routed is True
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
+            timeout=None,
+        )
+
+    @pytest.mark.parametrize(
+        ("status_code", "content"),
+        [
+            (404, b'{"error": "Model with name fraud does not exist."}'),
+            (503, b""),
+            (500, b"boom"),
+        ],
+    )
+    def test_any_answer_from_the_deployment_is_routed(
+        self, mocker, status_code, content
+    ):
+        routed, _ = self._probe(mocker, self._error(mocker, status_code, content))
+
+        assert routed is True
+
+    def test_a_metadata_answer_is_routed(self, mocker):
+        routed, _ = self._probe(mocker, None)
+
+        assert routed is True
+
+    def test_without_an_istio_client_it_counts_as_routed(self, mocker):
+        from hsml.core import serving_api
+
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance", return_value=None
+        )
+
+        assert serving_api.ServingApi()._is_routed(mocker.Mock()) is True
+
+    @pytest.mark.parametrize(
+        "failure",
+        ["ConnectionError", "ConnectTimeout", "ReadTimeout"],
+    )
+    def test_an_unreachable_or_silent_gateway_is_not_routed(self, mocker, failure):
+        import requests
+
+        routed, _ = self._probe(
+            mocker, getattr(requests.exceptions, failure)("no answer"), timeout=5
+        )
+
+        assert routed is False
+
+
 class TestSchemaIsRetryable:
     """A failed schema download must not leave the deployment permanently schema-less."""
 
@@ -965,3 +1463,34 @@ class TestSchemaIsRetryable:
         assert p.schema is None
         assert p.schema is None
         assert read.call_count == 1
+
+
+def test_dropped_scaling_fields_names_what_an_older_backend_left_out():
+    from hsml.engine.serving_engine import _dropped_scaling_fields
+
+    sent = {
+        "min_instances": 0,
+        "autoscaler": "KEDA",
+        "idle_scale_to_zero": True,
+        "idle_cooldown_seconds": 60,
+        "scale_metric": "CPU",
+    }
+    # A 5.2 backend keeps everything.
+    assert _dropped_scaling_fields(sent, dict(sent)) == []
+    # A 5.1 backend keeps the fields it knows and drops the rest without a word.
+    assert _dropped_scaling_fields(
+        sent, {"min_instances": 0, "scale_metric": "CPU"}
+    ) == [
+        "autoscaler",
+        "idle_scale_to_zero",
+        "idle_cooldown_seconds",
+    ]
+    # A false idle flag is left out of the stored configuration on purpose.
+    assert (
+        _dropped_scaling_fields(
+            {"min_instances": 1, "idle_scale_to_zero": False}, {"min_instances": 1}
+        )
+        == []
+    )
+    assert _dropped_scaling_fields(None, {}) == []
+    assert _dropped_scaling_fields(sent, None) == []

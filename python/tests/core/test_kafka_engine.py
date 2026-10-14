@@ -381,6 +381,126 @@ class TestKafkaEngine:
         # Assert
         assert result == f"{topic_name},0:0"
 
+    def _single_partition_consumer(self, mocker, get_watermark_offsets):
+        partition_metadata = PartitionMetadata()
+        partition_metadata.id = 0
+        topic_metadata = TopicMetadata()
+        topic_metadata.partitions = {partition_metadata.id: partition_metadata}
+        topic_mock = mocker.MagicMock()
+        topic_mock.topics = {"test_topic": topic_metadata}
+
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        consumer.get_watermark_offsets = get_watermark_offsets
+        mocker.patch(
+            "hsfs.core.kafka_engine._init_kafka_consumer",
+            return_value=consumer,
+        )
+        return consumer
+
+    def test_kafka_get_offsets_retries_a_partition_whose_leader_is_not_serving_yet(
+        self, mocker
+    ):
+        # Arrange: a topic created a moment ago, whose broker has not loaded partition 0 yet
+        sleep = mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        get_watermark_offsets = mocker.MagicMock(
+            side_effect=[
+                KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION)),
+                KafkaException(KafkaError(KafkaError.LEADER_NOT_AVAILABLE)),
+                (0, 11),
+            ]
+        )
+        consumer = self._single_partition_consumer(mocker, get_watermark_offsets)
+
+        # Act
+        result = kafka_engine._kafka_get_offsets(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            high=True,
+        )
+
+        # Assert
+        assert result == "test_topic,0:11"
+        assert get_watermark_offsets.call_count == 3
+        assert sleep.call_count == 2
+        consumer.close.assert_called_once()
+
+    def test_kafka_get_offsets_does_not_retry_other_errors(self, mocker):
+        # Arrange
+        sleep = mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        get_watermark_offsets = mocker.MagicMock(
+            side_effect=KafkaException(
+                KafkaError(KafkaError.TOPIC_AUTHORIZATION_FAILED)
+            )
+        )
+        consumer = self._single_partition_consumer(mocker, get_watermark_offsets)
+
+        # Act
+        with pytest.raises(KafkaException):
+            kafka_engine._kafka_get_offsets(
+                topic_name="test_topic",
+                feature_store_id=99,
+                offline_write_options={},
+                high=True,
+            )
+
+        # Assert
+        assert get_watermark_offsets.call_count == 1
+        sleep.assert_not_called()
+        consumer.close.assert_called_once()
+
+    def test_kafka_get_offsets_gives_up_on_a_leader_that_never_serves(self, mocker):
+        # Arrange: a clock that moves a second per reading, against a two second timeout
+        clock = iter(range(100))
+        mocker.patch(
+            "hsfs.core.kafka_engine.time.monotonic", side_effect=lambda: next(clock)
+        )
+        mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        get_watermark_offsets = mocker.MagicMock(
+            side_effect=KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION))
+        )
+        consumer = self._single_partition_consumer(mocker, get_watermark_offsets)
+
+        # Act
+        with pytest.raises(KafkaException):
+            kafka_engine._kafka_get_offsets(
+                topic_name="test_topic",
+                feature_store_id=99,
+                offline_write_options={"kafka_timeout": 2},
+                high=True,
+            )
+
+        # Assert
+        assert get_watermark_offsets.call_count == 2
+        consumer.close.assert_called_once()
+
+    def test_kafka_get_offsets_for_times_retries_a_partition_whose_leader_is_not_serving_yet(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        consumer = self._offsets_for_times_consumer(
+            mocker, partitions={0: (0, 11)}, results={0: (5, None)}
+        )
+        consumer.get_watermark_offsets.side_effect = [
+            KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION)),
+            (0, 11),
+            (0, 11),
+        ]
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1000,
+        )
+
+        # Assert
+        assert result == "test_topic,0:5"
+        assert consumer.get_watermark_offsets.call_count == 3
+
     def _offsets_for_times_consumer(self, mocker, partitions, results):
         """A consumer over `partitions` whose offsets_for_times answers with `results`.
 
@@ -943,6 +1063,67 @@ class TestKafkaEngine:
             "projectId": b"234",
             "subjectId": b"823",
         }
+
+    def test_wait_for_online_ingestion_waits_on_the_header_ingestion(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(
+            fg,
+            {"subjectId": b"823", "onlineIngestionId": b"42"},
+            {
+                "wait_for_online_ingestion": True,
+                "online_ingestion_options": {"timeout": 5},
+            },
+        )
+
+        # Assert: the latest ingestion is picked by id on the backend, which with several
+        # mysqlds can be an older one, so the wait has to follow the id the records carry.
+        fg.get_online_ingestion.assert_called_once_with(42)
+        fg.get_online_ingestion.return_value.wait_for_completion.assert_called_once_with(
+            options={"timeout": 5}
+        )
+        fg.get_latest_online_ingestion.assert_not_called()
+
+    def test_wait_for_online_ingestion_pruned_ingestion_warns(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+        fg.name = "test"
+        fg.get_online_ingestion.return_value = None
+
+        # Act
+        with pytest.warns(UserWarning, match="Online ingestion 42 .* was pruned"):
+            kafka_engine._wait_for_online_ingestion(
+                fg, {"onlineIngestionId": b"42"}, {"wait_for_online_ingestion": True}
+            )
+
+        # Assert
+        fg.get_online_ingestion.assert_called_once_with(42)
+
+    def test_wait_for_online_ingestion_not_requested(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(fg, {"onlineIngestionId": b"42"}, {})
+
+        # Assert
+        fg.get_online_ingestion.assert_not_called()
+
+    def test_wait_for_online_ingestion_without_ingestion_id(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(
+            fg, {"storage": b"offline"}, {"wait_for_online_ingestion": True}
+        )
+
+        # Assert: an offline-only write has no online ingestion, and waiting on any other
+        # would block on whichever ingestion happened to run before it.
+        fg.get_online_ingestion.assert_not_called()
+        fg.get_latest_online_ingestion.assert_not_called()
 
     def _acked_error(self, mocker, code, is_multi_part_insert=False):
         msg = mocker.Mock()

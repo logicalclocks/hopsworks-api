@@ -30,6 +30,16 @@ hudi.<project_name>_featurestore.<fg_name>_<fg_version>
   `delta.`/`hudi.` (or pass `--catalog delta`) when reading feature groups.
 - `--limit` caps rows (default soft cap; `--limit 0` = unlimited). `-f file.sql`
   runs a query from a file; `-i` reads from stdin.
+- **Do not query a Delta group before its first commit.** A stream feature group's
+  offline table has no Delta commit until its first materialization finishes. A
+  query before that fails with `DELTA_LAKE_INVALID_SCHEMA: Metadata not found in
+  transaction log`, and Trino caches the table's metadata, so the same error can
+  come back for up to about an hour after the data has landed.
+  `CALL delta.system.flush_metadata_cache(...)` is denied to project users. The
+  data is not missing: confirm it with `hops fg preview <fg>` and the
+  materialization job's log (the Kafka offsets it read), then count with
+  `hops sql` again later. Count only after `hops job history
+  <fg>_<v>_offline_fg_materialization` shows a finished run.
 
 ### Faster queries
 

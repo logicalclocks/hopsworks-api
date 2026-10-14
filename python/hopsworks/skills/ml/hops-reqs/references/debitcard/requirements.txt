@@ -1,0 +1,6 @@
+# Installed into <slug>-jobs-env, a clone of python-feature-pipeline (which ships
+# polars, pandas and the Hopsworks client), for the generator, the transaction
+# stream and training. scikit-learn must match inference-requirements.txt and
+# app-requirements.txt, since the deployment and the app unpickle the model.
+scikit-learn==1.8.0
+joblib==1.5.3

@@ -35,8 +35,10 @@ class TestEnvironment:
 
         # Assert: in-flight env operations are awaited first, then DELETE, then await uninstall.
         mock_await_env.assert_called_once_with("myenv", None)
-        mock_uninstall.assert_called_once_with("matplotlib", "myenv")
-        mock_await_lib.assert_called_once_with("myenv", "matplotlib", None)
+        mock_uninstall.assert_called_once_with("matplotlib", "myenv", None)
+        mock_await_lib.assert_called_once_with(
+            "myenv", "matplotlib", None, package_source=None
+        )
 
     def test_uninstall_no_await(self, mocker):
         # Arrange
@@ -70,7 +72,9 @@ class TestEnvironment:
 
         # Assert: both the preflight wait and the uninstall wait are bounded by what the caller asked for.
         mock_await_env.assert_called_once_with("myenv", 42)
-        mock_await_lib.assert_called_once_with("myenv", "matplotlib", 42)
+        mock_await_lib.assert_called_once_with(
+            "myenv", "matplotlib", 42, package_source=None
+        )
 
     @pytest.mark.parametrize(
         "method, library_name",
