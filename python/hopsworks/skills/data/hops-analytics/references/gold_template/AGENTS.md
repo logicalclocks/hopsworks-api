@@ -9,7 +9,7 @@ The skill **hops-analytics** (and its `references/gold-marts.md`) describes how 
 Every change you make to this layer updates `system.yaml` in the same commit, whatever it is for: a fix, maintenance, a new mart, table or metric, a changed requirement or schedule.
 Record why in `decisions`, naming the mart.
 `system.yaml` must always reflect what runs: before you finish, check that every mart, table, version, job and schedule it names is the one that exists, and correct it where it is not.
-Commit each change to this directory only (`git add -A -- .`, `git commit -- .`) and push it to the analytics pipeline's GitHub repository (`layer.repo`), which the silver layer shares.
+Commit each change to this directory only (`git add -A -- .`, `git commit -- .`) and push it to the analytics pipeline's GitHub repository (`layer.repo`), which the silver layer shares. With `layer.repo.url: local` the code stays in Hopsworks: commit, never push.
 
 ## Data marts
 

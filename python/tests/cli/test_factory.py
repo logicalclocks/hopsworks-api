@@ -187,6 +187,19 @@ def test_a_new_repository_needs_no_url_and_an_existing_one_a_clean_url():
         assert problem in factory_spec.repository_problems(answer, "Repo")[0]
 
 
+def test_code_kept_in_hopsworks_needs_no_url_and_creates_no_repository():
+    answer = {"create": False, "local": True}
+    assert factory_spec.repository_problems(answer, "Repo") == []
+    assert factory_spec.repo_record(answer) == {"url": "local", "provider": "local"}
+    assert not factory_spec.creates_repo(answer)
+    assert (
+        "Hopsworks only"
+        in factory_spec.repository_problems({"create": False, "local": False}, "Repo")[
+            0
+        ]
+    )
+
+
 INGEST = """\
 apiVersion: hopsworks.ai/factory/v1
 kind: Factory

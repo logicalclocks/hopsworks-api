@@ -165,7 +165,9 @@ change after a release sets `system.version` to that next version in the same co
 ### Before reqs: the repository
 
 The interview created `<slug>/` from the system template and recorded `system.repo`: `url: new`
-for a GitHub repository the build creates, or the `url` and `provider` (`github`, `gitlab`,
+for a GitHub repository the build creates, `url: local` for code kept in Hopsworks only (a git
+repository in `<slug>/` with no remote, committed on `main` at every phase and never pushed:
+**Kept in Hopsworks only** in `hops-reqs/references/repo.md`), or the `url` and `provider` (`github`, `gitlab`,
 `bitbucket` or `git`) of an existing repository the user gave. A `gitlab`, `bitbucket` or `git`
 provider follows **Other git hosts** in `hops-reqs/references/repo.md`: git alone, no `gh`, a
 merge request link in place of the pull request. For GitHub, follow `hops-reqs/references/repo.md`: GitHub access is any one
@@ -360,7 +362,7 @@ system. Record `app`. On no, `app: {wanted: false, status: skipped}`.
 ### verify
 
 Read-only everywhere except the `verify` block. Follow "Verification" in `hops-reqs/SKILL.md`:
-the pushed head (a dirty tree or unpushed commits fail), existence and state, identity, expiry,
+the pushed head (a dirty tree or unpushed commits fail; with `system.repo.url: local`, a dirty tree), existence and state, identity, expiry,
 bounded reads only. Run `pytest` in the system directory; `verify integration` also runs the
 `<slug>-tests` job per environment, `verify benchmark` reruns the benchmark at full length.
 Print a table, one row per claim, observed beside declared. Mark owning phases `stale` per the
