@@ -4,10 +4,13 @@ Everything `/hops-build` writes is code, and it lives in a git repository from
 the first phase. `system.repo` says which: `{url: new, provider: github}` for a
 GitHub repository the build creates (the Factory's **Create new GitHub repo**,
 checked), or `{url, provider}` for an existing repository the user gave, where
-`provider` is `github`, `gitlab`, `bitbucket` or `git` (any other host). A GitHub
-Enterprise host works through `gh`'s `GH_HOST`, recorded as `system.repo.host`.
+`provider` is `github`, `gitlab`, `bitbucket` or `git` (any other host), or
+`{url: local, provider: local}` for code kept in Hopsworks only (the Factory's
+**Keep the code in Hopsworks only**).
+A GitHub Enterprise host works through `gh`'s `GH_HOST`, recorded as `system.repo.host`.
 A repository on GitLab, Bitbucket or another host follows **Other git hosts**
-below instead of the GitHub steps.
+below instead of the GitHub steps, and code kept in Hopsworks follows
+**Kept in Hopsworks only**.
 
 ## Before `reqs`
 
@@ -134,6 +137,26 @@ push-only over SSH does on GitHub, and opens no pull request itself.
 - **Releases.** Tag `v<version>` and push the tag (`git push origin v<version>`);
   record it in `system.releases` with the tag in place of a GitHub release URL.
 
+## Kept in Hopsworks only
+
+A `system.repo.url` of `local` is a git repository in the system directory with
+no remote: the user has no GitHub login, or chose not to share the code.
+This section overrides **Branches and commits**, **The pull request** and **Releases** below:
+skip **GitHub access**, and never cut a `hops/<slug>` branch, push, open a pull request,
+request a review or run `gh release`.
+
+- **Layout.** The system directory is the repository root, as for a new
+  repository: `git init -b main`, then the template's `.gitignore` and
+  `AGENTS.md` as the first commit. Never add a remote.
+- **Branches.** Every phase commits straight to `main`: no `hops/<slug>`
+  branch and no pull request. Record `system.repo.branch: main`.
+- **Releases.** An annotated tag, `git tag -a v<version> <commit> -m "<system.name> <version>"`,
+  recorded in `system.releases` with the tag in place of a URL.
+- **Verify** fails a dirty work tree; with no remote there is nothing to push.
+- **Finishing.** Report the system directory and the commit `verify` passed on,
+  and say once that `github-login` (or a remote added with `git remote add
+  origin <url>`) shares the code later.
+
 ## Branches and commits
 
 - One branch per system, `hops/<slug>`, cut from the default branch, but for an
@@ -158,7 +181,8 @@ git push -u origin hops/<slug>
 ```
 
 `verify` reports a dirty work tree or unpushed commits as a failed claim, so the
-reviewed code and the running code cannot silently differ.
+reviewed code and the running code cannot silently differ. Code kept in
+Hopsworks only has no remote: there a dirty work tree alone fails.
 
 ## The pull request
 

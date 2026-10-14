@@ -187,6 +187,20 @@ def test_a_new_repository_needs_no_url_and_an_existing_one_a_clean_url():
         assert problem in factory_spec.repository_problems(answer, "Repo")[0]
 
 
+def test_code_kept_in_hopsworks_needs_no_url_and_creates_no_repository():
+    answer = {"create": False, "local": True}
+    assert factory_spec.repository_problems(answer, "Repo") == []
+    assert factory_spec.repo_record(answer) == {"url": "local", "provider": "local"}
+    # The build creates it, so its work tree is trusted like a new GitHub one's.
+    assert factory_spec.creates_repo(answer)
+    assert (
+        "Hopsworks only"
+        in factory_spec.repository_problems({"create": False, "local": False}, "Repo")[
+            0
+        ]
+    )
+
+
 INGEST = """\
 apiVersion: hopsworks.ai/factory/v1
 kind: Factory
@@ -910,3 +924,23 @@ def test_a_layer_trusts_only_a_work_tree_it_created(
     assert not listing.exists() or str((tmp_path / "old").resolve()) not in (
         listing.read_text()
     )
+
+
+@pytest.mark.parametrize(
+    ("typed", "expected"),
+    [
+        ("local", {"create": False, "local": True}),
+        ("", {"create": False, "local": True}),
+        (
+            "https://gitlab.com/acme/churn.git",
+            {"create": False, "url": "https://gitlab.com/acme/churn.git"},
+        ),
+    ],
+)
+def test_the_repository_prompt_keeps_code_in_hopsworks_on_local(
+    monkeypatch, typed, expected
+):
+    monkeypatch.setattr(factory.click, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(factory.click, "prompt", lambda *a, **k: typed)
+    field = {"id": "repo", "type": "repository"}
+    assert factory._prompt(field, {"create": False, "local": True}, "Repo") == expected

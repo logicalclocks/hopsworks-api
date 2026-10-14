@@ -566,11 +566,13 @@ def _prompt(field: dict, default: Any, label: str) -> Any:
         if click.confirm("Create new GitHub repo", default=start.get("create", True)):
             return {"create": True}
         url = click.prompt(
-            "URL of the GitHub, GitLab, Bitbucket or other git repository to store the code",
-            default=start.get("url") or "",
-            show_default=bool(start.get("url")),
+            "URL of the GitHub, GitLab, Bitbucket or other git repository to store the code,"
+            " or local to keep it in Hopsworks only",
+            default="local" if start.get("local") else start.get("url") or "local",
             type=str,
         ).strip()
+        if url in ("", "local"):
+            return {"create": False, "local": True}
         return {"create": False, "url": url}
     shown = _shown(kind, default)
     hint = {
