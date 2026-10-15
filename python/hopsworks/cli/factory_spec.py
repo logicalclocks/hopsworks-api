@@ -523,7 +523,7 @@ CREDENTIAL_URL = re.compile(
 
 
 def repository_problems(value: Any, label: str) -> list[str]:
-    """What is wrong with a repository answer, {create: true} or {create: false, url}.
+    """What is wrong with a repository answer, {create: true}, {create: false, url} or {create: false, local: true}.
 
     Args:
         value: The answer.
@@ -534,12 +534,12 @@ def repository_problems(value: Any, label: str) -> list[str]:
     """
     if not isinstance(value, dict) or not isinstance(value.get("create", True), bool):
         return [f"{label} must say whether to create a new GitHub repository."]
-    if value.get("create", True):
+    if value.get("create", True) or value.get("local") is True:
         return []
     url = str(value.get("url") or "").strip()
     if not url:
         return [
-            f"{label} is unchecked: give the URL of the repository to store the code in."
+            f"{label} is unchecked: give the URL of the repository to store the code in, or keep the code in Hopsworks only."
         ]
     if CREDENTIAL_URL.match(url):
         return [
@@ -553,7 +553,7 @@ def repository_problems(value: Any, label: str) -> list[str]:
 
 
 def repo_record(value: Any) -> dict:
-    """What system.yaml records for a repository answer: url new for one the build creates, else url and provider.
+    """What system.yaml records for a repository answer: url new for one the build creates, local for code kept in Hopsworks only, else url and provider.
 
     Args:
         value: The answer.
@@ -565,6 +565,8 @@ def repo_record(value: Any) -> dict:
         return {"url": value}
     if not isinstance(value, dict) or value.get("create", True):
         return {"url": "new", "provider": "github"}
+    if value.get("local") is True:
+        return {"url": "local", "provider": "local"}
     url = str(value["url"]).strip()
     return {"url": url, "provider": repo_provider(url)}
 
@@ -856,13 +858,15 @@ def trust(directory: Path) -> None:
 def creates_repo(value: Any) -> bool:
     """Whether a repository answer has the build create a new repository, not use an existing one.
 
+    A repository kept in Hopsworks only is one the build creates as well, so its work tree is trusted like a new GitHub one's.
+
     Args:
         value: The answer.
 
     Returns:
-        True for a new repository.
+        True for a new repository, on GitHub or local.
     """
-    return repo_record(value).get("url") == "new"
+    return repo_record(value).get("url") in ("new", "local")
 
 
 def factory_name(ctx: Any, default: str, target: Path | None = None) -> str:

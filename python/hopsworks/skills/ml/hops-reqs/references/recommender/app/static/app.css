@@ -131,7 +131,7 @@ form.pick { display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem; a
 form.pick select { width: 100%; }
 @media (max-width: 720px) { form.pick { grid-template-columns: 1fr; } }
 button.secondary { background: var(--accent-soft); color: var(--accent); }
-.split { display: grid; grid-template-columns: 3fr 1fr; gap: 1.25rem; align-items: start; }
+.split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
 @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
 .products { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
 .product {

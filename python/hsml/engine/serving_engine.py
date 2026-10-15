@@ -20,6 +20,7 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 import time
 import uuid
@@ -55,6 +56,32 @@ def _structured_prediction_error(error: RestAPIError) -> dict | None:
     if isinstance(detail, dict) and "code" in detail:
         return detail
     return None
+
+
+# KServe reports a deployment ready once its route object exists, and Istio pushes the route to the ingress gateway a
+# moment later. start() and save() wait for the gateway to route the deployment, for at most this long.
+_ROUTE_WAIT_MAX_SECONDS = 60
+_ROUTE_RETRY_MAX_INTERVAL_SECONDS = 4
+# Each probe of the route waits at most this long, and never past the caller's budget.
+_ROUTE_PROBE_TIMEOUT_SECONDS = 5
+
+
+def _caller_stacklevel() -> int:
+    """The `stacklevel` that points a warning raised by the calling SDK function at the first frame outside the SDK.
+
+    How many SDK frames separate the user's call from the warning depends on the method (start, save, rollback) and on whether usage reporting wraps it, so a fixed `stacklevel` lands inside the SDK.
+    """
+    import hopsworks_common
+    import hsml
+
+    sdk = tuple(
+        os.path.dirname(package.__file__) + os.sep
+        for package in (hsml, hopsworks_common)
+    )
+    frame, level = sys._getframe(1), 1
+    while frame is not None and frame.f_code.co_filename.startswith(sdk):
+        frame, level = frame.f_back, level + 1
+    return level
 
 
 def _render_chunk(chunk) -> str:
@@ -210,6 +237,7 @@ class ServingEngine:
         return None
 
     def _start(self, deployment_instance, await_status: int) -> bool:
+        started = time.monotonic()
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_RUNNING
         )
@@ -258,6 +286,10 @@ class ServingEngine:
 
         # await_running=0 returns before the state is polled again
         if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+            if not done:
+                self._await_route(
+                    deployment_instance, await_status - (time.monotonic() - started)
+                )
             if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
                 print("Start prompting using any OpenAI API-compatible client.")
             elif not deployment_instance.has_model:
@@ -305,6 +337,46 @@ class ServingEngine:
 
         # free grpc channel
         deployment_instance._grpc_channel = None
+
+    def _await_route(self, deployment_instance, budget_seconds: float) -> None:
+        """Wait for the ingress gateway to route requests to a deployment that just reported Running.
+
+        A prediction sent before the gateway has the route gets its empty 404, which reads as a deployment that is not running.
+        The wait never fails a start or an update, since the deployment is running: running out of time, or a probe that fails, only warns.
+        """
+        if deployment_instance.predictor.serving_tool != PREDICTOR.SERVING_TOOL_KSERVE:
+            return  # requests go through Hopsworks, which needs no gateway route
+        deadline = time.monotonic() + max(
+            0.0, min(budget_seconds, _ROUTE_WAIT_MAX_SECONDS)
+        )
+        interval = 0.5
+        probed = False
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    if probed:
+                        warnings.warn(
+                            f"The ingress gateway does not route requests to deployment '{deployment_instance.name}' yet, "
+                            "so predictions can fail with 'Deployment not created or running' for a few seconds.",
+                            stacklevel=_caller_stacklevel(),
+                        )
+                    return
+                if self._serving_api._is_routed(
+                    deployment_instance,
+                    timeout=min(remaining, _ROUTE_PROBE_TIMEOUT_SECONDS),
+                ):
+                    return
+                probed = True
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    time.sleep(min(interval, remaining))
+                    interval = min(interval * 2, _ROUTE_RETRY_MAX_INTERVAL_SECONDS)
+        except Exception as e:  # noqa: BLE001 - checking the route must never fail a start or an update
+            warnings.warn(
+                f"Could not check that the ingress gateway routes requests to deployment '{deployment_instance.name}': {e}",
+                stacklevel=_caller_stacklevel(),
+            )
 
     def _check_status(self, deployment_instance, desired_status):
         state = deployment_instance.get_state()
@@ -709,6 +781,7 @@ class ServingEngine:
             # if running, it's fine
             change()
             print("Deployment updated, applying changes to running instances...")
+            started = time.monotonic()
             state = self._poll_deployment_status(  # wait for status
                 # save() and rollback() accept None, which skips the wait like 0.
                 deployment_instance,
@@ -716,6 +789,10 @@ class ServingEngine:
                 await_update or 0,
             )
             if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+                self._await_route(
+                    deployment_instance,
+                    (await_update or 0) - (time.monotonic() - started),
+                )
                 print("Running instances updated successfully")
             return
         if state.status == PREDICTOR_STATE.STATUS_UPDATING:
