@@ -33,7 +33,9 @@ class DeploymentMemoryConfig:
 
     The policy names the tiers: working memory is the conversation kept server-side, short-term
     memory folds older turns into a rolling summary, semantic memory keeps facts about the
-    person across conversations, and episodic memory searches what was said before.
+    person across conversations, and episodic memory searches what was said before. All of them
+    are on unless you say otherwise, except the summarizer, which has nothing to fold with
+    until a provider is named.
 
     ```python
     ms = project.get_model_serving()
@@ -58,11 +60,12 @@ class DeploymentMemoryConfig:
             None keeps every turn verbatim.
         long_term: Whether the agent keeps facts about the person across conversations, which
             is also what the ``remember`` / ``recall`` / ``forget`` tools write to.
+            On by default; pass False to leave semantic memory out.
         search:
             Semantic search over the person's past conversations, as a dict naming an
             embedding ``model`` from the project's model registry, or ``{}`` for the SDK's
             default. Implies ``long_term``.
-            None searches by keyword instead.
+            On by default; pass False to search by keyword instead.
         summarize_after_messages: Messages before older turns are folded.
         keep_recent_messages: Messages left verbatim by a fold. Must be smaller than
             ``summarize_after_messages``.
@@ -78,8 +81,8 @@ class DeploymentMemoryConfig:
         self,
         enabled: bool | None = True,
         summarize: dict[str, Any] | str | None = None,
-        long_term: bool | None = None,
-        search: dict[str, Any] | bool | None = None,
+        long_term: bool | None = True,
+        search: dict[str, Any] | bool | None = True,
         summarize_after_messages: int | None = None,
         keep_recent_messages: int | None = None,
         message_retention_days: int | None = None,

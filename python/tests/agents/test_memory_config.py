@@ -67,6 +67,29 @@ class TestMemoryFromEnv:
         assert kwargs["message_retention_days"] == 30
         assert "summarize" not in kwargs
 
+    def test_a_policy_switches_on_every_tier_it_does_not_mention(self):
+        # a deployment asking for memory wants an agent that remembers; the
+        # summarizer is the exception, since nothing folds without a model
+        with (
+            mock.patch(
+                "hopsworks_agents.protocol.summarizers.sentence_transformer_embedder"
+            ),
+            mock.patch("hopsworks_agents.protocol.vectorstore.vector_store_for"),
+            mock.patch("hopsworks_agents.protocol.memory.ManagedMemoryService") as svc,
+        ):
+            memory_from_env(env({"enabled": True}))
+        kwargs = svc.call_args.kwargs
+        assert kwargs["long_term"] is True
+        assert "vector_store" in kwargs
+        assert "summarize" not in kwargs
+
+    def test_a_tier_can_be_left_out_by_saying_so(self):
+        with mock.patch("hopsworks_agents.protocol.memory.ManagedMemoryService") as svc:
+            memory_from_env(env({"long_term": False, "search": False}))
+        kwargs = svc.call_args.kwargs
+        assert kwargs["long_term"] is False
+        assert "vector_store" not in kwargs
+
     def test_a_hopsworks_summarizer_needs_no_key(self):
         with (
             mock.patch(
@@ -128,7 +151,9 @@ class TestMemoryFromEnv:
             ) as store_for,
             mock.patch("hopsworks_agents.protocol.memory.ManagedMemoryService") as svc,
         ):
-            memory_from_env(env({"search": {"model": "all-MiniLM-L6-v2"}}))
+            memory_from_env(
+                env({"long_term": False, "search": {"model": "all-MiniLM-L6-v2"}})
+            )
         embedder.assert_called_once_with("all-MiniLM-L6-v2")
         kwargs = svc.call_args.kwargs
         assert kwargs["long_term"] is True

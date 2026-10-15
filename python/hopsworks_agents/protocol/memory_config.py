@@ -33,6 +33,11 @@ The JSON, every key optional::
       "message_retention_days": 30
     }
 
+A policy switches on every tier it does not mention, so ``{"enabled": true}``
+gives semantic and episodic memory as well as the conversation itself. Set
+``"long_term": false`` or ``"search": false`` to leave one out. The summarizer
+is the exception: there is nothing to fold with until a provider is named.
+
 Nothing here is fatal. A policy that cannot be honoured in full degrades to the
 part that can be -- memory without a summarizer, say -- and says so in the log,
 because an agent that refuses to start is worse than one that remembers less
@@ -238,20 +243,24 @@ def memory_from_env(env: dict[str, str] | None = None):
     if config is None:
         return None
 
-    kwargs: dict[str, Any] = {"long_term": bool(config.get("long_term", False))}
+    # Every tier unless the policy says otherwise. A deployment that asks for
+    # memory wants an agent that remembers, and the tiers it does not name are
+    # the ones nobody had an opinion about; the summarizer is the exception,
+    # since there is no model to fold with until one is named.
+    kwargs: dict[str, Any] = {"long_term": bool(config.get("long_term", True))}
     for key in _PASSTHROUGH:
         if config.get(key) is not None:
             kwargs[key] = config[key]
     summarize = _summarizer(config.get("summarize"))
     if summarize is not None:
         kwargs["summarize"] = summarize
-    if _wants_search(config.get("search")):
+    if _wants_search(config.get("search", True)):
         if not kwargs["long_term"]:
             # search reads the long-term store; asking for one without the other
             # is a form that let an impossible combination through
             log.info("%s: search implies long-term memory; turning it on", ENV_VAR)
             kwargs["long_term"] = True
-        kwargs.update(_search(config.get("search")))
+        kwargs.update(_search(config.get("search", True)))
 
     try:
         from .memory import ManagedMemoryService  # noqa: PLC0415 -- optional extra

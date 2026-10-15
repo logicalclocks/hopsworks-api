@@ -20,8 +20,19 @@ from hsml.deployment_memory_config import DeploymentMemoryConfig
 
 
 class TestToDict:
-    def test_only_what_was_configured_travels(self):
-        assert DeploymentMemoryConfig().to_dict() == {"enabled": True}
+    def test_every_tier_is_on_unless_it_is_turned_off(self):
+        # the summarizer is the exception: nothing folds without a model
+        assert DeploymentMemoryConfig().to_dict() == {
+            "enabled": True,
+            "long_term": True,
+            "search": {},
+        }
+
+    def test_a_tier_left_out_by_saying_so(self):
+        assert DeploymentMemoryConfig(long_term=False, search=False).to_dict() == {
+            "enabled": True,
+            "long_term": False,
+        }
 
     def test_the_keys_are_the_agent_sdk_s_own(self):
         # snake_case, because the agent reads this as AGENT_MEMORY_CONFIG rather
@@ -54,6 +65,11 @@ class TestToDict:
 
     def test_search_false_is_left_out_entirely(self):
         assert "search" not in DeploymentMemoryConfig(search=False).to_dict()
+
+    def test_a_bare_provider_keeps_the_other_tiers_on(self):
+        config = DeploymentMemoryConfig(summarize="anthropic").to_dict()
+        assert config["long_term"] is True
+        assert config["search"] == {}
 
 
 class TestValidation:

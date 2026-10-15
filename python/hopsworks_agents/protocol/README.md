@@ -150,6 +150,11 @@ A deployment can carry the policy instead, set in its form and injected as
 an explicit `memory=None` stays off however the deployment is configured. The
 manifest reports which it was, under `capabilities.memory.source`.
 
+A policy switches on every tier it does not mention, so `{"enabled": true}` gives
+semantic and episodic memory as well as the conversation itself; `"long_term":
+false` or `"search": false` leaves one out. The summarizer is the exception,
+since there is nothing to fold with until a provider is named.
+
 Only the policy travels. Storage was already the platform's to provide, and
 reading memory stays the handler's: a deployment that switches memory on records
 turns, it cannot make an agent read them, so the two lines below are still
