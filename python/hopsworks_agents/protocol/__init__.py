@@ -43,6 +43,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers only
         ManagedMemoryService,
         deployment_mysql_url,
     )
+    from .memory_config import memory_from_env
     from .models import (
         AgentError,
         AgentResponse,
@@ -84,6 +85,7 @@ _EXPORTS: dict[str, str] = {
     "InMemoryAgentMemory": "memory",
     "ManagedMemoryService": "memory",
     "deployment_mysql_url": "memory",
+    "memory_from_env": "memory_config",
     "load_sentence_transformer": "embeddings",
     "register_sentence_transformer": "embeddings",
     "anthropic_summarizer": "summarizers",

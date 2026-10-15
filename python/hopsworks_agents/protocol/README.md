@@ -142,6 +142,20 @@ is the facts the agent stores, *semantic search* is one way `search` retrieves
 past turns. The keyword arguments keep their original names (`summarize=`,
 `long_term=`) so existing agents go on working.
 
+### Configured by the deployment
+
+A deployment can carry the policy instead, set in its form and injected as
+`AGENT_MEMORY_CONFIG`. `AgentApp` applies it only when the agent passed no
+`memory=` of its own, so **code wins**: an explicit store is used as given, and
+an explicit `memory=None` stays off however the deployment is configured. The
+manifest reports which it was, under `capabilities.memory.source`.
+
+Only the policy travels. Storage was already the platform's to provide, and
+reading memory stays the handler's: a deployment that switches memory on records
+turns, it cannot make an agent read them, so the two lines below are still
+yours to write. A policy that cannot be honoured in full degrades to the part
+that can be and says so in the log, rather than stopping the agent.
+
 ### Reading it in a handler
 
 ```python

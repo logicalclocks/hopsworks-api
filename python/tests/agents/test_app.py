@@ -2309,6 +2309,8 @@ class TestSemanticSearch:
         client = TestClient(app)
         caps = client.get("/.well-known/hopsworks-agent.json").json()["capabilities"]
         assert caps["memory"] == {
+            # the agent built this store itself, which is what "code" records
+            "source": "code",
             "conversation_history": True,
             "summary": False,
             "state": True,

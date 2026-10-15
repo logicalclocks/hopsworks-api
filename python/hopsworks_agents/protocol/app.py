@@ -32,6 +32,7 @@ from .context import HandlerContext
 from .evaluation import RunVerifier, env_eval_mode, parse_baggage
 from .evaluation import active as eval_active
 from .memory import TURN_ABANDONED, TURN_CLOSED, ChatMemory
+from .memory_config import memory_from_env
 from .models import (
     PROTOCOL,
     PROTOCOL_VERSION,
@@ -71,6 +72,21 @@ def _wants_context(handler: Callable[..., Any]) -> bool:
         return False
 
 
+class _NotGiven:
+    """Marker for a constructor argument nobody passed.
+
+    `memory=None` has to keep meaning "no memory", so it cannot also mean
+    "decide for me": an agent that switched memory off in code must stay off
+    when the deployment configures some.
+    """
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging only
+        return "<not given>"
+
+
+NOT_GIVEN = _NotGiven()
+
+
 #: conversations whose latest trace the app keeps in memory for feedback by conversation
 LAST_TRACE_LIMIT = 10_000
 
@@ -88,7 +104,7 @@ class AgentApp(FastAPI):
         output_modalities: list[str] | None = None,
         framework: str | None = None,
         tracing: bool | None = None,
-        memory: ChatMemory | None = None,
+        memory: ChatMemory | None | _NotGiven = NOT_GIVEN,
         tool_events: bool = False,
         graph: Any = None,
         platform: Any | None = None,
@@ -157,7 +173,17 @@ class AgentApp(FastAPI):
         # abandoned rather than leaving a question with no answer. Handlers read
         # history with self.memory.get(request.conversation_id). Skip it if your
         # framework persists state itself (e.g. a LangGraph checkpointer).
-        self.memory = memory
+        # Code wins over configuration. An explicit store is used as passed,
+        # an explicit None stays off, and only an agent that said nothing takes
+        # the deployment's policy (AGENT_MEMORY_CONFIG) -- which is what lets an
+        # agent be given memory without editing it. Reading it is still the
+        # handler's call: see memory_config for why that cannot be automatic.
+        if isinstance(memory, _NotGiven):
+            self.memory = memory_from_env()
+            self._memory_source = "deployment" if self.memory is not None else None
+        else:
+            self.memory = memory
+            self._memory_source = "code" if memory is not None else None
         self._chat_handler: ChatHandler | None = None
         self._stream_handler: StreamHandler | None = None
 
@@ -240,7 +266,7 @@ class AgentApp(FastAPI):
 
     # ── internals ─────────────────────────────────────────────────────────
 
-    def _memory_capabilities(self) -> dict[str, bool]:
+    def _memory_capabilities(self) -> dict[str, Any]:
         """Which memory tiers this agent has, so the panel lights up the right.
 
         inspector views instead of guessing.
@@ -255,8 +281,10 @@ class AgentApp(FastAPI):
                 "summary": False,
                 "state": False,
                 "search": False,
+                "source": None,
             }
         return {
+            "source": self._memory_source,
             "conversation_history": True,
             "summary": getattr(self.memory, "_summarize", None) is not None,
             "state": bool(getattr(self.memory, "_long_term", False)),
