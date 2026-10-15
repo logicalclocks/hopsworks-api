@@ -33,7 +33,8 @@ class DeploymentMemoryConfig:
 
     The policy names the tiers: working memory is the conversation kept server-side, short-term
     memory folds older turns into a rolling summary, semantic memory keeps facts about the
-    person across conversations, and episodic memory searches what was said before. All of them
+    agent decides to remember across conversations, and episodic memory searches what was said
+    before. All of them
     are on unless you say otherwise, except the summarizer, which has nothing to fold with
     until a provider is named.
 
@@ -58,8 +59,9 @@ class DeploymentMemoryConfig:
             ``deployment`` and needs no key; the others take an optional ``model``,
             ``api_key_secret`` and ``base_url``.
             None keeps every turn verbatim.
-        long_term: Whether the agent keeps facts about the person across conversations, which
-            is also what the ``remember`` / ``recall`` / ``forget`` tools write to.
+        long_term: Whether the agent keeps what it decides to remember across conversations.
+            This is the store the ``remember`` / ``recall`` / ``forget`` tools write to, scoped
+            to the person it is talking to by default, or to one conversation.
             On by default; pass False to leave semantic memory out.
         search:
             Semantic search over the person's past conversations, as a dict naming an
@@ -240,7 +242,7 @@ class DeploymentMemoryConfig:
     @public
     @property
     def long_term(self):
-        """Whether facts about the person are kept across conversations."""
+        """Whether what the agent remembers is kept across conversations."""
         return self._long_term
 
     @long_term.setter

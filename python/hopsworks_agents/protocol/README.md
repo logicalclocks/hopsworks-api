@@ -132,7 +132,7 @@ agent_app = AgentApp(
 |---|---|---|
 | 1. Working memory (in context) | the turns of this conversation the agent sees verbatim | `memory=` alone |
 | 2. Short-term memory | the rest of this conversation, compacted into a rolling summary instead of dropped | `summarize=` |
-| 3. Semantic memory | facts about the user, kept across conversations | `long_term=True` |
+| 3. Semantic memory | what the agent decides to remember, kept across conversations | `long_term=True` |
 | 3. Episodic memory | what was said in the user's earlier conversations, reached by `search` | `long_term=True` |
 
 Working memory is `ctx.history`, short-term memory is `ctx.summary`, and
