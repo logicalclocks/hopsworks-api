@@ -349,6 +349,12 @@ A full dashboard (statistics, monitoring history, data sample) is in
   content replaces it; placeholders only on the first load. The skeleton's
   `app.css` reserves the scrollbar gutter, so content that shrinks for a moment
   never shifts the page sideways.
+- **Nothing spills sideways.** A table goes in the skeleton's `.table-wrap`, which
+  scrolls it inside its own frame (`contain: inline-size` keeps its width out of
+  the layout around it), and every grid the app adds gives its columns
+  `minmax(0, …)` (`grid-template-columns: minmax(0, 1fr)`): a plain `1fr` or
+  implicit column grows to its widest content and pushes the page past the right
+  edge of the Hopsworks app panel. Check the app at about 900px wide.
 - **The description is the module docstring** of `app.py`, updated on every
   edit, so the next edit starts from what the app is now.
 - **Each request reads only what it returns.** The skeleton's routes query the

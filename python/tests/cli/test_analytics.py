@@ -1054,3 +1054,26 @@ def test_delete_assets_needs_a_table_version_when_several_exist(tmp_path, monkey
     two, events = _run(monkeypatch, target, {}, argv, versions=(1, 2))
     assert two.exit_code != 0 and "has versions 1, 2" in two.output
     assert events == []
+
+
+def test_a_layer_takes_the_repository_of_the_layer_sharing_its_work_tree(tmp_path):
+    repo = tmp_path / "hops-sales"
+    (repo / "sales-silver").mkdir(parents=True)
+    (repo / "sales-silver" / "system.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "layer": {
+                    "repo": {"name": "hops-sales", "url": "local", "provider": "local"}
+                }
+            }
+        )
+    )
+    assert analytics._layer_repo(repo, {"slug": "sales-gold"}) == {
+        "name": "hops-sales",
+        "url": "local",
+        "provider": "local",
+    }
+    # An answer of its own wins: a new repository records only the name.
+    assert analytics._layer_repo(
+        repo, {"slug": "sales-gold", "repo": {"create": True}}
+    ) == {"name": "hops-sales"}
