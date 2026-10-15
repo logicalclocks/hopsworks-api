@@ -98,12 +98,13 @@ a question you are about to ask depends on.
   and `hops deployment status`; finished work is recorded, overdue work is stopped with
   `hops job stop` and recorded as a crash), delete `*_test_*` objects of this system whose run is
   not running, then run `hops factory system plan <slug> --sync` and continue from its `next`. A
-  phase is done when every asset its block records exists in the project, whatever its `status`
-  said; one whose assets are gone is `stale` again and is rebuilt.
+  phase marked done whose assets are gone is `stale` again and is rebuilt; a phase whose inputs
+  exist starts, whoever made them.
 - **Start where the project is.** The user may bring part of the system: a model trained
   elsewhere, an existing feature view, feature groups already written. Record it in the block of
   the phase that would have made it (`training.model`, `training.feature_view`,
-  `features.pipelines[].writes`) and that phase is done. Build only what the request needs:
+  `features.pipelines[].writes`), set that phase `skipped` with a `reason` naming what the user
+  brought, and the phases that need it start. Build only what the request needs:
   `hops factory system plan <slug> --goal <phase>` lists the phases that phase needs, and a phase
   the request does not need is `skipped` with a `reason`. Never ask the user which phase to start
   from or rebuild an asset that exists: the plan says.

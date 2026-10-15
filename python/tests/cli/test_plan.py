@@ -37,7 +37,8 @@ SPEC = {
         ],
     },
     "training": {
-        "status": "pending",
+        "status": "skipped",
+        "reason": "the user brought churn_model v3",
         "feature_view": {"name": "churn_fv", "version": 1},
         "model": {"name": "churn_model", "version": 3},
         "runs": [{"model": {"name": "churn_research", "version": 1}}],
@@ -120,6 +121,20 @@ def test_a_deleted_asset_takes_a_met_phase_back_and_a_lookup_error_decides_nothi
     assert _states(unsure)["training"] == "unknown"
 
 
+def test_a_phase_that_has_not_finished_is_not_done_by_what_it_recorded_so_far():
+    spec = {
+        **SPEC,
+        "training": {
+            "status": "running",
+            "feature_view": {"name": "churn_fv", "version": 1},
+        },
+    }
+    assert (
+        _states(plan.compute(spec, _exists({"feature view churn_fv v1"})))["training"]
+        == "build"
+    )
+
+
 def test_a_judgement_on_existing_assets_stands():
     spec = {**SPEC, "training": {**SPEC["training"], "status": "unmet"}}
     result = plan.compute(
@@ -134,7 +149,7 @@ def test_sync_writes_met_stale_and_progress(tmp_path):
     present = {"feature view churn_fv v1", "model churn_model v3"}
     plan.sync(tmp_path, plan.compute(spec, _exists(present)))
     doc = yaml.safe_load((tmp_path / "system.yaml").read_text())
-    assert doc["training"]["status"] == "met"
+    assert doc["training"]["status"] == "skipped"
     assert doc["features"]["status"] == "stale"
     assert doc["requirements"]["status"] == "met"
     assert doc["system"]["progress"]["done"] == ["reqs", "train"]

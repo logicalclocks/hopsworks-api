@@ -507,7 +507,7 @@ def system_status(
 @click.option(
     "--sync",
     is_flag=True,
-    help="Write the computed state into system.yaml: met, stale and system.progress (needs the build lease when one is held).",
+    help="Write the computed state into system.yaml: stale and system.progress (needs the build lease when one is held).",
 )
 @click.pass_context
 def system_plan(
@@ -515,11 +515,12 @@ def system_plan(
 ) -> None:
     """Print what SLUG_OR_DIR's project already has of each phase, and the phase to work on next.
 
-    A phase is done when every asset its block in system.yaml records exists in
-    the project, whatever its status says; the first phase that names an asset
-    makes it, a later one needs it. Each phase is done, build (what it makes is
-    missing), blocked (what it needs is missing), todo (a decision or check),
-    failed, skipped or unknown. Exits 0; `next` is empty when nothing is left.
+    A phase is done when its status says so and every asset its block in
+    system.yaml records still exists in the project; the first phase that names
+    an asset makes it, a later one needs it. Each phase is done, build (what it
+    makes is missing, or it has not finished), blocked (what it needs is
+    missing), todo (a decision or check), failed, skipped or unknown. Exits 0;
+    `next` is empty when nothing is left.
 
     Args:
         ctx: Click context.
@@ -559,10 +560,13 @@ def _plan_detail(p: dict) -> str:
             f" (from {', '.join(p['by'])})" if p.get("by") else ""
         )
     if p["state"] == "build":
+        if not p["missing"]:
+            return "not finished" + (
+                f"; has {', '.join(p['makes'])}" if p["makes"] else ""
+            )
+        reused = len(p["makes"]) - len(p["missing"])
         return f"make {', '.join(p['missing'])}" + (
-            f"; reuse {len(p['makes']) - len(p['missing'])}"
-            if len(p["makes"]) > len(p["missing"])
-            else ""
+            f"; reuse {reused}" if reused else ""
         )
     if p["state"] == "unknown":
         return f"could not check {', '.join(p['unknown'])}"

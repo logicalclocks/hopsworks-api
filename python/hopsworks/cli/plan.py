@@ -1,12 +1,13 @@
 """The plan of a system, for ``hops factory system plan``: each phase's state, read from the project.
 
-A phase is done when every asset its block records exists in the project, and
-not done when one is missing, whatever its ``status`` says: the status goes
-stale when an asset is deleted, and a user may bring an asset (a model trained
-elsewhere, an existing feature view) that no phase of this build made. The
-first phase, in the factory's order, whose block names an asset makes it; a
-later phase that names it needs it. So a build starts wherever the project
-already is, and only what is missing is built.
+A phase is done when its ``status`` says so and every asset its block records
+still exists in the project: a status goes stale when an asset is deleted, and
+the plan says so. The first phase, in the factory's order, whose block names an
+asset makes it; a later phase that names it needs it, and starts as soon as
+that asset exists, whoever made it. A user who brings an asset (a model trained
+elsewhere, an existing feature view) has it recorded in the block of the phase
+that would have made it, which is then ``skipped``: the build starts wherever
+the project already is, and only what is missing is built.
 
 A phase whose block records no asset (requirements, a design, verify) is a
 decision or a check, and keeps the status it says. A phase whose assets all
@@ -255,8 +256,8 @@ class Project:
 def compute(doc: dict, exists: Any, goal: str | None = None) -> dict:
     """The plan of `doc`: each phase's state and the next phase to work on.
 
-    States: `done`; `build` (something it makes is missing and what it needs
-    exists); `blocked` (something it needs is missing, made by `by`);
+    States: `done`; `build` (something it makes is missing, or it has not
+    finished, and what it needs exists); `blocked` (something it needs is missing, made by `by`);
     `todo` (a decision or check not satisfied yet); `failed` (its assets exist
     and its block records a judgement against them); `skipped`; `unknown`
     (Hopsworks could not say).
@@ -305,7 +306,14 @@ def compute(doc: dict, exists: Any, goal: str | None = None) -> dict:
         elif phase.unknown:
             phase.state = "unknown"
         elif not phase.missing:
-            phase.state = "failed" if phase.status in JUDGED else "done"
+            # Assets exist but the phase never finished: it may not have recorded all it makes yet.
+            phase.state = (
+                "failed"
+                if phase.status in JUDGED
+                else "done"
+                if phase.status in SATISFIED
+                else "build"
+            )
         elif phase.status == "skipped":
             phase.state = "skipped"
         elif lacking:
@@ -372,7 +380,7 @@ def _by(phase: Phase, producer: dict) -> list[str]:
 
 
 def sync(directory: Any, plan: dict, token: str | None = None) -> dict:
-    """Write the computed state back into system.yaml: `met` on a phase whose assets all exist, `stale` on one marked satisfied whose assets are gone, and `system.progress`'s `done` and `phase`.
+    """Write the computed state back into system.yaml: `stale` on a phase marked satisfied whose assets are gone, and `system.progress`'s `done` and `phase`.
 
     Only phases that record assets change; decisions keep the status they say.
     Needs the build lease when one is held.
@@ -400,9 +408,7 @@ def sync(directory: Any, plan: dict, token: str | None = None) -> dict:
             block = blocks.get(key)
             if not isinstance(block, dict) or not p["makes"]:
                 continue
-            if p["state"] == "done" and block.get("status") not in SATISFIED:
-                block["status"] = "met"
-            elif p["state"] in ("build", "blocked") and block.get(
+            if p["state"] in ("build", "blocked") and block.get(
                 "status"
             ) in SATISFIED - {"skipped"}:
                 block["status"] = "stale"
