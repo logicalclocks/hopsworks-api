@@ -134,17 +134,27 @@ def _summarizer(spec: Any):
     return None
 
 
+def _wants_search(spec: Any) -> bool:
+    """Whether the policy asks for semantic search.
+
+    ``{}`` means on with the default model, not off: a form that sends an object
+    with nothing named in it has still ticked the box, and a backend that omits
+    null fields sends exactly that.
+    """
+    return spec is not None and spec is not False
+
+
 def _search(spec: Any) -> dict[str, Any]:
     """The embedder and vector store for semantic search over past conversations.
 
     Args:
-        spec: ``true`` for the default embedding model, or an object naming one.
+        spec: ``true`` or an object, empty or naming an embedding model.
 
     Returns:
         The keyword arguments for :class:`ManagedMemoryService`, empty when
         search is off or its model cannot be loaded.
     """
-    if not spec:
+    if not _wants_search(spec):
         return {}
     model = None
     if isinstance(spec, dict):
@@ -235,7 +245,7 @@ def memory_from_env(env: dict[str, str] | None = None):
     summarize = _summarizer(config.get("summarize"))
     if summarize is not None:
         kwargs["summarize"] = summarize
-    if config.get("search"):
+    if _wants_search(config.get("search")):
         if not kwargs["long_term"]:
             # search reads the long-term store; asking for one without the other
             # is a form that let an impossible combination through

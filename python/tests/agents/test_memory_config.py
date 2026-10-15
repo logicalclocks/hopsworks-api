@@ -135,6 +135,25 @@ class TestMemoryFromEnv:
         assert kwargs["vector_store"] is store_for.return_value
         assert "search implies long-term memory" in caplog.text
 
+    def test_an_empty_search_object_is_on_with_the_default_model(self):
+        # the deployment form ticks the box without naming a model, and a
+        # backend that omits null fields sends {} for it
+        with (
+            mock.patch(
+                "hopsworks_agents.protocol.summarizers.sentence_transformer_embedder"
+            ) as embedder,
+            mock.patch("hopsworks_agents.protocol.vectorstore.vector_store_for"),
+            mock.patch("hopsworks_agents.protocol.memory.ManagedMemoryService") as svc,
+        ):
+            memory_from_env(env({"long_term": True, "search": {}}))
+        embedder.assert_called_once_with()
+        assert "vector_store" in svc.call_args.kwargs
+
+    def test_search_false_is_off(self):
+        with mock.patch("hopsworks_agents.protocol.memory.ManagedMemoryService") as svc:
+            memory_from_env(env({"long_term": True, "search": False}))
+        assert "vector_store" not in svc.call_args.kwargs
+
     def test_an_embedding_model_that_will_not_load_drops_only_search(self, caplog):
         with (
             mock.patch(
