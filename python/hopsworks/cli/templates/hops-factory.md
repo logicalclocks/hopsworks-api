@@ -12,13 +12,13 @@ The system lives in this directory; its `system.yaml` holds the requirements the
   Renew it with `hops factory system lease renew {slug}` when each phase starts and at least hourly while you wait on a job; it lapses 4 hours after the last renewal and is then taken over.
   A renewal that exits 4 means the lease was lost: stop at once and write nothing more.
   Release it with `hops factory system lease release {slug}` when you finish, stop or fail.
-- Read `system.yaml` first. Resume from it: a phase whose `status` is `met` is done; start at the first one that is not.
+- Run `hops factory system plan {slug} --sync` first and start at its `next`. A phase is done when every asset its block records exists in the project, whatever its `status` says; one whose assets are gone is `stale` and is rebuilt. The user may bring part of the system (a model, a feature view, feature groups): record it in the block of the phase that would have made it, and that phase is done. Never ask which phase to start from, and never rebuild an asset that exists.
 - **Writing `system.yaml`**: never write it in place. Write the whole new file to `.system.yaml.edit-<n>` in this directory, then run `hops factory system write-doc {slug} --expected-sha256 <sha256sum of the system.yaml you read> --from .system.yaml.edit-<n>`.
   Exit 3 means it changed since you read it (the Hopsworks UI or a change request wrote it): read it again and redo your edit. Exit 2 means the new file is not valid YAML.
 - The phases, in order: {phases}.
-  When you start a phase, write `status: running` and `started` (UTC, ISO 8601) in its block; when it is done, `status: met` and `finished`.
+  When you start a phase, write `status: running` and `started` (UTC, ISO 8601) in its block; when it is done, write `finished` and run `hops factory system plan {slug} --sync`, which sets `met` once the project has what the block records. A phase whose block records no asset (a design, a review) you mark `met` yourself.
   A phase you cannot finish gets `status: unmet` and a `reason`; stop and say why.
-- Record what you create (jobs, feature groups, feature views, models, deployments, apps, dashboards) under `outputs` in `system.yaml`, each with its name and version, so `hops factory system delete <system> --assets` can delete it later.
+- Record what you create (jobs, feature groups, feature views, models, deployments, apps, dashboards) in the block of the phase that made it (`model: {name, version}`, `feature_view`, `job`, `deployment`), which is how the plan knows the phase is done, and under `outputs` in `system.yaml`, each with its name and version, so `hops factory system delete <system> --assets` can delete it later.
   Name each after `{slug}`, or put `{slug}` in its description: the delete keeps anything else as not this system's.
 - Keep the code in this directory, in a git repository.
   `requirements.repo` says which: `{create: true}` is the private GitHub repository `hops-{slug}`, which you create with `gh repo create` when `gh auth status` succeeds; `{create: false, url}` is the user's existing repository at `url`, on GitHub, GitLab, Bitbucket or another host, which you push to with git alone; `{create: false, local: true}` keeps the code in Hopsworks only, a git repository in this directory with no remote.

@@ -32,6 +32,7 @@ hops factory system list [--factory <name>]        # the systems built, with the
 hops factory system status|register|remove|delete <system>
 hops factory run <name> <slug> --change <id> [--answers F]  # request one of the factory's changes; the build carries it out
 hops factory system dir <slug>                     # the system's directory
+hops factory system plan <slug> [--goal P] [--sync]  # each phase from what the project holds, and the next one; --sync writes met, stale and progress
 hops factory system delete-assets <system> --job J --table T:V  # what a build deletes with; refuses what the system reads, what another system names, and what is not this system's
 ```
 
@@ -79,6 +80,7 @@ build:
 - A credential the answers lack is asked for in the chat with a `hops-secret` block, never in a message or with AskUserQuestion (see `hops-data-sources`): the chat saves it as a private account variable and you get its name.
 - `presets` are named starting answers, listed under the factory's New button: `{id, label, answers: {<field id>: ...}, fixed: {...}}`.
 - A phase key cannot be `system`, `factory` or `schema_version`.
+- A phase is done when every asset its block in `system.yaml` records exists in the project, whatever its status says: the build records what each phase makes in that phase's block, and the first phase that names an asset makes it while a later one only needs it. A system can therefore start from assets the user already has.
 - To extend a built-in instead of replacing it, clone it: the clone keeps `build.builtin` (`mlsystem`, `analytics-bronze`, `analytics-silver` or `analytics-gold`) and its questions; answers the built-in build does not read land in `requirements.extra` and the clone's instructions in `factory.instructions` of each system's `system.yaml`.
 
 Field types, list columns and every rule: [references/definition.md](references/definition.md).
