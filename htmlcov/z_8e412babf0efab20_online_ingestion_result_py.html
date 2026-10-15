@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hsfs/core/online_ingestion_result.py: 55%</title>
+    <title>Coverage for python/hsfs/core/online_ingestion_result.py: 68%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_15cffcd0.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python<span class="sep">/</span>hsfs<span class="sep">/</span>core<span class="sep">/</span>online_ingestion_result.py</b>:
-            <span class="pc_cov">55%</span>
+            <span class="pc_cov">68%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">40 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">22<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">18<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">27<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">13<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_online_store_rest_client_api_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-15 10:06 +0000
+            created at 2026-10-15 11:53 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -127,9 +127,9 @@
     <p class="pln"><span class="n"><a id="t45" href="#t45">45</a></span><span class="t"><span class="str">            status: The status of the ingestion batch: &quot;UPSERTED&quot;, &quot;DELETED&quot;, &quot;IGNORED&quot; or &quot;FAILED&quot;.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t"><span class="str">            rows: The number of rows processed in this batch.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t"><span class="str">        &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_online_ingestion_id</span> <span class="op">=</span> <span class="nam">online_ingestion_id</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_status</span> <span class="op">=</span> <span class="nam">status</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_rows</span> <span class="op">=</span> <span class="nam">rows</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_online_ingestion_id</span> <span class="op">=</span> <span class="nam">online_ingestion_id</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_status</span> <span class="op">=</span> <span class="nam">status</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_rows</span> <span class="op">=</span> <span class="nam">rows</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t">    <span class="op">@</span><span class="nam">classmethod</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t">    <span class="key">def</span> <span class="nam">from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -190,13 +190,13 @@
     <p class="pln"><span class="n"><a id="t108" href="#t108">108</a></span><span class="t"><span class="str">        One of &quot;UPSERTED&quot; for rows written, &quot;DELETED&quot; for rows removed by a delete,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t109" href="#t109">109</a></span><span class="t"><span class="str">        &quot;IGNORED&quot; for rows the online store skipped, or &quot;FAILED&quot;.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t110" href="#t110">110</a></span><span class="t"><span class="str">        &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t111" href="#t111">111</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_status</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t111" href="#t111">111</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_status</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t112" href="#t112">112</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t113" href="#t113">113</a></span><span class="t">    <span class="op">@</span><span class="nam">public</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t114" href="#t114">114</a></span><span class="t">    <span class="op">@</span><span class="nam">property</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t115" href="#t115">115</a></span><span class="t">    <span class="key">def</span> <span class="nam">rows</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="nam">int</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t116" href="#t116">116</a></span><span class="t">        <span class="str">&quot;&quot;&quot;Get the number of rows processed in this batch.&quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t117" href="#t117">117</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_rows</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t117" href="#t117">117</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_rows</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -206,7 +206,7 @@
             <a class="nav" href="z_8e412babf0efab20_online_store_rest_client_api_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-15 10:06 +0000
+            created at 2026-10-15 11:53 +0000
         </p>
     </div>
 </footer>
