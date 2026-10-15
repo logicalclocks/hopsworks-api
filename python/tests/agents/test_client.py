@@ -285,6 +285,51 @@ class TestWhereTheAgentIs:
         with pytest.raises(RuntimeError, match="no name"):
             self._client({})._base_url()
 
+    def test_standard_mode_is_tried_too(self):
+        """Knative routes on the deployment name; Standard mode adds `-predictor`.
+
+        The runner cannot see the mode, and guessing only the first failed every
+        Standard-mode run with a DNS error rather than anything about the agent.
+        """
+        client = self._client({"name": "customeragent", "projectNamespace": "g1"})
+        assert client._candidate_urls() == [
+            "http://customeragent.g1.svc.cluster.local",
+            "http://customeragent-predictor.g1.svc.cluster.local",
+        ]
+
+    def test_the_address_that_answered_is_kept(self):
+        import types  # noqa: PLC0415
+
+        from hopsworks_agents.eval.client import HopsworksAgentClient  # noqa: PLC0415
+
+        asked: list[str] = []
+
+        class Session:
+            def get(self, url, **_kwargs):
+                asked.append(url)
+                if ".well-known" in url and "-predictor" not in url:
+                    raise OSError("Name or service not known")
+                body = (
+                    {"name": "a", "projectNamespace": "g1"}
+                    if ".well-known" not in url
+                    else {"endpoints": {"chat": "/v1/chat"}}
+                )
+                return types.SimpleNamespace(
+                    json=lambda: body, status_code=200, raise_for_status=lambda: None
+                )
+
+        client = HopsworksAgentClient(
+            session=Session(),
+            api_base="https://h",
+            project_id=1,
+            project_name="g1",
+            deployment_id=7,
+        )
+        assert client.manifest() == {"endpoints": {"chat": "/v1/chat"}}
+        # the one that answered, so a trial is not a second round of guessing
+        assert client._base_url() == "http://a-predictor.g1.svc.cluster.local"
+        assert sum(".well-known" in url for url in asked) == 2
+
     def test_an_explicit_url_wins(self):
         from hopsworks_agents.eval.client import HopsworksAgentClient
 

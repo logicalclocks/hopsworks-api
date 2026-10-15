@@ -55,23 +55,27 @@ class HopsworksAgentClient:
 
     # ── the agent ───────────────────────────────────────────────────────────
 
-    def _base_url(self) -> str:
-        """Where the agent answers, from inside the cluster.
+    def _candidate_urls(self) -> list[str]:
+        """Where the agent might answer from inside the cluster, likeliest first.
 
-        The deployment's own Kubernetes service, which is what KServe creates and
-        what the istio VirtualService routes on. The agent serves its manifest and
-        its endpoints at the root of that host — there is no project-and-name path
-        prefix, and assuming one produced a 404 that read as a missing agent.
+        The deployment mode decides the service name, and the runner cannot see the
+        mode: Knative routes on the deployment's own name, while Standard mode is a
+        plain Deployment whose Service carries KServe's `-predictor` suffix. Guessing
+        only the first failed every Standard-mode run with a DNS error, so both are
+        tried and the one that answers is kept.
 
-        Built from the service name rather than read off the deployment: this
-        cluster's serving DTO carries no addresses at all, only a
-        `hopsworksInferencePath` for the KServe verb proxy, which cannot express
-        the agent protocol's paths.
+        Built from the name rather than read off the deployment: the serving DTO
+        carries no addresses at all, only a `hopsworksInferencePath` for the KServe
+        verb proxy, which cannot express the agent protocol's paths.
+
+        The agent serves its manifest and its endpoints at the root of that host —
+        there is no project-and-name path prefix, and assuming one produced a 404
+        that read as a missing agent.
 
         `agent_url` overrides all of it, for reaching a deployment from outside.
         """
         if self._agent_url:
-            return self._agent_url.rstrip("/")
+            return [self._agent_url.rstrip("/")]
         deployment = self._session.get(
             f"{self._api}/serving/{self._deployment_id}", timeout=60
         ).json()
@@ -84,8 +88,14 @@ class HopsworksAgentClient:
         # The namespace a project's deployments live in, which is not always the
         # project name.
         namespace = deployment.get("projectNamespace") or self._project_name
-        self._agent_url = f"http://{name}.{namespace}.svc.cluster.local"
-        return self._agent_url
+        return [
+            f"http://{name}.{namespace}.svc.cluster.local",
+            f"http://{name}-predictor.{namespace}.svc.cluster.local",
+        ]
+
+    def _base_url(self) -> str:
+        """The address that answered, or the likeliest one before anything has."""
+        return (self._agent_url or self._candidate_urls()[0]).rstrip("/")
 
     def manifest(self) -> dict[str, Any]:
         """The agent's self-description, which is what the runner refuses on.
@@ -95,13 +105,23 @@ class HopsworksAgentClient:
         would write trial rows pointing at traces that were never created.
         """
         if self._manifest is None:
-            response = self._session.get(
-                f"{self._base_url()}/.well-known/hopsworks-agent.json", timeout=60
-            )
-            response.raise_for_status()
-            self._manifest = response.json()
-            endpoints = self._manifest.get("endpoints", {})
-            self._chat_path = endpoints.get("chat", "/v1/chat")
+            last: Exception | None = None
+            for url in self._candidate_urls():
+                try:
+                    response = self._session.get(
+                        f"{url}/.well-known/hopsworks-agent.json", timeout=60
+                    )
+                    response.raise_for_status()
+                except Exception as err:  # noqa: BLE001 — try the other name first
+                    last = err
+                    continue
+                # the address that answered, so every later call goes straight there
+                self._agent_url = url
+                self._manifest = response.json()
+                endpoints = self._manifest.get("endpoints", {})
+                self._chat_path = endpoints.get("chat", "/v1/chat")
+                return self._manifest
+            raise last if last is not None else RuntimeError("no address to try")
         return self._manifest
 
     def call(
