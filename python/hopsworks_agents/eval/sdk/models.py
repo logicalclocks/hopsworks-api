@@ -273,6 +273,9 @@ class EvalJob(ApiModel):
     suites: list[str] = field(default_factory=list)
     evaluators: list[str] = field(default_factory=list)
     monitor: bool = False
+    #: Whether a scheduled execution also runs the suites. Off by default: a schedule
+    #: grades the traffic since the last fire, which is what changes between fires.
+    suites_on_schedule: bool = False
     created: bool = False
     exists: bool = False
     environments: list[str] = field(default_factory=list)

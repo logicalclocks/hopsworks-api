@@ -729,6 +729,7 @@ class Jobs:
         suites: Sequence[Suite | str] = (),
         evaluators: Sequence[EvaluatorTemplate | str] = (),
         monitor: bool | None = None,
+        suites_on_schedule: bool | None = None,
         environment_name: str | None = None,
         cores: int | None = None,
         memory: int | None = None,
@@ -748,6 +749,7 @@ class Jobs:
             ]
             or None,
             "monitor": monitor,
+            "suitesOnSchedule": suites_on_schedule,
             "environmentName": environment_name,
             "cores": cores,
             "memory": memory,
@@ -768,6 +770,7 @@ class Jobs:
         suites: Sequence[Suite | str] | None = None,
         evaluators: Sequence[EvaluatorTemplate | str] | None = None,
         monitor: bool | None = None,
+        suites_on_schedule: bool | None = None,
         environment_name: str | None = None,
         cores: int | None = None,
         memory: int | None = None,
@@ -785,6 +788,7 @@ class Jobs:
             ]
         for key, value in (
             ("monitor", monitor),
+            ("suitesOnSchedule", suites_on_schedule),
             ("environmentName", environment_name),
             ("cores", cores),
             ("memory", memory),

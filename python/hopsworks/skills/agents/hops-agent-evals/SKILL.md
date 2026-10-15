@@ -99,9 +99,10 @@ agent.sample(suite=suite)                             # or grade live traffic wi
 
 job = agents.jobs.ensure_eval_job(agent.id, suites=[suite], evaluators=[judge], monitor=True)
 agents.jobs.run_eval_job(job.name)                    # one run per suite, plus the monitor sample
+agents.jobs.update_eval_job(job.name, suites_on_schedule=True)   # scheduled fires run the suites too
 ```
 
-The evaluation job is a Hopsworks job named after the agent; schedule it like any job (**hops-job**). `monitor=True` samples traffic with the listed evaluators on every run. Runs list with `agents.runs.list(agent.id)`; `agents.runs.trend(agent.id)` gives the pass-rate trend. A running evaluation is stopped from the UI's Stop button (there is no client call yet).
+The evaluation job is a Hopsworks job named after the agent; schedule it like any job (**hops-job**). `monitor=True` samples traffic with the listed evaluators on every run. A **scheduled** fire grades live traffic only — the suites are the same frozen tasks every fire, at a model call per task — unless `suites_on_schedule=True`. Running the job yourself always runs everything it names. Runs list with `agents.runs.list(agent.id)`; `agents.runs.trend(agent.id)` gives the pass-rate trend. A running evaluation is stopped from the UI's Stop button (there is no client call yet).
 
 ## 3. Traces, feedback and failure analysis
 
