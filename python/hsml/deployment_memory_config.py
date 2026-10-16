@@ -32,11 +32,10 @@ class DeploymentMemoryConfig:
     without memory.
 
     The policy names the tiers: working memory is the conversation kept server-side, short-term
-    memory folds older turns into a rolling summary, semantic memory keeps facts about the
-    agent decides to remember across conversations, and episodic memory searches what was said
-    before. All of them
-    are on unless you say otherwise, except the summarizer, which has nothing to fold with
-    until a provider is named.
+    memory folds older turns into a rolling summary, semantic memory keeps what the agent
+    decides to remember across conversations, and episodic memory searches what was said
+    before. All of them are on unless you say otherwise, except the summarizer, which has
+    nothing to fold with until a provider is named.
 
     ```python
     ms = project.get_model_serving()
