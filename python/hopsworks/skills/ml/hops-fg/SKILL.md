@@ -114,7 +114,7 @@ fg = fs.get_or_create_feature_group(
 | `online_enabled=True` | Need online feature serving or real-time lookups |
 | `stream=True` | Always set when `online_enabled=True`; enables unified write API |
 | `parents=[...]` | FG is derived from other FGs — pass list of parent FG objects |
-| `statistics_config=False` | Large data volumes (see Statistics section) |
+| `statistics_config=False` | Large data volumes (see Statistics section), and every feature group written from a Python job: the Python engine computes statistics in a PySpark job after each insert |
 | `event_time="col"` | Need time-travel queries or incremental reads |
 | `embedding_index=EmbeddingIndex(...)` | FG contains vector embeddings (see Embeddings section) |
 | `offline_backfill_every_hr=N` | Schedule automatic materialization every N hours |
@@ -149,7 +149,10 @@ combination:
 Rules that bite:
 
 - **Iceberg hidden partitioning is invisible in the schema.** `hops fg features` shows a blank PARTITION column and the UI no partition key even though the table *is* partitioned. Check `fg.get_partition_spec()`, not the column list.
-- **The whole Iceberg write path needs a JVM** (PyIceberg reaches HopsFS through JNI `libhdfs`), including the empty first commit, so an Iceberg feature pipeline is a **PYSPARK job**, not a Python one. Spark Connect (the terminal) cannot create Iceberg tables or run Delta upserts either; see **hops-spark**.
+- **Iceberg writes to HopsFS from the Python engine go through PyArrow, which loads libjvm and libhdfs.**
+  That fails in agent task pods, which are not set up for libhdfs, and in environments built on `minimal-inference-pipeline` or `python-agent-pipeline`, which have no JVM.
+  From those, run the write as a separate `PYTHON` job on `python-feature-pipeline` or a clone of it, or as a `PYSPARK` job.
+  Spark Connect (the Spark terminal) cannot create Iceberg tables or run Delta upserts either; see **hops-spark**.
 - **Delta cannot partition and liquid-cluster at once.** Either derive a day column and cluster on both, or switch to Iceberg (`partitioned_by` + `zorder_by`). Say which trade-off you took.
 
 Grammar, per-format behaviour, inspection (`get_partition_spec`, `get_clustering_columns`, `update_clustering`), and the shuffle-manager caveat: [references/table-layout.md](references/table-layout.md). Diagnosing an existing table: **hops-table-maintenance**.

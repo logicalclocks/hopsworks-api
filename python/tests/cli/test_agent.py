@@ -150,7 +150,7 @@ def test_agent_logs_download_calls_download_logs(mock_project):
 
     result = CliRunner().invoke(cli, ["agent", "logs", "my-agent", "--download"])
     assert result.exit_code == 0, result.output
-    agent.download_logs.assert_called_once_with()
+    agent.download_logs.assert_called_once_with(path=None)
     agent.read_logs.assert_not_called()
     assert "/tmp/a.log" in result.output
     assert "/tmp/b.log" in result.output
@@ -209,6 +209,23 @@ def test_agent_create_invokes_deploy_agent(mock_project, tmp_path):
     assert kwargs["entry"] == str(entry)
     assert kwargs["name"] == "my-agent"
     assert kwargs["description"] == "demo"
+    assert kwargs["resources"] is None
+
+
+def test_agent_create_sets_a_memory_limit(mock_project, tmp_path):
+    ms = mock.MagicMock()
+    ms.deploy_agent.return_value = _agent_mock("entry")
+    mock_project.get_model_serving.return_value = ms
+    entry = tmp_path / "entry.py"
+    entry.write_text("")
+    result = CliRunner().invoke(
+        cli, ["agent", "create", str(entry), "--memory", "3072"]
+    )
+    assert result.exit_code == 0, result.output
+    resources = ms.deploy_agent.call_args.kwargs["resources"]
+    assert resources.limits.memory == 3072
+    # The rest keep the platform defaults.
+    assert resources.limits.cores is not None and resources.requests.memory is not None
 
 
 def test_agent_list_falls_back_to_model_name_heuristic(mock_project):

@@ -20,6 +20,7 @@ import logging
 import threading
 from typing import Any
 
+import requests
 from hopsworks_common import tag
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hsml import (
@@ -587,15 +588,53 @@ class ServingApi:
         _client = client.istio._get_instance()
         if _client is None:
             return
-        path_params = self._get_istio_inference_path(
-            deployment_instance, base_only=True
-        ) + ["v1", "models", deployment_instance.name]
+        path_params = self._get_istio_model_metadata_path(deployment_instance)
         try:
             _client._send_request("GET", path_params, with_base_path_params=False)
         except RestAPIError as e:
             _logger.debug(
                 "Warm-up request to %s answered %s", path_params, e.response.status_code
             )
+
+    def _is_routed(self, deployment_instance, timeout: float | None = None) -> bool:
+        """Whether the ingress gateway routes requests to the deployment.
+
+        A `GET` of the model's metadata through the gateway, as `_warm_rest_transport` sends.
+        The gateway answers a host it has no route for with a 404 and an empty body.
+        Any other answer, an error status or a 404 with a body included, came from the deployment.
+        A gateway that cannot be reached, or does not answer within `timeout`, does not route it yet either.
+        Without an Istio client, requests go through Hopsworks, which needs no gateway route.
+
+        Parameters:
+            deployment_instance: The deployment to check.
+            timeout: Seconds to wait for the connection and for the answer.
+        """
+        _client = client.istio._get_instance()
+        if _client is None:
+            return True
+        try:
+            _client._send_request(
+                "GET",
+                self._get_istio_model_metadata_path(deployment_instance),
+                with_base_path_params=False,
+                timeout=timeout,
+            )
+        except RestAPIError as e:
+            return not (
+                e.response is not None
+                and e.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
+                and not e.response.content
+            )
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            return False
+        return True
+
+    def _get_istio_model_metadata_path(self, deployment_instance) -> list[str]:
+        return self._get_istio_inference_path(deployment_instance, base_only=True) + [
+            "v1",
+            "models",
+            deployment_instance.name,
+        ]
 
     def _grpc_channel(self, deployment_instance):
         """The deployment's gRPC channel, created once and reused by every later call.

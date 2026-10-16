@@ -34,6 +34,7 @@ from hopsworks_common import client, util
 from hopsworks_common.client.exceptions import (
     DataSourceException,
     FeatureStoreException,
+    RestAPIError,
 )
 from hopsworks_common.core import trino_catalog_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
@@ -41,7 +42,12 @@ from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import engine
 from hsfs.core import data_source as ds
-from hsfs.core import data_source_api, elasticsearch_api, storage_connector_api
+from hsfs.core import (
+    data_source_api,
+    data_source_credentials_api,
+    elasticsearch_api,
+    storage_connector_api,
+)
 
 
 if TYPE_CHECKING:
@@ -191,6 +197,14 @@ class StorageConnector(ABC):
             raise ValueError("Failed to update storage connector information.")
         return self
 
+    def _require_credentials(self) -> None:
+        """Refuse to use the data source while the caller still has to provide credentials for it."""
+        return
+
+    def _check_new(self) -> None:
+        """Refuse to create the data source when its fields cannot be stored as given."""
+        return
+
     def to_dict(self) -> dict[str, int | str | None]:
         return {
             "id": self._id,
@@ -224,7 +238,11 @@ class StorageConnector(ABC):
 
         Returns:
             The saved storage connector with its assigned id.
+
+        Raises:
+            ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
         """
+        self._check_new()
         return self._storage_connector_api._create(self)
 
     @public
@@ -273,7 +291,7 @@ class StorageConnector(ABC):
 
         Returns:
             `supported`, and `reason` when it is false. Otherwise `suggestedName`,
-            `connectorType` and `properties`.
+            `connectorType`, `properties` and `scope`, which is `PRIVATE` for a data source whose credentials each member provides.
         """
         return self._trino_catalog_api.get_catalog_template(
             self._name, self._featurestore_id
@@ -291,6 +309,10 @@ class StorageConnector(ABC):
         The catalog is derived from this data source, so nothing has to be supplied: credentials are read from the data source when the catalog is created and stored as a reference, never as a plaintext copy.
         It becomes queryable once the query engine restarts, on the cluster's schedule or immediately via `project.get_trino_catalog_api().restart()` as an administrator.
 
+        A data source whose credentials each member provides (`credentials_mode="PROVIDED"`) always yields a private catalog, named `_<username>__...` and owned by the caller.
+        It is available in every project the caller belongs to, it reads with the caller's own credentials, and only the caller can use it, so each member creates their own.
+        Its connection is secured with the caller's own wallet, kept in their personal credential-file store.
+
         Example:
             ```python
             import hopsworks
@@ -304,8 +326,8 @@ class StorageConnector(ABC):
             ```
 
         Parameters:
-            name: Catalog name, which must start with `<project>__` in lowercase. Defaults to the
-                name the template suggests, derived from this data source's own name.
+            name: Catalog name, which must start with `<project>__` in lowercase, or with `_<username>__` for a data source whose credentials each member provides.
+                Defaults to the name the template suggests, derived from this data source's own name.
             properties: Replace the derived properties entirely; keys are not merged with the template's.
                 Start from the template's `properties` and apply your edits.
             test_connection: Verify the definition can reach the source before creating it, where the cluster supports it.
@@ -332,6 +354,7 @@ class StorageConnector(ABC):
             properties if properties is not None else template["properties"]
         )
         connector_type = template["connectorType"]
+        scope = template.get("scope")
 
         if test_connection and self._trino_catalog_api.get_capabilities().get(
             "testConnectionAvailable"
@@ -342,6 +365,7 @@ class StorageConnector(ABC):
                 catalog_properties,
                 data_source_name=self._name,
                 featurestore_id=self._featurestore_id,
+                scope=scope,
             )
 
         return self._trino_catalog_api.create_catalog(
@@ -350,6 +374,7 @@ class StorageConnector(ABC):
             catalog_properties,
             data_source_name=self._name,
             featurestore_id=self._featurestore_id,
+            scope=scope,
         )
 
     @public
@@ -592,6 +617,7 @@ class StorageConnector(ABC):
             StorageConnector.REST,
         ]:
             raise ValueError("This connector type does not support fetching databases.")
+        self._require_credentials()
         return self._data_source_api._get_databases(self)
 
     @public
@@ -620,6 +646,7 @@ class StorageConnector(ABC):
         """
         if self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching tables.")
+        self._require_credentials()
         if not database and self.type != StorageConnector.CRM:
             if self.type == StorageConnector.REDSHIFT:
                 database = self.database_name
@@ -633,13 +660,14 @@ class StorageConnector(ABC):
                     # (or TNS alias when using a wallet), not a schema, while
                     # the backend filters tables by OWNER (schema).
                     # Default to the connecting user's own schema.
-                    if not self.user:
+                    user = self.user
+                    if not user:
                         raise ValueError(
                             "A schema/owner is required for Oracle connectors "
                             "without a configured user. Pass it as the "
                             "`database` argument to get_tables()."
                         )
-                    database = self.user.upper()
+                    database = user.upper()
                 else:
                     database = self.database
             elif self.type == StorageConnector.UNITY_CATALOG:
@@ -733,6 +761,7 @@ class StorageConnector(ABC):
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
+        self._require_credentials()
         data = self._data_source_api._get_data(data_source)
         # When the source refuses the read, the backend still answers 200 and reports the failure
         # in schemaFetchFailed, so the UI can render the source's own message.
@@ -3429,6 +3458,9 @@ class SqlConnector(StorageConnector):
     type = StorageConnector.SQL
     JDBC_FORMAT = "jdbc"
 
+    SHARED = "SHARED"
+    PROVIDED = "PROVIDED"
+
     MYSQL = "MYSQL"
     POSTGRESQL = "POSTGRESQL"
     ORACLE = "ORACLE"
@@ -3482,9 +3514,14 @@ class SqlConnector(StorageConnector):
         # Oracle-specific optional fields
         wallet_path: str | None = None,
         wallet_password: str | None = None,
+        credentials_mode: str | None = None,
+        user_credentials: dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
+        self._data_source_credentials_api = (
+            data_source_credentials_api.DataSourceCredentialsApi()
+        )
         if database_type is not None:
             database_type = database_type.upper()
             if database_type not in self._DRIVERS:
@@ -3508,11 +3545,25 @@ class SqlConnector(StorageConnector):
         # Oracle-specific fields
         self._wallet_path = wallet_path
         self._wallet_password = wallet_password
+        self._credentials_mode = (credentials_mode or self.SHARED).upper()
+        self._user_credentials = user_credentials
+        # Set once this object saves or deletes credentials, which makes the values the runtime started with stale.
+        self._runtime_env_stale = False
 
     @property
     def database_type(self) -> str | None:
         """The database type, e.g. MYSQL or POSTGRESQL."""
         return self._database_type
+
+    @property
+    def credentials_mode(self) -> str:
+        """`SHARED` when every member reads with the credentials stored on the data source, `PROVIDED` when each member brings their own."""
+        return self._credentials_mode
+
+    @property
+    def user_credentials(self) -> dict[str, Any] | None:
+        """Status and account entry names of your own credentials for a data source with provided credentials, never their values."""
+        return self._user_credentials
 
     @property
     def host(self) -> str | None:
@@ -3528,11 +3579,11 @@ class SqlConnector(StorageConnector):
 
     @property
     def user(self) -> str | None:
-        return self._user
+        return self._resolve("USER", self._user)
 
     @property
     def password(self) -> str | None:
-        return self._password
+        return self._resolve("PASSWORD", self._password)
 
     @property
     def arguments(self) -> dict[str, Any]:
@@ -3541,13 +3592,393 @@ class SqlConnector(StorageConnector):
 
     @property
     def wallet_path(self) -> str | None:
-        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE)."""
-        return self._wallet_path
+        """Path to Oracle wallet zip file for mTLS connections (only relevant when database_type is ORACLE).
+
+        Inside a Hopsworks runtime that mounts your wallet for a data source with provided credentials, this is the local `/hopsfs/...` path of the mounted file rather than its HopsFS path, so it cannot be passed to HopsFS APIs such as the dataset API.
+        """
+        return self._local_wallet_path() or self._hopsfs_wallet_path()
 
     @property
     def wallet_password(self) -> str | None:
         """Password for the Oracle wallet (only relevant when database_type is ORACLE)."""
-        return self._wallet_password
+        return self._resolve("WALLET_PASSWORD", self._wallet_password)
+
+    def _env_name(self) -> str:
+        return re.sub(r"[^A-Z0-9_]", "_", self._name.upper())
+
+    def _env_var(self, suffix: str) -> str:
+        return f"HOPS_DS_{self._env_name()}_{suffix}"
+
+    def _runtime_env(self, suffix: str) -> str | None:
+        """A provided credential injected into a Hopsworks runtime for this very data source.
+
+        Only the runtime's own feature store is injected, so a data source of the same name read from another feature store has a different id and must not pick these values up.
+        """
+        if (
+            self._credentials_mode != self.PROVIDED
+            or self._id is None
+            or self._runtime_env_stale
+        ):
+            return None
+        if os.environ.get(self._env_var("CONNECTOR_ID")) != str(self._id):
+            return None
+        return os.environ.get(self._env_var(suffix)) or None
+
+    # The entry of the caller's binding that names the account entry holding each provided credential.
+    _ACCOUNT_ENTRIES = {
+        "USER": ("username_env_var", data_source_credentials_api.ENV_VAR),
+        "PASSWORD": ("password_secret_name", data_source_credentials_api.SECRET),
+        "WALLET_PASSWORD": (
+            "wallet_password_secret_name",
+            data_source_credentials_api.SECRET,
+        ),
+    }
+
+    def _resolve(self, suffix: str, dto_value: str | None) -> str | None:
+        """A provided credential is read from the caller's own account at each use, so a rotation made anywhere is picked up.
+
+        The backend never returns a provided credential with the data source.
+        The runtime's env var, set when the runtime started, is used only when the account cannot be asked.
+        """
+        if self._credentials_mode != self.PROVIDED:
+            return dto_value
+        key, kind = self._ACCOUNT_ENTRIES[suffix]
+        name = (self._user_credentials or {}).get(key)
+        if name:
+            try:
+                return self._data_source_credentials_api._account_value(kind, name)
+            except Exception as err:  # noqa: BLE001
+                _logger.debug(
+                    "Could not read %s of data source '%s' from your account: %s",
+                    key,
+                    self._name,
+                    err,
+                )
+        return self._runtime_env(suffix)
+
+    def _hopsfs_wallet_path(self) -> str | None:
+        """The bound wallet's HopsFS path, which for provided credentials is in the caller's binding."""
+        bound = (self._user_credentials or {}).get("wallet_path")
+        if self._credentials_mode == self.PROVIDED and bound:
+            return bound
+        return self._wallet_path
+
+    def _local_wallet_path(self) -> str | None:
+        """The wallet mounted into a Hopsworks runtime, which is a local path rather than one in HopsFS.
+
+        Not every runtime mounts HopsFS (Spark does not), so the path is only used when it can be read here.
+        """
+        path = self._runtime_env("WALLET_PATH")
+        if not path or not os.access(path, os.R_OK):
+            return None
+        # A wallet bound after the runtime started has another file name, and the mount would serve the old one.
+        bound = self._hopsfs_wallet_path()
+        if bound and os.path.basename(path) != os.path.basename(bound):
+            return None
+        return path
+
+    def _require_credentials(self) -> None:
+        if self._credentials_mode != self.PROVIDED:
+            return
+        status = (self._user_credentials or {}).get("status")
+        if status != "VALID" and not self._runtime_env("USER"):
+            raise FeatureStoreException(
+                data_source_credentials_api._not_provided_message(self._name, status)
+            )
+
+    def _check_new(self) -> None:
+        if self._credentials_mode != self.PROVIDED or self._id is not None:
+            return
+        given = [
+            name
+            for name, value in (
+                ("user", self._user),
+                ("password", self._password),
+                ("wallet_path", self._wallet_path),
+                ("wallet_password", self._wallet_password),
+            )
+            if value
+        ]
+        if given:
+            raise ValueError(
+                f"Data source '{self._name}' has provided credentials, so it stores no "
+                f"{', '.join(given)}: each member adds their own with "
+                "`set_credentials()` once the data source exists. Create it without them."
+            )
+
+    def _default_secret_name(self, kind: str) -> str:
+        return f"ds_{self._env_name().lower()}_{self._featurestore_id}_{kind}"
+
+    def _credentials_body(
+        self,
+        user: str | None,
+        password: str | None,
+        wallet_path: str | None,
+        wallet_password: str | None,
+        user_env_var: str | None,
+        password_secret: str | None,
+        wallet_password_secret: str | None,
+    ) -> dict[str, Any]:
+        """The CredentialsDTO, where an entry not given keeps the one already bound, and a username falls back to the default env var."""
+        bound = self._user_credentials or {}
+        password_secret = password_secret or (
+            None if password else bound.get("password_secret_name")
+        )
+        if not (password or password_secret):
+            raise ValueError(
+                "A password (`password` or `password_secret`) is required."
+            )
+        body = {
+            "username": _credential_entry(
+                "envVarName",
+                user_env_var
+                or (None if user else bound.get("username_env_var"))
+                or f"DS_{self._env_name()}_{self._featurestore_id}_USER",
+                user,
+            ),
+            "password": _credential_entry(
+                "secretName",
+                password_secret or self._default_secret_name("password"),
+                password,
+            ),
+        }
+        wallet_path = wallet_path or bound.get("wallet_path")
+        if wallet_path:
+            body["walletPath"] = wallet_path
+            wallet_password_secret = wallet_password_secret or (
+                None if wallet_password else bound.get("wallet_password_secret_name")
+            )
+        if wallet_password or wallet_password_secret:
+            body["walletPassword"] = _credential_entry(
+                "secretName",
+                wallet_password_secret or self._default_secret_name("wallet_password"),
+                wallet_password,
+            )
+        return body
+
+    def _validate_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """The backend's verdict on the credentials, with its error code and message when they are rejected."""
+        return self._data_source_credentials_api._validate(
+            self,
+            self._credentials_body(
+                user,
+                password,
+                wallet_path,
+                wallet_password,
+                user_env_var,
+                password_secret,
+                wallet_password_secret,
+            ),
+        )
+
+    @public
+    def validate_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> bool:
+        """Test your own credentials against this data source without storing them.
+
+        Only a data source with `credentials_mode` `PROVIDED` takes member credentials.
+        The backend opens a connection with exactly these values and runs `SELECT 1 FROM DUAL`.
+        Nothing is written to your account, so a rejected set of credentials leaves your existing binding untouched.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            if sc.validate_credentials(user="SCOTT", password="..."):
+                sc.set_credentials(user="SCOTT", password="...")
+            ```
+
+        Parameters:
+            user: The database username, stored in your account as an env var when you save it.
+            password: The database password, stored in your account as a secret when you save it.
+            wallet_path:
+                An Oracle wallet zip already uploaded to your home directory in this project, under `/Projects/<project>/Users/<username>/.datasources/<name>/`, where `<name>` is the lower-cased form of `<NAME>`.
+                The wallet has to be in HopsFS for the test to read it.
+                Defaults to the wallet already bound.
+            wallet_password: The password of the wallet, when it has one.
+            user_env_var:
+                The name of an env var in your account to take the username from, or to store it under.
+                Defaults to the env var already bound when no `user` is given, else to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
+            password_secret:
+                The name of a secret in your account to take the password from, or to store it under.
+                Defaults to the secret already bound when no `password` is given, else to `ds_<name>_<feature store id>_password`.
+            wallet_password_secret:
+                The name of a secret in your account to take the wallet password from, or to store it under.
+                Defaults to the secret already bound when no `wallet_password` is given, else to `ds_<name>_<feature store id>_wallet_password`.
+
+        Returns:
+            Whether the data source accepted the credentials.
+            The reason for a rejection is logged as a warning.
+
+        Raises:
+            ValueError: If no password is given, by value or by account entry name, and none is bound yet.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        result = self._validate_credentials(
+            user,
+            password,
+            wallet_path,
+            wallet_password,
+            user_env_var,
+            password_secret,
+            wallet_password_secret,
+        )
+        if not result.get("valid"):
+            _logger.warning(
+                "Data source '%s' rejected the credentials: %s",
+                self._name,
+                result.get("message"),
+            )
+        return bool(result.get("valid"))
+
+    @public
+    def set_credentials(
+        self,
+        user: str | None = None,
+        password: str | None = None,
+        wallet_path: str | None = None,
+        wallet_password: str | None = None,
+        user_env_var: str | None = None,
+        password_secret: str | None = None,
+        wallet_password_secret: str | None = None,
+    ) -> dict[str, Any]:
+        """Store your own credentials for this data source and bind them to it.
+
+        Only a data source with `credentials_mode` `PROVIDED` takes member credentials.
+        The backend validates the credentials first and stores nothing when they are rejected.
+        On success the password and wallet password become secrets in your account and the username an env var, both private to you, and every external feature group mounted from this data source is re-checked for your access.
+        From then on your reads through this data source use these credentials, starting with this object.
+        The backend never returns the values with the data source: the SDK reads the username, password and wallet password from your account entries each time it builds a connection, so a rotation is picked up at once.
+        Runtimes you start afterwards also receive them as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, next to `HOPS_DS_<NAME>_CONNECTOR_ID`, the id of the data source they belong to.
+        The SDK uses those env vars only when it cannot read your account, and never on an object whose credentials were set or deleted after the runtime started.
+        A name given for an entry that already exists in your account updates that entry.
+        An entry you do not give keeps the one already bound: `set_credentials(password="...")` rotates only the password, and keeps your username, your wallet and its password.
+        A username never bound and not given is read from the default env var `DS_<NAME>_<feature store id>_USER` in your account.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            sc.set_credentials(user="SCOTT", password="...")
+
+            # reuse a secret you already keep in your account
+            sc.set_credentials(user="SCOTT", password_secret="my_oracle_pwd")
+            ```
+
+        Parameters:
+            user: The database username, stored in your account as an env var.
+            password: The database password, stored in your account as a secret.
+            wallet_path:
+                An Oracle wallet zip already uploaded to your home directory in this project, under `/Projects/<project>/Users/<username>/.datasources/<name>/`, where `<name>` is the lower-cased form of `<NAME>`.
+                A wallet anywhere else is refused.
+                Defaults to the wallet already bound; to drop a bound wallet, call `delete_credentials()` first.
+            wallet_password: The password of the wallet, when it has one.
+            user_env_var:
+                The name of an env var in your account to take the username from, or to store it under.
+                Defaults to the env var already bound when no `user` is given, else to `DS_<NAME>_<feature store id>_USER`, where `<NAME>` is this data source's name upper-cased with every character outside `[A-Z0-9_]` replaced by `_`.
+            password_secret:
+                The name of a secret in your account to take the password from, or to store it under.
+                Defaults to the secret already bound when no `password` is given, else to `ds_<name>_<feature store id>_password`.
+            wallet_password_secret:
+                The name of a secret in your account to take the wallet password from, or to store it under.
+                Defaults to the secret already bound when no `wallet_password` is given, else to `ds_<name>_<feature store id>_wallet_password`.
+
+        Returns:
+            Your binding: its `status`, the names of the account entries it references, the wallet path and `validated_at`.
+
+        Raises:
+            ValueError: If no password is given, by value or by account entry name, and none is bound yet.
+            hopsworks.client.exceptions.FeatureStoreException: If the data source rejected the credentials; the message carries the data source's own error.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        body = self._credentials_body(
+            user,
+            password,
+            wallet_path,
+            wallet_password,
+            user_env_var,
+            password_secret,
+            wallet_password_secret,
+        )
+        try:
+            binding = self._data_source_credentials_api._set(self, body)
+        except RestAPIError as err:
+            if (
+                err.error_code
+                == RestAPIError.FeatureStoreErrorCode.DATA_SOURCE_CREDENTIALS_INVALID
+            ):
+                raise FeatureStoreException(
+                    err.user_message
+                    or f"Data source '{self._name}' rejected the credentials."
+                ) from err
+            raise
+        self._user_credentials = humps.decamelize(binding)
+        self._runtime_env_stale = True
+        return self._user_credentials
+
+    @public
+    def get_credentials(self) -> dict[str, Any]:
+        """Your binding for this data source, as names only.
+
+        Only a data source with `credentials_mode` `PROVIDED` has member bindings.
+        Values are never returned: the password and wallet password live in your account's secrets and the username in your account's env vars.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            binding = sc.get_credentials()
+            if binding["status"] != "VALID":
+                sc.set_credentials(user="SCOTT", password="...")
+            ```
+
+        Returns:
+            The binding with its `status` (`VALID`, `MISSING` or `INCOMPLETE`), `username_env_var`, `password_secret_name`, `wallet_path`, `wallet_password_secret_name` and `validated_at`.
+            `INCOMPLETE` means a referenced secret or env var was deleted from your account since you saved the binding.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        self._user_credentials = humps.decamelize(
+            self._data_source_credentials_api._get(self)
+        )
+        return self._user_credentials
+
+    @public
+    def delete_credentials(self) -> None:
+        """Remove your binding for this data source, the wallet file it referenced and its default-named account entries.
+
+        The env var `DS_<NAME>_<feature store id>_USER` and the secrets `ds_<name>_<feature store id>_password` and `ds_<name>_<feature store id>_wallet_password` are deleted from your account.
+        An entry you named yourself with `user_env_var`, `password_secret` or `wallet_password_secret` is kept, since you may use it elsewhere.
+        Your access state on every external feature group mounted from this data source becomes `NO_CREDENTIALS`.
+
+        Example:
+            ```python
+            sc = fs.get_data_source("oracle_sales").storage_connector
+            sc.delete_credentials()
+            ```
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example because this data source has shared credentials.
+        """
+        self._data_source_credentials_api._delete(self)
+        self._runtime_env_stale = True
+        self._user_credentials = {"status": "MISSING"}
+        self._wallet_path = None
 
     def _inline_tns_url(self, wallet_dir: str) -> str:
         """Build a JDBC URL with the TNS descriptor inlined from tnsnames.ora.
@@ -3594,27 +4025,32 @@ class SqlConnector(StorageConnector):
         a single partition so no executor ever needs the wallet files.
         Returns ``None`` when no wallet path is configured.
         """
-        if not self._wallet_path:
-            return None
-        local_path = engine._get_instance()._add_file(
-            self._wallet_path, distribute=False
-        )
+        local_path = self._local_wallet_path()
+        if not local_path:
+            hopsfs_path = self._hopsfs_wallet_path()
+            if not hopsfs_path:
+                return None
+            local_path = engine._get_instance()._add_file(hopsfs_path, distribute=False)
         if local_path.endswith(".zip") and os.path.isfile(local_path):
             return util._extract_zip(local_path)
         return local_path
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
+        # The backend refuses credential fields on a PROVIDED connector, whose credentials live in
+        # each member's account.
+        provided = self._credentials_mode == self.PROVIDED
         payload.update(
             {
                 "databaseType": self._database_type,
                 "host": self._host,
                 "port": self._port,
                 "database": self._database,
-                "user": self._user,
-                "password": self._password,
-                "walletPath": self._wallet_path,
-                "walletPassword": self._wallet_password,
+                "credentialsMode": self._credentials_mode,
+                "user": None if provided else self._user,
+                "password": None if provided else self._password,
+                "walletPath": None if provided else self._wallet_path,
+                "walletPassword": None if provided else self._wallet_password,
                 "arguments": (
                     [{"name": k, "value": v} for k, v in self._arguments.items()]
                     if self._arguments
@@ -3625,6 +4061,7 @@ class SqlConnector(StorageConnector):
         return payload
 
     def spark_options(self) -> dict[str, Any]:
+        self._require_credentials()
         # The connection settings below are built from the connector's own fields, so an argument
         # repeating one is dropped rather than forwarded. Spark hands anything it does not
         # recognise to the JDBC driver as a connection property, where a stray ``dbs_port`` or
@@ -3649,9 +4086,9 @@ class SqlConnector(StorageConnector):
             # Oracle thin URL uses `:@` instead of `://`, and switches to tcps
             # when a wallet is configured for mTLS.
             if host_port:
-                prefix = "tcps://" if self._wallet_path else ""
+                prefix = "tcps://" if self.wallet_path else ""
                 opts["url"] = f"jdbc:{scheme}:@{prefix}{host_port}/{self._database}"
-            elif self._wallet_path:
+            elif self.wallet_path:
                 # Wallet-only: the database field is a TNS alias resolved via
                 # the wallet's tnsnames.ora — the URL carries only the alias.
                 opts["url"] = f"jdbc:{scheme}:@{self._database}"
@@ -3677,23 +4114,27 @@ class SqlConnector(StorageConnector):
 
     def connector_options(self) -> dict[str, Any]:
         """Return options to be passed to an external SQL connector library."""
+        self._require_credentials()
         props = {
             "host": self.host,
             "port": self.port,
             "database": self.database,
             "database_type": self.database_type,
         }
-        if self.user:
-            props["user"] = self.user
-        if self.password:
-            props["password"] = self.password
+        # Each read of a provided credential asks the caller's account, so read it once.
+        user, password = self.user, self.password
+        if user:
+            props["user"] = user
+        if password:
+            props["password"] = password
         if self._database_type == self.ORACLE:
             # Oracle Python drivers (e.g. oracledb) expect ``service_name``.
             props["service_name"] = self.database
-            if self._wallet_path:
-                props["wallet_path"] = self._wallet_path
-            if self._wallet_password:
-                props["wallet_password"] = self._wallet_password
+            wallet_path, wallet_password = self.wallet_path, self.wallet_password
+            if wallet_path:
+                props["wallet_path"] = wallet_path
+            if wallet_password:
+                props["wallet_password"] = wallet_password
         if self._database_type == self.CLICKHOUSE:
             # clickhouse-connect's name for the JDBC ``ssl=true`` argument.
             props["secure"] = str(self._arguments.get("ssl", "false")).lower() == "true"
@@ -3762,6 +4203,7 @@ class SqlConnector(StorageConnector):
         if self._database_type == self.ORACLE:
             wallet_dir = self._prepare_wallet()
             if wallet_dir:
+                wallet_password = self.wallet_password
                 jks = os.path.join(wallet_dir, "keystore.jks")
                 trust_jks = os.path.join(wallet_dir, "truststore.jks")
                 if os.path.isfile(jks) and os.path.isfile(trust_jks):
@@ -3773,13 +4215,9 @@ class SqlConnector(StorageConnector):
                         options["url"] = self._inline_tns_url(wallet_dir)
                     options["javax.net.ssl.keyStore"] = jks
                     options["javax.net.ssl.trustStore"] = trust_jks
-                    if self._wallet_password:
-                        options["javax.net.ssl.keyStorePassword"] = (
-                            self._wallet_password
-                        )
-                        options["javax.net.ssl.trustStorePassword"] = (
-                            self._wallet_password
-                        )
+                    if wallet_password:
+                        options["javax.net.ssl.keyStorePassword"] = wallet_password
+                        options["javax.net.ssl.trustStorePassword"] = wallet_password
                     return engine._get_instance()._read_jdbc_on_driver(
                         options, dataframe_type
                     )
@@ -3789,14 +4227,22 @@ class SqlConnector(StorageConnector):
                 options["oracle.net.wallet_location"] = (
                     f"(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={wallet_dir})))"
                 )
-                if self._wallet_password:
-                    options["oracle.net.wallet_password"] = self._wallet_password
+                if wallet_password:
+                    options["oracle.net.wallet_password"] = wallet_password
                 return engine._get_instance()._read_jdbc_on_driver(
                     options, dataframe_type
                 )
         return engine._get_instance()._read(
             self, self.JDBC_FORMAT, options, None, dataframe_type
         )
+
+
+def _credential_entry(name_key: str, name: str, value: str | None) -> dict[str, str]:
+    """One CredentialsDTO entry: with a value it creates or updates the account entry, without one it references it."""
+    entry = {name_key: name}
+    if value:
+        entry["value"] = value
+    return entry
 
 
 class OpenSearchConnector(StorageConnector):

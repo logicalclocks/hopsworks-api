@@ -423,6 +423,46 @@ class TestOnlineRestClientEngine:
         mock_online_rest_api.assert_called_once_with(payload=payload, timeout=None)
         assert batch_vectors == reference_batch_vectors
 
+    def test_get_single_feature_vector_omits_null_key(
+        self, mocker, rest_client_engine_base
+    ):
+        mock_online_rest_api = mocker.patch(
+            ONLINE_STORE_REST_CLIENT_API_GET_SINGLE_RAW_FEATURE_VECTOR,
+            return_value={"features": []},
+        )
+
+        rest_client_engine_base._get_single_feature_vector(
+            entry={"tid": None, "cc_num": 4},
+            return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_RESPONSE_JSON,
+        )
+
+        assert mock_online_rest_api.call_args.kwargs["payload"]["entries"] == {
+            "cc_num": 4
+        }
+
+    def test_get_batch_feature_vectors_omits_null_key_and_keeps_order(
+        self, mocker, rest_client_engine_base
+    ):
+        mock_online_rest_api = mocker.patch(
+            ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS,
+            return_value={"features": []},
+        )
+
+        rest_client_engine_base._get_batch_feature_vectors(
+            entries=[
+                {"tid": 0, "cc_num": 4},
+                {"tid": None, "cc_num": 5},
+                {"tid": 2, "cc_num": 6},
+            ],
+            return_type=online_store_rest_client_engine.OnlineStoreRestClientEngine.RETURN_TYPE_RESPONSE_JSON,
+        )
+
+        assert mock_online_rest_api.call_args.kwargs["payload"]["entries"] == [
+            {"tid": 0, "cc_num": 4},
+            {"cc_num": 5},
+            {"tid": 2, "cc_num": 6},
+        ]
+
 
 class TestRestEngineRowHandling:
     """Cases the three existing REST modules never reached.

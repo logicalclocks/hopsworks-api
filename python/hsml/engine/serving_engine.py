@@ -20,9 +20,11 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 import time
 import uuid
+import warnings
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
@@ -56,6 +58,32 @@ def _structured_prediction_error(error: RestAPIError) -> dict | None:
     return None
 
 
+# KServe reports a deployment ready once its route object exists, and Istio pushes the route to the ingress gateway a
+# moment later. start() and save() wait for the gateway to route the deployment, for at most this long.
+_ROUTE_WAIT_MAX_SECONDS = 60
+_ROUTE_RETRY_MAX_INTERVAL_SECONDS = 4
+# Each probe of the route waits at most this long, and never past the caller's budget.
+_ROUTE_PROBE_TIMEOUT_SECONDS = 5
+
+
+def _caller_stacklevel() -> int:
+    """The `stacklevel` that points a warning raised by the calling SDK function at the first frame outside the SDK.
+
+    How many SDK frames separate the user's call from the warning depends on the method (start, save, rollback) and on whether usage reporting wraps it, so a fixed `stacklevel` lands inside the SDK.
+    """
+    import hopsworks_common
+    import hsml
+
+    sdk = tuple(
+        os.path.dirname(package.__file__) + os.sep
+        for package in (hsml, hopsworks_common)
+    )
+    frame, level = sys._getframe(1), 1
+    while frame is not None and frame.f_code.co_filename.startswith(sdk):
+        frame, level = frame.f_back, level + 1
+    return level
+
+
 def _render_chunk(chunk) -> str:
     r"""Render a single log chunk's content with a trailing newline.
 
@@ -73,6 +101,42 @@ def _render_chunk(chunk) -> str:
 
 # RESTCodes.ServingErrorCode.SCHEMA_NOT_FOUND: the id is not a published schema
 _SCHEMA_NOT_FOUND = 240037
+
+
+# The scaling fields a backend older than 5.2 does not know and silently drops (HWORKS-3106, HWORKS-3113).
+_SCALING_FIELDS_5_2 = (
+    "autoscaler",
+    "scale_down_stabilization_window_seconds",
+    "scale_up_stabilization_window_seconds",
+    "additional_scale_metrics",
+    "idle_scale_to_zero",
+    "idle_cooldown_seconds",
+    "cold_start_timeout_seconds",
+)
+
+
+def _scaling_json(component) -> dict | None:
+    """The scaling configuration of a predictor or transformer as sent, or None without one."""
+    if component is None or component.scaling_configuration is None:
+        return None
+    return component.scaling_configuration.to_json()
+
+
+def _dropped_scaling_fields(sent: dict | None, received: dict | None) -> list[str]:
+    """The 5.2 scaling fields present in `sent` and absent from `received`.
+
+    The backend reports every field it stores, so one that was sent and did not come back was dropped.
+    A false `idle_scale_to_zero` is the one value the backend leaves out on purpose.
+    """
+    if not sent or received is None:
+        return []
+    return [
+        field
+        for field in _SCALING_FIELDS_5_2
+        if field in sent
+        and field not in received
+        and not (field == "idle_scale_to_zero" and sent[field] is False)
+    ]
 
 
 class ServingEngine:
@@ -173,6 +237,7 @@ class ServingEngine:
         return None
 
     def _start(self, deployment_instance, await_status: int) -> bool:
+        started = time.monotonic()
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_RUNNING
         )
@@ -221,6 +286,10 @@ class ServingEngine:
 
         # await_running=0 returns before the state is polled again
         if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+            if not done:
+                self._await_route(
+                    deployment_instance, await_status - (time.monotonic() - started)
+                )
             if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
                 print("Start prompting using any OpenAI API-compatible client.")
             elif not deployment_instance.has_model:
@@ -268,6 +337,46 @@ class ServingEngine:
 
         # free grpc channel
         deployment_instance._grpc_channel = None
+
+    def _await_route(self, deployment_instance, budget_seconds: float) -> None:
+        """Wait for the ingress gateway to route requests to a deployment that just reported Running.
+
+        A prediction sent before the gateway has the route gets its empty 404, which reads as a deployment that is not running.
+        The wait never fails a start or an update, since the deployment is running: running out of time, or a probe that fails, only warns.
+        """
+        if deployment_instance.predictor.serving_tool != PREDICTOR.SERVING_TOOL_KSERVE:
+            return  # requests go through Hopsworks, which needs no gateway route
+        deadline = time.monotonic() + max(
+            0.0, min(budget_seconds, _ROUTE_WAIT_MAX_SECONDS)
+        )
+        interval = 0.5
+        probed = False
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    if probed:
+                        warnings.warn(
+                            f"The ingress gateway does not route requests to deployment '{deployment_instance.name}' yet, "
+                            "so predictions can fail with 'Deployment not created or running' for a few seconds.",
+                            stacklevel=_caller_stacklevel(),
+                        )
+                    return
+                if self._serving_api._is_routed(
+                    deployment_instance,
+                    timeout=min(remaining, _ROUTE_PROBE_TIMEOUT_SECONDS),
+                ):
+                    return
+                probed = True
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    time.sleep(min(interval, remaining))
+                    interval = min(interval * 2, _ROUTE_RETRY_MAX_INTERVAL_SECONDS)
+        except Exception as e:  # noqa: BLE001 - checking the route must never fail a start or an update
+            warnings.warn(
+                f"Could not check that the ingress gateway routes requests to deployment '{deployment_instance.name}': {e}",
+                stacklevel=_caller_stacklevel(),
+            )
 
     def _check_status(self, deployment_instance, desired_status):
         state = deployment_instance.get_state()
@@ -574,7 +683,7 @@ class ServingEngine:
 
     def _create(self, deployment_instance):
         try:
-            self._serving_api._put(deployment_instance)
+            self._put_and_check(deployment_instance)
             print("Deployment created, explore it at " + deployment_instance.get_url())
         except RestAPIError as re:
             raise_err = True
@@ -605,9 +714,36 @@ class ServingEngine:
     def _update(self, deployment_instance, await_update, new_version=False):
         self._apply(
             deployment_instance,
-            lambda: self._serving_api._put(deployment_instance, new_version),
+            lambda: self._put_and_check(deployment_instance, new_version),
             await_update,
         )
+
+    def _put_and_check(self, deployment_instance, new_version=False):
+        """Save the deployment and warn about scaling fields the backend did not keep.
+
+        The backend ignores JSON fields it does not know, so the KEDA and idle fields sent to a release that predates
+        them (5.1) are dropped without a word; the connection layer only warns on a major.minor mismatch.
+        The read-back says what was kept.
+        """
+        sent = {
+            component: _scaling_json(getattr(deployment_instance, component))
+            for component in ("predictor", "transformer")
+        }
+        self._serving_api._put(deployment_instance, new_version)
+        dropped = []
+        for component, before in sent.items():
+            after = _scaling_json(getattr(deployment_instance, component))
+            dropped += [
+                f"{component}.{field}"
+                for field in _dropped_scaling_fields(before, after)
+            ]
+        if dropped:
+            warnings.warn(
+                "The backend did not keep the scaling fields "
+                + ", ".join(dropped)
+                + "; they need Hopsworks 5.2 or later. The deployment was saved without them.",
+                stacklevel=3,
+            )
 
     def _rollback(self, deployment_instance, version, await_update):
         # Also refuses an unsaved deployment and a backend without versions.
@@ -645,6 +781,7 @@ class ServingEngine:
             # if running, it's fine
             change()
             print("Deployment updated, applying changes to running instances...")
+            started = time.monotonic()
             state = self._poll_deployment_status(  # wait for status
                 # save() and rollback() accept None, which skips the wait like 0.
                 deployment_instance,
@@ -652,6 +789,10 @@ class ServingEngine:
                 await_update or 0,
             )
             if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+                self._await_route(
+                    deployment_instance,
+                    (await_update or 0) - (time.monotonic() - started),
+                )
                 print("Running instances updated successfully")
             return
         if state.status == PREDICTOR_STATE.STATUS_UPDATING:

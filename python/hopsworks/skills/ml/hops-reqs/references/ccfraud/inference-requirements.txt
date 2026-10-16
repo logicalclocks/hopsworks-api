@@ -1,0 +1,4 @@
+# Installed into <slug>-inference-env, a clone of minimal-inference-pipeline: the
+# versions the pipeline was trained with in <slug>-jobs-env.
+scikit-learn==1.6.1
+xgboost==2.1.4

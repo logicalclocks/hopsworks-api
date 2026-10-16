@@ -311,6 +311,52 @@ def test_secrets_are_read_from_the_connector_scoped_environment_variable():
     assert body["password"] == "from-env"
 
 
+def test_a_secret_is_read_from_an_account_variable_without_a_shell():
+    var = mock.Mock(value="s3cret")
+    with (
+        mock.patch.object(ds.session, "get_project"),
+        mock.patch(
+            "hopsworks_common.core.env_var_api.EnvVarsApi.get_env_var",
+            return_value=var,
+        ) as get,
+    ):
+        body = _create(
+            ["sap-hana", "n", "--host", "h", "--user", "u"],
+            env={"HOPSWORKS_DS_SAP_HANA_PASSWORD": "account:CRM_PASSWORD"},
+        )
+
+    get.assert_called_once_with("CRM_PASSWORD")
+    assert body["password"] == "s3cret"
+
+
+def test_a_missing_account_variable_is_an_error():
+    with (
+        mock.patch.object(ds.session, "get_project"),
+        mock.patch(
+            "hopsworks_common.core.env_var_api.EnvVarsApi.get_env_var",
+            return_value=None,
+        ),
+    ):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "create",
+                "sap-hana",
+                "n",
+                "--host",
+                "h",
+                "--user",
+                "u",
+                "--password",
+                "account:NOPE",
+            ],
+        )
+
+    assert result.exit_code != 0
+    assert "no variable NOPE" in result.output
+
+
 def test_secret_options_name_their_environment_variable_and_stdin_in_help():
     result = CliRunner().invoke(cli, ["datasource", "create", "sql", "--help"])
 
@@ -756,6 +802,72 @@ def test_an_unknown_choice_is_refused_before_any_request():
     )
 
 
+def test_sql_provided_credentials_refuse_the_owner_credentials():
+    base = [
+        "sql",
+        "n",
+        "--database-type",
+        "ORACLE",
+        "--host",
+        "h",
+        "--port",
+        "1522",
+        "--database",
+        "svc",
+        "--credentials-mode",
+        "provided",
+    ]
+
+    body = _create(base)
+    assert body["credentialsMode"] == "PROVIDED"
+    assert "user" not in body and "password" not in body
+
+    assert "does not take --user" in _refused([*base, "--user", "u"])
+    assert "does not take --password" in _refused([*base, "--password", "p"])
+    assert "does not take --wallet-path" in _refused([*base, "--wallet-path", "/w"])
+
+
+def test_sql_provided_oracle_takes_a_host_only_or_nothing():
+    base = [
+        "sql",
+        "n",
+        "--database-type",
+        "ORACLE",
+        "--port",
+        "1522",
+        "--database",
+        "svc",
+        "--credentials-mode",
+        "PROVIDED",
+    ]
+
+    assert "host" not in _create(base)
+    assert _create([*base, "--host", "h"])["host"] == "h"
+
+
+def test_sql_provided_credentials_are_oracle_only():
+    output = _refused(
+        [
+            "sql",
+            "n",
+            *_without(_MINIMAL["sql"], "--user"),
+            "--credentials-mode",
+            "provided",
+        ]
+    )
+    assert "ORACLE only" in output
+
+
+def test_sql_shared_credentials_still_need_a_user():
+    body = _create(["sql", "n", *_MINIMAL["sql"]])
+    assert body["credentialsMode"] == "SHARED"
+    assert body["user"] == "u"
+
+    assert "--credentials-mode SHARED needs --user" in _refused(
+        ["sql", "n", *_without(_MINIMAL["sql"], "--user")]
+    )
+
+
 @pytest.mark.parametrize(
     "argv,message",
     [
@@ -786,3 +898,36 @@ def test_an_unknown_choice_is_refused_before_any_request():
 def test_elasticsearch_auth_modes_are_exclusive(argv, message):
     output = _refused(["elasticsearch", "n", "--host", "h", *argv])
     assert message in output
+
+
+def _tested(response: dict) -> tuple:
+    """Run ``datasource create sql ... --test`` against a mocked REST call."""
+    from hopsworks_common.core import rest
+
+    with (
+        mock.patch.object(ds.session, "get_feature_store") as fs,
+        mock.patch.object(rest, "_project_path", side_effect=lambda *p: list(p)),
+        mock.patch.object(rest, "_send_request", return_value=response) as send,
+        mock.patch.object(ds, "_create_connector") as create,
+    ):
+        fs.return_value.id = 7
+        result = CliRunner().invoke(
+            cli, ["datasource", "create", "sql", "n", *_MINIMAL["sql"], "--test"]
+        )
+    return result, send, create
+
+
+def test_test_only_checks_the_connection_and_creates_nothing():
+    result, send, create = _tested({"statusCode": 0, "connectionOutput": "OK"})
+
+    assert result.exit_code == 0, result.output
+    create.assert_not_called()
+    assert send.call_args.args[1][-1] == "testConnection"
+    assert send.call_args.kwargs["json_body"]["storageConnectorType"] == "SQL"
+
+
+def test_a_failed_test_exits_with_the_checkers_output():
+    result, _, _ = _tested({"statusCode": 1, "connectionOutput": "refused"})
+
+    assert result.exit_code == 1
+    assert "refused" in result.output
