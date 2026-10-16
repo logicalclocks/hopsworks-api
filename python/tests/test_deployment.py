@@ -1909,23 +1909,25 @@ class TestDeployment:
     ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        # Since 5.3 a run archives stdout and stderr separately; an older interleaved archive of a
-        # previous run sits in the same directory.
+        # Since 5.3 a run archives stdout and stderr separately under a run id; two pods stopped in
+        # the same second, and an older interleaved archive of a previous run sits next to them.
         file_names = [
-            "20260601-120000_pod-a_predictor.stdout.log",
-            "20260601-120000_pod-a_predictor.stderr.log",
-            "20260530-080000_pod-b_predictor.log",
+            "20260601-120000.a1b2c3d4_pod-a_predictor.stdout.log",
+            "20260601-120000.a1b2c3d4_pod-a_predictor.stderr.log",
+            "20260601-120000.0f0f0f0f_pod-b_predictor.stderr.log",
+            "20260530-080000_pod-c_predictor.log",
         ]
         _, mock_download = self._mock_archive_listing(mocker, d, file_names)
 
         local_paths = d.download_logs(path=str(tmp_path), latest=True)
 
+        # The most recent stop, every run of that second, each run whole.
         assert [os.path.basename(lp) for lp in local_paths] == [
-            "20260601-120000_pod-a_predictor.stdout.log",
-            "20260601-120000_pod-a_predictor.stderr.log",
+            "20260601-120000.a1b2c3d4_pod-a_predictor.stdout.log",
+            "20260601-120000.a1b2c3d4_pod-a_predictor.stderr.log",
+            "20260601-120000.0f0f0f0f_pod-b_predictor.stderr.log",
         ]
-        assert mock_download.call_count == 2
-        assert mock_download.call_count == 2
+        assert mock_download.call_count == 3
 
     def test_download_logs_raises_when_no_archives(
         self, mocker, backend_fixtures, tmp_path

@@ -955,8 +955,8 @@ class Deployment:
         ``Logs/Serving/<deployment_name>/`` when it exits, is restarted, or is
         stopped, so a pod removed by scale-to-zero still leaves its output
         behind. A run archives its standard output and standard error as two files,
-        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.stdout.log`` and ``.stderr.log``,
-        leaving out a stream it wrote nothing to.
+        ``<UTC yyyyMMdd-HHmmss>.<run id>_<pod>_<component>.stdout.log`` and
+        ``.stderr.log``, leaving out a stream it wrote nothing to.
         Archives written before Hopsworks 5.3 are one interleaved
         ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log`` per run.
 

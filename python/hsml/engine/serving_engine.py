@@ -616,7 +616,7 @@ class ServingEngine:
         Each instance archives its own output when it exits, restarts, or is
         stopped. Archives live in the project's ``Logs`` dataset under
         ``Logs/Serving/<deployment_name>/``, a stdout and a stderr file per instance
-        run named ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.stdout.log`` and
+        run named ``<UTC yyyyMMdd-HHmmss>.<run id>_<pod>_<component>.stdout.log`` and
         ``.stderr.log``; archives from before Hopsworks 5.3 are one interleaved
         ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log`` per run.
 
@@ -661,16 +661,14 @@ class ServingEngine:
         ]
         if latest and archive_paths:
             # File names start with the UTC stop timestamp, so the
-            # lexicographically greatest prefix is the most recent stop. Both
-            # streams of a run share the prefix, so a split run comes as a pair.
-            latest_prefix = max(
-                os.path.basename(p).split("_", 1)[0] for p in archive_paths
-            )
-            archive_paths = [
-                p
-                for p in archive_paths
-                if os.path.basename(p).startswith(latest_prefix + "_")
-            ]
+            # lexicographically greatest one is the most recent stop. Split runs
+            # follow it with .<run id> in the same token; every run of that
+            # second comes down, each as its pair, like the older single files.
+            def stop_time(path):
+                return os.path.basename(path).split("_", 1)[0].split(".", 1)[0]
+
+            latest_stop = max(stop_time(p) for p in archive_paths)
+            archive_paths = [p for p in archive_paths if stop_time(p) == latest_stop]
         if not archive_paths:
             raise ModelServingException(no_archives_msg)
 
