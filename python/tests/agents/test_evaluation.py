@@ -149,6 +149,50 @@ class TestRunVerifier:
         with pytest.raises(RuntimeError, match="neither token.jwt nor api.key"):
             _authorization()
 
+    def test_a_named_ca_bundle_is_trusted_for_the_lookup(
+        self, tmp_path, monkeypatch
+    ):
+        # The internal endpoint is signed by the cluster's own CA, so the lookup
+        # failed TLS verification -- after the credential was found -- and the
+        # agent still answered 403 to every evaluation request.
+        from hopsworks_agents.protocol import evaluation
+
+        bundle = tmp_path / "bundle.pem"
+        bundle.write_text("not parsed here")
+        monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(bundle))
+        assert evaluation._ca_chain() == str(bundle)
+
+    def test_no_truststore_leaves_the_system_default_alone(
+        self, tmp_path, monkeypatch
+    ):
+        from hopsworks_agents.protocol import evaluation
+
+        monkeypatch.delenv("REQUESTS_CA_BUNDLE", raising=False)
+        monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+        monkeypatch.delenv("MATERIAL_DIRECTORY", raising=False)
+        monkeypatch.setattr(
+            evaluation, "_CA_CHAIN_PATH", str(tmp_path / "missing.pem")
+        )
+        assert evaluation._ca_chain() is None
+        assert evaluation._tls_context() is None
+
+    def test_hostname_verification_can_be_turned_off_as_the_client_allows(
+        self, monkeypatch
+    ):
+        # A cluster whose certificate does not carry the name its endpoint is
+        # reached by; the platform client honours the same switch.
+        import ssl
+
+        from hopsworks_agents.protocol import evaluation
+
+        system = ssl.get_default_verify_paths().cafile
+        if not system:
+            pytest.skip("no system CA bundle to point at")
+        monkeypatch.setenv("REQUESTS_CA_BUNDLE", system)
+        monkeypatch.setenv("HOPSWORKS_HOSTNAME_VERIFICATION", "false")
+        context = evaluation._tls_context()
+        assert context is not None and not context.check_hostname
+
     def test_a_lookup_failure_means_not_verified(self):
         def lookup(run_id):
             raise ConnectionError("hopsworks unreachable")

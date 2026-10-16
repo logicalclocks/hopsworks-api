@@ -265,7 +265,9 @@ def _lookup_run(run_id: str) -> dict[str, Any] | None:
         headers={"Authorization": _authorization()},
     )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(
+            request, timeout=10, context=_tls_context()
+        ) as response:
             return json.loads(response.read() or b"null")
     except urllib.error.HTTPError as err:
         if err.code == 404:
@@ -292,6 +294,83 @@ def _hopsworks_client() -> Any | None:
     if not getattr(instance, "_project_id", None):
         return None
     return instance
+
+
+def _tls_context() -> Any | None:
+    """How to verify ``REST_ENDPOINT``, or None for the system default.
+
+    The internal endpoint is signed by the Hopsworks CA, which no system trust
+    store has heard of: verification failed with "unable to get local issuer
+    certificate", the lookup raised, and the agent answered 403 to every
+    evaluation request it was sent. A deployment is given the chain as a JKS
+    truststore, so this finds it the way the platform client does.
+    """
+    chain = _ca_chain()
+    if not chain:
+        return None
+    import ssl
+
+    context = ssl.create_default_context(cafile=chain)
+    # The same switch the platform client honours, for a cluster whose
+    # certificate does not carry the name its endpoint is reached by.
+    if os.environ.get("HOPSWORKS_HOSTNAME_VERIFICATION", "true").lower() not in (
+        "true",
+        "1",
+        "y",
+        "yes",
+    ):
+        context.check_hostname = False
+    return context
+
+
+#: Where the platform client materialises the chain; shared so that whichever
+#: of the two runs first, the other reuses the file rather than parsing again.
+_CA_CHAIN_PATH = os.path.join("/tmp", "ca_chain.pem")
+
+
+def _ca_chain() -> str | None:
+    """A PEM of the cluster's CA chain: named by the environment, already
+    materialised, or converted here from the truststore the pod was given.
+    """
+    for name in ("REQUESTS_CA_BUNDLE", "SSL_CERT_FILE"):
+        named = os.environ.get(name)
+        if named and os.path.exists(named):
+            return named
+    if os.path.exists(_CA_CHAIN_PATH):
+        return _CA_CHAIN_PATH
+    material = os.environ.get("MATERIAL_DIRECTORY")
+    if not material or not os.path.isdir(material):
+        return None
+    try:
+        import glob
+
+        from hopsworks_common.client.base import Client
+
+        def one(suffix: str) -> str | None:
+            found = sorted(glob.glob(os.path.join(material, f"*{suffix}")))
+            return found[0] if found else None
+
+        trust, key_store, password_file = (
+            one("__tstore.jks"),
+            one("__kstore.jks"),
+            one("__cert.key"),
+        )
+        if not trust or not password_file:
+            return None
+        with open(password_file, encoding="utf-8") as handle:
+            password = handle.read()
+        _, trusted = Client._load_jks(trust, password)
+        signers = []
+        if key_store:
+            _, signers = Client._load_jks(key_store, password)
+        pem = "".join(Client._der_to_pem(cert) for cert in signers + trusted)
+        if not pem:
+            return None
+        Client._replace_file(_CA_CHAIN_PATH, pem)
+        return _CA_CHAIN_PATH
+    except Exception:  # noqa: BLE001 - a chain we cannot build is not a failure here
+        log.debug("could not materialise the CA chain from %s", material, exc_info=True)
+        return None
 
 
 def _authorization() -> str:
