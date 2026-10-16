@@ -337,16 +337,38 @@ def run_sample(
         f"/otel/servings/{deployment_id}"
     )
 
-    listing = session.get(f"{base}/traces", params={"limit": LISTING_LIMIT}, timeout=60)
-    listing.raise_for_status()
-    summaries = listing.json().get("items") or []
     # The window the run was created with: everything since the last monitor
     # stopped, unless someone asked for a specific range.
     start_ms = float(run.get("sampleFrom") or 0)
     end_ms = float(
         run.get("sampleTo") or datetime.now(tz=timezone.utc).timestamp() * 1000
     )
+    graded_limit = run_trials(run, 0)
+    # The window, in SQL, oldest first. Asking for "the newest 500 traces" and
+    # filtering them here meant that above 500 in a window the monitor graded
+    # the newest slice and skipped everything older -- and said nothing, because
+    # the list it compared against had already been cut server-side. `count` is
+    # what the window holds, so the run knows what it is leaving behind.
+    listing = session.get(
+        f"{base}/traces",
+        params={
+            "limit": graded_limit or LISTING_LIMIT,
+            "from": int(start_ms),
+            "to": int(end_ms),
+            "order": "oldest",
+        },
+        timeout=60,
+    )
+    listing.raise_for_status()
+    body = listing.json()
+    summaries = body.get("items") or []
+    # Filtered again here, and sorted again below: a cluster whose backend
+    # predates the window parameters answers with the newest page of everything,
+    # and grading that as if it were the window would be wrong rather than slow.
     recent = within_window(summaries, start_ms, end_ms)
+    available = body.get("count")
+    if not isinstance(available, int) or available < len(recent):
+        available = len(recent)
     if not recent:
         log.info("no new traces between %s and %s", start_ms, end_ms)
         return RunResult(
@@ -357,19 +379,18 @@ def run_sample(
             completed_at=datetime.now(tz=timezone.utc),
         )
 
-    graded_limit = run_trials(run, 0)
     sampled = oldest_first(recent, graded_limit)
-    if len(sampled) < len(recent):
+    if available > len(sampled):
         # Said plainly, because the alternative reading -- that this is all the
         # traffic there was -- is the one someone would otherwise take.
         log.warning(
-            "%d traces in the window, grading the oldest %d; the rest stay for the "
-            "next run, which will start where this one stops",
-            len(recent),
+            "%d conversations in the window, grading the oldest %d; the rest stay "
+            "for the next run, which starts where this one stops",
+            available,
             len(sampled),
         )
     else:
-        log.info("grading %d traces in the window", len(sampled))
+        log.info("grading %d conversations in the window", len(sampled))
 
     trials = []
     sessions: dict[str, list[dict[str, Any]]] = {}
@@ -400,6 +421,15 @@ def run_sample(
             )
         )
 
+    # Where this run stopped, when it stopped short: the newest conversation it
+    # graded, so the next window opens there and the ones it left are graded
+    # rather than skipped. Reported only then -- a run that covered its whole
+    # window leaves the end where it was asked to stop.
+    processed_through = None
+    if available > len(sampled) and sampled:
+        processed_through = max(
+            float(summary.get("createdAt") or 0) for summary in sampled
+        )
     return RunResult(
         run_id=run["runId"],
         # No suite, and the empty string is the record of that rather than a
@@ -407,6 +437,8 @@ def run_sample(
         suite_id="",
         deployment_id=deployment_id,
         trials=trials,
+        processed_through_ms=processed_through,
+        available=available,
         # A sample that graded nothing is not a failed run: an agent with no
         # traffic in the window is a normal state, and reporting it as FAILED
         # would page someone about a quiet night.

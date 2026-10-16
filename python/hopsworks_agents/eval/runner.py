@@ -102,6 +102,13 @@ class RunResult:
     status: str = "SUCCEEDED"
     started_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
     completed_at: datetime | None = None
+    #: Where a sample actually stopped, in epoch milliseconds, when it stopped
+    #: short of the end of its window. The next run continues from here instead
+    #: of from the end it was asked for, so a ceiling defers work rather than
+    #: skipping it. None when the whole window was graded.
+    processed_through_ms: float | None = None
+    #: How many conversations the window held, whatever was then graded of them.
+    available: int | None = None
 
 
 def check_deployment_supports(suite: Suite, manifest: dict[str, Any]) -> None:

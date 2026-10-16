@@ -308,13 +308,27 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
     became of it.
     """
 
-    def report(status: str, error: str | None = None) -> None:
+    def report(
+        status: str, error: str | None = None, processed_through_ms: float | None = None
+    ) -> None:
         # Reported even on the failure paths: a run left RUNNING because the job
         # died looks exactly like one still going, and nothing can tell you which.
+        #
+        # processed_through closes the window where the run actually stopped, so
+        # the next one continues from there rather than from the end this one was
+        # asked for -- what makes a ceiling defer work instead of skipping it.
         try:
             session.put(
                 f"{base}/runs/{run_id}/status",
-                params={"status": status, **({"errorMessage": error} if error else {})},
+                params={
+                    "status": status,
+                    **({"errorMessage": error} if error else {}),
+                    **(
+                        {"processedThrough": int(processed_through_ms)}
+                        if processed_through_ms
+                        else {}
+                    ),
+                },
                 timeout=30,
             )
         except Exception:  # noqa: BLE001 — never mask the real failure
@@ -352,11 +366,12 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
                 evaluators_for(run, judge_completer=completer),
             )
             _write_results(project.get_feature_store(), result, run)
-            report(result.status)
+            report(result.status, processed_through_ms=result.processed_through_ms)
             log.info(
-                "online sample %s finished: %d traces graded",
+                "online sample %s finished: %d of %s conversations graded",
                 run_id,
                 len(result.trials),
+                result.available if result.available is not None else "?",
             )
             return True
 

@@ -290,16 +290,24 @@ class FakeResponse:
 
 
 class FakeSession:
-    def __init__(self, summaries, details, sessions=None):
+    def __init__(self, summaries, details, sessions=None, count=None):
         self._summaries = summaries
         self._details = details
         # session id -> the traces the session endpoint would list, any order
         self._sessions = sessions or {}
         self.session_fetches = 0
+        # what the window holds, as the server reports it; None for a backend
+        # that does not know the window parameters
+        self._count = count
+        self.listing_params = None
 
     def get(self, url, params=None, timeout=None):
         if url.endswith("/traces"):
-            return FakeResponse({"items": self._summaries})
+            self.listing_params = params
+            body = {"items": self._summaries}
+            if self._count is not None:
+                body["count"] = self._count
+            return FakeResponse(body)
         if "/traces/sessions/" in url:
             self.session_fetches += 1
             return FakeResponse(
@@ -577,3 +585,65 @@ class TestTheConversationSoFar:
     def test_the_trial_records_its_session(self):
         result, _, _ = self.graded(300, [])
         assert result.trials[0].session_id == "s1"
+
+
+class TestTheWindowIsTheServersJob:
+    """The monitor used to ask for the newest 500 traces of the deployment and
+    filter them to its window here, which above 500 in a window meant grading the
+    newest slice and skipping everything older -- silently, since the list it
+    compared against had already been cut server-side.
+    """
+
+    def test_the_listing_asks_for_the_window_oldest_first(self):
+        session = FakeSession([summary("a", 1)], {"a": detail()})
+        run = sample_run()
+        run_sample(FakeClient(), session, "https://h", 1, run, trace_only())
+        assert session.listing_params["from"] == int(run["sampleFrom"])
+        assert session.listing_params["to"] == int(run["sampleTo"])
+        assert session.listing_params["order"] == "oldest"
+        # the ceiling, so the server returns at most what will be graded
+        assert session.listing_params["limit"] == 500
+
+    def test_a_ceiling_closes_the_window_where_the_run_stopped(self):
+        # two of five graded: the next run must start at the newest of the two,
+        # not at the end of this window, or the other three are never graded
+        summaries = [summary(str(i), 5 - i) for i in range(5)]
+        session = FakeSession(
+            summaries, {str(i): detail() for i in range(5)}, count=5
+        )
+        result = run_sample(
+            FakeClient(),
+            session,
+            "https://h",
+            1,
+            sample_run(nTrials=2),
+            trace_only(),
+        )
+        assert len(result.trials) == 2
+        assert result.available == 5
+        graded = sorted(s["createdAt"] for s in summaries[:2])
+        assert result.processed_through_ms == graded[-1]
+
+    def test_a_window_graded_whole_leaves_its_end_alone(self):
+        session = FakeSession(
+            [summary("a", 2), summary("b", 1)], {"a": detail(), "b": detail()}, count=2
+        )
+        result = run_sample(
+            FakeClient(), session, "https://h", 1, sample_run(), trace_only()
+        )
+        assert result.processed_through_ms is None
+        assert result.available == 2
+
+    def test_a_backend_that_ignores_the_window_is_still_filtered_here(self):
+        # an older cluster answers with the newest page of everything and no
+        # count; grading that as if it were the window would be wrong, not slow
+        session = FakeSession(
+            [summary("recent", 1), summary("ancient", 500)],
+            {"recent": detail(), "ancient": detail()},
+        )
+        result = run_sample(
+            FakeClient(), session, "https://h", 1, sample_run(), trace_only()
+        )
+        assert {t.task_id for t in result.trials} == {"recent"}
+        assert result.available == 1
+        assert result.processed_through_ms is None
