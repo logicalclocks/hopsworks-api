@@ -29,6 +29,8 @@ class TestNamespaceCosts:
         assert costs.currency == "USD"
         assert costs.total_cost == 41.2
         assert costs.idle_cost == 5.1
+        assert costs.gpu_workload_cost == 30.0
+        assert costs.cpu_workload_cost == 6.1
         assert costs.efficiency == 0.42
         assert costs.coverage == CostCoverage(
             observed_buckets=1,
@@ -46,6 +48,8 @@ class TestNamespaceCosts:
             network_cost=0,
             other_cost=0,
             total_cost=4.7,
+            gpu_workload_cost=1.5,
+            cpu_workload_cost=3.2,
             cpu_efficiency=0.31,
             ram_efficiency=0.55,
             total_efficiency=0.37,
@@ -82,7 +86,13 @@ class TestNamespaceCosts:
         assert buckets[1].observed is False
         assert buckets[1].partial is True
         assert buckets[0].items == [
-            CostRow(namespace="fraud", kind="NAMESPACE", total_cost=0.6)
+            CostRow(
+                namespace="fraud",
+                kind="NAMESPACE",
+                total_cost=0.6,
+                gpu_workload_cost=0.4,
+                cpu_workload_cost=0.2,
+            )
         ]
         assert buckets[1].items == []
 
@@ -94,6 +104,8 @@ class TestNamespaceCosts:
         costs = NamespaceCosts.from_response_json({"window": "HOUR"})
 
         assert costs.total_cost == 0.0
+        assert costs.gpu_workload_cost == 0.0
+        assert costs.cpu_workload_cost == 0.0
         assert costs.efficiency is None
         assert costs.coverage == CostCoverage()
         assert costs.items == []
@@ -108,6 +120,8 @@ class TestNamespaceCosts:
         assert list(df.columns) == list(CostRow.__dataclass_fields__)
         assert {"share", "cpu_no_requests", "cpu_core_hours_used"} <= set(df.columns)
         assert df["total_cost"].sum() == 4.7 + 5.1
+        assert list(df["gpu_workload_cost"]) == [1.5, 0]
+        assert list(df["cpu_workload_cost"]) == [3.2, 0]
 
     def test_to_pandas_empty_keeps_columns(self):
         df = NamespaceCosts(window="HOUR").to_pandas()
@@ -147,11 +161,19 @@ class TestCostCoverage:
 class TestCostRow:
     def test_from_response_json(self):
         row = CostRow.from_response_json(
-            {"namespace": "n", "kind": "UNMOUNTED", "pvCost": 2.0, "totalCost": None}
+            {
+                "namespace": "n",
+                "kind": "UNMOUNTED",
+                "pvCost": 2.0,
+                "totalCost": None,
+                "gpuWorkloadCost": None,
+            }
         )
 
         assert row.pv_cost == 2.0
         assert row.total_cost == 0.0
+        assert row.gpu_workload_cost == 0.0
+        assert row.cpu_workload_cost == 0.0
         assert row.share is None
         assert row.cpu_no_requests is False
 

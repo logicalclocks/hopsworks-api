@@ -44,7 +44,9 @@ class TestCostsApi:
             query_params={"window": "WEEK"},
         )
         assert costs.total_cost == 41.2
+        assert costs.gpu_workload_cost == 30.0
         assert costs.items[0].namespace == "fraud"
+        assert costs.items[0].cpu_workload_cost == 3.2
 
     @pytest.mark.parametrize(
         ("window", "sent"),

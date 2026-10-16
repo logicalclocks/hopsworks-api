@@ -23,6 +23,8 @@ _HEADERS = [
     "NETWORK",
     "OTHER",
     "TOTAL",
+    "GPU WORKLOADS",
+    "CPU WORKLOADS",
     "SHARE",
     "EFFICIENCY",
 ]
@@ -50,6 +52,10 @@ def _efficiency(row: Any) -> str:
     return _percent(row.total_efficiency)
 
 
+def _workload_money(row: Any, value: float) -> str:
+    return _money(value) if row.kind == "NAMESPACE" else "-"
+
+
 def _table_row(row: Any) -> list[str]:
     return [
         row.namespace or "",
@@ -60,6 +66,8 @@ def _table_row(row: Any) -> list[str]:
         _money(row.network_cost),
         _money(row.other_cost),
         _money(row.total_cost),
+        _workload_money(row, row.gpu_workload_cost),
+        _workload_money(row, row.cpu_workload_cost),
         _percent(row.share),
         _efficiency(row),
     ]
@@ -115,4 +123,8 @@ def admin_costs(ctx: click.Context, window: str) -> None:
         f"idle {_money(costs.idle_cost)}, "
         f"efficiency {_percent(costs.efficiency)}, "
         f"{(costs.window or window).lower()} from {costs.start} to {costs.end} (UTC)"
+    )
+    click.echo(
+        f"GPU workloads: {_money(costs.gpu_workload_cost)} | "
+        f"CPU workloads: {_money(costs.cpu_workload_cost)}"
     )

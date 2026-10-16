@@ -20,6 +20,8 @@ def _costs() -> NamespaceCosts:
         currency="USD",
         total_cost=10.0,
         idle_cost=2.0,
+        gpu_workload_cost=6.0,
+        cpu_workload_cost=2.0,
         efficiency=0.42,
         coverage=CostCoverage(observed_buckets=7, total_buckets=7),
         items=[
@@ -37,6 +39,8 @@ def _costs() -> NamespaceCosts:
                 ram_cost=2.5,
                 pv_cost=0.5,
                 total_cost=8.0,
+                gpu_workload_cost=6.0,
+                cpu_workload_cost=2.0,
                 total_efficiency=0.37,
                 share=0.8,
             ),
@@ -80,6 +84,8 @@ def test_admin_costs_table_sorted_by_total_with_share(costs_api):
     lines = result.output.splitlines()
     assert "NAMESPACE" in lines[0]
     assert "EFFICIENCY" in lines[0]
+    assert "GPU WORKLOADS" in lines[0]
+    assert "CPU WORKLOADS" in lines[0]
     fraud = lines[2].split()
     assert fraud == [
         "fraud",
@@ -90,16 +96,19 @@ def test_admin_costs_table_sorted_by_total_with_share(costs_api):
         "0.00",
         "0.00",
         "8.00",
+        "6.00",
+        "2.00",
         "80%",
         "37%",
     ]
     idle = lines[3].split()
     assert idle[0] == "__idle__"
-    assert idle[-2:] == ["20%", "-"]
+    assert idle[-4:] == ["-", "-", "20%", "-"]
     assert lines[4] == (
         "Total 10.00 USD, idle 2.00, efficiency 42%, "
         "week from 2026-10-09T09:00:00Z to 2026-10-16T09:00:00Z (UTC)"
     )
+    assert lines[5] == "GPU workloads: 6.00 | CPU workloads: 2.00"
 
 
 def test_admin_costs_prints_coverage_when_incomplete(costs_api):
@@ -151,7 +160,7 @@ def test_admin_costs_efficiency_no_requests(
     result = CliRunner().invoke(cli, ["admin", "costs"])
 
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines()[2].split(maxsplit=9)[-1].strip() == shown
+    assert result.output.splitlines()[2].split(maxsplit=11)[-1].strip() == shown
 
 
 def test_admin_costs_shows_backend_user_message(costs_api):

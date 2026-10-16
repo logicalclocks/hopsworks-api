@@ -38,6 +38,9 @@ class CostRow:
     `kind` is `NAMESPACE` for a namespace, `IDLE` for node capacity no pod requested (namespace `__idle__`), and `UNMOUNTED` for unmounted volumes and load balancers (namespace `__unmounted__`).
     `other_cost` sums load balancer, shared and external costs.
     The cost columns sum to `total_cost`, and costs can be slightly negative after OpenCost's adjustments.
+    `gpu_workload_cost` and `cpu_workload_cost` split `total_cost` by workload instead of by resource: a workload (Job, Deployment, StatefulSet, SparkApplication and the like) that requested GPU-hours in a bucket counts its whole cost, CPU, RAM and storage included, as `gpu_workload_cost`, and every other workload counts as `cpu_workload_cost`.
+    The two sum to `total_cost` for a `NAMESPACE` row and are 0 for `IDLE` and `UNMOUNTED` rows, whereas `gpu_cost` is the cost of the GPUs alone.
+    Pods without a controller share one workload per namespace, so they are classed together.
     The `*_hours_requested` and `*_hours_used` columns are CPU core-hours and RAM byte-hours.
     Efficiencies are used divided by requested hours, cost-weighted over CPU and RAM for `total_efficiency`, and `None` when nothing was requested.
     `cpu_no_requests` and `ram_no_requests` mean the namespace used that resource without requesting any, where OpenCost would report 100% efficiency.
@@ -53,6 +56,8 @@ class CostRow:
     network_cost: float = 0.0
     other_cost: float = 0.0
     total_cost: float = 0.0
+    gpu_workload_cost: float = 0.0
+    cpu_workload_cost: float = 0.0
     cpu_efficiency: float | None = None
     ram_efficiency: float | None = None
     total_efficiency: float | None = None
@@ -176,6 +181,7 @@ class NamespaceCosts:
     The cost is computed by OpenCost and proxied by Hopsworks.
     Each Hopsworks project runs in its own namespace, so a namespace row is the compute and storage cost of that project.
     `total_cost` and `idle_cost` cover the whole cluster, and `efficiency` is the cost-weighted efficiency of all namespace rows.
+    `gpu_workload_cost` and `cpu_workload_cost` are the sums of the namespace rows' workload split, so with `idle_cost` and the `UNMOUNTED` row they add up to `total_cost`.
     `start` and `end` are ISO-8601 UTC timestamps.
     The totals and `items` cover only the buckets with data, as reported by `coverage`, and `items` are the per-namespace sums of the bucket rows, most expensive first.
 
@@ -188,6 +194,8 @@ class NamespaceCosts:
     currency: str | None = None
     total_cost: float = 0.0
     idle_cost: float = 0.0
+    gpu_workload_cost: float = 0.0
+    cpu_workload_cost: float = 0.0
     efficiency: float | None = None
     coverage: CostCoverage = field(default_factory=CostCoverage)
     items: list[CostRow] = field(default_factory=list)
@@ -208,6 +216,8 @@ class NamespaceCosts:
             currency=json_decamelized.get("currency"),
             total_cost=totals.get("total_cost") or 0.0,
             idle_cost=totals.get("idle_cost") or 0.0,
+            gpu_workload_cost=totals.get("gpu_workload_cost") or 0.0,
+            cpu_workload_cost=totals.get("cpu_workload_cost") or 0.0,
             efficiency=totals.get("efficiency"),
             coverage=CostCoverage._from_decamelized(
                 json_decamelized.get("coverage") or {}

@@ -6,7 +6,7 @@
       "end": "2026-10-16T09:00:00Z",
       "currency": "USD",
       "coverage": {"observedBuckets": 1, "totalBuckets": 2, "firstObserved": "2026-10-09T00:00:00Z"},
-      "totals": {"totalCost": 41.2, "idleCost": 5.1, "efficiency": 0.42},
+      "totals": {"totalCost": 41.2, "idleCost": 5.1, "efficiency": 0.42, "gpuWorkloadCost": 30.0, "cpuWorkloadCost": 6.1},
       "items": [
         {
           "kind": "NAMESPACE",
@@ -18,6 +18,8 @@
           "networkCost": 0,
           "otherCost": 0,
           "totalCost": 4.7,
+          "gpuWorkloadCost": 1.5,
+          "cpuWorkloadCost": 3.2,
           "cpuCoreHoursRequested": 10.0,
           "cpuCoreHoursUsed": 3.1,
           "ramByteHoursRequested": 2000.0,
@@ -39,6 +41,8 @@
           "networkCost": 0,
           "otherCost": 0,
           "totalCost": 5.1,
+          "gpuWorkloadCost": 0,
+          "cpuWorkloadCost": 0,
           "cpuEfficiency": null,
           "ramEfficiency": null,
           "totalEfficiency": null,
@@ -52,7 +56,7 @@
           "end": "2026-10-10T00:00:00Z",
           "observed": true,
           "partial": false,
-          "items": [{"namespace": "fraud", "kind": "NAMESPACE", "totalCost": 0.6}]
+          "items": [{"namespace": "fraud", "kind": "NAMESPACE", "totalCost": 0.6, "gpuWorkloadCost": 0.4, "cpuWorkloadCost": 0.2}]
         },
         {
           "start": "2026-10-10T00:00:00Z",

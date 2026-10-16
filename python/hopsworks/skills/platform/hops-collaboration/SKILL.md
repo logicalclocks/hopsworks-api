@@ -71,6 +71,7 @@ Each project runs in its own Kubernetes namespace; OpenCost prices each namespac
 ```python
 costs = hopsworks.get_costs_api().get_namespace_costs("month")  # hour | day | week (default) | month | year
 print(costs.total_cost, costs.idle_cost, costs.efficiency, costs.currency)
+print(costs.gpu_workload_cost, costs.cpu_workload_cost)          # namespace cost split by GPU vs CPU workloads
 cov = costs.coverage                                               # observed_buckets, total_buckets, first_observed
 df = costs.to_pandas()                                             # one row per namespace, most expensive first
 for bucket in costs.buckets:                                       # per-slice rows for a chart
@@ -80,7 +81,7 @@ for bucket in costs.buckets:                                       # per-slice r
 ```
 
 ```bash
-hops admin costs --window month          # table: namespace, cpu, gpu, ram, storage, network, other, total, share, efficiency; plus a coverage line when buckets lack data
+hops admin costs --window month          # table: namespace, cpu, gpu, ram, storage, network, other, total, gpu workloads, cpu workloads, share, efficiency; plus a coverage line when buckets lack data
 hops admin costs --window day --json
 ```
 
@@ -91,6 +92,8 @@ Key facts:
   A bucket with `observed=False` is no data (OpenCost not running yet, past retention, scrape gap), not zero cost; say "no data" when reporting it.
   `partial=True` marks the current bucket, whose cost is still growing.
 - Each row's cost columns sum to `total_cost`; `share` is the row's fraction of `total_cost` (`None` when the total is not positive).
+- `gpu_workload_cost` + `cpu_workload_cost` is a second split of a `NAMESPACE` row's `total_cost`, by workload: a Job, Deployment or other controller that requested GPUs in a bucket counts its whole cost (CPU, RAM, storage too) as GPU workload; `gpu_cost` is only the GPUs' own cost.
+  Both are 0 on `IDLE` / `UNMOUNTED` rows.
 - Efficiency is used over requested core-hours or byte-hours; `cpu_no_requests` / `ram_no_requests` mean the namespace used the resource without requesting any, so its efficiency is meaningless; the CLI shows `No requests`.
 - Cost tracking switched off on the cluster (`enable_opencost` false, the default) surfaces as `RestAPIError` with HTTP 404 and error code 100083.
 - OpenCost not installed or unreachable surfaces as `RestAPIError` with HTTP 503 and error code 100081; the cause is in `exc.user_message`.
