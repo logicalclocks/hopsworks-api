@@ -77,7 +77,7 @@ public final class KllMerger {
 
   // Quantile fractions 0.01 .. 0.99 in 0.01 steps — matches the wire shape of
   // ProfileJsonSerializer's approxPercentiles (99 elements, see §3.4 of the plan).
-  private static final double[] PERCENTILE_FRACTIONS = buildPercentileFractions();
+  static final double[] PERCENTILE_FRACTIONS = buildPercentileFractions();
 
   private KllMerger() {
     // Static-only utility; not instantiable.

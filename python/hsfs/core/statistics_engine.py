@@ -127,6 +127,7 @@ class StatisticsEngine:
         correlations: bool = False,
         kll: bool = False,
         histogram_bins: int | None = None,
+        mergeable_state: bool = False,
     ) -> statistics.Statistics:
         """Compute statistics for one or more features and send the result to Hopsworks.
 
@@ -148,6 +149,8 @@ class StatisticsEngine:
             correlations: Whether to compute feature correlations.
             kll: Whether to compute KLL sketches.
             histogram_bins: Number of bins to use for histograms.
+            mergeable_state: Also emit the state a later profile is merged into this one with
+                (incremental statistics).
 
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
@@ -215,14 +218,16 @@ class StatisticsEngine:
                     event_time=event_time,
                 )
 
-            stats_str = self._profile_statistics(
+            # Emptiness was checked above; _profile_statistics would probe it again.
+            stats_str = engine._get_instance()._profile(
                 feature_dataframe,
                 feature_names,
                 correlations,
                 histograms,
                 exact_uniqueness,
-                kll=kll,
-                histogram_bins=histogram_bins,
+                kll,
+                histogram_bins,
+                mergeable_state=mergeable_state,
             )
             desc_stats = self._parse_deequ_statistics(stats_str, exact_uniqueness)
 
@@ -526,6 +531,7 @@ class StatisticsEngine:
         event_time: str | None = None,
         feature_names: list[str] | None = None,
         row_percentage: float | None = None,
+        with_content: bool | str = True,
     ) -> statistics.Statistics | None:
         """Get the statistics of an entity based on a commit or event time window.
 
@@ -541,6 +547,8 @@ class StatisticsEngine:
             event_time: Name of the feature the window is sliced by
             feature_names: List of feature names of which statistics are retrieved.
             row_percentage: Percentage of feature values used during statistics computation
+            with_content: Whether to include the extended statistics (`True`, `"content"`) or
+                the descriptive values alone (`"descriptive"`).
 
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
@@ -566,6 +574,7 @@ class StatisticsEngine:
             event_time=event_time,
             feature_names=feature_names,
             row_percentage=row_percentage,
+            with_content=with_content,
         )
 
     @decorators._catch_not_found(
