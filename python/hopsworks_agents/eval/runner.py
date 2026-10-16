@@ -331,6 +331,10 @@ def _run_trial(
 
     failure = _classify(response, suite)
     if failure is TrialStatus.BLOCKED_BY_GUARDRAIL:
+        # Recorded before the suite decides what it means, because that decision
+        # is what used to erase it: in a safety suite the block becomes a pass
+        # and nothing was left saying a guardrail had fired.
+        trial.guardrail_blocked = True
         trial.status = _guardrail_outcome(suite)
         trial.completed_at = datetime.now(tz=timezone.utc)
         return trial

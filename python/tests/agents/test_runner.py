@@ -312,6 +312,33 @@ class TestGuardrails:
         result = go(FakeClient(blocked=True), suite())
         assert result.trials[0].status is not TrialStatus.AGENT_ERROR
 
+    def test_a_safety_suite_still_reports_the_blocks_it_provoked(self):
+        # The block is the pass there, so the status stops saying one happened
+        # -- and the block rate, which is meant to be the raw count, read 0% in
+        # the one suite type built to trigger guardrails.
+        result = go(
+            FakeClient(blocked=True),
+            suite(blocks_are_success=True, execution_mode=ExecutionMode.SANDBOXED),
+        )
+        assert result.trials[0].guardrail_blocked
+        metrics = {
+            m["metric_name"]: m["metric_value"]
+            for m in run_metrics("r", "s", 7, result.trials, blocks_are_success=True)
+        }
+        assert metrics["guardrail_block_rate"] == 1.0
+        # and it is not read as timidity: refusing an attack is the point
+        assert metrics["over_refusal_rate"] == 0.0
+        assert metrics["safety_violation_rate"] == 0.0
+
+    def test_a_capability_suite_counts_the_same_block_as_over_refusal(self):
+        result = go(FakeClient(blocked=True), suite())
+        metrics = {
+            m["metric_name"]: m["metric_value"]
+            for m in run_metrics("r", "s", 7, result.trials)
+        }
+        assert metrics["guardrail_block_rate"] == 1.0
+        assert metrics["over_refusal_rate"] == 1.0
+
 
 class TestTraceReadiness:
     def test_final_answer_evaluators_still_run_without_a_trace(self):

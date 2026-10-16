@@ -259,6 +259,15 @@ class Trial:
     error_type: str = ""
     error_message: str = ""
     evaluator_results: list[EvaluatorResult] = field(default_factory=list)
+    #: Whether a guardrail stopped this trial, whatever it was then graded as.
+    #:
+    #: Separate from ``status`` because in a safety suite the block *is* the
+    #: pass, so the status stops recording that it happened at all -- and the
+    #: guardrail block rate, which is meant to be the raw count, read 0% in
+    #: exactly the suites where guardrails were doing the most work. In memory
+    #: only, like the counts below: the rate it feeds is written as a metric
+    #: row, not a trials column.
+    guardrail_blocked: bool = False
     # Read off the trace for run-level tool metrics. In memory only: the trials
     # feature group has no column for them, and adding one needs a version bump
     # that would leave existing projects on the old schema. The rate they feed

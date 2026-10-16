@@ -169,7 +169,15 @@ def run_metrics(
     passed = sum(1 for t in gradable if _passed(t))
     is_safety = bool(blocks_are_success)
 
-    blocked = sum(1 for t in trials if t.status is TrialStatus.BLOCKED_BY_GUARDRAIL)
+    # The flag, not only the status: a safety suite grades a block as a pass, so
+    # counting statuses reported no blocks at all in the suites built to trigger
+    # them. The status is still honoured for trials that arrive already graded.
+    blocked = sum(
+        1
+        for t in trials
+        if getattr(t, "guardrail_blocked", False)
+        or t.status is TrialStatus.BLOCKED_BY_GUARDRAIL
+    )
     tokens_in = sum(t.input_tokens or 0 for t in trials)
     tokens_out = sum(t.output_tokens or 0 for t in trials)
     costs = [t.estimated_cost for t in trials if t.estimated_cost is not None]
