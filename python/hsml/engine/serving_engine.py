@@ -614,9 +614,11 @@ class ServingEngine:
         """Download the HopsFS log archives of a deployment.
 
         Each instance archives its own output when it exits, restarts, or is
-        stopped. Archives live in the project's ``Logs`` dataset, one file per
-        instance run under ``Logs/Serving/<deployment_name>/`` named
-        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log``.
+        stopped. Archives live in the project's ``Logs`` dataset under
+        ``Logs/Serving/<deployment_name>/``, a stdout and a stderr file per instance
+        run named ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.stdout.log`` and
+        ``.stderr.log``; archives from before Hopsworks 5.3 are one interleaved
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log`` per run.
 
         Parameters:
             deployment_instance: The deployment whose archived logs to download.
@@ -659,7 +661,8 @@ class ServingEngine:
         ]
         if latest and archive_paths:
             # File names start with the UTC stop timestamp, so the
-            # lexicographically greatest prefix is the most recent stop.
+            # lexicographically greatest prefix is the most recent stop. Both
+            # streams of a run share the prefix, so a split run comes as a pair.
             latest_prefix = max(
                 os.path.basename(p).split("_", 1)[0] for p in archive_paths
             )
