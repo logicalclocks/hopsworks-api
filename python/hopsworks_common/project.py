@@ -149,7 +149,7 @@ class Project:
         """Name of the department the project belongs to.
 
         Administrators group projects into departments; a project created without one is in the default department.
-        `None` when the cluster has departments turned off.
+        `None` from a Hopsworks version that predates departments.
         """
         return self._department
 

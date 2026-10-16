@@ -137,7 +137,7 @@ class ProjectApi:
             The Project object.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If unable to create the project, or departments are disabled while `department` is set.
+            hopsworks.client.exceptions.RestAPIError: If unable to create the project.
             ValueError: If no department is named `department`.
         """
         _client = client._get_instance()
@@ -176,7 +176,7 @@ class ProjectApi:
         """Resolve a department name to its id.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If departments are disabled on the cluster.
+            hopsworks.client.exceptions.RestAPIError: If the cluster cannot list its departments.
             ValueError: If no department is named `name`.
         """
         _client = client._get_instance()

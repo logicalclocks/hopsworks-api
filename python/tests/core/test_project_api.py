@@ -116,7 +116,7 @@ class TestProjectDepartment:
         )
         assert project.department == "research"
 
-    def test_department_absent_when_disabled(self):
+    def test_department_absent_from_older_hopsworks(self):
         from hopsworks_common.project import Project
 
         project = Project.from_response_json({"projectId": 1, "projectName": "p"})
