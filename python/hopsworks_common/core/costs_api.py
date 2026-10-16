@@ -72,7 +72,7 @@ class CostsApi:
 
         Raises:
             ValueError: If `window` is not one of the supported values.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403) or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403) cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
         """
         query_params = {"window": _normalize_window(window)}
         _client = client._get_instance()

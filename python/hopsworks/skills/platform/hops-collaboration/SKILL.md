@@ -92,6 +92,7 @@ Key facts:
   `partial=True` marks the current bucket, whose cost is still growing.
 - Each row's cost columns sum to `total_cost`; `share` is the row's fraction of `total_cost` (`None` when the total is not positive).
 - Efficiency is used over requested core-hours or byte-hours; `cpu_no_requests` / `ram_no_requests` mean the namespace used the resource without requesting any, so its efficiency is meaningless; the CLI shows `No requests`.
+- Cost tracking switched off on the cluster (`enable_opencost` false, the default) surfaces as `RestAPIError` with HTTP 404 and error code 100083.
 - OpenCost not installed or unreachable surfaces as `RestAPIError` with HTTP 503 and error code 100081; the cause is in `exc.user_message`.
 
 ## Sharing feature store data across projects
