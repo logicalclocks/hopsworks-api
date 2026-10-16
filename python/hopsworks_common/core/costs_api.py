@@ -50,6 +50,7 @@ class CostsApi:
         Each Hopsworks project runs in its own namespace, so this is the cost per project, plus the cluster's idle capacity and unmounted volumes.
         Hour, day and week are computed live by OpenCost.
         Month and year are assembled from daily history that Hopsworks records, so they only cover the days since that recording started.
+        The returned `coverage` says how many of the window's buckets have data, and a bucket without data is unknown cost rather than zero.
 
         Example:
             ```python
@@ -71,7 +72,7 @@ class CostsApi:
 
         Raises:
             ValueError: If `window` is not one of the supported values.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin or OpenCost is not reachable.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403) or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
         """
         query_params = {"window": _normalize_window(window)}
         _client = client._get_instance()

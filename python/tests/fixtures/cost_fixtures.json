@@ -5,6 +5,7 @@
       "start": "2026-10-09T09:00:00Z",
       "end": "2026-10-16T09:00:00Z",
       "currency": "USD",
+      "coverage": {"observedBuckets": 1, "totalBuckets": 2, "firstObserved": "2026-10-09T00:00:00Z"},
       "totals": {"totalCost": 41.2, "idleCost": 5.1, "efficiency": 0.42},
       "items": [
         {
@@ -17,9 +18,16 @@
           "networkCost": 0,
           "otherCost": 0,
           "totalCost": 4.7,
+          "cpuCoreHoursRequested": 10.0,
+          "cpuCoreHoursUsed": 3.1,
+          "ramByteHoursRequested": 2000.0,
+          "ramByteHoursUsed": 1100.0,
           "cpuEfficiency": 0.31,
           "ramEfficiency": 0.55,
-          "totalEfficiency": 0.37
+          "totalEfficiency": 0.37,
+          "cpuNoRequests": false,
+          "ramNoRequests": false,
+          "share": 0.1141
         },
         {
           "kind": "IDLE",
@@ -34,6 +42,7 @@
           "cpuEfficiency": null,
           "ramEfficiency": null,
           "totalEfficiency": null,
+          "share": null,
           "addedLater": "ignored"
         }
       ],
@@ -41,11 +50,15 @@
         {
           "start": "2026-10-09T00:00:00Z",
           "end": "2026-10-10T00:00:00Z",
+          "observed": true,
+          "partial": false,
           "items": [{"namespace": "fraud", "kind": "NAMESPACE", "totalCost": 0.6}]
         },
         {
           "start": "2026-10-10T00:00:00Z",
           "end": "2026-10-11T00:00:00Z",
+          "observed": false,
+          "partial": true,
           "items": []
         }
       ]

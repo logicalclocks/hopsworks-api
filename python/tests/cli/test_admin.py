@@ -8,7 +8,8 @@ from unittest import mock
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
-from hopsworks_common.cost import CostRow, NamespaceCosts
+from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.cost import CostCoverage, CostRow, NamespaceCosts
 
 
 def _costs() -> NamespaceCosts:
@@ -20,8 +21,15 @@ def _costs() -> NamespaceCosts:
         total_cost=10.0,
         idle_cost=2.0,
         efficiency=0.42,
+        coverage=CostCoverage(observed_buckets=7, total_buckets=7),
         items=[
-            CostRow(namespace="__idle__", kind="IDLE", cpu_cost=2.0, total_cost=2.0),
+            CostRow(
+                namespace="__idle__",
+                kind="IDLE",
+                cpu_cost=2.0,
+                total_cost=2.0,
+                share=0.2,
+            ),
             CostRow(
                 namespace="fraud",
                 kind="NAMESPACE",
@@ -30,6 +38,7 @@ def _costs() -> NamespaceCosts:
                 pv_cost=0.5,
                 total_cost=8.0,
                 total_efficiency=0.37,
+                share=0.8,
             ),
         ],
     )
@@ -91,6 +100,79 @@ def test_admin_costs_table_sorted_by_total_with_share(costs_api):
         "Total 10.00 USD, idle 2.00, efficiency 42%, "
         "week from 2026-10-09T09:00:00Z to 2026-10-16T09:00:00Z (UTC)"
     )
+
+
+def test_admin_costs_prints_coverage_when_incomplete(costs_api):
+    costs = _costs()
+    costs.coverage = CostCoverage(
+        observed_buckets=2, total_buckets=7, first_observed="2026-10-15T00:00:00Z"
+    )
+    costs_api.get_namespace_costs.return_value = costs
+
+    result = CliRunner().invoke(cli, ["admin", "costs"])
+
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert lines[4] == "Data for 2 of 7 buckets, starting 2026-10-15T00:00:00Z"
+    assert lines[5].startswith("Total 10.00 USD")
+
+
+def test_admin_costs_without_data_omits_starting(costs_api):
+    costs = NamespaceCosts(
+        window="HOUR", coverage=CostCoverage(observed_buckets=0, total_buckets=6)
+    )
+    costs_api.get_namespace_costs.return_value = costs
+
+    result = CliRunner().invoke(cli, ["admin", "costs"])
+
+    assert result.exit_code == 0, result.output
+    assert "Data for 0 of 6 buckets\n" in result.output
+
+
+def test_admin_costs_omits_coverage_when_complete(costs_api):
+    result = CliRunner().invoke(cli, ["admin", "costs"])
+
+    assert result.exit_code == 0, result.output
+    assert "Data for" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("cpu_no_requests", "ram_no_requests", "shown"),
+    [(True, True, "No requests"), (True, False, "37%"), (False, False, "37%")],
+)
+def test_admin_costs_efficiency_no_requests(
+    costs_api, cpu_no_requests, ram_no_requests, shown
+):
+    costs = _costs()
+    costs.items[1].cpu_no_requests = cpu_no_requests
+    costs.items[1].ram_no_requests = ram_no_requests
+    costs_api.get_namespace_costs.return_value = costs
+
+    result = CliRunner().invoke(cli, ["admin", "costs"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[2].split(maxsplit=9)[-1].strip() == shown
+
+
+def test_admin_costs_shows_backend_user_message(costs_api):
+    response = mock.MagicMock(status_code=503)
+    response.json.return_value = {
+        "errorCode": 100081,
+        "errorMsg": "OpenCost could not be reached.",
+        "usrMsg": "No OpenCost certificate at /var/run/secrets/opencost/ca.crt",
+    }
+    costs_api.get_namespace_costs.side_effect = RestAPIError(
+        "admin/costs/namespaces", response
+    )
+
+    result = CliRunner().invoke(cli, ["admin", "costs"])
+
+    assert result.exit_code != 0
+    assert (
+        "Could not get namespace costs: No OpenCost certificate at "
+        "/var/run/secrets/opencost/ca.crt"
+    ) in result.output
+    assert "Server response" not in result.output
 
 
 def test_admin_costs_json(costs_api):

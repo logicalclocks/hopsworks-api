@@ -10,6 +10,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 _WINDOWS = ("hour", "day", "week", "month", "year")
@@ -40,10 +41,16 @@ def _percent(value: float | None) -> str:
     return "-" if value is None else f"{value:.0%}"
 
 
-def _table_row(row: Any, total: float) -> list[str]:
-    share = row.total_cost / total if total else None
+def _efficiency(row: Any) -> str:
     # OpenCost has no efficiency for capacity nobody requested.
-    efficiency = row.total_efficiency if row.kind == "NAMESPACE" else None
+    if row.kind != "NAMESPACE":
+        return "-"
+    if row.cpu_no_requests and row.ram_no_requests:
+        return "No requests"
+    return _percent(row.total_efficiency)
+
+
+def _table_row(row: Any) -> list[str]:
     return [
         row.namespace or "",
         _money(row.cpu_cost),
@@ -53,8 +60,8 @@ def _table_row(row: Any, total: float) -> list[str]:
         _money(row.network_cost),
         _money(row.other_cost),
         _money(row.total_cost),
-        _percent(share),
-        _percent(efficiency),
+        _percent(row.share),
+        _efficiency(row),
     ]
 
 
@@ -72,6 +79,8 @@ def admin_costs(ctx: click.Context, window: str) -> None:
 
     Each project runs in its own namespace. Costs come from OpenCost; month
     and year are assembled from daily history Hopsworks has recorded so far.
+    When some buckets of the window have no data, a coverage line says how
+    many do; missing buckets are unknown cost, not zero.
 
     Args:
         ctx: Click context.
@@ -82,13 +91,25 @@ def admin_costs(ctx: click.Context, window: str) -> None:
     session.get_project(ctx)
     try:
         costs = hopsworks.get_costs_api().get_namespace_costs(window)
+    except RestAPIError as exc:
+        reason = exc.user_message or exc
+        raise click.ClickException(f"Could not get namespace costs: {reason}") from exc
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Could not get namespace costs: {exc}") from exc
     if output.JSON_MODE:
         output.print_json(costs.to_dict())
         return
     rows = sorted(costs.items, key=lambda r: r.total_cost or 0.0, reverse=True)
-    output.print_table(_HEADERS, [_table_row(r, costs.total_cost) for r in rows])
+    output.print_table(_HEADERS, [_table_row(r) for r in rows])
+    coverage = costs.coverage
+    if coverage.observed_buckets < coverage.total_buckets:
+        starting = (
+            f", starting {coverage.first_observed}" if coverage.first_observed else ""
+        )
+        click.echo(
+            f"Data for {coverage.observed_buckets} of {coverage.total_buckets} "
+            f"buckets{starting}"
+        )
     click.echo(
         f"Total {_money(costs.total_cost)} {costs.currency or ''}, "
         f"idle {_money(costs.idle_cost)}, "

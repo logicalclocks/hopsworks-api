@@ -71,20 +71,28 @@ Each project runs in its own Kubernetes namespace; OpenCost prices each namespac
 ```python
 costs = hopsworks.get_costs_api().get_namespace_costs("month")  # hour | day | week (default) | month | year
 print(costs.total_cost, costs.idle_cost, costs.efficiency, costs.currency)
-df = costs.to_pandas().sort_values("total_cost", ascending=False)  # one row per namespace
-for bucket in costs.buckets:                                       # per-slice totals for a chart
-    print(bucket.start, [(r.namespace, r.total_cost) for r in bucket.items])
+cov = costs.coverage                                               # observed_buckets, total_buckets, first_observed
+df = costs.to_pandas()                                             # one row per namespace, most expensive first
+for bucket in costs.buckets:                                       # per-slice rows for a chart
+    if not bucket.observed:
+        continue                                                   # no data: unknown cost, never plot it as 0
+    print(bucket.start, bucket.partial, [(r.namespace, r.total_cost) for r in bucket.items])
 ```
 
 ```bash
-hops admin costs --window month          # table: namespace, cpu, gpu, ram, storage, network, other, total, share, efficiency
+hops admin costs --window month          # table: namespace, cpu, gpu, ram, storage, network, other, total, share, efficiency; plus a coverage line when buckets lack data
 hops admin costs --window day --json
 ```
 
 Key facts:
 - Rows with `kind` `IDLE` (`__idle__`, node capacity nobody requested) and `UNMOUNTED` (`__unmounted__`) are not projects; they have no efficiency.
 - Hour, day and week are live from OpenCost; month and year come from daily history Hopsworks records, so they cover only the days since recording started.
-- OpenCost not installed or unreachable surfaces as `RestAPIError` (HTTP 503).
+- `coverage.observed_buckets` of `coverage.total_buckets` have data, starting at `coverage.first_observed`; totals and rows cover only those buckets.
+  A bucket with `observed=False` is no data (OpenCost not running yet, past retention, scrape gap), not zero cost; say "no data" when reporting it.
+  `partial=True` marks the current bucket, whose cost is still growing.
+- Each row's cost columns sum to `total_cost`; `share` is the row's fraction of `total_cost` (`None` when the total is not positive).
+- Efficiency is used over requested core-hours or byte-hours; `cpu_no_requests` / `ram_no_requests` mean the namespace used the resource without requesting any, so its efficiency is meaningless; the CLI shows `No requests`.
+- OpenCost not installed or unreachable surfaces as `RestAPIError` with HTTP 503 and error code 100081; the cause is in `exc.user_message`.
 
 ## Sharing feature store data across projects
 

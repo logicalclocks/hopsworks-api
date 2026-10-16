@@ -37,8 +37,11 @@ class CostRow:
     Costs are in the currency of the enclosing [`NamespaceCosts`][hopsworks_common.cost.NamespaceCosts].
     `kind` is `NAMESPACE` for a namespace, `IDLE` for node capacity no pod requested (namespace `__idle__`), and `UNMOUNTED` for unmounted volumes and load balancers (namespace `__unmounted__`).
     `other_cost` sums load balancer, shared and external costs.
-    Efficiencies are the ratio of used to requested resources, cost-weighted for `total_efficiency`, and `None` when OpenCost cannot compute one.
-    Rows inside a [`CostBucket`][hopsworks_common.cost.CostBucket] carry only `namespace`, `kind` and `total_cost`.
+    The cost columns sum to `total_cost`, and costs can be slightly negative after OpenCost's adjustments.
+    The `*_hours_requested` and `*_hours_used` columns are CPU core-hours and RAM byte-hours.
+    Efficiencies are used divided by requested hours, cost-weighted over CPU and RAM for `total_efficiency`, and `None` when nothing was requested.
+    `cpu_no_requests` and `ram_no_requests` mean the namespace used that resource without requesting any, where OpenCost would report 100% efficiency.
+    `share` is the fraction of the window's total cost, and `None` when that total is not positive or the row is inside a [`CostBucket`][hopsworks_common.cost.CostBucket].
     """
 
     namespace: str | None = None
@@ -53,6 +56,13 @@ class CostRow:
     cpu_efficiency: float | None = None
     ram_efficiency: float | None = None
     total_efficiency: float | None = None
+    cpu_core_hours_requested: float = 0.0
+    cpu_core_hours_used: float = 0.0
+    ram_byte_hours_requested: float = 0.0
+    ram_byte_hours_used: float = 0.0
+    cpu_no_requests: bool = False
+    ram_no_requests: bool = False
+    share: float | None = None
 
     @classmethod
     def _from_decamelized(cls, json_decamelized: dict[str, Any]) -> CostRow:
@@ -86,10 +96,14 @@ class CostBucket:
 
     An hour window is split into 10-minute slices, a day into hours, a week and a month into days, and a year into calendar months.
     `start` and `end` are ISO-8601 UTC timestamps.
+    A bucket with `observed` false has no data, for example because OpenCost was not running yet or the data is past retention, so its cost is unknown rather than zero.
+    A bucket with `partial` true has not ended yet, so its cost is still growing.
     """
 
     start: str | None = None
     end: str | None = None
+    observed: bool = False
+    partial: bool = False
     items: list[CostRow] = field(default_factory=list)
 
     @classmethod
@@ -97,6 +111,8 @@ class CostBucket:
         return cls(
             start=json_decamelized.get("start"),
             end=json_decamelized.get("end"),
+            observed=bool(json_decamelized.get("observed")),
+            partial=bool(json_decamelized.get("partial")),
             items=[
                 CostRow._from_decamelized(item)
                 for item in json_decamelized.get("items") or []
@@ -116,6 +132,42 @@ class CostBucket:
         return json.dumps(self, cls=util.Encoder)
 
 
+@public("hopsworks.cost.CostCoverage")
+@dataclass
+class CostCoverage:
+    """How many of the buckets of a window have any cost data.
+
+    The totals and rows of a [`NamespaceCosts`][hopsworks_common.cost.NamespaceCosts] cover only the observed buckets, so a window with `observed_buckets` below `total_buckets` reports less than the full window.
+    `first_observed` is the ISO-8601 UTC start of the first observed bucket, and `None` when no bucket has data.
+    """
+
+    observed_buckets: int = 0
+    total_buckets: int = 0
+    first_observed: str | None = None
+
+    @classmethod
+    def _from_decamelized(cls, json_decamelized: dict[str, Any]) -> CostCoverage:
+        return cls(
+            observed_buckets=json_decamelized.get("observed_buckets") or 0,
+            total_buckets=json_decamelized.get("total_buckets") or 0,
+            first_observed=json_decamelized.get("first_observed"),
+        )
+
+    @classmethod
+    def from_response_json(
+        cls, json_dict: dict[str, Any] | None
+    ) -> CostCoverage | None:
+        if not json_dict:
+            return None
+        return cls._from_decamelized(humps.decamelize(json_dict))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def json(self) -> str:
+        return json.dumps(self, cls=util.Encoder)
+
+
 @public("hopsworks.cost.NamespaceCosts")
 @dataclass
 class NamespaceCosts:
@@ -123,8 +175,9 @@ class NamespaceCosts:
 
     The cost is computed by OpenCost and proxied by Hopsworks.
     Each Hopsworks project runs in its own namespace, so a namespace row is the compute and storage cost of that project.
-    `total_cost` and `idle_cost` cover the whole cluster, and `efficiency` is the cost-weighted efficiency of all non-idle rows.
+    `total_cost` and `idle_cost` cover the whole cluster, and `efficiency` is the cost-weighted efficiency of all namespace rows.
     `start` and `end` are ISO-8601 UTC timestamps.
+    The totals and `items` cover only the buckets with data, as reported by `coverage`, and `items` are the per-namespace sums of the bucket rows, most expensive first.
 
     Use [`CostsApi.get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] to get an instance of this class.
     """
@@ -136,6 +189,7 @@ class NamespaceCosts:
     total_cost: float = 0.0
     idle_cost: float = 0.0
     efficiency: float | None = None
+    coverage: CostCoverage = field(default_factory=CostCoverage)
     items: list[CostRow] = field(default_factory=list)
     buckets: list[CostBucket] = field(default_factory=list)
 
@@ -155,6 +209,9 @@ class NamespaceCosts:
             total_cost=totals.get("total_cost") or 0.0,
             idle_cost=totals.get("idle_cost") or 0.0,
             efficiency=totals.get("efficiency"),
+            coverage=CostCoverage._from_decamelized(
+                json_decamelized.get("coverage") or {}
+            ),
             items=[
                 CostRow._from_decamelized(item)
                 for item in json_decamelized.get("items") or []

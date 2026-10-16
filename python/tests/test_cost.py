@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hopsworks_common.cost import CostBucket, CostRow, NamespaceCosts
+from hopsworks_common.cost import CostBucket, CostCoverage, CostRow, NamespaceCosts
 
 
 class TestNamespaceCosts:
@@ -30,6 +30,11 @@ class TestNamespaceCosts:
         assert costs.total_cost == 41.2
         assert costs.idle_cost == 5.1
         assert costs.efficiency == 0.42
+        assert costs.coverage == CostCoverage(
+            observed_buckets=1,
+            total_buckets=2,
+            first_observed="2026-10-09T00:00:00Z",
+        )
         fraud = costs.items[0]
         assert fraud == CostRow(
             namespace="fraud",
@@ -44,6 +49,13 @@ class TestNamespaceCosts:
             cpu_efficiency=0.31,
             ram_efficiency=0.55,
             total_efficiency=0.37,
+            cpu_core_hours_requested=10.0,
+            cpu_core_hours_used=3.1,
+            ram_byte_hours_requested=2000.0,
+            ram_byte_hours_used=1100.0,
+            cpu_no_requests=False,
+            ram_no_requests=False,
+            share=0.1141,
         )
 
     def test_from_response_json_null_cost_is_zero_and_unknown_keys_dropped(
@@ -56,6 +68,7 @@ class TestNamespaceCosts:
         assert idle.kind == "IDLE"
         assert idle.pv_cost == 0.0
         assert idle.total_efficiency is None
+        assert idle.share is None
 
     def test_from_response_json_buckets(self, backend_fixtures):
         json = backend_fixtures["cost"]["get_namespace_costs"]["response"]
@@ -64,6 +77,10 @@ class TestNamespaceCosts:
 
         assert len(buckets) == 2
         assert buckets[0].start == "2026-10-09T00:00:00Z"
+        assert buckets[0].observed is True
+        assert buckets[0].partial is False
+        assert buckets[1].observed is False
+        assert buckets[1].partial is True
         assert buckets[0].items == [
             CostRow(namespace="fraud", kind="NAMESPACE", total_cost=0.6)
         ]
@@ -78,6 +95,7 @@ class TestNamespaceCosts:
 
         assert costs.total_cost == 0.0
         assert costs.efficiency is None
+        assert costs.coverage == CostCoverage()
         assert costs.items == []
         assert costs.buckets == []
 
@@ -88,6 +106,7 @@ class TestNamespaceCosts:
 
         assert list(df["namespace"]) == ["fraud", "__idle__"]
         assert list(df.columns) == list(CostRow.__dataclass_fields__)
+        assert {"share", "cpu_no_requests", "cpu_core_hours_used"} <= set(df.columns)
         assert df["total_cost"].sum() == 4.7 + 5.1
 
     def test_to_pandas_empty_keeps_columns(self):
@@ -109,6 +128,20 @@ class TestCostBucket:
 
         assert bucket.items[0].total_cost == 1.5
         assert bucket.items[0].cpu_cost == 0.0
+        assert bucket.observed is False
+        assert bucket.partial is False
+
+
+class TestCostCoverage:
+    def test_from_response_json(self):
+        coverage = CostCoverage.from_response_json(
+            {"observedBuckets": 0, "totalBuckets": 7, "firstObserved": None}
+        )
+
+        assert coverage == CostCoverage(observed_buckets=0, total_buckets=7)
+
+    def test_from_response_json_empty(self):
+        assert CostCoverage.from_response_json(None) is None
 
 
 class TestCostRow:
@@ -119,3 +152,23 @@ class TestCostRow:
 
         assert row.pv_cost == 2.0
         assert row.total_cost == 0.0
+        assert row.share is None
+        assert row.cpu_no_requests is False
+
+    def test_from_response_json_no_requests(self):
+        row = CostRow.from_response_json(
+            {
+                "namespace": "n",
+                "kind": "NAMESPACE",
+                "cpuCoreHoursUsed": 2.0,
+                "cpuNoRequests": True,
+                "ramNoRequests": True,
+                "share": -0.01,
+            }
+        )
+
+        assert row.cpu_core_hours_used == 2.0
+        assert row.cpu_core_hours_requested == 0.0
+        assert row.cpu_no_requests is True
+        assert row.ram_no_requests is True
+        assert row.share == -0.01
