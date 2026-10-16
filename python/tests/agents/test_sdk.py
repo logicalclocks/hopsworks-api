@@ -386,6 +386,19 @@ class TestRuns:
         evals, _ = client(Reply({"id": 7, "status": "Idle"}))
         assert evals.runs.agent_status(Run(run_id="r", deployment_id=7)) == ""
 
+    def test_a_manual_job_run_can_name_the_window_it_samples(self):
+        # A scheduled fire grades what arrived since the last one. Trying an
+        # evaluator out means naming a window -- yesterday afternoon, twenty
+        # conversations -- without changing what every fire does.
+        evals, session = client(Reply([{"runId": "r"}]))
+        since = datetime(2026, 10, 15, 14, tzinfo=timezone.utc)
+        evals.jobs.run_eval_job(
+            "nightly", since=since, sample=20, strategy="oldest"
+        )
+        sent = session.sent[0][2]
+        assert sent["from"] == int(since.timestamp() * 1000)
+        assert sent["sample"] == 20 and sent["strategy"] == "oldest"
+
     def test_sampling_production_needs_something_to_grade_with(self):
         evals, session = client(Reply({"runId": "r", "runType": "ONLINE_SAMPLE"}))
         with pytest.raises(AgentServingError, match="evaluator or a suite"):

@@ -862,10 +862,31 @@ class Jobs:
     def delete_eval_job(self, name: str) -> None:
         self._http.delete(f"{EVALS}/eval-jobs/{name}")
 
-    def run_eval_job(self, name: str) -> list[Run]:
-        """Run everything the job is configured with, now. One run per suite, plus the monitor."""
+    def run_eval_job(
+        self,
+        name: str,
+        *,
+        since: Any = None,
+        until: Any = None,
+        sample: int | None = None,
+        strategy: str | None = None,
+    ) -> list[Run]:
+        """Run everything the job is configured with, now. One run per suite, plus the monitor.
+
+        ``since``, ``until``, ``sample`` and ``strategy`` apply to this execution's monitors
+        only -- a window to try an evaluator out on, without changing what every scheduled fire
+        does. Left out, the monitor grades what arrived since the last successful sample with the
+        job's own ceiling and strategy.
+        """
         return self._client._bind_all(
-            Run.list_from_api(self._http.post(f"{EVALS}/eval-jobs/{name}/run"))
+            Run.list_from_api(
+                self._http.post(
+                    f"{EVALS}/eval-jobs/{name}/run",
+                    **{"from": epoch_ms(since), "to": epoch_ms(until)},
+                    sample=sample,
+                    strategy=strategy,
+                )
+            )
         )
 
     # ── failure analysis job ───────────────────────────────────────────────
