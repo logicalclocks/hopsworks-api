@@ -207,6 +207,8 @@ def _write_results(
             # so score-by-category has categories to group on; the tasks are
             # already in hand from building the suite
             categories={t["taskId"]: t.get("category") or "" for t in (tasks or [])},
+            # Only a sample has one: a suite run's window is the suite.
+            window_size=getattr(result, "available", None),
         )
     ]
 
@@ -364,6 +366,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
                 project.id,
                 run,
                 evaluators_for(run, judge_completer=completer),
+                strategy=args.sample_strategy,
             )
             _write_results(project.get_feature_store(), result, run)
             report(result.status, processed_through_ms=result.processed_through_ms)
@@ -438,6 +441,15 @@ def main() -> None:
         "p95 rather than accepting this default",
     )
     parser.add_argument("--max-concurrency", type=int, default=4)
+    parser.add_argument(
+        "--sample-strategy",
+        choices=("oldest", "random"),
+        default="oldest",
+        help="which conversations a sample grades when its window holds more than "
+        "its ceiling: the oldest of them, leaving the rest for the next run, or a "
+        "random spread of the whole window, which keeps the cost fixed and does not "
+        "come back for the rest",
+    )
     # The scheduler appends "-start_time <fire time>" to every scheduled execution's arguments.
     # This job reads its window off its run rows, not that flag, so it is tolerated and ignored
     # rather than refused -- a refusal here is a scheduled job that never runs.

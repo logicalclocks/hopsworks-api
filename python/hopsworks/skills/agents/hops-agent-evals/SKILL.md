@@ -100,9 +100,12 @@ agent.sample(suite=suite)                             # or grade live traffic wi
 job = agents.jobs.ensure_eval_job(agent.id, suites=[suite], evaluators=[judge], monitor=True)
 agents.jobs.run_eval_job(job.name)                    # one run per suite, plus the monitor sample
 agents.jobs.update_eval_job(job.name, suites_on_schedule=True)   # scheduled fires run the suites too
+agents.jobs.update_eval_job(job.name, sample_ceiling=2000, sample_strategy="random")
 ```
 
-The evaluation job is a Hopsworks job named after the agent; schedule it like any job (**hops-job**). `monitor=True` samples traffic with the listed evaluators on every run. A **scheduled** fire grades live traffic only — the suites are the same frozen tasks every fire, at a model call per task — unless `suites_on_schedule=True`. Running the job yourself always runs everything it names. Runs list with `agents.runs.list(agent.id)`; `agents.runs.trend(agent.id)` gives the pass-rate trend. A running evaluation is stopped from the UI's Stop button (there is no client call yet).
+The evaluation job is a Hopsworks job named after the agent; schedule it like any job (**hops-job**). `monitor=True` samples traffic with the listed evaluators on every run. A **scheduled** fire grades live traffic only — the suites are the same frozen tasks every fire, at a model call per task — unless `suites_on_schedule=True`. Running the job yourself always runs everything it names.
+
+Each sample grades at most `sample_ceiling` conversations of its window (default 500, max 10000), because every one of them costs a judge call per evaluator. When the window holds more: `sample_strategy="oldest"` (the default) grades the oldest of them and closes the window there, so the next run continues from where this one stopped and nothing is skipped — a monitor that cannot keep up falls visibly behind. `sample_strategy="random"` grades a spread of the whole window and moves on, keeping the cost fixed; the run then records `window_conversations` and `sampled_fraction`, and its pass rate is a sample rather than a census. Runs list with `agents.runs.list(agent.id)`; `agents.runs.trend(agent.id)` gives the pass-rate trend. A running evaluation is stopped from the UI's Stop button (there is no client call yet).
 
 ## 3. Traces, feedback and failure analysis
 

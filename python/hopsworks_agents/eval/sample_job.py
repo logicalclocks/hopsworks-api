@@ -323,6 +323,7 @@ def run_sample(
     run: dict[str, Any],
     evaluators: Sequence[Evaluator],
     rng: random.Random | None = None,
+    strategy: str = "oldest",
 ) -> RunResult:
     """List, sample, grade.
 
@@ -355,7 +356,7 @@ def run_sample(
             "limit": graded_limit or LISTING_LIMIT,
             "from": int(start_ms),
             "to": int(end_ms),
-            "order": "oldest",
+            "order": "random" if strategy == "random" else "oldest",
         },
         timeout=60,
     )
@@ -379,15 +380,24 @@ def run_sample(
             completed_at=datetime.now(tz=timezone.utc),
         )
 
-    sampled = oldest_first(recent, graded_limit)
+    # Random keeps what the server chose; oldest re-sorts, since a backend that
+    # does not know the window parameters answered newest-first.
+    sampled = (
+        list(recent[:graded_limit])
+        if strategy == "random"
+        else oldest_first(recent, graded_limit)
+    )
     if available > len(sampled):
         # Said plainly, because the alternative reading -- that this is all the
         # traffic there was -- is the one someone would otherwise take.
         log.warning(
-            "%d conversations in the window, grading the oldest %d; the rest stay "
-            "for the next run, which starts where this one stops",
+            "%d conversations in the window, grading %s %d%s",
             available,
+            "a random" if strategy == "random" else "the oldest",
             len(sampled),
+            ""
+            if strategy == "random"
+            else "; the rest stay for the next run, which starts where this one stops",
         )
     else:
         log.info("grading %d conversations in the window", len(sampled))
@@ -426,7 +436,7 @@ def run_sample(
     # rather than skipped. Reported only then -- a run that covered its whole
     # window leaves the end where it was asked to stop.
     processed_through = None
-    if available > len(sampled) and sampled:
+    if strategy != "random" and available > len(sampled) and sampled:
         processed_through = max(
             float(summary.get("createdAt") or 0) for summary in sampled
         )

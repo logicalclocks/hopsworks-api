@@ -156,6 +156,7 @@ def run_metrics(
     deployment_id: int,
     trials: Sequence[Trial],
     blocks_are_success: bool = False,
+    window_size: int | None = None,
     categories: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Every metric a dashboard needs, at every scope it needs them.
@@ -229,6 +230,15 @@ def run_metrics(
         # a wrong one.
         "trial_variance": _mean_task_variance(trials),
     }
+
+    # What a sample's number is a number *of*. Without it "500 passed 80%" reads
+    # as the hour's verdict, when the hour held twelve thousand conversations and
+    # this is five hundred of them.
+    if window_size is not None:
+        values["window_conversations"] = float(window_size)
+        values["sampled_fraction"] = (
+            len(trials) / window_size if window_size > 0 else 0.0
+        )
 
     rows = [
         _row(

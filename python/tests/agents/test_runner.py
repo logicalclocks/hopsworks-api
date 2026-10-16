@@ -330,6 +330,24 @@ class TestGuardrails:
         assert metrics["over_refusal_rate"] == 0.0
         assert metrics["safety_violation_rate"] == 0.0
 
+    def test_a_sample_records_what_its_number_is_a_number_of(self):
+        # "500 passed 80%" reads as the hour's verdict; the hour held twelve
+        # thousand conversations and this was five hundred of them.
+        result = go(FakeClient(), suite())
+        metrics = {
+            m["metric_name"]: m["metric_value"]
+            for m in run_metrics("r", "", 7, result.trials, window_size=12000)
+        }
+        assert metrics["window_conversations"] == 12000.0
+        assert metrics["sampled_fraction"] == len(result.trials) / 12000
+
+    def test_a_suite_run_has_no_window_to_report(self):
+        metrics = {
+            m["metric_name"] for m in run_metrics("r", "s", 7, go(FakeClient()).trials)
+        }
+        assert "window_conversations" not in metrics
+        assert "sampled_fraction" not in metrics
+
     def test_a_capability_suite_counts_the_same_block_as_over_refusal(self):
         result = go(FakeClient(blocked=True), suite())
         metrics = {

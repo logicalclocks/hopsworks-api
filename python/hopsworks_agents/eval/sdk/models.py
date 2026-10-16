@@ -276,6 +276,11 @@ class EvalJob(ApiModel):
     #: Whether a scheduled execution also runs the suites. Off by default: a schedule
     #: grades the traffic since the last fire, which is what changes between fires.
     suites_on_schedule: bool = False
+    #: How many conversations one sample may grade; None takes the platform default (500).
+    sample_ceiling: int | None = None
+    #: "oldest" grades the oldest of the window and defers the rest to the next run;
+    #: "random" grades a spread of the whole window and moves on.
+    sample_strategy: str = ""
     created: bool = False
     exists: bool = False
     environments: list[str] = field(default_factory=list)

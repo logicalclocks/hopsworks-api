@@ -634,6 +634,30 @@ class TestTheWindowIsTheServersJob:
         assert result.processed_through_ms is None
         assert result.available == 2
 
+    def test_a_random_sample_asks_the_server_to_spread_it(self):
+        # The oldest N measures the start of the hour and calls it the hour. A
+        # monitor that cannot grade its window whole can ask for a spread
+        # instead -- and then it does not come back for the rest, so the window
+        # end stands.
+        summaries = [summary(str(i), 5 - i) for i in range(5)]
+        session = FakeSession(
+            summaries, {str(i): detail() for i in range(5)}, count=5
+        )
+        result = run_sample(
+            FakeClient(),
+            session,
+            "https://h",
+            1,
+            sample_run(nTrials=2),
+            trace_only(),
+            strategy="random",
+        )
+        assert session.listing_params["order"] == "random"
+        assert len(result.trials) == 2
+        assert result.available == 5
+        # the window was sampled, not partly graded: nothing is deferred
+        assert result.processed_through_ms is None
+
     def test_a_backend_that_ignores_the_window_is_still_filtered_here(self):
         # an older cluster answers with the newest page of everything and no
         # count; grading that as if it were the window would be wrong, not slow
