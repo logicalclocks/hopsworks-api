@@ -1,0 +1,194 @@
+#
+#   Copyright 2026 Hopsworks AB
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass, field
+from typing import TYPE_CHECKING, Any
+
+import humps
+from hopsworks_apigen import public
+from hopsworks_common import util
+
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+
+@public("hopsworks.cost.CostRow")
+@dataclass
+class CostRow:
+    """Cost of one Kubernetes namespace over a time window, as computed by OpenCost.
+
+    Costs are in the currency of the enclosing [`NamespaceCosts`][hopsworks_common.cost.NamespaceCosts].
+    `kind` is `NAMESPACE` for a namespace, `IDLE` for node capacity no pod requested (namespace `__idle__`), and `UNMOUNTED` for unmounted volumes and load balancers (namespace `__unmounted__`).
+    `other_cost` sums load balancer, shared and external costs.
+    Efficiencies are the ratio of used to requested resources, cost-weighted for `total_efficiency`, and `None` when OpenCost cannot compute one.
+    Rows inside a [`CostBucket`][hopsworks_common.cost.CostBucket] carry only `namespace`, `kind` and `total_cost`.
+    """
+
+    namespace: str | None = None
+    kind: str | None = None
+    cpu_cost: float = 0.0
+    gpu_cost: float = 0.0
+    ram_cost: float = 0.0
+    pv_cost: float = 0.0
+    network_cost: float = 0.0
+    other_cost: float = 0.0
+    total_cost: float = 0.0
+    cpu_efficiency: float | None = None
+    ram_efficiency: float | None = None
+    total_efficiency: float | None = None
+
+    @classmethod
+    def _from_decamelized(cls, json_decamelized: dict[str, Any]) -> CostRow:
+        # A newer backend may send fields this client does not know yet,
+        # and OpenCost reports a NaN cost as null.
+        return cls(
+            **{
+                key: 0.0 if value is None and key.endswith("_cost") else value
+                for key, value in json_decamelized.items()
+                if key in cls.__dataclass_fields__
+            }
+        )
+
+    @classmethod
+    def from_response_json(cls, json_dict: dict[str, Any] | None) -> CostRow | None:
+        if not json_dict:
+            return None
+        return cls._from_decamelized(humps.decamelize(json_dict))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def json(self) -> str:
+        return json.dumps(self, cls=util.Encoder)
+
+
+@public("hopsworks.cost.CostBucket")
+@dataclass
+class CostBucket:
+    """Per-namespace cost over one slice of a window, for plotting cost over time.
+
+    An hour window is split into 10-minute slices, a day into hours, a week and a month into days, and a year into calendar months.
+    `start` and `end` are ISO-8601 UTC timestamps.
+    """
+
+    start: str | None = None
+    end: str | None = None
+    items: list[CostRow] = field(default_factory=list)
+
+    @classmethod
+    def _from_decamelized(cls, json_decamelized: dict[str, Any]) -> CostBucket:
+        return cls(
+            start=json_decamelized.get("start"),
+            end=json_decamelized.get("end"),
+            items=[
+                CostRow._from_decamelized(item)
+                for item in json_decamelized.get("items") or []
+            ],
+        )
+
+    @classmethod
+    def from_response_json(cls, json_dict: dict[str, Any] | None) -> CostBucket | None:
+        if not json_dict:
+            return None
+        return cls._from_decamelized(humps.decamelize(json_dict))
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def json(self) -> str:
+        return json.dumps(self, cls=util.Encoder)
+
+
+@public("hopsworks.cost.NamespaceCosts")
+@dataclass
+class NamespaceCosts:
+    """Kubernetes cost per namespace over a time window, as seen by a platform administrator.
+
+    The cost is computed by OpenCost and proxied by Hopsworks.
+    Each Hopsworks project runs in its own namespace, so a namespace row is the compute and storage cost of that project.
+    `total_cost` and `idle_cost` cover the whole cluster, and `efficiency` is the cost-weighted efficiency of all non-idle rows.
+    `start` and `end` are ISO-8601 UTC timestamps.
+
+    Use [`CostsApi.get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] to get an instance of this class.
+    """
+
+    window: str | None = None
+    start: str | None = None
+    end: str | None = None
+    currency: str | None = None
+    total_cost: float = 0.0
+    idle_cost: float = 0.0
+    efficiency: float | None = None
+    items: list[CostRow] = field(default_factory=list)
+    buckets: list[CostBucket] = field(default_factory=list)
+
+    @classmethod
+    def from_response_json(
+        cls, json_dict: dict[str, Any] | None
+    ) -> NamespaceCosts | None:
+        if not json_dict:
+            return None
+        json_decamelized = humps.decamelize(json_dict)
+        totals = json_decamelized.get("totals") or {}
+        return cls(
+            window=json_decamelized.get("window"),
+            start=json_decamelized.get("start"),
+            end=json_decamelized.get("end"),
+            currency=json_decamelized.get("currency"),
+            total_cost=totals.get("total_cost") or 0.0,
+            idle_cost=totals.get("idle_cost") or 0.0,
+            efficiency=totals.get("efficiency"),
+            items=[
+                CostRow._from_decamelized(item)
+                for item in json_decamelized.get("items") or []
+            ],
+            buckets=[
+                CostBucket._from_decamelized(bucket)
+                for bucket in json_decamelized.get("buckets") or []
+            ],
+        )
+
+    @public
+    def to_pandas(self) -> pd.DataFrame:
+        """Return the per-namespace rows as a DataFrame, one row per namespace.
+
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            costs = hopsworks.get_costs_api().get_namespace_costs("month")
+
+            df = costs.to_pandas().sort_values("total_cost", ascending=False)
+            ```
+
+        Returns:
+            A DataFrame with one column per [`CostRow`][hopsworks_common.cost.CostRow] attribute.
+        """
+        import pandas as pd
+
+        columns = list(CostRow.__dataclass_fields__)
+        return pd.DataFrame([row.to_dict() for row in self.items], columns=columns)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def json(self) -> str:
+        return json.dumps(self, cls=util.Encoder)

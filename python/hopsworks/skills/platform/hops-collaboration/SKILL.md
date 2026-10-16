@@ -1,6 +1,6 @@
 ---
 name: hops-collaboration
-description: Use when managing project membership and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects. 
+description: Use when managing project membership, administering platform users or inspecting per-project compute cost, and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects. 
 ---
 
 # Project Members, Platform Users, and Sharing
@@ -63,6 +63,28 @@ users_api.delete_user(new_user.id)        # fails if the user still owns project
 ```
 
 `get_users()` / `get_user(id)` / `get_user_by_email(email)` return `AdminUser` objects (`id`, `email`, `roles`, `status`, ...) — distinct from the lightweight `User` class used elsewhere (e.g. as a feature group's `creator`). Look a user up by email when you don't already have their id; it scans the full user list, so pass the id when you have it.
+
+## Inspecting compute cost per namespace (admin-only)
+
+Each project runs in its own Kubernetes namespace; OpenCost prices each namespace's CPU, GPU, RAM, storage and network, and Hopsworks proxies it to `HOPS_ADMIN` accounts.
+
+```python
+costs = hopsworks.get_costs_api().get_namespace_costs("month")  # hour | day | week (default) | month | year
+print(costs.total_cost, costs.idle_cost, costs.efficiency, costs.currency)
+df = costs.to_pandas().sort_values("total_cost", ascending=False)  # one row per namespace
+for bucket in costs.buckets:                                       # per-slice totals for a chart
+    print(bucket.start, [(r.namespace, r.total_cost) for r in bucket.items])
+```
+
+```bash
+hops admin costs --window month          # table: namespace, cpu, gpu, ram, storage, network, other, total, share, efficiency
+hops admin costs --window day --json
+```
+
+Key facts:
+- Rows with `kind` `IDLE` (`__idle__`, node capacity nobody requested) and `UNMOUNTED` (`__unmounted__`) are not projects; they have no efficiency.
+- Hour, day and week are live from OpenCost; month and year come from daily history Hopsworks records, so they cover only the days since recording started.
+- OpenCost not installed or unreachable surfaces as `RestAPIError` (HTTP 503).
 
 ## Sharing feature store data across projects
 

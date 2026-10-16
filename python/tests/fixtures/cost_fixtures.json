@@ -1,0 +1,54 @@
+{
+  "get_namespace_costs": {
+    "response": {
+      "window": "WEEK",
+      "start": "2026-10-09T09:00:00Z",
+      "end": "2026-10-16T09:00:00Z",
+      "currency": "USD",
+      "totals": {"totalCost": 41.2, "idleCost": 5.1, "efficiency": 0.42},
+      "items": [
+        {
+          "kind": "NAMESPACE",
+          "namespace": "fraud",
+          "cpuCost": 3.1,
+          "gpuCost": 0,
+          "ramCost": 1.2,
+          "pvCost": 0.4,
+          "networkCost": 0,
+          "otherCost": 0,
+          "totalCost": 4.7,
+          "cpuEfficiency": 0.31,
+          "ramEfficiency": 0.55,
+          "totalEfficiency": 0.37
+        },
+        {
+          "kind": "IDLE",
+          "namespace": "__idle__",
+          "cpuCost": 3.0,
+          "gpuCost": 0,
+          "ramCost": 2.1,
+          "pvCost": null,
+          "networkCost": 0,
+          "otherCost": 0,
+          "totalCost": 5.1,
+          "cpuEfficiency": null,
+          "ramEfficiency": null,
+          "totalEfficiency": null,
+          "addedLater": "ignored"
+        }
+      ],
+      "buckets": [
+        {
+          "start": "2026-10-09T00:00:00Z",
+          "end": "2026-10-10T00:00:00Z",
+          "items": [{"namespace": "fraud", "kind": "NAMESPACE", "totalCost": 0.6}]
+        },
+        {
+          "start": "2026-10-10T00:00:00Z",
+          "end": "2026-10-11T00:00:00Z",
+          "items": []
+        }
+      ]
+    }
+  }
+}
