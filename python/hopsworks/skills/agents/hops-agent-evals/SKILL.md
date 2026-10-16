@@ -108,6 +108,8 @@ The evaluation job is a Hopsworks job named after the agent; schedule it like an
 
 Each sample grades at most `sample_ceiling` conversations of its window (default 500, max 10000), because every one of them costs a judge call per evaluator. When the window holds more: `sample_strategy="random"` (the default) grades a spread of the whole window and moves on, keeping the cost fixed — the run records `window_conversations` and `sampled_fraction`, so its pass rate reads as a sample rather than a census. `sample_strategy="oldest"` grades the oldest of them and closes the window there, so the next run continues from where this one stopped and nothing is skipped — exhaustive, but on an agent whose traffic outpaces the ceiling it measures an older and older slice while the backlog grows.
 
+Every evaluator of one execution grades the **same** conversations: the random draw is seeded from the window they share, which is what makes "the hallucination judge passed this one and the helpfulness judge failed it" a question you can ask (and makes a re-run of a window grade what it graded before). `shared_sample=False` gives each its own draw.
+
 `run_eval_job` takes `since`, `until`, `sample` and `strategy` for one execution's monitors, which is how you try an evaluator out on a window you choose without changing what every scheduled fire does (the UI's Run button asks for the same four). Runs list with `agents.runs.list(agent.id)`; `agents.runs.trend(agent.id)` gives the pass-rate trend. A running evaluation is stopped from the UI's Stop button (there is no client call yet).
 
 ## 3. Traces, feedback and failure analysis

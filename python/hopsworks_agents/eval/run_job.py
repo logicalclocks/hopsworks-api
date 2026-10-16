@@ -367,6 +367,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
                 run,
                 evaluators_for(run, judge_completer=completer),
                 strategy=args.sample_strategy,
+                shared=not args.sample_independent,
             )
             _write_results(project.get_feature_store(), result, run)
             report(result.status, processed_through_ms=result.processed_through_ms)
@@ -441,6 +442,13 @@ def main() -> None:
         "p95 rather than accepting this default",
     )
     parser.add_argument("--max-concurrency", type=int, default=4)
+    parser.add_argument(
+        "--sample-independent",
+        action="store_true",
+        help="let each evaluator draw its own random sample. Shared by default: "
+        "every evaluator of one execution grades the same conversations, so "
+        "their verdicts are about the same traffic",
+    )
     parser.add_argument(
         "--sample-strategy",
         choices=("oldest", "random"),

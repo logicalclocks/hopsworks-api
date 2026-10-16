@@ -281,6 +281,9 @@ class EvalJob(ApiModel):
     #: "oldest" grades the oldest of the window and defers the rest to the next run;
     #: "random" grades a spread of the whole window and moves on.
     sample_strategy: str = ""
+    #: Whether every evaluator of one execution grades the same conversations.
+    #: None is on, which is what makes two judges' verdicts comparable.
+    shared_sample: bool | None = None
     created: bool = False
     exists: bool = False
     environments: list[str] = field(default_factory=list)

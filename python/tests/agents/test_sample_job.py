@@ -658,6 +658,45 @@ class TestTheWindowIsTheServersJob:
         # the window was sampled, not partly graded: nothing is deferred
         assert result.processed_through_ms is None
 
+    def test_every_evaluator_of_an_execution_draws_the_same_sample(self):
+        # Each drawing its own makes every rate a fair sample of the hour and no
+        # two of them about the same conversations, so "this judge passed it and
+        # that one failed it" stops being a question anyone can ask.
+        session = FakeSession([summary("a", 1)], {"a": detail()}, count=5)
+        run = sample_run(nTrials=2)
+        run_sample(
+            FakeClient(),
+            session,
+            "https://h",
+            1,
+            run,
+            trace_only(),
+            strategy="random",
+        )
+        assert session.listing_params["seed"] == int(run["sampleFrom"])
+
+    def test_an_independent_draw_asks_for_no_seed(self):
+        session = FakeSession([summary("a", 1)], {"a": detail()}, count=5)
+        run_sample(
+            FakeClient(),
+            session,
+            "https://h",
+            1,
+            sample_run(nTrials=2),
+            trace_only(),
+            strategy="random",
+            shared=False,
+        )
+        assert "seed" not in session.listing_params
+
+    def test_the_oldest_strategy_needs_no_seed_to_agree(self):
+        # ordering by time is already the same answer for every evaluator
+        session = FakeSession([summary("a", 1)], {"a": detail()}, count=5)
+        run_sample(
+            FakeClient(), session, "https://h", 1, sample_run(), trace_only()
+        )
+        assert "seed" not in session.listing_params
+
     def test_a_backend_that_ignores_the_window_is_still_filtered_here(self):
         # an older cluster answers with the newest page of everything and no
         # count; grading that as if it were the window would be wrong, not slow

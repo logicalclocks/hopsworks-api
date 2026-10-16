@@ -324,6 +324,7 @@ def run_sample(
     evaluators: Sequence[Evaluator],
     rng: random.Random | None = None,
     strategy: str = "oldest",
+    shared: bool = True,
 ) -> RunResult:
     """List, sample, grade.
 
@@ -357,6 +358,16 @@ def run_sample(
             "from": int(start_ms),
             "to": int(end_ms),
             "order": "random" if strategy == "random" else "oldest",
+            # Seeded from the window, which every sample run of one execution
+            # shares: each evaluator then draws the same conversations, so their
+            # verdicts are about the same traffic and can be compared. It also
+            # makes a re-run of a window grade what it graded before, which is
+            # what you want when checking a fixed judge against the old one.
+            **(
+                {"seed": int(start_ms)}
+                if strategy == "random" and shared
+                else {}
+            ),
         },
         timeout=60,
     )
