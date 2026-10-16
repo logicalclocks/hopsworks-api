@@ -399,6 +399,96 @@ class TestRuns:
         assert sent["from"] == int(since.timestamp() * 1000)
         assert sent["sample"] == 20 and sent["strategy"] == "oldest"
 
+    def test_comparing_two_runs_says_what_changed(self):
+        # The comparison a gate asks for. A task passes only when every gradable
+        # trial of it passed -- one attempt working is not the agent being
+        # reliable at it -- so t2 regressed even though it passed once.
+        evals, session = client(
+            Reply({"runId": "old", "suiteId": "s", "suiteVersion": 1}),
+            Reply({"runId": "new", "suiteId": "s", "suiteVersion": 1}),
+            Reply(
+                [
+                    {"taskId": "t1", "status": "PASSED"},
+                    {"taskId": "t2", "status": "PASSED"},
+                    {"taskId": "t2", "status": "PASSED"},
+                    {"taskId": "t3", "status": "FAILED"},
+                    {"taskId": "gone", "status": "PASSED"},
+                ]
+            ),
+            Reply(
+                [
+                    {"taskId": "t1", "status": "PASSED"},
+                    {"taskId": "t2", "status": "PASSED"},
+                    {"taskId": "t2", "status": "FAILED"},
+                    {"taskId": "t3", "status": "PASSED"},
+                    {"taskId": "fresh", "status": "FAILED"},
+                ]
+            ),
+            Reply([{"taskId": "t1", "inputMessages": json.dumps(
+                [{"role": "user", "content": "Analyze TSLA."}])}]),
+            Reply([]),
+        )
+
+        diff = evals.runs.compare("old", "new")
+
+        assert [t.task_id for t in diff.regressed] == ["t2"]
+        assert [t.task_id for t in diff.fixed] == ["t3"]
+        assert [t.task_id for t in diff.added] == ["fresh"]
+        assert [t.task_id for t in diff.removed] == ["gone"]
+        assert [t.task_id for t in diff.unchanged] == ["t1"]
+        assert diff.same_suite and not diff.partial
+        # a difference names the question it asks, when the tasks are readable
+        assert diff.unchanged[0].question == "Analyze TSLA."
+        assert "1 regressed" in str(diff) and "1 added" in str(diff)
+
+    def test_a_run_compares_itself_to_a_later_one(self):
+        evals, _ = client(
+            Reply([{"taskId": "t1", "status": "PASSED"}]),
+            Reply([{"taskId": "t1", "status": "FAILED"}]),
+        )
+        previous = Run(run_id="old", suite_id="s", suite_version=1)
+        latest = Run(run_id="new", suite_id="s", suite_version=1)
+        evals._bind(previous)
+
+        diff = previous.compare_to(latest, questions=False)
+
+        assert [t.task_id for t in diff.regressed] == ["t1"]
+
+    def test_comparing_runs_of_different_suites_says_so(self):
+        # Two suites share no tasks, so everything reads as added or removed:
+        # the caller should not have to notice that from the numbers.
+        evals, _ = client(
+            Reply({"runId": "a", "suiteId": "s1", "suiteVersion": 1, "status": "FAILED"}),
+            Reply({"runId": "b", "suiteId": "s2", "suiteVersion": 1}),
+            Reply([{"taskId": "t1", "status": "PASSED"}]),
+            Reply([{"taskId": "t2", "status": "FAILED"}]),
+        )
+
+        diff = evals.runs.compare("a", "b", questions=False)
+
+        assert not diff.same_suite
+        # one of them failed, so a missing task is not necessarily a removal
+        assert diff.partial
+        assert not diff.regressed and not diff.unchanged
+        assert len(diff.added) == 1 and len(diff.removed) == 1
+        assert "different suites" in str(diff)
+
+    def test_a_harness_failure_is_not_a_regression(self):
+        # INFRA_ERROR is the harness, not the agent; a task whose every trial
+        # was one is ungradable, and losing the verdict is not a failure.
+        evals, _ = client(
+            Reply({"runId": "a", "suiteId": "s", "suiteVersion": 1}),
+            Reply({"runId": "b", "suiteId": "s", "suiteVersion": 1}),
+            Reply([{"taskId": "t1", "status": "PASSED"}]),
+            Reply([{"taskId": "t1", "status": "INFRA_ERROR"}]),
+        )
+
+        diff = evals.runs.compare("a", "b", questions=False)
+
+        assert not diff.regressed
+        assert [t.task_id for t in diff.ungraded] == ["t1"]
+        assert diff.ungraded[0].after == "ungradable"
+
     def test_sampling_production_needs_something_to_grade_with(self):
         evals, session = client(Reply({"runId": "r", "runType": "ONLINE_SAMPLE"}))
         with pytest.raises(AgentServingError, match="evaluator or a suite"):

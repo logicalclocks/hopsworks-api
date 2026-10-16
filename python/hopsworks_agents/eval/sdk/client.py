@@ -315,12 +315,18 @@ def _run_review(self: Run, trial: Any, **kwargs: Any) -> None:
     _client_of(self).runs.review_trial(self, trial, **kwargs)
 
 
+def _run_compare_to(self: Run, candidate: Any, **kwargs: Any) -> Any:
+    """What changed between this run and a later one: ``previous.compare_to(latest)``."""
+    return _client_of(self).runs.compare(self, candidate, **kwargs)
+
+
 Run.refresh = _run_refresh  # type: ignore[attr-defined]
 Run.wait = _run_wait  # type: ignore[attr-defined]
 Run.trials = _run_trials  # type: ignore[attr-defined]
 Run.results = _run_results  # type: ignore[attr-defined]
 Run.metrics = _run_metrics  # type: ignore[attr-defined]
 Run.review_trial = _run_review  # type: ignore[attr-defined]
+Run.compare_to = _run_compare_to  # type: ignore[attr-defined]
 
 
 def _review_analyse(self: ReviewJob, **kwargs: Any) -> Run:

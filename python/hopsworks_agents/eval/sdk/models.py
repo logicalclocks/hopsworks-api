@@ -12,6 +12,7 @@ import json
 import re
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
+from collections.abc import Sequence
 from typing import Any, TypeVar
 
 from typing_extensions import Self
@@ -227,6 +228,151 @@ class Trial(ApiModel):
     @property
     def passed(self) -> bool:
         return self.status == "PASSED"
+
+
+#: A task's outcome across the trials of one run, reduced to one word.
+#: ``absent`` is "the run did not have this task at all", which a comparison
+#: must not read as a failure.
+Verdict = str  # "passed" | "failed" | "ungradable" | "absent"
+
+#: What happened to one task between two runs.
+Change = str  # "regressed" | "fixed" | "added" | "removed" | "ungraded" | "same"
+
+
+@dataclass
+class TaskDiff:
+    """One task, as the two runs graded it."""
+
+    task_id: str
+    before: Verdict
+    after: Verdict
+    change: Change
+    #: The task's first user turn, when the suite's tasks were readable.
+    question: str = ""
+
+    def __str__(self) -> str:
+        return f"{self.question or self.task_id}: {self.before} -> {self.after}"
+
+
+@dataclass
+class RunDiff:
+    """What changed between two runs of a suite.
+
+    ``regressed`` is the list a gate reads::
+
+        diff = agents.runs.compare(previous, latest)
+        if diff.regressed:
+            raise SystemExit(f"{len(diff.regressed)} tasks regressed")
+
+    A task counts as passed only when every gradable trial of it passed --
+    ``pass^k``, not ``pass@k``: one attempt working is not the agent being
+    reliable at it, and calling such a task passed is how a comparison misses a
+    real regression. Trials the harness failed (``INFRA_ERROR``,
+    ``EVALUATOR_ERROR``) are left out of the verdict rather than counted as
+    failures, and a task whose every trial was one of those is ``ungradable``.
+
+    Tasks are unioned, not intersected, so a task on one side only is reported
+    as ``added`` or ``removed`` instead of silently dropped -- and never as
+    unchanged, which would say the two runs agreed about a task one of them
+    never ran.
+    """
+
+    baseline: Run
+    candidate: Run
+    tasks: list[TaskDiff] = field(default_factory=list)
+
+    @property
+    def same_suite(self) -> bool:
+        """Whether both runs ran the same suite.
+
+        False makes every other number here meaningless: two different suites
+        share no tasks, so everything reads as added or removed.
+        """
+        return (
+            self.baseline.suite_id is not None
+            and self.baseline.suite_id == self.candidate.suite_id
+        )
+
+    @property
+    def partial(self) -> bool:
+        """Whether a run that did not finish cleanly is one of the two.
+
+        A failed run may have graded only part of its suite, so a task missing
+        from it is not necessarily a task that was removed.
+        """
+        return "FAILED" in (self.baseline.status, self.candidate.status)
+
+    def _of(self, change: Change) -> list[TaskDiff]:
+        return [task for task in self.tasks if task.change == change]
+
+    @property
+    def regressed(self) -> list[TaskDiff]:
+        return self._of("regressed")
+
+    @property
+    def fixed(self) -> list[TaskDiff]:
+        return self._of("fixed")
+
+    @property
+    def added(self) -> list[TaskDiff]:
+        return self._of("added")
+
+    @property
+    def removed(self) -> list[TaskDiff]:
+        return self._of("removed")
+
+    @property
+    def ungraded(self) -> list[TaskDiff]:
+        """Tasks whose verdict changed without passing or failing."""
+        return self._of("ungraded")
+
+    @property
+    def unchanged(self) -> list[TaskDiff]:
+        return self._of("same")
+
+    def __str__(self) -> str:
+        parts = [
+            f"{len(self.regressed)} regressed",
+            f"{len(self.fixed)} fixed",
+            f"{len(self.unchanged)} unchanged",
+        ]
+        for name, found in (
+            ("added", self.added),
+            ("removed", self.removed),
+            ("not pass/fail", self.ungraded),
+        ):
+            if found:
+                parts.append(f"{len(found)} {name}")
+        if not self.same_suite:
+            parts.append("different suites")
+        return ", ".join(parts)
+
+
+def verdict_of(trials: Sequence[Trial]) -> Verdict:
+    """A task's outcome across its trials -- see :class:`RunDiff` for the rule."""
+    if not trials:
+        return "absent"
+    gradable = [
+        t for t in trials if t.status not in ("INFRA_ERROR", "EVALUATOR_ERROR")
+    ]
+    if not gradable:
+        return "ungradable"
+    return "passed" if all(t.status == "PASSED" for t in gradable) else "failed"
+
+
+def change_of(before: Verdict, after: Verdict) -> Change:
+    """What a pair of verdicts means, as one word."""
+    if before == "absent":
+        return "added"
+    if after == "absent":
+        return "removed"
+    if before == "passed" and after == "failed":
+        return "regressed"
+    if before == "failed" and after == "passed":
+        return "fixed"
+    if before != after:
+        return "ungraded"
+    return "same"
 
 
 @dataclass

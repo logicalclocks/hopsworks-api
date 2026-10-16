@@ -24,10 +24,14 @@ from .models import (
     RegressionSuite,
     ReviewJob,
     Run,
+    RunDiff,
     RunMetric,
     Suite,
     Task,
+    TaskDiff,
     Trial,
+    change_of,
+    verdict_of,
 )
 
 
@@ -645,6 +649,84 @@ class Runs:
             self._http.get(f"{EVALS}/runs/{run_id}/evaluator-results", trialId=trial_id)
         )
 
+    def compare(
+        self,
+        baseline: Run | str,
+        candidate: Run | str,
+        *,
+        questions: bool = True,
+    ) -> RunDiff:
+        """What changed between two runs of a suite.
+
+        The comparison a release gate asks for, and the one the Compare tab
+        shows::
+
+            diff = agents.runs.compare(previous, latest)
+            print(diff)                      # 2 regressed, 1 fixed, 17 unchanged
+            if diff.regressed:
+                raise SystemExit(f"{diff.regressed[0]} and {len(diff.regressed) - 1} more")
+
+        A task passes only when every gradable trial of it passed; see
+        :class:`~hopsworks_agents.eval.sdk.models.RunDiff` for that rule and for
+        how added, removed and ungradable tasks are treated.
+
+        Two runs of *different* suites can be compared -- they share no tasks,
+        so everything reads as added or removed -- and ``diff.same_suite`` says
+        so rather than the caller having to notice. ``diff.partial`` says when
+        one of the runs failed and may have graded only part of its suite.
+
+        Args:
+            baseline: The run to compare against, as a :class:`Run` or a run id.
+            candidate: The run being judged.
+            questions: Read each suite's tasks so a difference names the
+                question it asks rather than a task id. One extra call per
+                suite; pass False to skip it.
+        """
+        before = baseline if isinstance(baseline, Run) else self.get(baseline)
+        after = candidate if isinstance(candidate, Run) else self.get(candidate)
+        by_task_before = _by_task(self.trials(before))
+        by_task_after = _by_task(self.trials(after))
+
+        asked: dict[str, str] = {}
+        if questions:
+            for run in (before, after):
+                if run.suite_id:
+                    asked.update(self._questions(run))
+
+        diffs = []
+        for task_id in sorted({*by_task_before, *by_task_after}):
+            verdict_before = verdict_of(by_task_before.get(task_id, []))
+            verdict_after = verdict_of(by_task_after.get(task_id, []))
+            diffs.append(
+                TaskDiff(
+                    task_id=task_id,
+                    before=verdict_before,
+                    after=verdict_after,
+                    change=change_of(verdict_before, verdict_after),
+                    question=asked.get(task_id, ""),
+                )
+            )
+        return RunDiff(baseline=before, candidate=after, tasks=diffs)
+
+    def _questions(self, run: Run) -> dict[str, str]:
+        """Each task's first user turn, for the suite this run executed.
+
+        Best effort: a suite deleted since the run leaves the comparison with
+        ids, which is worse than questions and better than an error on a
+        comparison that is otherwise fine.
+        """
+        try:
+            tasks = self._client.suites.tasks(run.suite_id, version=run.suite_version)
+        except AgentServingError:
+            log.debug("could not read the tasks of suite %s", run.suite_id)
+            return {}
+        asked = {}
+        for task in tasks:
+            question = _first_user_turn(task.input_messages)
+            if question:
+                asked[task.task_id] = question
+        return asked
+
     def metrics(self, run: Run | str) -> list[RunMetric]:
         run_id = run.run_id if isinstance(run, Run) else run
         return RunMetric.list_from_api(self._http.get(f"{EVALS}/runs/{run_id}/metrics"))
@@ -754,6 +836,32 @@ class Runs:
                 )
             time.sleep(poll_s)
 
+
+def _by_task(trials: Sequence[Trial]) -> dict[str, list[Trial]]:
+    grouped: dict[str, list[Trial]] = {}
+    for trial in trials:
+        grouped.setdefault(trial.task_id, []).append(trial)
+    return grouped
+
+
+def _first_user_turn(input_messages: str | None) -> str:
+    """What the task asks, from the messages it scripts.
+
+    The first user turn, which is what names a case in one line. A task that
+    scripts a conversation has more; the rest are in the run detail.
+    """
+    if not input_messages:
+        return ""
+    try:
+        messages = json.loads(input_messages)
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(messages, list):
+        return ""
+    for message in messages:
+        if isinstance(message, dict) and message.get("role") == "user":
+            return str(message.get("content") or "").strip()
+    return ""
 
 class Jobs:
     """The per-deployment jobs: the evaluation job and the failure-analysis job."""
