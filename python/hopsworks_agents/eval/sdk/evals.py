@@ -9,6 +9,7 @@ calls back through the client it came from.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +37,8 @@ if TYPE_CHECKING:
     from .client import AgentServing
 
 EVALS = "/agent-evals"
+
+log = logging.getLogger(__name__)
 
 
 def epoch_ms(value: Any) -> int | None:
@@ -684,19 +687,70 @@ class Runs:
             body["evaluatorName"] = evaluator
         self._http.post(f"{EVALS}/runs/{run_id}/trials/{trial_id}/review", body)
 
+    def agent_status(self, run: Run) -> str:
+        """The run's deployment status when it is not serving, else ``""``.
+
+        A run against a stopped deployment sits at ``RUNNING`` and looks exactly
+        like one that is working: the runner waits up to five minutes for the
+        deployment to answer before failing, because a canary fired by an update
+        is a run whose deployment is still coming up. This is how a caller tells
+        the two apart without waiting.
+
+        ``Idle`` is not down: a scaled-to-zero deployment wakes on the runner's
+        first request, the same way it wakes for a user.
+        """
+        if run.deployment_id is None:
+            return ""
+        try:
+            serving = self._http.get(f"/serving/{run.deployment_id}") or {}
+        except Exception:  # noqa: BLE001 - a status we cannot read is not a failure
+            return ""
+        status = str(serving.get("status") or "")
+        return "" if status in ("Running", "Idle") else status
+
     def wait(
         self, run: Run | str, *, timeout_s: float = 1800, poll_s: float = 5
     ) -> Run:
-        """Poll until the run finishes. Raises AgentServingError on timeout; returns the final row."""
+        """Poll until the run finishes. Raises AgentServingError on timeout; returns the final row.
+
+        Says once, as soon as it is true, that the run is waiting on a
+        deployment that is not serving -- otherwise the only sign is a wait that
+        ends in "the deployment did not answer".
+        """
         run_id = run.run_id if isinstance(run, Run) else run
         deadline = time.monotonic() + timeout_s
+        waiting_on = ""
+        asked = False
         while True:
             current = self.get(run_id)
             if current.finished:
                 return current
-            if time.monotonic() >= deadline:
+            over = time.monotonic() >= deadline
+            # Once, and again at the deadline -- the state that matters is the
+            # one at the start (a run fired at a stopped deployment) and the one
+            # at the end (a deployment that went down during the wait). Asking
+            # every poll would be a serving request every five seconds for an
+            # answer that rarely changes.
+            if not asked or over:
+                was = waiting_on
+                waiting_on = self.agent_status(current)
+                if waiting_on and waiting_on != was:
+                    log.warning(
+                        "run %s is %s, waiting for deployment %s, which is %s",
+                        run_id,
+                        current.status.lower(),
+                        current.deployment_id,
+                        waiting_on,
+                    )
+                asked = True
+            if over:
                 raise AgentServingError(
                     f"run {run_id} still {current.status} after {timeout_s:.0f}s"
+                    + (
+                        f"; deployment {current.deployment_id} is {waiting_on}"
+                        if waiting_on
+                        else ""
+                    )
                 )
             time.sleep(poll_s)
 

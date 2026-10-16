@@ -16,7 +16,7 @@ from hopsworks_agents.eval.sdk import (
     Task,
     check,
 )
-from hopsworks_agents.eval.sdk.models import as_datetime
+from hopsworks_agents.eval.sdk.models import Run, as_datetime
 
 
 class Reply:
@@ -364,6 +364,27 @@ class TestRuns:
         evals, _ = client(Reply({"runId": "r", "status": "RUNNING"}))
         with pytest.raises(AgentServingError, match="still RUNNING"):
             evals.runs.wait("r", timeout_s=0, poll_s=0)
+
+    def test_wait_says_when_it_is_the_deployment_that_is_not_up(self):
+        # A run fired at a stopped deployment sits at RUNNING and looks exactly
+        # like one that is working: the runner waits five minutes for the
+        # deployment before failing. "still RUNNING" alone sent someone to read
+        # a job log to learn the agent was off.
+        evals, session = client(
+            Reply({"runId": "r", "status": "RUNNING", "deploymentId": 7}),
+            Reply({"id": 7, "name": "support", "status": "Stopped"}),
+        )
+        with pytest.raises(AgentServingError, match="deployment 7 is Stopped"):
+            evals.runs.wait("r", timeout_s=0, poll_s=0)
+        assert session.sent[1][1] == "/serving/7"
+
+    def test_a_serving_deployment_is_not_reported_as_something_to_wait_for(self):
+        evals, _ = client(Reply({"id": 7, "status": "Running"}))
+        assert evals.runs.agent_status(Run(run_id="r", deployment_id=7)) == ""
+
+    def test_an_idle_deployment_counts_as_up_because_a_request_wakes_it(self):
+        evals, _ = client(Reply({"id": 7, "status": "Idle"}))
+        assert evals.runs.agent_status(Run(run_id="r", deployment_id=7)) == ""
 
     def test_sampling_production_needs_something_to_grade_with(self):
         evals, session = client(Reply({"runId": "r", "runType": "ONLINE_SAMPLE"}))
