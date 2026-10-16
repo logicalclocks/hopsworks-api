@@ -295,11 +295,29 @@ def _hopsworks_client() -> Any | None:
 
 
 def _authorization() -> str:
+    """However this container is entitled to call the API.
+
+    A serving pod is given an API key at ``$SECRETS_DIR/api.key`` -- not the
+    JWT a job gets -- so a deployment verifying a trial had nothing to
+    authenticate with and answered 403 to every evaluation request, while the
+    run waited and then failed on a timeout.
+
+    Read per call rather than once: both are rotated on disk while a
+    deployment runs, and a deployment outlives the copy read at startup.
+    """
     api_key = os.environ.get("HOPSWORKS_API_KEY")
     if api_key:
         return "ApiKey " + api_key
-    token = os.path.join(os.environ.get("SECRETS_DIR", ""), "token.jwt")
+    secrets = os.environ.get("SECRETS_DIR", "")
+    token = os.path.join(secrets, "token.jwt")
     if os.path.exists(token):
         with open(token, encoding="utf-8") as handle:
             return "Bearer " + handle.read().strip()
-    raise RuntimeError("no HOPSWORKS_API_KEY and no token.jwt in SECRETS_DIR")
+    key_file = os.path.join(secrets, "api.key")
+    if os.path.exists(key_file):
+        with open(key_file, encoding="utf-8") as handle:
+            return "ApiKey " + handle.read().strip()
+    raise RuntimeError(
+        "no HOPSWORKS_API_KEY, and neither token.jwt nor api.key in "
+        f"SECRETS_DIR ({secrets or 'unset'})"
+    )

@@ -282,6 +282,40 @@ class TestHowAJobAuthenticates:
         hopsworks_auth()(request)
         assert request.headers["Authorization"] == "ApiKey the-key"
 
+    def test_a_serving_pods_api_key_file_is_used_when_there_is_no_jwt(
+        self, tmp_path, monkeypatch
+    ):
+        # A deployment is given /keys/api.key, not a JWT. Demanding one of the
+        # other two made every evaluation request a 403 from the agent, and the
+        # run waited five minutes and then timed out.
+        from hopsworks_agents.eval.api import hopsworks_auth
+
+        (tmp_path / "api.key").write_text("  the-serving-key\n")
+        monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
+        monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
+
+        request = FakeRequest()
+        hopsworks_auth()(request)
+        assert request.headers["Authorization"] == "ApiKey the-serving-key"
+
+    def test_the_key_file_is_read_per_request_too(self, tmp_path, monkeypatch):
+        from hopsworks_agents.eval.api import hopsworks_auth
+
+        key = tmp_path / "api.key"
+        key.write_text("first")
+        monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
+        monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
+
+        auth = hopsworks_auth()
+        first = FakeRequest()
+        auth(first)
+        key.write_text("second")
+        second = FakeRequest()
+        auth(second)
+
+        assert first.headers["Authorization"] == "ApiKey first"
+        assert second.headers["Authorization"] == "ApiKey second"
+
     def test_having_neither_says_so_rather_than_raising_a_key_error(
         self, tmp_path, monkeypatch
     ):

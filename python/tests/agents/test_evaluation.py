@@ -117,6 +117,38 @@ class TestRunVerifier:
             EvalTrial(run_id="r")
         )
 
+    def test_a_deployments_own_api_key_file_authenticates_the_lookup(
+        self, tmp_path, monkeypatch
+    ):
+        # A serving pod has /keys/api.key and no JWT, so the lookup raised
+        # "no HOPSWORKS_API_KEY and no token.jwt in SECRETS_DIR" and the agent
+        # answered 403 to every evaluation request it was sent.
+        from hopsworks_agents.protocol.evaluation import _authorization
+
+        (tmp_path / "api.key").write_text("  serving-key\n")
+        monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
+        monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
+        assert _authorization() == "ApiKey serving-key"
+
+    def test_a_jwt_still_wins_over_a_key_file(self, tmp_path, monkeypatch):
+        from hopsworks_agents.protocol.evaluation import _authorization
+
+        (tmp_path / "token.jwt").write_text("the-token")
+        (tmp_path / "api.key").write_text("the-key")
+        monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
+        monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
+        assert _authorization() == "Bearer the-token"
+
+    def test_having_no_credential_at_all_names_the_three_it_looked_for(
+        self, tmp_path, monkeypatch
+    ):
+        from hopsworks_agents.protocol.evaluation import _authorization
+
+        monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
+        monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
+        with pytest.raises(RuntimeError, match="neither token.jwt nor api.key"):
+            _authorization()
+
     def test_a_lookup_failure_means_not_verified(self):
         def lookup(run_id):
             raise ConnectionError("hopsworks unreachable")

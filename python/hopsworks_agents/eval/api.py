@@ -134,13 +134,21 @@ def hopsworks_auth():
     if api_key:
         return _StaticAuth("ApiKey " + api_key)
 
-    token = os.path.join(os.environ.get("SECRETS_DIR", ""), "token.jwt")
+    secrets = os.environ.get("SECRETS_DIR", "")
+    token = os.path.join(secrets, "token.jwt")
     if os.path.exists(token):
         return _JwtFileAuth(token)
 
+    # A serving pod carries an API key here instead of a JWT, so eval code
+    # running inside a deployment authenticates the same way the deployment
+    # itself does.
+    key_file = os.path.join(secrets, "api.key")
+    if os.path.exists(key_file):
+        return _KeyFileAuth(key_file)
+
     raise EvalApiError(
-        "no HOPSWORKS_API_KEY and no token.jwt in SECRETS_DIR: nothing to "
-        "authenticate with"
+        "no HOPSWORKS_API_KEY, and neither token.jwt nor api.key in "
+        f"SECRETS_DIR ({secrets or 'unset'}): nothing to authenticate with"
     )
 
 
@@ -162,6 +170,18 @@ class _JwtFileAuth:
     def __call__(self, request):
         with open(self._path) as token:
             request.headers["Authorization"] = "Bearer " + token.read().strip()
+        return request
+
+
+class _KeyFileAuth:
+    """The same, for the API key a serving pod is given."""
+
+    def __init__(self, path: str):
+        self._path = path
+
+    def __call__(self, request):
+        with open(self._path) as key:
+            request.headers["Authorization"] = "ApiKey " + key.read().strip()
         return request
 
 
