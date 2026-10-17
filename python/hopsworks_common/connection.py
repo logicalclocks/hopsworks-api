@@ -275,6 +275,7 @@ class Connection:
         description: str | None = None,
         feature_store_topic: str | None = None,
         namespace: str | None = None,
+        department: str | None = None,
     ) -> Project:
         """Create a new project.
 
@@ -293,12 +294,14 @@ class Connection:
             feature_store_topic: Feature store topic name.
             namespace: Kubernetes namespace to use for the project. If ``None``
                 the backend derives one from the project name.
+            department: Name of the department to create the project in.
+                If ``None`` the project goes to the default department.
 
         Returns:
             A project handle object to perform operations on.
         """
         return self._project_api._create_project(
-            name, description, feature_store_topic, namespace
+            name, description, feature_store_topic, namespace, department
         )
 
     @usage._method_logger
