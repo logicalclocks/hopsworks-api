@@ -655,6 +655,7 @@ class Runs:
         deployment_id: int,
         *,
         run: Run | str | None = None,
+        execution_id: int | None = None,
         depth: int | None = None,
     ) -> list[SuiteFailureHistory]:
         """Which of each suite's failures are new, which are regressions, and how old the rest are.
@@ -666,7 +667,8 @@ class Runs:
 
         Every suite's latest run by default. ``run`` asks about one run instead -- what *it*
         changed, which is not what the suite's latest run changed once a newer one exists --
-        and returns that run's suite alone.
+        and returns that run's suite alone; ``execution_id`` asks about every suite one
+        execution ran.
 
         Read from the trials as they are stored, so it is as current as the last run and
         needs no job to have processed anything. ``depth`` is how many of each suite's runs
@@ -679,6 +681,7 @@ class Runs:
                 deploymentId=deployment_id,
                 depth=depth,
                 runId=run_id,
+                executionId=execution_id,
             )
         )
 
