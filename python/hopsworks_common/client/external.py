@@ -20,6 +20,7 @@ import base64
 import contextlib
 import logging
 import os
+import tempfile
 from typing import TYPE_CHECKING
 
 import hopsworks_common.client
@@ -226,10 +227,9 @@ class Client(base.Client):
 
     def _materialize_certs(self):
         # Custom cert_folder: use directly
-        # Default /tmp: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}
+        # Default /tmp: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}/{client folder}
+        client_folder = self._cert_folder
         self._cert_folder = self._get_certs_folder()
-        self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
-        self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
 
         try:
             if os.path.exists(self._cert_folder):
@@ -242,6 +242,18 @@ class Client(base.Client):
                     f"Running in Python environment, creating certificates folder {self._cert_folder}"
                 )
                 self._makedirs_with_sticky_bit()
+
+            if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
+                # All clients of a user share the user folder, and closing a client
+                # deletes its certificates, so each client keeps its own subfolder.
+                if (
+                    client_folder
+                    and os.path.dirname(client_folder) == self._cert_folder
+                    and os.path.isdir(client_folder)
+                ):
+                    self._cert_folder = client_folder
+                else:
+                    self._cert_folder = tempfile.mkdtemp(dir=self._cert_folder)
         except PermissionError as e:
             raise PermissionError(
                 f"Permission denied for certificate folder '{self._cert_folder}'. "
@@ -249,6 +261,9 @@ class Client(base.Client):
                 f"Please specify a custom certificate folder: "
                 f"hopsworks.login(cert_folder='/home/$USER/hopsworks-certs', ...)"
             ) from e
+
+        self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
+        self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
 
         credentials = self._get_credentials(self._project_id)
         self._write_b64_cert_to_bytes(
@@ -312,7 +327,7 @@ class Client(base.Client):
         self._cleanup_file(self._get_client_cert_path())
         self._cleanup_file(self._get_client_key_path())
 
-        # Try to remove user-specific directory (will only succeed if empty)
+        # Remove the certificates directory (will only succeed if empty)
         with contextlib.suppress(OSError):
             os.rmdir(self._cert_folder)
 

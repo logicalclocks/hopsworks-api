@@ -402,8 +402,7 @@ class TestExternalClient:
             assert os.path.isdir(project_dir), "Project directory should be created"
             assert os.path.isdir(user_dir), "User directory should be created"
 
-            expected_cert_folder = user_dir
-            assert client._cert_folder == expected_cert_folder
+            assert os.path.dirname(client._cert_folder) == user_dir
             assert os.path.isdir(client._cert_folder)
 
             # Verify files have fixed names in user directory
@@ -498,19 +497,20 @@ class TestExternalClient:
             user_dir = os.path.join(
                 cert_folder, "test.hopsworks.ai", "test_project", "testuser"
             )
-            assert client._cert_folder == user_dir
+            client_dir = client._cert_folder
+            assert os.path.dirname(client_dir) == user_dir
 
-            # Verify all PEM files exist in the hierarchical user directory
-            assert os.path.exists(os.path.join(user_dir, "ca_chain.pem"))
-            assert os.path.exists(os.path.join(user_dir, "client_cert.pem"))
-            assert os.path.exists(os.path.join(user_dir, "client_key.pem"))
+            # Verify all PEM files exist in the client directory
+            assert os.path.exists(os.path.join(client_dir, "ca_chain.pem"))
+            assert os.path.exists(os.path.join(client_dir, "client_cert.pem"))
+            assert os.path.exists(os.path.join(client_dir, "client_key.pem"))
 
             # Verify PEM file contents
-            with open(os.path.join(user_dir, "ca_chain.pem")) as f:
+            with open(os.path.join(client_dir, "ca_chain.pem")) as f:
                 assert "test_ca_chain" in f.read()
-            with open(os.path.join(user_dir, "client_cert.pem")) as f:
+            with open(os.path.join(client_dir, "client_cert.pem")) as f:
                 assert "test_client_cert" in f.read()
-            with open(os.path.join(user_dir, "client_key.pem")) as f:
+            with open(os.path.join(client_dir, "client_key.pem")) as f:
                 assert "test_client_key" in f.read()
 
     def test_download_certs_creates_pem_files_directly_in_custom_cert_folder(
@@ -586,6 +586,45 @@ class TestExternalClient:
             client._materialize_certs()
             assert client._cert_folder == user_dir
             assert os.path.exists(client._trust_store_path)
+
+    def test_close_does_not_delete_certificates_of_same_user_client(self, mocker):
+        """Test that two clients of the same user keep separate certificates, so closing one leaves the other intact."""
+        with tempfile.TemporaryDirectory() as cert_folder:
+            mocker.patch(
+                "hopsworks_common.client.external.CLIENT.CERT_FOLDER_DEFAULT",
+                cert_folder,
+            )
+            mock_credentials = {
+                "kStore": "dGVzdA==",
+                "tStore": "dGVzdA==",
+                "password": "testpass",
+                "caChain": "chain",
+                "clientCert": "cert",
+                "clientKey": "key",
+            }
+            first = self._create_client(cert_folder, mocker)
+            second = self._create_client(cert_folder, mocker)
+            for client in (first, second):
+                client._cert_folder = None
+                mocker.patch.object(
+                    client, "_get_credentials", return_value=mock_credentials
+                )
+                client._download_certs()
+
+            assert first._cert_folder != second._cert_folder
+            second_files = [
+                second._get_jks_key_store_path(),
+                second._get_jks_trust_store_path(),
+                second._get_material_passwd_path(),
+                second._get_ca_chain_path(),
+                second._get_client_cert_path(),
+                second._get_client_key_path(),
+            ]
+
+            first._close()
+
+            for cert_file in second_files:
+                assert os.path.exists(cert_file), f"File should exist: {cert_file}"
 
     def test_materialize_certs_reuses_existing_directory_for_custom(self, mocker):
         """Test that _materialize_certs works when custom cert_folder already exists."""
