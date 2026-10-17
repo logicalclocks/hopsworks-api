@@ -1,28 +1,16 @@
 /* Hopsworks app look: tokens first, then components. Extend, don't restyle. */
 :root {
   --accent: #1eb182;
-  --accent-soft: rgba(30, 177, 130, 0.14);
-  --bg: #f5f7f9;
+  --accent-soft: #e6f2ee;
+  --bg: #f7f7f7;
   --panel: #ffffff;
-  --text: #1a1f2b;
-  --muted: #5f6b7a;
-  --line: #e3e8ee;
-  --danger: #d6455d;
+  --text: #252525;
+  --muted: #737373;
+  --line: #e5e5e5;
+  --danger: #e7000b;
   --warn: #e0a100;
-  --radius: 12px;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.06);
+  --radius: 10px;
   color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1117;
-    --panel: #161b25;
-    --text: #eef1f5;
-    --muted: #9aa5b4;
-    --line: #262d3a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-    color-scheme: dark;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -31,7 +19,7 @@
 html { scrollbar-gutter: stable; }
 body {
   margin: 0;
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
 }
@@ -44,11 +32,6 @@ h2 { font-size: 1.05rem; font-weight: 600; }
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
-.band .mark {
-  width: 2rem; height: 2rem; border-radius: 8px;
-  display: grid; place-items: center;
-  background: var(--accent); color: #fff; font-weight: 700;
-}
 .band h1 { font-size: 1.15rem; }
 .band .sub { color: var(--muted); font-size: 0.85rem; }
 
@@ -57,13 +40,18 @@ main {
   /* minmax(0, 1fr): a grid column grows to its widest content unless told it may shrink. */
   display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr);
 }
-.grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+/* Key figures in one row, divided by hairlines (each stat draws its own left and top
+   rule; the row clips the outer ones), so a wrapped row stays divided too. */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+}
+.stats .stat { padding: 1rem 1.25rem; box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line); }
 
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
   padding: 1.25rem;
 }
 .card > h2 { margin-bottom: 0.75rem; }
