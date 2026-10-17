@@ -53,6 +53,7 @@ _SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 if TYPE_CHECKING:
     from hsml.deployment_logging_config import DeploymentLoggingConfig
+    from hsml.deployment_memory_config import DeploymentMemoryConfig
     from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
@@ -535,6 +536,7 @@ class ModelServing:
         scaling_configuration: PredictorScalingConfig | dict | None = None,
         env_vars: dict | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
+        memory: DeploymentMemoryConfig | dict | None = None,
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
@@ -571,6 +573,8 @@ class ModelServing:
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
             tracing: Tracing configuration for the endpoint.
+            memory: Memory given to an agent that configures none itself; see
+                [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
             git_url: Optional Git repository URL for a git-backed endpoint.
             git_provider: Git provider for git-backed endpoints.
             git_branch: Optional branch to clone for git-backed endpoints.
@@ -606,6 +610,7 @@ class ModelServing:
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
             tracing=tracing,
+            memory=memory,
             git_url=git_url,
             git_provider=git_provider,
             git_branch=git_branch,
@@ -629,6 +634,7 @@ class ModelServing:
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
+        memory: DeploymentMemoryConfig | dict | None = None,
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
@@ -677,6 +683,11 @@ class ModelServing:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             scaling_configuration: Scaling configuration for the predictor.
             tracing: Tracing configuration for the deployment.
+            memory:
+                Memory the deployment gives the agent, for an agent that configures none in
+                its own code; see [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
+                The agent SDK applies it only when the agent passed no memory store of its
+                own, so code always wins over it.
             git_url: Optional Git repository URL. When set, `entry` is treated as
                 a relative path inside the repository and is not uploaded.
             git_provider: Git provider for git-backed agent deployments.
@@ -787,6 +798,7 @@ class ModelServing:
             environment=env_name,
             scaling_configuration=scaling_configuration,
             tracing=tracing,
+            memory=memory,
             git_url=git_url if git_backed else None,
             git_provider=git_provider if git_backed else None,
             git_branch=git_branch if git_backed else None,
