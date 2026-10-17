@@ -4806,6 +4806,96 @@ class TestPython:
                 == request_parameters.values.tolist()
             )
 
+    def test_extract_logging_metadata_unselected_key_of_prefixed_join(self, mocker):
+        # The batch query names an unselected key of a prefixed join `<prefix><key>`
+        # unless it is ambiguous; it is logged under its own name, as the fully
+        # qualified name it had before was.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+
+        events = feature_group.FeatureGroup(
+            name="events",
+            version=1,
+            featurestore_id=99,
+            primary_key=["event_id"],
+            event_time="event_time",
+            partition_key=[],
+            features=[
+                feature.Feature("event_id", primary=True, type="bigint"),
+                feature.Feature("event_time", type="timestamp"),
+                feature.Feature("station_id", type="bigint"),
+                feature.Feature("amp", type="float"),
+            ],
+            id=11,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+        stations = feature_group.FeatureGroup(
+            name="stations",
+            version=1,
+            featurestore_id=99,
+            primary_key=["station_id"],
+            partition_key=[],
+            features=[
+                feature.Feature("station_id", primary=True, type="bigint"),
+                feature.Feature("depth", type="float"),
+            ],
+            id=12,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+        query = events.select(["event_id", "amp"]).join(
+            stations.select(["depth"]),
+            left_on=["station_id"],
+            right_on=["station_id"],
+            prefix="st_",
+        )
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=query,
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        fv.schema = [
+            TrainingDatasetFeature(name="event_id", type="bigint"),
+            TrainingDatasetFeature(name="amp", type="float"),
+            TrainingDatasetFeature(name="st_depth", type="float"),
+        ]
+        fv._serving_keys = [
+            ServingKey(feature_name="event_id", join_index=0, feature_group=events),
+            ServingKey(
+                feature_name="station_id",
+                join_index=1,
+                feature_group=stations,
+                prefix="st_",
+                required=True,
+            ),
+        ]
+        df = pd.DataFrame(
+            {
+                "event_id": [1, 2],
+                "event_time": pd.to_datetime(["2025-01-01", "2025-01-02"]),
+                "amp": [0.5, 1.5],
+                "st_depth": [10.0, 20.0],
+                "st_station_id": [7, 8],
+            }
+        )
+
+        result = python_engine._extract_logging_metadata(
+            untransformed_features=df,
+            transformed_features=df.copy(),
+            feature_view=fv,
+            transformed=False,
+            inference_helpers=False,
+            event_time=False,
+            primary_key=False,
+        )
+
+        serving_keys = result.hopsworks_logging_metadata.serving_keys
+        assert set(serving_keys.columns) == {"event_id", "station_id"}
+        assert serving_keys["station_id"].tolist() == [7, 8]
+
     def test_extract_logging_metadata_all_columns_and_drop_none_fully_qualified_names(
         self, mocker
     ):
@@ -4858,6 +4948,11 @@ class TestPython:
         fv._serving_keys = [
             ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
         ]
+
+        # The batch query qualifies a key only when another output column has its name;
+        # pin that case so the rename to the logged name stays covered.
+        fv._FeatureView__fully_qualified_primary_keys = ["test_fs_test1_1_primary_key"]
+        fv._FeatureView__fully_qualified_event_time = ["test_fs_test1_1_event_time"]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
         # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
@@ -5053,6 +5148,11 @@ class TestPython:
         fv._serving_keys = [
             ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
         ]
+
+        # The batch query qualifies a key only when another output column has its name;
+        # pin that case so the rename to the logged name stays covered.
+        fv._FeatureView__fully_qualified_primary_keys = ["test_fs_test1_1_primary_key"]
+        fv._FeatureView__fully_qualified_event_time = ["test_fs_test1_1_event_time"]
 
         # Dataframes read has the fully qualified names for the primary key and event time.
         # The fully qualified name is constructed as <feature_store_name>_<_feature_group_name>_<feature_group_version>_<feature_name>
