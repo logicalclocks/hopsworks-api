@@ -160,6 +160,16 @@ class TestFeatureGroupEngine:
                 False,
                 False,
             ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="sqlserver",
+                    featurestore_id=1,
+                    database_type=SqlConnector.SQLSERVER,
+                ),
+                True,
+                True,
+            ),
         ],
     )
     def test_sink_enabled_resolution_for_supported_connectors(

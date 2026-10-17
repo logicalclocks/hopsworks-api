@@ -952,7 +952,14 @@ _SPECS: dict[str, _Spec] = {
                 "databaseType",
                 "Database engine.",
                 required=True,
-                choices=("MYSQL", "POSTGRESQL", "ORACLE", "CLICKHOUSE", "TERADATA"),
+                choices=(
+                    "MYSQL",
+                    "POSTGRESQL",
+                    "ORACLE",
+                    "CLICKHOUSE",
+                    "TERADATA",
+                    "SQLSERVER",
+                ),
             ),
             _Opt(
                 "--credentials-mode",
@@ -972,7 +979,7 @@ _SPECS: dict[str, _Spec] = {
             _Opt(
                 "--port",
                 "port",
-                "Database port; the HTTP interface port (8123) for CLICKHOUSE, 1025 for TERADATA.",
+                "Database port; the HTTP interface port (8123) for CLICKHOUSE, 1025 for TERADATA, 1433 for SQLSERVER.",
                 required=True,
                 kind="int",
             ),
