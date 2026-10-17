@@ -485,6 +485,18 @@ class TestRuns:
         assert suite.still_failing[0].age == 7
         assert "1 new, 1 regressed" in str(suite)
 
+    def test_a_run_says_what_it_changed(self):
+        # The question belongs to the run: asked of a run three days old,
+        # "which of these is new" means new then.
+        evals, session = client(Reply([{"suiteId": "s1", "newFailures": 1}]))
+        run = Run(run_id="r3", deployment_id=7, suite_id="s1")
+        evals._bind(run)
+
+        [suite] = run.changes()
+
+        assert session.sent[0][2] == {"deploymentId": 7, "runId": "r3"}
+        assert suite.new_failures == 1
+
     def test_a_run_compares_itself_to_a_later_one(self):
         evals, _ = client(
             Reply([{"taskId": "t1", "status": "PASSED"}]),

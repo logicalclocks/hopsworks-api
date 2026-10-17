@@ -651,7 +651,11 @@ class Runs:
         )
 
     def failure_history(
-        self, deployment_id: int, *, depth: int | None = None
+        self,
+        deployment_id: int,
+        *,
+        run: Run | str | None = None,
+        depth: int | None = None,
     ) -> list[SuiteFailureHistory]:
         """Which of each suite's failures are new, which are regressions, and how old the rest are.
 
@@ -660,13 +664,21 @@ class Runs:
             for suite in agents.runs.failure_history(agent.id):
                 print(suite)        # 1 new, 1 regressed, 2 fixed, 7 still failing
 
+        Every suite's latest run by default. ``run`` asks about one run instead -- what *it*
+        changed, which is not what the suite's latest run changed once a newer one exists --
+        and returns that run's suite alone.
+
         Read from the trials as they are stored, so it is as current as the last run and
         needs no job to have processed anything. ``depth`` is how many of each suite's runs
         to walk back for the age of a failure; ten by default.
         """
+        run_id = run.run_id if isinstance(run, Run) else run
         return SuiteFailureHistory.list_from_api(
             self._http.get(
-                f"{EVALS}/failure-history", deploymentId=deployment_id, depth=depth
+                f"{EVALS}/failure-history",
+                deploymentId=deployment_id,
+                depth=depth,
+                runId=run_id,
             )
         )
 

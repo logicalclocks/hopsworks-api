@@ -315,6 +315,13 @@ def _run_review(self: Run, trial: Any, **kwargs: Any) -> None:
     _client_of(self).runs.review_trial(self, trial, **kwargs)
 
 
+def _run_changes(self: Run, **kwargs: Any) -> Any:
+    """What this run changed against the run of its suite before it."""
+    return _client_of(self).runs.failure_history(
+        self.deployment_id, run=self, **kwargs
+    )
+
+
 def _run_compare_to(self: Run, candidate: Any, **kwargs: Any) -> Any:
     """What changed between this run and a later one: ``previous.compare_to(latest)``."""
     return _client_of(self).runs.compare(self, candidate, **kwargs)
@@ -327,6 +334,7 @@ Run.results = _run_results  # type: ignore[attr-defined]
 Run.metrics = _run_metrics  # type: ignore[attr-defined]
 Run.review_trial = _run_review  # type: ignore[attr-defined]
 Run.compare_to = _run_compare_to  # type: ignore[attr-defined]
+Run.changes = _run_changes  # type: ignore[attr-defined]
 
 
 def _review_analyse(self: ReviewJob, **kwargs: Any) -> Run:
