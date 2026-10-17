@@ -572,6 +572,7 @@ def create_project(
     description: str | None = None,
     feature_store_topic: str | None = None,
     namespace: str | None = None,
+    department: str | None = None,
 ) -> project.Project | None:
     """Create a new project.
 
@@ -590,6 +591,8 @@ def create_project(
         feature_store_topic: Feature store topic name.
         namespace: Kubernetes namespace to use for the project. If ``None`` the
             backend derives one from the project name.
+        department: Name of the department to create the project in.
+            If ``None`` the project goes to the default department.
 
     Returns:
         The Project object to perform operations on.
@@ -601,7 +604,7 @@ def create_project(
         raise NoHopsworksConnectionError
 
     new_project = _hw_connection._project_api._create_project(
-        name, description, feature_store_topic, namespace
+        name, description, feature_store_topic, namespace, department
     )
     if _connected_project is None:
         _connected_project = new_project
