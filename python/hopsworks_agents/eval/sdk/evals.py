@@ -27,6 +27,7 @@ from .models import (
     RunDiff,
     RunMetric,
     Suite,
+    SuiteFailureHistory,
     Task,
     TaskDiff,
     Trial,
@@ -649,6 +650,26 @@ class Runs:
             self._http.get(f"{EVALS}/runs/{run_id}/evaluator-results", trialId=trial_id)
         )
 
+    def failure_history(
+        self, deployment_id: int, *, depth: int | None = None
+    ) -> list[SuiteFailureHistory]:
+        """Which of each suite's failures are new, which are regressions, and how old the rest are.
+
+        What Failure analysis shows, and what a report wants::
+
+            for suite in agents.runs.failure_history(agent.id):
+                print(suite)        # 1 new, 1 regressed, 2 fixed, 7 still failing
+
+        Read from the trials as they are stored, so it is as current as the last run and
+        needs no job to have processed anything. ``depth`` is how many of each suite's runs
+        to walk back for the age of a failure; ten by default.
+        """
+        return SuiteFailureHistory.list_from_api(
+            self._http.get(
+                f"{EVALS}/failure-history", deploymentId=deployment_id, depth=depth
+            )
+        )
+
     def compare(
         self,
         baseline: Run | str,
@@ -895,12 +916,19 @@ class Jobs:
         sample_ceiling: int | None = None,
         sample_strategy: str | None = None,
         shared_sample: bool | None = None,
+        parallel_runs: int | None = None,
         environment_name: str | None = None,
         cores: int | None = None,
         memory: int | None = None,
         gpus: int | None = None,
     ) -> EvalJob:
-        """Create the deployment's evaluation job unless it exists; an existing one is returned untouched."""
+        """The deployment's evaluation job, created if it has none.
+
+        One per deployment: an existing one is returned untouched whatever name is asked
+        for, since what used to be a second job is this one's suites, its monitors and its
+        schedule. It runs one execution at a time -- a run asked for while one is going is
+        queued -- unless ``parallel_runs`` says otherwise.
+        """
         body = {
             "name": name,
             "suites": [
@@ -918,6 +946,7 @@ class Jobs:
             "sampleCeiling": sample_ceiling,
             "sampleStrategy": sample_strategy,
             "sharedSample": shared_sample,
+            "parallelRuns": parallel_runs,
             "environmentName": environment_name,
             "cores": cores,
             "memory": memory,
@@ -942,6 +971,7 @@ class Jobs:
         sample_ceiling: int | None = None,
         sample_strategy: str | None = None,
         shared_sample: bool | None = None,
+        parallel_runs: int | None = None,
         environment_name: str | None = None,
         cores: int | None = None,
         memory: int | None = None,
@@ -963,6 +993,7 @@ class Jobs:
             ("sampleCeiling", sample_ceiling),
             ("sampleStrategy", sample_strategy),
             ("sharedSample", shared_sample),
+            ("parallelRuns", parallel_runs),
             ("environmentName", environment_name),
             ("cores", cores),
             ("memory", memory),

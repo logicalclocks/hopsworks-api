@@ -611,6 +611,10 @@ class Agent:
     def regressions(self) -> RegressionSuite:
         return self._client.jobs.regressions(self.id)
 
+    def failure_history(self, **kwargs: Any) -> Any:
+        """Which of each suite's failures are new, which are regressions, and how old the rest are."""
+        return self._client.runs.failure_history(self.id, **kwargs)
+
     def analyse(self, **kwargs: Any) -> Run:
         """Run the failure analysis now; the job is created with defaults if the deployment has none."""
         job = self.review_job() or self._client.jobs.ensure_review_job(self.id)

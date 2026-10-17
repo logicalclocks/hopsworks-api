@@ -441,6 +441,50 @@ class TestRuns:
         assert diff.unchanged[0].question == "Analyze TSLA."
         assert "1 regressed" in str(diff) and "1 added" in str(diff)
 
+    def test_the_failure_history_says_which_failures_are_new(self):
+        # "seventeen failed" is not something anyone can act on; "one of them
+        # is new, one is a regression, and that one has been failing for seven
+        # runs" is.
+        evals, session = client(
+            Reply(
+                [
+                    {
+                        "suiteId": "s1",
+                        "suiteName": "Introduces itself",
+                        "suiteVersion": 1,
+                        "latestRunId": "r3",
+                        "previousRunId": "r2",
+                        "runsCompared": 10,
+                        "newFailures": 1,
+                        "regressions": 1,
+                        "fixed": 2,
+                        "persistent": 1,
+                        "passing": 9,
+                        "tasks": [
+                            {"taskId": "fresh", "status": "new", "age": 1,
+                             "previousVerdict": "absent", "currentVerdict": "failed"},
+                            {"taskId": "broke", "status": "regression", "age": 1,
+                             "previousVerdict": "passed", "currentVerdict": "failed"},
+                            {"taskId": "stuck", "status": "persistent", "age": 7,
+                             "previousVerdict": "failed", "currentVerdict": "failed"},
+                            {"taskId": "mended", "status": "fixed", "age": 0,
+                             "previousVerdict": "failed", "currentVerdict": "passed"},
+                        ],
+                    }
+                ]
+            )
+        )
+
+        [suite] = evals.runs.failure_history(7, depth=10)
+
+        assert session.sent[0][1] == "/agent-evals/failure-history"
+        assert session.sent[0][2] == {"deploymentId": 7, "depth": 10}
+        assert [t.task_id for t in suite.new] == ["fresh"]
+        assert [t.task_id for t in suite.regressed] == ["broke"]
+        assert [t.task_id for t in suite.repaired] == ["mended"]
+        assert suite.still_failing[0].age == 7
+        assert "1 new, 1 regressed" in str(suite)
+
     def test_a_run_compares_itself_to_a_later_one(self):
         evals, _ = client(
             Reply([{"taskId": "t1", "status": "PASSED"}]),

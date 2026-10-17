@@ -376,6 +376,92 @@ def change_of(before: Verdict, after: Verdict) -> Change:
 
 
 @dataclass
+class TaskFailure(ApiModel):
+    """One task, and what the latest run of its suite did to it."""
+
+    task_id: str = ""
+    #: new | regression | fixed | persistent
+    status: str = ""
+    previous_verdict: str = ""
+    current_verdict: str = ""
+    #: Runs in a row this task has been failing, counting the latest; 0 when it passes.
+    age: int = 0
+
+    def __str__(self) -> str:
+        return f"{self.task_id}: {self.status}" + (
+            f" ({self.age} runs)" if self.age > 1 else ""
+        )
+
+
+@dataclass
+class SuiteFailureHistory(ApiModel):
+    """How one suite's failures moved between its last two runs.
+
+    The question a failing suite raises is never "how many failed" but "which of these is
+    new", and these are the four classes a build view answers it with::
+
+        for suite in agents.runs.failure_history(agent.id):
+            if suite.regressions:
+                print(suite.suite_name, [t.task_id for t in suite.regressions])
+
+    A verdict is ``pass^k``: a task passed only when every gradable trial of it passed.
+    Nothing has to have run since the evaluation itself -- this is read from the trials as
+    they are stored.
+    """
+
+    suite_id: str = ""
+    suite_name: str = ""
+    suite_version: int | None = None
+    latest_run_id: str = ""
+    latest_run_at: int | None = None
+    previous_run_id: str | None = None
+    previous_run_at: int | None = None
+    #: How many of this suite's runs the history looked at, newest first.
+    runs_compared: int = 0
+    new_failures: int = 0
+    regressions: int = 0
+    fixed: int = 0
+    persistent: int = 0
+    #: Tasks that passed in both runs, counted rather than listed.
+    passing: int = 0
+    tasks: list[TaskFailure] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.tasks = [
+            task if isinstance(task, TaskFailure) else TaskFailure.from_api(task)
+            for task in self.tasks or []
+        ]
+
+    def _of(self, status: str) -> list[TaskFailure]:
+        return [task for task in self.tasks if task.status == status]
+
+    @property
+    def new(self) -> list[TaskFailure]:
+        """Failing, and the run before did not have this task at all."""
+        return self._of("new")
+
+    @property
+    def regressed(self) -> list[TaskFailure]:
+        """Passed in the run before and fails now -- what a gate blocks on."""
+        return self._of("regression")
+
+    @property
+    def repaired(self) -> list[TaskFailure]:
+        return self._of("fixed")
+
+    @property
+    def still_failing(self) -> list[TaskFailure]:
+        return self._of("persistent")
+
+    def __str__(self) -> str:
+        return (
+            f"{self.suite_name or self.suite_id}: {self.new_failures} new, "
+            f"{self.regressions} regressed, {self.fixed} fixed, "
+            f"{self.persistent} still failing"
+        )
+
+
+@dataclass
 class EvaluatorResult(ApiModel):
     trial_id: str = ""
     evaluator_name: str = ""
@@ -430,6 +516,9 @@ class EvalJob(ApiModel):
     #: Whether every evaluator of one execution grades the same conversations.
     #: None is on, which is what makes two judges' verdicts comparable.
     shared_sample: bool | None = None
+    #: How many of this job's executions may run at once. None or 1 queues the
+    #: second rather than running it beside the first.
+    parallel_runs: int | None = None
     created: bool = False
     exists: bool = False
     environments: list[str] = field(default_factory=list)
