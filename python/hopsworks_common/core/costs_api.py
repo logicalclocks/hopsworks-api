@@ -35,7 +35,7 @@ def _normalize_window(window: str) -> str:
 
 @public("hopsworks.core.costs_api.CostsApi")
 class CostsApi:
-    """API for inspecting the Kubernetes cost of each namespace in a Hopsworks cluster.
+    """API for inspecting the Kubernetes cost of each namespace, or each department, in a Hopsworks cluster.
 
     This is an admin-only capability: the calling account must hold the `HOPS_ADMIN` platform role.
     The cost is computed by OpenCost, which must be installed with the cluster.
@@ -72,11 +72,48 @@ class CostsApi:
 
         Raises:
             ValueError: If `window` is not one of the supported values.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403) cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403), cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
         """
+        return self._get_costs("namespaces", window)
+
+    @public
+    def get_department_costs(self, window: _WINDOW_ARG = "week") -> NamespaceCosts:
+        """Get the cost of each department over a recent time window.
+
+        This is the namespace view of [`get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] grouped by the department of each namespace's projects, with the same totals and buckets.
+        Each department gets one `DEPARTMENT` row, whose `namespace_count` says how many namespaces it sums.
+        Projects are counted in their current department, so a project moved to another department moves its whole history with it, and a project created without a department is in the default department.
+        A namespace that is no project's, such as Hopsworks' own or `kube-system`, or that is shared by projects of different departments, is summed into one `UNASSIGNED` row.
+        The `IDLE` and `UNMOUNTED` rows are the same as in the namespace view.
+
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            costs = hopsworks.get_costs_api().get_department_costs("month")
+
+            for row in costs.items:
+                if row.kind == "DEPARTMENT":
+                    print(row.department_name, row.namespace_count, row.total_cost)
+            ```
+
+        Parameters:
+            window: Time window ending now, one of `hour`, `day`, `week`, `month`, `year`, matched regardless of case.
+
+        Returns:
+            The per-department costs, totals and per-bucket breakdown for the window.
+
+        Raises:
+            ValueError: If `window` is not one of the supported values.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403), cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
+        """
+        return self._get_costs("departments", window)
+
+    def _get_costs(self, view: str, window: str) -> NamespaceCosts:
         query_params = {"window": _normalize_window(window)}
         _client = client._get_instance()
-        path_params = ["admin", "costs", "namespaces"]
+        path_params = ["admin", "costs", view]
         return NamespaceCosts.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)
         )

@@ -75,3 +75,37 @@ class TestCostsApi:
             CostsApi().get_namespace_costs(window)
 
         client_instance._send_request.assert_not_called()
+
+    def test_get_department_costs_defaults_to_week(self, mocker, backend_fixtures):
+        client_instance = _patch_client(
+            mocker, backend_fixtures["cost"]["get_department_costs"]["response"]
+        )
+
+        costs = CostsApi().get_department_costs()
+
+        client_instance._send_request.assert_called_once_with(
+            "GET",
+            ["admin", "costs", "departments"],
+            query_params={"window": "WEEK"},
+        )
+        assert costs.total_cost == 10.0
+        assert costs.items[0].kind == "DEPARTMENT"
+        assert costs.items[0].department_name == "risk"
+        assert costs.items[0].namespace_count == 2
+
+    def test_get_department_costs_sends_window_upper_case(self, mocker):
+        client_instance = _patch_client(mocker, {"window": "MONTH"})
+
+        CostsApi().get_department_costs("Month")
+
+        assert client_instance._send_request.call_args.kwargs["query_params"] == {
+            "window": "MONTH"
+        }
+
+    def test_get_department_costs_rejects_unknown_window(self, mocker):
+        client_instance = _patch_client(mocker, {})
+
+        with pytest.raises(ValueError, match="Window must be one of"):
+            CostsApi().get_department_costs("fortnight")
+
+        client_instance._send_request.assert_not_called()

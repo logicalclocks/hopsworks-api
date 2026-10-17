@@ -41,6 +41,8 @@ class TestNamespaceCosts:
         assert fraud == CostRow(
             namespace="fraud",
             kind="NAMESPACE",
+            department_id=7,
+            department_name="risk",
             cpu_cost=3.1,
             gpu_cost=0,
             ram_cost=1.2,
@@ -62,6 +64,25 @@ class TestNamespaceCosts:
             share=0.1141,
         )
 
+    def test_from_response_json_departments(self, backend_fixtures):
+        json = backend_fixtures["cost"]["get_department_costs"]["response"]
+
+        costs = NamespaceCosts.from_response_json(json)
+
+        risk, unassigned, idle = costs.items
+        assert (risk.kind, risk.namespace) == ("DEPARTMENT", None)
+        assert (risk.department_id, risk.department_name) == (7, "risk")
+        assert risk.namespace_count == 2
+        assert risk.gpu_workload_cost + risk.cpu_workload_cost == risk.total_cost
+        assert unassigned.kind == "UNASSIGNED"
+        assert unassigned.department_id is None
+        assert unassigned.department_name is None
+        assert unassigned.namespace_count == 3
+        assert idle.namespace == "__idle__"
+        assert idle.namespace_count is None
+        assert costs.buckets[0].items[0].department_name == "risk"
+        assert costs.buckets[0].items[0].namespace_count == 2
+
     def test_from_response_json_null_cost_is_zero_and_unknown_keys_dropped(
         self, backend_fixtures
     ):
@@ -73,6 +94,8 @@ class TestNamespaceCosts:
         assert idle.pv_cost == 0.0
         assert idle.total_efficiency is None
         assert idle.share is None
+        assert idle.department_name is None
+        assert idle.namespace_count is None
 
     def test_from_response_json_buckets(self, backend_fixtures):
         json = backend_fixtures["cost"]["get_namespace_costs"]["response"]

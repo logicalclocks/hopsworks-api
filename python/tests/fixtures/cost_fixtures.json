@@ -11,6 +11,8 @@
         {
           "kind": "NAMESPACE",
           "namespace": "fraud",
+          "departmentId": 7,
+          "departmentName": "risk",
           "cpuCost": 3.1,
           "gpuCost": 0,
           "ramCost": 1.2,
@@ -64,6 +66,76 @@
           "observed": false,
           "partial": true,
           "items": []
+        }
+      ]
+    }
+  },
+  "get_department_costs": {
+    "response": {
+      "window": "WEEK",
+      "start": "2026-10-09T09:00:00Z",
+      "end": "2026-10-16T09:00:00Z",
+      "currency": "USD",
+      "coverage": {"observedBuckets": 1, "totalBuckets": 1, "firstObserved": "2026-10-09T00:00:00Z"},
+      "totals": {"totalCost": 10.0, "idleCost": 2.0, "efficiency": 0.4, "gpuWorkloadCost": 5.0, "cpuWorkloadCost": 3.0},
+      "items": [
+        {
+          "kind": "DEPARTMENT",
+          "namespace": null,
+          "departmentId": 7,
+          "departmentName": "risk",
+          "namespaceCount": 2,
+          "cpuCost": 2.0,
+          "gpuCost": 3.0,
+          "ramCost": 1.0,
+          "pvCost": 0,
+          "networkCost": 0,
+          "otherCost": 0,
+          "totalCost": 6.0,
+          "gpuWorkloadCost": 5.0,
+          "cpuWorkloadCost": 1.0,
+          "cpuEfficiency": 1.0,
+          "ramEfficiency": 0.5,
+          "totalEfficiency": 0.8,
+          "share": 0.6
+        },
+        {
+          "kind": "UNASSIGNED",
+          "namespace": null,
+          "departmentId": null,
+          "departmentName": null,
+          "namespaceCount": 3,
+          "cpuCost": 1.5,
+          "gpuCost": 0,
+          "ramCost": 0.5,
+          "pvCost": 0,
+          "networkCost": 0,
+          "otherCost": 0,
+          "totalCost": 2.0,
+          "gpuWorkloadCost": 0,
+          "cpuWorkloadCost": 2.0,
+          "share": 0.2
+        },
+        {
+          "kind": "IDLE",
+          "namespace": "__idle__",
+          "departmentId": null,
+          "departmentName": null,
+          "namespaceCount": null,
+          "cpuCost": 2.0,
+          "totalCost": 2.0,
+          "gpuWorkloadCost": 0,
+          "cpuWorkloadCost": 0,
+          "share": 0.2
+        }
+      ],
+      "buckets": [
+        {
+          "start": "2026-10-09T00:00:00Z",
+          "end": "2026-10-16T09:00:00Z",
+          "observed": true,
+          "partial": true,
+          "items": [{"kind": "DEPARTMENT", "departmentId": 7, "departmentName": "risk", "namespaceCount": 2, "totalCost": 6.0, "gpuWorkloadCost": 5.0, "cpuWorkloadCost": 1.0}]
         }
       ]
     }

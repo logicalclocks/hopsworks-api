@@ -1,6 +1,6 @@
 ---
 name: hops-collaboration
-description: Use when managing project membership, administering platform users or inspecting per-project compute cost, and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects. 
+description: Use when managing project membership, administering platform users or inspecting per-project or per-department compute cost, and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects. 
 ---
 
 # Project Members, Platform Users, and Sharing
@@ -64,7 +64,7 @@ users_api.delete_user(new_user.id)        # fails if the user still owns project
 
 `get_users()` / `get_user(id)` / `get_user_by_email(email)` return `AdminUser` objects (`id`, `email`, `roles`, `status`, ...) — distinct from the lightweight `User` class used elsewhere (e.g. as a feature group's `creator`). Look a user up by email when you don't already have their id; it scans the full user list, so pass the id when you have it.
 
-## Inspecting compute cost per namespace (admin-only)
+## Inspecting compute cost per namespace or department (admin-only)
 
 Each project runs in its own Kubernetes namespace; OpenCost prices each namespace's CPU, GPU, RAM, storage and network, and Hopsworks proxies it to `HOPS_ADMIN` accounts.
 
@@ -78,11 +78,16 @@ for bucket in costs.buckets:                                       # per-slice r
     if not bucket.observed:
         continue                                                   # no data: unknown cost, never plot it as 0
     print(bucket.start, bucket.partial, [(r.namespace, r.total_cost) for r in bucket.items])
+
+dept = hopsworks.get_costs_api().get_department_costs("month")   # same window, totals and buckets, rows grouped by department
+for row in dept.items:
+    print(row.kind, row.department_name, row.namespace_count, row.total_cost)
 ```
 
 ```bash
 hops admin costs --window month          # table: namespace, cpu, gpu, ram, storage, network, other, total, gpu workloads, cpu workloads, share, efficiency; plus a coverage line when buckets lack data
 hops admin costs --window day --json
+hops admin costs --by department         # table: department, namespaces, then the same cost columns
 ```
 
 Key facts:
@@ -94,6 +99,10 @@ Key facts:
 - Each row's cost columns sum to `total_cost`; `share` is the row's fraction of `total_cost` (`None` when the total is not positive).
 - `gpu_workload_cost` + `cpu_workload_cost` is a second split of a `NAMESPACE` row's `total_cost`, by workload: a Job, Deployment or other controller that requested GPUs in a bucket counts its whole cost (CPU, RAM, storage too) as GPU workload; `gpu_cost` is only the GPUs' own cost.
   Both are 0 on `IDLE` / `UNMOUNTED` rows.
+- `NAMESPACE` rows carry `department_id` / `department_name`, `None` when the namespace is no project's or is shared by projects of different departments.
+- The department view has one `DEPARTMENT` row per department (`namespace` is `None`, `namespace_count` namespaces summed in) and one `UNASSIGNED` row ("Not a project" in the CLI) for namespaces with no single department, such as Hopsworks' own, `kube-system` or deleted projects; `IDLE` / `UNMOUNTED` are as in the namespace view.
+  Projects count in their current department, so moving a project moves its whole cost history; projects created without a department are in the default department.
+  Its totals equal the namespace view's for the same window.
 - Efficiency is used over requested core-hours or byte-hours; `cpu_no_requests` / `ram_no_requests` mean the namespace used the resource without requesting any, so its efficiency is meaningless; the CLI shows `No requests`.
 - Cost tracking switched off on the cluster (`enable_opencost` false, the default) surfaces as `RestAPIError` with HTTP 404 and error code 100083.
 - OpenCost not installed or unreachable surfaces as `RestAPIError` with HTTP 503 and error code 100081; the cause is in `exc.user_message`.

@@ -1,4 +1,4 @@
-"""CLI tests for ``hops admin costs``: window passing, table rendering and JSON output."""
+"""CLI tests for ``hops admin costs``: window and view passing, table rendering and JSON output."""
 
 from __future__ import annotations
 
@@ -35,6 +35,8 @@ def _costs() -> NamespaceCosts:
             CostRow(
                 namespace="fraud",
                 kind="NAMESPACE",
+                department_id=7,
+                department_name="risk",
                 cpu_cost=5.0,
                 ram_cost=2.5,
                 pv_cost=0.5,
@@ -48,10 +50,39 @@ def _costs() -> NamespaceCosts:
     )
 
 
+def _department_costs() -> NamespaceCosts:
+    costs = _costs()
+    costs.items = [
+        CostRow(
+            kind="UNASSIGNED",
+            namespace_count=3,
+            cpu_cost=1.0,
+            total_cost=1.0,
+            cpu_workload_cost=1.0,
+            share=0.1,
+        ),
+        CostRow(namespace="__idle__", kind="IDLE", total_cost=2.0, share=0.2),
+        CostRow(
+            kind="DEPARTMENT",
+            department_id=7,
+            department_name="risk",
+            namespace_count=2,
+            cpu_cost=7.0,
+            total_cost=7.0,
+            gpu_workload_cost=6.0,
+            cpu_workload_cost=1.0,
+            total_efficiency=0.5,
+            share=0.7,
+        ),
+    ]
+    return costs
+
+
 @pytest.fixture
 def costs_api(mock_project):
     api = mock.MagicMock()
     api.get_namespace_costs.return_value = _costs()
+    api.get_department_costs.return_value = _department_costs()
     with mock.patch("hopsworks.get_costs_api", return_value=api, create=True):
         yield api
 
@@ -82,13 +113,14 @@ def test_admin_costs_table_sorted_by_total_with_share(costs_api):
 
     assert result.exit_code == 0, result.output
     lines = result.output.splitlines()
-    assert "NAMESPACE" in lines[0]
+    assert lines[0].split()[:2] == ["NAMESPACE", "DEPARTMENT"]
     assert "EFFICIENCY" in lines[0]
     assert "GPU WORKLOADS" in lines[0]
     assert "CPU WORKLOADS" in lines[0]
     fraud = lines[2].split()
     assert fraud == [
         "fraud",
+        "risk",
         "5.00",
         "0.00",
         "2.50",
@@ -102,7 +134,7 @@ def test_admin_costs_table_sorted_by_total_with_share(costs_api):
         "37%",
     ]
     idle = lines[3].split()
-    assert idle[0] == "__idle__"
+    assert idle[:2] == ["__idle__", "-"]
     assert idle[-4:] == ["-", "-", "20%", "-"]
     assert lines[4] == (
         "Total 10.00 USD, idle 2.00, efficiency 42%, "
@@ -160,7 +192,7 @@ def test_admin_costs_efficiency_no_requests(
     result = CliRunner().invoke(cli, ["admin", "costs"])
 
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines()[2].split(maxsplit=11)[-1].strip() == shown
+    assert result.output.splitlines()[2].split(maxsplit=12)[-1].strip() == shown
 
 
 def test_admin_costs_shows_backend_user_message(costs_api):
@@ -200,3 +232,60 @@ def test_admin_costs_reports_backend_failure(costs_api):
 
     assert result.exit_code != 0
     assert "OpenCost is down" in result.output
+
+
+def test_admin_costs_by_department(costs_api):
+    result = CliRunner().invoke(cli, ["admin", "costs", "--by", "department"])
+
+    assert result.exit_code == 0, result.output
+    costs_api.get_department_costs.assert_called_once_with("week")
+    costs_api.get_namespace_costs.assert_not_called()
+    lines = result.output.splitlines()
+    assert lines[0].split()[:3] == ["DEPARTMENT", "NAMESPACES", "CPU"]
+    assert "GPU WORKLOADS" in lines[0]
+    assert lines[2].split() == [
+        "risk",
+        "2",
+        "7.00",
+        "0.00",
+        "0.00",
+        "0.00",
+        "0.00",
+        "0.00",
+        "7.00",
+        "6.00",
+        "1.00",
+        "70%",
+        "50%",
+    ]
+    assert lines[3].split()[:2] == ["__idle__", "-"]
+    assert lines[3].split()[-4:] == ["-", "-", "20%", "-"]
+    assert lines[4].startswith("Not a project  3 ")
+    assert lines[4].split()[-4:] == ["0.00", "1.00", "10%", "-"]
+    assert lines[5].startswith("Total 10.00 USD")
+
+
+def test_admin_costs_by_department_passes_window(costs_api):
+    result = CliRunner().invoke(
+        cli, ["admin", "costs", "--by", "DEPARTMENT", "--window", "year"]
+    )
+
+    assert result.exit_code == 0, result.output
+    costs_api.get_department_costs.assert_called_once_with("year")
+
+
+def test_admin_costs_rejects_unknown_view(costs_api):
+    result = CliRunner().invoke(cli, ["admin", "costs", "--by", "project"])
+
+    assert result.exit_code != 0
+    costs_api.get_namespace_costs.assert_not_called()
+    costs_api.get_department_costs.assert_not_called()
+
+
+def test_admin_costs_by_department_reports_backend_failure(costs_api):
+    costs_api.get_department_costs.side_effect = RuntimeError("OpenCost is down")
+
+    result = CliRunner().invoke(cli, ["admin", "costs", "--by", "department"])
+
+    assert result.exit_code != 0
+    assert "Could not get department costs: OpenCost is down" in result.output

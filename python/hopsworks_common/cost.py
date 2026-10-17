@@ -32,14 +32,18 @@ if TYPE_CHECKING:
 @public("hopsworks.cost.CostRow")
 @dataclass
 class CostRow:
-    """Cost of one Kubernetes namespace over a time window, as computed by OpenCost.
+    """Cost of one Kubernetes namespace, or one department, over a time window, as computed by OpenCost.
 
     Costs are in the currency of the enclosing [`NamespaceCosts`][hopsworks_common.cost.NamespaceCosts].
     `kind` is `NAMESPACE` for a namespace, `IDLE` for node capacity no pod requested (namespace `__idle__`), and `UNMOUNTED` for unmounted volumes and load balancers (namespace `__unmounted__`).
+    A `NAMESPACE` row carries the `department_id` and `department_name` of the projects in it, both `None` when the namespace is no project's or is shared by projects of different departments.
+    The department view has `DEPARTMENT` rows, one per department with `namespace` `None`, and an `UNASSIGNED` row for the namespaces that have no single department, alongside the same `IDLE` and `UNMOUNTED` rows.
+    `namespace_count` is the number of namespaces summed into a `DEPARTMENT` or `UNASSIGNED` row, and `None` on every other row.
+    A department holds its projects' whole history, so a project moved to another department moves its past cost with it.
     `other_cost` sums load balancer, shared and external costs.
     The cost columns sum to `total_cost`, and costs can be slightly negative after OpenCost's adjustments.
     `gpu_workload_cost` and `cpu_workload_cost` split `total_cost` by workload instead of by resource: a workload (Job, Deployment, StatefulSet, SparkApplication and the like) that requested GPU-hours in a bucket counts its whole cost, CPU, RAM and storage included, as `gpu_workload_cost`, and every other workload counts as `cpu_workload_cost`.
-    The two sum to `total_cost` for a `NAMESPACE` row and are 0 for `IDLE` and `UNMOUNTED` rows, whereas `gpu_cost` is the cost of the GPUs alone.
+    The two sum to `total_cost` for a `NAMESPACE`, `DEPARTMENT` or `UNASSIGNED` row and are 0 for `IDLE` and `UNMOUNTED` rows, whereas `gpu_cost` is the cost of the GPUs alone.
     Pods without a controller share one workload per namespace, so they are classed together.
     The `*_hours_requested` and `*_hours_used` columns are CPU core-hours and RAM byte-hours.
     Efficiencies are used divided by requested hours, cost-weighted over CPU and RAM for `total_efficiency`, and `None` when nothing was requested.
@@ -49,6 +53,9 @@ class CostRow:
 
     namespace: str | None = None
     kind: str | None = None
+    department_id: int | None = None
+    department_name: str | None = None
+    namespace_count: int | None = None
     cpu_cost: float = 0.0
     gpu_cost: float = 0.0
     ram_cost: float = 0.0
@@ -97,7 +104,7 @@ class CostRow:
 @public("hopsworks.cost.CostBucket")
 @dataclass
 class CostBucket:
-    """Per-namespace cost over one slice of a window, for plotting cost over time.
+    """Per-namespace or per-department cost over one slice of a window, for plotting cost over time.
 
     An hour window is split into 10-minute slices, a day into hours, a week and a month into days, and a year into calendar months.
     `start` and `end` are ISO-8601 UTC timestamps.
@@ -176,16 +183,17 @@ class CostCoverage:
 @public("hopsworks.cost.NamespaceCosts")
 @dataclass
 class NamespaceCosts:
-    """Kubernetes cost per namespace over a time window, as seen by a platform administrator.
+    """Kubernetes cost per namespace, or per department, over a time window, as seen by a platform administrator.
 
     The cost is computed by OpenCost and proxied by Hopsworks.
     Each Hopsworks project runs in its own namespace, so a namespace row is the compute and storage cost of that project.
     `total_cost` and `idle_cost` cover the whole cluster, and `efficiency` is the cost-weighted efficiency of all namespace rows.
     `gpu_workload_cost` and `cpu_workload_cost` are the sums of the namespace rows' workload split, so with `idle_cost` and the `UNMOUNTED` row they add up to `total_cost`.
     `start` and `end` are ISO-8601 UTC timestamps.
-    The totals and `items` cover only the buckets with data, as reported by `coverage`, and `items` are the per-namespace sums of the bucket rows, most expensive first.
+    The totals and `items` cover only the buckets with data, as reported by `coverage`, and `items` are the per-row sums of the bucket rows, most expensive first.
+    The department view has the same totals as the namespace view for the same window, with its namespace rows grouped into `DEPARTMENT` and `UNASSIGNED` rows.
 
-    Use [`CostsApi.get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] to get an instance of this class.
+    Use [`CostsApi.get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] or [`CostsApi.get_department_costs`][hopsworks_common.core.costs_api.CostsApi.get_department_costs] to get an instance of this class.
     """
 
     window: str | None = None
@@ -234,7 +242,7 @@ class NamespaceCosts:
 
     @public
     def to_pandas(self) -> pd.DataFrame:
-        """Return the per-namespace rows as a DataFrame, one row per namespace.
+        """Return the rows as a DataFrame, one row per namespace or department.
 
         Example:
             ```python
