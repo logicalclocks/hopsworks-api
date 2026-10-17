@@ -330,6 +330,39 @@ class TestGuardrails:
         assert metrics["over_refusal_rate"] == 0.0
         assert metrics["safety_violation_rate"] == 0.0
 
+    def test_the_default_judge_follows_the_deployments_one_setting(self, monkeypatch):
+        # A project that judges with one model should say so once rather than
+        # in every check. A check naming its own still wins; this is the
+        # default it falls back to.
+        from hopsworks_agents.eval.run_job import _judge_for
+
+        monkeypatch.setenv("EVAL_JUDGE_API_KEY", "k")
+        monkeypatch.delenv("EVAL_JUDGE_MODEL", raising=False)
+        judge = _judge_for("openai", "gpt-5.6-terra")
+        assert judge is not None
+        assert judge.config.provider == "openai"
+        assert judge.config.model == "gpt-5.6-terra"
+
+        # and without one, what it has always been
+        assert _judge_for().config.provider == "anthropic"
+
+    def test_an_unknown_judge_provider_falls_back_rather_than_failing(
+        self, monkeypatch
+    ):
+        from hopsworks_agents.eval.run_job import _judge_for
+
+        monkeypatch.setenv("EVAL_JUDGE_API_KEY", "k")
+        assert _judge_for("not-a-provider").config.provider == "anthropic"
+
+    def test_no_key_means_no_default_judge_rather_than_a_failed_run(
+        self, monkeypatch
+    ):
+        from hopsworks_agents.eval.run_job import _judge_for
+
+        monkeypatch.delenv("EVAL_JUDGE_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        assert _judge_for() is None
+
     def test_a_sample_records_what_its_number_is_a_number_of(self):
         # "500 passed 80%" reads as the hour's verdict; the hour held twelve
         # thousand conversations and this was five hundred of them.

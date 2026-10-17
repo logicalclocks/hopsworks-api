@@ -394,13 +394,14 @@ class TestRuns:
         evals.jobs.ensure_eval_job(
             7,
             analyse_failures=True,
-            analysis_provider="anthropic",
-            analysis_model="claude-haiku-4-5",
+            judge_provider="anthropic",
+            judge_model="claude-haiku-4-5",
             analysis_budget_calls=100,
         )
         sent = session.sent[0][3]
         assert sent["analyseFailures"] is True
-        assert sent["analysisModel"] == "claude-haiku-4-5"
+        # one model setting, used by the checks that name none and by the analysis
+        assert sent["judgeModel"] == "claude-haiku-4-5"
         assert sent["analysisBudgetCalls"] == 100
 
     def test_a_manual_job_run_can_name_the_window_it_samples(self):

@@ -522,6 +522,10 @@ class EvalJob(ApiModel):
     #: Whether a run that broke something is analysed as soon as it finishes.
     #: The analysis job is configured from here and triggered by this one.
     analyse_failures: bool | None = None
+    #: The model a check that names none judges with, and the one the analysis
+    #: uses. One setting for the deployment.
+    judge_provider: str = ""
+    judge_model: str = ""
     created: bool = False
     exists: bool = False
     environments: list[str] = field(default_factory=list)

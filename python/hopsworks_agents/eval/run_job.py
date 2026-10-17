@@ -24,7 +24,7 @@ from typing import Any
 
 from .api import hopsworks_session
 from .evaluator_spec import SpecError, evaluators_for_suite
-from .judges import DEFAULT_MODEL, LlmJudgeEvaluator, anthropic_completer
+from .judges import LlmJudgeEvaluator
 from .metrics import run_metrics
 from .models import ExecutionMode, PassPolicy, Suite, Task
 from .run_fields import run_trials
@@ -57,8 +57,15 @@ def _query_for(project: Any) -> Any:
     return query
 
 
-def _judge_for() -> LlmJudgeEvaluator | None:
-    """The judge used by a spec that names no variable of its own.
+def _judge_for(
+    provider: str | None = None, model: str | None = None
+) -> LlmJudgeEvaluator | None:
+    """The judge used by a check that names no model of its own.
+
+    One setting for the deployment, passed by the backend from the evaluation
+    job: a project that judges with one model should say so once rather than in
+    every check. A check that names its own provider or model still wins --
+    this is the default, not an override.
 
     EVAL_JUDGE_API_KEY when set, so evaluation can be pointed at a separate key,
     otherwise the provider's own variable. Both are environment variables and
@@ -69,9 +76,14 @@ def _judge_for() -> LlmJudgeEvaluator | None:
     separately — and, being asked wrongly, silently skipped every judge while the
     run reported success.
     """
-    from .judge_config import PROVIDERS, JudgeConfig
+    from .judge_config import PROVIDERS, JudgeConfig, completer_for
 
-    env_var = PROVIDERS["anthropic"]["env_var"]
+    chosen = (provider or os.environ.get("EVAL_JUDGE_PROVIDER") or "anthropic").lower()
+    registry = PROVIDERS.get(chosen)
+    if registry is None:
+        log.warning("unknown judge provider %s; falling back to anthropic", chosen)
+        chosen, registry = "anthropic", PROVIDERS["anthropic"]
+    env_var = registry["env_var"]
     api_key = os.environ.get("EVAL_JUDGE_API_KEY") or os.environ.get(env_var)
     if not api_key:
         log.info(
@@ -83,11 +95,10 @@ def _judge_for() -> LlmJudgeEvaluator | None:
         )
         return None
 
-    model = os.environ.get("EVAL_JUDGE_MODEL", DEFAULT_MODEL)
-    log.info("LLM judge enabled (model=%s)", model)
-    return LlmJudgeEvaluator(
-        anthropic_completer(api_key, model), JudgeConfig(model=model)
-    )
+    named = model or os.environ.get("EVAL_JUDGE_MODEL") or ""
+    config = JudgeConfig(provider=chosen, model=named or registry["default_model"])
+    log.info("LLM judge enabled (provider=%s model=%s)", chosen, config.model)
+    return LlmJudgeEvaluator(completer_for(config, api_key), config)
 
 
 def _tags(raw: Any) -> list[str]:
@@ -341,7 +352,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
 
         from .client import HopsworksAgentClient
 
-        judge = _judge_for()
+        judge = _judge_for(args.judge_provider, args.judge_model)
         # The judge is a evaluator; the spec needs the bare completer behind it, so
         # a task can ask for a rubric judge and a pairwise judge independently.
         completer = judge._complete if judge is not None else None  # noqa: SLF001
@@ -442,6 +453,13 @@ def main() -> None:
         "p95 rather than accepting this default",
     )
     parser.add_argument("--max-concurrency", type=int, default=4)
+    parser.add_argument(
+        "--judge-provider",
+        default=None,
+        help="the provider a check that names none judges with; the deployment's "
+        "one judge setting, passed by the backend",
+    )
+    parser.add_argument("--judge-model", default=None)
     parser.add_argument(
         "--sample-independent",
         action="store_true",
