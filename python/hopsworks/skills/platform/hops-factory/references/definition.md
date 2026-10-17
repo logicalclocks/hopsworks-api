@@ -7,7 +7,7 @@ The cluster refuses a definition that breaks a rule below, and `hops factory val
 
 | key | required | rule |
 | --- | --- | --- |
-| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-streaming`, `ml-agent`, `analytics-bronze`, `analytics-silver`, `analytics-gold`, `analytics-pipeline`, `analytics-ingestion`) |
+| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-streaming`, `ml-agent`, `ml-finetune`, `analytics-bronze`, `analytics-silver`, `analytics-gold`, `analytics-pipeline`, `analytics-ingestion`) |
 | `title` | yes | text, at most 255 |
 | `description` | no | text |
 | `chat` | no | text: what the requirements chat beside the form asks about and suggests, in prose; it is added to the chat's instructions and takes precedence over them |

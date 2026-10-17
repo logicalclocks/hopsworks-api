@@ -26,6 +26,7 @@ BUILTINS = (
     "ml-realtime",
     "ml-streaming",
     "ml-agent",
+    "ml-finetune",
     "analytics-bronze",
     "analytics-silver",
     "analytics-gold",
