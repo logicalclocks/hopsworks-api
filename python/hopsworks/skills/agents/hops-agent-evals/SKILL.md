@@ -104,6 +104,8 @@ agents.jobs.update_eval_job(job.name, sample_ceiling=2000, sample_strategy="olde
 agents.jobs.run_eval_job(job.name, since=..., until=..., sample=20)   # one run over a window
 ```
 
+**One form for both jobs.** The evaluation job configures the failure analysis too: `ensure_eval_job(..., analyse_failures=True, analysis_model="claude-haiku-4-5")` creates the analysis job with the evaluation's own environment and resources, and the evaluation triggers it — no schedule of its own, and only when a run produced a **new failure or a regression**, since the same failures again need no second explanation. Its advanced settings (sources, source code, auto-promotion thresholds) stay on the analysis job itself.
+
 **One job per deployment, one execution at a time.** `ensure_eval_job` returns the existing job whatever name is asked for: what used to be a second job is this one's suites, its monitors and its schedule. A run asked for while one is going is queued — recorded, `PENDING`, with no execution — and starts when the current one finishes, with everything else waiting folded into the same execution. `update_eval_job(name, parallel_runs=2)` lifts that for a deployment that can take two evaluations at once.
 
 The evaluation job is a Hopsworks job named after the agent; schedule it like any job (**hops-job**). `monitor=True` samples traffic with the listed evaluators on every run. A **scheduled** fire grades live traffic only — the suites are the same frozen tasks every fire, at a model call per task — unless `suites_on_schedule=True`. Running the job yourself always runs everything it names.

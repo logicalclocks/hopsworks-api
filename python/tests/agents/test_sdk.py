@@ -386,6 +386,23 @@ class TestRuns:
         evals, _ = client(Reply({"id": 7, "status": "Idle"}))
         assert evals.runs.agent_status(Run(run_id="r", deployment_id=7)) == ""
 
+    def test_the_evaluation_job_configures_the_analysis_too(self):
+        # One workflow -- evaluate, then explain what broke -- so the analysis
+        # job is configured from here rather than answering the environment,
+        # the resources and a schedule twice.
+        evals, session = client(Reply({"name": "nightly"}))
+        evals.jobs.ensure_eval_job(
+            7,
+            analyse_failures=True,
+            analysis_provider="anthropic",
+            analysis_model="claude-haiku-4-5",
+            analysis_budget_calls=100,
+        )
+        sent = session.sent[0][3]
+        assert sent["analyseFailures"] is True
+        assert sent["analysisModel"] == "claude-haiku-4-5"
+        assert sent["analysisBudgetCalls"] == 100
+
     def test_a_manual_job_run_can_name_the_window_it_samples(self):
         # A scheduled fire grades what arrived since the last one. Trying an
         # evaluator out means naming a window -- yesterday afternoon, twenty

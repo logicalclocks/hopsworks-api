@@ -519,6 +519,9 @@ class EvalJob(ApiModel):
     #: How many of this job's executions may run at once. None or 1 queues the
     #: second rather than running it beside the first.
     parallel_runs: int | None = None
+    #: Whether a run that broke something is analysed as soon as it finishes.
+    #: The analysis job is configured from here and triggered by this one.
+    analyse_failures: bool | None = None
     created: bool = False
     exists: bool = False
     environments: list[str] = field(default_factory=list)
