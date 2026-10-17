@@ -73,6 +73,8 @@ class Project:
         datasets=None,
         creation_status=None,
         namespace=None,
+        department_id=None,
+        department_name=None,
         **kwargs,
     ):
         self._id = project_id
@@ -93,6 +95,7 @@ class Project:
         self._project_members_api = project_members_api.ProjectMembersApi()
         self._search_api = search_api.SearchApi()
         self._project_namespace = namespace
+        self._department = department_name
         self._trino_api = None
         self._trino_catalog_api = None
         self._superset_api = None
@@ -139,6 +142,16 @@ class Project:
     def project_namespace(self):
         """Kubernetes namespace used by project."""
         return self._project_namespace
+
+    @public
+    @property
+    def department(self) -> str | None:
+        """Name of the department the project belongs to.
+
+        Administrators group projects into departments; a project created without one is in the default department.
+        `None` from a Hopsworks version that predates departments.
+        """
+        return self._department
 
     @public
     @property

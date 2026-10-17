@@ -120,6 +120,7 @@ class ProjectApi:
         description: str = None,
         feature_store_topic: str = None,
         namespace: str = None,
+        department: str = None,
     ) -> project.Project:
         """Create a new project.
 
@@ -129,12 +130,15 @@ class ProjectApi:
             feature_store_topic: Feature store topic name.
             namespace: Kubernetes namespace to use for the project. If ``None``
                 the backend derives one from the project name.
+            department: Name of the department to create the project in.
+                If ``None`` the project goes to the default department.
 
         Returns:
             The Project object.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to create the project.
+            ValueError: If no department is named `department`.
         """
         _client = client._get_instance()
 
@@ -153,6 +157,8 @@ class ProjectApi:
         }
         if namespace is not None:
             data["namespace"] = namespace
+        if department is not None:
+            data["departmentId"] = self._get_department_id(department)
         _client._send_request(
             "POST",
             path_params,
@@ -165,6 +171,22 @@ class ProjectApi:
         project = self._get_project(name)
         print("Project created successfully, explore it at " + project.get_url())
         return project
+
+    def _get_department_id(self, name: str) -> int:
+        """Resolve a department name to its id.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the cluster cannot list its departments.
+            ValueError: If no department is named `name`.
+        """
+        _client = client._get_instance()
+        departments = _client._send_request("GET", ["departments"]).get("items", [])
+        for department in departments:
+            if department["name"] == name:
+                return department["id"]
+        raise ValueError(
+            f"No department named '{name}'; available: {sorted(d['name'] for d in departments)}"
+        )
 
     def _get_client(self):
         _client = client._get_instance()
