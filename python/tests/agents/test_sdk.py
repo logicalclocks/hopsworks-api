@@ -386,6 +386,17 @@ class TestRuns:
         evals, _ = client(Reply({"id": 7, "status": "Idle"}))
         assert evals.runs.agent_status(Run(run_id="r", deployment_id=7)) == ""
 
+    def test_failures_are_analysed_unless_a_caller_says_not_to(self):
+        # A failure nobody explains is one somebody reads twice, so a job
+        # created without an opinion gets the analysis; one that says no
+        # keeps its model calls.
+        evals, session = client(Reply({"name": "nightly"}), Reply({"name": "n2"}))
+        evals.jobs.ensure_eval_job(7)
+        assert session.sent[0][3]["analyseFailures"] is True
+
+        evals.jobs.ensure_eval_job(7, analyse_failures=False)
+        assert session.sent[1][3]["analyseFailures"] is False
+
     def test_the_evaluation_job_configures_the_analysis_too(self):
         # One workflow -- evaluate, then explain what broke -- so the analysis
         # job is configured from here rather than answering the environment,
@@ -627,6 +638,8 @@ class TestJobs:
             "suites": ["s:2", "x:1"],
             "evaluators": ["tmpl"],
             "monitor": True,
+            # the analysis comes with it unless the caller says otherwise
+            "analyseFailures": True,
             "cores": 2,
         }
 

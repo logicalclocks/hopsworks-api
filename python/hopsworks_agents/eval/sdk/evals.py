@@ -932,7 +932,7 @@ class Jobs:
         sample_strategy: str | None = None,
         shared_sample: bool | None = None,
         parallel_runs: int | None = None,
-        analyse_failures: bool | None = None,
+        analyse_failures: bool | None = True,
         analysis_budget_calls: int | None = None,
         judge_provider: str | None = None,
         judge_model: str | None = None,
@@ -947,6 +947,13 @@ class Jobs:
         for, since what used to be a second job is this one's suites, its monitors and its
         schedule. It runs one execution at a time -- a run asked for while one is going is
         queued -- unless ``parallel_runs`` says otherwise.
+
+        ``analyse_failures`` is on: a run that breaks something has it explained, by the
+        deployment's analysis job, which this creates alongside. A failure nobody explains is
+        one somebody reads twice. Pass False for a deployment that should not spend model
+        calls on it. The provider is guessed from the agent's framework when
+        ``judge_provider`` names none -- an agent on the OpenAI Agents SDK has an OpenAI key
+        in its environment, one on the Claude SDK an Anthropic one.
         """
         body = {
             "name": name,
