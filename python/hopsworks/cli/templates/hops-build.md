@@ -57,7 +57,9 @@ a question you are about to ask depends on.
 - **Tell, one line per event.** Print a line when a phase starts (what it will do, the estimate),
   when a job is submitted, on every poll of a running job (elapsed against the budget), when a run
   or attempt completes (its row), and when a phase ends (what it did, the new remaining estimate).
-  Nothing else. Update `system.progress` at each of these events.
+  Nothing else. Update `system.progress.now` at each of these events, and when a phase ends run
+  `hops factory system plan <slug> --sync`, which records what the project now has (`met`,
+  `stale`, `progress.done`, `progress.phase`).
 - **Nothing runs on the laptop.** Pipelines, tests and benchmarks run as Hopsworks jobs or
   deployments, apps as Hopsworks apps. Unit tests are the exception.
 - **Lint before a phase is validated.** Before a phase's tests run, and before it is recorded
@@ -95,8 +97,17 @@ a question you are about to ask depends on.
   `runs` or `measured` row in state `submitted` or `running` is checked with `hops job history`
   and `hops deployment status`; finished work is recorded, overdue work is stopped with
   `hops job stop` and recorded as a crash), delete `*_test_*` objects of this system whose run is
-  not running, run `verify` so stale claims are caught, then continue from the first phase whose
-  status is not `met`, `skipped` or `accepted`.
+  not running, then run `hops factory system plan <slug> --sync` and continue from its `next`. A
+  phase marked done whose assets are gone is `stale` again and is rebuilt; a phase whose inputs
+  exist starts, whoever made them.
+- **Start where the project is.** The user may bring part of the system: a model trained
+  elsewhere, an existing feature view, feature groups already written. Record it in the block of
+  the phase that would have made it (`training.model`, `training.feature_view`,
+  `features.pipelines[].writes`), set that phase `skipped` with a `reason` naming what the user
+  brought, and the phases that need it start. Build only what the request needs:
+  `hops factory system plan <slug> --goal <phase>` lists the phases that phase needs, and a phase
+  the request does not need is `skipped` with a `reason`. Never ask the user which phase to start
+  from or rebuild an asset that exists: the plan says.
 - **The lock** is the build lease `<slug>/.hops.lock` (`owner`, `token`, `acquired`, `expires`,
   UTC). `hops factory run` took it and passed its token as `$HOPS_LEASE_TOKEN`; started any other
   way, take it with `hops factory system lease acquire <slug>`, which prints the token to pass as
@@ -117,8 +128,8 @@ a question you are about to ask depends on.
 - **Every asset you create names `<slug>` in its description** (feature groups, feature views,
   models, deployments, jobs, apps): `hops factory system delete --assets` deletes an asset whose
   name does not carry the slug only when its description names the system.
-- **Run onwards.** `/hops-build <phase>` runs that phase and then every later phase that is not
-  `met` or that the rerun invalidated (a new model invalidates `inference` onwards; a new feature
+- **Run onwards.** `/hops-build <phase>` runs that phase and then every later phase the plan does
+  not report `done` or that the rerun invalidated (a new model invalidates `inference` onwards; a new feature
   pipeline invalidates `training` onwards; see the transition table), through `verify`, without
   being asked again. `--only` stops after the named phase. The only stops are: the requirements
   confirmation, an agent escalation, the app question, and the pull request. Free text after the
