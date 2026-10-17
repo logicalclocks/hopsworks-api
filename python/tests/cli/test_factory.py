@@ -572,6 +572,66 @@ def test_create_writes_the_system_and_its_build_command(
     assert launched == ["/hops-factory-churn-review q3-review"]
 
 
+def test_the_finetune_factory_writes_its_lora_requirements(
+    tmp_path, monkeypatch, logged_in
+):
+    resources = (
+        Path(__file__).resolve().parents[4]
+        / "hopsworks-ee/hopsworks-common/src/main/resources/factories"
+    )
+    if not resources.is_dir():
+        pytest.skip("hopsworks-ee is not beside this checkout")
+    registered, launched = _recording(monkeypatch, tmp_path)
+    text = (resources / "ml-finetune.yaml").read_text()
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(text, version=1)
+    )
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "slug": "support-qwen",
+                "description": "answer support tickets in our tone",
+                "model": {"base": "Qwen/Qwen2.5-7B-Instruct"},
+                "data": {"source": "files", "dataset": "Resources/tickets.jsonl"},
+                "compute": {"runtime": "ray", "workers": 2, "gpus_per_worker": 4},
+                "lora": {"quantization": "nf4", "r": 32, "alpha": 64},
+            }
+        )
+    )
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "ml-finetune", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "support-qwen" / "system.yaml").read_text())
+    requirements = doc["requirements"]
+    assert requirements["model"]["base"] == "Qwen/Qwen2.5-7B-Instruct"
+    assert requirements["compute"]["runtime"] == "ray"
+    assert requirements["lora"]["quantization"] == "nf4"
+    assert requirements["lora"]["r"] == 32
+    assert [p["key"] for p in doc["factory"]["phases"]] == [
+        "reqs",
+        "data",
+        "baseline",
+        "training",
+        "evaluation",
+        "serving",
+        "app",
+        "verify",
+    ]
+    command = (
+        tmp_path
+        / "support-qwen"
+        / ".claude"
+        / "commands"
+        / "hops-factory-ml-finetune.md"
+    ).read_text()
+    assert "**hops-online-inference**" in command
+    assert "ray-torch-training-pipeline" in command
+    assert launched == ["/hops-factory-ml-finetune support-qwen"]
+    assert registered == [("support-qwen", "support-qwen", "ml-finetune")]
+
+
 def test_rerunning_the_answers_resumes_with_the_recorded_version(
     tmp_path, monkeypatch, logged_in
 ):

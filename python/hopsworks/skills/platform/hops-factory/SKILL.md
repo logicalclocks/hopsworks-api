@@ -1,13 +1,13 @@
 ---
 name: hops-factory
-description: Use when creating, editing, cloning, importing, exporting or deleting a software factory in Hopsworks (the six built-in ML system and analytics layer factories, or a project's own), or writing a factory definition YAML. Auto-invoke on "factory", "new factory", "factory definition", "hops factory". Input what the factory should build; output a validated definition imported into the project.
+description: Use when creating, editing, cloning, importing, exporting or deleting a software factory in Hopsworks (the built-in ML system, LLM fine-tuning and analytics factories, or a project's own), or writing a factory definition YAML. Auto-invoke on "factory", "new factory", "factory definition", "hops factory". Input what the factory should build; output a validated definition imported into the project.
 ---
 
 # Hopsworks software factories
 
 A factory is a YAML definition: the questions of a creation form, the phases of the build, and the instructions Claude Code follows to build what the answers describe.
 The Hopsworks UI generates the form, the Factory page section and the progress bar from it.
-Nine factories are built in and read-only: `ml-batch`, `ml-realtime`, `ml-streaming` (batch features in dbt on Trino and streaming features in Spark Structured Streaming) and `ml-agent` (ML systems), `analytics-bronze`, `analytics-silver` and `analytics-gold` (analytics layers), `analytics-pipeline` (a data pipeline in PySpark, DuckDB, Polars or dbt on Trino, built from its written instructions, whose system.yaml has only the `features` block), and `analytics-ingestion` (dlt ingestion of data sources into feature groups, built from its written instructions, whose system.yaml has only the `ingestion` block); `analytics-bronze` builds only its examples, generated data from a generator in the hops-analytics references.
+Ten factories are built in and read-only: `ml-batch`, `ml-realtime`, `ml-streaming` (batch features in dbt on Trino and streaming features in Spark Structured Streaming) and `ml-agent` (ML systems), `ml-finetune` (LoRA or QLoRA fine-tuning of a foundation model on GPUs in a Python or Ray job, evaluated against the base model and served with vLLM, built from its written instructions), `analytics-bronze`, `analytics-silver` and `analytics-gold` (analytics layers), `analytics-pipeline` (a data pipeline in PySpark, DuckDB, Polars or dbt on Trino, built from its written instructions, whose system.yaml has only the `features` block), and `analytics-ingestion` (dlt ingestion of data sources into feature groups, built from its written instructions, whose system.yaml has only the `ingestion` block); `analytics-bronze` builds only its examples, generated data from a generator in the hops-analytics references.
 A project's data owners add its own: written from scratch, cloned from any factory, or imported from a YAML file.
 
 ## Contract
