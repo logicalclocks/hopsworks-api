@@ -279,6 +279,32 @@ class TestFailureClassification:
         result = go(FakeClient(error="request timeout after 120s"))
         assert result.trials[0].status is TrialStatus.TIMEOUT
 
+    def test_an_agent_that_crashes_is_the_agent_failing(self):
+        # The SDK answers 500 when a handler raises. Filed as INFRA_ERROR it was
+        # dropped from the denominator, so an agent that crashed on two of three
+        # tasks reported a pass rate of 1.0 and passed its gate.
+        result = go(FakeClient(error="agent returned 500: KeyError('customer')"))
+        assert result.trials[0].status is TrialStatus.AGENT_ERROR
+        from hopsworks_agents.eval.models import gradable_trials
+
+        assert len(gradable_trials(result.trials)) == 1
+
+    def test_an_agent_reporting_its_own_failure_counts_too(self):
+        # status: "failed" in the body, with HTTP 200 around it
+        result = go(FakeClient(error="agent reported failure"))
+        assert result.trials[0].status is TrialStatus.AGENT_ERROR
+
+    def test_the_gateway_refusing_is_still_infra(self):
+        # 503 is Knative saying it could not reach the revision at all, which
+        # says nothing about the agent's code
+        result = go(FakeClient(error="agent returned 503: no healthy upstream"))
+        assert result.trials[0].status is TrialStatus.INFRA_ERROR
+
+    def test_a_request_the_agent_refused_is_infra(self):
+        # a 4xx is the harness sending something wrong, not the agent breaking
+        result = go(FakeClient(error="agent returned 422: bad payload"))
+        assert result.trials[0].status is TrialStatus.INFRA_ERROR
+
     def test_infra_errors_are_excluded_from_the_pass_rate(self):
         result = go(FakeClient(raises=ConnectionError("boom")))
         metrics = {
@@ -354,9 +380,7 @@ class TestGuardrails:
         monkeypatch.setenv("EVAL_JUDGE_API_KEY", "k")
         assert _judge_for("not-a-provider").config.provider == "anthropic"
 
-    def test_no_key_means_no_default_judge_rather_than_a_failed_run(
-        self, monkeypatch
-    ):
+    def test_no_key_means_no_default_judge_rather_than_a_failed_run(self, monkeypatch):
         from hopsworks_agents.eval.run_job import _judge_for
 
         monkeypatch.delenv("EVAL_JUDGE_API_KEY", raising=False)

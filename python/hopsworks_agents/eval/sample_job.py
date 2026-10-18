@@ -80,6 +80,26 @@ def evaluators_for(run: dict[str, Any], judge_completer: Any = None) -> list[Eva
     )
 
 
+def summary_ms(summary: dict[str, Any]) -> float | None:
+    """When a listed conversation started, in epoch milliseconds.
+
+    A trace summary is an `OtelSpanDTO`, and the field it carries is
+    `startTimeNs`. `createdAt` is the UI's own derived field and never arrives
+    from the backend, so keying the window on it skipped every summary as "age
+    unknown": the monitor graded nothing, ended SUCCEEDED, and moved its
+    watermark over the traffic. Still read first, so a caller that does supply
+    it -- the tests, and any producer of already-milliseconds rows -- is not
+    second-guessed.
+    """
+    created = summary.get("createdAt")
+    if created is not None:
+        return float(created)
+    started = summary.get("startTimeNs")
+    if started:
+        return int(started) / 1e6
+    return None
+
+
 def within_window(
     summaries: Sequence[dict[str, Any]], start_ms: float, end_ms: float
 ) -> list[dict[str, Any]]:
@@ -92,7 +112,7 @@ def within_window(
     """
     inside = []
     for summary in summaries:
-        created = summary.get("createdAt")
+        created = summary_ms(summary)
         if created is None:
             # Its age is unknown, and treating unknown as inside would quietly
             # widen whatever window was asked for.
@@ -115,7 +135,7 @@ def oldest_first(inside: Sequence[dict[str, Any]], limit: int) -> list[dict[str,
     run then stops at the last trace it graded and the next one continues from
     there, so a ceiling defers work rather than skipping it.
     """
-    ordered = sorted(inside, key=lambda s: s.get("createdAt") or 0)
+    ordered = sorted(inside, key=lambda s: summary_ms(s) or 0)
     return ordered[:limit] if limit and limit > 0 else ordered
 
 
@@ -312,7 +332,7 @@ def graded_through(sampled: Sequence[dict[str, Any]], window_end_ms: float) -> f
     """
     if not sampled:
         return window_end_ms
-    return max(float(s.get("createdAt") or 0) for s in sampled)
+    return max(summary_ms(s) or 0 for s in sampled)
 
 
 def run_sample(
@@ -363,11 +383,7 @@ def run_sample(
             # verdicts are about the same traffic and can be compared. It also
             # makes a re-run of a window grade what it graded before, which is
             # what you want when checking a fixed judge against the old one.
-            **(
-                {"seed": int(start_ms)}
-                if strategy == "random" and shared
-                else {}
-            ),
+            **({"seed": int(start_ms)} if strategy == "random" and shared else {}),
         },
         timeout=60,
     )
@@ -448,9 +464,7 @@ def run_sample(
     # window leaves the end where it was asked to stop.
     processed_through = None
     if strategy != "random" and available > len(sampled) and sampled:
-        processed_through = max(
-            float(summary.get("createdAt") or 0) for summary in sampled
-        )
+        processed_through = max(summary_ms(summary) or 0 for summary in sampled)
     return RunResult(
         run_id=run["runId"],
         # No suite, and the empty string is the record of that rather than a

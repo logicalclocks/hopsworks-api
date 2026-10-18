@@ -34,6 +34,39 @@ class TestReadingADirectory:
         assert result.entry == "agent/main.py"
         assert any("big.py" in s and "too large" in s for s in result.skipped)
 
+    def test_a_link_out_of_the_checkout_is_not_source(self, tmp_path):
+        # The reader walked with rglob + is_file, both of which follow a symlink, and
+        # judged a file by its suffix alone. A committed "notes.py -> ~/.git-credentials"
+        # -- or a sourceLocation any Data Scientist can set -- then read the job owner's
+        # own git token, sent it to the judge provider, and asked the model to quote the
+        # original lines into a triage row anyone in the project can read.
+        secret = tmp_path / "outside" / "secret.py"
+        secret.parent.mkdir()
+        secret.write_text("https://user:ghp_realtoken@github.com\n")
+        checkout = tmp_path / "repo"
+        (checkout / "agent").mkdir(parents=True)
+        (checkout / "agent" / "main.py").write_text("print(1)\n")
+        (checkout / "agent" / "notes.py").symlink_to(secret)
+        # and one reached through a linked directory, which the name check alone misses
+        (checkout / "vendor").symlink_to(secret.parent, target_is_directory=True)
+
+        result = src.bundle_from_directory(checkout, origin="test")
+
+        assert set(result.files) == {"agent/main.py"}
+        assert "ghp_realtoken" not in "".join(result.files.values())
+
+    def test_a_token_typed_into_the_location_does_not_reach_the_log_or_the_prompt(self):
+        # the origin is logged and shown to the model as where the code came from
+        assert (
+            src._without_credentials("https://user:ghp_tok@github.com/o/r")
+            == "https://github.com/o/r"
+        )
+        # an "@" in the path is not a credential
+        assert (
+            src._without_credentials("https://github.com/o/r@v2")
+            == "https://github.com/o/r@v2"
+        )
+
     def test_the_entry_is_found_under_a_hopsfs_or_git_relative_name(self):
         files = {"chinook/support_agent.py": "", "chinook/tools.py": ""}
         assert (

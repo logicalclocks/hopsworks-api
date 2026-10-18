@@ -144,9 +144,18 @@ def bundle_from_directory(
     files: dict[str, str] = {}
     skipped: list[str] = []
     total = 0
+    inside = root_path.resolve()
     for path in sorted(p for p in root_path.rglob("*") if p.is_file()):
         relative = path.relative_to(root_path).as_posix()
         if not _is_source(relative):
+            continue
+        # A symlink is not source, whatever it is named. `is_file()` follows one, so a
+        # committed `notes.py -> ~/.git-credentials`, or one in a HopsFS directory, read
+        # the job owner's own secrets into a prompt sent to the judge provider and into
+        # the quoted lines of a triage row. Checked by name and again by destination, so a
+        # link reached through a symlinked directory is refused too.
+        if path.is_symlink() or not path.resolve().is_relative_to(inside):
+            skipped.append(f"{relative} (a link out of the checkout)")
             continue
         size = path.stat().st_size
         if size > MAX_FILE_BYTES:
@@ -230,7 +239,11 @@ def clone_repository(
     """
     if shutil.which("git"):
         target = os.path.join(into, "repo")
-        base = ["git", "-c", "advice.detachedHead=false"]
+        # core.symlinks=false writes a committed symlink as an ordinary file holding its
+        # target path, so a repository cannot point the reader at a file outside its own
+        # checkout. bundle_from_directory refuses links as well; this keeps them from
+        # existing in the first place.
+        base = ["git", "-c", "advice.detachedHead=false", "-c", "core.symlinks=false"]
         if commit:
             run([*base, "init", "-q", target], check=True, capture_output=True)
             run(
@@ -319,6 +332,21 @@ def download_hopsfs_directory(dataset_api: Any, path: str, into: str) -> str:
     return target
 
 
+def _without_credentials(url: str) -> str:
+    """A git URL safe to log and to show a model: "https://user:token@host/x" loses the pair.
+
+    A location typed into the job's settings may carry a personal access token, and the
+    origin string travels into the log and into the triage prompt as the source's name.
+    """
+    if "@" not in url or "://" not in url:
+        return url
+    scheme, _, rest = url.partition("://")
+    authority, _, tail = rest.partition("@")
+    if "/" in authority:  # the "@" belongs to the path, not to a credential
+        return url
+    return f"{scheme}://{tail}"
+
+
 def load_agent_source(
     location: CodeLocation, *, dataset_api: Any = None, workdir: str | None = None
 ) -> SourceBundle:
@@ -340,7 +368,9 @@ def load_agent_source(
                 location.git_url, location.git_branch, location.git_commit, into
             )
             bundle = bundle_from_directory(
-                root, entry=location.script_file, origin=f"git {location.git_url}@{ref}"
+                root,
+                entry=location.script_file,
+                origin=f"git {_without_credentials(location.git_url)}@{ref}",
             )
         else:
             if dataset_api is None:
@@ -359,7 +389,7 @@ def load_agent_source(
     except Exception as err:  # noqa: BLE001 -- said in the log, not thrown at the run
         log.warning(
             "could not read the agent's source from %s: %s",
-            location.git_url or location.model_path,
+            _without_credentials(location.git_url) or location.model_path,
             err,
         )
         return SourceBundle(files={}, origin=f"unreadable: {err}")

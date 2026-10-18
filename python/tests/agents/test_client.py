@@ -94,6 +94,9 @@ class TestCalling:
         c = client(FakeSession(post=FakeResponse(status_code=500, text="boom")))
         result = c.call("q", traceparent="t", baggage="b", timeout_s=10)
         assert "500" in result.error
+        # carried as a number as well, so the runner can tell the agent crashing
+        # (500) from the gateway never reaching it (503) without reading prose
+        assert result.status_code == 500
 
     def test_a_failed_status_is_an_error(self):
         client(FakeSession(post=FakeResponse({**REPLY, "status": "failed"})))

@@ -14,6 +14,7 @@ the HTTP.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -55,6 +56,10 @@ class AgentResponse:
     blocked_by_guardrail: bool = False
     latency_ms: float = 0.0
     error: str = ""
+    #: The HTTP status the agent answered with, 0 when nothing answered. A fact
+    #: rather than a judgement: `_classify` decides what it means, so the two
+    #: live in one place next to the enum.
+    status_code: int = 0
 
 
 class AgentClient(Protocol):
@@ -186,13 +191,49 @@ def _new_ids() -> tuple[str, str]:
     return secrets.token_hex(16), secrets.token_hex(8)
 
 
+#: The gateway's own refusals. Knative answers these when it cannot reach the
+#: revision at all -- no backend, still scaling, the request never arrived -- so
+#: they say nothing about the agent's code.
+_GATEWAY_STATUSES = frozenset({502, 503, 504})
+
+_AGENT_HTTP = re.compile(r"agent returned (\d{3})")
+
+#: What the client writes when the agent's own body says `status: "failed"`.
+#: Shared with it rather than matched loosely, so the two cannot drift.
+_AGENT_REPORTED_FAILURE = "agent reported failure"
+
+
+def _agent_at_fault(response: AgentResponse) -> bool:
+    """Whether the agent broke, as opposed to everything between us and it.
+
+    The SDK answers 500 when a handler raises and reports `status: "failed"` in
+    the body when the agent says so itself. Both are the agent failing on a
+    task, and both used to be filed as INFRA_ERROR -- which `gradable_trials`
+    drops, so an agent that crashed on two of three tasks reported a pass rate
+    of 1.0 and passed its gate.
+    """
+    if response.error == _AGENT_REPORTED_FAILURE:
+        # The agent answered 200 and said in the body that it had failed.
+        return True
+    code = response.status_code or _status_in(response.error)
+    return bool(code) and code >= 500 and code not in _GATEWAY_STATUSES
+
+
+def _status_in(error: str) -> int:
+    """The status out of the client's own message, for a response built without one."""
+    match = _AGENT_HTTP.search(error or "")
+    return int(match.group(1)) if match else 0
+
+
 def _classify(response: AgentResponse, suite: Suite) -> TrialStatus | None:
     """Turn a response into a failure class, or None when it is gradable."""
     if response.error:
+        if "timeout" in response.error.lower():
+            return TrialStatus.TIMEOUT
         return (
-            TrialStatus.INFRA_ERROR
-            if "timeout" not in response.error.lower()
-            else TrialStatus.TIMEOUT
+            TrialStatus.AGENT_ERROR
+            if _agent_at_fault(response)
+            else TrialStatus.INFRA_ERROR
         )
     if response.blocked_by_guardrail:
         return TrialStatus.BLOCKED_BY_GUARDRAIL

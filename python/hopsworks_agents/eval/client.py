@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_agents.protocol import conventions
 
-from .runner import AgentResponse
+from .runner import _AGENT_REPORTED_FAILURE, AgentResponse
 
 
 if TYPE_CHECKING:
@@ -165,6 +165,7 @@ class HopsworksAgentClient:
                 text="",
                 latency_ms=latency_ms,
                 error=f"agent returned {response.status_code}: {response.text[:200]}",
+                status_code=response.status_code,
             )
 
         body = response.json()
@@ -182,7 +183,8 @@ class HopsworksAgentClient:
             trace_id=metadata.get("trace_id", ""),
             blocked_by_guardrail=bool(metadata.get("guardrail_blocked")),
             latency_ms=latency_ms,
-            error="" if body.get("status") != "failed" else "agent reported failure",
+            error=("" if body.get("status") != "failed" else _AGENT_REPORTED_FAILURE),
+            status_code=response.status_code,
         )
 
     # ── the trace ───────────────────────────────────────────────────────────

@@ -63,9 +63,14 @@ def summary(trace_id: str, hours_ago: float, since: datetime | None = None) -> d
     every run_sample test pass on the day they were written and fail two days
     later. A test that expires is worse than no test, because it fails somewhere
     unrelated to whatever broke.
+
+    The shape is the backend's: a trace summary is an `OtelSpanDTO` and carries
+    `startTimeNs`, nothing else about time. These fabricated a `createdAt` the
+    UI computes for itself, which is how the whole job could key its window on
+    a field no cluster ever sends and still pass its tests.
     """
     when = (since or datetime.now(tz=timezone.utc)) - timedelta(hours=hours_ago)
-    return {"traceId": trace_id, "createdAt": int(when.timestamp() * 1000)}
+    return {"traceId": trace_id, "startTimeNs": int(when.timestamp() * 1e9)}
 
 
 def ms(hours_ago: float) -> float:
@@ -133,9 +138,23 @@ class TestChoosingWhatToGrade:
         # a trace graded by the run that ended at T must not be graded again by
         # the run that starts at T: monitoring counts each conversation once
         boundary = NOW.timestamp() * 1000
-        at_boundary = {"traceId": "edge", "createdAt": int(boundary)}
+        at_boundary = {"traceId": "edge", "startTimeNs": int(boundary * 1e6)}
         assert within_window([at_boundary], boundary, boundary + 1000) == []
         assert within_window([at_boundary], boundary - 1000, boundary) == [at_boundary]
+
+    def test_the_window_reads_the_field_the_backend_actually_sends(self):
+        # The whole feature turned on this: summaries are OtelSpanDTO rows with
+        # startTimeNs and no createdAt, so keying the window on createdAt
+        # skipped every one of them as "age unknown". The run then ended
+        # SUCCEEDED with no trials and moved its watermark over the traffic,
+        # which reads as a quiet night rather than as a monitor grading nothing.
+        row = {"traceId": "t", "startTimeNs": int(NOW.timestamp() * 1e9)}
+        window = within_window(
+            [row],
+            (NOW - timedelta(hours=1)).timestamp() * 1000,
+            (NOW + timedelta(hours=1)).timestamp() * 1000,
+        )
+        assert [s["traceId"] for s in window] == ["t"]
 
     def test_a_trace_with_no_timestamp_is_not_guessed_into_the_window(self):
         # its age is unknown, and treating unknown as recent would quietly widen
@@ -474,15 +493,25 @@ class TestTheConversationSoFar:
         session_id: str = "s1",
     ):
         judge = judge or StubJudge()
+        # The turn times these tests care about are relative -- which turn came
+        # before the graded one -- so they are written small and offset onto a
+        # real clock here. The same field now decides the window as well, and a
+        # trace that started 300ns after the epoch is not in anyone's last hour.
+        base = int(summary("g", 1)["startTimeNs"])
         summary_row = {
             **summary("g", 1),
             "sessionId": session_id,
-            "startTimeNs": graded_start_ns,
+            "startTimeNs": base + graded_start_ns,
         }
         session = FakeSession(
             [summary_row],
             {"g": detail("Do I own any of them?", "Yes, two.")},
-            {session_id: session_turns},
+            {
+                session_id: [
+                    {**t, "startTimeNs": base + int(t["startTimeNs"])}
+                    for t in session_turns
+                ]
+            },
         )
         result = run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), with_judge(judge)
@@ -552,7 +581,11 @@ class TestTheConversationSoFar:
     def test_a_session_is_fetched_once_per_run(self):
         judge = StubJudge()
         rows = [
-            {**summary(f"g{i}", 1), "sessionId": "s1", "startTimeNs": 300 + i}
+            {
+                **summary(f"g{i}", 1),
+                "sessionId": "s1",
+                "startTimeNs": int(summary(f"g{i}", 1)["startTimeNs"]) + i,
+            }
             for i in range(3)
         ]
         session = FakeSession(
@@ -574,7 +607,7 @@ class TestTheConversationSoFar:
                 return super().get(url, params, timeout)
 
         judge = StubJudge()
-        row = {**summary("g", 1), "sessionId": "s1", "startTimeNs": 300}
+        row = {**summary("g", 1), "sessionId": "s1"}
         session = Broken([row], {"g": detail()}, {})
         result = run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), with_judge(judge)
@@ -610,9 +643,7 @@ class TestTheWindowIsTheServersJob:
         # two of five graded: the next run must start at the newest of the two,
         # not at the end of this window, or the other three are never graded
         summaries = [summary(str(i), 5 - i) for i in range(5)]
-        session = FakeSession(
-            summaries, {str(i): detail() for i in range(5)}, count=5
-        )
+        session = FakeSession(summaries, {str(i): detail() for i in range(5)}, count=5)
         result = run_sample(
             FakeClient(),
             session,
@@ -623,7 +654,7 @@ class TestTheWindowIsTheServersJob:
         )
         assert len(result.trials) == 2
         assert result.available == 5
-        graded = sorted(s["createdAt"] for s in summaries[:2])
+        graded = sorted(s["startTimeNs"] / 1e6 for s in summaries[:2])
         assert result.processed_through_ms == graded[-1]
 
     def test_a_window_graded_whole_leaves_its_end_alone(self):
@@ -642,9 +673,7 @@ class TestTheWindowIsTheServersJob:
         # instead -- and then it does not come back for the rest, so the window
         # end stands.
         summaries = [summary(str(i), 5 - i) for i in range(5)]
-        session = FakeSession(
-            summaries, {str(i): detail() for i in range(5)}, count=5
-        )
+        session = FakeSession(summaries, {str(i): detail() for i in range(5)}, count=5)
         result = run_sample(
             FakeClient(),
             session,
@@ -694,9 +723,7 @@ class TestTheWindowIsTheServersJob:
     def test_the_oldest_strategy_needs_no_seed_to_agree(self):
         # ordering by time is already the same answer for every evaluator
         session = FakeSession([summary("a", 1)], {"a": detail()}, count=5)
-        run_sample(
-            FakeClient(), session, "https://h", 1, sample_run(), trace_only()
-        )
+        run_sample(FakeClient(), session, "https://h", 1, sample_run(), trace_only())
         assert "seed" not in session.listing_params
 
     def test_a_backend_that_ignores_the_window_is_still_filtered_here(self):
