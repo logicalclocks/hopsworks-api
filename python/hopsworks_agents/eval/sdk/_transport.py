@@ -31,6 +31,32 @@ class AgentServingError(EvalApiError):
         self.status = status
 
 
+def _stream_lines(response: Any) -> Any:
+    """The frames a streaming caller reads, whichever way the agent answered.
+
+    A stream endpoint may reply with a plain JSON ChatResponse instead of
+    server-sent events -- the contract allows it, an agent with nothing to
+    stream does it, and the browser client already handles it. Read as SSE
+    those lines carry no ``event:`` or ``data:`` field, so the parser skips
+    every one of them and the caller is handed an empty failed reply with the
+    answer, the conversation id and the trace id all dropped. Turned into the
+    one completed frame it is, it reaches the caller as the reply it was.
+    """
+    content_type = ""
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        content_type = str(headers.get("content-type") or "").lower()
+    if "text/event-stream" not in content_type and "json" in content_type:
+        import json as _json
+
+        try:
+            body = response.json()
+        except ValueError:
+            return response.iter_lines(decode_unicode=True)
+        return ["event: message.completed", "data: " + _json.dumps(body), ""]
+    return response.iter_lines(decode_unicode=True)
+
+
 def _message(response: Any) -> str:
     try:
         body = response.json()
@@ -161,7 +187,7 @@ class Transport:
                 response = _through_istio(
                     istio, method, segments, json, headers, timeout, stream
                 )
-                return response.iter_lines(decode_unicode=True) if stream else response
+                return _stream_lines(response) if stream else response
         url = self.gateway_url + "/" + "/".join(segments)
         response = self._session.request(
             method, url, json=json, headers=headers, timeout=timeout, stream=stream
@@ -169,7 +195,7 @@ class Transport:
         if response.status_code >= 400:
             raise AgentServingError(_message(response), response.status_code)
         if stream:
-            return response.iter_lines(decode_unicode=True)
+            return _stream_lines(response)
         if not getattr(response, "content", b""):
             return None
         return response.json()

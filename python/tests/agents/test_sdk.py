@@ -20,10 +20,13 @@ from hopsworks_agents.eval.sdk.models import Run, as_datetime
 
 
 class Reply:
-    def __init__(self, body=None, status=200, lines=None, content=None):
+    def __init__(
+        self, body=None, status=200, lines=None, content=None, headers=None
+    ):
         self._body = body
         self._lines = lines
         self.status_code = status
+        self.headers = headers or {}
         if content is not None:
             self.content = content
         else:
@@ -1311,6 +1314,35 @@ class TestChatStream:
         assert stream.reply.metadata["incomplete_stream"] is True
         assert stream.reply.conversation_id == "" and stream.reply.trace_id is None
         assert list(stream) == []  # read once
+
+    def test_a_json_answer_to_the_stream_endpoint_is_read_as_the_reply(self):
+        # An agent with nothing to stream may answer the stream endpoint with a
+        # plain JSON ChatResponse; the contract allows it and the browser
+        # client handles it. Read as server-sent events those lines carry no
+        # event: or data: field, so every one was skipped and the caller got an
+        # empty failed reply with the answer, the conversation id and the trace
+        # id all dropped.
+        _, agent7, _ = agent(
+            MANIFEST,
+            Reply(
+                {
+                    "id": "response_ok",
+                    "conversation_id": "conv_ok",
+                    "status": "completed",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "hello"}],
+                    },
+                    "metadata": {"trace_id": "abc"},
+                },
+                headers={"content-type": "application/json"},
+            ),
+        )
+        reply = agent7.chat_stream("hi").reply
+        assert reply.text == "hello"
+        assert reply.conversation_id == "conv_ok"
+        assert reply.status == "completed"
+        assert reply.trace_id == "abc"
 
     def test_an_error_frame_raises_with_the_agents_message(self):
         _, agent7, _ = agent(
