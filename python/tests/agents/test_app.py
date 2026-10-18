@@ -2865,6 +2865,65 @@ class TestDeploymentIsolation:
         assert a.get("shared-id") == [{"role": "user", "content": "A's history"}]
 
 
+class TestRoutesStayInsideTheirDeployment:
+    """The boundary the memory routes are supposed to hold.
+
+    A serving key entitles its holder to everything these routes do for the
+    agents of its project -- listing conversations, reading transcripts,
+    erasing subjects -- and that is the model. What must never happen is one
+    agent answering for another: the deployment id comes from the pod's own
+    environment, never from the caller, and every statement is filtered by it.
+    These pin that at the HTTP edge, where the store-level tests above cannot
+    reach.
+    """
+
+    def _apps(self, tmp_path):
+        from hopsworks_agents.protocol import AgentApp, ManagedMemoryService
+
+        url = f"sqlite:///{tmp_path}/shared.db"
+        apps = []
+        for name in ("agent_a", "agent_b"):
+            memory = ManagedMemoryService(url=url, deployment_id=name, long_term=True)
+            app = AgentApp(name=name, memory=memory)
+
+            @app.chat
+            async def chat(request):
+                return "ok"
+
+            apps.append((app, memory))
+        return apps
+
+    def test_one_agents_routes_cannot_read_anothers_memory(self, tmp_path):
+        (app_a, memory_a), (app_b, _) = self._apps(tmp_path)
+        memory_a.begin_turn("shared-id", "t1", "user", "A's private message", subject="alice")
+        memory_a.end_turn("shared-id", "t1")
+        memory_a.set_state("user", "alice", "tone", "formal")
+
+        b = TestClient(app_b)
+        assert b.get("/v1/conversations").json()["conversations"] == []
+        assert b.get("/v1/conversations/shared-id/messages").json()["messages"] == []
+        assert b.get("/v1/subjects/alice/state").json()["state"] == []
+        # and A still has everything, which is what makes this isolation
+        # rather than an empty database
+        a = TestClient(app_a)
+        assert len(a.get("/v1/conversations/shared-id/messages").json()["messages"]) == 1
+
+    def test_one_agents_routes_cannot_erase_anothers_memory(self, tmp_path):
+        (app_a, memory_a), (app_b, _) = self._apps(tmp_path)
+        memory_a.begin_turn("shared-id", "t1", "user", "A's private message", subject="alice")
+        memory_a.end_turn("shared-id", "t1")
+        memory_a.set_state("user", "alice", "tone", "formal")
+
+        b = TestClient(app_b)
+        b.delete("/v1/conversations/shared-id")
+        assert b.delete("/v1/subjects/alice/state").json()["removed"] == 0
+
+        assert memory_a.get("shared-id") == [
+            {"role": "user", "content": "A's private message"}
+        ]
+        assert memory_a.get_state("user", "alice", "tone") == "formal"
+
+
 class TestSharedTableNames:
     def test_tables_are_the_feature_groups_own(self, tmp_path):
         from hopsworks_agents.protocol import ManagedMemoryService

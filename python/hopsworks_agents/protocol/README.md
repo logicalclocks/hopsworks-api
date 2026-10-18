@@ -306,7 +306,8 @@ the turn span and the traces pick it up from there.
   `ChatRequest.subject`; the ingress authenticates a project-wide serving key,
   not a person, so the agent cannot verify it. Without one it falls back to the
   conversation id (memory degrades to per-conversation durability). Fine between
-  project members; not a security boundary.
+  project members; not a security boundary — see below for where the boundary
+  actually is.
 
 ## Handler context (optional)
 
@@ -404,10 +405,33 @@ deployment the route answers `503 platform_unavailable`.
     also drop server-side memory. Clears the conversation and its
     session-scoped state; leaves durable per-user memory alone, because
     starting a new chat must not erase what the agent knows about the person.
+- `GET /v1/conversations` — every conversation this deployment holds, with its
+  subject, message count and last activity.
 - With `long_term=True`, `GET`/`DELETE /v1/subjects/{subject}/state` let a user
   see every durable value held about them — with its provenance and whether the
   agent or an operator wrote it — and delete any of them. Caps and TTLs bound a
   false memory; being able to see and delete it is what fixes it.
+
+### Who can read and erase memory
+
+**The boundary is the project's agents.** These routes sit behind the same
+ingress as chat, and the credential that opens them is a serving key scoped to
+the project. Anyone holding it can do everything here: list the conversations,
+read any transcript, and delete any conversation or any subject's stored facts.
+That is the intended model — a caller entitled to talk to the agent is entitled
+to its memory — so hand the key out accordingly, and mint a separate one for an
+end-user-facing client if that client should not hold it.
+
+**Below that line nothing is a boundary**, and `subject` least of all: it is
+asserted by the caller, so one holder of the key can read and erase another
+subject's memory by naming it.
+
+**Above it, nothing crosses.** An agent reaches its own rows only: the memory
+tables are the project's own, every statement is filtered by deployment, and
+the embedding feature group is per deployment — so neither another project nor
+another agent in the same project can be reached from here, whatever the caller
+sends. `TestDeploymentIsolation` and `TestRoutesStayInsideTheirDeployment` are
+what keep it that way.
 
 ## Agent structure graph
 
