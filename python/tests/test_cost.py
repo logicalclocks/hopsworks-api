@@ -134,6 +134,12 @@ class TestNamespaceCosts:
         assert costs.items == []
         assert costs.buckets == []
 
+    def test_to_dict_round_trip(self, backend_fixtures):
+        json = backend_fixtures["cost"]["get_namespace_costs"]["response"]
+        costs = NamespaceCosts.from_response_json(json)
+
+        assert NamespaceCosts.from_response_json(costs.to_dict()) == costs
+
     def test_to_pandas(self, backend_fixtures):
         json = backend_fixtures["cost"]["get_namespace_costs"]["response"]
 

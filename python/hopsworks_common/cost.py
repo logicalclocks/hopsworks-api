@@ -216,7 +216,8 @@ class NamespaceCosts:
         if not json_dict:
             return None
         json_decamelized = humps.decamelize(json_dict)
-        totals = json_decamelized.get("totals") or {}
+        # The REST response nests the totals; to_dict() writes them at the top level.
+        totals = json_decamelized.get("totals") or json_decamelized
         return cls(
             window=json_decamelized.get("window"),
             start=json_decamelized.get("start"),

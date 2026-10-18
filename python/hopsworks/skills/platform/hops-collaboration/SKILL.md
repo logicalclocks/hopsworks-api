@@ -92,7 +92,7 @@ hops admin costs --by department         # table: department, namespaces, then t
 
 Key facts:
 - Rows with `kind` `IDLE` (`__idle__`, node capacity nobody requested) and `UNMOUNTED` (`__unmounted__`) are not projects; they have no efficiency.
-- Hour, day and week are live from OpenCost; month and year come from daily history Hopsworks records, so they cover only the days since recording started.
+- Hour and day are live from OpenCost; week, month and year combine the daily history Hopsworks records with live data for the days not recorded yet, so a stored day is not recomputed and only days since recording started (or still in OpenCost's retention) are covered.
 - `coverage.observed_buckets` of `coverage.total_buckets` have data, starting at `coverage.first_observed`; totals and rows cover only those buckets.
   A bucket with `observed=False` is no data (OpenCost not running yet, past retention, scrape gap), not zero cost; say "no data" when reporting it.
   `partial=True` marks the current bucket, whose cost is still growing.

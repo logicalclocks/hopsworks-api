@@ -48,8 +48,8 @@ class CostsApi:
         """Get the cost of each Kubernetes namespace over a recent time window.
 
         Each Hopsworks project runs in its own namespace, so this is the cost per project, plus the cluster's idle capacity and unmounted volumes.
-        Hour, day and week are computed live by OpenCost.
-        Month and year are assembled from daily history that Hopsworks records, so they only cover the days since that recording started.
+        Hour and day are computed live by OpenCost.
+        Week, month and year combine the daily history Hopsworks records with live OpenCost data for the days not recorded yet, so a stored day is not recomputed and the window covers only the days since recording started or still within OpenCost's retention.
         The returned `coverage` says how many of the window's buckets have data, and a bucket without data is unknown cost rather than zero.
 
         Example:
