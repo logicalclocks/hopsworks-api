@@ -1,4 +1,4 @@
-"""``hops project`` — list available projects and switch the active one."""
+"""``hops project`` — list available projects, switch the active one, and show its cost."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import auth, config, output, session
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 @click.group("project")
@@ -116,6 +117,50 @@ def project_info(ctx: click.Context) -> None:
         ["Mode", cfg.mode()],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+@project_group.command("costs")
+@click.option(
+    "--window",
+    type=click.Choice(("hour", "day", "week", "month", "year"), case_sensitive=False),
+    default="week",
+    show_default=True,
+    help="Time window ending now.",
+)
+@click.option(
+    "--project",
+    "project_name",
+    default=None,
+    help="Project to show; the active project when not given.",
+)
+@click.pass_context
+def project_costs(ctx: click.Context, window: str, project_name: str | None) -> None:
+    """Show the Kubernetes cost of a project over a recent window.
+
+    Only the project's data owners can see it. Costs come from OpenCost; week,
+    month and year also read the daily history Hopsworks has recorded so far.
+    When some buckets of the window have no data, a coverage line says how
+    many do; missing buckets are unknown cost, not zero.
+
+    Args:
+        ctx: Click context.
+        window: One of hour, day, week, month, year.
+        project_name: Project to show, or None for the active project.
+    """
+    import hopsworks
+    from hopsworks.cli.commands.admin import print_costs
+
+    session.get_project(ctx)
+    try:
+        costs = hopsworks.get_costs_api().get_project_costs(
+            window, project=project_name
+        )
+    except RestAPIError as exc:
+        reason = exc.user_message or exc
+        raise click.ClickException(f"Could not get project costs: {reason}") from exc
+    except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+        raise click.ClickException(f"Could not get project costs: {exc}") from exc
+    print_costs(costs, "namespace", window, show_idle=False)
 
 
 def _require_auth(ctx: click.Context) -> config.HopsConfig:

@@ -664,7 +664,7 @@ def get_users_api() -> users_api.UsersApi:
 def get_costs_api() -> costs_api.CostsApi:
     """Get the api for the Kubernetes cost of each namespace.
 
-    This is an admin-only capability; the logged-in account must hold the `HOPS_ADMIN` platform role for its methods to succeed.
+    Its cluster-wide methods need the `HOPS_ADMIN` platform role; [`get_project_costs`][hopsworks_common.core.costs_api.CostsApi.get_project_costs] needs only the data owner role in the project.
 
     Example:
         ```python

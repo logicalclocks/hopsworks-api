@@ -140,6 +140,19 @@ def admin_costs(ctx: click.Context, window: str, by: str) -> None:
         raise click.ClickException(f"Could not get {by} costs: {reason}") from exc
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Could not get {by} costs: {exc}") from exc
+    print_costs(costs, by, window)
+
+
+def print_costs(costs: Any, by: str, window: str, show_idle: bool = True) -> None:
+    """Print a cost report as a table and a summary, or as JSON in ``--json`` mode.
+
+    Args:
+        costs: The ``NamespaceCosts`` to print.
+        by: ``namespace`` or ``department``, which picks the label columns.
+        window: The window asked for, shown when the report names none.
+        show_idle: Whether the summary names the idle capacity, which a single
+            project's report does not carry.
+    """
     if output.JSON_MODE:
         output.print_json(costs.to_dict())
         return
@@ -156,8 +169,8 @@ def admin_costs(ctx: click.Context, window: str, by: str) -> None:
         )
     click.echo(
         f"Total {_money(costs.total_cost)} {costs.currency or ''}, "
-        f"idle {_money(costs.idle_cost)}, "
-        f"efficiency {_percent(costs.efficiency)}, "
+        + (f"idle {_money(costs.idle_cost)}, " if show_idle else "")
+        + f"efficiency {_percent(costs.efficiency)}, "
         f"{(costs.window or window).lower()} from {costs.start} to {costs.end} (UTC)"
     )
     click.echo(

@@ -193,7 +193,7 @@ class NamespaceCosts:
     The totals and `items` cover only the buckets with data, as reported by `coverage`, and `items` are the per-row sums of the bucket rows, most expensive first.
     The department view has the same totals as the namespace view for the same window, with its namespace rows grouped into `DEPARTMENT` and `UNASSIGNED` rows.
 
-    Use [`CostsApi.get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] or [`CostsApi.get_department_costs`][hopsworks_common.core.costs_api.CostsApi.get_department_costs] to get an instance of this class.
+    Use [`CostsApi.get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs], [`CostsApi.get_department_costs`][hopsworks_common.core.costs_api.CostsApi.get_department_costs] or [`CostsApi.get_project_costs`][hopsworks_common.core.costs_api.CostsApi.get_project_costs] to get an instance of this class.
     """
 
     window: str | None = None

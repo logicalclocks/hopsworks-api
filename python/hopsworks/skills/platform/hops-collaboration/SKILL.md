@@ -64,9 +64,20 @@ users_api.delete_user(new_user.id)        # fails if the user still owns project
 
 `get_users()` / `get_user(id)` / `get_user_by_email(email)` return `AdminUser` objects (`id`, `email`, `roles`, `status`, ...) — distinct from the lightweight `User` class used elsewhere (e.g. as a feature group's `creator`). Look a user up by email when you don't already have their id; it scans the full user list, so pass the id when you have it.
 
-## Inspecting compute cost per namespace or department (admin-only)
+## Inspecting compute cost per project, namespace or department
 
-Each project runs in its own Kubernetes namespace; OpenCost prices each namespace's CPU, GPU, RAM, storage and network, and Hopsworks proxies it to `HOPS_ADMIN` accounts.
+Each project runs in its own Kubernetes namespace; OpenCost prices each namespace's CPU, GPU, RAM, storage and network, and Hopsworks proxies it: the cluster-wide views to `HOPS_ADMIN` accounts, one project's cost to that project's data owners.
+
+```python
+mine = hopsworks.get_costs_api().get_project_costs("month")                 # the logged-in project; project="name" for another one you own
+print(mine.total_cost, mine.efficiency, mine.currency)                         # only the project's row: no idle, no share, no other projects
+```
+
+```bash
+hops project costs --window month         # active project; --project NAME for another; --json for the raw report
+```
+
+The rest of this section is admin-only.
 
 ```python
 costs = hopsworks.get_costs_api().get_namespace_costs("month")  # hour | day | week (default) | month | year

@@ -19,6 +19,7 @@ from typing import Literal, get_args
 
 from hopsworks_apigen import public
 from hopsworks_common import client
+from hopsworks_common.core import project_api
 from hopsworks_common.cost import NamespaceCosts
 
 
@@ -37,7 +38,8 @@ def _normalize_window(window: str) -> str:
 class CostsApi:
     """API for inspecting the Kubernetes cost of each namespace, or each department, in a Hopsworks cluster.
 
-    This is an admin-only capability: the calling account must hold the `HOPS_ADMIN` platform role.
+    The cluster-wide views, [`get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] and [`get_department_costs`][hopsworks_common.core.costs_api.CostsApi.get_department_costs], are admin-only: the calling account must hold the `HOPS_ADMIN` platform role.
+    [`get_project_costs`][hopsworks_common.core.costs_api.CostsApi.get_project_costs] is for a project's data owners and shows that project alone.
     The cost is computed by OpenCost, which must be installed with the cluster.
 
     Use [`hopsworks.get_costs_api`][hopsworks.get_costs_api] to get an instance of this class.
@@ -109,6 +111,53 @@ class CostsApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403), cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
         """
         return self._get_costs("departments", window)
+
+    @public
+    def get_project_costs(
+        self, window: _WINDOW_ARG = "week", project: str | None = None
+    ) -> NamespaceCosts:
+        """Get the cost of one project over a recent time window.
+
+        Only the project's data owners can call it.
+        The result has the shape of [`get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] with the project's own `NAMESPACE` row alone: no other project, no idle capacity, and no `share`.
+        Its totals are the project's, and `coverage` is the cluster's, so a bucket with data and no row is one in which the project cost nothing.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            costs = hopsworks.get_costs_api().get_project_costs("month")
+
+            print(costs.total_cost, costs.currency)
+            for bucket in costs.buckets:
+                print(bucket.start, sum(row.total_cost for row in bucket.items))
+            ```
+
+        Parameters:
+            window: Time window ending now, one of `hour`, `day`, `week`, `month`, `year`, matched regardless of case.
+            project: Name of the project; the project logged in to when not given.
+
+        Returns:
+            The project's costs, totals and per-bucket breakdown for the window.
+
+        Raises:
+            ValueError: If `window` is not one of the supported values, or no project is given and none is logged in to.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a data owner of the project (HTTP 403), cost tracking is not enabled on the cluster (HTTP 404, error code 100083), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
+        """
+        query_params = {"window": _normalize_window(window)}
+        _client = client._get_instance()
+        if project is not None:
+            project_id = project_api.ProjectApi()._get_project(project).id
+        else:
+            project_id = getattr(_client, "_project_id", None)
+            if project_id is None:
+                raise ValueError("No project given and none is logged in to.")
+        return NamespaceCosts.from_response_json(
+            _client._send_request(
+                "GET", ["project", project_id, "costs"], query_params=query_params
+            )
+        )
 
     def _get_costs(self, view: str, window: str) -> NamespaceCosts:
         query_params = {"window": _normalize_window(window)}

@@ -109,3 +109,39 @@ class TestCostsApi:
             CostsApi().get_department_costs("fortnight")
 
         client_instance._send_request.assert_not_called()
+
+    def test_get_project_costs_uses_the_logged_in_project(
+        self, mocker, backend_fixtures
+    ):
+        client_instance = _patch_client(
+            mocker, backend_fixtures["cost"]["get_namespace_costs"]["response"]
+        )
+        client_instance._project_id = "119"
+
+        CostsApi().get_project_costs("day")
+
+        client_instance._send_request.assert_called_once_with(
+            "GET", ["project", "119", "costs"], query_params={"window": "DAY"}
+        )
+
+    def test_get_project_costs_looks_up_a_named_project(self, mocker):
+        client_instance = _patch_client(mocker, {"window": "WEEK"})
+        get_project = mocker.patch(
+            "hopsworks_common.core.costs_api.project_api.ProjectApi._get_project",
+            return_value=MagicMock(id=7),
+        )
+
+        CostsApi().get_project_costs(project="fraud")
+
+        get_project.assert_called_once_with("fraud")
+        client_instance._send_request.assert_called_once_with(
+            "GET", ["project", 7, "costs"], query_params={"window": "WEEK"}
+        )
+
+    def test_get_project_costs_needs_a_project(self, mocker):
+        client_instance = _patch_client(mocker, {})
+        client_instance._project_id = None
+
+        with pytest.raises(ValueError, match="No project"):
+            CostsApi().get_project_costs()
+        client_instance._send_request.assert_not_called()
