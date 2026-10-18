@@ -46,6 +46,59 @@ def _tool_name(span: Any, kind: str) -> str:
     return attrs.get("tool.name") or getattr(span, "name", None) or kind.lower()
 
 
+def _is_llm_span(span: Any) -> bool:
+    """Whether this span is a model call, by either convention in use."""
+    attrs = getattr(span, "attributes", None) or {}
+    kind = attrs.get(_SPAN_KIND_ATTR)
+    if isinstance(kind, str) and kind.upper() == "LLM":
+        return True
+    operation = attrs.get("gen_ai.operation.name")
+    return isinstance(operation, str) and operation.lower() == "chat"
+
+
+def install_llm_span_detection(tracer_provider: Any) -> bool:
+    """Record, per turn, whether any model call was traced.
+
+    The turn span carries the agent's own usage figure for the whole turn, and
+    whether that figure is the only one a reader will see depends on this turn,
+    not on what was instrumented at start-up: a custom agent may instrument
+    itself (the global provider now reaches it), and an instrumented framework
+    may call a model through a client its instrumentor does not see. Asked at
+    start-up the answer was wrong both ways -- the sidecar counted the turn and
+    its model calls, or neither.
+
+    Best-effort, like the tool-event processor: a failure here costs an
+    attribute, not a turn.
+    """
+    try:
+        from opentelemetry.sdk.trace import SpanProcessor
+    except ImportError:
+        return False
+
+    class _LlmSpanProcessor(SpanProcessor):
+        def on_start(self, span: Any, parent_context: Any = None) -> None:
+            pass
+
+        def on_end(self, span: Any) -> None:
+            ctx = current_context.get()
+            if ctx is None or not _is_llm_span(span):
+                return
+            ctx._saw_llm_span = True
+
+        def shutdown(self) -> None:
+            pass
+
+        def force_flush(self, timeout_millis: int = 30000) -> bool:
+            return True
+
+    try:
+        tracer_provider.add_span_processor(_LlmSpanProcessor())
+        return True
+    except Exception:  # noqa: BLE001
+        log.warning("Could not install the LLM-span detector", exc_info=True)
+        return False
+
+
 def install_auto_tool_events(tracer_provider: Any) -> bool:
     """Register the span processor on the given provider. Returns True when.
 

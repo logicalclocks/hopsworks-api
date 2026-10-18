@@ -233,14 +233,29 @@ def trace_features(
     token_keys = (conventions.INPUT_TOKEN_KEYS, conventions.OUTPUT_TOKEN_KEYS)
     token_spans = llm_spans
     if not llm_spans:
-        token_spans = [
-            s
-            for s in ordered
-            if kinds.get(s.get("span_id")) == conventions.SPAN_KIND_AGENT
-        ]
+        # One span, not every AGENT span: the figure is the agent's total for
+        # the turn and it is on the turn's span, so summing anything else that
+        # carries usage adds to a number that already includes it.
         # hopsworks.turn.* is where the SDK reports it; the gen_ai keys are
         # what the same span carried before that move, so old traces still add
         # up.
+        turn_keys = conventions.TURN_INPUT_TOKEN_KEYS + conventions.TURN_OUTPUT_TOKEN_KEYS
+        carrier = next(
+            (
+                s
+                for s in ordered
+                if _token_count(attrs_by_span.get(s.get("span_id"), {}), turn_keys)
+            ),
+            None,
+        ) or next(
+            (
+                s
+                for s in ordered
+                if kinds.get(s.get("span_id")) == conventions.SPAN_KIND_AGENT
+            ),
+            None,
+        )
+        token_spans = [carrier] if carrier is not None else []
         token_keys = (
             conventions.TURN_INPUT_TOKEN_KEYS + conventions.INPUT_TOKEN_KEYS,
             conventions.TURN_OUTPUT_TOKEN_KEYS + conventions.OUTPUT_TOKEN_KEYS,

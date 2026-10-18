@@ -329,8 +329,10 @@ _CA_CHAIN_PATH = os.path.join("/tmp", "ca_chain.pem")
 
 
 def _ca_chain() -> str | None:
-    """A PEM of the cluster's CA chain: named by the environment, already
-    materialised, or converted here from the truststore the pod was given.
+    """A PEM of the cluster's CA chain.
+
+    Named by the environment, already materialised, or converted here from the
+    truststore the pod was given.
     """
     for name in ("REQUESTS_CA_BUNDLE", "SSL_CERT_FILE"):
         named = os.environ.get(name)

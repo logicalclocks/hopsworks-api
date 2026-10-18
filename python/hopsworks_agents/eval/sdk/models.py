@@ -12,10 +12,13 @@ import json
 import re
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
-from collections.abc import Sequence
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from typing_extensions import Self
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 T = TypeVar("T", bound="ApiModel")

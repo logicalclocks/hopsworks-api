@@ -81,18 +81,6 @@ def resolve_framework(framework: str | None) -> str:
     return value
 
 
-# Set by setup_tracing: whether a framework instrumentor is actually emitting
-# LLM spans for this process. False for a custom agent and for one whose
-# instrumentor package turned out to be missing -- the cases where the
-# handler's own usage figure is the only token count the turn will ever have.
-_EMITS_LLM_SPANS = False
-
-
-def framework_emits_llm_spans() -> bool:
-    """Whether an instrumentor is producing LLM spans alongside the turn span."""
-    return _EMITS_LLM_SPANS
-
-
 def setup_tracing(framework: str, enabled: bool | None = None) -> Any | None:
     """Build a TracerProvider exporting to the deployment's OTLP sidecar and.
 
@@ -149,9 +137,21 @@ def setup_tracing(framework: str, enabled: bool | None = None) -> Any | None:
     except Exception:  # noqa: BLE001 -- already-set is a warning, not a failure
         log.debug("Could not set the global tracer provider", exc_info=True)
 
-    global _EMITS_LLM_SPANS  # noqa: PLW0603 -- one process-wide tracing setup
-    _EMITS_LLM_SPANS = _instrument(framework, provider)
-    log.info("Tracing enabled (framework=%s, endpoint=%s)", framework, endpoint)
+    # Whether this turn produced model calls is a question about the turn, not
+    # about what was instrumented here: a custom agent may instrument itself,
+    # and an instrumented framework may call a model through a client its
+    # instrumentor cannot see. The detector answers it per turn.
+    from .autoevents import install_llm_span_detection
+
+    install_llm_span_detection(provider)
+
+    instrumented = _instrument(framework, provider)
+    log.info(
+        "Tracing enabled (framework=%s, instrumented=%s, endpoint=%s)",
+        framework,
+        instrumented,
+        endpoint,
+    )
     return provider
 
 

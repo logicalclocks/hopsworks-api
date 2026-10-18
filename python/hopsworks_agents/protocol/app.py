@@ -1108,11 +1108,7 @@ def _annotate_span(ctx: HandlerContext, response: ChatResponse) -> None:
             if isinstance(usage.get(key), int):
                 span.set_attribute(attr, usage[key])
         if usage:
-            from .tracing import framework_emits_llm_spans
-
-            span.set_attribute(
-                conventions.TURN_INSTRUMENTED, framework_emits_llm_spans()
-            )
+            span.set_attribute(conventions.TURN_LLM_SPANS, bool(ctx._saw_llm_span))
         if response.status == "failed":
             _record_span_error(span, AgentError("Handler returned status=failed"))
         response.metadata.setdefault("trace_id", format(ctxt.trace_id, "032x"))

@@ -141,12 +141,14 @@ TURN_OUTPUT_TOKENS = "hopsworks.turn.output_tokens"
 TURN_INPUT_TOKEN_KEYS = (TURN_INPUT_TOKENS,)
 TURN_OUTPUT_TOKEN_KEYS = (TURN_OUTPUT_TOKENS,)
 
-# Whether a framework instrumentor is emitting LLM spans for this turn. False
-# for a custom agent, and for one whose instrumentor package is missing -- the
-# cases where the turn's own figure is the only token count there will ever be.
-# The sidecar sees one span at a time and cannot tell by looking around, so the
-# SDK says.
-TURN_INSTRUMENTED = "hopsworks.turn.instrumented"
+# Whether a model call was traced during this turn. False for a custom agent
+# that instruments nothing, and for an instrumented framework whose model call
+# went through a client its instrumentor cannot see -- the cases where the
+# turn's own figure is the only token count there will ever be. The sidecar
+# sees one span at a time and cannot tell by looking around, so the SDK says.
+# Written from what the turn actually produced, not from what was instrumented
+# at start-up, because those answers disagree in both directions.
+TURN_LLM_SPANS = "hopsworks.turn.llm_spans"
 
 # The caller hung up mid-stream. Not an error -- the agent did nothing wrong --
 # but not a completed turn either: without it a cancelled turn reads as a

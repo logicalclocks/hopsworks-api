@@ -85,6 +85,10 @@ class HandlerContext:
         self._event_queue: asyncio.Queue[Any] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._event_buffer: list[dict[str, Any]] = []
+        # set by the LLM-span detector when a model call is traced during this
+        # turn: what says whether the turn's own usage figure is the only one
+        # a reader of these spans will find
+        self._saw_llm_span = False
         # every event this turn emitted, regardless of transport — the buffer
         # above is drained into the response metadata and is empty while
         # streaming, so it can't double as the record we persist

@@ -225,6 +225,23 @@ class TestTraceFeatures:
         assert row["input_tokens"] == 11
         assert row["output_tokens"] == 7
 
+    def test_the_fallback_reads_the_turn_once_not_every_usage_bearing_span(self):
+        # Without a model call the turn's own figure is the answer, and it is
+        # on the turn's span: summing every AGENT span added a nested agent's
+        # copy of the same total.
+        spans = [span("root"), span("inner", parent="root", start_ns=1)]
+        attrs = [
+            attr("root", "openinference.span.kind", "AGENT"),
+            attr("root", "hopsworks.turn.input_tokens", "11"),
+            attr("root", "hopsworks.turn.output_tokens", "7"),
+            attr("inner", "openinference.span.kind", "AGENT"),
+            attr("inner", "gen_ai.usage.input_tokens", "11"),
+            attr("inner", "gen_ai.usage.output_tokens", "7"),
+        ]
+        row = trace_features(spans, attrs)
+        assert row["input_tokens"] == 11
+        assert row["output_tokens"] == 7
+
     def test_eval_traffic_is_marked(self):
         # the separation every downstream query depends on
         row = trace_features(

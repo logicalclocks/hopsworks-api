@@ -3278,8 +3278,35 @@ class TestTurnSpan:
         assert attrs["hopsworks.turn.output_tokens"] == 7
         assert "gen_ai.usage.input_tokens" not in attrs
         assert "gen_ai.usage.output_tokens" not in attrs
-        # No instrumentor here, so these tokens are the only ones the trace has
-        assert attrs["hopsworks.turn.instrumented"] is False
+        # Nothing traced a model call, so these tokens are the only ones the
+        # trace has and a reader has to count them
+        assert attrs["hopsworks.turn.llm_spans"] is False
+
+    def test_a_traced_model_call_marks_the_turn_as_counted_elsewhere(self):
+        # The question the attribute answers is about this turn, not about what
+        # was instrumented at start-up: a custom agent that instruments itself
+        # produces LLM spans, and a reader counting both those and the turn's
+        # own figure would charge the turn twice.
+        pytest.importorskip("opentelemetry.sdk")
+        from hopsworks_agents.protocol.autoevents import install_llm_span_detection
+
+        app, exporter = self._traced_app()
+        install_llm_span_detection(app.tracer_provider)
+
+        @app.chat
+        async def chat(request):
+            tracer = app.tracer_provider.get_tracer("the agent's own")
+            with tracer.start_as_current_span(
+                "call", attributes={"openinference.span.kind": "LLM"}
+            ):
+                pass
+            return AgentResponse.text(
+                text="answered", usage={"input_tokens": 11, "output_tokens": 7}
+            )
+
+        TestClient(app).post("/v1/chat", json=make_request("hi"))
+        turn = [s for s in exporter.get_finished_spans() if s.name != "call"][-1]
+        assert turn.attributes["hopsworks.turn.llm_spans"] is True
 
     def test_failed_turn_is_an_error_span(self):
         app, exporter = self._traced_app()
