@@ -3185,6 +3185,49 @@ class TestConversationListing:
         return app
 
 
+class TestMemoryRoutesCanBeWithheld:
+    def _app(self, tmp_path, **kw):
+        from hopsworks_agents.protocol import AgentApp, ManagedMemoryService
+
+        memory = ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/m.db",
+            table_name="agent_memory_messages_t",
+            long_term=True,
+        )
+        app = AgentApp(memory=memory, **kw)
+
+        @app.chat
+        async def chat(request):
+            return "ok"
+
+        return app, memory
+
+    def test_an_agent_can_decline_to_serve_them(self, tmp_path):
+        # There is no narrower credential to hand a client: a second serving
+        # key is another project-scoped key and opens the same routes. Not
+        # serving them is the only way to withhold them.
+        app, memory = self._app(tmp_path, memory_routes=False)
+        client = TestClient(app)
+
+        assert client.get("/v1/conversations").status_code == 404
+        assert client.get("/v1/conversations/c1/messages").status_code == 404
+        assert client.delete("/v1/subjects/alice/state").status_code == 404
+        manifest = client.get("/.well-known/hopsworks-agent.json").json()
+        assert "conversations" not in manifest["endpoints"]
+        assert "subjects" not in manifest["endpoints"]
+
+        # the agent still remembers; it just does not answer for it
+        client.post("/v1/chat", json=make_request("hello", conversation_id="c1"))
+        assert [turn["content"] for turn in memory.get("c1")] == ["hello", "ok"]
+
+    def test_they_are_served_by_default(self, tmp_path):
+        app, _ = self._app(tmp_path)
+        client = TestClient(app)
+        assert client.get("/v1/conversations").status_code == 200
+        manifest = client.get("/.well-known/hopsworks-agent.json").json()
+        assert manifest["endpoints"]["conversations"] == "/v1/conversations"
+
+
 class TestTheSummaryCanBeDropped:
     def _app(self, tmp_path):
         from hopsworks_agents.protocol import AgentApp, ManagedMemoryService
@@ -3227,6 +3270,41 @@ class TestTheSummaryCanBeDropped:
         # the turns it covered come back rather than being represented by
         # nothing, and the conversation itself is still there
         assert [turn["content"] for turn in memory.get("c1")][:1] == ["hello"]
+
+    def test_rebuilding_a_dropped_summary_folds_in_batches(self, tmp_path):
+        # Dropping the summary puts the whole history back in front of the
+        # folder. Taken in one bite that is a single model call over the
+        # entire conversation, which the summarizer's own context may not
+        # take -- and a failure there leaves the conversation unfolded.
+        import asyncio as _asyncio
+
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        batches = []
+
+        def summarize(previous, turns):
+            batches.append(len(turns))
+            return f"summary of {len(batches)} batches"
+
+        memory = ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/m.db",
+            table_name="agent_memory_messages_t",
+            summarize=summarize,
+            summarize_after_messages=4,
+            keep_recent_messages=0,
+            max_fold_messages=4,
+        )
+        for i in range(12):
+            memory.begin_turn("c1", f"t{i}", "user", f"message {i}")
+            memory.end_turn("c1", f"t{i}")
+            _asyncio.run(memory.maybe_summarize("c1"))
+        memory.clear_summary("c1")
+        batches.clear()
+
+        _asyncio.run(memory.maybe_summarize("c1"))
+
+        # a bounded batch, not all twelve messages in one model call
+        assert batches == [4]
 
     def test_dropping_a_summary_that_is_not_there_says_so(self, tmp_path):
         app, _ = self._app(tmp_path)

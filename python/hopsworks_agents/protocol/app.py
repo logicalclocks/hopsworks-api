@@ -110,6 +110,7 @@ class AgentApp(FastAPI):
         platform: Any | None = None,
         allow_cors: bool = True,
         eval_per_request: bool = False,
+        memory_routes: bool = True,
         **fastapi_kwargs: Any,
     ):
         super().__init__(title=name, description=description, **fastapi_kwargs)
@@ -128,6 +129,19 @@ class AgentApp(FastAPI):
         from .identity import ConversationSubjectIndex
 
         self._subjects = ConversationSubjectIndex()
+
+        # Whether this agent serves the memory routes at all: listing
+        # conversations, reading a transcript, deleting a conversation or a
+        # subject's facts. On, because that is what the chat panel's memory
+        # view and a client's "new session" call use, and the credential that
+        # opens them is the one that opens chat.
+        #
+        # Off is for an agent whose serving key reaches people who should not
+        # have that reach -- a public end-user client holding the key, say.
+        # There is no second credential to hand such a client: any serving key
+        # for the project opens these routes, so the only way to withhold them
+        # is not to serve them.
+        self._memory_routes = memory_routes
 
         # advertise tool_event SSE frames (emitted via ctx.emit_event); off by
         # default so existing manifests are unchanged
@@ -296,7 +310,7 @@ class AgentApp(FastAPI):
         endpoints: dict[str, str] = {"chat": "/v1/chat"}
         if streaming:
             endpoints["stream"] = "/v1/chat/stream"
-        if self.memory is not None:
+        if self.memory is not None and self._memory_routes:
             # server-managed history is available: clients can list/clear it
             endpoints["conversations"] = "/v1/conversations"
             if getattr(self.memory, "_long_term", False):
@@ -736,7 +750,7 @@ class AgentApp(FastAPI):
             )
 
         self._register_feedback_route()
-        if self.memory is not None:
+        if self.memory is not None and self._memory_routes:
             self._register_conversation_routes()
 
         if self._graph_spec is not None:

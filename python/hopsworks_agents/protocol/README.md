@@ -442,8 +442,21 @@ ingress as chat, and the credential that opens them is a serving key scoped to
 the project. Anyone holding it can do everything here: list the conversations,
 read any transcript, and delete any conversation or any subject's stored facts.
 That is the intended model — a caller entitled to talk to the agent is entitled
-to its memory — so hand the key out accordingly, and mint a separate one for an
-end-user-facing client if that client should not hold it.
+to its memory.
+
+There is no narrower key to hand out: a second serving key is another
+project-scoped key and opens exactly the same routes. So if a client should
+not have that reach — a browser or a public end-user app holding the key —
+either put your own service in front of the agent, holding the key and
+authenticating its own users, or stop serving the routes:
+
+```python
+agent_app = AgentApp(name="Support", memory_routes=False)
+```
+
+The agent still remembers; it just does not answer questions about what it
+remembers. The chat panel's memory view and a client's "new session" call go
+with them, so leave them on for an agent whose callers are your own team.
 
 **Below that line nothing is a boundary**, and `subject` least of all: it is
 asserted by the caller, so one holder of the key can read and erase another

@@ -682,6 +682,7 @@ class ManagedMemoryService(ChatMemory):
         summarize: Summarizer | None = None,
         summarize_after_messages: int = 20,
         keep_recent_messages: int = 10,
+        max_fold_messages: int = 200,
         tool_event_retention_days: int | None = 30,
         message_retention_days: int | None = None,
         long_term: bool = False,
@@ -709,6 +710,7 @@ class ManagedMemoryService(ChatMemory):
         self._turn_timeout = turn_timeout_seconds
         self._summarize = summarize
         self._summarize_every = summarize_after_messages
+        self._max_fold_messages = max(max_fold_messages, 1)
         # Keeping at least as many as trigger a fold means every fold compacts
         # nothing, so the conversation grows for ever and the summary stays
         # empty. It happens by halves: a policy naming summarize_after_messages
@@ -2115,6 +2117,15 @@ class ManagedMemoryService(ChatMemory):
         # ("what did I just say") and the summary the older context.
         if self._keep_recent:
             items = items[: -self._keep_recent]
+        # One fold is one model call, so it folds at most this many messages.
+        # An ordinary fold is far smaller; what this bounds is a backlog -- a
+        # conversation whose summary was dropped, or one left unfolded while
+        # the summarizer was down -- where folding everything at once is a
+        # single call over the whole history, which the summarizer's own
+        # context may not take, and whose failure leaves the conversation
+        # unfolded. The rest is folded by the turns that follow, each into the
+        # summary the last one wrote.
+        items = items[: self._max_fold_messages]
         if not items:
             return None
         turns = [{"role": r.role, "content": r.content} for r in items]
