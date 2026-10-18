@@ -235,6 +235,27 @@ class TestAutomatedSignals:
         )
         assert "an online evaluator (matches_policy) failed this turn" in prompt
 
+    def test_an_end_user_is_not_shown_as_a_reviewer(self):
+        # A person, but one who never saw the rubric. Told "a reviewer has marked
+        # this wrong", the model turned a customer's wish into a requirement the
+        # suite then graded the agent against.
+        prompt = t.render_triage_prompt(
+            t.TriageInput(
+                feedback=feedback(reviewer="user:alice", note="it was rude"),
+                question="q",
+                answer="a",
+            )
+        )
+        assert "The person the agent was talking to" in prompt
+        assert "A reviewer has marked" not in prompt
+        assert 'source="end user"' in prompt
+
+    def test_a_reviewers_verdict_still_reads_as_one(self):
+        prompt = t.render_triage_prompt(
+            t.TriageInput(feedback=feedback(), question="q", answer="a")
+        )
+        assert "A reviewer has marked" in prompt
+
     def test_origin_is_read_off_the_reviewer(self):
         assert t.origin_of(feedback()) == "human"
         assert t.origin_of(feedback(reviewer="alice@x")) == "human"

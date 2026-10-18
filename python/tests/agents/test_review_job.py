@@ -272,6 +272,14 @@ class TestSettings:
         )
         assert complete is None and "base URL" in why
 
+    def test_no_context_means_no_context(self):
+        # Zero is a choice -- "do not show the model the earlier turns" -- and the
+        # settings read it with `or`, so the one setting that turns the context off
+        # was the one setting that could not be made.
+        assert rj.review_settings({"config": {"contextTurns": 0}})["context_turns"] == 0
+        assert rj.review_settings({"config": {}})["context_turns"] == 20
+        assert rj.review_settings({"config": {"contextTurns": 5}})["context_turns"] == 5
+
     def test_a_missing_key_is_a_reason_not_an_exception(self, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         complete, why = rj.completer_from(SETTINGS)

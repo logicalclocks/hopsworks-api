@@ -149,6 +149,20 @@ def _to_suite(run: dict[str, Any], tasks: list[dict[str, Any]]) -> Suite:
     )
 
 
+#: How much of a failure's message is reported. It travels as a query parameter
+#: and the column holds 1000 characters, so a stack trace in the message used to
+#: make the one request that says the run failed fail itself -- leaving the run
+#: at RUNNING for ever, which is the state this report exists to prevent.
+MAX_ERROR_CHARS = 900
+
+
+def _short(message: str) -> str:
+    text = str(message or "")
+    return (
+        text if len(text) <= MAX_ERROR_CHARS else text[: MAX_ERROR_CHARS - 1] + "\u2026"
+    )
+
+
 def _write_results(
     feature_store: Any,
     result: Any,
@@ -335,7 +349,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
                 f"{base}/runs/{run_id}/status",
                 params={
                     "status": status,
-                    **({"errorMessage": error} if error else {}),
+                    **({"errorMessage": _short(error)} if error else {}),
                     **(
                         {"processedThrough": int(processed_through_ms)}
                         if processed_through_ms
@@ -474,7 +488,11 @@ def main() -> None:
     parser.add_argument(
         "--sample-strategy",
         choices=("oldest", "random"),
-        default="oldest",
+        # The same default the backend passes on every scheduled execution. It used
+        # to be "oldest" here, so a run started by hand -- which is handed only its
+        # run id -- graded a different slice of its window than the same job on a
+        # schedule, and the two were not comparable.
+        default="random",
         help="which conversations a sample grades when its window holds more than "
         "its ceiling: the oldest of them, leaving the rest for the next run, or a "
         "random spread of the whole window, which keeps the cost fixed and does not "

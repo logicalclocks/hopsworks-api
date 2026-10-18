@@ -154,6 +154,18 @@ def _score(row: dict[str, Any]) -> tuple:
     )
 
 
+def signature_key(signature: str) -> str:
+    """What makes two failure signatures the same one.
+
+    The model writes these as prose, so "discount  not applied" and "Discount
+    not applied" are the same failure typed twice -- matched on the raw text,
+    they became two clusters of one and neither reached the size an
+    auto-promotion needs. The cluster keeps whatever text it was first given;
+    only the matching ignores case and whitespace runs.
+    """
+    return " ".join(str(signature or "").lower().split())
+
+
 def merge_decisions(
     changed: Sequence[Cluster], current: Iterable[Cluster]
 ) -> list[Cluster]:
@@ -198,15 +210,16 @@ def assign_clusters(
     now = now or datetime.now(tz=timezone.utc)
     by_signature: dict[str, Cluster] = {}
     for cluster in existing:
-        if cluster.signature and cluster.signature not in by_signature:
-            by_signature[cluster.signature] = cluster
+        key = signature_key(cluster.signature)
+        if key and key not in by_signature:
+            by_signature[key] = cluster
 
     for row in rows:
         signature = str(row.get("failure_signature") or "").strip()
         if row.get("ungradable") or not signature:
             row["cluster_id"] = ""
             continue
-        cluster = by_signature.get(signature)
+        cluster = by_signature.get(signature_key(signature))
         seen_at = _parse_when(row.get("created_at")) or now
         if cluster is None:
             cluster = Cluster(
@@ -216,7 +229,7 @@ def assign_clusters(
                 first_seen=seen_at,
                 last_seen=seen_at,
             )
-            by_signature[signature] = cluster
+            by_signature[signature_key(signature)] = cluster
         row["cluster_id"] = cluster.cluster_id
         cluster.size += 1
         cluster.changed = True

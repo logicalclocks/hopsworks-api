@@ -57,6 +57,30 @@ def _watermark(feature_store: Any, deployment_id: int, online: bool) -> datetime
     return max(times) if times else None
 
 
+def _already_featurized(
+    feature_store: Any, deployment_id: int, online: bool
+) -> set[str]:
+    """Traces this deployment has a finished feature row for.
+
+    `_watermark` was written for this and never called, so every run featurized
+    every settled trace again: the online row is replaced, the offline one is
+    appended, and a feature view over the history counts the same conversation
+    once per run. A trace recorded as PARTIAL is not included -- its root span
+    may have arrived since, and that is the one case worth redoing.
+    """
+    try:
+        rows = _read(feature_store, FEATURES_FG, online)
+    except Exception:  # noqa: BLE001 — first run, before the FG has any rows
+        return set()
+    return {
+        str(r.get("trace_id"))
+        for r in rows
+        if r.get("deployment_id") == deployment_id
+        and r.get("trace_id")
+        and r.get("trace_status") != "PARTIAL"
+    }
+
+
 def featurize(
     feature_store: Any,
     deployment_id: int,
@@ -95,7 +119,14 @@ def featurize(
     if not completeness.ready and not completeness.partial:
         return 0
 
-    wanted = set(completeness.ready) | set(completeness.partial)
+    wanted = (
+        set(completeness.ready) | set(completeness.partial)
+    ) - _already_featurized(feature_store, deployment_id, online)
+    if not wanted:
+        log.info(
+            "deployment %s: every settled trace is already featurized", deployment_id
+        )
+        return 0
     attributes = [
         a
         for a in _read(feature_store, SPAN_ATTRIBUTES_FG, online)

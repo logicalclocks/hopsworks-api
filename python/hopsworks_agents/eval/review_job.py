@@ -46,7 +46,7 @@ from .judge_config import (
     tool_calls_text,
 )
 from .run_fields import run_trials
-from .run_job import _api, _match_schema
+from .run_job import _api, _match_schema, _short
 from .sample_job import conversation_before, question_and_answer, started_ns
 from .triage import TriageInput, triage, triage_row
 
@@ -103,7 +103,11 @@ def review_settings(job: dict[str, Any] | None) -> dict[str, Any]:
         # where the model is when not the provider's own, and what a gateway in front of it wants
         "base_url": str(config.get("baseUrl") or ""),
         "headers": _headers_setting(config.get("headers")),
-        "context_turns": int(config.get("contextTurns") or 20),
+        # Zero is a choice -- "do not show the model the earlier turns" -- and `or`
+        # read it as absent, so the one setting that turns the context off was the
+        # one setting that could not be made. The backend keeps the same rule: only
+        # a negative number falls back to the default.
+        "context_turns": _int_setting(config.get("contextTurns"), 20),
         "sources": sources,
         # on unless the job says otherwise: a review that cannot see the code cannot tell a bug
         # from a bad answer, and telling them apart is the point
@@ -111,6 +115,17 @@ def review_settings(job: dict[str, Any] | None) -> dict[str, Any]:
         "source_location": str(config.get("sourceLocation") or ""),
         "source_chars": int(config.get("sourceChars") or DEFAULT_SOURCE_CHARS),
     }
+
+
+def _int_setting(raw: Any, default: int) -> int:
+    """A number off the job's configuration, where absent means the default and 0 means 0."""
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return default if value < 0 else value
 
 
 def _headers_setting(raw: Any) -> dict[str, str]:
@@ -442,7 +457,10 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
     ) -> None:
         params: dict[str, Any] = {"status": status}
         if error:
-            params["errorMessage"] = error
+            # Trimmed: it travels as a query parameter and the column holds 1000
+            # characters, so a stack trace in the message made the one request that
+            # says the run failed fail itself.
+            params["errorMessage"] = _short(error)
         if processed_through is not None:
             # the window closes where the budget ran out, so the next run picks up the rest
             params["processedThrough"] = str(int(processed_through))

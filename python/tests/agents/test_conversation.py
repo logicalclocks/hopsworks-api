@@ -9,7 +9,7 @@ import json
 
 import pytest
 from hopsworks_agents.eval.judge_config import parse_judge_config, render_prompt
-from hopsworks_agents.eval.models import Suite, Task, TrialStatus
+from hopsworks_agents.eval.models import ExecutionMode, Suite, Task, TrialStatus
 from hopsworks_agents.eval.runner import AgentResponse, RunnerConfig, run_suite
 
 
@@ -19,9 +19,20 @@ CAPABLE = {"capabilities": {"trace_correlation": True, "eval_mode": True}}
 class ScriptedAgent:
     """Replies in order, recording what it was asked and how."""
 
-    def __init__(self, replies, *, error_on=None):
+    def __init__(
+        self,
+        replies,
+        *,
+        error_on=None,
+        error="upstream refused",
+        status_code=0,
+        blocked_on=None,
+    ):
         self._replies = list(replies)
         self._error_on = error_on
+        self._error = error
+        self._status_code = status_code
+        self._blocked_on = blocked_on
         self.calls: list[dict] = []
 
     def manifest(self):
@@ -31,10 +42,18 @@ class ScriptedAgent:
         self.calls.append({"prompt": prompt, "conversation_id": conversation_id})
         index = len(self.calls) - 1
         if self._error_on == index:
-            return AgentResponse(text="", error="upstream refused", latency_ms=1.0)
+            return AgentResponse(
+                text="",
+                error=self._error,
+                status_code=self._status_code,
+                latency_ms=1.0,
+            )
         reply = self._replies[index] if index < len(self._replies) else "ok"
         return AgentResponse(
-            text=reply, trace_id=traceparent.split("-")[1], latency_ms=1.0
+            text=reply,
+            trace_id=traceparent.split("-")[1],
+            latency_ms=1.0,
+            blocked_by_guardrail=self._blocked_on == index,
         )
 
     def fetch_trace(self, trace_id):
@@ -141,14 +160,59 @@ class TestWhenATurnFails:
 
         assert [c["prompt"] for c in client.calls] == ["one", "two"]
 
-    def test_the_trial_fails_and_keeps_what_was_said(self):
+    def test_the_trial_stops_and_keeps_what_was_said(self):
         client = ScriptedAgent(["fine", ""], error_on=1)
 
         trial = run(client, conversation("one", "two", "three")).trials[0]
 
-        assert trial.status is TrialStatus.FAILED
+        # the gateway refusing on turn two is no more the agent's fault than on
+        # turn three, and every mid-conversation failure used to read as FAILED
+        assert trial.status is TrialStatus.INFRA_ERROR
         assert "upstream refused" in trial.error_message
         assert "user: one" in trial.transcript
+
+    def test_an_agent_crashing_mid_conversation_is_the_agent(self):
+        client = ScriptedAgent(
+            ["fine", ""],
+            error_on=1,
+            error="agent returned 500: KeyError('customer')",
+            status_code=500,
+        )
+
+        trial = run(client, conversation("one", "two", "three")).trials[0]
+
+        assert trial.status is TrialStatus.AGENT_ERROR
+
+    def test_an_empty_reply_mid_conversation_is_still_a_failure(self):
+        client = ScriptedAgent(["fine", "", "never reached"])
+
+        trial = run(client, conversation("one", "two", "three")).trials[0]
+
+        assert trial.status is TrialStatus.FAILED
+        assert "turn 2 of 3" in trial.error_message
+
+    def test_a_guardrail_firing_mid_conversation_is_an_outcome(self):
+        # In a safety suite the block is the desired result; filed as FAILED it
+        # made a suite built to trigger guardrails report that they never fired.
+        client = ScriptedAgent(["fine", "I cannot help with that"], blocked_on=1)
+        safety = Suite(
+            suite_id="s1",
+            tasks=[conversation("one", "two", "three")],
+            blocks_are_success=True,
+            execution_mode=ExecutionMode.SANDBOXED,
+        )
+        trial = run_suite(
+            client,
+            safety,
+            run_id="run-1",
+            deployment_id=7,
+            evaluators=[],
+            config=RunnerConfig(readiness_timeout_s=0.01, readiness_poll_s=0.001),
+            sleep=lambda _: None,
+        ).trials[0]
+
+        assert trial.guardrail_blocked is True
+        assert trial.status is TrialStatus.PASSED
 
 
 class TestTheJudgeSeesIt:

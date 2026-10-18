@@ -264,6 +264,13 @@ Reply with JSON only, no prose:
 HUMAN_INTRO = """A reviewer has marked one of the agent's answers as {verdict}. Your job is to turn their \
 feedback into a structured proposal the reviewer will check. You draft; they decide."""
 
+END_USER_INTRO = """The person the agent was talking to marked one of its answers as {verdict}. \
+They are not a reviewer: they know what they wanted, not what the agent was supposed to do, they \
+never saw its rubric or its tools, and they may be wrong about what went wrong. Read what they say \
+as a report of their experience and check it against the trace before proposing anything -- where \
+the trace does not support it, say so in failure_summary rather than turning it into a requirement, \
+and set needs_human. You draft; a reviewer decides."""
+
 AUTOMATED_INTRO = """The platform flagged one of the agent's turns, not a person: {who}. Your job is to \
 read the trace and say what went wrong, as a structured proposal a reviewer will check. There is no \
 human correction here, so correction_status is "missing" and normalized_correction stays empty; the \
@@ -275,6 +282,13 @@ verdict: {verdict}
 category chosen: {category}
 correction: {correction}
 expected tool behaviour: {expected_tools}
+note: {note}
+</feedback>"""
+
+END_USER_FEEDBACK = """What the end user said:
+<feedback source="end user">
+verdict: {verdict}
+what they said they wanted: {correction}
 note: {note}
 </feedback>"""
 
@@ -325,7 +339,19 @@ def render_triage_prompt(inp: TriageInput, *, context_turns: int = 20) -> str:
         )
     verdict = str(feedback.get("verdict") or "negative")
     reviewer = str(feedback.get("reviewer") or "")
-    if origin_of(feedback) in ("human", "end_user"):
+    origin = origin_of(feedback)
+    if origin == "end_user":
+        # Shown apart from a reviewer's verdict, which it used to be indistinguishable from.
+        # An end user is a person, so their words are evidence -- but they never saw the
+        # rubric, and a model told "a reviewer has marked this wrong" turns a wish into a
+        # requirement the suite then grades against.
+        intro = END_USER_INTRO.format(verdict=verdict)
+        feedback_block = END_USER_FEEDBACK.format(
+            verdict=verdict,
+            correction=str(feedback.get("correctedAnswer") or "(none)"),
+            note=str(feedback.get("note") or "(none)"),
+        )
+    elif origin == "human":
         intro = HUMAN_INTRO.format(verdict=verdict)
         feedback_block = HUMAN_FEEDBACK.format(
             verdict=verdict,

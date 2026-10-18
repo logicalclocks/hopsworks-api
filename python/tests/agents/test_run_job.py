@@ -48,6 +48,20 @@ def task(**overrides):
     return base
 
 
+class TestReportingAFailure:
+    def test_a_stack_trace_does_not_break_the_report_that_carries_it(self):
+        # It travels as a query parameter and the column holds 1000 characters,
+        # so the one request that says the run failed failed itself -- leaving
+        # the run at RUNNING for ever, which is what the report exists to prevent.
+        from hopsworks_agents.eval.run_job import MAX_ERROR_CHARS, _short
+
+        short = _short("boom")
+        assert short == "boom"
+        long = _short("x" * 5000)
+        assert len(long) == MAX_ERROR_CHARS
+        assert long.endswith("\u2026")
+
+
 class TestTasks:
     def test_expectations_are_copied_under_the_check_that_reads_them(self):
         # the same key results come back under, so this is a copy not a translation

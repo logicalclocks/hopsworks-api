@@ -259,27 +259,34 @@ def _guardrail_outcome(suite: Suite) -> TrialStatus:
 def _await_trace(
     client: AgentClient, trace_id: str, config: RunnerConfig, sleep=time.sleep
 ) -> tuple[Trace | None, TraceStatus]:
-    """Poll until the trace is readable, or give up.
+    """Poll until the trace is whole, or give up.
 
-    Sidecar insert failures are logged and dropped, so a missing trace is a
-    permanent condition to tolerate, not only a timing one.
+    Whole means the root span is there: the sidecar batches, so a trace is
+    readable from its first child onwards and the turn span is usually the
+    last thing to arrive. Returning on the first readable version handed the
+    trajectory checks half a trace, and "the agent did not call the tool" is
+    recorded as a definite failure -- the one answer that is worse than no
+    answer. What is there when the time runs out is still returned, marked
+    PARTIAL, because a trace that arrived incomplete is worth grading with
+    that said; sidecar insert failures are logged and dropped, so a missing
+    trace is a permanent condition to tolerate, not only a timing one.
     """
     if not trace_id:
         return None, TraceStatus.MISSING
     deadline = time.monotonic() + config.readiness_timeout_s
+    partial: Trace | None = None
     while time.monotonic() < deadline:
         try:
             trace = client.fetch_trace(trace_id)
         except Exception:  # noqa: BLE001 — a transient read must not end the poll
             trace = None
+        if trace and trace.get("root_span_id"):
+            return trace, TraceStatus.RECEIVED
         if trace:
-            status = (
-                TraceStatus.RECEIVED
-                if trace.get("root_span_id")
-                else TraceStatus.PARTIAL
-            )
-            return trace, status
+            partial = trace
         sleep(config.readiness_poll_s)
+    if partial is not None:
+        return partial, TraceStatus.PARTIAL
     return None, TraceStatus.MISSING
 
 
@@ -365,14 +372,29 @@ def _run_trial(
         # A turn that failed ends the conversation there. Sending the rest would
         # be answering questions the agent never asked, and grading a transcript
         # with a hole in it as though it were whole.
-        if not last and (response.error or not response.text):
-            trial.status = TrialStatus.FAILED
-            trial.error_message = (
-                response.error or f"no reply to turn {turn_index + 1} of {len(turns)}"
-            )
-            trial.transcript = _transcript(spoken)
-            trial.completed_at = datetime.now(tz=timezone.utc)
-            return trial
+        #
+        # Classified the same way as a failure on the last turn: the gateway
+        # being unreachable on turn two is no more the agent's fault than on
+        # turn three, and a guardrail firing mid-conversation is the outcome a
+        # safety suite was built to produce. All of it used to read as FAILED.
+        if not last:
+            failure = _classify(response, suite)
+            stop = failure is not None or not response.text
+            if failure is TrialStatus.BLOCKED_BY_GUARDRAIL:
+                trial.guardrail_blocked = True
+                trial.status = _guardrail_outcome(suite)
+            elif failure is not None:
+                trial.status = failure
+                trial.error_message = response.error
+            elif stop:
+                trial.status = TrialStatus.FAILED
+                trial.error_message = (
+                    f"no reply to turn {turn_index + 1} of {len(turns)}"
+                )
+            if stop:
+                trial.transcript = _transcript(spoken)
+                trial.completed_at = datetime.now(tz=timezone.utc)
+                return trial
 
     if len(turns) > 1:
         trial.transcript = _transcript(spoken)
@@ -395,6 +417,20 @@ def _run_trial(
         trial.completed_at = datetime.now(tz=timezone.utc)
         return trial
 
+    if response.trace_id and response.trace_id != trace_id:
+        # The agent made its own trace instead of continuing the one the
+        # traceparent named. Its trace is the one with the tool calls in it, so
+        # that is what gets graded -- and the row is moved to point at it, since
+        # a trial naming a trace that was never created is a row nobody can
+        # check. Said out loud: the manifest promised trace correlation.
+        log.warning(
+            "trial %s asked for trace %s and the agent reported %s; "
+            "grading the trace the agent made",
+            trial_id,
+            trace_id,
+            response.trace_id,
+        )
+        trial.trace_id = response.trace_id
     trace, trace_status = _await_trace(
         client, response.trace_id or trace_id, config, sleep
     )
@@ -561,8 +597,32 @@ def run_suite(
             )
             for task, index in work
         ]
-        for future in futures:
-            result.trials.append(future.result())
+        for (task, index), future in zip(work, futures, strict=True):
+            try:
+                result.trials.append(future.result())
+            except Exception as err:  # noqa: BLE001 — one trial must not lose the run
+                # Everything inside _run_trial that can fail on the agent's
+                # behalf is already caught and classified; reaching here is the
+                # harness itself breaking on one trial. Raised through, it threw
+                # away every other trial of the run as well -- the whole suite's
+                # work, written nowhere, because one evaluator had a bug.
+                log.exception("trial %s/%s could not be run", task.task_id, index)
+                result.trials.append(
+                    Trial(
+                        trial_id=derive_trial_id(
+                            run_id, task.task_id, task.task_version, index
+                        ),
+                        run_id=run_id,
+                        task_id=task.task_id,
+                        task_version=task.task_version,
+                        trial_index=index,
+                        deployment_id=deployment_id,
+                        status=TrialStatus.INFRA_ERROR,
+                        error_type=type(err).__name__,
+                        error_message=str(err),
+                        completed_at=datetime.now(tz=timezone.utc),
+                    )
+                )
 
     result.trials.sort(key=lambda t: (t.task_id, t.trial_index))
     missing = sum(1 for t in result.trials if t.trace_status is TraceStatus.MISSING)

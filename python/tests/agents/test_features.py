@@ -314,3 +314,71 @@ class TestTraceFeatures:
     def test_empty_input_is_rejected_rather_than_producing_a_blank_row(self):
         with pytest.raises(ValueError):
             trace_features([])
+
+
+class TestTheJobDoesNotRedoItsWork:
+    """Every run featurized every settled trace again.
+
+    The online row is replaced, the offline one is appended, so a feature view
+    over the history counted the same conversation once per run. `_watermark`
+    was written for this and never called.
+    """
+
+    class FakeGroup:
+        def __init__(self, rows):
+            self.rows = rows
+            self.inserted = []
+
+        def read(self, online=True):  # noqa: ARG002 — the job passes it
+            class Frame:
+                def __init__(self, rows):
+                    self._rows = rows
+
+                def to_dict(self, _orient):
+                    return list(self._rows)
+
+            return Frame(self.rows)
+
+        def insert(self, frame, write_options=None):  # noqa: ARG002
+            self.inserted.append(frame)
+
+    class FakeStore:
+        def __init__(self, groups):
+            self.groups = groups
+
+        def get_feature_group(self, name, version):  # noqa: ARG002
+            return self.groups[name]
+
+    def store(self, features_rows):
+        from hopsworks_agents.eval import featurize_job as fj
+
+        root = span("root", "", ingested_seconds_ago=600)
+        return (
+            fj,
+            self.FakeStore(
+                {
+                    fj.SPANS_FG: self.FakeGroup([root]),
+                    fj.SPAN_ATTRIBUTES_FG: self.FakeGroup([]),
+                    fj.EVENTS_FG: self.FakeGroup([]),
+                    fj.FEATURES_FG: self.FakeGroup(features_rows),
+                }
+            ),
+        )
+
+    def test_a_trace_already_featurized_is_left_alone(self):
+        fj, store = self.store(
+            [{"deployment_id": 7, "trace_id": "t1", "trace_status": "RECEIVED"}]
+        )
+        assert fj.featurize(store, 7, now=NOW) == 0
+        assert store.groups[fj.FEATURES_FG].inserted == []
+
+    def test_a_trace_recorded_as_partial_is_done_again(self):
+        # its root span may have arrived since, which is the one case worth redoing
+        fj, store = self.store(
+            [{"deployment_id": 7, "trace_id": "t1", "trace_status": "PARTIAL"}]
+        )
+        assert fj.featurize(store, 7, now=NOW) == 1
+
+    def test_the_first_run_featurizes_everything(self):
+        fj, store = self.store([])
+        assert fj.featurize(store, 7, now=NOW) == 1

@@ -671,6 +671,23 @@ class TestTheWindowIsTheServersJob:
         graded = sorted(s["startTimeNs"] / 1e6 for s in summaries[:2])
         assert result.processed_through_ms == graded[-1]
 
+    def test_a_random_sample_with_no_ceiling_grades_the_window(self):
+        # Zero means "no ceiling" everywhere else here, and oldest_first reads it
+        # that way. Random sliced the window to nothing, so a run row without a
+        # ceiling graded no traffic at all and reported a quiet hour.
+        summaries = [summary(str(i), i + 1) for i in range(3)]
+        session = FakeSession(summaries, {str(i): detail() for i in range(3)}, count=3)
+        result = run_sample(
+            FakeClient(),
+            session,
+            "https://h",
+            1,
+            sample_run(nTrials=0),
+            trace_only(),
+            strategy="random",
+        )
+        assert len(result.trials) == 3
+
     def test_a_window_whose_every_trace_is_unreadable_fails(self):
         # Not a quiet night: a broken read. Reported SUCCEEDED it moved the watermark over all
         # of them, so the traffic nobody graded was never offered again.

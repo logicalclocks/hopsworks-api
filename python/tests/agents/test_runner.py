@@ -319,6 +319,32 @@ class TestFailureClassification:
         assert gradable_trials(result.trials) == []
 
 
+class TestWhenTheHarnessItselfBreaks:
+    def test_one_broken_trial_does_not_throw_away_the_run(self, monkeypatch):
+        # Everything that can fail on the agent's behalf is already caught and
+        # classified; this is the harness breaking on one trial. Raised through
+        # the pool it lost every other trial of the run as well -- the whole
+        # suite's work, written nowhere, because of one bug.
+        from hopsworks_agents.eval import runner as runner_module
+
+        real = runner_module._run_trial
+
+        def explode(client, suite, task, trial_index, *args, **kwargs):
+            if trial_index == 0:
+                raise RuntimeError("harness bug")
+            return real(client, suite, task, trial_index, *args, **kwargs)
+
+        monkeypatch.setattr(runner_module, "_run_trial", explode)
+
+        result = go(FakeClient(), n_trials=2)
+
+        assert len(result.trials) == 2
+        broken = [t for t in result.trials if t.status is TrialStatus.INFRA_ERROR]
+        assert len(broken) == 1
+        assert "harness bug" in broken[0].error_message
+        assert broken[0].trial_id == "run-1/t1/1/0"
+
+
 class TestGuardrails:
     def test_a_block_passes_a_safety_suite(self):
         # the block is the desired outcome there
@@ -431,6 +457,58 @@ class TestTraceReadiness:
         assert trial.status is TrialStatus.TRACE_MISSING
 
     def test_a_trace_without_a_root_span_is_partial(self):
+        result = go(FakeClient(trace={"tool_names": "[]"}))
+        assert result.trials[0].trace_status is TraceStatus.PARTIAL
+
+    def test_the_root_span_is_waited_for_before_a_trajectory_is_graded(self):
+        # The sidecar batches, so a trace is readable from its first child
+        # onwards and the turn span is usually last. Returning on the first
+        # readable version handed the trajectory checks half a trace, and "the
+        # agent did not call the tool" was recorded as a definite failure.
+        class LateRoot(FakeClient):
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.reads = 0
+
+            def fetch_trace(self, trace_id):
+                self.reads += 1
+                if self.reads < 3:
+                    return {"tool_names": "[]"}
+                return {"root_span_id": "a", "tool_names": '["search"]'}
+
+        client = LateRoot()
+        result = go(client, evaluators=[ToolCallEvaluator()])
+        trial = result.trials[0]
+        assert trial.trace_status is TraceStatus.RECEIVED
+        assert client.reads >= 3
+
+    def test_the_row_points_at_the_trace_that_was_graded(self):
+        # An agent that makes its own trace instead of continuing the one the
+        # traceparent named had that trace graded while the trial row kept the
+        # id the runner generated -- a row naming a trace nobody can open.
+        class OwnTrace(FakeClient):
+            def call(self, prompt, *, traceparent, baggage, timeout_s):
+                response = super().call(
+                    prompt,
+                    traceparent=traceparent,
+                    baggage=baggage,
+                    timeout_s=timeout_s,
+                )
+                response.trace_id = "ffffffffffffffffffffffffffffffff"
+                return response
+
+            def fetch_trace(self, trace_id):
+                self.asked = trace_id
+                return {"root_span_id": "a", "tool_names": "[]"}
+
+        client = OwnTrace()
+        trial = go(client).trials[0]
+        assert client.asked == "ffffffffffffffffffffffffffffffff"
+        assert trial.trace_id == "ffffffffffffffffffffffffffffffff"
+
+    def test_a_trace_that_never_completes_is_graded_as_partial(self):
+        # what is there when the time runs out is still worth grading, with
+        # "partial" on the row saying what it was graded against
         result = go(FakeClient(trace={"tool_names": "[]"}))
         assert result.trials[0].trace_status is TraceStatus.PARTIAL
 

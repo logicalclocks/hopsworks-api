@@ -65,6 +65,25 @@ class TestAssigning:
         assert existing.first_seen == datetime(2026, 9, 1, tzinfo=timezone.utc)
         assert rows[0]["cluster_id"] == "c-old"
 
+    def test_the_same_failure_typed_twice_is_one_cluster(self):
+        # The model writes these as prose. Matched on the raw text, "discount not
+        # applied" and "Discount  not applied" became two clusters of one, and
+        # neither reached the size an auto-promotion needs.
+        existing = c.Cluster(
+            cluster_id="c-old",
+            deployment_id=3,
+            signature="discount not applied",
+            size=1,
+        )
+        rows = [row(5, signature="Discount  not applied")]
+
+        changed = c.assign_clusters(rows, [existing])
+
+        assert [k.cluster_id for k in changed] == ["c-old"]
+        assert existing.size == 2
+        # and the cluster keeps the text it was first given
+        assert existing.signature == "discount not applied"
+
     def test_a_decision_made_during_the_run_is_not_undone_by_it(self):
         # The job reads the clusters at the start and writes whole rows back at the end. A
         # review takes minutes, so a reviewer who dismissed, promoted or renamed a cluster in

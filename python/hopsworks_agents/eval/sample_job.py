@@ -420,8 +420,11 @@ def run_sample(
 
     # Random keeps what the server chose; oldest re-sorts, since a backend that
     # does not know the window parameters answered newest-first.
+    # A ceiling of zero means "no ceiling", as it does everywhere else here --
+    # `oldest_first` reads it that way. Random did not, so a run row without one
+    # sliced the window to nothing and the monitor graded no traffic at all.
     sampled = (
-        list(recent[:graded_limit])
+        list(recent[:graded_limit] if graded_limit and graded_limit > 0 else recent)
         if strategy == "random"
         else oldest_first(recent, graded_limit)
     )
