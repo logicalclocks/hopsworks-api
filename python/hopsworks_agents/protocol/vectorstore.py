@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import math
 import threading
+import time
 from abc import ABC, abstractmethod
 from datetime import timedelta
 
@@ -192,7 +193,13 @@ class HopsworksVectorStore(VectorStore):
         self._fs = feature_store
         self._fg = None
         self._features: list[str] = []
+        # Permanent only for a refusal that retrying cannot change -- another
+        # embedder's feature group. A transient failure (hsfs, the network, a
+        # feature store still starting) backs off and tries again: latched, one
+        # blip at first use left semantic search off until the pod restarted.
         self._failed = False
+        self._failed_until = 0.0
+        self._backoff = 1.0
         self._lock = threading.Lock()
 
     def _description(self) -> str:
@@ -203,9 +210,13 @@ class HopsworksVectorStore(VectorStore):
     def _ensure_fg(self):
         if self._fg is not None or self._failed:
             return self._fg
+        if time.monotonic() < self._failed_until:
+            return None
         with self._lock:
             if self._fg is not None or self._failed:
                 return self._fg
+            if time.monotonic() < self._failed_until:
+                return None
             try:
                 from hsfs.embedding import EmbeddingIndex, SimilarityFunctionType
 
@@ -267,10 +278,12 @@ class HopsworksVectorStore(VectorStore):
                 self._features = [f.name for f in fg.features]
                 log.info("Agent memory vector store ready (%s)", self._name)
             except Exception:  # noqa: BLE001 — search is optional; never crash
-                self._failed = True
+                self._failed_until = time.monotonic() + self._backoff
+                self._backoff = min(self._backoff * 2, 60.0)
                 log.exception(
                     "Could not open the agent memory feature group; semantic "
-                    "search is disabled"
+                    "search is off for the next %.0fs",
+                    self._backoff,
                 )
             return self._fg
 

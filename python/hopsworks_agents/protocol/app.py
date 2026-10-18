@@ -865,9 +865,24 @@ class AgentApp(FastAPI):
             )
             # the vector store holds a copy of the content, so deleting from
             # SQL alone would leave it searchable
-            await asyncio.to_thread(
-                self.memory.purge_vectors, conversation_id=conversation_id
-            )
+            try:
+                await asyncio.to_thread(
+                    self.memory.purge_vectors, conversation_id=conversation_id
+                )
+            except Exception as err:  # noqa: BLE001 -- answered, not swallowed
+                # 204 here told the caller their data was gone while copies of
+                # it were still searchable. The transcript is deleted either
+                # way; what failed is the erasure the caller actually cares
+                # about, so it is reported rather than logged.
+                return _error_response(
+                    AgentError(
+                        "the conversation was deleted but its searchable copies "
+                        f"could not be removed: {err}",
+                        code="vector_purge_failed",
+                        status_code=500,
+                        retryable=True,
+                    )
+                )
             return JSONResponse(status_code=204, content=None)
 
         @self.get("/v1/subjects/{subject}/state")
@@ -893,9 +908,21 @@ class AgentApp(FastAPI):
             vectors = 0
             if key is None:
                 # forgetting a whole subject includes their embedded messages
-                vectors = await asyncio.to_thread(
-                    self.memory.purge_vectors, subject=subject
-                )
+                try:
+                    vectors = await asyncio.to_thread(
+                        self.memory.purge_vectors, subject=subject
+                    )
+                except Exception as err:  # noqa: BLE001 -- answered, not swallowed
+                    return _error_response(
+                        AgentError(
+                            f"{removed} stored facts were removed but this "
+                            "subject's searchable copies could not be: "
+                            f"{err}",
+                            code="vector_purge_failed",
+                            status_code=500,
+                            retryable=True,
+                        )
+                    )
             return JSONResponse({"removed": removed, "vectors_removed": vectors})
 
     async def _stream_events(

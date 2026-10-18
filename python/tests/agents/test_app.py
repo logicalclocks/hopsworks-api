@@ -431,10 +431,9 @@ class TestFrameworkAndTracing:
         # with nothing to say it had.
         pytest.importorskip("opentelemetry.sdk")
         pytest.importorskip("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+        from hopsworks_agents.protocol.tracing import setup_tracing
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
-
-        from hopsworks_agents.protocol.tracing import setup_tracing
 
         monkeypatch.setenv(
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://localhost:4318/v1/traces"
@@ -2131,6 +2130,36 @@ class TestStateAuditEndpoints:
         assert client.delete("/v1/subjects/alice/state").json()["removed"] == 1
         assert client.get("/v1/subjects/alice/state").json()["state"] == []
 
+    def test_a_failed_erasure_is_answered_not_logged(self, tmp_path):
+        # The one operation where a silent failure is worse than an error: 204
+        # told the caller their data was gone while copies of it were still
+        # searchable. The vector store raises rather than returning 0 for
+        # exactly this, and the route must not swallow it.
+        from hopsworks_agents.protocol.vectorstore import VectorPurgeError
+
+        app, memory = self._app(tmp_path)
+
+        class Unpurgeable:
+            def ingest(self, rows):
+                return len(rows)
+
+            def purge(self, **kwargs):
+                raise VectorPurgeError("the online store refused the delete")
+
+        memory._vector_store = Unpurgeable()
+        client = TestClient(app)
+
+        cleared = client.delete("/v1/conversations/c1")
+        assert cleared.status_code == 500
+        assert "could not be removed" in cleared.json()["detail"]["message"]
+
+        memory.set_state("user", "alice", "lang", "python")
+        forgotten = client.delete("/v1/subjects/alice/state")
+        assert forgotten.status_code == 500
+        assert "could not be" in forgotten.json()["detail"]["message"]
+        # the SQL half still happened, and the answer says so
+        assert memory.get_state("user", "alice", "lang") is None
+
     def test_clearing_a_conversation_spares_user_state(self, tmp_path):
         app, memory = self._app(tmp_path)
         memory.set_state("user", "alice", "lang", "python")
@@ -3097,6 +3126,34 @@ class TestConversationListing:
         return app
 
 
+class TestFoldSettings:
+    def test_keeping_as_many_as_trigger_a_fold_is_clamped(self, tmp_path, caplog):
+        # A policy naming summarize_after_messages alone meets the SDK default
+        # of keeping 10, so _claim_fold never finds anything: the conversation
+        # grows for ever with an empty summary. The backend validates the pair
+        # only when both are given, so the SDK has to notice the half.
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        memory = ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/m.db",
+            table_name="agent_memory_messages_t",
+            summarize_after_messages=5,
+        )
+        assert memory._keep_recent == 4
+        assert "would ever be folded" in caplog.text
+
+    def test_a_workable_pair_is_left_alone(self, tmp_path):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        memory = ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/m.db",
+            table_name="agent_memory_messages_t",
+            summarize_after_messages=20,
+            keep_recent_messages=10,
+        )
+        assert memory._keep_recent == 10
+
+
 class TestConversationSubject:
     """Who a conversation is filed under is a server fact, not a client one."""
 
@@ -3131,6 +3188,22 @@ class TestConversationSubject:
         memory.begin_turn("c1", "t2", "user", "actually", subject="bob")
         memory.end_turn("c1", "t2")
         assert memory.conversation_subject("c1") == "bob"
+
+    def test_the_listing_names_the_same_subject_as_the_inspector(self, tmp_path):
+        # The list took max(subject) — whichever of the two sorted last — while
+        # this method takes the latest, so a rebound conversation was filed
+        # under two different people depending on where you looked.
+        memory = self._store(tmp_path)
+        memory.begin_turn("c1", "t1", "user", "hi", subject="zoe")
+        memory.end_turn("c1", "t1")
+        memory.begin_turn("c1", "t2", "user", "actually it is me", subject="alice")
+        memory.end_turn("c1", "t2")
+
+        listed = {
+            row["conversation_id"]: row["subject"]
+            for row in memory.list_conversations()
+        }
+        assert listed["c1"] == memory.conversation_subject("c1") == "alice"
 
     def test_scoped_to_the_deployment(self, tmp_path):
         # Another deployment's conversation must not leak an identity, even to

@@ -144,9 +144,13 @@ def _wants_search(spec: Any) -> bool:
 
     ``{}`` means on with the default model, not off: a form that sends an object
     with nothing named in it has still ticked the box, and a backend that omits
-    null fields sends exactly that.
+    null fields sends exactly that. ``{"enabled": false}`` is how a form says
+    off, because a backend that drops nulls cannot send ``false`` for the
+    object itself.
     """
-    return spec is not None and spec is not False
+    if spec is None or spec is False:
+        return False
+    return not (isinstance(spec, dict) and spec.get("enabled") is False)
 
 
 def _search(spec: Any) -> dict[str, Any]:
@@ -254,13 +258,21 @@ def memory_from_env(env: dict[str, str] | None = None):
     summarize = _summarizer(config.get("summarize"))
     if summarize is not None:
         kwargs["summarize"] = summarize
-    if _wants_search(config.get("search", True)):
-        if not kwargs["long_term"]:
+    # An absent search follows long-term memory rather than defaulting to on.
+    # Read as "on" it undid the form: the policy for "semantic memory off" is
+    # {"enabled": true, "long_term": false} with no search key, and search
+    # implies long-term, so the tier the operator had just turned off came back
+    # with a vector index attached. Only a search the policy actually names can
+    # promote long-term.
+    requested = config.get("search")
+    wants_search = kwargs["long_term"] if requested is None else _wants_search(requested)
+    if wants_search:
+        if requested is not None and not kwargs["long_term"]:
             # search reads the long-term store; asking for one without the other
             # is a form that let an impossible combination through
             log.info("%s: search implies long-term memory; turning it on", ENV_VAR)
             kwargs["long_term"] = True
-        kwargs.update(_search(config.get("search", True)))
+        kwargs.update(_search(requested if requested is not None else True))
 
     try:
         from .memory import ManagedMemoryService  # noqa: PLC0415 -- optional extra

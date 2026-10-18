@@ -90,6 +90,56 @@ class TestMemoryFromEnv:
         assert kwargs["long_term"] is False
         assert "vector_store" not in kwargs
 
+    def test_semantic_memory_off_stays_off(self):
+        # exactly what the deployment form sends for "Semantic memory" unticked:
+        # no search key, because search is only meaningful with long-term
+        # memory. Read as "search on, and search implies long-term", the tier
+        # the operator had just turned off came back with a vector index.
+        with (
+            mock.patch(
+                "hopsworks_agents.protocol.summarizers.sentence_transformer_embedder"
+            ),
+            mock.patch("hopsworks_agents.protocol.vectorstore.vector_store_for"),
+            mock.patch("hopsworks_agents.protocol.memory.ManagedMemoryService") as svc,
+        ):
+            memory_from_env(env({"enabled": True, "long_term": False}))
+        kwargs = svc.call_args.kwargs
+        assert kwargs["long_term"] is False
+        assert "vector_store" not in kwargs
+
+    def test_episodic_memory_off_stays_off(self):
+        # the form says off with {"enabled": false}, because a backend that
+        # drops nulls cannot send false for the object itself
+        with (
+            mock.patch(
+                "hopsworks_agents.protocol.summarizers.sentence_transformer_embedder"
+            ),
+            mock.patch("hopsworks_agents.protocol.vectorstore.vector_store_for"),
+            mock.patch("hopsworks_agents.protocol.memory.ManagedMemoryService") as svc,
+        ):
+            memory_from_env(
+                env({"enabled": True, "long_term": True, "search": {"enabled": False}})
+            )
+        kwargs = svc.call_args.kwargs
+        assert kwargs["long_term"] is True
+        assert "vector_store" not in kwargs
+
+    def test_a_named_search_still_turns_long_term_on(self):
+        # asking for episodic memory without semantic memory is a combination
+        # the form should not offer; the policy that does is honoured, not
+        # halved
+        with (
+            mock.patch(
+                "hopsworks_agents.protocol.summarizers.sentence_transformer_embedder"
+            ),
+            mock.patch("hopsworks_agents.protocol.vectorstore.vector_store_for"),
+            mock.patch("hopsworks_agents.protocol.memory.ManagedMemoryService") as svc,
+        ):
+            memory_from_env(env({"long_term": False, "search": {}}))
+        kwargs = svc.call_args.kwargs
+        assert kwargs["long_term"] is True
+        assert "vector_store" in kwargs
+
     def test_a_hopsworks_summarizer_needs_no_key(self):
         with (
             mock.patch(

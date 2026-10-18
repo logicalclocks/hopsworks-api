@@ -227,43 +227,6 @@ def _read_hopsworks_secret(secret_name: str) -> str:
         return hopsworks.get_secrets_api().get(secret_name)
 
 
-def _url_from_connector(connector) -> str:
-    """A SQLAlchemy URL for the project database, from its JDBC connector.
-
-    The online feature store *is* the database the memory tables live in, so
-    its connector already carries the credentials — which matters because the
-    MYSQL_* environment variables this module normally reads are injected into
-    agent deployments and nowhere else. Without this, registering feature
-    groups would only be possible from inside the very pod that has no reason
-    to do it.
-    """
-    raw = getattr(connector, "connection_string", None) or ""
-    match = re.match(r"jdbc:mysql://([^:/]+):(\d+)/([^?;]+)", raw)
-    if not match:
-        raise RuntimeError(
-            f"Could not read a MySQL host, port and database out of the online "
-            f"storage connector ({raw!r}). Pass url= explicitly."
-        )
-    host, port, database = match.groups()
-
-    arguments = getattr(connector, "arguments", None) or {}
-    if isinstance(arguments, list):
-        # some versions hand back [{"name": ..., "value": ...}, ...]
-        arguments = {
-            entry.get("name"): entry.get("value")
-            for entry in arguments
-            if isinstance(entry, dict)
-        }
-    user = arguments.get("user") or arguments.get("username")
-    password = arguments.get("password")
-    if not user or password is None:
-        raise RuntimeError(
-            "The online storage connector carries no user/password, so the "
-            "project database URL cannot be built. Pass url= explicitly."
-        )
-    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
-
-
 #: Where an export writes. ``None`` means "let hsfs do both", which is its own
 #: default; "online" is ours, because the offline half is a Delta write that
 #: costs far more than the row it carries and is rarely wanted per batch.
@@ -670,7 +633,7 @@ class InMemoryAgentMemory(ChatMemory):
 class ManagedMemoryService(ChatMemory):
     """SQLAlchemy-backed store (MySQL, Postgres, SQLite, ...).
 
-    ``pip install 'hopsworks-agent-protocol[memory-sql]'``
+    ``pip install 'hopsworks[agents-memory]'``
 
     Inside a Hopsworks agent deployment both arguments are optional:
     ``ManagedMemoryService()`` connects to the project MySQL using the
@@ -724,13 +687,29 @@ class ManagedMemoryService(ChatMemory):
         except ImportError as err:
             raise ImportError(
                 "ManagedMemoryService requires SQLAlchemy: "
-                "pip install 'hopsworks-agent-protocol[memory-sql]'"
+                "pip install 'hopsworks[agents-memory]'"
             ) from err
 
         self._max = max_messages
         self._turn_timeout = turn_timeout_seconds
         self._summarize = summarize
         self._summarize_every = summarize_after_messages
+        # Keeping at least as many as trigger a fold means every fold compacts
+        # nothing, so the conversation grows for ever and the summary stays
+        # empty. It happens by halves: a policy naming summarize_after_messages
+        # alone -- say 5 -- meets the default of keeping 10, and the backend
+        # only validates the pair when both are given. Clamped rather than
+        # refused, because the agent is already serving by the time this runs.
+        if keep_recent_messages >= summarize_after_messages:
+            clamped = max(0, summarize_after_messages - 1)
+            log.warning(
+                "keep_recent_messages=%s is not less than summarize_after_messages=%s, "
+                "so nothing would ever be folded; keeping %s instead",
+                keep_recent_messages,
+                summarize_after_messages,
+                clamped,
+            )
+            keep_recent_messages = clamped
         self._keep_recent = keep_recent_messages
         self._tool_event_retention = tool_event_retention_days
         self._message_retention = message_retention_days
@@ -976,9 +955,11 @@ class ManagedMemoryService(ChatMemory):
                 url = self._url or deployment_mysql_url()
                 deployment = self._resolve_deployment_id()
                 table_name = self._resolve_table_name()
-                # "" for the shared default, so the companion tables keep
-                # their plain names. Only an explicit table_name= produces a
-                # suffix, and then every table carries it.
+                # The suffix every companion table carries, derived from the
+                # messages table's own name: inside a deployment that is
+                # agent_memory_messages_<deployment id>, so the companions are
+                # _facts_<id> and friends. "" only for a table named without
+                # one, where the companions keep their plain names.
                 suffix = _table_suffix(table_name)
                 # index and constraint names still have to be unique and
                 # non-empty, so they get a stem even when the tables do not
@@ -1330,21 +1311,6 @@ class ManagedMemoryService(ChatMemory):
         "DATETIME": "timestamp",
         "TIMESTAMP": "timestamp",
     }
-
-    def _features_for(self, table):
-        from hsfs.feature import Feature
-
-        features = []
-        for column in table.columns:
-            name = type(column.type).__name__.upper()
-            kind = self._FEATURE_TYPES.get(name)
-            if kind is None:
-                raise RuntimeError(
-                    f"No Hopsworks feature type for column {column.name!r} "
-                    f"({name}) of {table.name}. Add it to _FEATURE_TYPES."
-                )
-            features.append(Feature(column.name, type=kind))
-        return features
 
     # ── feature-store export (optional) ──────────────────────────────────
 
@@ -1698,13 +1664,27 @@ class ManagedMemoryService(ChatMemory):
         from sqlalchemy import func, select
 
         t = self._table
+        # The subject of the newest message, not the largest one by sort order:
+        # an agent that identifies the caller mid-conversation rebinds, and
+        # max() then reported whichever of the two sorted last. The inspector
+        # (conversation_subject) already answers "the latest", so the list and
+        # the inspector disagreed about the same conversation.
+        newest = t.alias("newest")
+        latest_subject = (
+            self._mine(select(newest.c.subject), newest)
+            .where(newest.c.conversation_id == t.c.conversation_id)
+            .where(newest.c.subject != "")
+            .order_by(newest.c.id.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
         stmt = (
             self._mine(
                 select(
                     t.c.conversation_id,
                     func.count().label("message_count"),
                     func.max(t.c.created_at).label("last_active_at"),
-                    func.max(t.c.subject).label("subject"),
+                    latest_subject.label("subject"),
                 ),
                 t,
             )
@@ -2502,16 +2482,29 @@ class ManagedMemoryService(ChatMemory):
 
         The vector store holds a *copy* of the content, so deleting from SQL
         alone would leave it searchable. Called from conversation delete.
+
+        Raises:
+            VectorPurgeError: the copies may still be searchable. Erasure is
+                the one operation where a silent failure is worse than an
+                error: swallowed, the caller answered 204 and told someone
+                their data was gone when it was not. The store raises this
+                rather than returning 0 precisely so it can be told from
+                "nothing matched", and this method must not undo that.
         """
         if self._vector_store is None:
             return 0
+        from .vectorstore import VectorPurgeError  # noqa: PLC0415 -- optional extra
+
         try:
             return self._vector_store.purge(
                 conversation_id=conversation_id, subject=subject
             )
-        except Exception:  # noqa: BLE001
+        except VectorPurgeError:
             log.exception("Vector purge failed — deleted content may remain searchable")
-            return 0
+            raise
+        except Exception as err:  # noqa: BLE001
+            log.exception("Vector purge failed — deleted content may remain searchable")
+            raise VectorPurgeError(str(err)) from err
 
     async def maybe_summarize(self, conversation_id: str) -> bool:
         """Fold old turns into the rolling summary.

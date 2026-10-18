@@ -588,10 +588,12 @@ class TestTheConversationSoFar:
 
 
 class TestTheWindowIsTheServersJob:
-    """The monitor used to ask for the newest 500 traces of the deployment and
-    filter them to its window here, which above 500 in a window meant grading the
-    newest slice and skipping everything older -- silently, since the list it
-    compared against had already been cut server-side.
+    """The window is the server's job.
+
+    The monitor used to ask for the newest 500 traces of the deployment and
+    filter them to its window here, which above 500 in a window meant grading
+    the newest slice and skipping everything older -- silently, since the list
+    it compared against had already been cut server-side.
     """
 
     def test_the_listing_asks_for_the_window_oldest_first(self):

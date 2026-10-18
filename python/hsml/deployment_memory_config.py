@@ -139,8 +139,19 @@ class DeploymentMemoryConfig:
 
     @classmethod
     def _validate_search(cls, search):
-        """Episodic search as the backend takes it: a dict, or None when it is off."""
-        if search is None or search is False:
+        """Episodic search as the backend takes it: a dict, always.
+
+        `False` travels as `{"enabled": False}` rather than being left out.
+        Dropped, it reached the pod as "nobody said", and the pod reads that as
+        "on with the default model" — so turning episodic memory off did
+        nothing at all.
+        """
+        if search is False:
+            return {"enabled": False}
+        if search is None:
+            # Not "off": nobody said, which the pod resolves by following
+            # long-term memory. A policy read back from the backend without a
+            # search key has to stay that way.
             return None
         if search is True:
             return {}

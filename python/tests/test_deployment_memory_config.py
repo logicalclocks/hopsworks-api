@@ -29,10 +29,17 @@ class TestToDict:
         }
 
     def test_a_tier_left_out_by_saying_so(self):
+        # off is sent, not omitted: omitted means "nobody said", and the pod
+        # resolves that by following long-term memory
         assert DeploymentMemoryConfig(long_term=False, search=False).to_dict() == {
             "enabled": True,
             "long_term": False,
+            "search": {"enabled": False},
         }
+
+    def test_an_unmentioned_search_stays_unmentioned(self):
+        # what a policy read back from the backend looks like when nobody chose
+        assert "search" not in DeploymentMemoryConfig(search=None).to_dict()
 
     def test_the_keys_are_the_agent_sdk_s_own(self):
         # snake_case, because the agent reads this as AGENT_MEMORY_CONFIG rather
@@ -63,8 +70,12 @@ class TestToDict:
     def test_search_true_asks_for_the_default_model(self):
         assert DeploymentMemoryConfig(search=True).to_dict()["search"] == {}
 
-    def test_search_false_is_left_out_entirely(self):
-        assert "search" not in DeploymentMemoryConfig(search=False).to_dict()
+    def test_search_false_travels_as_off_rather_than_as_nothing(self):
+        # Left out it reached the pod as "nobody said", which the pod reads as
+        # on with the default model: the switch did nothing.
+        assert DeploymentMemoryConfig(search=False).to_dict()["search"] == {
+            "enabled": False
+        }
 
     def test_a_bare_provider_keeps_the_other_tiers_on(self):
         config = DeploymentMemoryConfig(summarize="anthropic").to_dict()
