@@ -169,6 +169,103 @@ class TestStreaming:
         )
 
 
+class TestStreamFinalStatus:
+    """What a stream handler says about its own turn survives the merge.
+
+    A handler that streams a partial answer and then yields an empty
+    ChatResponse(status="failed") is reporting a failure. Rebuilding the reply
+    from the chunks used to lose that: the caller got "completed", the span was
+    marked fine and the truncated answer went into memory as the turn's answer.
+    """
+
+    def build_failing_app(self, memory=None):
+        app = AgentApp(tracing=False, memory=memory)
+
+        @app.stream
+        async def stream(request):
+            yield "partial answer"
+            final = AgentResponse.text("", metadata={"reason": "upstream failed"})
+            final.status = "failed"
+            yield final
+
+        return app
+
+    def test_chat_reports_the_failure(self):
+        client = TestClient(self.build_failing_app())
+        reply = client.post("/v1/chat", json=make_request("q")).json()
+        assert reply["status"] == "failed"
+        assert reply["message"]["content"][0]["text"] == "partial answer"
+        assert reply["metadata"]["reason"] == "upstream failed"
+
+    def test_stream_reports_the_failure(self):
+        client = TestClient(self.build_failing_app())
+        events = parse_sse(client.post("/v1/chat/stream", json=make_request("q")).text)
+        event, completed = events[-1]
+        assert event == "message.completed"
+        assert completed["status"] == "failed"
+        assert completed["message"]["content"][0]["text"] == "partial answer"
+
+    def test_a_successful_merge_still_completes(self):
+        app = AgentApp(tracing=False)
+
+        @app.stream
+        async def stream(request):
+            yield "all good"
+            yield AgentResponse.text("", usage={"output_tokens": 2})
+
+        reply = TestClient(app).post("/v1/chat", json=make_request("q")).json()
+        assert reply["status"] == "completed"
+        assert reply["message"]["content"][0]["text"] == "all good"
+        assert reply["usage"] == {"output_tokens": 2}
+
+
+class TestSyncHandlersOffTheLoop:
+    def test_a_blocking_handler_does_not_hold_up_other_requests(self):
+        # A plain `def` handler is the documented form and what it does is a
+        # blocking model call. Run inline it holds the event loop for the whole
+        # turn: other conversations wait, and so does the liveness probe --
+        # which on timing out restarts the pod mid-chat.
+        import time
+
+        import httpx
+
+        app = AgentApp(tracing=False, memory=None)
+        events = []
+
+        @app.chat
+        def chat(request):
+            events.append("chat-start")
+            time.sleep(0.1)
+            events.append("chat-end")
+            return "hello"
+
+        async def exercise():
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://test"
+            ) as client:
+
+                async def health():
+                    await client.get("/health")
+                    events.append("health")
+
+                await asyncio.gather(
+                    client.post("/v1/chat", json=make_request("q")), health()
+                )
+
+        asyncio.run(exercise())
+        assert events.index("health") < events.index("chat-end"), events
+
+    def test_a_synchronous_handler_still_answers(self):
+        app = AgentApp(tracing=False, memory=None)
+
+        @app.chat
+        def chat(request):
+            return f"echo: {request.text}"
+
+        reply = TestClient(app).post("/v1/chat", json=make_request("hi")).json()
+        assert reply["message"]["content"][0]["text"] == "echo: hi"
+
+
 class TestRequestHelpers:
     def test_to_framework_messages(self):
         app = build_basic_app()

@@ -590,17 +590,27 @@ class AgentApp(FastAPI):
 
                 final.message.content.insert(0, TextContent(text=streamed))
             return self._finalize(final, ctx)
-        response = self._finalize("".join(chunks), ctx)
-        response.citations = final.citations
-        response.usage = final.usage
-        # Merge, do not replace: _finalize has already put the turn's own keys
-        # here (tool_events, trace_id, the resolved subject). Assigning
-        # final.metadata over the top dropped every one of them whenever a
-        # stream handler yielded a final response alongside streamed text —
-        # which is the shape a handler uses to stream tokens and still return
-        # structured output. The handler's own keys still win on a collision.
-        response.metadata = {**response.metadata, **final.metadata}
-        return response
+        # The final response carried no content, so the streamed chunks are the
+        # answer — but everything else about the turn is still the handler's
+        # verdict on it. Its status most of all: a handler that streams a
+        # partial answer and then yields ChatResponse(status="failed") is
+        # reporting a failure, and building a fresh completed response over it
+        # told the caller, the memory and the span that the turn went fine.
+        #
+        # Carried before finalization, not after, so the status the span records
+        # and the answer the memory stores are the ones the handler meant.
+        # _finalize only fills in what is missing (tool_events, trace_id, the
+        # resolved subject), so the handler's own keys still win.
+        from .models import AgentResponse
+
+        merged = AgentResponse.text("".join(chunks))
+        merged.status = final.status
+        merged.citations = final.citations
+        merged.usage = final.usage
+        merged.metadata = {**final.metadata}
+        if final.conversation_id:
+            merged.conversation_id = final.conversation_id
+        return self._finalize(merged, ctx)
 
     def _invoke_stream(self, ctx: HandlerContext) -> AsyncIterator[str | ChatResponse]:
         assert self._stream_handler is not None
@@ -614,11 +624,27 @@ class AgentApp(FastAPI):
         token = current_context.set(ctx)
         try:
             if self._chat_handler is not None:
-                if _wants_context(self._chat_handler):
-                    result = self._chat_handler(ctx.request, ctx)
+                handler = self._chat_handler
+                call = (
+                    (lambda: handler(ctx.request, ctx))
+                    if _wants_context(handler)
+                    else (lambda: handler(ctx.request))
+                )
+                if inspect.iscoroutinefunction(handler):
+                    result = await call()
                 else:
-                    result = self._chat_handler(ctx.request)
+                    # A plain `def` handler is the documented form, and what it
+                    # does is a blocking model or tool call lasting seconds.
+                    # Called inline it holds the event loop for the whole turn:
+                    # every other conversation waits, and so do /health and
+                    # /ready — a liveness probe that times out restarts the pod
+                    # in the middle of someone's chat. asyncio.to_thread copies
+                    # the context, so current_context, the turn's span and the
+                    # tool-event buffer are all visible inside the thread.
+                    result = await asyncio.to_thread(call)
                 if inspect.isawaitable(result):
+                    # a sync function that returned a coroutine: it has not
+                    # started, so awaiting it here runs it on the loop
                     result = await result
                 return self._finalize(result, ctx)
             # collect the stream into a single response

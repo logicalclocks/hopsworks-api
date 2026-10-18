@@ -1290,9 +1290,12 @@ class TestChatStream:
         assert frames[1].tool.name == "search" and frames[1].tool.data == {"n": 2}
         assert frames[2].reply.conversation_id == "c"
 
-    def test_reply_reads_the_rest_of_the_stream_and_is_made_from_text_without_a_completed_frame(
-        self,
-    ):
+    def test_a_stream_that_stops_without_completing_is_a_failed_reply(self):
+        # A dropped connection or a killed pod ends the stream after a few
+        # deltas. The text that arrived is kept -- it is the agent's own words
+        # -- but calling the turn completed hands an evaluator a truncated
+        # answer to grade, and the conversation id the next turn would
+        # continue from is not there to be had.
         _, agent7, _ = agent(
             MANIFEST,
             Reply(
@@ -1304,6 +1307,8 @@ class TestChatStream:
         )
         stream = agent7.chat_stream("x")
         assert stream.reply.text == "hello"
+        assert stream.reply.status == "failed"
+        assert stream.reply.metadata["incomplete_stream"] is True
         assert stream.reply.conversation_id == "" and stream.reply.trace_id is None
         assert list(stream) == []  # read once
 

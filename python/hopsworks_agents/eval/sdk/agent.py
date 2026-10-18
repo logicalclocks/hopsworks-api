@@ -700,7 +700,11 @@ class ChatStream:
         """The completed reply, reading the rest of the stream first if needed.
 
         An agent whose stream ends without a completed frame gets a reply made
-        of the streamed text, so the caller always has one.
+        of the streamed text, so the caller always has one — reported as
+        failed, because it is not one the agent finished. A dropped connection
+        or a killed pod leaves exactly this shape, and calling it completed
+        hands an evaluator a truncated answer to grade and loses the
+        conversation id the next turn would continue from.
         """
         if not self._exhausted:
             for _ in self.events():
@@ -711,7 +715,11 @@ class ChatStream:
                     "role": "assistant",
                     "content": [{"type": "text", "text": self.text}],
                 },
-                metadata={"tool_events": [t.raw for t in self._tool_events]},
+                metadata={
+                    "tool_events": [t.raw for t in self._tool_events],
+                    "incomplete_stream": True,
+                },
+                status="failed",
             )
         return self._completed
 
