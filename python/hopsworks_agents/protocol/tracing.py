@@ -81,6 +81,18 @@ def resolve_framework(framework: str | None) -> str:
     return value
 
 
+# Set by setup_tracing: whether a framework instrumentor is actually emitting
+# LLM spans for this process. False for a custom agent and for one whose
+# instrumentor package turned out to be missing -- the cases where the
+# handler's own usage figure is the only token count the turn will ever have.
+_EMITS_LLM_SPANS = False
+
+
+def framework_emits_llm_spans() -> bool:
+    """Whether an instrumentor is producing LLM spans alongside the turn span."""
+    return _EMITS_LLM_SPANS
+
+
 def setup_tracing(framework: str, enabled: bool | None = None) -> Any | None:
     """Build a TracerProvider exporting to the deployment's OTLP sidecar and.
 
@@ -126,7 +138,19 @@ def setup_tracing(framework: str, enabled: bool | None = None) -> Any | None:
     )
     install_baggage_propagation(provider)
 
-    _instrument(framework, provider)
+    # Registered globally as well as held here. Without this, a span the agent
+    # opens the conventional way -- opentelemetry.trace.get_tracer(__name__) --
+    # or any instrumentor it enables itself without passing tracer_provider
+    # gets the no-op provider and disappears, with nothing to say it did.
+    try:
+        from opentelemetry import trace as _trace
+
+        _trace.set_tracer_provider(provider)
+    except Exception:  # noqa: BLE001 -- already-set is a warning, not a failure
+        log.debug("Could not set the global tracer provider", exc_info=True)
+
+    global _EMITS_LLM_SPANS  # noqa: PLW0603 -- one process-wide tracing setup
+    _EMITS_LLM_SPANS = _instrument(framework, provider)
     log.info("Tracing enabled (framework=%s, endpoint=%s)", framework, endpoint)
     return provider
 
@@ -268,12 +292,19 @@ def _begin_turn_span(
         return token, None
 
 
-def _instrument(framework: str, provider: Any) -> None:
+def _instrument(framework: str, provider: Any) -> bool:
+    """Instrument the framework; True when it will emit LLM spans of its own.
+
+    False for 'custom' and for a framework whose instrumentor is not
+    installed: nothing but the turn span will carry tokens, and the readers
+    of those tokens need to know which case they are in.
+    """
     if framework == FRAMEWORK_LANGGRAPH:
         try:
             from openinference.instrumentation.langchain import LangChainInstrumentor
 
             LangChainInstrumentor().instrument(tracer_provider=provider)
+            return True
         except ImportError:
             log.warning(
                 "framework='langgraph' but openinference-instrumentation-langchain "
@@ -285,6 +316,7 @@ def _instrument(framework: str, provider: Any) -> None:
             from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
 
             LlamaIndexInstrumentor().instrument(tracer_provider=provider)
+            return True
         except ImportError:
             log.warning(
                 "framework='llamaindex' but openinference-instrumentation-llama-index "
@@ -298,6 +330,7 @@ def _instrument(framework: str, provider: Any) -> None:
             )
 
             OpenAIAgentsInstrumentor().instrument(tracer_provider=provider)
+            return True
         except ImportError:
             log.warning(
                 "framework='openai_agents' but "
@@ -312,6 +345,7 @@ def _instrument(framework: str, provider: Any) -> None:
             )
 
             ClaudeAgentSDKInstrumentor().instrument(tracer_provider=provider)
+            return True
         except ImportError:
             log.warning(
                 "framework='claude_agents' but "
@@ -320,3 +354,4 @@ def _instrument(framework: str, provider: Any) -> None:
                 "hopsworks-agent-protocol[claude-agents].",
             )
     # 'custom': provider only — the agent instruments itself
+    return False

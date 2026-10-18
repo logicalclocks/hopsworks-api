@@ -423,9 +423,39 @@ class TestFrameworkAndTracing:
         )
         assert AgentApp(tracing=False).tracer_provider is None
 
+    def test_the_provider_is_registered_globally(self, monkeypatch):
+        # A span the agent opens the conventional way -- trace.get_tracer(...)
+        # -- or an instrumentor it enables itself without passing
+        # tracer_provider reaches the global provider and nothing else. Left
+        # unregistered, every one of those spans was a no-op that disappeared
+        # with nothing to say it had.
+        pytest.importorskip("opentelemetry.sdk")
+        pytest.importorskip("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+        from opentelemetry import trace
+        from opentelemetry.sdk.trace import TracerProvider
+
+        from hopsworks_agents.protocol.tracing import setup_tracing
+
+        monkeypatch.setenv(
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://localhost:4318/v1/traces"
+        )
+        # the global provider is set once per process; start from a fresh one
+        monkeypatch.setattr(trace, "_TRACER_PROVIDER", None, raising=False)
+        monkeypatch.setattr(trace, "_TRACER_PROVIDER_SET_ONCE", trace.Once())
+
+        provider = setup_tracing("custom")
+
+        assert isinstance(provider, TracerProvider)
+        assert trace.get_tracer_provider() is provider
+
     def test_tracing_graceful_without_otel_sdk(self, monkeypatch):
-        # the test venv has no opentelemetry installed: the endpoint being set
-        # must not crash the app, just leave it untraced
+        # an agent image built without the tracing extra: the endpoint being
+        # set must not crash the app, just leave it untraced. Skipped where the
+        # SDK is installed, since there the app is traced and should be.
+        import importlib.util
+
+        if importlib.util.find_spec("opentelemetry.sdk") is not None:
+            pytest.skip("the OpenTelemetry SDK is installed, so tracing is real here")
         monkeypatch.setenv(
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://localhost:4318/v1/traces"
         )
@@ -3241,8 +3271,15 @@ class TestTurnSpan:
         assert attrs["input.value"] == "what is attention?"
         assert attrs["output.value"] == "echo: what is attention?"
         assert attrs["openinference.span.kind"] == "AGENT"
-        assert attrs["gen_ai.usage.input_tokens"] == 11
-        assert attrs["gen_ai.usage.output_tokens"] == 7
+        # The turn's own figure, outside the gen_ai.usage namespace: this span
+        # is the turn, not a model call, and under the GenAI keys every reader
+        # counted the turn once as itself and again as each call inside it.
+        assert attrs["hopsworks.turn.input_tokens"] == 11
+        assert attrs["hopsworks.turn.output_tokens"] == 7
+        assert "gen_ai.usage.input_tokens" not in attrs
+        assert "gen_ai.usage.output_tokens" not in attrs
+        # No instrumentor here, so these tokens are the only ones the trace has
+        assert attrs["hopsworks.turn.instrumented"] is False
 
     def test_failed_turn_is_an_error_span(self):
         app, exporter = self._traced_app()

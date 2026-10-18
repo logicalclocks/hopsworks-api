@@ -983,6 +983,11 @@ class AgentApp(FastAPI):
                         if kind == "done":
                             break
                         if await raw.is_disconnected():
+                            # Says so on the span: the turn ended without an
+                            # answer, and left unmarked it counts as a success
+                            # with a short latency -- the shape of a fast,
+                            # healthy reply.
+                            _mark_cancelled(span)
                             task.cancel()
                             return
                         if kind == "error":
@@ -1019,6 +1024,16 @@ def contentful(response: ChatResponse) -> bool:
 
 def _error_response(err: AgentError) -> JSONResponse:
     return JSONResponse({"detail": err.detail()}, status_code=err.status_code)
+
+
+def _mark_cancelled(span: Any) -> None:
+    """Record that the caller hung up, without calling the turn an error."""
+    if span is None:
+        return
+    import contextlib
+
+    with contextlib.suppress(Exception):  # never let telemetry break a turn
+        span.set_attribute(conventions.TURN_CANCELLED, True)
 
 
 def _record_span_error(span: Any, err: Exception) -> None:
@@ -1079,15 +1094,25 @@ def _annotate_span(ctx: HandlerContext, response: ChatResponse) -> None:
         )
         if answer:
             span.set_attribute(conventions.OUTPUT_VALUE, answer)
+        # Under hopsworks.turn.*, not gen_ai.usage.*: this span is the turn,
+        # not a model call, and every reader that counts tokens was counting
+        # the turn once as itself and again as each LLM call inside it. The
+        # flag says whether those LLM calls exist to be counted.
         usage = response.usage or {}
         for key, attr in (
-            ("input_tokens", conventions.GEN_AI_USAGE_INPUT_TOKENS),
-            ("prompt_tokens", conventions.GEN_AI_USAGE_INPUT_TOKENS),
-            ("output_tokens", conventions.GEN_AI_USAGE_OUTPUT_TOKENS),
-            ("completion_tokens", conventions.GEN_AI_USAGE_OUTPUT_TOKENS),
+            ("input_tokens", conventions.TURN_INPUT_TOKENS),
+            ("prompt_tokens", conventions.TURN_INPUT_TOKENS),
+            ("output_tokens", conventions.TURN_OUTPUT_TOKENS),
+            ("completion_tokens", conventions.TURN_OUTPUT_TOKENS),
         ):
             if isinstance(usage.get(key), int):
                 span.set_attribute(attr, usage[key])
+        if usage:
+            from .tracing import framework_emits_llm_spans
+
+            span.set_attribute(
+                conventions.TURN_INSTRUMENTED, framework_emits_llm_spans()
+            )
         if response.status == "failed":
             _record_span_error(span, AgentError("Handler returned status=failed"))
         response.metadata.setdefault("trace_id", format(ctxt.trace_id, "032x"))

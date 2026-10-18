@@ -125,6 +125,35 @@ MESSAGE_ID = "hopsworks.message_id"
 DEPLOYMENT_ID = "hopsworks.deployment_id"
 FRAMEWORK = "hopsworks.framework"
 
+# What the handler reported for the whole turn, deliberately outside the
+# `gen_ai.usage.*` namespace.
+#
+# Written on the turn's root AGENT span, which is not an LLM call. Under the
+# GenAI keys every reader that counts tokens -- the sidecar's windowed metrics,
+# the trace's own total, the eval featurizer -- counted the turn once as itself
+# and again as each model call inside it, so tokens and cost doubled for every
+# framework that emits real LLM spans, and the metrics grew a model called
+# "unknown" whose latency was the whole turn. These keys say "the agent's own
+# figure for this turn", and readers use them only when there is no LLM span to
+# count instead.
+TURN_INPUT_TOKENS = "hopsworks.turn.input_tokens"
+TURN_OUTPUT_TOKENS = "hopsworks.turn.output_tokens"
+TURN_INPUT_TOKEN_KEYS = (TURN_INPUT_TOKENS,)
+TURN_OUTPUT_TOKEN_KEYS = (TURN_OUTPUT_TOKENS,)
+
+# Whether a framework instrumentor is emitting LLM spans for this turn. False
+# for a custom agent, and for one whose instrumentor package is missing -- the
+# cases where the turn's own figure is the only token count there will ever be.
+# The sidecar sees one span at a time and cannot tell by looking around, so the
+# SDK says.
+TURN_INSTRUMENTED = "hopsworks.turn.instrumented"
+
+# The caller hung up mid-stream. Not an error -- the agent did nothing wrong --
+# but not a completed turn either: without it a cancelled turn reads as a
+# success whose latency happens to be short, which is the shape of a healthy
+# fast answer.
+TURN_CANCELLED = "hopsworks.turn.cancelled"
+
 # ── eval correlation ──────────────────────────────────────────────────────
 
 # Sent by the eval runner as W3C baggage and copied onto spans by the SDK's

@@ -222,24 +222,29 @@ def trace_features(
     tool_spans = [
         s for s in ordered if kinds.get(s.get("span_id")) == conventions.SPAN_KIND_TOOL
     ]
-    token_spans = [
-        s
-        for s in ordered
-        if kinds.get(s.get("span_id")) == conventions.SPAN_KIND_LLM
-        or (
-            kinds.get(s.get("span_id")) == conventions.SPAN_KIND_AGENT
-            and (
-                _token_count(
-                    attrs_by_span.get(s.get("span_id"), {}),
-                    conventions.INPUT_TOKEN_KEYS,
-                )
-                or _token_count(
-                    attrs_by_span.get(s.get("span_id"), {}),
-                    conventions.OUTPUT_TOKEN_KEYS,
-                )
-            )
-        )
+    # The model calls, which is what a token count is of. The turn's own span
+    # carries the agent's figure for the whole turn as well, so counting both
+    # charged every trial twice over -- once for the turn and once for each
+    # call inside it. The turn's figure is read only when the trace has no LLM
+    # span at all, which is the custom-agent case it exists for.
+    llm_spans = [
+        s for s in ordered if kinds.get(s.get("span_id")) == conventions.SPAN_KIND_LLM
     ]
+    token_keys = (conventions.INPUT_TOKEN_KEYS, conventions.OUTPUT_TOKEN_KEYS)
+    token_spans = llm_spans
+    if not llm_spans:
+        token_spans = [
+            s
+            for s in ordered
+            if kinds.get(s.get("span_id")) == conventions.SPAN_KIND_AGENT
+        ]
+        # hopsworks.turn.* is where the SDK reports it; the gen_ai keys are
+        # what the same span carried before that move, so old traces still add
+        # up.
+        token_keys = (
+            conventions.TURN_INPUT_TOKEN_KEYS + conventions.INPUT_TOKEN_KEYS,
+            conventions.TURN_OUTPUT_TOKEN_KEYS + conventions.OUTPUT_TOKEN_KEYS,
+        )
 
     tool_names = []
     for span in tool_spans:
@@ -255,15 +260,11 @@ def trace_features(
             tool_names.append(name)
 
     input_tokens = sum(
-        _token_count(
-            attrs_by_span.get(s.get("span_id"), {}), conventions.INPUT_TOKEN_KEYS
-        )
+        _token_count(attrs_by_span.get(s.get("span_id"), {}), token_keys[0])
         for s in token_spans
     )
     output_tokens = sum(
-        _token_count(
-            attrs_by_span.get(s.get("span_id"), {}), conventions.OUTPUT_TOKEN_KEYS
-        )
+        _token_count(attrs_by_span.get(s.get("span_id"), {}), token_keys[1])
         for s in token_spans
     )
 

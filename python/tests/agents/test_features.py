@@ -166,7 +166,7 @@ class TestTraceFeatures:
         assert row["tool_error_count"] == 1
         assert json.loads(row["tool_names"]) == ["search", "refund"]
 
-    def test_sums_tokens_across_model_and_token_bearing_agent_spans(self):
+    def test_counts_the_model_calls_and_not_the_turn_as_well(self):
         spans = [
             span("root"),
             span("llm1", parent="root", start_ns=1),
@@ -192,8 +192,38 @@ class TestTraceFeatures:
             attr("tool", "gen_ai.usage.input_tokens", "999"),
         ]
         row = trace_features(spans, attrs)
-        assert row["input_tokens"] == 28
-        assert row["output_tokens"] == 11
+        # 10+7+5 and 5+3+1: the three model calls. The AGENT span's figure is
+        # the agent's own total for the whole turn -- adding it to the calls it
+        # is the total of charged every trace twice.
+        assert row["input_tokens"] == 22
+        assert row["output_tokens"] == 9
+
+    def test_falls_back_to_the_turns_own_figure_when_nothing_else_counted(self):
+        # A custom agent with no instrumentor emits no LLM span; the handler's
+        # reported usage on the turn span is the only count there is.
+        spans = [span("root"), span("tool", parent="root", start_ns=1)]
+        attrs = [
+            attr("root", "openinference.span.kind", "AGENT"),
+            attr("root", "hopsworks.turn.input_tokens", "11"),
+            attr("root", "hopsworks.turn.output_tokens", "7"),
+            attr("tool", "openinference.span.kind", "TOOL"),
+        ]
+        row = trace_features(spans, attrs)
+        assert row["input_tokens"] == 11
+        assert row["output_tokens"] == 7
+
+    def test_reads_an_older_traces_turn_tokens_under_the_genai_keys(self):
+        # Before the move the same figure was written as gen_ai.usage.* on the
+        # turn span, and those traces are still in the store.
+        spans = [span("root")]
+        attrs = [
+            attr("root", "openinference.span.kind", "AGENT"),
+            attr("root", "gen_ai.usage.input_tokens", "11"),
+            attr("root", "gen_ai.usage.output_tokens", "7"),
+        ]
+        row = trace_features(spans, attrs)
+        assert row["input_tokens"] == 11
+        assert row["output_tokens"] == 7
 
     def test_eval_traffic_is_marked(self):
         # the separation every downstream query depends on
