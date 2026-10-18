@@ -82,7 +82,7 @@ The manifest reports `capabilities.trace_correlation` and `capabilities.eval_mod
 
 Attribute names live in `conventions.py`, which is deliberately dependency-free so the sidecar and the eval runner can import it. Three components agreeing on string literals by copy-paste is how they stop agreeing.
 
-This makes it *possible* for a separate evaluation system to join chat turns, feedback, and traces — but feedback/ratings/scores are deliberately **not** in the SDK (see non-goals). The SDK's job ends at emitting correlatable ids.
+This makes it *possible* for a separate evaluation system to join chat turns, feedback, and traces. Scores, labels and eval runs are deliberately **not** in the SDK (see non-goals); the one exception is `POST /v1/feedback`, which relays an end user's verdict to the platform because that user holds no Hopsworks credential of their own.
 
 One consequence for existing deployments: the turn span is now the root, where previously the framework's outermost span was. Trace latency in `otel_trace_metrics` therefore starts including SDK overhead and post-answer memory finalization — which is what the client actually waits for, but it will shift the numbers when a deployment upgrades.
 
@@ -124,7 +124,7 @@ Optional dependencies (OTel SDK, instrumentation packages, SQLAlchemy) are impor
 ## Non-goals (deliberate)
 
 - **No per-framework wire protocols.** The framework is an implementation detail the client must not see (§2).
-- **No feedback/ratings in the SDK.** Thumbs, scores, labels, eval runs, and their storage belong to the Agent Evaluation system, not the serving SDK. The SDK's contribution is reliable correlation ids (§3c); a chat client submits feedback to the evaluation API keyed by `conversation_id` / `response_id` / `trace_id`. Adding a `/v1/feedback` here would couple serving to evaluation and duplicate storage.
+- **No feedback storage in the SDK.** Thumbs, scores, labels, eval runs and their storage belong to the Agent Evaluation system, not the serving SDK. *Superseded in part:* the SDK does serve `POST /v1/feedback`, because an end user talking to the agent has no Hopsworks credential and therefore no way to reach the evaluation API — the agent relays their verdict under the deployment's own credential, keyed by the correlation ids below. It stores nothing itself; the row is written by the platform, the relay is a few lines, and the non-goal stands for everything else: no scores, no labels, no eval runs here.
 - **No live/bidirectional voice.** Audio *attachments* fit as content parts; real-time spoken conversation is a different transport (WebSocket/WebRTC) and would be a separate capability, not bolted onto request/response.
 - **No large-artifact storage yet.** Binary content is inline base64 with a size cap; a `file_id` upload/download endpoint pair (§roadmap) is reserved for when agents need to exchange artifacts larger than chat scale.
 - **The SDK does not own the client.** It emits a protocol; the chat panel (and any other consumer) is independent.

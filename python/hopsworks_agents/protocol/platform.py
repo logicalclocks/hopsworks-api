@@ -55,13 +55,34 @@ class PlatformClient:
             "PROJECT_ID", ""
         )
 
+    #: How long to keep trying a trace the platform has not stored yet, in
+    #: seconds between attempts. A verdict given as the reply lands beats its
+    #: own trace there: the turn span closes after memory finalisation, and
+    #: the sidecar batches before writing. The platform answers 404 until
+    #: then, which is "not yet", not "no".
+    TRACE_WAIT_S = (0.5, 1.0, 2.0, 4.0)
+
     def post_feedback(self, trace_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Record a verdict on one of this deployment's traces; the platform's row comes back."""
-        return self._request(
-            "POST",
-            ["otel", "servings", self.deployment_id, "traces", trace_id, "feedback"],
-            body,
-        )
+        """Record a verdict on one of this deployment's traces; the platform's row comes back.
+
+        Waits out a trace still on its way. Any other refusal is returned to
+        the caller immediately, and a trace that never arrives fails as it did
+        before -- with the platform's own message.
+        """
+        import time  # noqa: PLC0415 -- only on this path
+
+        for delay in (*self.TRACE_WAIT_S, None):
+            try:
+                return self._request(
+                    "POST",
+                    ["otel", "servings", self.deployment_id, "traces", trace_id, "feedback"],
+                    body,
+                )
+            except AgentError as err:
+                if err.status_code != 404 or delay is None:
+                    raise
+                time.sleep(delay)
+        raise AssertionError("unreachable")  # pragma: no cover
 
     def latest_trace_id(self, conversation_id: str) -> str | None:
         """The newest trace of a conversation, as the platform recorded it."""

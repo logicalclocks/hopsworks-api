@@ -3746,6 +3746,48 @@ def build_feedback_app(platform):
     return app
 
 
+class TestTheRelayWaitsForALateTrace:
+    def test_a_404_is_retried_until_the_trace_lands(self, monkeypatch):
+        # A verdict given as the reply lands can beat its own trace into the
+        # store: the turn span closes after memory finalisation and the
+        # sidecar batches before writing. 404 there means "not yet".
+        from hopsworks_agents.protocol.platform import PlatformClient
+
+        platform = PlatformClient.__new__(PlatformClient)
+        monkeypatch.setattr(PlatformClient, "deployment_id", "7", raising=False)
+        attempts = []
+
+        def request(method, segments, body, **kwargs):
+            attempts.append(segments[-2])
+            if len(attempts) < 3:
+                raise AgentError("no such trace", code="platform_refused", status_code=404)
+            return {"feedbackId": "fb-1"}
+
+        monkeypatch.setattr(platform, "_request", request)
+        monkeypatch.setattr(PlatformClient, "TRACE_WAIT_S", (0, 0, 0))
+
+        assert platform.post_feedback("trace-1", {"verdict": "positive"}) == {
+            "feedbackId": "fb-1"
+        }
+        assert len(attempts) == 3
+
+    def test_any_other_refusal_comes_straight_back(self, monkeypatch):
+        from hopsworks_agents.protocol.platform import PlatformClient
+
+        platform = PlatformClient.__new__(PlatformClient)
+        monkeypatch.setattr(PlatformClient, "deployment_id", "7", raising=False)
+        attempts = []
+
+        def request(method, segments, body, **kwargs):
+            attempts.append(1)
+            raise AgentError("not allowed", code="platform_refused", status_code=403)
+
+        monkeypatch.setattr(platform, "_request", request)
+        with pytest.raises(AgentError):
+            platform.post_feedback("trace-1", {"verdict": "positive"})
+        assert len(attempts) == 1
+
+
 class TestFeedback:
     def test_the_manifest_advertises_feedback(self):
         manifest = (
