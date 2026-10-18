@@ -463,7 +463,15 @@ class AgentApp(FastAPI):
         turn closes, so an in-flight turn never shows up as a question with no
         answer.
         """
-        if self.memory is None or not ctx.request.text:
+        if self.memory is None:
+            return
+        # A message with no text is still a message. Skipped, the turn never
+        # opened, so neither the question nor the answer was recorded and a
+        # conversation of photographs read back as empty. What goes in the
+        # transcript is the text when there is any, and otherwise a note of
+        # what arrived instead.
+        recorded = ctx.request.text or _describe_parts(ctx.request)
+        if not recorded:
             return
         try:
             await asyncio.to_thread(
@@ -471,7 +479,7 @@ class AgentApp(FastAPI):
                 ctx.conversation_id,
                 ctx.turn_id,
                 "user",
-                ctx.request.text,
+                recorded,
                 message_id=ctx.message_id,
                 subject=ctx.subject,
             )
@@ -885,6 +893,19 @@ class AgentApp(FastAPI):
                 )
             return JSONResponse(status_code=204, content=None)
 
+        @self.delete("/v1/conversations/{conversation_id}/summary")
+        async def clear_summary(conversation_id: str) -> JSONResponse:
+            # The summary is written by a model out of what a user typed, and
+            # it lands in every later system prompt — so a user who talks the
+            # agent into a false one has put it somewhere that outlives the
+            # turn. Facts can be dropped one key at a time; before this, the
+            # only way out of a bad summary was deleting the conversation.
+            assert self.memory is not None
+            dropped = await asyncio.to_thread(
+                self.memory.clear_summary, conversation_id
+            )
+            return JSONResponse({"conversation_id": conversation_id, "dropped": dropped})
+
         @self.get("/v1/subjects/{subject}/state")
         async def list_subject_state(subject: str) -> dict[str, Any]:
             # The audit half of durable memory. Model-written state is
@@ -1042,6 +1063,25 @@ class AgentApp(FastAPI):
                 # not get to run, which is what the store's stale-turn reaper is
                 # there to catch.
                 await self._finalize_turn(ctx, completed)
+
+
+def _describe_parts(request: Any) -> str:
+    """What a message carried, for a transcript, when it carried no text.
+
+    Not the content itself: an image is megabytes of base64 and belongs in the
+    request, not in a chat log. A reader needs to know a message happened and
+    roughly what it was.
+    """
+    counts: OrderedDict[str, int] = OrderedDict()
+    for part in request.message.content:
+        if part.type == "text":
+            continue
+        counts[part.type] = counts.get(part.type, 0) + 1
+    if not counts:
+        return ""
+    return "[" + ", ".join(
+        kind if count == 1 else f"{count} {kind}s" for kind, count in counts.items()
+    ) + "]"
 
 
 def contentful(response: ChatResponse) -> bool:

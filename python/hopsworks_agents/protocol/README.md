@@ -407,10 +407,33 @@ deployment the route answers `503 platform_unavailable`.
     starting a new chat must not erase what the agent knows about the person.
 - `GET /v1/conversations` — every conversation this deployment holds, with its
   subject, message count and last activity.
+- `DELETE /v1/conversations/{id}/summary` — drop the rolling summary and keep
+  the conversation. The summary is written by a model out of what a user
+  typed and then lands in every later system prompt, so a user who talks the
+  agent into a false one has put it somewhere that outlives the turn. The
+  folded turns come back and the next fold writes a fresh summary.
 - With `long_term=True`, `GET`/`DELETE /v1/subjects/{subject}/state` let a user
   see every durable value held about them — with its provenance and whether the
   agent or an operator wrote it — and delete any of them. Caps and TTLs bound a
   false memory; being able to see and delete it is what fixes it.
+
+### Reading memory in an `async def` handler
+
+Every read here is a database round trip. A `def` handler runs in a worker
+thread, so `ctx.history`, `ctx.summary` and `ctx.system_context()` are the
+right thing to use there. In an `async def` handler they run on the event
+loop, and while they do, every other conversation in the replica waits — and
+so do `/health` and `/ready`. Use the awaited forms:
+
+```python
+@agent_app.chat
+async def chat(request, ctx):
+    history = await ctx.ahistory()
+    system = MY_PROMPT + await ctx.asystem_context()
+```
+
+The memory tools are ordinary synchronous functions; a framework that awaits
+tools runs them in a thread of its own, which is why they are not async here.
 
 ### Who can read and erase memory
 

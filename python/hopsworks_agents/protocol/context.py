@@ -221,6 +221,34 @@ class HandlerContext:
             return ""
         return "\n\n" + "\n\n".join(blocks) + "\n"
 
+    # ── the same three, off the event loop ───────────────────────────────
+    #
+    # Reading memory is a database round trip. In a `def` handler that is
+    # already a worker thread, so the properties above are the right thing to
+    # use. In an `async def` handler they run on the event loop, and while they
+    # do, every other conversation in this replica waits -- and so do /health
+    # and /ready. These are the same reads, awaited.
+
+    async def ahistory(self) -> list[Turn]:
+        """:attr:`history`, read in a worker thread."""
+        if self.memory is None:
+            return []
+        return await asyncio.to_thread(self.memory.get, self.conversation_id)
+
+    async def asummary(self) -> str | None:
+        """:attr:`summary`, read in a worker thread."""
+        if self.memory is None:
+            return None
+        return await asyncio.to_thread(self.memory.get_summary, self.conversation_id)
+
+    async def asystem_context(
+        self,
+        header: str = "Context from earlier:",
+        state_header: str = "What you know about this user:",
+    ) -> str:
+        """:meth:`system_context`, assembled in a worker thread."""
+        return await asyncio.to_thread(self.system_context, header, state_header)
+
     async def emit_event(
         self,
         name: str,

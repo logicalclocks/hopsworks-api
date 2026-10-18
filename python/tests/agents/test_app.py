@@ -3185,6 +3185,94 @@ class TestConversationListing:
         return app
 
 
+class TestTheSummaryCanBeDropped:
+    def _app(self, tmp_path):
+        from hopsworks_agents.protocol import AgentApp, ManagedMemoryService
+
+        memory = ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/m.db",
+            table_name="agent_memory_messages_t",
+            summarize=lambda previous, turns: "the user is a lizard",
+            summarize_after_messages=2,
+            keep_recent_messages=0,
+        )
+        app = AgentApp(memory=memory)
+
+        @app.chat
+        async def chat(request):
+            return "noted"
+
+        return app, memory
+
+    def test_a_steered_summary_can_be_removed_without_the_conversation(
+        self, tmp_path
+    ):
+        # The summary is written by a model from what a user typed and lands
+        # in every later system prompt. Facts can be dropped one key at a
+        # time; this is the same escape hatch for the summary, which before
+        # this went only with the whole conversation.
+        import asyncio as _asyncio
+
+        app, memory = self._app(tmp_path)
+        client = TestClient(app)
+        client.post("/v1/chat", json=make_request("hello", conversation_id="c1"))
+        client.post("/v1/chat", json=make_request("again", conversation_id="c1"))
+        _asyncio.run(memory.maybe_summarize("c1"))
+        assert memory.get_summary("c1") == "the user is a lizard"
+
+        body = client.delete("/v1/conversations/c1/summary").json()
+
+        assert body == {"conversation_id": "c1", "dropped": True}
+        assert memory.get_summary("c1") in (None, "")
+        # the turns it covered come back rather than being represented by
+        # nothing, and the conversation itself is still there
+        assert [turn["content"] for turn in memory.get("c1")][:1] == ["hello"]
+
+    def test_dropping_a_summary_that_is_not_there_says_so(self, tmp_path):
+        app, _ = self._app(tmp_path)
+        body = TestClient(app).delete("/v1/conversations/c9/summary").json()
+        assert body["dropped"] is False
+
+
+class TestAMessageWithNoText:
+    def test_an_image_only_turn_is_recorded(self, tmp_path):
+        # The turn used to be skipped when request.text was empty, so neither
+        # the question nor the answer reached the transcript and a
+        # conversation of photographs read back as empty.
+        from hopsworks_agents.protocol import AgentApp, ManagedMemoryService
+
+        memory = ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/m.db", table_name="agent_memory_messages_t"
+        )
+        app = AgentApp(memory=memory)
+
+        @app.chat
+        async def chat(request):
+            return "a cat, I think"
+
+        TestClient(app).post(
+            "/v1/chat",
+            json={
+                "conversation_id": "c1",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "media_type": "image/png",
+                            "data": "aGVsbG8=",
+                        }
+                    ],
+                },
+            },
+        )
+
+        assert memory.get("c1") == [
+            {"role": "user", "content": "[image]"},
+            {"role": "assistant", "content": "a cat, I think"},
+        ]
+
+
 class TestFoldSettings:
     def test_keeping_as_many_as_trigger_a_fold_is_clamped(self, tmp_path, caplog):
         # A policy naming summarize_after_messages alone meets the SDK default

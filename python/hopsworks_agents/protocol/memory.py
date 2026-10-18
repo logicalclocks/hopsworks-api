@@ -494,6 +494,21 @@ class ChatMemory(ABC):
         """The rolling summary of folded-away turns, or None."""
         return None
 
+    def clear_summary(self, conversation_id: str) -> bool:  # noqa: ARG002
+        """Drop the rolling summary, keeping the conversation.
+
+        The summary is written by a model from turns a user typed, and it
+        lands in every later system prompt — so a user who talks the agent
+        into a false summary has put it somewhere that outlives the turn.
+        Model-written *facts* are inspectable and removable one key at a time;
+        this is the same escape hatch for the summary, and without it the only
+        way out was deleting the whole conversation.
+
+        Returns whether anything was dropped. The next fold writes a fresh
+        summary from the turns that follow.
+        """
+        return False
+
     async def maybe_summarize(self, conversation_id: str) -> bool:
         """Fold old turns into the summary if enough have accumulated.
 
@@ -788,13 +803,17 @@ class ManagedMemoryService(ChatMemory):
           which cannot serve ``id > ?`` or ``ORDER BY id`` at all. Reading one
           conversation's history would scan every agent's rows in the project.
 
-        Both are added here, idempotently, at readiness. Note the consequence
-        of living in someone else's table: a feature group that is deleted and
-        recreated comes back without them, and the symptom is slowness rather
-        than an error, so this runs on every connect rather than once.
+        The platform adds both when it provisions the feature groups, so this
+        normally finds nothing to do. It stays because the pod cannot assume a
+        backend new enough to have done it, and because a feature group that is
+        deleted and recreated comes back without them — the symptom being
+        slowness rather than an error, so this runs on every connect.
 
-        Returns False when the table is unusable, which degrades the store to
-        stateless instead of breaking turns.
+        Replicas start together and all look at once, so two can decide the
+        same index is missing: the loser's ALTER fails with "duplicate key
+        name", which means the index is there, which is all this wanted. Only a
+        table that is still unusable afterwards returns False, which degrades
+        the store to stateless instead of breaking turns.
         """
         from sqlalchemy import text
 
@@ -819,37 +838,39 @@ class ManagedMemoryService(ChatMemory):
                         ),
                         {"t": table.name},
                     ).fetchone()
-                with engine.begin() as conn:
-                    for index in table.indexes:
-                        if index.name in existing:
-                            continue
-                        columns = ", ".join(f"`{c.name}`" for c in index.columns)
-                        unique = "UNIQUE " if index.unique else ""
-                        conn.execute(
-                            text(
-                                f"ALTER TABLE `{table.name}` ADD {unique}INDEX "
-                                f"`{index.name}` ({columns})"
-                            )
-                        )
+                # One statement per transaction: a failed ALTER must not take
+                # the ones that succeeded with it, and "someone else already
+                # did this" is a success the others should not be rolled back
+                # for.
+                for index in table.indexes:
+                    if index.name in existing:
+                        continue
+                    columns = ", ".join(f"`{c.name}`" for c in index.columns)
+                    unique = "UNIQUE " if index.unique else ""
+                    if self._alter(
+                        engine,
+                        f"ALTER TABLE `{table.name}` ADD {unique}INDEX "
+                        f"`{index.name}` ({columns})",
+                    ):
                         log.info("Added index %s on %s", index.name, table.name)
-                    if auto is not None and "auto_increment" not in (auto[0] or ""):
-                        # MySQL requires the auto column to lead some index, and
-                        # the feature group's primary key starts with
-                        # deployment_id — so give `id` an index of its own first
-                        seed = f"idx_{table.name}_id"
-                        if seed not in existing:
-                            conn.execute(
-                                text(
-                                    f"ALTER TABLE `{table.name}` ADD INDEX `{seed}` (`id`)"
-                                )
-                            )
-                        conn.execute(
-                            text(
-                                f"ALTER TABLE `{table.name}` "
-                                "MODIFY `id` BIGINT NOT NULL AUTO_INCREMENT"
-                            )
+                if auto is not None and "auto_increment" not in (auto[0] or ""):
+                    # MySQL requires the auto column to lead some index, and
+                    # the feature group's primary key starts with
+                    # deployment_id — so give `id` an index of its own first
+                    seed = f"idx_{table.name}_id"
+                    if seed not in existing:
+                        self._alter(
+                            engine,
+                            f"ALTER TABLE `{table.name}` ADD INDEX `{seed}` (`id`)",
                         )
+                    if self._alter(
+                        engine,
+                        f"ALTER TABLE `{table.name}` "
+                        "MODIFY `id` BIGINT NOT NULL AUTO_INCREMENT",
+                    ):
                         log.info("Enabled AUTO_INCREMENT on %s.id", table.name)
+                    else:
+                        ok = False
             except Exception:  # noqa: BLE001
                 log.exception(
                     "Could not prepare %s for writing; memory is unavailable "
@@ -858,6 +879,27 @@ class ManagedMemoryService(ChatMemory):
                 )
                 ok = False
         return ok
+
+    def _alter(self, engine, ddl: str) -> bool:
+        """Run one DDL statement; True when the table ends up as asked.
+
+        An index another replica added a moment earlier is the outcome this
+        wanted, not a failure -- latched as one, the replica that lost the race
+        marked itself unusable over a table sitting there working, and served
+        the rest of its life stateless.
+        """
+        from sqlalchemy import text
+
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+            return True
+        except Exception as err:  # noqa: BLE001
+            if _already_exists(err):
+                log.debug("Another replica had already applied: %s", ddl)
+                return True
+            log.exception("Could not apply %s", ddl)
+            return False
 
     def _resolve_deployment_id(self) -> str:
         """Which agent's rows these are.
@@ -1990,6 +2032,40 @@ class ManagedMemoryService(ChatMemory):
             log.exception("Summary read failed")
             return None
         return row.summary if row is not None else None
+
+    def clear_summary(self, conversation_id: str) -> bool:
+        """Drop this conversation's summary and let the next fold rebuild it.
+
+        The fold cursor goes back to the start with it: a summary that is gone
+        must not leave the turns it covered represented by nothing, so they
+        come back into ``get()`` and are folded again. ``summary_version``
+        still moves, so a fold already in flight loses its race rather than
+        writing the old text back over this.
+        """
+        if not self._ensure_engine():
+            return False
+        s = self._sessions
+        if s is None:
+            return False
+        try:
+            with self._engine.begin() as conn:
+                result = conn.execute(
+                    self._mine(s.update(), s)
+                    .where(s.c.conversation_id == conversation_id)
+                    .where(s.c.summary != "")
+                    .values(
+                        summary="",
+                        last_summarized_item_id=0,
+                        last_summarized_count=0,
+                        summary_version=s.c.summary_version + 1,
+                        last_active_at=_utcnow(),
+                    )
+                )
+        except Exception:  # noqa: BLE001
+            log.exception("Clearing the summary failed")
+            return False
+        self._cache.pop(conversation_id, None)
+        return bool(result.rowcount)
 
     def _claim_fold(self, conversation_id: str):
         """Phase 1: decide what to fold and lock the decision in.
