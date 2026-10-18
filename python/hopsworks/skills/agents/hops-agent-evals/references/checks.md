@@ -19,12 +19,12 @@ Reference for **hops-agent-evals**. A suite's checks are `check(type, name=None,
 | `tool_latency` | `tool`, `max_ms` | — | the tool's spans finished within budget |
 | `sql_state` | `sql`/`query`, `expect` | — | a query against the agent's state returns the expectation (sandboxed suites) |
 | `human_review` | `prompt` | — | waits for a person's verdict in the UI or `run.review_trial()` |
-| `llm_judge` | provider keys below, `criteria` (a list, or a dict name → `{weight}`), `rubric`, `inputs` | expected result (when `inputs` includes `expected_result`) | a model grades the answer against the criteria |
+| `llm_judge` | provider keys below, `criteria` (a list, or a dict name → `{weight}`), `rubric`, `inputs` | the rubric (shown as the expected answer instead when `inputs` drops `rubric` and keeps `expected_result`) | a model grades the answer against the criteria |
 | `pairwise` | provider keys, `reference` | reference answer | a model prefers the answer to the reference |
 | `tool_arguments_judge` | provider keys, `tool` | — | a model judges the tool's arguments were right for the request |
 | `tool_result_used` | provider keys | — | a model judges the answer used the tool's result |
 
-Checks without a task expectation (`no_tool_error`, `tool_latency`, the judges without `expected_result`) can grade live traffic, which is what online sampling and `monitor=True` use. Checks that need an expectation only run in suites.
+Checks without a task expectation (`no_tool_error`, `tool_latency`, the judges whose `inputs` have neither `rubric` nor `expected_result`) can grade live traffic, which is what online sampling and `monitor=True` use. Checks that need an expectation only run in suites.
 
 ## Judge provider keys
 

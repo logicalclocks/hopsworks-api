@@ -139,9 +139,14 @@ class TestWhatTheJudgeIsShown:
             task(rubric="Mentions scattering."), trial(), None
         )
 
+        # and it lands in the slot this check asks the task for: the catalogue
+        # calls the field a rubric ("what a good answer does, in your own
+        # words"), so reading it as the expected answer -- which the default
+        # inputs did, because they tick both boxes -- labelled guidance as the
+        # text the agent was supposed to produce.
         assert seen["prompt"].count("Mentions scattering.") == 1
-        assert "<expected>" in seen["prompt"]
-        assert "<criteria_notes>" not in seen["prompt"]
+        assert "<criteria_notes>" in seen["prompt"]
+        assert "<expected>" not in seen["prompt"]
 
     def test_a_judge_that_reads_no_expected_answer_still_sees_the_guidance(self):
         # The "could it have got there alone" shape: no expected_result among
@@ -167,6 +172,32 @@ class TestWhatTheJudgeIsShown:
 
         assert "<criteria_notes>" in seen["prompt"]
         assert "<expected>" not in seen["prompt"]
+        assert seen["prompt"].count("Mentions scattering.") == 1
+
+    def test_unticking_the_rubric_grades_against_it_as_the_answer(self):
+        # The other way round, and the only way to get it: a judge whose inputs
+        # keep expected_result and drop rubric is saying the task's text is the
+        # answer to match, not guidance about it.
+        seen = {}
+
+        def capture(prompt):
+            seen["prompt"] = prompt
+            return GOOD
+
+        from hopsworks_agents.eval.judge_config import parse_judge_config
+
+        config = parse_judge_config(
+            {
+                "type": "llm_judge",
+                "inputs": ["user_request", "expected_result", "agent_response"],
+            }
+        )
+        LlmJudgeEvaluator(capture, config).grade(
+            task(rubric="Mentions scattering."), trial(), None
+        )
+
+        assert "<expected>" in seen["prompt"]
+        assert "<criteria_notes>" not in seen["prompt"]
         assert seen["prompt"].count("Mentions scattering.") == 1
 
 

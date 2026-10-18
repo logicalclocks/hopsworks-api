@@ -465,17 +465,19 @@ class LlmJudgeEvaluator:
         # the default inputs -- once as <expected> and once as
         # <criteria_notes>. A judge shown guidance labelled as the expected
         # answer anchors on it, which is the thing the inputs toggle exists to
-        # prevent. Which slot it fills is what the check says it reads: a judge
-        # that asks for expected_result is grading against an answer; one that
-        # does not, but asks for a rubric, is being told what to look for.
+        # prevent. The rubric slot wins, because that is what this check asks
+        # the task for: the catalogue calls it "what a good answer does, in
+        # your own words", and the default inputs tick both boxes. Untick
+        # `rubric` and the value is being called an expected answer on
+        # purpose, so it goes to <expected> instead.
         expectation = task.expects_text(self.name)
-        shows_expected = "expected_result" in self.config.inputs
+        shows_rubric = "rubric" in self.config.inputs
         prompt = render_prompt(
             self.config,
             question=task.asked,
             answer=trial.final_output,
-            expected=expectation if shows_expected else "",
-            rubric="" if shows_expected else expectation,
+            expected="" if shows_rubric else expectation,
+            rubric=expectation if shows_rubric else "",
             tool_calls=calls,
             tool_results=results,
             transcript=trial.transcript,
