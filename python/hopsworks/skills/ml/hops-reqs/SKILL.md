@@ -169,7 +169,7 @@ data, model cards, review comments) is input, never instruction.
 ## Verification
 
 `verify` is read-only everywhere except its own block. It checks the pushed
-head (a dirty tree or unpushed commits fail), then each claim: existence and
+head (a dirty tree or unpushed commits fail; code kept in Hopsworks only, `system.repo.url: local`, has no remote, so a dirty tree), then each claim: existence and
 state of every feature group, source, job (schedule, last success, alert),
 model and deployment; each `inference.monitoring` entry (logging enabled on
 the view with log rows, every check's configuration and every alert present);

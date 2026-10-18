@@ -158,8 +158,9 @@ nothing else. Then ask *Where the code goes* and *Finish*.
 ## Where the code goes
 
 Ask once, at the end: the current GitHub repository (recommended when the repository line above
-shows one) or a new private repository to create at the start of `/hops-build`. Record
-`system.repo={url: <url or "new">}`.
+shows one), a new private repository to create at the start of `/hops-build`, or, without a
+GitHub login, keeping the code in Hopsworks only. Record
+`system.repo={url: <url, "new" or "local">}`.
 
 ## Finish
 
