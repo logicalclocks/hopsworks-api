@@ -454,10 +454,18 @@ class AgentApp(FastAPI):
             return None
         if self._eval_mode:
             ctx.evaluation = trial
+            ctx._eval_labelled = True
             return None
+        verified = await asyncio.to_thread(self._eval_verifier.verify, trial)
         if not self._eval_per_request:
+            # The agent never promised that its tools check, so the turn is served
+            # exactly as a customer's -- but if Hopsworks knows the run, the trace
+            # is still a trial and is labelled as one. That is how a read-only
+            # suite shows up as a run rather than as traffic. An id nobody can
+            # vouch for labels nothing.
+            ctx._eval_labelled = verified
             return None
-        if not await asyncio.to_thread(self._eval_verifier.verify, trial):
+        if not verified:
             return AgentError(
                 f"Evaluation run {trial.run_id} could not be verified with "
                 "Hopsworks, so this turn was not run: an unverified trial would "
@@ -466,6 +474,7 @@ class AgentApp(FastAPI):
                 403,
             )
         ctx.evaluation = trial
+        ctx._eval_labelled = True
         return None
 
     async def _open_turn(self, ctx: HandlerContext) -> None:
@@ -724,6 +733,11 @@ class AgentApp(FastAPI):
                     name=self._turn_span_name(),
                     headers=raw.headers,
                     attributes=self._turn_span_attributes(ctx),
+                    # Only a turn this agent accepted as an evaluation carries the
+                    # eval ids onto its spans. Baggage comes over the wire, and those
+                    # attributes are what the platform reads back to tell a test from
+                    # a customer -- so an unverified header must not set them.
+                    keep_eval_baggage=ctx._eval_labelled,
                 ) as span,
             ):
                 ctx._span = span
@@ -990,6 +1004,7 @@ class AgentApp(FastAPI):
                 name=self._turn_span_name(),
                 headers=raw.headers,
                 attributes=self._turn_span_attributes(ctx),
+                keep_eval_baggage=ctx._eval_labelled,
             ) as span,
         ):
             ctx._span = span

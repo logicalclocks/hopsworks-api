@@ -150,6 +150,26 @@ class TestScopes:
         )
 
 
+class TestWhatCountsAsAnAnswer:
+    """A denominator only holds trials that say something about the agent."""
+
+    def test_a_trial_waiting_for_a_person_is_not_a_failure(self):
+        # The enum says so in its own comment and the metrics did the opposite:
+        # a suite with a human_review check could never pass its gate, and its
+        # "regressions" were reviewers who had not clicked yet.
+        waiting = trial(task_id="a", index=0)
+        waiting.status = TrialStatus.AWAITING_REVIEW
+        trials = [trial(task_id="b", passed=True, index=1), waiting]
+        assert at(trials, "run", "pass_rate") == 1.0
+
+    def test_a_trace_that_never_arrived_is_not_a_failure_either(self):
+        # a pipeline gap, not the agent answering badly
+        missing = trial(task_id="a", index=0)
+        missing.status = TrialStatus.TRACE_MISSING
+        trials = [trial(task_id="b", passed=True, index=1), missing]
+        assert at(trials, "run", "pass_rate") == 1.0
+
+
 class TestSafetyAndOverRefusal:
     def blocked(self, task_id="a"):
         return Trial(

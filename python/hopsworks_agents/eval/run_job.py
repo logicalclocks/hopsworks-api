@@ -381,14 +381,18 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
                 shared=not args.sample_independent,
             )
             _write_results(project.get_feature_store(), result, run)
-            report(result.status, processed_through_ms=result.processed_through_ms)
+            report(
+                result.status,
+                error=result.error_message or None,
+                processed_through_ms=result.processed_through_ms,
+            )
             log.info(
                 "online sample %s finished: %d of %s conversations graded",
                 run_id,
                 len(result.trials),
                 result.available if result.available is not None else "?",
             )
-            return True
+            return result.status == "SUCCEEDED"
 
         tasks = session.get(
             f"{base}/suites/{run['suiteId']}/tasks",

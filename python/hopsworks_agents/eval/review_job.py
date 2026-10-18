@@ -31,7 +31,13 @@ from .agent_source import (
 )
 from .api import hopsworks_session
 from .client import HopsworksAgentClient
-from .clusters import Cluster, assign_clusters, from_api, known_signatures
+from .clusters import (
+    Cluster,
+    assign_clusters,
+    from_api,
+    known_signatures,
+    merge_decisions,
+)
 from .judge_config import (
     JudgeConfig,
     api_key_for,
@@ -467,9 +473,11 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
         settings = review_settings(job)
         complete, reason = completer_from(settings)
         if complete is None:
-            log.error(
-                "%s -- every row of this run will be recorded as ungradable", reason
-            )
+            # Not a review. Every row would be ungradable, and a SUCCEEDED run moves the
+            # watermark past the window -- so the feedback nobody reviewed would never be
+            # offered again. The run fails with the reason on it instead.
+            report("FAILED", reason or "no usable judge model for the review")
+            return False
         deployment_id = int(run["deploymentId"])
         client = HopsworksAgentClient(
             session=session,
@@ -502,6 +510,9 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
             source,
         )
         changed = assign_clusters(rows, clusters)
+        # Re-read immediately before writing: a review run takes minutes, and whole rows go
+        # back, so a dismiss, promotion or rename made while it was going was undone by it.
+        changed = merge_decisions(changed, existing_clusters(session, otel_base))
         feature_store = project.get_feature_store()
         write_triage(feature_store, rows)
         write_clusters(feature_store, changed)

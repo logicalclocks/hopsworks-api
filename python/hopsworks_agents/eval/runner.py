@@ -114,6 +114,9 @@ class RunResult:
     processed_through_ms: float | None = None
     #: How many conversations the window held, whatever was then graded of them.
     available: int | None = None
+    #: Why the run failed, when it did. Reported with the status, so the row says what
+    #: happened rather than sending someone to the pod's log for it.
+    error_message: str = ""
 
 
 def check_deployment_supports(suite: Suite, manifest: dict[str, Any]) -> None:

@@ -311,15 +311,21 @@ def derive_trial_id(
     return f"{run_id}/{task_id}/{task_version}/{trial_index}"
 
 
-def gradable_trials(trials: Sequence[Trial]) -> list[Trial]:
-    """Trials whose outcome says something about the agent.
+#: Trials that say nothing about the agent, and so belong in no denominator.
+#: ``INFRA_ERROR`` and ``EVALUATOR_ERROR`` are the harness failing; counting
+#: them makes a flaky network look like a regression and sends someone to debug
+#: a prompt. ``TRACE_MISSING`` is a trial nothing could grade, and
+#: ``AWAITING_REVIEW`` is one nobody has graded yet -- counted as failures, a
+#: suite with a human_review check could never pass its gate and its
+#: "regressions" were reviewers who had not clicked.
+UNGRADED_STATUSES = (
+    TrialStatus.INFRA_ERROR,
+    TrialStatus.EVALUATOR_ERROR,
+    TrialStatus.TRACE_MISSING,
+    TrialStatus.AWAITING_REVIEW,
+)
 
-    ``INFRA_ERROR`` and ``EVALUATOR_ERROR`` are the harness failing, not the
-    agent; counting them as failures makes a flaky network look like a
-    regression and sends someone to debug a prompt.
-    """
-    return [
-        t
-        for t in trials
-        if t.status not in (TrialStatus.INFRA_ERROR, TrialStatus.EVALUATOR_ERROR)
-    ]
+
+def gradable_trials(trials: Sequence[Trial]) -> list[Trial]:
+    """Trials whose outcome says something about the agent."""
+    return [t for t in trials if t.status not in UNGRADED_STATUSES]

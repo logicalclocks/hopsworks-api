@@ -154,6 +154,34 @@ def _score(row: dict[str, Any]) -> tuple:
     )
 
 
+def merge_decisions(
+    changed: Sequence[Cluster], current: Iterable[Cluster]
+) -> list[Cluster]:
+    """Keep a decision a reviewer made while the run was going.
+
+    The job reads the clusters once, at the start, and writes whole rows back at
+    the end -- so a dismiss, a promotion or a rename made in between was undone
+    by a job that knew nothing about it. The job owns the shape of a cluster
+    (its members, its representative, when it was last seen); a person owns what
+    is to be done about it. This takes the second half from the backend as it is
+    now, immediately before the write.
+    """
+    by_id = {cluster.cluster_id: cluster for cluster in current}
+    for cluster in changed:
+        latest = by_id.get(cluster.cluster_id)
+        if latest is None:
+            continue
+        cluster.status = latest.status
+        cluster.promoted_task_id = latest.promoted_task_id
+        cluster.dismiss_reason = latest.dismiss_reason
+        cluster.decided_by = latest.decided_by
+        cluster.decided_at = latest.decided_at
+        if latest.label:
+            # a rename is a decision too; an empty one means nobody has named it
+            cluster.label = latest.label
+    return list(changed)
+
+
 def assign_clusters(
     rows: Sequence[dict[str, Any]],
     existing: Iterable[Cluster],

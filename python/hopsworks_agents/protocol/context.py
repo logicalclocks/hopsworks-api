@@ -74,6 +74,14 @@ class HandlerContext:
         # or a deployment that did not declare eval_per_request. Tools, which
         # get no context, ask hopsworks_agents.protocol.evaluation.in_evaluation().
         self.evaluation: EvalTrial | None = None
+        # Whether the eval ids on the request were checked out with Hopsworks,
+        # which is a narrower question than `evaluation`: a read-only suite may
+        # be run against an agent that never declared eval_per_request, and that
+        # turn is a trial to label even though its tools run for real. Only a
+        # labelled turn carries hopsworks.eval.* onto its spans -- baggage comes
+        # over the wire, and those attributes are what the platform reads back
+        # to tell a test from a customer.
+        self._eval_labelled = False
         # turn lifecycle bookkeeping, owned by AgentApp
         self._turn_open = False
         self._next_seq = 1

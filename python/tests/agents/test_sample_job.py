@@ -156,6 +156,18 @@ class TestChoosingWhatToGrade:
         )
         assert [s["traceId"] for s in window] == ["t"]
 
+    def test_an_evaluation_trial_is_not_production_traffic(self):
+        # A suite run is traffic this deployment served, on the same deployment, so a monitor
+        # grading "the last hour" graded a nightly suite's questions as if customers had asked
+        # them -- a safety suite's injection attempts included, which are meant to be refused.
+        trial = {**summary("t", 1, NOW), "evalRunId": "run-9"}
+        window = within_window(
+            [trial, summary("real", 1, NOW)],
+            (NOW - timedelta(hours=2)).timestamp() * 1000,
+            NOW.timestamp() * 1000,
+        )
+        assert [s["traceId"] for s in window] == ["real"]
+
     def test_a_trace_with_no_timestamp_is_not_guessed_into_the_window(self):
         # its age is unknown, and treating unknown as recent would quietly widen
         # whatever window someone asked for
@@ -636,6 +648,8 @@ class TestTheWindowIsTheServersJob:
         assert session.listing_params["from"] == int(run["sampleFrom"])
         assert session.listing_params["to"] == int(run["sampleTo"])
         assert session.listing_params["order"] == "oldest"
+        # and the server leaves the deployment's own eval runs out of both page and count
+        assert session.listing_params["excludeEval"] == "true"
         # the ceiling, so the server returns at most what will be graded
         assert session.listing_params["limit"] == 500
 
@@ -656,6 +670,35 @@ class TestTheWindowIsTheServersJob:
         assert result.available == 5
         graded = sorted(s["startTimeNs"] / 1e6 for s in summaries[:2])
         assert result.processed_through_ms == graded[-1]
+
+    def test_a_window_whose_every_trace_is_unreadable_fails(self):
+        # Not a quiet night: a broken read. Reported SUCCEEDED it moved the watermark over all
+        # of them, so the traffic nobody graded was never offered again.
+        class Unreadable(FakeSession):
+            def get(self, url, params=None, timeout=None):
+                if url.endswith("/traces") or "/traces/sessions/" in url:
+                    return super().get(url, params, timeout)
+                raise RuntimeError("the store is down")
+
+        summaries = [summary("a", 2), summary("b", 1)]
+        session = Unreadable(summaries, {}, count=2)
+        result = run_sample(
+            FakeClient(), session, "https://h", 1, sample_run(), trace_only()
+        )
+
+        assert result.trials == []
+        assert result.status == "FAILED"
+        assert "could be read" in result.error_message
+        assert result.processed_through_ms is None
+
+    def test_an_empty_window_is_still_a_success(self):
+        # an agent with no traffic in the window is a normal state, and failing it would page
+        # someone about a quiet night
+        session = FakeSession([], {}, count=0)
+        result = run_sample(
+            FakeClient(), session, "https://h", 1, sample_run(), trace_only()
+        )
+        assert result.status == "SUCCEEDED"
 
     def test_a_window_graded_whole_leaves_its_end_alone(self):
         session = FakeSession(

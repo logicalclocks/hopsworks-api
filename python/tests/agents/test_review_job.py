@@ -626,6 +626,36 @@ class TestOneExecution:
             clusters["cluster_id"].iloc[0]
         }
 
+    def test_a_review_with_no_model_fails_rather_than_passing_the_window(
+        self, monkeypatch
+    ):
+        # It wrote an ungradable row per verdict and reported SUCCEEDED. The watermark is the
+        # newest sampleTo of a succeeded run, so the feedback nobody reviewed was stepped over
+        # and never offered to a review again.
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        session = FakeSession(
+            [feedback(0)],
+            details={"trace-0": detail()},
+            run=run_row(),
+            job={"config": {"provider": "anthropic", "model": "m"}},
+        )
+        store = FakeFeatureStore()
+        assert (
+            rj._execute(
+                "run-1",
+                session,
+                "http://h/agent-evals",
+                self.Project(store),
+                "http://h",
+            )
+            is False
+        )
+        params = session.puts[-1][1]
+        assert params["status"] == "FAILED"
+        assert "ANTHROPIC_API_KEY" in params["errorMessage"]
+        assert "processedThrough" not in params
+        assert store.group.frames == []
+
     def test_a_run_of_the_wrong_type_is_refused_and_reported(self):
         session = FakeSession([], run=run_row(runType="SUITE"))
         assert (

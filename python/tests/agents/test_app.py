@@ -3488,8 +3488,9 @@ class TestTurnSpan:
     runner's trial rows point at trace ids that were never created.
     """
 
-    def _traced_app(self, **kwargs):
+    def _traced_app(self, *, known_run=True, **kwargs):
         pytest.importorskip("opentelemetry.sdk")
+        from hopsworks_agents.protocol.evaluation import RunVerifier
         from hopsworks_agents.protocol.tracing import install_baggage_propagation
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -3504,6 +3505,13 @@ class TestTurnSpan:
 
         app = AgentApp(name="Traced agent", tracing=False, **kwargs)
         app.tracer_provider = provider
+        # Whether Hopsworks vouches for the run id in the baggage. Only a run it
+        # knows labels the trace, so the two cases are separate here.
+        app._eval_verifier = RunVerifier(
+            lambda run_id: {"deploymentId": 7, "status": "RUNNING"}
+            if known_run
+            else None
+        )
 
         @app.chat
         async def chat(request):
@@ -3548,6 +3556,20 @@ class TestTurnSpan:
         attrs = self._attrs(exporter)
         assert attrs["hopsworks.eval.run_id"] == "run_7"
         assert attrs["hopsworks.eval.trial_index"] == "2"
+
+    def test_does_not_copy_an_eval_id_nobody_vouches_for(self):
+        # Baggage comes over the wire and these attributes are what the platform
+        # reads back to tell a test from a customer: without a check, any caller
+        # could label their own turn as a trial and have the monitor leave it
+        # out of the deployment's quality numbers.
+        app, exporter = self._traced_app(known_run=False)
+        TestClient(app).post(
+            "/v1/chat",
+            json=make_request("hi"),
+            headers={"baggage": "hopsworks.eval.run_id=forged"},
+        )
+        attrs = self._attrs(exporter)
+        assert "hopsworks.eval.run_id" not in attrs
 
     def test_drops_baggage_outside_the_allowlist(self):
         # baggage is caller-controlled, so an arbitrary key must not become an

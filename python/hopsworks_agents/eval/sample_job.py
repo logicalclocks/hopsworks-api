@@ -112,6 +112,11 @@ def within_window(
     """
     inside = []
     for summary in summaries:
+        if summary.get("evalRunId"):
+            # An evaluation trial, not production traffic. The listing already leaves these out
+            # when the backend understands `excludeEval`; this is the same rule for one that
+            # does not.
+            continue
         created = summary_ms(summary)
         if created is None:
             # Its age is unknown, and treating unknown as inside would quietly
@@ -378,6 +383,12 @@ def run_sample(
             "from": int(start_ms),
             "to": int(end_ms),
             "order": "random" if strategy == "random" else "oldest",
+            # Not the deployment's own suite runs. They are traffic it served, on the same
+            # deployment, so a monitor grading "the last hour" graded a nightly suite's
+            # questions as if customers had asked them -- and a safety suite's injection
+            # attempts, which are meant to be refused and so drag a production pass rate down
+            # by design. Filtered again below for a backend that does not know the parameter.
+            "excludeEval": "true",
             # Seeded from the window, which every sample run of one execution
             # shares: each evaluator then draws the same conversations, so their
             # verdicts are about the same traffic and can be compared. It also
@@ -465,6 +476,12 @@ def run_sample(
     processed_through = None
     if strategy != "random" and available > len(sampled) and sampled:
         processed_through = max(summary_ms(summary) or 0 for summary in sampled)
+    # Every trace in the window unreadable is not a quiet night, it is a broken read. Reported
+    # SUCCEEDED it moved the watermark over all of them, so the traffic nobody graded was never
+    # offered again -- the one case where "no trials" must not be taken for "no traffic".
+    unreadable = bool(sampled) and not trials
+    if unreadable:
+        processed_through = None
     return RunResult(
         run_id=run["runId"],
         # No suite, and the empty string is the record of that rather than a
@@ -477,7 +494,12 @@ def run_sample(
         # A sample that graded nothing is not a failed run: an agent with no
         # traffic in the window is a normal state, and reporting it as FAILED
         # would page someone about a quiet night.
-        status="SUCCEEDED",
+        status="FAILED" if unreadable else "SUCCEEDED",
+        error_message=(
+            f"none of the {len(sampled)} conversations in the window could be read"
+            if unreadable
+            else ""
+        ),
         started_at=started,
         completed_at=datetime.now(tz=timezone.utc),
     )

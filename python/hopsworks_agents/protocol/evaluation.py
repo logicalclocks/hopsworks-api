@@ -37,6 +37,7 @@ import dataclasses
 import logging
 import os
 import threading
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote
@@ -178,29 +179,49 @@ def parse_baggage(headers: Mapping[str, str] | None) -> EvalTrial | None:
 # ── verification ─────────────────────────────────────────────────────────────
 
 
+#: Run states a trial may arrive under. PENDING is included because the runner
+#: reports RUNNING from inside the execution, and the first trial can beat it.
+LIVE_RUN_STATUSES = frozenset({"PENDING", "RUNNING"})
+
+#: How long an accepted run stays accepted, in seconds. Long enough that a suite
+#: is one lookup rather than one per task, short enough that a run which has
+#: finished or been stopped stops being accepted while the process lives.
+ACCEPTANCE_TTL_S = 60.0
+
+
 class RunVerifier:
     """Checks a claimed run with Hopsworks before a turn is treated as one.
 
-    A run is accepted when Hopsworks knows it and, if both sides know which
-    deployment they are, it targets this one. Accepted runs are remembered, so
-    a suite of a hundred tasks costs one lookup rather than a hundred.
-    Rejections are not remembered: a transient error on the first trial must
-    not fail the rest of the run, and a forged id costing one request per
-    attempt is the acceptable side of that trade.
+    A run is accepted when Hopsworks knows it, it is still going, and it
+    targets this deployment. Accepted runs are remembered for
+    :data:`ACCEPTANCE_TTL_S`, so a suite of a hundred tasks costs one lookup
+    rather than a hundred without the answer standing for ever -- a run that
+    finished, or was stopped, stops being a licence to skip production side
+    effects. Rejections are not remembered: a transient error on the first
+    trial must not fail the rest of the run, and a forged id costing one
+    request per attempt is the acceptable side of that trade.
 
     ``lookup`` takes a run id and returns the run as a dict, or None when it
     does not exist. The default asks Hopsworks through whatever credentials the
     container has; tests pass their own.
     """
 
-    def __init__(self, lookup: Callable[[str], dict[str, Any] | None] | None = None):
+    def __init__(
+        self,
+        lookup: Callable[[str], dict[str, Any] | None] | None = None,
+        *,
+        now: Callable[[], float] = time.monotonic,
+    ):
         self._lookup = lookup or _lookup_run
-        self._accepted: set[str] = set()
+        self._accepted: dict[str, float] = {}
         self._lock = threading.Lock()
+        self._now = now
 
     def verify(self, trial: EvalTrial) -> bool:
+        now = self._now()
         with self._lock:
-            if trial.run_id in self._accepted:
+            until = self._accepted.get(trial.run_id)
+            if until is not None and until > now:
                 return True
         try:
             run = self._lookup(trial.run_id)
@@ -212,9 +233,22 @@ class RunVerifier:
         if not run:
             log.warning("evaluation run %s is unknown to Hopsworks", trial.run_id)
             return False
+        status = str(run.get("status") or "").upper()
+        if status and status not in LIVE_RUN_STATUSES:
+            # A finished run is not a licence. Run ids are listed to every project
+            # member and stamped on trace attributes, so without this anyone could
+            # replay an old one and have a real customer turn skip the write tools
+            # while reporting success.
+            log.warning(
+                "evaluation run %s is %s, not running", trial.run_id, status
+            )
+            return False
         deployment = os.environ.get("DEPLOYMENT_ID")
         target = run.get("deploymentId")
-        if deployment and target is not None and str(target) != str(deployment):
+        if target is None:
+            log.warning("evaluation run %s names no deployment", trial.run_id)
+            return False
+        if deployment and str(target) != str(deployment):
             log.warning(
                 "evaluation run %s targets deployment %s, not this one (%s)",
                 trial.run_id,
@@ -222,8 +256,17 @@ class RunVerifier:
                 deployment,
             )
             return False
+        if not deployment:
+            # Nothing to compare against: this process is not running as a Hopsworks
+            # deployment, which is the local-development case. Said once per run
+            # rather than silently, since it is the one check that cannot be made.
+            log.warning(
+                "DEPLOYMENT_ID is not set, so run %s was accepted without checking "
+                "that it targets this agent",
+                trial.run_id,
+            )
         with self._lock:
-            self._accepted.add(trial.run_id)
+            self._accepted[trial.run_id] = now + ACCEPTANCE_TTL_S
         return True
 
 

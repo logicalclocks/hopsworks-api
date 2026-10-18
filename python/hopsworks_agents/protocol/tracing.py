@@ -225,6 +225,24 @@ def extract_context(headers: Mapping[str, str] | None) -> Any | None:
         return None
 
 
+def _without_eval_baggage(context: Any) -> Any:
+    """The caller's context with the eval ids taken out of its baggage.
+
+    An unverified turn must not be able to label itself as an evaluation trial:
+    the attributes the baggage processor copies are what the platform reads
+    back to tell a test from a customer.
+    """
+    try:
+        from opentelemetry import baggage
+
+        for key in list(baggage.get_all(context)):
+            if str(key).startswith(BAGGAGE_PREFIXES):
+                context = baggage.remove_baggage(str(key), context)
+    except Exception:  # noqa: BLE001 — never fail a turn over baggage
+        log.debug("could not strip eval baggage", exc_info=True)
+    return context
+
+
 @contextmanager
 def turn_span(
     tracer_provider: Any,
@@ -232,6 +250,7 @@ def turn_span(
     name: str,
     headers: Mapping[str, str] | None = None,
     attributes: dict[str, Any] | None = None,
+    keep_eval_baggage: bool = False,
 ) -> Iterator[Any]:
     """One SERVER span for the whole turn, parented to the caller's trace.
 
@@ -241,8 +260,17 @@ def turn_span(
     The extracted context is *attached* rather than only passed as the span's
     parent: that keeps the caller's baggage active for the whole turn, so the
     baggage span processor sees it on child spans the framework creates too.
+
+    ``keep_eval_baggage`` says whether this turn was accepted as an evaluation.
+    It is false by default and the eval baggage is dropped from the context
+    then: baggage arrives over the wire, and anything copied onto the spans is
+    what the platform reads back as "this was a test" -- so without it, any
+    caller could label their own traffic as an evaluation trial and have the
+    monitor leave it out of the deployment's quality numbers.
     """
-    token, span_cm = _begin_turn_span(tracer_provider, name, headers, attributes)
+    token, span_cm = _begin_turn_span(
+        tracer_provider, name, headers, attributes, keep_eval_baggage
+    )
     try:
         if span_cm is None:
             yield None
@@ -264,6 +292,7 @@ def _begin_turn_span(
     name: str,
     headers: Mapping[str, str] | None,
     attributes: dict[str, Any] | None,
+    keep_eval_baggage: bool = False,
 ) -> tuple[Any | None, Any | None]:
     """Attach the caller's context and build the span context manager.
 
@@ -279,6 +308,8 @@ def _begin_turn_span(
         from opentelemetry import trace
 
         extracted = extract_context(headers)
+        if extracted is not None and not keep_eval_baggage:
+            extracted = _without_eval_baggage(extracted)
         if extracted is not None:
             token = context_api.attach(extracted)
         tracer = tracer_provider.get_tracer("hopsworks_agents.protocol")

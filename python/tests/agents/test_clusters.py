@@ -65,6 +65,45 @@ class TestAssigning:
         assert existing.first_seen == datetime(2026, 9, 1, tzinfo=timezone.utc)
         assert rows[0]["cluster_id"] == "c-old"
 
+    def test_a_decision_made_during_the_run_is_not_undone_by_it(self):
+        # The job reads the clusters at the start and writes whole rows back at the end. A
+        # review takes minutes, so a reviewer who dismissed, promoted or renamed a cluster in
+        # between had it quietly reopened by a job that knew nothing about the decision.
+        stale = c.Cluster(
+            cluster_id="c-1",
+            deployment_id=3,
+            signature="discount not applied",
+            label="old name",
+            size=10,
+            status="open",
+        )
+        fresh = c.from_api(
+            {
+                "clusterId": "c-1",
+                "deploymentId": 3,
+                "signature": "discount not applied",
+                "label": "discount rule ignores stacking",
+                "status": "dismissed",
+                "dismissReason": "works as designed",
+                "decidedBy": "someone@example.com",
+                "decidedAt": "2026-10-19T09:00:00Z",
+            }
+        )
+
+        (merged,) = c.merge_decisions([stale], [fresh])
+
+        assert merged.status == "dismissed"
+        assert merged.dismiss_reason == "works as designed"
+        assert merged.decided_by == "someone@example.com"
+        assert merged.label == "discount rule ignores stacking"
+        # and what the job owns is still the job's
+        assert merged.size == 10
+
+    def test_a_cluster_the_backend_has_never_seen_is_written_as_it_is(self):
+        new = c.Cluster(cluster_id="c-2", deployment_id=3, signature="x", size=1)
+        (merged,) = c.merge_decisions([new], [])
+        assert merged.status == "open"
+
     def test_the_representative_is_the_best_member_and_only_moves_for_a_better_one(
         self,
     ):

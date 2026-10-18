@@ -107,15 +107,47 @@ class TestRunVerifier:
         verifier = RunVerifier(lambda run_id: {"deploymentId": 99})
         assert not verifier.verify(EvalTrial(run_id="r"))
 
-    def test_accepts_when_either_side_does_not_know_the_deployment(self, monkeypatch):
-        monkeypatch.setenv("DEPLOYMENT_ID", "12")
-        assert RunVerifier(lambda run_id: {"runId": run_id}).verify(
-            EvalTrial(run_id="r")
-        )
-        monkeypatch.delenv("DEPLOYMENT_ID")
+    def test_accepts_when_this_process_does_not_know_its_own_deployment(
+        self, monkeypatch
+    ):
+        # local development: nothing to compare against, and no production
+        # traffic to confuse either
+        monkeypatch.delenv("DEPLOYMENT_ID", raising=False)
         assert RunVerifier(lambda run_id: {"deploymentId": 99}).verify(
             EvalTrial(run_id="r")
         )
+
+    def test_rejects_a_run_that_names_no_deployment(self, monkeypatch):
+        # Every run row Hopsworks writes names one. A reply that does not is not
+        # a run this agent can check itself against, and "cannot check" must not
+        # read as "checked".
+        monkeypatch.setenv("DEPLOYMENT_ID", "12")
+        assert not RunVerifier(lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"}).verify(
+            EvalTrial(run_id="r")
+        )
+
+    def test_rejects_a_run_that_is_over(self, monkeypatch):
+        # Run ids are listed to every project member and stamped on trace
+        # attributes. Replaying a finished one made a real customer turn skip the
+        # write tools and report success without having done anything.
+        monkeypatch.setenv("DEPLOYMENT_ID", "7")
+        verifier = RunVerifier(
+            lambda run_id: {"deploymentId": 7, "status": "SUCCEEDED"}
+        )
+        assert not verifier.verify(EvalTrial(run_id="old"))
+
+    def test_an_acceptance_does_not_stand_for_ever(self, monkeypatch):
+        # One lookup per suite rather than one per task -- but a run that ends
+        # while the process lives stops being a licence.
+        monkeypatch.setenv("DEPLOYMENT_ID", "7")
+        clock = [0.0]
+        runs = [{"deploymentId": 7, "status": "RUNNING"}]
+        verifier = RunVerifier(lambda run_id: runs[0], now=lambda: clock[0])
+        assert verifier.verify(EvalTrial(run_id="r1"))
+        runs[0] = {"deploymentId": 7, "status": "CANCELLED"}
+        assert verifier.verify(EvalTrial(run_id="r1")), "still inside the window"
+        clock[0] += 61.0
+        assert not verifier.verify(EvalTrial(run_id="r1"))
 
     def test_a_deployments_own_api_key_file_authenticates_the_lookup(
         self, tmp_path, monkeypatch
@@ -266,14 +298,14 @@ class TestPerRequest:
 
     def test_a_verified_trial_is(self, no_env_eval_mode):
         app = build_app(eval_per_request=True)
-        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id})
+        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"})
         response = chat(TestClient(app), {"baggage": BAGGAGE})
         assert response.status_code == 200
         assert reply(response) == "tool=True run=run-1"
 
     def test_the_flag_does_not_leak_into_the_next_turn(self, no_env_eval_mode):
         app = build_app(eval_per_request=True)
-        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id})
+        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"})
         client = TestClient(app)
         chat(client, {"baggage": BAGGAGE})
         assert reply(chat(client)) == "tool=False run=None"
@@ -301,7 +333,7 @@ class TestPerRequest:
         # not declared: the agent never promised its tools check, so treating
         # the turn as an evaluation would run them for real while looking safe
         app = build_app()
-        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id})
+        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"})
         response = chat(TestClient(app), {"baggage": BAGGAGE})
         assert response.status_code == 200
         assert reply(response) == "tool=False run=None"
