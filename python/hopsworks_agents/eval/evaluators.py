@@ -70,6 +70,13 @@ class ExactMatchEvaluator:
 
     def grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
         expected, actual = task.expects_text(self.name), trial.final_output.strip()
+        if not expected:
+            # Nothing to compare against. Scored, this read as the agent
+            # getting it wrong -- blaming the agent for a task that never said
+            # what right was.
+            return _ungradable(
+                self.name, self.type, "the task expects nothing of this check"
+            )
         if not self.case_sensitive:
             expected, actual = expected.lower(), actual.lower()
         passed = expected == actual
@@ -102,6 +109,13 @@ class ContainsEvaluator:
             if self.expected is not None
             else task.expects_text(self.name)
         )
+        if not needle:
+            # "" is in every string, so this passed whatever the agent said:
+            # a green check that measured nothing, which is worse than a red
+            # one.
+            return _ungradable(
+                self.name, self.type, "the task expects nothing of this check"
+            )
         passed = needle.lower() in trial.final_output.lower()
         return EvaluatorResult(
             self.name,
@@ -244,6 +258,12 @@ class ToolOrderEvaluator:
             return _ungradable(self.name, self.type, "no trace: order cannot be judged")
         called = _tool_names(trace)
         remaining = task.expects_list(self.name)
+        if not remaining:
+            # An empty order is satisfied by any trace at all, so this passed
+            # without looking.
+            return _ungradable(
+                self.name, self.type, "the task lists no tools to order"
+            )
         for name in called:
             if remaining and name == remaining[0]:
                 remaining.pop(0)

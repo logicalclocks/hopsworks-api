@@ -102,6 +102,22 @@ class Task:
         import json
 
         raw = self.expects_text(name)
+        if not raw.startswith("{"):
+            # A bare list, as someone types it into a CSV column: the tools
+            # that must be called, with a leading "!" for one that must not.
+            # The skill has documented that spelling from the start; without
+            # it, "refund_order, !delete_order" asked for a tool called
+            # "!delete_order" and the check could never pass.
+            required = []
+            forbidden = []
+            for item in self.expects_list(name):
+                if item.startswith("!"):
+                    banned = item[1:].strip()
+                    if banned:
+                        forbidden.append(banned)
+                else:
+                    required.append(item)
+            return required, forbidden
         if raw.startswith("{"):
             try:
                 parsed = json.loads(raw)
@@ -115,7 +131,7 @@ class Task:
                 [str(t) for t in required if str(t).strip()],
                 [str(t) for t in forbidden if str(t).strip()],
             )
-        return self.expects_list(name), []
+        return [], []
 
     def turns(self) -> list[str]:
         """The user messages to send, in order.

@@ -75,6 +75,18 @@ class TestTasks:
         suite = _to_suite(run(), [task(expectations={"tool_call": stored})])
         assert suite.tasks[0].expects_tools("tool_call") == (["lookup"], ["refund"])
 
+    def test_a_bang_marks_a_tool_that_must_not_be_called(self):
+        # The spelling the skill has documented from the start. Without it,
+        # "refund_order, !delete_order" asked for a tool named
+        # "!delete_order", so the check could never pass.
+        suite = _to_suite(
+            run(), [task(expectations={"tool_call": "refund_order, !delete_order"})]
+        )
+        assert suite.tasks[0].expects_tools("tool_call") == (
+            ["refund_order"],
+            ["delete_order"],
+        )
+
 
 class TestSuite:
     def test_the_checks_arrive_as_rows_and_still_build(self):

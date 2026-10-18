@@ -10,7 +10,7 @@ Reference for **hops-agent-evals**. A suite's checks are `check(type, name=None,
 | `contains` | `expected` (else per task) | expected text | final answer contains it |
 | `regex` | `pattern`, `should_match` (true) | — | final answer matches (or must not) |
 | `json_schema` | `required_keys` | — | final answer is JSON with the keys |
-| `tool_call` | — | tool names, comma-separated; `!name` for one that must not be called | the trace called those tools |
+| `tool_call` | — | tool names, comma-separated; `!name` for one that must not be called (or `{"required": [...], "forbidden": [...]}`) | the trace called the required tools and none of the forbidden |
 | `tool_order` | — | ordered tool names | tools called in that order |
 | `no_tool_error` | — | — | no tool span errored |
 | `tool_arguments` | `tool`, `required_keys`, `must_parse` (true) | — | the tool was called with those argument keys |

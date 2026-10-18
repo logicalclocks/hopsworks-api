@@ -119,6 +119,57 @@ class TestGrading:
         assert judge(reply).grade(task(), trial(), None).score == 1.0
 
 
+class TestWhatTheJudgeIsShown:
+    def test_the_one_expectation_is_rendered_once(self):
+        # A task has a single expectation per check. Passed as both `expected`
+        # and `rubric` it was rendered under <expected> and again under
+        # <criteria_notes> with the default inputs -- so guidance arrived
+        # labelled as the expected answer, which is the anchoring the inputs
+        # toggle exists to prevent.
+        seen = {}
+
+        def capture(prompt):
+            seen["prompt"] = prompt
+            return GOOD
+
+        from hopsworks_agents.eval.judge_config import parse_judge_config
+
+        config = parse_judge_config({"type": "llm_judge"})
+        LlmJudgeEvaluator(capture, config).grade(
+            task(rubric="Mentions scattering."), trial(), None
+        )
+
+        assert seen["prompt"].count("Mentions scattering.") == 1
+        assert "<expected>" in seen["prompt"]
+        assert "<criteria_notes>" not in seen["prompt"]
+
+    def test_a_judge_that_reads_no_expected_answer_still_sees_the_guidance(self):
+        # The "could it have got there alone" shape: no expected_result among
+        # its inputs, so the expectation is what to look for rather than the
+        # answer, and it belongs in the criteria notes instead of being lost.
+        seen = {}
+
+        def capture(prompt):
+            seen["prompt"] = prompt
+            return GOOD
+
+        from hopsworks_agents.eval.judge_config import parse_judge_config
+
+        config = parse_judge_config(
+            {
+                "type": "llm_judge",
+                "inputs": ["user_request", "agent_response", "rubric"],
+            }
+        )
+        LlmJudgeEvaluator(capture, config).grade(
+            task(rubric="Mentions scattering."), trial(), None
+        )
+
+        assert "<criteria_notes>" in seen["prompt"]
+        assert "<expected>" not in seen["prompt"]
+        assert seen["prompt"].count("Mentions scattering.") == 1
+
+
 class TestWhenTheJudgeMisbehaves:
     """Every one of these must be ungradable, never a zero."""
 

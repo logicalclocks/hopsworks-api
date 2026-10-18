@@ -460,12 +460,22 @@ class LlmJudgeEvaluator:
                 "no trace: this judge is configured to read the tool calls",
             )
         calls, results = tool_calls_text(trace)
+        # One value, one slot. A task has a single expectation per check, and
+        # passing it as both `expected` and `rubric` rendered it twice under
+        # the default inputs -- once as <expected> and once as
+        # <criteria_notes>. A judge shown guidance labelled as the expected
+        # answer anchors on it, which is the thing the inputs toggle exists to
+        # prevent. Which slot it fills is what the check says it reads: a judge
+        # that asks for expected_result is grading against an answer; one that
+        # does not, but asks for a rubric, is being told what to look for.
+        expectation = task.expects_text(self.name)
+        shows_expected = "expected_result" in self.config.inputs
         prompt = render_prompt(
             self.config,
             question=task.asked,
             answer=trial.final_output,
-            expected=task.expects_text(self.name),
-            rubric=task.expects_text(self.name),
+            expected=expectation if shows_expected else "",
+            rubric="" if shows_expected else expectation,
             tool_calls=calls,
             tool_results=results,
             transcript=trial.transcript,

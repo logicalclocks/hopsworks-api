@@ -510,6 +510,46 @@ class TestMetrics:
                 assert row["metric_scope_value"]
 
 
+class TestATaskThatExpectsNothing:
+    """A check with nothing to grade against reports that, rather than a verdict.
+
+    The design says so and the backend gate keeps such a task out of a suite --
+    but a suite defined in code has no gate, and these were answering anyway:
+    `contains` passed because "" is in every string, `tool_order` passed
+    because an empty order is a subsequence of anything, and `exact_match`
+    failed, blaming the agent for a task that never said what right was.
+    """
+
+    def _trial(self, answer="4"):
+        return Trial(
+            trial_id="x",
+            run_id="r",
+            task_id="t1",
+            task_version=1,
+            trial_index=0,
+            deployment_id=7,
+            final_output=answer,
+        )
+
+    def test_contains_says_so_instead_of_passing(self):
+        blank = Task(task_id="t1", input_messages="[]", expectations={})
+        result = ContainsEvaluator().grade(blank, self._trial(), None)
+        assert result.ungradable is True
+        assert result.passed is None or result.passed is False
+
+    def test_exact_match_says_so_instead_of_failing(self):
+        blank = Task(task_id="t1", input_messages="[]", expectations={})
+        result = ExactMatchEvaluator().grade(blank, self._trial(), None)
+        assert result.ungradable is True
+
+    def test_tool_order_says_so_instead_of_passing(self):
+        blank = Task(task_id="t1", input_messages="[]", expectations={})
+        result = ToolOrderEvaluator().grade(
+            blank, self._trial(), {"tool_names": '["lookup"]'}
+        )
+        assert result.ungradable is True
+
+
 class TestEvaluatorRobustness:
     def test_a_evaluator_that_raises_does_not_break_the_run(self):
         class Exploding:
