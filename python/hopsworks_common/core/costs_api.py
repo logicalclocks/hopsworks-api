@@ -131,6 +131,9 @@ class CostsApi:
 
             print(costs.total_cost, costs.currency)
             for bucket in costs.buckets:
+                if not bucket.observed:
+                    print(bucket.start, "no data")
+                    continue
                 print(bucket.start, sum(row.total_cost for row in bucket.items))
             ```
 

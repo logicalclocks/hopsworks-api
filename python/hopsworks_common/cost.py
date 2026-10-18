@@ -48,7 +48,7 @@ class CostRow:
     The `*_hours_requested` and `*_hours_used` columns are CPU core-hours and RAM byte-hours.
     Efficiencies are used divided by requested hours, cost-weighted over CPU and RAM for `total_efficiency`, and `None` when nothing was requested.
     `cpu_no_requests` and `ram_no_requests` mean the namespace used that resource without requesting any, where OpenCost would report 100% efficiency.
-    `share` is the fraction of the window's total cost, and `None` when that total is not positive or the row is inside a [`CostBucket`][hopsworks_common.cost.CostBucket].
+    `share` is the fraction of the window's total cost, and `None` when that total is not positive, when the row is inside a [`CostBucket`][hopsworks_common.cost.CostBucket], or in a project report from [`CostsApi.get_project_costs`][hopsworks_common.core.costs_api.CostsApi.get_project_costs], whose only row would always be 1.
     """
 
     namespace: str | None = None
@@ -183,11 +183,12 @@ class CostCoverage:
 @public("hopsworks.cost.NamespaceCosts")
 @dataclass
 class NamespaceCosts:
-    """Kubernetes cost per namespace, or per department, over a time window, as seen by a platform administrator.
+    """Kubernetes cost per namespace, or per department, over a time window.
 
     The cost is computed by OpenCost and proxied by Hopsworks.
     Each Hopsworks project runs in its own namespace, so a namespace row is the compute and storage cost of that project.
-    `total_cost` and `idle_cost` cover the whole cluster, and `efficiency` is the cost-weighted efficiency of all namespace rows.
+    In the administrator reports, `total_cost` and `idle_cost` cover the whole cluster, and `efficiency` is the cost-weighted efficiency of all namespace rows.
+    In a project report from [`CostsApi.get_project_costs`][hopsworks_common.core.costs_api.CostsApi.get_project_costs] they cover that project alone: `items` and the bucket rows are the project's `NAMESPACE` row, and `idle_cost` is 0.
     `gpu_workload_cost` and `cpu_workload_cost` are the sums of the namespace rows' workload split, so with `idle_cost` and the `UNMOUNTED` row they add up to `total_cost`.
     `start` and `end` are ISO-8601 UTC timestamps.
     The totals and `items` cover only the buckets with data, as reported by `coverage`, and `items` are the per-row sums of the bucket rows, most expensive first.
