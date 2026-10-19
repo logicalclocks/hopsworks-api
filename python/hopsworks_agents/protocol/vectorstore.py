@@ -349,6 +349,18 @@ class HopsworksVectorStore(VectorStore):
 
         try:
             results = self._find_neighbors(fg, vector, k, condition)
+            if not results and condition is not None:
+                # The index cannot always answer the filter. A string column of
+                # an embedding feature group is mapped as analysed text, and an
+                # equality filter on one is sent as a term query: "alice@x.com"
+                # is never a term of it, so the filter matches nothing and a
+                # subject-scoped search comes back empty however much was
+                # ingested. (It is not even exact the other way -- a term of
+                # "alice" matches that subject's rows.) So when a filtered
+                # search finds nothing, ask unfiltered and keep only what is
+                # ours, below: the comparison is then a Python `==` on the
+                # value itself, which is both exact and ours to rely on.
+                results = self._find_neighbors(fg, vector, k, None)
         except Exception:  # noqa: BLE001
             log.exception("Vector search failed; returning no hits")
             return []
@@ -357,8 +369,18 @@ class HopsworksVectorStore(VectorStore):
             row = dict(zip(self._features, values, strict=False))
             row.pop("embedding", None)
             row["score"] = score
+            # Whatever the index matched on, a row is this caller's only if the
+            # value is the one they asked for. Rows that are not never leave
+            # this method, and nothing outside the pod sees them.
+            if subject is not None and row.get("subject") != subject:
+                continue
+            if (
+                conversation_id is not None
+                and row.get("conversation_id") != conversation_id
+            ):
+                continue
             hits.append(row)
-        return hits
+        return hits[:k]
 
     @staticmethod
     def _feature_filter(fg, column: str, value):

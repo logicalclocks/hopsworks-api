@@ -2610,6 +2610,55 @@ class TestReviewRegressions:
             {"role": "user", "content": "second"},
         ]
 
+    def test_a_filter_the_index_cannot_answer_does_not_lose_the_search(self):
+        # A string column of an embedding feature group is mapped as analysed
+        # text, and hsfs sends an equality filter as a term query: no term of
+        # "alice@example.com" is that string, so the filtered search comes back
+        # empty however much was ingested. Every subject-scoped memory search
+        # returned nothing because of it.
+        from hopsworks_agents.protocol.vectorstore import HopsworksVectorStore
+
+        store = HopsworksVectorStore("d1", 3)
+        store._fg = object()
+        store._features = ["item_id", "subject", "content"]
+        asked = []
+
+        def neighbors(fg, vector, k, condition):
+            asked.append(condition)
+            if condition is not None:
+                return []
+            return [
+                (0.9, ["i1", "alice@example.com", "hers"]),
+                (0.8, ["i2", "bob@example.com", "his"]),
+            ]
+
+        store._find_neighbors = neighbors
+        store._feature_filter = staticmethod(lambda fg, column, value: (column, value))
+
+        hits = store.search([0.0, 0.0, 1.0], k=5, subject="alice@example.com")
+
+        # asked with the filter first, then without it
+        assert len(asked) == 2 and asked[0] is not None and asked[1] is None
+        # and only the subject's own row came back: the check is a Python
+        # comparison on the value, so it is exact where the index's was not
+        assert [h["item_id"] for h in hits] == ["i1"]
+
+    def test_another_subjects_rows_never_leave_the_search(self):
+        from hopsworks_agents.protocol.vectorstore import HopsworksVectorStore
+
+        store = HopsworksVectorStore("d1", 3)
+        store._fg = object()
+        store._features = ["item_id", "subject"]
+        # the index answers the filter, but with a row that is not this
+        # subject's -- a term of "alice" matches "alice@example.com" and
+        # "alice@other.com" alike
+        store._find_neighbors = lambda fg, vector, k, condition: [
+            (0.9, ["i1", "alice@other.com"]),
+        ]
+        store._feature_filter = staticmethod(lambda fg, column, value: (column, value))
+
+        assert store.search([1.0, 0.0, 0.0], k=5, subject="alice@example.com") == []
+
     def test_failed_purge_raises_instead_of_reporting_zero(self):
         from hopsworks_agents.protocol.vectorstore import (
             HopsworksVectorStore,
