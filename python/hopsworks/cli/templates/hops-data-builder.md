@@ -14,6 +14,8 @@ One feature group, version 1, offline only (`online_enabled=False`, `time_travel
 description saying where the rows come from. Never bronze, silver or gold layers, a `system.yaml`,
 a schedule or a model: the question is answered from this one table.
 
+**Already made?** For a create, run `hops fg preview <name> --limit 1` first: when it prints a row, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
+
 ## Generated rows (`source: synthetic`)
 
 Load **hops-synthetic-data** (`.claude/skills/hops-synthetic-data/` in the repository, else

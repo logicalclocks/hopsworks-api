@@ -150,7 +150,7 @@ def test_the_menu_runs_on_haiku_and_hands_every_build_to_a_stronger_agent():
     for section in ("## Explore", "## Status", "## Dashboard", "## App"):
         assert section in text
     assert "hops-dashboard-builder" in text and "hops-app-builder" in text
-    assert "## A table, then a look" in text and "## One piece" in text
+    assert "## Pieces" in text
     for agent in ONE_PIECE:
         assert agent in text
     assert "`/hops-ml`" in text
@@ -1915,3 +1915,23 @@ def test_the_app_skeleton_aggregates_in_the_query_engine(monkeypatch):
     ]
     sql, params = executed[1]
     assert "ROW_NUMBER() OVER (PARTITION BY customer_id" in sql and params == (0.6, 0.3)
+
+
+def test_every_piece_has_an_exit_check_the_cli_can_run():
+    import click
+    from hopsworks.cli.main import cli
+
+    text = (TEMPLATES / "hops.md").read_text(encoding="utf-8")
+    table = text.split("## Pieces", 1)[1].split("\n1. ", 1)[0]
+    rows = [r for r in table.splitlines() if r.startswith("| ") and "---" not in r][1:]
+    assert len(rows) >= 7
+    ctx = click.Context(cli)
+    for row in rows:
+        check = row.split(" | ")[3]
+        for command in re.findall(r"`hops ([a-z ]+)", check):
+            cmd = cli
+            for word in command.split():
+                if not isinstance(cmd, click.Group):
+                    break
+                cmd = cmd.get_command(ctx, word) or cmd
+            assert not isinstance(cmd, click.Group), (row, command)

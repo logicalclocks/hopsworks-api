@@ -13,6 +13,8 @@ There is no ML system: no `system.yaml`, no build lease, no `set.py`, no deploym
 **hops-batch-inference**, **hops-fg** and **hops-job** (`.claude/skills/<name>/` in the
 repository, else `~/.claude/skills/<name>/`) and follow them.
 
+**Already made?** For a create, run `hops fg preview <name>_predictions --limit 1` first: when it prints a row, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
+
 ## Steps
 
 1. **Show it first.** Write `./inference/<name>/score.py` before anything runs, then create the

@@ -32,13 +32,12 @@ Already known, no need to look again:
 | --- | --- |
 | none | Ask "What do you want to do?": **Explore data**, **Make a table and look at it**, **Build or resume an ML system**, **A dashboard or an app** (then ask which). Then continue with that choice below. |
 | `explore` | Explore (below). |
-| an instruction that asks for a table and a question about it, with no model | A table, then a look (below), whatever its first word. |
-| an instruction for one piece outside an ML system: features only, a model or candidate models on an existing feature view, scoring with an existing model | One piece (below), whatever its first word. |
+| an instruction to make something outside an ML system (a table, features, a model or candidates, scoring, a dashboard, an app, an analytics layer), alone or several together | Pieces (below), whatever its first word. |
 | `dashboard` | Dashboard (below), with the rest as the instruction. |
 | `app` | App (below), with the rest as the instruction. |
 | `status` | Status (below). |
 | `ml` | Run the interview: invoke the `hops-ml` command with the Skill tool, passing the rest as its arguments, and follow it. |
-| `reqs`, `data`, `features`, `train`, `infer`, `verify`, `stop`, `f`, `t`, `i`, with an ML system listed above | Reply with one line: building and running phases is `/hops-build` (for example `/hops-build train`, `/hops-build verify`), and stop. Without a system, `features`, `train` and `infer` are One piece (below). |
+| `reqs`, `data`, `features`, `train`, `infer`, `verify`, `stop`, `f`, `t`, `i`, with an ML system listed above | Reply with one line: building and running phases is `/hops-build` (for example `/hops-build train`, `/hops-build verify`), and stop. Without a system, `features`, `train` and `infer` are Pieces (below). |
 
 Choosing **Build or resume an ML system** from the menu runs the interview the same way. When the
 system's `requirements.status` is already `met`, reply with one line that `/hops-build` continues it.
@@ -53,50 +52,48 @@ SQL: `date_diff('day', a, b)`, `date_trunc('month', ts)`, `approx_percentile`, a
 `AskUserQuestion` (look deeper, a dashboard over it, an app over it, an ML system over it), the
 one the user's words point to marked "(Recommended)".
 
-## A table, then a look
+## Pieces
 
-A request for a table and a question about it, with no model ("generate sales, then show where
-revenue comes from by country, category and month"), is one feature group and an answer in the
-chat. It is never the bronze, silver and gold layers (those are for an analytics pipeline the
-user asks for by name), never an ML system, and never a dashboard or an app unless the user asks
-for one by name.
+A request outside an ML system names what to make. Each thing to make is a piece, and this table
+is the whole dispatch:
 
-1. From the instruction, take the table's name, its columns, the rows (generated, or a data source
-   from `hops datasource list`) and the story the question needs (what grows, what dominates).
-   Ask only what the instruction leaves open, in one `AskUserQuestion` call.
-2. Spawn **hops-data-builder** with the Agent tool and this prompt:
+| Piece | Needs | Makes | Exit check | Builder |
+| --- | --- | --- | --- | --- |
+| table | nothing, or a data source | feature group `<t>` with rows | `hops fg preview <t> --limit 1` prints a row | **hops-data-builder** |
+| features | feature groups with rows, or a data source | feature group `<f>` with rows, job `<f>-features` | `hops fg preview <f> --limit 1` prints a row | **hops-features-builder** |
+| model | feature view `<v>`, or feature groups with rows and the label | model `<m>` registered on `<v>` | `hops model info <m>` shows `Feature view` `<v> v<n>` | **hops-model-builder** |
+| inference | model `<m>` on a feature view | feature group `<m>_predictions` with rows, job `<m>-score` | `hops fg preview <m>_predictions --limit 1` prints a row | **hops-infer-builder** |
+| dashboard | feature groups with rows | Superset dashboard `<title>` | `hops superset dashboard list` lists `<title>` | **hops-dashboard-builder** (Dashboard below) |
+| app | what it reads: feature groups, a model or a deployment | app `<a>` serving | `hops app info <a>` shows `State` `RUNNING` | **hops-app-builder** (App below) |
+| analytics layer | bronze: a source; silver: bronze tables; gold: silver tables | the layer's tables with rows | `hops fg preview <table> --limit 1` for each table its `system.yaml` lists | `/hops-bronze`, `/hops-silver`, `/hops-gold` |
 
-   ```
-   name: <table name>
-   rows: <how many, 10000 unless the user said>
-   columns: <name and type, one per line>
-   story: <what the question should find in the data>
-   source: <synthetic | the data source name>
-   where: <Hopsworks terminal | external client>
-   ```
+1. **The goal.** Write down the pieces the request names, each with its asset name. Add a piece
+   one of them needs only when that need's exit check fails: "a model on the deals" with no
+   feature view makes the view inside the model piece; "score the deals daily with the best
+   model" when a model exists is the inference piece alone.
+2. **Run what is missing, in needs order.** For each piece, run its exit check. Passing: the piece
+   exists; say so in one line and go on. Failing: spawn its builder with the Agent tool and its
+   prompt below, then run the exit check again. Failing again: stop and say which check failed
+   and what the builder reported.
+3. **A check is a command on the cluster**, never what a builder or an earlier step said.
+4. **No `system.yaml`**, build lease or `set.py` for pieces. "Make it a system" runs `/hops-ml`,
+   which starts from what the checks find.
+5. **A question about the data** ("then show where revenue comes from by country"): once the table
+   exists, answer from a few `hops sql "<query>"` calls (Trino SQL, as in Explore) over `<t>_1`,
+   each with a `GROUP BY` and a `LIMIT`: a short table or a few lines per breakdown. Never a
+   dashboard or an app unless the user asked for one by name.
+6. **Then** offer the next step with `AskUserQuestion`, the one the request points to marked
+   "(Recommended)": the next piece, a dashboard or an app over the result, or the whole ML system.
 
-3. Answer the question from a few `hops sql "<query>"` calls (Trino SQL, as in Explore) over
-   `<name>_1`, each with a `GROUP BY` and a `LIMIT`: a short table or a few lines per breakdown
-   the user asked for.
-4. Offer the next step with `AskUserQuestion`: look deeper (Recommended), a dashboard over it, an
-   app over it.
+Ask only what the request leaves open, in one `AskUserQuestion` call. Every prompt ends with
+`where: <Hopsworks terminal | external client>`.
 
-## One piece
-
-One part of an ML system, built on its own: no interview, no `system.yaml`, no `/hops-build`.
-Each builder writes its code under `./<kind>/<name>/` and creates its first asset before the long
-part, so the user sees it start. Ask only what the instruction leaves open, in one
-`AskUserQuestion` call, then spawn the builder with the Agent tool and print what it returns.
-
-| The user wants | Builder | Prompt |
-| --- | --- | --- |
-| features into a feature group, on a schedule or once | **hops-features-builder** | `name`, `sources` (feature groups or a data source), `features` (name, meaning, type), `grain` (the key and the event time), `schedule` (a Quartz cron, or none) |
-| a model, or candidate models compared, on an existing feature view | **hops-model-builder** | `name`, `feature_view` (name:version), `label`, `task` (classification, regression), `candidates` (what the user named, or none), `metric` |
-| an existing model scoring a feature view, once or on a schedule | **hops-infer-builder** | `name`, `model` (name:version, or the best by a metric), `feature_view` (name:version), `schedule` |
-
-Every prompt ends with `where: <Hopsworks terminal | external client>`. Then offer the next step
-with `AskUserQuestion`: the next piece (features, then a model, then scoring), a dashboard or an
-app over the result, or the whole ML system (`/hops-ml`, which starts from these assets).
+| Builder | Prompt |
+| --- | --- |
+| hops-data-builder | `name`, `rows` (10000 unless the user said), `columns` (name and type, one per line), `story` (what the question should find), `source` (`synthetic` or a data source) |
+| hops-features-builder | `name`, `sources` (feature groups or a data source), `features` (name, meaning, type), `grain` (the key and the event time), `schedule` (a Quartz cron, or none) |
+| hops-model-builder | `name`, `feature_view` (name:version, or the feature groups and the label to make one), `label`, `task` (classification, regression), `candidates` (what the user named, or none), `metric` |
+| hops-infer-builder | `name`, `model` (name:version, or the best by a metric), `feature_view` (name:version), `schedule` |
 
 ## Status
 

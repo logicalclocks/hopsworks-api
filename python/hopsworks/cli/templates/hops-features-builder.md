@@ -13,6 +13,8 @@ There is no ML system: no `system.yaml`, no build lease, no `set.py`. Load **hop
 **hops-fg** and **hops-job** (`.claude/skills/<name>/` in the repository, else
 `~/.claude/skills/<name>/`) and follow them, with their rules for a pipeline outside a system.
 
+**Already made?** For a create, run `hops fg preview <name> --limit 1` first: when it prints a row, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
+
 ## Steps
 
 1. **Show it first.** Write the program as `./features/<name>/pipeline.py` before anything runs,

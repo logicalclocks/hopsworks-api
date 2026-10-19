@@ -14,6 +14,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import lineage, output, session, versions
+from hopsworks.cli.commands.job import _ts_label
 
 
 @click.group("model")
@@ -77,12 +78,22 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
         ["Name", getattr(model, "name", "?")],
         ["Version", getattr(model, "version", "?")],
         ["Framework", getattr(model, "framework", "-")],
-        ["Created", getattr(model, "created", "-")],
+        ["Created", _ts_label(getattr(model, "created", None))],
+        ["Feature view", _feature_view_label(model)],
         ["Metrics", _short_metrics(getattr(model, "training_metrics", {}) or {})],
         ["Description", output.first_line(getattr(model, "description", ""))],
         ["Tags", output.format_mapping(output.read_tags(model))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+def _feature_view_label(model: Any) -> str:
+    """The feature view the model was trained on, `name vN`, from its provenance; `-` without one."""
+    try:
+        view = model.get_feature_view(init=False)
+    except Exception:  # noqa: BLE001 - provenance is optional; a model may have none
+        return "-"
+    return f"{view.name} v{view.version}" if view is not None else "-"
 
 
 def _list_models(project: Any) -> list[dict[str, Any]]:
@@ -118,6 +129,7 @@ def _model_to_dict(model: Any) -> dict[str, Any]:
         "version": getattr(model, "version", None),
         "framework": getattr(model, "framework", None),
         "created": getattr(model, "created", None),
+        "feature_view": _feature_view_label(model),
         "metrics": dict(getattr(model, "training_metrics", {}) or {}),
         "description": getattr(model, "description", None),
         "tags": output.read_tags(model),

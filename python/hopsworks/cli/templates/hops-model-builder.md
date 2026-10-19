@@ -13,6 +13,8 @@ There is no ML system: no `system.yaml`, no build lease, no `set.py`, no deploym
 prompt names one. Load **hops-fv** and **hops-train** (`.claude/skills/<name>/` in the
 repository, else `~/.claude/skills/<name>/`) and follow them.
 
+**Already made?** For a create, run `hops model info <name>` first: when it shows the feature view of the prompt, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
+
 ## Steps
 
 1. **Show it first.** Write `./models/<name>/train.py` before anything runs, then fix the split
@@ -21,8 +23,11 @@ repository, else `~/.claude/skills/<name>/`) and follow them.
    job; `hops td list <feature view>` shows it). `train.py` reads it with
    `fv.get_train_validation_test_split(training_dataset_version=<v>)` (validation for choosing,
    test for the report), takes the candidate from `--candidate`, trains it, scores it with `metric`,
-   and registers it as a new version of model `<name>` with `metrics=` (`val_<metric>` and
-   `test_<metric>`), a `description=` naming the candidate, and the charts hops-train saves.
+   and registers it as a new version of model `<name>` with `feature_view=` (so `hops model info`
+   names the view), `metrics=` (`val_<metric>` and `test_<metric>`), a `description=` naming the
+   candidate, and the charts hops-train saves. With no feature view yet (`hops fv info <view>`
+   fails), create it first from the prompt's feature groups and label:
+   `hops fv create <view> --feature-group <fg>:<v> --join ... --labels <label>` (**hops-fv**).
 2. **Train every candidate as a job.** One job, one run per candidate, so each run is tracked:
 
    ```bash

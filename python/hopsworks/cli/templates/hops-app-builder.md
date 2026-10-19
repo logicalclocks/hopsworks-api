@@ -13,6 +13,8 @@ Load **hops-app** (`.claude/skills/hops-app/` in the repository, else `~/.claude
 its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skeleton/`. Load
 **hops-design** the same way and follow it for the UI.
 
+**Already made?** For a create, run `hops app info <name>` first: when it shows `State` `RUNNING`, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
+
 ## Actions
 
 - **create:** write the app from the skeleton: a FastAPI backend with `/health` and a JSON API under
