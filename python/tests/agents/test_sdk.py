@@ -16,7 +16,7 @@ from hopsworks_agents.eval.sdk import (
     Task,
     check,
 )
-from hopsworks_agents.eval.sdk.models import Run, as_datetime
+from hopsworks_agents.eval.sdk.models import EvaluatorTemplate, Run, as_datetime
 
 
 class Reply:
@@ -391,6 +391,40 @@ class TestEvaluators:
         assert saved.template_id == "e"
         assert session.sent[0][3]["spec"] == json.dumps([check("llm_judge")])
         assert evals.evaluators.find("quality").checks == [{"type": "x"}]
+
+    def test_update_edits_the_entry_instead_of_adding_another(self):
+        """`save` always creates, so an edit used to mean a duplicate name.
+
+        Which is the key sprawl a shared library exists to prevent: two
+        evaluators called "quality", and no way to tell which a suite copied.
+        """
+        evals, session = client(
+            Reply(
+                {
+                    "templateId": "e",
+                    "name": "quality",
+                    "description": "what good looks like",
+                    "spec": '[{"type":"llm_judge"}]',
+                }
+            ),
+        )
+        current = EvaluatorTemplate.from_api(
+            {
+                "templateId": "e",
+                "name": "quality",
+                "description": "what good looks like",
+                "spec": '[{"type":"llm_judge"}]',
+            }
+        )
+
+        evals.evaluators.update(current, name="answer quality")
+
+        body = session.sent[0][3]
+        # the id is what makes it an edit; everything unnamed is carried
+        assert body["templateId"] == "e"
+        assert body["name"] == "answer quality"
+        assert body["description"] == "what good looks like"
+        assert body["spec"] == '[{"type":"llm_judge"}]'
 
     def test_installing_defaults_leaves_existing_ones_alone(self):
         from hopsworks_agents.eval.judge_config import default_templates

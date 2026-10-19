@@ -541,6 +541,47 @@ class Evaluators:
             )
         )
 
+    def update(
+        self,
+        template: EvaluatorTemplate | str,
+        *,
+        name: str | None = None,
+        checks: Sequence[dict[str, Any]] | None = None,
+        description: str | None = None,
+    ) -> EvaluatorTemplate:
+        """Change a saved evaluator: its name, its checks, or what it is for.
+
+        An edit, not another entry. :meth:`save` always creates one, so from
+        Python the only way to correct a library evaluator was to add a second
+        one under the same name -- the key sprawl a shared library exists to
+        avoid.
+
+        Nothing is re-graded by this: applying an evaluator copies its checks
+        into the suite or the task, so a published suite keeps meaning exactly
+        what it meant when it was published.
+        """
+        current = (
+            template
+            if isinstance(template, EvaluatorTemplate)
+            else self._by_id(template)
+        )
+        body = {
+            "templateId": current.template_id,
+            "name": current.name if name is None else name,
+            "description": current.description if description is None else description,
+            "spec": current.spec if checks is None else json.dumps(list(checks)),
+        }
+        return EvaluatorTemplate.from_api(self._http.post(f"{EVALS}/evaluators", body))
+
+    def _by_id(self, template_id: str) -> EvaluatorTemplate:
+        found = next(
+            (e for e in self.list() if e.template_id == template_id),
+            None,
+        )
+        if found is None:
+            raise AgentServingError(f"no saved evaluator {template_id}")
+        return found
+
     def delete(self, template: EvaluatorTemplate | str) -> None:
         template_id = (
             template.template_id
