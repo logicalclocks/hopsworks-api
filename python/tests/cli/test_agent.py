@@ -84,7 +84,7 @@ def test_agent_start_calls_sdk(mock_project):
     ms.get_deployment.return_value = agent
     mock_project.get_model_serving.return_value = ms
 
-    result = CliRunner().invoke(cli, ["agent", "start", "my-agent", "--wait", "30"])
+    result = CliRunner().invoke(cli, ["agent", "start", "my-agent", "--timeout", "30"])
     assert result.exit_code == 0, result.output
     agent.start.assert_called_with(await_running=30)
 
@@ -95,7 +95,7 @@ def test_agent_stop_calls_sdk(mock_project):
     ms.get_deployment.return_value = agent
     mock_project.get_model_serving.return_value = ms
 
-    result = CliRunner().invoke(cli, ["agent", "stop", "my-agent", "--wait", "45"])
+    result = CliRunner().invoke(cli, ["agent", "stop", "my-agent", "--timeout", "45"])
     assert result.exit_code == 0, result.output
     agent.stop.assert_called_with(await_stopped=45)
 

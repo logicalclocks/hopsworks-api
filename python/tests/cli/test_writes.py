@@ -316,7 +316,7 @@ def test_td_compute_without_split(mock_project):
     fv = mock.MagicMock()
     fv.create_training_data.return_value = (5, mock.MagicMock())
     fs.get_feature_view.return_value = fv
-    result = CliRunner().invoke(cli, ["td", "compute", "enriched", "1"])
+    result = CliRunner().invoke(cli, ["td", "compute", "enriched", "--fv-version", "1"])
     assert result.exit_code == 0, result.output
     fv.create_training_data.assert_called_once()
 
@@ -327,7 +327,16 @@ def test_td_compute_with_split(mock_project):
     fv.create_train_test_split.return_value = (7, mock.MagicMock())
     fs.get_feature_view.return_value = fv
     result = CliRunner().invoke(
-        cli, ["td", "compute", "enriched", "1", "--split", "train:0.8,test:0.2"]
+        cli,
+        [
+            "td",
+            "compute",
+            "enriched",
+            "--fv-version",
+            "1",
+            "--split",
+            "train:0.8,test:0.2",
+        ],
     )
     assert result.exit_code == 0, result.output
     fv.create_train_test_split.assert_called_once()
@@ -348,6 +357,7 @@ def test_td_compute_with_split_refuses_a_time_window(mock_project):
             "td",
             "compute",
             "enriched",
+            "--fv-version",
             "1",
             "--split",
             "train:0.8,test:0.2",

@@ -139,12 +139,12 @@ hops fv delete <name> --version N --yes
 ## Training Datasets
 
 ```bash
-hops td list <fv> <fv-version>
-hops td compute <fv> <fv-version>                   # Materialize
-hops td compute <fv> <fv-version> --split "train:0.8,test:0.2"
-hops td read <fv> <fv-version> --td-version N [--split train] [--output train.parquet]
-hops td lineage <fv> <fv-version> [--td-version N]   # Parent FGs + trained models
-hops td delete <fv> <fv-version> [--td-version N] --yes
+hops td list <fv> [--fv-version N]
+hops td compute <fv> [--fv-version N]                   # Materialize
+hops td compute <fv> [--fv-version N] --split "train:0.8,test:0.2"
+hops td read <fv> [--fv-version N] --td-version N [--split train] [--output train.parquet]
+hops td lineage <fv> [--fv-version N] [--td-version N]   # Parent FGs + trained models
+hops td delete <fv> [--fv-version N] [--td-version N] --yes
 ```
 
 ## Transformations
@@ -181,7 +181,7 @@ Register flags:
 hops deployment list
 hops deployment info <name>
 hops deployment create <model> [--version N] [--script predict.py]
-hops deployment start <name> [--wait 600]
+hops deployment start <name> [--no-wait] [--timeout 600]
 hops deployment stop <name>
 hops deployment predict <name> --data '{"instances": [[1,2,3]]}'
 hops deployment logs <name> [--component predictor] [--tail 50]

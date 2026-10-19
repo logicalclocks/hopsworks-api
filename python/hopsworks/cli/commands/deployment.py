@@ -428,14 +428,20 @@ def _report_schema(deployment: Any) -> None:
 @deployment_group.command("start")
 @click.argument("name")
 @click.option(
-    "--wait",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the deployment is RUNNING.",
+)
+@click.option(
+    "--timeout",
     type=int,
     default=600,
     show_default=True,
-    help="Seconds to wait for RUNNING.",
+    help="Seconds to wait.",
 )
 @click.pass_context
-def deployment_start(ctx: click.Context, name: str, wait: int) -> None:
+def deployment_start(ctx: click.Context, name: str, wait: bool, timeout: int) -> None:
     """Start a deployment.
 
     Start a deployment and optionally wait for the RUNNING state.
@@ -444,11 +450,12 @@ def deployment_start(ctx: click.Context, name: str, wait: int) -> None:
     Args:
         ctx: Click context.
         name: Deployment name.
-        wait: Seconds to wait for the deployment to become RUNNING.
+        wait: Whether to wait for RUNNING.
+        timeout: Seconds to wait.
     """
     deployment = _get_deployment(ctx, name)
     try:
-        deployment.start(await_running=wait)
+        deployment.start(await_running=timeout if wait else 0)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Start failed: {exc}") from exc
     output.success("✓ Started deployment %s", name)
@@ -457,25 +464,32 @@ def deployment_start(ctx: click.Context, name: str, wait: int) -> None:
 @deployment_group.command("stop")
 @click.argument("name")
 @click.option(
-    "--wait",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the deployment is STOPPED.",
+)
+@click.option(
+    "--timeout",
     type=int,
     default=600,
     show_default=True,
-    help="Seconds to wait for STOPPED.",
+    help="Seconds to wait.",
 )
 @click.pass_context
-def deployment_stop(ctx: click.Context, name: str, wait: int) -> None:
+def deployment_stop(ctx: click.Context, name: str, wait: bool, timeout: int) -> None:
     """Stop a running deployment.
 
     \f
     Args:
         ctx: Click context.
         name: Deployment name.
-        wait: Seconds to wait for the deployment to stop.
+        wait: Whether to wait for STOPPED.
+        timeout: Seconds to wait.
     """
     deployment = _get_deployment(ctx, name)
     try:
-        deployment.stop(await_stopped=wait)
+        deployment.stop(await_stopped=timeout if wait else 0)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Stop failed: {exc}") from exc
     output.success("✓ Stopped deployment %s", name)

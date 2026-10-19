@@ -32,7 +32,7 @@ def test_deployment_stop_calls_sdk(mock_project):
     deployment = mock.MagicMock()
     ms.get_deployment.return_value = deployment
     mock_project.get_model_serving.return_value = ms
-    result = CliRunner().invoke(cli, ["deployment", "stop", "fraud", "--wait", "30"])
+    result = CliRunner().invoke(cli, ["deployment", "stop", "fraud", "--timeout", "30"])
     assert result.exit_code == 0, result.output
     deployment.stop.assert_called_with(await_stopped=30)
 

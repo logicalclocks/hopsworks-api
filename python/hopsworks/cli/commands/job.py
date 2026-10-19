@@ -255,7 +255,10 @@ def job_create(
 )
 @click.option("--run", "do_run", is_flag=True, help="Run once after deploying.")
 @click.option(
-    "--wait", is_flag=True, help="With --run, block until the execution finishes."
+    "--wait/--no-wait",
+    default=False,
+    show_default=True,
+    help="With --run, wait until the execution finishes.",
 )
 @click.option(
     "--upload-dir",
@@ -367,7 +370,12 @@ _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 @job_group.command("run")
 @click.argument("name")
 @click.option("--args", "app_args", help="Argument string passed to this execution.")
-@click.option("--wait", is_flag=True, help="Block until the execution terminates.")
+@click.option(
+    "--wait/--no-wait",
+    default=False,
+    show_default=True,
+    help="Wait until the execution finishes.",
+)
 @click.option(
     "--start-time",
     type=click.DateTime(formats=_DT_FORMATS),

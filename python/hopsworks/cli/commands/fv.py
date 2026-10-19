@@ -371,7 +371,7 @@ def fv_create(
     help="Feature whose value clients send with each request (repeatable).",
 )
 @click.option(
-    "--training-dataset-version",
+    "--td-version",
     "training_dataset_version",
     type=int,
     help="Training dataset whose statistics the transformations use.",
@@ -483,7 +483,7 @@ def fv_get(ctx: click.Context, name: str, version: int | None, entry: str) -> No
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
 @click.option(
-    "--n", type=int, default=100, show_default=True, help="Max rows to fetch."
+    "--limit", "n", type=int, default=100, show_default=True, help="Max rows to fetch."
 )
 @click.option(
     "--output",

@@ -1,4 +1,4 @@
-"""Old command names, kept working for one release after the ontology change.
+"""Old command and flag names, kept working for one release after the ontology change.
 
 The root group rewrites the argument list before Click parses it, so old names never show in help and every command exists once.
 Each rewrite prints the new spelling on stderr.
@@ -65,6 +65,40 @@ GROUP_DEFAULTS: dict[tuple[str, ...], str] = {
     ("fg", "stats"): "info",
 }
 
+# Command path -> {old flag: new flag}.
+RENAMED_FLAGS: dict[tuple[str, ...], dict[str, str]] = {
+    ("fg", "preview"): {"--n": "--limit"},
+    ("fv", "read"): {"--n": "--limit"},
+    ("td", "read"): {"--n": "--limit"},
+    ("fg", "insert"): {"--online": "--online-only"},
+    ("agent", "create"): {"--environment": "--env"},
+    ("app", "create"): {"--environment": "--env"},
+    ("factory", "system", "status"): {"--out": "--output"},
+    ("fv", "deploy"): {"--training-dataset-version": "--td-version"},
+    ("td", "list"): {"--version": "--fv-version"},
+    ("td", "lineage"): {"--version": "--fv-version"},
+}
+
+# Command path -> (positional index, option it became, positionals the old form had).
+# The old value is moved only when it is an integer and the old form is complete.
+POSITIONAL_TO_OPTION: dict[tuple[str, ...], tuple[int, str, int]] = {
+    **{
+        ("td", verb): (1, "--fv-version", 2)
+        for verb in ("list", "compute", "read", "delete", "lineage")
+    },
+    ("td", "keyword", "list"): (1, "--td-version", 2),
+    ("td", "keyword", "add"): (1, "--td-version", 3),
+    ("td", "keyword", "remove"): (1, "--td-version", 3),
+}
+
+# Commands whose --wait took seconds; it is now --wait/--no-wait with --timeout.
+WAIT_SECONDS = {
+    ("agent", "start"),
+    ("agent", "stop"),
+    ("deployment", "start"),
+    ("deployment", "stop"),
+}
+
 _HELP = {"-h", "--help"}
 
 
@@ -78,8 +112,14 @@ def rewrite(
         subcommands: Returns the subcommand names of a group in `GROUP_DEFAULTS`.
 
     Returns:
-        The arguments with the new command path, or `args` unchanged.
+        The arguments with the new command path and flags, or `args` unchanged.
     """
+    return _rewrite_flags(_rewrite_command(args, subcommands))
+
+
+def _rewrite_command(
+    args: list[str], subcommands: Callable[[tuple[str, ...]], set[str]]
+) -> list[str]:
     for old in sorted(RENAMED_COMMANDS, key=len, reverse=True):
         start = _find(args, old)
         if start is not None:
@@ -101,11 +141,63 @@ def rewrite(
     return args
 
 
+def _rewrite_flags(args: list[str]) -> list[str]:
+    for path, renames in RENAMED_FLAGS.items():
+        start = _find(args, path)
+        if start is None:
+            continue
+        head, rest = args[: start + len(path)], args[start + len(path) :]
+        for i, token in enumerate(rest):
+            name, eq, value = token.partition("=")
+            if name in renames:
+                _warn_flag(path, name, renames[name])
+                rest[i] = renames[name] + eq + value
+        args = head + rest
+    for path, (index, option, old_count) in POSITIONAL_TO_OPTION.items():
+        start = _find(args, path)
+        if start is None:
+            continue
+        head, rest = args[: start + len(path)], args[start + len(path) :]
+        leading = 0
+        while leading < len(rest) and not rest[leading].startswith("-"):
+            leading += 1
+        if leading >= old_count and rest[index].isdigit():
+            _warn_flag(path, rest[index], f"{option} {rest[index]}")
+            value = rest.pop(index)
+            args = [*head, *rest, option, value]
+    for path in WAIT_SECONDS:
+        start = _find(args, path)
+        if start is None:
+            continue
+        head, rest = args[: start + len(path)], args[start + len(path) :]
+        for i, token in enumerate(rest):
+            name, eq, value = token.partition("=")
+            if name != "--wait":
+                continue
+            if not eq:
+                if i + 1 >= len(rest) or not rest[i + 1].isdigit():
+                    continue
+                value = rest.pop(i + 1)
+            new = ["--no-wait"] if value == "0" else ["--timeout", value]
+            _warn_flag(path, f"--wait {value}", " ".join(new))
+            rest[i : i + 1] = new
+            break
+        args = head + rest
+    return args
+
+
 def _find(args: list[str], path: tuple[str, ...]) -> int | None:
     for i in range(len(args) - len(path) + 1):
         if tuple(args[i : i + len(path)]) == path:
             return i
     return None
+
+
+def _warn_flag(path: tuple[str, ...], old: str, new: str) -> None:
+    click.echo(
+        f"Warning: `{old}` in `hops {' '.join(path)}` is deprecated; use `{new}`.",
+        err=True,
+    )
 
 
 def _warn(old: tuple[str, ...], new: tuple[str, ...]) -> None:

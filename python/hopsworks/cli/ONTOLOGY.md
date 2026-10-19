@@ -36,6 +36,32 @@ These names are not used; the name after the colon replaces them:
 - `get`, `show`, `describe`: `info`, or `update` when it writes.
 - `new`: `start` or `create`.
 
+## Flags
+
+One name per meaning:
+
+- `--limit`: how many rows to show.
+- `--env`: the Python environment a job, app, agent or deployment runs in.
+- `--output`: a file to write; `--dir`: a directory to write into.
+- `--wait/--no-wait`: whether to block until the operation finishes; `--timeout`: the seconds to wait, where the SDK takes a limit.
+- `--yes`: skip the confirmation of a command that destroys data.
+  `factory system delete-assets` does not ask: builds run it without a terminal, it names every asset it deletes, and it checks them before deleting any.
+- `--version`: the version of the entity the first argument names.
+  Versions of other entities name their entity: `--fv-version`, `--td-version`.
+  `td` commands take a feature view first, so they use only `--fv-version` and `--td-version`.
+- `--online`: the online store; it enables it on create commands and reads from it on `fg preview`.
+  `fg insert --online-only` writes to it and skips the offline backfill.
+
+## Retired flags
+
+Each first name is gone; the name after the colon replaces it:
+
+- `--n`: `--limit`.
+- `--environment`: `--env`.
+- `--out`: `--output`.
+- `--training-dataset-version`: `--td-version`.
+- `--wait SECONDS`: `--timeout SECONDS`.
+
 ## Help
 
 - `hops -h` lists the groups, `hops <group> -h` lists its commands with one line each, `hops <group> <command> -h` shows the description and options.
@@ -45,4 +71,4 @@ These names are not used; the name after the colon replaces them:
 
 ## Renames
 
-Old names keep working for one release through `deprecations.py` and print the new name on stderr.
+Old command and flag names keep working for one release through `deprecations.py` and print the new name on stderr.

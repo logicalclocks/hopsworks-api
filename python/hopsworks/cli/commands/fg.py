@@ -187,7 +187,9 @@ def fg_test_access(
 @fg_group.command("preview")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
-@click.option("--n", type=int, default=10, show_default=True, help="Number of rows.")
+@click.option(
+    "--limit", "n", type=int, default=10, show_default=True, help="Number of rows."
+)
 @click.option(
     "--online", is_flag=True, help="Read from the online store (default: offline)."
 )
@@ -751,7 +753,10 @@ def fg_create_external(
     "--generate", type=int, help="Generate N rows of synthetic data and insert."
 )
 @click.option(
-    "--online", is_flag=True, help="Write to online store only (skip offline backfill)."
+    "--online-only",
+    "online",
+    is_flag=True,
+    help="Write to the online store only; skip the offline backfill.",
 )
 @click.pass_context
 def fg_insert(

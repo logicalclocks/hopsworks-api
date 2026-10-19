@@ -37,7 +37,7 @@ fails):
 hops transformation create --file transformations.py            # register udfs first
 hops fv create <name> --feature-group <derived_fg>:1 \
   --transform <fn>:<col> --labels <label>                       # --join "<fg> LEFT <on>" repeatable
-hops td compute <fv> <fv_version> --split "train:0.8,test:0.2"  # positional = FEATURE-VIEW version
+hops td compute <fv> --fv-version <n> --split "train:0.8,test:0.2"  # 3-way: "train:0.7,validation:0.15,test:0.15"
 hops td list <fv>                                               # TD version auto-increments; read it back here
 ```
 

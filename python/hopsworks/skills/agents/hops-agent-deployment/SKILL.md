@@ -123,7 +123,7 @@ The same values are on the predictor: `git_current_commit` and `git_resolved_bra
 
 ```bash
 hops agent create my_agent.py --name my_agent \
-  --requirements requirements.txt --environment my_agent [--memory 3072]
+  --requirements requirements.txt --env my_agent [--memory 3072]
 hops agent start my_agent                       # waits for RUNNING
 hops agent query my_agent --data '{"prompt": "hello"}'
 hops agent logs my_agent                        # follow startup / errors

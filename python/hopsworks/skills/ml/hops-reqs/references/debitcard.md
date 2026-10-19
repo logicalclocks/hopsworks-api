@@ -146,7 +146,7 @@ JavaScript page from `static/`, with no build step and no CDN. Deploy it as
 ```bash
 hops app create <slug>-app --path /Projects/<project>/<system dir>/debitcard/app/app.py \
   --app-kind custom --entrypoint-command "python app.py" --app-port 8080 \
-  --readiness-probe-path /health --environment <slug>-app-env --start
+  --readiness-probe-path /health --env <slug>-app-env --start
 ```
 
 The app loads the latest `card_fraud_model` with its `model.py` and, every few

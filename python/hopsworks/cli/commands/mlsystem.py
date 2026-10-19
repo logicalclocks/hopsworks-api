@@ -452,7 +452,8 @@ def system_delete(
     help="The system's directory, when its code is not in this project's HopsFS.",
 )
 @click.option(
-    "--out",
+    "--output",
+    "out",
     type=click.Path(dir_okay=False, path_type=Path),
     help="Where to write the HTML report; default: status/report.html in the system directory.",
 )

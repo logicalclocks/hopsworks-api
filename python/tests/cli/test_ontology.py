@@ -72,3 +72,39 @@ def test_no_command_uses_a_retired_name():
 def test_old_names_are_not_registered_twice():
     paths = {path for path, _ in _tree()}
     assert not [old for old in RENAMED_COMMANDS if old in paths]
+
+
+def _options(cmd):
+    return {o for p in cmd.params for o in [*p.opts, *getattr(p, "secondary_opts", [])]}
+
+
+def _retired_flags():
+    body = _ONTOLOGY.read_text().split("## Retired flags\n", 1)[1].split("\n## ", 1)[0]
+    # A form with a value (`--wait SECONDS`) is checked by the wait test below.
+    return set(re.findall(r"^- `([^` ]+)`:", body, re.M))
+
+
+def test_no_command_uses_a_retired_flag():
+    retired = _retired_flags()
+    assert "--n" in retired
+    used = [
+        (" ".join(path), sorted(_options(cmd) & retired))
+        for path, cmd in _tree()
+        if _options(cmd) & retired
+    ]
+    assert not used
+
+
+def test_every_wait_is_a_yes_no_switch():
+    for path, cmd in _tree():
+        for param in cmd.params:
+            if "--wait" in param.opts:
+                assert param.is_flag and "--no-wait" in param.secondary_opts, path
+
+
+def test_td_names_every_version():
+    assert not [
+        " ".join(path)
+        for path, cmd in _tree()
+        if path[:1] == ("td",) and "--version" in _options(cmd)
+    ]

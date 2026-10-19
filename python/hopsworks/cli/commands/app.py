@@ -345,7 +345,8 @@ def _report_running(name: str, a: Any) -> None:
     help="Optional app description.",
 )
 @click.option(
-    "--environment",
+    "--env",
+    "environment",
     default="python-app-pipeline",
     show_default=True,
     help="Python environment name backing the app.",
@@ -509,12 +510,13 @@ def app_create(
 @app_group.command("start")
 @click.argument("name")
 @click.option(
-    "--no-wait",
-    is_flag=True,
-    help="Return immediately after submission; do not wait for serving.",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the app is serving.",
 )
 @click.pass_context
-def app_start(ctx: click.Context, name: str, no_wait: bool) -> None:
+def app_start(ctx: click.Context, name: str, wait: bool) -> None:
     """Start an app.
 
     Blocks until the app is `serving` unless `--no-wait` is set.
@@ -523,21 +525,22 @@ def app_start(ctx: click.Context, name: str, no_wait: bool) -> None:
     Args:
         ctx: Click context.
         name: App name.
-        no_wait: Skip the wait-for-serving loop.
+        wait: Whether to wait until the app is serving.
     """
     a = _get_app(ctx, name)
-    _start(a, await_serving=not no_wait)
+    _start(a, await_serving=wait)
 
 
 @app_group.command("redeploy")
 @click.argument("name")
 @click.option(
-    "--no-wait",
-    is_flag=True,
-    help="Return immediately after submission; do not wait for serving.",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the app is serving.",
 )
 @click.pass_context
-def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
+def app_redeploy(ctx: click.Context, name: str, wait: bool) -> None:
     """Redeploy a running app.
 
     Blocks until the app is `serving` unless `--no-wait` is set.
@@ -546,10 +549,10 @@ def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
     Args:
         ctx: Click context.
         name: App name.
-        no_wait: Skip the wait-for-serving loop.
+        wait: Whether to wait until the app is serving.
     """
     a = _get_app(ctx, name)
-    _redeploy(a, await_serving=not no_wait)
+    _redeploy(a, await_serving=wait)
 
 
 @app_group.command("stop")

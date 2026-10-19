@@ -26,42 +26,23 @@ def td_keyword_group() -> None:
 
 @td_group.command("list")
 @click.argument("feature_view")
-@click.argument("fv_version", type=int, required=False)
 @click.option(
-    "--version",
-    "version_opt",
+    "--fv-version",
+    "fv_version",
     type=int,
-    help="Feature view version; same as the positional FV_VERSION. Defaults to latest.",
+    help="Feature view version; latest if omitted.",
 )
 @click.pass_context
-def td_list(
-    ctx: click.Context,
-    feature_view: str,
-    fv_version: int | None,
-    version_opt: int | None,
-) -> None:
+def td_list(ctx: click.Context, feature_view: str, fv_version: int | None) -> None:
     """List training datasets of a feature view.
-
-    The FV version can be given positionally (`td list <fv> 2`, matching
-    `td compute`) or via `--version`; the positional form wins.
 
     \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.
-        fv_version: Feature view version (positional, optional).
-        version_opt: Feature view version (`--version`, optional).
+        fv_version: Feature view version; latest if omitted.
     """
-    version = fv_version if fv_version is not None else version_opt
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = versions.feature_view(fs, feature_view, version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(
-            f"Feature view '{feature_view}' not found: {exc}"
-        ) from exc
-    if fv is None:
-        raise click.ClickException(f"Feature view '{feature_view}' not found.")
+    fv = _get_fv(ctx, feature_view, fv_version)
 
     try:
         tds = fv.get_training_datasets()
@@ -83,8 +64,16 @@ def td_list(
 
 @td_group.command("compute")
 @click.argument("feature_view")
-@click.argument("fv_version", type=int)
-@click.option("--split", help='Train/test split, e.g. "train:0.8,test:0.2".')
+@click.option(
+    "--fv-version",
+    "fv_version",
+    type=int,
+    help="Feature view version; latest if omitted.",
+)
+@click.option(
+    "--split",
+    help='Split ratios, e.g. "train:0.8,test:0.2" or "train:0.7,validation:0.15,test:0.15".',
+)
 @click.option("--start-time", "start_time", help="ISO timestamp lower bound.")
 @click.option("--end-time", "end_time", help="ISO timestamp upper bound.")
 @click.option("--description", default="", help="Training dataset description.")
@@ -99,7 +88,7 @@ def td_list(
 def td_compute(
     ctx: click.Context,
     feature_view: str,
-    fv_version: int,
+    fv_version: int | None,
     split: str | None,
     start_time: str | None,
     end_time: str | None,
@@ -112,7 +101,7 @@ def td_compute(
     Args:
         ctx: Click context.
         feature_view: Feature view name.
-        fv_version: Feature view version.
+        fv_version: Feature view version; latest if omitted.
         split: Comma-separated `name:ratio` split definitions.
         start_time: ISO timestamp lower bound.
         end_time: ISO timestamp upper bound.
@@ -128,9 +117,16 @@ def td_compute(
     fv = _get_fv(ctx, feature_view, fv_version)
 
     try:
-        if splits:
+        if "validation" in splits:
+            td_version, _ = fv.create_train_validation_test_split(
+                validation_size=splits["validation"],
+                test_size=splits.get("test", 0.0),
+                description=description,
+                data_format=data_format,
+            )
+        elif splits:
             td_version, _ = fv.create_train_test_split(
-                test_size=splits.get("test") or splits.get("validation") or 0.2,
+                test_size=splits.get("test", 0.2),
                 description=description,
                 data_format=data_format,
             )
@@ -157,7 +153,12 @@ def td_compute(
 
 @td_group.command("read")
 @click.argument("feature_view")
-@click.argument("fv_version", type=int)
+@click.option(
+    "--fv-version",
+    "fv_version",
+    type=int,
+    help="Feature view version; latest if omitted.",
+)
 @click.option(
     "--td-version",
     "td_version",
@@ -166,17 +167,18 @@ def td_compute(
     help="Training dataset version to retrieve.",
 )
 @click.option(
-    "--split", help='Split to read when the TD was created with a split, e.g. "train".'
+    "--split",
+    help='Split to read when the TD was created with splits: "train", "validation" or "test".',
 )
 @click.option("--output", "output_file", type=click.Path(), help="Write to a file.")
 @click.option(
-    "--n", type=int, default=100, show_default=True, help="Max rows to render."
+    "--limit", "n", type=int, default=100, show_default=True, help="Max rows to render."
 )
 @click.pass_context
 def td_read(
     ctx: click.Context,
     feature_view: str,
-    fv_version: int,
+    fv_version: int | None,
     td_version: int,
     split: str | None,
     output_file: str | None,
@@ -188,7 +190,7 @@ def td_read(
     Args:
         ctx: Click context.
         feature_view: Feature view name.
-        fv_version: Feature view version.
+        fv_version: Feature view version; latest if omitted.
         td_version: Training dataset version.
         split: Optional split name.
         output_file: Optional file to write the dataframe to.
@@ -197,19 +199,14 @@ def td_read(
     fv = _get_fv(ctx, feature_view, fv_version)
     try:
         if split:
-            features, labels = fv.get_train_test_split(
-                training_dataset_version=td_version
-            )
-            df = (
-                features.get(split) or labels.get(split)
-                if isinstance(features, dict)
-                else features
-            )
+            features, labels = _read_split(fv, td_version, split)
         else:
             features, labels = fv.get_training_data(training_dataset_version=td_version)
-            df = features
+    except click.ClickException:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not read training data: {exc}") from exc
+    df = features if labels is None else _with_labels(features, labels)
 
     if output_file:
         _write_dataframe(df, output_file)
@@ -227,7 +224,12 @@ def td_read(
 
 @td_group.command("delete")
 @click.argument("feature_view")
-@click.argument("fv_version", type=int)
+@click.option(
+    "--fv-version",
+    "fv_version",
+    type=int,
+    help="Feature view version; latest if omitted.",
+)
 @click.option(
     "--td-version", "td_version", type=int, help="Specific TD version to delete."
 )
@@ -236,7 +238,7 @@ def td_read(
 def td_delete(
     ctx: click.Context,
     feature_view: str,
-    fv_version: int,
+    fv_version: int | None,
     td_version: int | None,
     yes: bool,
 ) -> None:
@@ -246,15 +248,16 @@ def td_delete(
     Args:
         ctx: Click context.
         feature_view: Feature view name.
-        fv_version: Feature view version.
+        fv_version: Feature view version; refused when omitted and several exist.
         td_version: Specific TD version; deletes all when omitted.
         yes: Skip confirmation when True.
     """
-    fv = _get_fv(ctx, feature_view, fv_version)
+    fv = _get_fv(ctx, feature_view, fv_version, exact=True)
     if not yes and not output.JSON_MODE:
         target = f"v{td_version}" if td_version else "ALL versions"
         click.confirm(
-            f"Delete training dataset {target} for {feature_view} v{fv_version}?",
+            f"Delete training dataset {target} for {feature_view} "
+            f"v{getattr(fv, 'version', '?')}?",
             abort=True,
         )
     try:
@@ -269,12 +272,11 @@ def td_delete(
 
 @td_group.command("lineage")
 @click.argument("feature_view")
-@click.argument("fv_version", type=int, required=False)
 @click.option(
-    "--version",
-    "version_opt",
+    "--fv-version",
+    "fv_version",
     type=int,
-    help="Feature view version; same as the positional FV_VERSION. Defaults to latest.",
+    help="Feature view version; latest if omitted.",
 )
 @click.option(
     "--td-version",
@@ -286,7 +288,6 @@ def td_lineage(
     ctx: click.Context,
     feature_view: str,
     fv_version: int | None,
-    version_opt: int | None,
     td_version: int | None,
 ) -> None:
     """Show lineage for training datasets of a feature view.
@@ -300,12 +301,10 @@ def td_lineage(
     Args:
         ctx: Click context.
         feature_view: Feature view name.
-        fv_version: Feature view version (positional, optional).
-        version_opt: Feature view version (`--version`, optional).
+        fv_version: Feature view version; latest if omitted.
         td_version: Training dataset version to scope downstream models.
     """
-    version = fv_version if fv_version is not None else version_opt
-    fv = _get_fv(ctx, feature_view, version)
+    fv = _get_fv(ctx, feature_view, fv_version)
     td_suffix = f" td v{td_version}" if td_version is not None else ""
     label = (
         f"training datasets of feature view "
@@ -330,8 +329,19 @@ def td_lineage(
 
 @td_keyword_group.command("list")
 @click.argument("feature_view")
-@click.argument("td_version", type=int)
-@click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
+@click.option(
+    "--td-version",
+    "td_version",
+    type=int,
+    required=True,
+    help="Training dataset version.",
+)
+@click.option(
+    "--fv-version",
+    "fv_version",
+    type=int,
+    help="Feature view version; latest if omitted.",
+)
 @click.pass_context
 def td_keywords(
     ctx: click.Context, feature_view: str, td_version: int, fv_version: int | None
@@ -362,9 +372,20 @@ def td_keywords(
 
 @td_keyword_group.command("add")
 @click.argument("feature_view")
-@click.argument("td_version", type=int)
 @click.argument("keyword")
-@click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
+@click.option(
+    "--td-version",
+    "td_version",
+    type=int,
+    required=True,
+    help="Training dataset version.",
+)
+@click.option(
+    "--fv-version",
+    "fv_version",
+    type=int,
+    help="Feature view version; latest if omitted.",
+)
 @click.pass_context
 def td_add_keyword(
     ctx: click.Context,
@@ -395,13 +416,19 @@ def td_add_keyword(
 
 @td_keyword_group.command("remove")
 @click.argument("feature_view")
-@click.argument("td_version", type=int)
 @click.argument("keyword")
+@click.option(
+    "--td-version",
+    "td_version",
+    type=int,
+    required=True,
+    help="Training dataset version.",
+)
 @click.option(
     "--fv-version",
     "fv_version",
     type=int,
-    help="Feature view version; required when multiple exist.",
+    help="Feature view version; required when several exist.",
 )
 @click.pass_context
 def td_remove_keyword(
@@ -444,6 +471,40 @@ def _get_fv(
     if fv is None:
         raise click.ClickException(f"Feature view '{name}' not found.")
     return fv
+
+
+_SPLIT_READERS = {
+    2: ("get_train_test_split", ("train", "test")),
+    3: ("get_train_validation_test_split", ("train", "validation", "test")),
+}
+
+
+def _read_split(fv: Any, td_version: int, split: str) -> tuple[Any, Any]:
+    """Features and labels of one split; the SDK reads all splits of a version at once."""
+    td = next(
+        (t for t in fv.get_training_datasets() or [] if t.version == td_version), None
+    )
+    if td is None:
+        raise click.ClickException(f"Training dataset v{td_version} not found.")
+    count = len(getattr(td, "splits", None) or [])
+    if count not in _SPLIT_READERS:
+        raise click.ClickException(
+            f"Training dataset v{td_version} has no splits; read it without --split."
+        )
+    method, names = _SPLIT_READERS[count]
+    if split not in names:
+        raise click.BadParameter(
+            f"Choose one of {', '.join(names)}.", param_hint="--split"
+        )
+    frames = getattr(fv, method)(training_dataset_version=td_version)
+    i = names.index(split)
+    return frames[i], frames[len(names) + i]
+
+
+def _with_labels(features: Any, labels: Any) -> Any:
+    import pandas as pd  # noqa: PLC0415 - pandas import cost is high
+
+    return pd.concat([features, labels], axis=1)
 
 
 def _format_splits(td: Any) -> str:

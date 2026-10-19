@@ -29,7 +29,7 @@ specific algorithm or threshold blindly.
 
 **CLI vs SDK for this task:** training itself is SDK-only — write a `train.py`
 that uses the `hopsworks` Python SDK (the `hops` CLI has no `train`). The CLI
-does the surrounding steps: `hops fv list` / `hops td compute <fv> <v>` before,
+does the surrounding steps: `hops fv list` / `hops td compute <fv> --fv-version <v>` before,
 and running the script as a job after:
 `hops job deploy train train.py --env pandas-training-pipeline --run --wait --overwrite`
 (NAME then SCRIPT are positional; `--overwrite` replaces the uploaded script on re-run).
@@ -73,9 +73,9 @@ Hints:
   dataset from `hops td compute <fv>` is read with
   `fv.get_training_data(training_dataset_version=N)` — calling `get_train_test_split`
   on it raises `Use feature_view.get_training_data instead`.
-- `hops td compute <fv> <fv_version>` takes the FEATURE-VIEW version as a required
-  positional; the training-dataset version it creates auto-increments — read it
-  back from `hops td list <fv>` rather than hardcoding `1`.
+- `hops td compute <fv> --fv-version <n>` names the feature view version; the
+  training dataset version it creates auto-increments, so read it back from
+  `hops td list <fv>` rather than hardcoding `1`.
 - `get_train_test_split` returns `(X_train, X_test, y_train, y_test)`; `y` is
   empty when the FV declares no label.
 - Model-dependent transformations (MDTs) declared on the FV are applied

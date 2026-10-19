@@ -114,7 +114,7 @@ def test_fg_preview(mock_project):
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
     fg.select_all.return_value.show.return_value = pd.DataFrame({"id": [1, 2, 3]})
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--n", "3"])
+    result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--limit", "3"])
     assert result.exit_code == 0, result.output
     # A bounded read: the limit goes to the query, never a whole-table read.
     fg.select_all.return_value.show.assert_called_with(3, online=False)

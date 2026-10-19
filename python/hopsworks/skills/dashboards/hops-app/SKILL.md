@@ -247,7 +247,7 @@ cp <skills>/dashboards/hops-app/references/app_skeleton/static/app.css apps/cust
 hops files upload apps/customers Users/<user>/apps/ --overwrite
 hops app create customers --path /Projects/<project>/Users/<user>/apps/customers/server.js \
   --app-kind custom --app-port 8080 --readiness-probe-path /health \
-  --environment python-agent-pipeline --start \
+  --env python-agent-pipeline --start \
   --entrypoint-command "bash -lc 'python trino_env.py && APP_TABLE=customers_1 exec node server.js'"
 ```
 
@@ -380,7 +380,7 @@ hops files mkdir Users/<user>/apps                    # the parent must exist; t
 hops files upload apps/customer-lookup Users/<user>/apps/
 hops app create customer-lookup --path /Projects/<project>/Users/<user>/apps/customer-lookup/app.py \
   --app-kind custom --entrypoint-command "python app.py" --app-port 8080 \
-  --readiness-probe-path /health --environment python-agent-pipeline --start
+  --readiness-probe-path /health --env python-agent-pipeline --start
 hops app url customer-lookup
 ```
 
