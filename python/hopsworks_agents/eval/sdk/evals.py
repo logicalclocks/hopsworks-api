@@ -63,6 +63,31 @@ def check(type: str, name: str | None = None, **config: Any) -> dict[str, Any]: 
     return {"type": type, "name": name or type, "config": json.dumps(config)}
 
 
+def _spec(checks: Iterable[dict[str, Any]]) -> str:
+    """A saved evaluator's spec, from checks written either way.
+
+    A check is spelled differently depending on where it is stored: a suite
+    keeps each one's settings in a `config` JSON string, while a saved
+    evaluator's spec carries them beside the type. One helper writes checks --
+    `check()`, which produces the suite's shape -- so a spec built from it had
+    its settings inside a string the server does not read there, and a regex
+    saved that way was refused for having no pattern. Flattened here, so the
+    same check means the same thing wherever it is written.
+    """
+    flattened = []
+    for entry in checks:
+        settings = entry.get("config")
+        if isinstance(settings, str):
+            try:
+                settings = json.loads(settings)
+            except ValueError:
+                settings = None
+        if isinstance(settings, dict):
+            entry = {**{k: v for k, v in entry.items() if k != "config"}, **settings}
+        flattened.append(entry)
+    return json.dumps(flattened)
+
+
 def _suite_ref(
     suite: Suite | str, version: int | None = None
 ) -> tuple[str, int | None]:
@@ -550,7 +575,7 @@ class Evaluators:
                 {
                     "name": name,
                     "description": description,
-                    "spec": json.dumps(list(checks)),
+                    "spec": _spec(checks),
                 },
             )
         )
@@ -583,7 +608,7 @@ class Evaluators:
             "templateId": current.template_id,
             "name": current.name if name is None else name,
             "description": current.description if description is None else description,
-            "spec": current.spec if checks is None else json.dumps(list(checks)),
+            "spec": current.spec if checks is None else _spec(checks),
         }
         return EvaluatorTemplate.from_api(self._http.post(f"{EVALS}/evaluators", body))
 

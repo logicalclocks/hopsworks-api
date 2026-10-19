@@ -411,8 +411,32 @@ class TestEvaluators:
         )
         saved = evals.evaluators.save("quality", [check("llm_judge")])
         assert saved.template_id == "e"
-        assert session.sent[0][3]["spec"] == json.dumps([check("llm_judge")])
         assert evals.evaluators.find("quality").checks == [{"type": "x"}]
+
+    def test_a_checks_settings_reach_a_saved_evaluator(self):
+        # check() writes a check the way a suite stores it, with the settings
+        # in a `config` string; a saved evaluator's spec carries them beside
+        # the type, and the server reads them there. Sent as the suite's shape
+        # a regex was saved with no pattern the server could see, and every
+        # monitor built on it was refused.
+        evals, session = client(Reply({"templateId": "e", "name": "kind", "spec": "[]"}))
+
+        evals.evaluators.save(
+            "kind", [check("regex", "answers in kind", pattern="^ok")]
+        )
+
+        assert json.loads(session.sent[0][3]["spec"]) == [
+            {"type": "regex", "name": "answers in kind", "pattern": "^ok"}
+        ]
+
+    def test_a_spec_already_written_that_way_is_left_alone(self):
+        evals, session = client(Reply({"templateId": "e", "name": "kind", "spec": "[]"}))
+
+        evals.evaluators.save("kind", [{"type": "regex", "pattern": "^ok"}])
+
+        assert json.loads(session.sent[0][3]["spec"]) == [
+            {"type": "regex", "pattern": "^ok"}
+        ]
 
     def test_update_edits_the_entry_instead_of_adding_another(self):
         """`save` always creates, so an edit used to mean a duplicate name.
