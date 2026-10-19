@@ -3,10 +3,11 @@
 Brings the CLI to parity with the SDK's alerting surface
 (``project.get_alerts_api()`` →
 [`AlertsApi`][hopsworks_common.core.alerts_api.AlertsApi]). Project-level
-alerts and triggered alerts live directly under ``hops alert``; the
-``receiver``, ``job``, ``fg`` and ``fv`` sub-groups manage alert receivers and
-the entity-scoped alerts the SDK exposes per job / feature group / feature
-view.
+alerts and triggered alerts live directly under ``hops alert``, and the
+``receiver`` sub-group manages alert receivers.
+The alerts of one job, feature group or feature view are defined here and
+mounted under that entity as ``hops job alert``, ``hops fg alert`` and
+``hops fv alert``.
 
 Every alert is wired to a *receiver* (the notification channel). List the
 existing ones with ``hops alert receiver list`` and create new ones with
@@ -87,7 +88,7 @@ def _render_alerts(alerts: list[Any]) -> None:
 
 @click.group("alert")
 def alert_group() -> None:
-    """Alert and alert-receiver commands."""
+    """Project alerts and their receivers."""
 
 
 # region Project alerts
@@ -110,7 +111,7 @@ def alert_list(ctx: click.Context) -> None:
     _render_alerts(alerts)
 
 
-@alert_group.command("get")
+@alert_group.command("info")
 @click.argument("alert_id", type=int)
 @click.pass_context
 def alert_get(ctx: click.Context, alert_id: int) -> None:
@@ -323,7 +324,7 @@ def alert_trigger(
 
 @alert_group.group("receiver")
 def receiver_group() -> None:
-    """Alert receiver (notification channel) commands.
+    """Receivers: the channels alerts notify (email, Slack...).
 
     Listing and inspecting receivers is open to any project member. Creating a
     receiver requires the Hopsworks administrator role (`HOPS_ADMIN`). There
@@ -357,7 +358,7 @@ def receiver_list(ctx: click.Context) -> None:
     output.print_table(["NAME", "CHANNELS"], rows)
 
 
-@receiver_group.command("get")
+@receiver_group.command("info")
 @click.argument("name")
 @click.pass_context
 def receiver_get(ctx: click.Context, name: str) -> None:
@@ -471,12 +472,12 @@ def receiver_create(
 # region Job alerts
 
 
-@alert_group.group("job")
-def job_group() -> None:
-    """Job-scoped alert commands."""
+@click.group("alert")
+def job_alert_group() -> None:
+    """Alerts on a job."""
 
 
-@job_group.command("list")
+@job_alert_group.command("list")
 @click.argument("job_name")
 @click.pass_context
 def job_alert_list(ctx: click.Context, job_name: str) -> None:
@@ -497,7 +498,7 @@ def job_alert_list(ctx: click.Context, job_name: str) -> None:
     _render_alerts(alerts)
 
 
-@job_group.command("get")
+@job_alert_group.command("info")
 @click.argument("job_name")
 @click.argument("alert_id", type=int)
 @click.pass_context
@@ -520,7 +521,7 @@ def job_alert_get(ctx: click.Context, job_name: str, alert_id: int) -> None:
     _render_alerts([alert])
 
 
-@job_group.command("create")
+@job_alert_group.command("create")
 @click.argument("job_name")
 @click.option("--receiver", required=True, help="Alert receiver name.")
 @click.option("--status", required=True, type=click.Choice(_JOB_STATUS))
@@ -533,7 +534,7 @@ def job_alert_create(
     status: str,
     severity: str,
 ) -> None:
-    """Create an alert that fires on a job event (e.g. `failed`).
+    """Create an alert that fires on a job status.
 
     \f
     Args:
@@ -559,12 +560,12 @@ def job_alert_create(
 # region Feature group alerts
 
 
-@alert_group.group("fg")
-def fg_group() -> None:
-    """Feature-group-scoped alert commands."""
+@click.group("alert")
+def fg_alert_group() -> None:
+    """Alerts on a feature group."""
 
 
-@fg_group.command("list")
+@fg_alert_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
 @click.pass_context
@@ -588,7 +589,7 @@ def fg_alert_list(ctx: click.Context, name: str, version: int | None) -> None:
     _render_alerts(alerts)
 
 
-@fg_group.command("create")
+@fg_alert_group.command("create")
 @click.argument("name")
 @click.option("--receiver", required=True, help="Alert receiver name.")
 @click.option("--status", required=True, type=click.Choice(_FG_STATUS))
@@ -633,12 +634,12 @@ def fg_alert_create(
 # region Feature view alerts
 
 
-@alert_group.group("fv")
-def fv_group() -> None:
-    """Feature-view-scoped alert commands."""
+@click.group("alert")
+def fv_alert_group() -> None:
+    """Alerts on a feature view."""
 
 
-@fv_group.command("list")
+@fv_alert_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version; defaults to latest.")
 @click.pass_context
@@ -662,7 +663,7 @@ def fv_alert_list(ctx: click.Context, name: str, version: int | None) -> None:
     _render_alerts(alerts)
 
 
-@fv_group.command("create")
+@fv_alert_group.command("create")
 @click.argument("name")
 @click.option("--receiver", required=True, help="Alert receiver name.")
 @click.option("--status", required=True, type=click.Choice(_FV_STATUS))

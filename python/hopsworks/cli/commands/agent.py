@@ -23,7 +23,7 @@ from hopsworks.cli import output, session
 
 @click.group("agent")
 def agent_group() -> None:
-    """Python agent deployment commands."""
+    """Agents: Python agents served as deployments."""
 
 
 @agent_group.command("list")

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 @click.group("datasource")
 def datasource_group() -> None:
-    """Data source (storage connector) commands."""
+    """Data sources: connections to external storage."""
 
 
 @datasource_group.command("list")
@@ -234,7 +234,7 @@ def _secret_option(
 
 @datasource_group.group("create")
 def connector_create() -> None:
-    """Create a storage connector (subcommand per backend)."""
+    """Create a data source; one command per source type."""
 
 
 @connector_create.command("jdbc", help="Register a JDBC connector.")
@@ -1699,7 +1699,7 @@ def credentials_validate(ctx: click.Context, name: str, **values: Any) -> None: 
     output.success("✓ Data source %s accepted the credentials", name)
 
 
-@connector_credentials.command("show")
+@connector_credentials.command("info")
 @click.argument("name")
 @click.pass_context
 def credentials_show(ctx: click.Context, name: str) -> None:

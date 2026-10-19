@@ -157,7 +157,7 @@ def skills_group() -> None:
 @skills_group.command("list")
 @click.option("--bucket", default=None, help="Only show skills in this bucket.")
 def skills_list(bucket: str | None) -> None:
-    """List available skills as a table (or JSON with `--json`).
+    """List the available skills.
 
     \f
     Args:
@@ -182,10 +182,10 @@ def skills_list(bucket: str | None) -> None:
     )
 
 
-@skills_group.command("show")
+@skills_group.command("info")
 @click.argument("name")
 def skills_show(name: str) -> None:
-    """Print a skill's `SKILL.md` so an agent can load it.
+    """Print a skill's SKILL.md.
 
     \f
     Args:

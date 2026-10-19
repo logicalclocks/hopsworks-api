@@ -19,7 +19,7 @@ from hopsworks.cli import output, session
 
 @click.group("transformation")
 def transformation_group() -> None:
-    """Transformation function commands."""
+    """Transformation functions applied by feature views."""
 
 
 @transformation_group.command("list")

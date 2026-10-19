@@ -18,7 +18,7 @@ from hopsworks.cli import lineage, output, session, versions
 
 @click.group("model")
 def model_group() -> None:
-    """Model registry commands."""
+    """Models in the model registry."""
 
 
 @model_group.command("list")

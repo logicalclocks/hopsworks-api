@@ -15,7 +15,7 @@ from hopsworks.cli import output, session
 
 @click.group("superset")
 def superset_group() -> None:
-    """Superset commands (datasets, charts, dashboards)."""
+    """Superset datasets, charts and dashboards."""
 
 
 # region Datasets ----------------------------------------------------------
@@ -23,7 +23,7 @@ def superset_group() -> None:
 
 @superset_group.group("dataset")
 def superset_dataset_group() -> None:
-    """Superset dataset subcommands."""
+    """Superset datasets."""
 
 
 @superset_dataset_group.command("list")
@@ -131,7 +131,7 @@ def superset_dataset_delete(ctx: click.Context, dataset_id: int, yes: bool) -> N
 
 @superset_group.group("chart")
 def superset_chart_group() -> None:
-    """Superset chart (slice) subcommands."""
+    """Superset charts."""
 
 
 @superset_chart_group.command("list")
@@ -235,7 +235,7 @@ def superset_chart_delete(ctx: click.Context, chart_id: int, yes: bool) -> None:
 
 @superset_group.group("dashboard")
 def superset_dashboard_group() -> None:
-    """Superset dashboard subcommands."""
+    """Superset dashboards."""
 
 
 @superset_dashboard_group.command("list")

@@ -913,7 +913,7 @@ def push(
         output.info("  %s", step)
 
 
-@session_group.command("new")
+@session_group.command("start")
 @click.option(
     "--model",
     help="Model the pod should start Claude with (passed to `claude --model`).",
@@ -1757,7 +1757,7 @@ async def _mirror_session(project_id: int, write: bool) -> None:
         if not sess or not sess.get("running"):
             raise click.ClickException(
                 "No running terminal session for this project. Start one with "
-                "`hops session new`, or open the Terminal tab in the Hopsworks UI."
+                "`hops session start`, or open the Terminal tab in the Hopsworks UI."
             )
         url = _ws_url(sess["wsUrl"])
         ssl_ctx = _ws_ssl_context(url)

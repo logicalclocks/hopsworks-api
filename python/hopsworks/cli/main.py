@@ -17,7 +17,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 import click
-from hopsworks.cli import config, output, scaffold
+from hopsworks.cli import config, deprecations, output, scaffold
 
 
 if TYPE_CHECKING:
@@ -261,6 +261,27 @@ class LazyGroup(click.Group):
             if friendly is None:
                 raise
             raise click.ClickException(friendly) from exc
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        """Rewrite deprecated command names before parsing, at the root only.
+
+        Args:
+            ctx: Click context.
+            args: Arguments after the program name.
+
+        Returns:
+            The arguments Click still has to parse.
+        """
+        if ctx.parent is None:
+
+            def subcommands(path: tuple[str, ...]) -> set[str]:
+                group: Any = self
+                for name in path:
+                    group = group.get_command(ctx, name)
+                return set(group.commands)
+
+            args = deprecations.rewrite(args, subcommands)
+        return super().parse_args(ctx, args)
 
     def list_commands(self, ctx: click.Context) -> Iterable[str]:
         return sorted({*self.commands.keys(), *self.lazy_subcommands.keys()})

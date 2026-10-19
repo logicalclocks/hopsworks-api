@@ -83,7 +83,7 @@ Load **hops-dbt** and **hops-spark**.
 
 ```bash
 hops job deploy <slug>-batch-features $P/batch_features.py --env dbt-pipeline --run --wait
-hops job schedule <slug>-batch-features "0 0 3 * * ?"     # daily, after the day closes
+hops job schedule set <slug>-batch-features "0 0 3 * * ?"     # daily, after the day closes
 hops job deploy <slug>-transactions $P/transaction_stream.py --env <slug>-jobs-env --run
 hops job deploy <slug>-streaming-features $P/streaming_features.py --type pyspark \
   --env spark-feature-pipeline --args "--window-minutes 60" --run

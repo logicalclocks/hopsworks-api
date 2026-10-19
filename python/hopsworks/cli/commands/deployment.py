@@ -19,7 +19,7 @@ from hopsworks.cli import lineage, output, session, versions
 
 @click.group("deployment")
 def deployment_group() -> None:
-    """Model serving deployment commands."""
+    """Deployments: models served behind an endpoint."""
 
 
 @deployment_group.command("list")
@@ -180,25 +180,6 @@ def _schema_label(d: Any) -> str:
     if schema is None:
         return "-"
     return "inferred" if schema.inferred else "manual"
-
-
-@deployment_group.command("status")
-@click.argument("name")
-@click.pass_context
-def deployment_status(ctx: click.Context, name: str) -> None:
-    """Show the current status of a deployment.
-
-    \f
-    Args:
-        ctx: Click context.
-        name: Deployment name.
-    """
-    deployment = _get_deployment(ctx, name)
-    status = _deployment_status_live(deployment)
-    if output.JSON_MODE:
-        output.print_json({"name": name, "status": status})
-        return
-    click.echo(status)
 
 
 def _deployment_status(d: Any) -> str:

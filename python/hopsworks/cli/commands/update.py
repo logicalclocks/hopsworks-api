@@ -19,7 +19,7 @@ from hopsworks.cli import output
 
 @click.command("update")
 def update_cmd() -> None:
-    """Print the command to upgrade the `hopsworks` package."""
+    """Print the command that upgrades hops."""
     install_mode, hint = _describe_install()
     current = _current_version()
 

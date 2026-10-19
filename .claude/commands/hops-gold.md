@@ -88,7 +88,7 @@ Fix and rerun until the checks pass; record the counts and the reconciliation in
 
 ### schedule
 
-Schedule each job with catch-up (`hops job schedule <job> "<cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <48 hourly, 14 daily, 4 weekly>`) and, with a receiver configured (`hops alert receiver list`), a failure alert (`hops alert job create <job> --receiver <receiver> --status failed --severity critical`).
+Schedule each job with catch-up (`hops job schedule set <job> "<cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <48 hourly, 14 daily, 4 weekly>`) and, with a receiver configured (`hops alert receiver list`), a failure alert (`hops job alert create <job> --receiver <receiver> --status failed --severity critical`).
 Tag every gold feature group `analytics_table` with `{"layer": "gold", "lifecycle": "<layer.lifecycle>"}`.
 Apply `access` and `share`: share the feature groups with the projects named (`hops files share` of the feature store dataset, or ask how when the requirement names rows or columns rather than projects).
 

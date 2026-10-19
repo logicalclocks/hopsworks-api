@@ -19,11 +19,35 @@ from typing import Any
 
 import click
 from hopsworks.cli import joinspec, lineage, output, session, versions
+from hopsworks.cli.commands.alert import fg_alert_group
 
 
 @click.group("fg")
 def fg_group() -> None:
-    """Feature group commands."""
+    """Feature groups: tables of features."""
+
+
+@fg_group.group("feature")
+def fg_feature_group() -> None:
+    """Columns of a feature group."""
+
+
+@fg_group.group("stats")
+def fg_stats_group() -> None:
+    """Descriptive statistics of a feature group."""
+
+
+@fg_group.group("tag")
+def fg_tag_group() -> None:
+    """Tags (name/value pairs) on a feature group."""
+
+
+@fg_group.group("keyword")
+def fg_keyword_group() -> None:
+    """Keywords (plain labels) on a feature group."""
+
+
+fg_group.add_command(fg_alert_group)
 
 
 @fg_group.command("list")
@@ -175,7 +199,7 @@ def fg_preview(
     featurestore: str | None,
     columns: str | None,
 ) -> None:
-    """Show the first `n` rows of a feature group.
+    """Show the first rows of a feature group.
 
     Wide array/struct columns (embeddings, nested arrays) are collapsed to a
     `[len=N] head…` preview in the table view so one row stays one line; use
@@ -233,7 +257,7 @@ def fg_preview(
     output.print_table(cols, rows)
 
 
-@fg_group.command("features")
+@fg_feature_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
 @click.option(
@@ -846,7 +870,7 @@ def fg_derive(
     output.success("✓ Derived feature group %s from %s", name, base_fg)
 
 
-@fg_group.command("append-features")
+@fg_feature_group.command("add")
 @click.argument("name")
 @click.option(
     "--features",
@@ -954,34 +978,41 @@ def fg_delete(
     output.success("✓ Deleted feature group %s", name)
 
 
-@fg_group.command("stats")
+@fg_stats_group.command("compute")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version.")
-@click.option(
-    "--compute",
-    is_flag=True,
-    help="Trigger recomputation; otherwise read cached stats.",
-)
 @click.pass_context
-def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) -> None:
-    """Show or recompute statistics for a feature group.
+def fg_stats_compute(ctx: click.Context, name: str, version: int | None) -> None:
+    """Start a job that recomputes the statistics.
 
     \f
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Feature group version.
-        compute: When True, trigger a recomputation job.
     """
     fg = _get_fg(ctx, name, version)
-    if compute:
-        try:
-            fg.compute_statistics()
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Stats compute failed: {exc}") from exc
-        output.success("✓ Triggered statistics compute for %s", name)
-        return
+    try:
+        fg.compute_statistics()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Stats compute failed: {exc}") from exc
+    output.success("✓ Triggered statistics compute for %s", name)
 
+
+@fg_stats_group.command("info")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature group version.")
+@click.pass_context
+def fg_stats_info(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show the latest statistics per feature.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        version: Feature group version.
+    """
+    fg = _get_fg(ctx, name, version)
     try:
         stats = fg.statistics
     except Exception as exc:  # noqa: BLE001
@@ -1072,11 +1103,11 @@ def fg_search(
 # needs to read this would never see it.
 _KEYWORD_SEMANTICS_CHANGED = (
     "The *-keyword commands now operate on keywords (plain labels without "
-    "values); tag name/value pairs moved to 'hops fg tags/add-tag/remove-tag'."
+    "values); tag name/value pairs moved to 'hops fg tag list/add-tag/remove-tag'."
 )
 
 
-@fg_group.command("keywords")
+@fg_keyword_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version.")
 @click.pass_context
@@ -1105,13 +1136,13 @@ def fg_keywords(ctx: click.Context, name: str, version: int | None) -> None:
     output.print_table(["KEYWORD", "ADDED"], rows)
 
 
-@fg_group.command("add-keyword")
+@fg_keyword_group.command("add")
 @click.argument("name")
 @click.argument("keyword")
 @click.option(
     "--value",
     default=None,
-    help="Retired. Keywords carry no value; use 'hops fg add-tag' for name/value tags.",
+    help="Retired. Keywords carry no value; use 'hops fg tag add' for name/value tags.",
 )
 @click.option("--version", type=int, help="Feature group version.")
 @click.pass_context
@@ -1135,7 +1166,7 @@ def fg_add_keyword(
     if value is not None:
         raise click.UsageError(
             "--value is retired: keywords carry no value. To write a "
-            f"name/value tag use: hops fg add-tag {name} {keyword} --value ..."
+            f"name/value tag use: hops fg tag add {name} {keyword} --value ..."
         )
     fg = _get_fg(ctx, name, version)
     try:
@@ -1145,7 +1176,7 @@ def fg_add_keyword(
     output.success("✓ Added keyword '%s' to %s", keyword, name)
 
 
-@fg_group.command("remove-keyword")
+@fg_keyword_group.command("remove")
 @click.argument("name")
 @click.argument("keyword")
 @click.option(
@@ -1173,7 +1204,7 @@ def fg_remove_keyword(
     output.success("✓ Removed keyword '%s' from %s", keyword, name)
 
 
-@fg_group.command("tags")
+@fg_tag_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version.")
 @click.pass_context
@@ -1194,7 +1225,7 @@ def fg_tags(ctx: click.Context, name: str, version: int | None) -> None:
     output.render_tags(tags)
 
 
-@fg_group.command("add-tag")
+@fg_tag_group.command("add")
 @click.argument("name")
 @click.argument("tag")
 @click.option("--value", required=True, help="Tag value, JSON or a plain string.")
@@ -1221,7 +1252,7 @@ def fg_add_tag(
     output.success("✓ Added tag '%s' to %s", tag, name)
 
 
-@fg_group.command("remove-tag")
+@fg_tag_group.command("remove")
 @click.argument("name")
 @click.argument("tag")
 @click.option(

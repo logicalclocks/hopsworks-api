@@ -170,7 +170,7 @@ def _render_guidance(out: Any) -> None:
         "Primary interface: the `hops` CLI — explore and operate with it. Write "
         "Python with the `hopsworks` SDK for pipeline scripts that run as jobs or "
         "deployments. Load the matching skill for SDK-heavy steps; list them with "
-        "`hops skills list` or read one with `hops skills show <name>`.\n\n"
+        "`hops skills list` or read one with `hops skills info <name>`.\n\n"
     )
 
     skills_dir = skills_cmd._skills_dir()

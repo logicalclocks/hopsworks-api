@@ -196,7 +196,7 @@ def test_job_schedule(mock_project):
     job.schedule.return_value = mock.MagicMock()
     api.get_job.return_value = job
     mock_project.get_job_api.return_value = api
-    result = CliRunner().invoke(cli, ["job", "schedule", "etl", "0 0 * * * ?"])
+    result = CliRunner().invoke(cli, ["job", "schedule", "set", "etl", "0 0 * * * ?"])
     assert result.exit_code == 0, result.output
     # Use call_args + kwargs check rather than a full assert_called_with so the
     # test isn't tied to every backfill/catchup option the schedule API grows.
@@ -211,7 +211,7 @@ def test_job_unschedule(mock_project):
     job = mock.MagicMock()
     api.get_job.return_value = job
     mock_project.get_job_api.return_value = api
-    result = CliRunner().invoke(cli, ["job", "unschedule", "etl"])
+    result = CliRunner().invoke(cli, ["job", "schedule", "delete", "etl"])
     assert result.exit_code == 0, result.output
     job.unschedule.assert_called_once()
 
@@ -326,7 +326,7 @@ def test_files_remove(mock_project):
     api = mock.MagicMock()
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(
-        cli, ["files", "remove", "/Projects/demo/stale", "--yes"]
+        cli, ["files", "delete", "/Projects/demo/stale", "--yes"]
     )
     assert result.exit_code == 0, result.output
     api.remove.assert_called_with("/Projects/demo/stale")

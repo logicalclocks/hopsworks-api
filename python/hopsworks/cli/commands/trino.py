@@ -35,7 +35,7 @@ _FETCH_BATCH = 1_000
 
 @click.group("trino")
 def trino_group() -> None:
-    """Trino commands (query, catalogs, schemas, tables)."""
+    """Trino: SQL over the feature store and data sources."""
 
 
 def _api(ctx: click.Context) -> Any:
@@ -234,12 +234,6 @@ def trino_query(
     _execute(ctx, sql, catalog, schema, limit)
 
 
-# ``hops trino sql ...`` is a natural guess (the skill calls it "Trino SQL",
-# and the top-level alias is ``hops sql``). Without this it failed with a bare
-# "No such command 'sql'". Register the same command under both names.
-trino_group.add_command(trino_query, name="sql")
-
-
 # region: discovery shortcuts ---------------------------------------------
 
 
@@ -293,7 +287,7 @@ def trino_tables(ctx: click.Context, target: str) -> None:
     _execute(ctx, sql, catalog=None, schema=None, limit=0)
 
 
-@trino_group.command("describe")
+@trino_group.command("columns")
 @click.argument("table_ref")
 @click.pass_context
 def trino_describe(ctx: click.Context, table_ref: str) -> None:

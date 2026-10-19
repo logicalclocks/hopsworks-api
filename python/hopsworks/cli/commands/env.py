@@ -21,7 +21,7 @@ from hopsworks.cli import output, session
 
 @click.group("env")
 def env_group() -> None:
-    """Python environment commands (list, clone, install)."""
+    """Python environments jobs, apps and deployments run in."""
 
 
 def _api(ctx: click.Context) -> Any:

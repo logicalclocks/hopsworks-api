@@ -115,7 +115,7 @@ def factory_list(ctx: click.Context) -> None:
     )
 
 
-@factory_group.command("get")
+@factory_group.command("info")
 @click.argument("name")
 @click.option("--version", type=int, help="An earlier version of the definition.")
 @click.pass_context
@@ -370,12 +370,12 @@ def _review(doc: dict) -> None:
 )
 @click.option(
     "--preset",
-    help="Start from one of the factory's examples (`hops factory get NAME` lists them under presets).",
+    help="Start from one of the factory's examples (`hops factory info NAME` lists them under presets).",
 )
 @click.option(
     "--change",
     "change_id",
-    help="Request this change of a recorded system (`hops factory get NAME` lists the factory's changes); its answers come from --answers or are asked here.",
+    help="Request this change of a recorded system (`hops factory info NAME` lists the factory's changes); its answers come from --answers or are asked here.",
 )
 @click.option(
     "--no-launch",

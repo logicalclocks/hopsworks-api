@@ -598,7 +598,7 @@ def lease_group() -> None:
     """Build lease of a system: who builds it, until when."""
 
 
-@lease_group.command("show")
+@lease_group.command("info")
 @click.argument("slug_or_dir")
 def lease_show(slug_or_dir: str) -> None:
     """Show the build lease of a system.

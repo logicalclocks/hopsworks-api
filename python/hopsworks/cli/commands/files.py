@@ -19,7 +19,7 @@ from hopsworks.cli import output, session
 
 @click.group("files")
 def files_group() -> None:
-    """Files on HopsFS.
+    """Files and datasets on HopsFS.
 
     File-system commands on HopsFS (list, mkdir, upload, download, share, remove).
     """
@@ -29,7 +29,7 @@ def files_group() -> None:
 @click.argument("path", required=False, default="")
 @click.pass_context
 def dataset_list(ctx: click.Context, path: str) -> None:
-    """List files under `path` in the project's HopsFS.
+    """List files under PATH.
 
     An empty path lists the project root. The SDK returns string paths for the
     root and Inode objects for nested directories; we normalize both shapes to
@@ -230,7 +230,7 @@ def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
     output.success("✓ Unshared %s from project '%s'", path, target_project)
 
 
-@files_group.command("remove")
+@files_group.command("delete")
 @click.argument("path")
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
 @click.pass_context

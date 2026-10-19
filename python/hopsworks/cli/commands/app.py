@@ -29,7 +29,7 @@ from hopsworks.cli import output, session
 
 @click.group("app")
 def app_group() -> None:
-    """Python app commands."""
+    """Apps: Python web apps served by the cluster."""
 
 
 @app_group.command("list")

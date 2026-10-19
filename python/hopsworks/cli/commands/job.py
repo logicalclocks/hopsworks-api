@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks.cli.commands.alert import job_alert_group
 
 
 if TYPE_CHECKING:
@@ -61,7 +62,20 @@ def _ts_label(value: Any) -> str:
 
 @click.group("job")
 def job_group() -> None:
-    """Job commands."""
+    """Jobs: Python, Spark and Docker programs the cluster runs."""
+
+
+@job_group.group("schedule")
+def job_schedule_group() -> None:
+    """The cron schedule of a job."""
+
+
+@job_group.group("tag")
+def job_tag_group() -> None:
+    """Tags (name/value pairs) on a job."""
+
+
+job_group.add_command(job_alert_group)
 
 
 @job_group.command("list")
@@ -186,7 +200,7 @@ def job_create(
     app_args: str | None,
     description: str | None,
 ) -> None:
-    """Create a new job from a `type` + `--app-path`.
+    """Create a job from a program on HopsFS.
 
     \f
     Args:
@@ -375,7 +389,7 @@ def job_run(
     start_time: datetime | None,
     end_time: datetime | None,
 ) -> None:
-    """Start a new one-off execution of `name`.
+    """Run a job once now.
 
     `--start-time` / `--end-time` are passed straight through to the
     SDK and surface inside the job as `HOPS_START_TIME` /
@@ -491,7 +505,7 @@ def job_backfill(
 @click.argument("name")
 @click.pass_context
 def job_stop(ctx: click.Context, name: str) -> None:
-    """Stop the most recent execution of `name`.
+    """Stop the latest execution of a job.
 
     \f
     Args:
@@ -666,7 +680,7 @@ def _expand_cron_alias(cron: str) -> str:
     return _CRON_ALIASES.get(cron.strip().lower(), cron)
 
 
-@job_group.command("schedule")
+@job_schedule_group.command("set")
 @click.argument("name")
 @click.argument("cron")
 @click.option(
@@ -736,7 +750,7 @@ def job_schedule(
     max_active_runs: int,
     max_catchup_runs: int | None,
 ) -> None:
-    """Attach (or update) a Quartz cron schedule to `name`.
+    """Set the cron schedule of a job.
 
     The cron interval is the firing cadence. The data window the job
     consumes per fire is the previous fire to this one; current servers
@@ -780,7 +794,7 @@ def job_schedule(
         output.print_json(_schedule_to_dict(schedule))
 
 
-@job_group.command("schedule-info")
+@job_schedule_group.command("info")
 @click.argument("name")
 @click.pass_context
 def job_schedule_info(ctx: click.Context, name: str) -> None:
@@ -808,7 +822,7 @@ def job_schedule_info(ctx: click.Context, name: str) -> None:
     output.print_table(["FIELD", "VALUE"], rows)
 
 
-@job_group.command("unschedule")
+@job_schedule_group.command("delete")
 @click.argument("name")
 @click.pass_context
 def job_unschedule(ctx: click.Context, name: str) -> None:
@@ -850,7 +864,7 @@ def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
     output.success("✓ Deleted job %s", name)
 
 
-@job_group.command("tags")
+@job_tag_group.command("list")
 @click.argument("name")
 @click.pass_context
 def job_tags(ctx: click.Context, name: str) -> None:
@@ -869,7 +883,7 @@ def job_tags(ctx: click.Context, name: str) -> None:
     output.render_tags(tags)
 
 
-@job_group.command("add-tag")
+@job_tag_group.command("add")
 @click.argument("name")
 @click.argument("tag")
 @click.option("--value", required=True, help="Tag value, JSON or a plain string.")
@@ -892,7 +906,7 @@ def job_add_tag(ctx: click.Context, name: str, tag: str, value: str) -> None:
     output.success("✓ Added tag '%s' to %s", tag, name)
 
 
-@job_group.command("remove-tag")
+@job_tag_group.command("remove")
 @click.argument("name")
 @click.argument("tag")
 @click.pass_context
@@ -913,12 +927,12 @@ def job_remove_tag(ctx: click.Context, name: str, tag: str) -> None:
     output.success("✓ Removed tag '%s' from %s", tag, name)
 
 
-@job_group.command("describe")
+@job_group.command("update")
 @click.argument("name")
 @click.option("--description", required=True, help="New description of the job.")
 @click.pass_context
-def job_describe(ctx: click.Context, name: str, description: str) -> None:
-    """Set the description of a job.
+def job_update(ctx: click.Context, name: str, description: str) -> None:
+    """Update the description of a job.
 
     \f
     Args:

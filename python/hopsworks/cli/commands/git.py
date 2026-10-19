@@ -116,7 +116,7 @@ def register_provider(provider: str, username: str, token: str, host: str):
 
 @click.group("git")
 def git_group() -> None:
-    """Git provider credentials Hopsworks holds for your account."""
+    """Git credentials Hopsworks holds for your account."""
 
 
 @git_group.group("provider")

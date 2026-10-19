@@ -16,7 +16,12 @@ from hopsworks.cli import lineage, output, session, versions
 
 @click.group("td")
 def td_group() -> None:
-    """Training dataset commands."""
+    """Training datasets materialized from feature views."""
+
+
+@td_group.group("keyword")
+def td_keyword_group() -> None:
+    """Keywords (plain labels) on a training dataset."""
 
 
 @td_group.command("list")
@@ -323,7 +328,7 @@ def td_lineage(
     lineage.render(label, sections)
 
 
-@td_group.command("keywords")
+@td_keyword_group.command("list")
 @click.argument("feature_view")
 @click.argument("td_version", type=int)
 @click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
@@ -355,7 +360,7 @@ def td_keywords(
     output.print_table(["KEYWORD", "ADDED"], rows)
 
 
-@td_group.command("add-keyword")
+@td_keyword_group.command("add")
 @click.argument("feature_view")
 @click.argument("td_version", type=int)
 @click.argument("keyword")
@@ -388,7 +393,7 @@ def td_add_keyword(
     )
 
 
-@td_group.command("remove-keyword")
+@td_keyword_group.command("remove")
 @click.argument("feature_view")
 @click.argument("td_version", type=int)
 @click.argument("keyword")

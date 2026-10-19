@@ -21,7 +21,7 @@ Verify state with the `hops` CLI (cheap pre/post-flight):
 hops fv list                                    # list feature views (id, name, version, labels)
 hops fv info <name> --version 1                 # metadata + schema; flags the label column
 hops td list <fv-name> --version 1              # training-dataset versions
-hops fv get <name> --version 1 --entry "pk=val" # one online feature vector, no Python
+hops fv lookup <name> --version 1 --entry "pk=val" # one online feature vector, no Python
 ```
 
 Non-interactive delete needs flags: `hops fv delete <name> --version 1 --yes --force`.

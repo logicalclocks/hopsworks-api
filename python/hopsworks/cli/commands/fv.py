@@ -13,11 +13,25 @@ from typing import Any
 
 import click
 from hopsworks.cli import joinspec, lineage, output, session, versions
+from hopsworks.cli.commands.alert import fv_alert_group
 
 
 @click.group("fv")
 def fv_group() -> None:
-    """Feature view commands."""
+    """Feature views: features selected for models."""
+
+
+@fv_group.group("tag")
+def fv_tag_group() -> None:
+    """Tags (name/value pairs) on a feature view."""
+
+
+@fv_group.group("keyword")
+def fv_keyword_group() -> None:
+    """Keywords (plain labels) on a feature view."""
+
+
+fv_group.add_command(fv_alert_group)
 
 
 @fv_group.command("list")
@@ -432,7 +446,7 @@ def fv_deploy(
         )
 
 
-@fv_group.command("get")
+@fv_group.command("lookup")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
 @click.option(
@@ -565,7 +579,7 @@ def fv_delete(
     output.success("✓ Deleted feature view %s", name)
 
 
-@fv_group.command("tags")
+@fv_tag_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
 @click.pass_context
@@ -586,7 +600,7 @@ def fv_tags(ctx: click.Context, name: str, version: int | None) -> None:
     output.render_tags(tags)
 
 
-@fv_group.command("add-tag")
+@fv_tag_group.command("add")
 @click.argument("name")
 @click.argument("tag")
 @click.option("--value", required=True, help="Tag value, JSON or a plain string.")
@@ -613,7 +627,7 @@ def fv_add_tag(
     output.success("✓ Added tag '%s' to %s", tag, name)
 
 
-@fv_group.command("remove-tag")
+@fv_tag_group.command("remove")
 @click.argument("name")
 @click.argument("tag")
 @click.option(
@@ -638,7 +652,7 @@ def fv_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) 
     output.success("✓ Removed tag '%s' from %s", tag, name)
 
 
-@fv_group.command("keywords")
+@fv_keyword_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
 @click.pass_context
@@ -666,7 +680,7 @@ def fv_keywords(ctx: click.Context, name: str, version: int | None) -> None:
     output.print_table(["KEYWORD", "ADDED"], rows)
 
 
-@fv_group.command("add-keyword")
+@fv_keyword_group.command("add")
 @click.argument("name")
 @click.argument("keyword")
 @click.option("--version", type=int, help="Feature view version.")
@@ -691,7 +705,7 @@ def fv_add_keyword(
     output.success("✓ Added keyword '%s' to %s", keyword, name)
 
 
-@fv_group.command("remove-keyword")
+@fv_keyword_group.command("remove")
 @click.argument("name")
 @click.argument("keyword")
 @click.option(
