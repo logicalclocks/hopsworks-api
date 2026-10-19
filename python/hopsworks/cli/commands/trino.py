@@ -132,7 +132,10 @@ def _execute(
     conn = _connect(ctx, catalog, schema)
     try:
         cur = conn.cursor()
-        cur.execute(sql)
+        try:
+            cur.execute(sql)
+        except Exception as exc:  # noqa: BLE001 - the driver raises a mix of types
+            raise click.ClickException(f"Could not run the query: {exc}") from exc
         if cur.description is None:
             # Statement that returned no rowset (e.g. CREATE/INSERT). Most users
             # don't run these from the CLI, but report the rowcount if the
@@ -144,7 +147,12 @@ def _execute(
                 output.print_json({"affected_rows": affected})
             return
         headers = _column_names(cur)
-        rows = list(_iter_rows(cur, limit))
+        try:
+            rows = list(_iter_rows(cur, limit))
+        except Exception as exc:  # noqa: BLE001 - rows stream, so a failure can come late
+            raise click.ClickException(
+                f"Could not read the query's rows: {exc}"
+            ) from exc
         _render_rows(headers, rows)
         if limit and len(rows) >= limit and not output.JSON_MODE:
             output.warn(
