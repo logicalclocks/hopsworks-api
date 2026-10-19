@@ -38,6 +38,9 @@ and the actions on it; it does not explain itself.
 ### Surfaces and nesting
 - No shadow unless it means "floats above the page": a popover, a menu, a sticky
   toolbar over scrolling content. Cards, panels and buttons are flat.
+- A white page. Sections are grouped by spacing and at most a hairline between
+  them, never a bordered card per section; a filter bar sits above what it
+  filters, not in a box of its own.
 - Use fewer borders. Group with spacing first, then a muted tint, then a hairline
   divider; a bordered box is the last option.
 - One level of box by default. A second level is justified only for:
@@ -56,6 +59,8 @@ and the actions on it; it does not explain itself.
   than unrelated ones; a section gap is at least twice the gap inside a section.
 - Nothing shifts when data loads or reloads: keep the old content dimmed until the
   new arrives, reserve the scrollbar gutter, size placeholders like the content.
+- No empty gaps: space is reserved only for content that will load into it, at
+  that content's size.
 
 ### Hierarchy and copy
 - At most three type sizes per view: the title, body, small (labels and metadata).
@@ -80,13 +85,25 @@ and the actions on it; it does not explain itself.
 ### Numbers and stats
 - Key figures as one row of stats separated by hairlines, not one box each: muted
   label, value, optional muted delta or context.
+- A value never overflows its cell: every column `minmax(0, 1fr)` with
+  `min-width: 0`, the value sized to the cell (`font-size: clamp(...)` in container
+  units), on one line, cut with an ellipsis and its full text in `title` past the
+  smallest size. Check the longest figure the data can produce (`$1,803,299.12`).
 - Tabular numerals wherever numbers line up or update.
 
 ### Charts
+- A charting library, never hand-drawn SVG: Chart.js in a custom app (the hops-app
+  skeleton's `static/vendor/` and `static/chart-theme.js`), Superset's charts in a
+  dashboard, matplotlib or seaborn in Python.
 - The accent for the primary series; greys (`#a0a0a0`, `#cbcbcb`) for context and
   comparison; danger only for a threshold breach.
+- An area is its line plus a fill of the same color at low opacity (about 12%);
+  a closed shape with no fill renders black.
 - No 3D, no shadows, no background fills, light or no gridlines, no legend for a
   single series. Label axes with units; title the chart with the question it answers.
+- Tick labels 12px in muted text, never rotated, skipped when they crowd, and never
+  clipped at the edges: pad the plot area. The chart takes its container's width and
+  a fixed height.
 - Same scale on charts meant to be compared.
 
 ## Docs

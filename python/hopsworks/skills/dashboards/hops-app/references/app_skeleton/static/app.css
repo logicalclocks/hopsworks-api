@@ -1,15 +1,17 @@
-/* Hopsworks app look: tokens first, then components. Extend, don't restyle. */
+/* Hopsworks app look (hops-design): tokens first, then components. Extend, don't restyle. */
 :root {
   --accent: #1eb182;
   --accent-soft: #e6f2ee;
-  --bg: #f7f7f7;
-  --panel: #ffffff;
+  --bg: #ffffff;
+  --tint: #f7f7f7;
   --text: #252525;
   --muted: #737373;
   --line: #e5e5e5;
   --danger: #e7000b;
   --warn: #e0a100;
   --radius: 10px;
+  /* The one spacing scale. */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
   color-scheme: light;
 }
 
@@ -24,46 +26,61 @@ body {
   color: var(--text);
 }
 h1, h2, h3 { line-height: 1.25; margin: 0; }
-h2 { font-size: 1.05rem; font-weight: 600; }
+h1 { font-size: 1.15rem; font-weight: 600; }
+h2 { font-size: 1rem; font-weight: 600; margin-bottom: var(--s3); }
 
-.band {
-  display: flex; align-items: center; gap: 0.75rem;
-  padding: 0.9rem 1.5rem;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-.band h1 { font-size: 1.15rem; }
+.band { padding: var(--s4) var(--s5); border-bottom: 1px solid var(--line); }
 .band .sub { color: var(--muted); font-size: 0.85rem; }
 
+/* Sections are grouped by spacing and a hairline between them: no box per section. */
 main {
-  max-width: 72rem; margin: 1.5rem auto; padding: 0 1.5rem;
+  max-width: 72rem; margin: 0 auto; padding: var(--s5);
   /* minmax(0, 1fr): a grid column grows to its widest content unless told it may shrink. */
-  display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr);
+  display: grid; gap: var(--s5); grid-template-columns: minmax(0, 1fr);
 }
-/* Key figures in one row, divided by hairlines (each stat draws its own left and top
-   rule; the row clips the outer ones), so a wrapped row stays divided too. */
+main > section + section { border-top: 1px solid var(--line); padding-top: var(--s5); }
+
+/* Key figures in one row, divided by hairlines: each stat draws its own left rule, and
+   the row, pulled left by one padding, clips the rule of the first stat on every line,
+   so a wrapped row lines up and keeps its rules. */
 .stats {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr));
+  margin-left: calc(-1 * var(--s4)); overflow: hidden;
 }
-.stats .stat { padding: 1rem 1.25rem; box-shadow: -1px 0 0 var(--line), 0 -1px 0 var(--line); }
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 1.25rem;
+.stat {
+  /* min-width: 0 lets the cell shrink; container-type sizes the value to the cell. */
+  min-width: 0; container-type: inline-size;
+  padding: var(--s1) var(--s4); box-shadow: -1px 0 0 var(--line);
 }
-.card > h2 { margin-bottom: 0.75rem; }
-
-.stat .label { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.stat .value { font-size: 1.9rem; font-weight: 700; margin-top: 0.25rem; }
+.stat .label { color: var(--muted); font-size: 0.8rem; }
+.stat .value {
+  /* A long figure ($1,803,299.12) shrinks with its cell, on one line; past the smallest
+     size it ends in an ellipsis, and the full figure goes in the element's title. */
+  font-size: clamp(0.875rem, 11cqi, 1.75rem); font-weight: 600; line-height: 1.2;
+  font-variant-numeric: tabular-nums; margin-top: var(--s1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .stat .value.accent { color: var(--accent); }
 .stat .value.danger { color: var(--danger); }
 
-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+/* Charts side by side when the page is wide enough, stacked below that. */
+.charts {
+  display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+}
+figure { margin: 0; min-width: 0; }
+figcaption { font-weight: 600; margin-bottom: var(--s2); }
+/* The canvas fills this box; its height is reserved, so nothing moves when data arrives. */
+.chart { position: relative; height: 15rem; }
+.chart .error, .chart .empty { position: absolute; inset: 0; display: grid; place-items: center; }
+
+/* A card is for content that must stand apart (an alert, a form beside other content);
+   one level only. */
+.card { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s4); }
+
+form { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
 label { color: var(--muted); font-size: 0.9rem; }
-input, select, button { font: inherit; border-radius: 8px; padding: 0.5rem 0.75rem; }
+input, select, button { font: inherit; border-radius: 8px; padding: var(--s2) var(--s3); }
 input, select {
   border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 10rem;
 }
@@ -73,39 +90,39 @@ button {
 }
 button:hover { filter: brightness(1.05); }
 button:disabled { opacity: 0.6; cursor: progress; }
+#result:not(:empty) { margin-top: var(--s3); }
+#result p { margin: 0; }
 
 table { width: 100%; border-collapse: collapse; }
-th {
-  text-align: left; color: var(--muted); font-weight: 500; font-size: 0.8rem;
-  text-transform: uppercase; letter-spacing: 0.04em;
-}
-td, th { padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--line); }
-tbody tr:hover { background: var(--accent-soft); }
-td.num { font-variant-numeric: tabular-nums; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 0.8rem; }
+td, th { padding: var(--s2); border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { padding-left: 0; }
+tbody tr:hover { background: var(--tint); }
+/* Quantities right-aligned; ids are labels, left-aligned with tabular digits. */
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.id { font-variant-numeric: tabular-nums; }
 /* A table wider than the page scrolls inside this frame. contain: inline-size keeps
    the table's width out of every ancestor's size, so no grid or flex row around it
    grows past the right edge of the page. */
 .table-wrap { overflow-x: auto; contain: inline-size; }
 
-.bar { display: flex; align-items: center; gap: 0.5rem; }
+.bar { display: flex; align-items: center; gap: var(--s2); }
 .bar .track { flex: 1; height: 0.5rem; border-radius: 999px; background: var(--line); overflow: hidden; }
 .bar .fill { height: 100%; border-radius: 999px; background: var(--accent); }
 .bar .fill.high { background: var(--danger); }
 .bar .fill.mid { background: var(--warn); }
-.bar .num { min-width: 3.5rem; text-align: right; }
+.bar .num { min-width: 3.5rem; text-align: right; font-variant-numeric: tabular-nums; }
 
-.badge {
-  display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px;
-  font-size: 0.78rem; font-weight: 600; background: var(--accent-soft); color: var(--accent);
-}
-.badge.high { background: rgba(214, 69, 93, 0.14); color: var(--danger); }
+/* Status is a dot and a word, never color alone. */
+.status::before { content: "●"; margin-right: var(--s1); color: var(--accent); }
+.status.high::before { color: var(--danger); }
 
 .muted { color: var(--muted); }
-.empty, .error { color: var(--muted); padding: 1rem 0; text-align: center; }
+.empty, .error { color: var(--muted); padding: var(--s4) 0; text-align: center; }
 .error { color: var(--danger); }
 .loading {
-  height: 1rem; border-radius: 6px; margin: 0.6rem 0;
-  background: linear-gradient(90deg, var(--line), var(--bg), var(--line));
+  height: 1rem; border-radius: 6px; margin: var(--s2) 0;
+  background: linear-gradient(90deg, var(--line), var(--tint), var(--line));
   background-size: 200% 100%; animation: shimmer 1.2s infinite;
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
@@ -113,7 +130,7 @@ td.num { font-variant-numeric: tabular-nums; }
 [aria-busy="true"] { opacity: 0.55; transition: opacity 0.15s; }
 
 @media (max-width: 40rem) {
-  .band { padding: 0.75rem 1rem; }
-  main { padding: 0 1rem; }
+  .band { padding: var(--s3) var(--s4); }
+  main { padding: var(--s4); }
   input, select { min-width: 0; flex: 1; }
 }

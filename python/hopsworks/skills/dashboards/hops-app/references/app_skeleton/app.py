@@ -3,8 +3,10 @@
 
 Shows a customer's latest features and churn score. A person types a customer
 id and sees the feature values and the score, and the ten highest-risk
-customers are listed on load. Reads the telco_churn_predictions feature group
-through Trino, which picks each customer's latest prediction and the top ten.
+customers are listed on load, with the average risk per day over the last 30
+days and the number of customers per risk band. Reads the
+telco_churn_predictions feature group through Trino, which picks each
+customer's latest prediction, the top ten and the aggregates.
 
 The description above is the app's record: `/hops app` writes it from the
 user's words and updates it on every edit, so the next edit starts from what
@@ -33,6 +35,9 @@ STATIC = Path(__file__).resolve().parent / "static"
 PREDICTIONS = {"name": "telco_churn_predictions", "version": 1, "catalog": "delta"}
 MAX_LIMIT = 100
 CACHE_SECONDS = 30
+TREND_DAYS = 30
+# Score at or above each bound, highest first; the UI colors the first band.
+BANDS = (("high", 0.6), ("mid", 0.3), ("low", 0.0))
 
 # Trino picks each customer's latest prediction and the top k, so a request reads k rows,
 # not the prediction history.
@@ -44,6 +49,23 @@ SELECT customer_id, score FROM (
 ) AS latest WHERE newest = 1
 ORDER BY score DESC
 LIMIT ?
+"""
+TREND = """
+SELECT CAST(date_trunc('day', predicted_at) AS date) AS day, avg(score) AS score
+FROM {table}
+WHERE predicted_at >= date_add('day', -?, current_timestamp)
+GROUP BY 1
+ORDER BY 1
+"""
+BAND_COUNTS = """
+SELECT CASE WHEN score >= ? THEN 'high' WHEN score >= ? THEN 'mid' ELSE 'low' END AS band,
+       count(*) AS customers
+FROM (
+  SELECT score,
+         ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY predicted_at DESC) AS newest
+  FROM {table}
+) AS latest WHERE newest = 1
+GROUP BY 1
 """
 CUSTOMER = """
 SELECT score, predicted_at FROM {table}
@@ -110,6 +132,19 @@ def top(limit: int = Query(10, ge=1, le=MAX_LIMIT)) -> list[dict]:
         {"customer_id": customer_id, "score": float(score)}
         for customer_id, score in _query(TOP, (limit,))
     ]
+
+
+@app.get("/api/trend")
+def trend() -> list[dict]:
+    """Average score per day over the last TREND_DAYS days."""
+    return [{"day": str(day), "score": float(score)} for day, score in _query(TREND, (TREND_DAYS,))]
+
+
+@app.get("/api/bands")
+def bands() -> list[dict]:
+    """Customers per risk band, each by its latest prediction, every band listed."""
+    counts = dict(_query(BAND_COUNTS, (BANDS[0][1], BANDS[1][1])))
+    return [{"band": band, "customers": int(counts.get(band, 0))} for band, _ in BANDS]
 
 
 @app.get("/api/customers/{customer_id}")

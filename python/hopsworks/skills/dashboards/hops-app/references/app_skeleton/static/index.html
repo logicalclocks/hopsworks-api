@@ -9,21 +9,32 @@
     if (!location.pathname.endsWith("/")) location.replace(location.pathname + "/" + location.search);
   </script>
   <link rel="stylesheet" href="static/app.css">
+  <script src="static/vendor/chart.umd.min.js"></script>
+  <script src="static/chart-theme.js"></script>
   <script type="module" src="static/app.js"></script>
 </head>
 <body>
   <header class="band">
-    <div>
-      <h1>Customer lookup</h1>
-      <div class="sub">Churn scores from telco_churn_predictions</div>
-    </div>
+    <h1>Customer lookup</h1>
+    <div class="sub">Churn scores from telco_churn_predictions</div>
   </header>
   <main>
     <section class="stats">
+      <div class="stat"><div class="label">Customers scored</div><div class="value" id="scored">–</div></div>
       <div class="stat"><div class="label">Average risk, top list</div><div class="value" id="avg">–</div></div>
       <div class="stat"><div class="label">Highest risk</div><div class="value danger" id="max">–</div></div>
     </section>
-    <section class="card">
+    <section class="charts">
+      <figure>
+        <figcaption>Is risk going up?</figcaption>
+        <div class="chart"><canvas id="trend" aria-label="Average risk per day"></canvas></div>
+      </figure>
+      <figure>
+        <figcaption>How many customers are at risk?</figcaption>
+        <div class="chart"><canvas id="bands" aria-label="Customers per risk band"></canvas></div>
+      </figure>
+    </section>
+    <section>
       <h2>Look up a customer</h2>
       <form id="lookup">
         <label for="customer">Customer id</label>
@@ -32,7 +43,7 @@
       </form>
       <div id="result" aria-live="polite"></div>
     </section>
-    <section class="card">
+    <section>
       <h2>Highest risk</h2>
       <div class="table-wrap">
         <table id="top">

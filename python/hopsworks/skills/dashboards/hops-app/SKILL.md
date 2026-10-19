@@ -351,12 +351,18 @@ A full dashboard (statistics, monitoring history, data sample) is in
   content replaces it; placeholders only on the first load. The skeleton's
   `app.css` reserves the scrollbar gutter, so content that shrinks for a moment
   never shifts the page sideways.
+- **Charts are Chart.js**, vendored in `static/vendor/chart.umd.min.js` (MIT,
+  licence beside it) and themed once by `static/chart-theme.js` (hops-design
+  tokens, no legend for one series, area fills, padded ticks). A chart sets only
+  its data, labels and axis titles, inside a `.chart` box that fixes its height;
+  the skeleton draws a line over time and bars by category. Never hand-drawn SVG,
+  never a CDN.
 - **Nothing spills sideways.** A table goes in the skeleton's `.table-wrap`, which
   scrolls it inside its own frame (`contain: inline-size` keeps its width out of
   the layout around it), and every grid the app adds gives its columns
   `minmax(0, …)` (`grid-template-columns: minmax(0, 1fr)`): a plain `1fr` or
   implicit column grows to its widest content and pushes the page past the right
-  edge of the Hopsworks app panel. Check the app at about 900px wide.
+  edge of the Hopsworks app panel. Check the app at about 600px and 900px wide.
 - **The description is the module docstring** of `app.py`, updated on every
   edit, so the next edit starts from what the app is now.
 - **Each request reads only what it returns.** The skeleton's routes query the

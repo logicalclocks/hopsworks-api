@@ -50,14 +50,19 @@ deployment.
 ## Look
 
 The UI is what the user sees of the whole system, so it has to look finished. Start from the
-skeleton's `static/app.css` and keep its tokens and components (the header band, cards, stat
-tiles, tables with score bars, badges, loading and empty states); add to it rather than
+skeleton's `static/app.css` and keep its tokens and components (the header band, the stats row,
+charts, tables with score bars, status dots, loading and empty states); add to it rather than
 restyling. Every view shows a loading state, an empty state and an error in words, numbers are
 formatted (percentages, thousands separators, dates), and the layout works from a phone width up.
 Nothing moves when the user interacts: a list or panel that reloads keeps its current content,
 dimmed with `aria-busy`, until the new content replaces it (placeholders only on the first load),
 and the page reserves the scrollbar gutter, so a filter or a selection never makes the layout jump.
-No CDN and no build step: fonts are the system stack, charts are inline SVG or CSS.
+No CDN and no build step: fonts are the system stack, and every chart is Chart.js with the
+skeleton's `static/chart-theme.js`, never hand-drawn SVG. Follow **hops-design**: a white page,
+sections grouped by spacing and hairlines with no box per section, stats that fit their cell.
+Look at the page at about 600px and 900px wide once it first shows all its sections, and again
+before each deploy (a screenshot tool when one is available); fix what spills, clips or leaves
+a gap.
 
 ## Fix loop
 

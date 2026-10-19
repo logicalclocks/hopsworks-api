@@ -1499,6 +1499,11 @@ def test_the_app_skeleton_serves_health_the_page_and_its_assets():
     assert page.status_code == 200 and "static/app.js" in page.text
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/static/app.css").status_code == 200
+    assert client.get("/static/chart-theme.js").status_code == 200
+    chart = client.get("/static/vendor/chart.umd.min.js")
+    # Vendored, so the app runs without the network; the MIT header stays with it.
+    assert chart.status_code == 200 and "Released under the MIT License" in chart.text
+    assert (APP / "static" / "vendor" / "chart.js.LICENSE.md").is_file()
 
 
 def test_the_app_skeleton_uses_only_relative_urls():
@@ -1861,3 +1866,38 @@ def test_the_template_metrics_handle_ties_and_probabilities():
     assert evaluate.roc_auc([1, 0, 1, 0], [0.9, 0.5, 0.1, 0.3]) == 0.5
     assert evaluate.accuracy([0, 1], [0.1, 0.9]) == 1.0
     assert evaluate.accuracy(["a", "b"], ["a", "c"]) == 0.5
+
+
+def test_the_app_skeleton_aggregates_in_the_query_engine(monkeypatch):
+    pytest.importorskip("fastapi")
+    from starlette.testclient import TestClient
+
+    app = _load(APP / "app.py", "app_skeleton_charts")
+    app._cache.clear()
+    executed = []
+
+    class _Cursor:
+        def execute(self, sql, params):
+            executed.append((sql, params))
+
+        def fetchall(self):
+            if "date_trunc" in executed[-1][0]:
+                return [("2026-10-01", 0.25), ("2026-10-02", 0.5)]
+            return [("high", 3), ("low", 7)]
+
+    monkeypatch.setattr(app, "_connection", lambda: SimpleNamespace(cursor=_Cursor))
+    client = TestClient(app.app)
+    assert client.get("/api/trend").json() == [
+        {"day": "2026-10-01", "score": 0.25},
+        {"day": "2026-10-02", "score": 0.5},
+    ]
+    sql, params = executed[0]
+    assert "GROUP BY 1" in sql and params == (app.TREND_DAYS,)
+    # Every band is listed, an empty one with zero customers.
+    assert client.get("/api/bands").json() == [
+        {"band": "high", "customers": 3},
+        {"band": "mid", "customers": 0},
+        {"band": "low", "customers": 7},
+    ]
+    sql, params = executed[1]
+    assert "ROW_NUMBER() OVER (PARTITION BY customer_id" in sql and params == (0.6, 0.3)
