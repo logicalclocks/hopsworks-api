@@ -19,8 +19,8 @@ the commits.
 
 - **The editable file:** `src/<slug_pkg>/training_pipeline.py`. Only this file changes between runs.
 - **Read-only:** the feature pipelines, the feature view and the frozen split in
-  `training.harness` (its `end_time` and parts, or a training dataset version
-  frozen before), `src/<slug_pkg>/evaluate.py`, the
+  `training.harness` (its `end_time`, `in_memory_version` and parts, or a
+  materialized training dataset version frozen before), `src/<slug_pkg>/evaluate.py`, the
   training environment in `training.environment`, `requirements`, and
   `system.yaml` outside `training.runs`.
 - **The goal:** `requirements.targets.metric` in `requirements.targets.direction`

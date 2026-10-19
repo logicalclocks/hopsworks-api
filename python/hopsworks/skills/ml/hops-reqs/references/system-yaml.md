@@ -220,10 +220,11 @@ training:                             # owner: train (the training agent); budge
                                       # or candidates: [{model: hf:owner/repo, revision: 8f3a1c9, licence: apache-2.0, run_id: train-1-1}], chosen: hf:owner/repo@8f3a1c9
   split: {kind: temporal | grouped | random, validation_fraction: 0.15, test_fraction: 0.15, start: 2025-01-01, label_cutoff: 2026-08-22,
           note: event_time present and generalises_to new_periods, so time-ordered with test last}
-  harness: {evaluate: src/telco_churn/evaluate.py, commit: 3f9e2a1, end_time: 2026-09-21T00:00:00,
+  harness: {evaluate: src/telco_churn/evaluate.py, commit: 3f9e2a1, end_time: 2026-09-21T00:00:00, in_memory_version: 4,
             parts: {train: {rows: 41210, fingerprint: 9c1e04a7b2d35f68}, validation: {rows: 8830, fingerprint: 4f7a21c90e6b3d15}, test: {rows: 8831, fingerprint: d02b8e6f13a9c574}}}
                                       # frozen before the first run by `evaluate.py --freeze`; travels in every run bundle.
-                                      # Every read takes rows up to end_time in memory and stops when a part's rows or
+                                      # Every read gets training dataset version in_memory_version again (rows up to end_time,
+                                      # in memory, nothing registered) and stops when a part's rows or
                                       # fingerprint differ. A system frozen before this has training_dataset_version: <n>
                                       # instead of end_time and parts, and reads that materialized version.
   runs:                               # research mode: every run registers a version of telco_churn_research; the row exists before the job is submitted

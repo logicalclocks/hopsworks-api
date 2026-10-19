@@ -65,8 +65,9 @@ schema, the rules and the template), **hops-eda**, **hops-fv**, **hops-train**, 
    them. Choose the environment by the reuse rule and pin, now, everything the round may need;
    record `training.environment` with `transformation_libraries`. Freeze the split:
    `python src/<slug_pkg>/evaluate.py --freeze system.yaml` reads the parts once and prints the
-   `training.harness.end_time` and `training.harness.parts` (rows and fingerprint per part) to
-   record with `set.py`. Commit `[<slug>] train: harness` and record `training.harness.evaluate`
+   `training.harness.end_time`, `training.harness.in_memory_version` (the one training dataset
+   version the split registers; every later read gets it again) and `training.harness.parts`
+   (rows and fingerprint per part) to record with `set.py`. Commit `[<slug>] train: harness` and record `training.harness.evaluate`
    and `commit`. From here on, `evaluate.py`, the frozen split, the feature pipelines and the
    environment are read-only; a run that finds the rows changed inside the split stops, and the
    protocol says how to refreeze. Then import and score the pretrained candidates

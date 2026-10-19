@@ -1967,10 +1967,23 @@ def test_the_template_metrics_handle_ties_and_probabilities():
 
 
 class FakeFeatureView:
-    """A feature view over one frame that, like the query service, returns rows in a new order per read."""
+    """A feature view over one frame that, like the query service, returns rows in a new order per read.
+
+    Like the backend, each split or `training_data` call registers a training dataset version
+    holding its time bounds, and a read by version reruns the query with those bounds.
+    """
 
     def __init__(self, rows):
-        self.rows, self.reads = rows, 0
+        self.rows, self.reads, self.versions = rows, 0, {}
+
+    def _register(self, bounds):
+        version = len(self.versions) + 1
+        self.versions[version] = bounds
+        self.last = version
+        return version
+
+    def get_last_accessed_training_dataset(self):
+        return self.last
 
     def _shuffled(self, frame):
         self.reads += 1
@@ -1981,11 +1994,11 @@ class FakeFeatureView:
         x = frame.drop(columns=["won"] + ([] if primary_key else ["deal_id"]))
         return x, frame[["won"]]
 
-    def training_data(self, end_time=None, primary_key=False, statistics_config=None):
+    def _until(self, end_time, primary_key):
         frame = self.rows if end_time is None else self.rows[self.rows.ts <= end_time]
         return self._xy(frame, primary_key)
 
-    def train_validation_test_split(self, statistics_config=None, **bounds):
+    def _parts(self, bounds):
         parts = []
         for part in ("train", "validation", "test"):
             start, end = bounds[f"{part}_start"], bounds[f"{part}_end"]
@@ -1997,7 +2010,22 @@ class FakeFeatureView:
         (x_tr, y_tr), (x_va, y_va), (x_te, y_te) = parts
         return x_tr, x_va, x_te, y_tr, y_va, y_te
 
+    def training_data(self, end_time=None, primary_key=False, statistics_config=None):
+        self._register({"end_time": end_time})
+        return self._until(end_time, primary_key)
+
+    def get_training_data(self, training_dataset_version, primary_key=False):
+        return self._until(
+            self.versions[training_dataset_version]["end_time"], primary_key
+        )
+
+    def train_validation_test_split(self, statistics_config=None, **bounds):
+        self._register(bounds)
+        return self._parts(bounds)
+
     def get_train_validation_test_split(self, training_dataset_version):
+        if training_dataset_version in self.versions:
+            return self._parts(self.versions[training_dataset_version])
         self.materialized = training_dataset_version
         x, y = self._xy(self.rows, False)
         return x, x, x, y, y, y
@@ -2044,6 +2072,8 @@ def test_a_frozen_in_memory_split_reads_the_same_rows_after_appends(kind):
     fv.rows = pd.concat([rows, later], ignore_index=True)
     again = evaluate.read_parts(fv, training, requirements)
     assert {p: evaluate.fingerprint(*again[p]) for p in again} == record["parts"]
+    evaluate.read_parts(fv, training, requirements)
+    assert list(fv.versions) == [record["in_memory_version"]] == [1]
     assert all("deal_id" not in x.columns for x, _ in parts.values())
 
 

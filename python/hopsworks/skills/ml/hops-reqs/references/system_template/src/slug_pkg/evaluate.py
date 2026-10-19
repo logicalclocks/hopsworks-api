@@ -8,7 +8,8 @@ verify) on one part:
         --model <name>:<version> --split validation
 
 and, once, to freeze the split: `--freeze system.yaml` reads the parts in memory and prints the
-`training.harness` fields to record with set.py (`end_time`, each part's rows and fingerprint).
+`training.harness` fields to record with set.py (`end_time`, the training dataset version
+the read registered as `in_memory_version`, each part's rows and fingerprint).
 
 Frozen once `training.harness.commit` is recorded: the training loop never edits
 this file, so every run is scored on the same rows with the same metric. Adapt
@@ -211,14 +212,29 @@ def _row_hashes(frame: Any) -> np.ndarray:
 
 
 def _in_memory_parts(
-    fv: Any, split: dict, requirements: dict, end_time: datetime | None
+    fv: Any,
+    split: dict,
+    requirements: dict,
+    end_time: datetime | None,
+    version: int | None = None,
 ) -> dict[str, tuple]:
     """Read every part straight from the feature view, with nothing after `end_time`.
 
     A temporal split takes its boundaries from `end_time`; a random split assigns each row
     by its content hash and a grouped split each entity by its key, so the parts never
-    depend on the order the query service returns rows in.
+    depend on the order the query service returns rows in. Without `version` the read
+    registers a training dataset version; with it, it reads that version again, whose query
+    keeps the frozen time bounds, and registers nothing.
     """
+    grouped = split["kind"] == "grouped"
+    if version is not None:
+        if split["kind"] == "temporal":
+            x_tr, x_va, x_te, y_tr, y_va, y_te = fv.get_train_validation_test_split(
+                training_dataset_version=version
+            )
+            return {"train": (x_tr, y_tr), "validation": (x_va, y_va), "test": (x_te, y_te)}
+        x, y = fv.get_training_data(training_dataset_version=version, primary_key=grouped)
+        return _assigned_parts(x, y, split, requirements)
     if split["kind"] == "temporal":
         bounds = split_boundaries(
             datetime.fromisoformat(str(split["start"])),
@@ -232,8 +248,13 @@ def _in_memory_parts(
             **bounds, statistics_config=False
         )
         return {"train": (x_tr, y_tr), "validation": (x_va, y_va), "test": (x_te, y_te)}
-    grouped = split["kind"] == "grouped"
     x, y = fv.training_data(end_time=end_time, primary_key=grouped, statistics_config=False)
+    return _assigned_parts(x, y, split, requirements)
+
+
+def _assigned_parts(x: Any, y: Any, split: dict, requirements: dict) -> dict[str, tuple]:
+    """Split one read into the parts, by entity for a grouped split, else by row content."""
+    grouped = split["kind"] == "grouped"
     x, y = x.reset_index(drop=True), y.reset_index(drop=True)
     if grouped:
         entity = requirements["problem"]["entity"]
@@ -253,11 +274,17 @@ def _in_memory_parts(
 def freeze(
     fv: Any, training: dict, requirements: dict, end_time: datetime | None = None
 ) -> tuple[dict, dict[str, tuple]]:
-    """The harness record of the split now (`end_time` and each part's rows and fingerprint), and its parts."""
+    """The harness record of the split now, and its parts.
+
+    The record holds `end_time`, the training dataset version the read registered, which
+    every later read gets again instead of registering one each, and each part's rows and
+    fingerprint.
+    """
     end_time = end_time or datetime.now(UTC).replace(tzinfo=None, microsecond=0)
     parts = _in_memory_parts(fv, training["split"], requirements, end_time)
     record = {
         "end_time": end_time.isoformat(),
+        "in_memory_version": fv.get_last_accessed_training_dataset(),
         "parts": {name: fingerprint(*part) for name, part in parts.items()},
     }
     return record, parts
@@ -279,6 +306,7 @@ def read_parts(fv: Any, training: dict, requirements: dict, check: bool = True) 
         training["split"],
         requirements,
         datetime.fromisoformat(str(end_time)) if end_time else None,
+        harness.get("in_memory_version"),
     )
     if check:
         for name, (x, y) in parts.items():
@@ -533,6 +561,7 @@ def _print_freeze(path: Path) -> int:
     )
     record, _ = freeze(fv, training, system["requirements"])
     print(f"training.harness.end_time={record['end_time']}")
+    print(f"training.harness.in_memory_version={record['in_memory_version']}")
     print(f"training.harness.parts={json.dumps(record['parts'])}")
     return 0
 

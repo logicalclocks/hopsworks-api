@@ -48,9 +48,8 @@ program as a job. Print `[time] <step> <seconds>s` after the split, each fit, an
    candidate each), score each with `metric` on validation and test, and register each as a new
    version of model `<name>` with `feature_view=` (so `hops model info` names the view),
    `metrics=` (`val_<metric>` and `test_<metric>`), a `description=` naming the candidate, and the
-   charts hops-train saves. As a job, one run per candidate started together with `--no-wait`,
-   then `hops job wait <name>-train --execution <id>` for each; arguments carry no spaces
-   (`--candidate logistic_regression`).
+   charts hops-train saves. As a job, the same program in one run, so every candidate fits on
+   the one split it registers: `hops job run <name>-train --wait`.
 4. **The model file.** Each version's directory holds `model.joblib`: one scikit-learn
    `Pipeline` with its preprocessing inside (encoders, scaling, the column selection of step 2),
    so `joblib.load(Path(model_dir) / "model.joblib").predict_proba(df)` takes the feature view's
