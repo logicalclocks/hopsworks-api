@@ -18,22 +18,22 @@ a schedule or a model: the question is answered from this one table.
 
 ## Generated rows (`source: synthetic`)
 
-Load **hops-synthetic-data** (`.claude/skills/hops-synthetic-data/` in the repository, else
-`~/.claude/skills/hops-synthetic-data/`) and follow its rules for the code: seeded, Polars, whole
+Load **hops-synthetic-data** with `hops skills info hops-synthetic-data` and follow its rules for the code: seeded, Polars, whole
 columns, no Python loop over rows. The `story` decides which columns move together (revenue that
 grows over time, one country that dominates), so the question has an answer worth showing.
 `rows` defaults to 10,000.
 
 **Show it first.** Write the generator as `./data/<name>/generate.py` before anything runs, then
 create the feature group with its schema (`hops fg create <name> --version 1 --primary-key ...
---event-time ... --features ...`, one description per column), so both appear before the long
+--event-time ... --features ... --no-statistics`, one description per column), so both appear before the long
 part. The generator builds the frame and inserts it into that group with
-`fg.insert(df, wait=True)`. Run it as a job, never on the laptop:
+`fg.insert(df, wait=True)`. Run it where you run (a Hopsable sandbox, a terminal, a laptop):
+`python data/<name>/generate.py`, which writes `rows` in seconds; print `[time] generate
+<seconds>s` and `[time] insert <seconds>s`. A job only when the frame would not fit in memory
+(rows x columns x 8 bytes over 1 GB), or when the generation runs out of memory:
 
 ```bash
-hops job deploy <name>-data data/<name>/generate.py --env python-feature-pipeline \
-  --upload-dir Users/<user>/data/<name> --run --wait --overwrite
-hops job logs <name>-data --stdout
+hops job deploy <name>-data data/<name>/generate.py --env python-feature-pipeline --run --wait --overwrite
 ```
 
 ## Rows from a source (`source: <data source>`)
@@ -48,6 +48,6 @@ hops fg preview <name> --limit 5
 hops sql "SELECT count(*) FROM <name>_1"
 ```
 
-A failed job: `hops job logs <name>-data --stdout --tail 200`, name the cause in one line, fix and rerun, at
-most three attempts. Return a few lines: the feature group and version, its columns, the row
-count, and the job that wrote it.
+A failed run: read its traceback (a job's `--wait` prints its log tail), name the cause in one
+line, fix and rerun, at most three attempts. Return a few lines: the feature group and version, its
+columns, the row count, and where it was written (here, or the job).

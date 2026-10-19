@@ -24,6 +24,7 @@ Make every `requirements.data_sources` entry `present` and record it under `data
 - Synthetic: copy `hops-synthetic-data/references/generator.py` to
   `src/<slug_pkg>/synthetic_data.py` and write the story as code in Polars; it runs in
   `python-feature-pipeline`, which ships Polars, so no environment is cloned. Run the backfill
+  in this shell when the frame fits (rows x columns x 8 bytes under 1 GB), else as the backfill
   job, count the offline rows with `hops sql` after materialization, and for events deploy
   `<slug>-events` in `--mode live`.
   Recompute the online and offline sizes from the declared columns and put them in the
@@ -48,7 +49,7 @@ group the pipeline reads; validation before write; idempotent over the window. F
 at their natural grain with an `event_time`, and labels in their own group at the prediction time:
 never a snapshot or pre-joined group for point-in-time correctness, which the feature view's join
 provides (**hops-fv**). Write the unit and integration tests. Commit, build the bundle, run the backfill
-with `hops job backfill`, verify with bounded reads (`hops sql` count and newest event time,
+in this shell when its sources fit (the Rules), else with `hops job backfill`, verify with bounded reads (`hops sql` count and newest event time,
 `hops fg preview`), attach the schedule with its offsets and a failure alert
 (`hops job alert create ... --status failed`), or start the continuous execution; for a batch
 system run `benchmarks/benchmark_features.py` over one full window. Record each pipeline with its

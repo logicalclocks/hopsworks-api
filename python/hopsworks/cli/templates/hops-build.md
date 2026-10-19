@@ -55,11 +55,16 @@ a question you are about to ask depends on.
   realtime, time-ordered or grouped split, mount or ingest, scheduled or continuous). A routine
   engineering choice with an obvious default is taken and recorded in `decisions` with `by: claude`.
 - **Tell, one line per event.** Print a line when a phase starts (what it will do, the estimate),
-  when a job is submitted, on every poll of a running job (elapsed against the budget), when a run
+  when a job is submitted and when it ends (elapsed against the budget), when a run
   or attempt completes (its row), and when a phase ends (what it did, the new remaining estimate).
   Nothing else. Update `system.progress` at each of these events.
-- **Nothing runs on the laptop.** Pipelines, tests and benchmarks run as Hopsworks jobs or
-  deployments, apps as Hopsworks apps. Unit tests are the exception.
+- **One-off work runs where you run.** A backfill, a data generation, an EDA read or a check
+  over data that fits (the feature groups it reads hold under 500 MB in all, `Offline size` in
+  `hops fg info <fg>`) runs in this shell (a Hopsable sandbox, a terminal or a laptop), in
+  seconds; on running out of memory, it runs as a job. What recurs or what the system deploys
+  (scheduled pipelines, training runs and their bundles, the integration suite, benchmarks,
+  deployments, apps) runs as Hopsworks jobs, deployments and apps. A run you start waits with
+  `--wait`, or `hops job wait <job>` for one already started; never poll `hops job history`.
 - **Lint before a phase is validated.** Before a phase's tests run, and before it is recorded
   `met`, run in the system directory `ruff format .` then `ruff check --fix .` (with
   `uv tool run ruff@0.15.6` when `ruff` is not installed; the rules are in `pyproject.toml`), fix by hand
