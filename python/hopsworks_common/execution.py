@@ -290,16 +290,31 @@ class Execution:
 
     @public
     @usage._method_logger
-    def stop(self):
+    def stop(self, force: bool = False):
         """Stop the execution.
+
+        A stop lets the execution's pods upload their logs first; until they have, the execution is in state `AGGREGATING_LOGS` with final status `KILLED`.
+        Stopping an execution that has already finished changes nothing.
 
         Danger: Potentially dangerous operation
             This operation stops the execution.
+            With `force=True` the execution ends at once and its pods are deleted without waiting for their logs, so the logs are incomplete or missing.
+            Its log files then start with a note saying so, followed by the last lines of its pods' output.
+
+        Example:
+            ```python
+            execution.stop()
+            # still uploading its logs and taking too long
+            execution.stop(force=True)
+            ```
+
+        Parameters:
+            force: Whether to end the execution at once, giving up the logs it has not uploaded yet.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        self._execution_api._stop(self.job_name, self.id)
+        self._execution_api._stop(self.job_name, self.id, force=force)
 
     @public
     @usage._method_logger
