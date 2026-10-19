@@ -49,6 +49,7 @@ into bucket folders:
 
 ## platform/ — cross-cutting platform knowledge and compute
 - [hops-job](platform/hops-job/SKILL.md) — jobs and Airflow DAGs.
+- [hops-notebook](platform/hops-notebook/SKILL.md) — notebooks written and run on the user's Jupyter kernel.
 - [hops-environments](platform/hops-environments/SKILL.md) — clone a Python env, install custom libs.
 - [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
 - [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, and feature store/dataset sharing.

@@ -32,7 +32,7 @@ Already known, no need to look again:
 | --- | --- |
 | none | Ask "What do you want to do?": **Explore data**, **Make a table and look at it**, **Build or resume an ML system**, **A dashboard or an app** (then ask which). Then continue with that choice below. |
 | `explore` | Explore (below). |
-| an instruction to make something outside an ML system (a table, features, a model or candidates, scoring, a dashboard, an app, an analytics layer), alone or several together | Pieces (below), whatever its first word. |
+| an instruction to make something outside an ML system (a table, features, a model or candidates, scoring, a dashboard, an app, a notebook, an analytics layer), alone or several together | Pieces (below), whatever its first word. |
 | `dashboard` | Dashboard (below), with the rest as the instruction. |
 | `app` | App (below), with the rest as the instruction. |
 | `status` | Status (below). |
@@ -65,6 +65,7 @@ is the whole dispatch:
 | inference | model `<m>` on a feature view | feature group `<m>_predictions` with rows, job `<m>-score` | `hops fg preview <m>_predictions --limit 1` prints a row | **hops-infer-builder** |
 | dashboard | feature groups with rows | Superset dashboard `<title>` | `hops superset dashboard list` lists `<title>` | **hops-dashboard-builder** (Dashboard below) |
 | app | what it reads: feature groups, a model or a deployment | app `<a>` serving | `hops app info <a>` shows `State` `RUNNING` | **hops-app-builder** (App below) |
+| notebook | what it reads: feature groups or a feature view | notebook `<path>.ipynb` with its outputs | `hops notebook info <path>.ipynb` shows a `RUN` number on every code cell, and no cell raised | you, no builder (Notebook below) |
 | analytics layer | bronze: a source; silver: feature groups with rows, used as bronze by name, never copied; gold: silver tables | the layer's tables with rows | `hops fg preview <table> --limit 1` for each table its `system.yaml` lists | `/hops-bronze`, `/hops-silver`, `/hops-gold` |
 
 1. **The goal.** Write down the pieces the request names, each with its asset name. Add a piece
@@ -128,6 +129,28 @@ external client.
    program: <dashboards/<slug>.py, or the ML system's <slug>/dashboards/<slug>.py>
    where: <Hopsworks terminal | external client>
    ```
+
+## Notebook
+
+A notebook is cells run on the user's own Jupyter kernel and saved with their outputs, in an
+`.ipynb` that opens in the user's JupyterLab. Write it yourself, with no builder:
+
+1. Run `hops notebook start`: it prints the Python environment the cells run in and the user's
+   Jupyter folder (`Users/<username>`). The notebook is `<folder>/<slug>.ipynb`, named after what
+   it shows. A package the environment lacks: the `hops-notebook` skill, never `pip install` in a cell.
+2. Write one cell at a time and run it before writing the next:
+   `hops notebook run <path> --code -` with the cell on stdin. The first cell is
+   `import hopsworks` then `fs = hopsworks.login().get_feature_store()`. Each section starts with
+   its markdown cell, `hops notebook run <path> --markdown --code "## <what it shows>"`, then one
+   code cell per step: the read (`fs.get_feature_group("<t>", version=<n>).read()`), a look at the
+   rows, one chart each.
+3. A model's predictions: load the model from the registry and score the test part of the training
+   dataset it was trained on, `fv.get_train_test_split(training_dataset_version=<n>)` with `<n>`
+   from `Training dataset` in `hops model info <m>`. Never a new split: it puts rows the model
+   trained on into the test part.
+4. A cell that raised: fix it in place with `--cell N`, never with a new cell after it.
+5. Never change a cell you did not write unless the user asks: the user may have the notebook open
+   in JupyterLab.
 
 ## App
 
