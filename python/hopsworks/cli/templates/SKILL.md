@@ -80,13 +80,22 @@ Flags:
 
 ### External Feature Groups
 
+An external feature group reads from a data source in place; Hopsworks stores only its metadata.
+Give one source spec:
+
 ```bash
-hops fg create-external <name> \
-  --connector <connector-name> \
-  --query "SELECT ... FROM ..." \
-  --primary-key <cols> \
-  [--event-time <col>] [--description <text>]
+# SQL / warehouse sources (Snowflake, BigQuery, Redshift, JDBC, ...)
+hops fg create-external <name> --connector <ds> --query "SELECT ... FROM ..." --primary-key <cols>
+# Object storage (S3, ADLS, GCS): a file or a prefix
+hops fg create-external <name> --connector <ds> --path sales/ --data-format parquet --primary-key <cols>
+# MongoDB collection
+hops fg create-external <name> --connector <ds> --database <db> --table <collection> --primary-key <cols>
 ```
+
+- `--online` enables the online store; rows then go in with `hops fg insert`, offline data stays in the source.
+- `hops fg info <name>` shows the connector, query or path, and the access state.
+- `hops fg test-access <name>` checks that the stored credentials can read the source.
+- `hops fg delete` on an external group removes its metadata only; the source table is untouched.
 
 ### Insert
 
