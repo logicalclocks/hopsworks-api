@@ -3336,6 +3336,7 @@ class FeatureView:
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         spine_df: SpineDataFrameTypes | None = None,
+        seed: int | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3475,6 +3476,8 @@ class FeatureView:
                 recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
+            seed: The seed of a random split, so the same rows read in the same order split the same
+                way on every call. `None` draws a new split each call. Ignored by a time split.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -3503,6 +3506,7 @@ class FeatureView:
             data_format="tsv",
             statistics_config=statistics_config,
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
+            seed=seed,
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
             tags=normalized_tags,
@@ -3568,6 +3572,7 @@ class FeatureView:
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         spine_df: SpineDataFrameTypes | None = None,
+        seed: int | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3722,6 +3727,8 @@ class FeatureView:
                 recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
+            seed: The seed of a random split, so the same rows read in the same order split the same
+                way on every call. `None` draws a new split each call. Ignored by a time split.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -3758,6 +3765,7 @@ class FeatureView:
             data_format="tsv",
             statistics_config=statistics_config,
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
+            seed=seed,
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
             tags=normalized_tags,

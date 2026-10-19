@@ -2521,6 +2521,40 @@ class TestPython:
         for name in ("train", "test"):
             assert first[name]["col"].tolist() == second[name]["col"].tolist()
 
+    @pytest.mark.parametrize("frame", ["pandas", "polars"])
+    def test_a_seeded_split_ignores_the_read_order(self, mocker, frame):
+        # Arrow Flight returns rows in no fixed order between reads.
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = {
+            "col": list(range(1000)),
+            "other": [i % 7 for i in range(1000)],
+            "embedding": [[i * 0.5, 1.0] for i in range(1000)],
+        }
+        df = pd.DataFrame(rows)
+        shuffled = df.sample(frac=1, random_state=5).reset_index(drop=True)
+        if frame == "polars":
+            df, shuffled = pl.from_pandas(df), pl.from_pandas(shuffled)
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            seed=123,
+            id=10,
+        )
+
+        first = python_engine._random_split(df, td)
+        second = python_engine._random_split(shuffled, td)
+
+        for name in ("train", "test"):
+            assert sorted(first[name]["col"].to_list()) == sorted(
+                second[name]["col"].to_list()
+            )
+        assert len(first["test"]) == 200
+
     def test_random_split_depends_on_seed(self, mocker):
         # Different seeds must yield different splits, proving the seed is
         # actually honored rather than ignored or hard-coded.
