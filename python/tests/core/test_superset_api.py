@@ -61,6 +61,9 @@ class TestSupersetApi:
         """Build a mock requests.Response."""
         resp = Mock(spec=requests.Response)
         resp.status_code = status_code
+        resp.ok = status_code < 400
+        resp.reason = "Bad Request" if status_code == 400 else "OK"
+        resp.text = ""
         resp.json.return_value = json_data or {}
         resp.cookies = cookies or {}
         resp.raise_for_status = Mock()
@@ -251,6 +254,37 @@ class TestSupersetApi:
     #  204 No Content handling                                            #
     # ------------------------------------------------------------------ #
 
+    def test_write_sends_a_same_origin_referer(self, authed_api):
+        """Flask-WTF behind an HTTPS proxy refuses a write without a Referer."""
+        authed_api._http.request = Mock(return_value=self._mock_response(201))
+        authed_api.create_dashboard(dashboard_title="d")
+        headers = authed_api._http.request.call_args.kwargs["headers"]
+        assert headers["Referer"] == (
+            authed_api._get_superset_url() + "/hopsworks-api/superset/"
+        )
+
+    @pytest.mark.parametrize(
+        ("base", "referer"),
+        [
+            ("https://h.example:443", "https://h.example/hopsworks-api/superset/"),
+            (
+                "https://h.example:8181",
+                "https://h.example:8181/hopsworks-api/superset/",
+            ),
+        ],
+    )
+    def test_referer_drops_the_default_port(self, authed_api, base, referer):
+        """Flask-WTF compares hosts as strings: h.example:443 is not h.example."""
+        authed_api._get_superset_url = Mock(return_value=base)
+        assert authed_api._referer() == referer
+
+    def test_error_carries_the_superset_message(self, authed_api):
+        resp = self._mock_response(400)
+        resp.text = '{"errors": [{"message": "The referrer header is missing."}]}'
+        authed_api._http.request = Mock(return_value=resp)
+        with pytest.raises(requests.HTTPError, match="referrer header is missing"):
+            authed_api.create_dashboard(dashboard_title="d")
+
     def test_204_returns_empty_dict(self, authed_api):
         """A 204 response returns an empty dict instead of calling .json()."""
         resp = self._mock_response(status_code=204)
@@ -266,15 +300,38 @@ class TestSupersetApi:
     #  URL validation guards                                              #
     # ------------------------------------------------------------------ #
 
-    def test_get_superset_url_raises_on_external_client(self, authed_api, mocker):
-        """Raises RuntimeError when called from an external client."""
+    def test_external_client_goes_through_the_hopsworks_proxy(
+        self, mocker, mock_project
+    ):
+        """From outside: the Hopsworks URL, the proxy cookie and the client's TLS settings."""
+        mocker.patch("hopsworks_common.core.superset_api.VariableApi")
         mocker.patch(
             "hopsworks_common.core.superset_api.client._is_external",
             return_value=True,
         )
+        client_mock = Mock()
+        client_mock._base_url = "https://hopsworks.example:443"
+        client_mock._verify = "/certs/ca.pem"
+        client_mock._send_request.return_value = {"accessToken": "sess-tok"}
+        mocker.patch(
+            "hopsworks_common.core.superset_api.client._get_instance",
+            return_value=client_mock,
+        )
+        api = SupersetApi(project=mock_project)
+        assert api._http.verify == "/certs/ca.pem"
+        resp = self._mock_response(json_data={"result": []})
+        api._http.request = Mock(return_value=resp)
 
-        with pytest.raises(RuntimeError, match="only available from within"):
-            authed_api._get_superset_url()
+        api.list_dashboards()
+
+        args, kwargs = api._http.request.call_args
+        assert args == (
+            "GET",
+            "https://hopsworks.example:443/hopsworks-api/superset/api/v1/dashboard/",
+        )
+        assert kwargs["headers"]["Cookie"] == (
+            "!Proxy!SupersetProxyServletsession=sess-tok"
+        )
 
     def test_get_superset_url_raises_on_empty_domain(self, authed_api, mocker):
         """Raises RuntimeError when service discovery domain is empty."""

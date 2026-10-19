@@ -23,6 +23,7 @@ Authentication is handled automatically via the Hopsworks Superset login endpoin
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import requests
 from hopsworks_apigen import public
@@ -37,6 +38,8 @@ if TYPE_CHECKING:
 SUPERSET_SERVICE_NAME = "app.superset.service"
 SUPERSET_PORT = 8088
 SUPERSET_BASE_PATH = "/hopsworks-api/superset"
+# From outside, Hopsworks proxies Superset at the same path and names the session cookie this way.
+SUPERSET_PROXY_COOKIE = "!Proxy!SupersetProxyServletsession"
 
 
 @public("hopsworks.core.superset_api.SupersetApi")
@@ -44,7 +47,8 @@ class SupersetApi:
     """API for managing Superset datasets, charts, and dashboards.
 
     This class provides methods to create, read, update, and delete
-    Superset resources directly from within Hopsworks.
+    Superset resources, from within Hopsworks or from an external client
+    (through the Hopsworks Superset proxy).
     Authentication is handled automatically using the project user's
     Superset credentials stored in Hopsworks secrets.
 
@@ -112,13 +116,14 @@ class SupersetApi:
         self._session_token: str | None = None
         self._csrf_token: str | None = None
         self._http = requests.Session()
+        self._external = client._is_external()
+        self._cookie = SUPERSET_PROXY_COOKIE if self._external else "session"
+        if self._external:
+            self._http.verify = client._get_instance()._verify
 
     def _get_superset_url(self) -> str:
-        if client._is_external():
-            raise RuntimeError(
-                "SupersetApi is only available from within the Hopsworks cluster. "
-                "Connecting from an external client is not supported."
-            )
+        if self._external:
+            return client._get_instance()._base_url
         if not self._service_discovery_domain:
             raise RuntimeError(
                 "Service discovery domain is not configured. "
@@ -127,6 +132,17 @@ class SupersetApi:
                 "returned an empty value."
             )
         return f"http://{SUPERSET_SERVICE_NAME}.{self._service_discovery_domain}:{SUPERSET_PORT}"
+
+    def _referer(self) -> str:
+        # Flask-WTF compares host strings, so the default port must not be spelled out.
+        url = urlparse(self._get_superset_url())
+        default = {"https": 443, "http": 80}.get(url.scheme)
+        host = (
+            url.hostname
+            if url.port in (None, default)
+            else f"{url.hostname}:{url.port}"
+        )
+        return f"{url.scheme}://{host}{SUPERSET_BASE_PATH}/"
 
     def _get_session_token(self) -> str:
         _client = client._get_instance()
@@ -143,13 +159,13 @@ class SupersetApi:
         )
         headers = {
             "Content-Type": "application/json",
-            "Cookie": f"session={self._session_token}",
+            "Cookie": f"{self._cookie}={self._session_token}",
         }
         resp = self._http.get(url, headers=headers, timeout=60)
         resp.raise_for_status()
         # Update session cookie if the server rotated it during CSRF token generation
-        if "session" in resp.cookies:
-            self._session_token = resp.cookies["session"]
+        if self._cookie in resp.cookies:
+            self._session_token = resp.cookies[self._cookie]
         self._csrf_token = resp.json()["result"]
         return self._csrf_token
 
@@ -170,10 +186,13 @@ class SupersetApi:
         url = self._get_superset_url() + SUPERSET_BASE_PATH + path
         headers = {
             "Content-Type": "application/json",
-            "Cookie": f"session={self._session_token}",
+            "Cookie": f"{self._cookie}={self._session_token}",
         }
         if needs_csrf:
             headers["X-CSRFToken"] = self._csrf_token
+            # Behind the Hopsworks proxy Superset sees HTTPS, and Flask-WTF then
+            # refuses a write without a same-origin Referer.
+            headers["Referer"] = self._referer()
 
         resp = self._http.request(
             method, url, json=json_data, headers=headers, params=params, timeout=60
@@ -182,7 +201,7 @@ class SupersetApi:
         if resp.status_code == 401:
             self._get_session_token()
             self._csrf_token = None
-            headers["Cookie"] = f"session={self._session_token}"
+            headers["Cookie"] = f"{self._cookie}={self._session_token}"
             if needs_csrf:
                 self._get_csrf_token()
                 headers["X-CSRFToken"] = self._csrf_token
@@ -190,7 +209,11 @@ class SupersetApi:
                 method, url, json=json_data, headers=headers, params=params, timeout=60
             )
 
-        resp.raise_for_status()
+        if not resp.ok:
+            raise requests.HTTPError(
+                f"{resp.status_code} {resp.reason} for {method} {path}: {resp.text[:500]}",
+                response=resp,
+            )
         if resp.status_code == 204:
             return {}
         return resp.json()
