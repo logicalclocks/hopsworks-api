@@ -8,6 +8,7 @@ allowed-tools: Bash(hops *)
 
 You have access to the `hops` CLI to interact with the user's Hopsworks cluster.
 Run read-only commands directly and confirm before destructive actions.
+For SDK and concept questions, search the docs through the `hopsworks-docs` MCP server (`https://mcp.hopsworks.ai/mcp`); `hops setup` registers it in `.mcp.json`.
 
 ## Current Context
 
