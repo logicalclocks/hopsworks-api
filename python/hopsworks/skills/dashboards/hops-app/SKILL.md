@@ -9,7 +9,7 @@ description: Use when writing Streamlit, Flask, Gradio, Node.js or custom apps
   output a running app and its URL.
 ---
 
-# Hopsworks Apps — Python SDK Best Practices
+# Hopsworks apps
 
 Hopsworks runs web apps as managed apps backed by a Hopsworks job, sourced from
 HopsFS or a Git repository. The app type (`app_kind`) decides how it starts:
@@ -59,7 +59,7 @@ may be absent on older deployed `hops` binaries.
 
 ## Ask the user (only when state is ambiguous)
 
-- Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Custom libraries**).
+- Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` ([references/libraries.md](references/libraries.md)).
 - Does the app come from **HopsFS or Git**? If Git, ask for `git_url`, `git_provider`, and (if needed) `git_branch` plus the entrypoint.
 - Should a git-backed app **auto-redeploy** on new commits (`git_auto_redeploy=True`)? It only applies to git-backed apps.
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
@@ -67,7 +67,7 @@ may be absent on older deployed `hops` binaries.
 - Does the app need **monitoring** narrowed to specific routes? Monitoring is on by default and routes are optional.
 - Does the app need **public access**? Streamlit sharing is feature-flagged; only ask for it when the platform has it enabled.
 - Does the app keep **its own state** (sessions, notes, agent memory)? Database access is on by default (`db_access=True`): the project's online feature store database is created at start and `MYSQL_*` variables are injected. Only a **Data Owner** start gets write privileges; a Data Scientist start is read-only. Pass `db_access=False` for an app that needs no database. Details in **hops-app-db**.
-- **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
+- **Before deleting:** `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
 
 ## Routing and readiness
 
@@ -88,334 +88,22 @@ public mount you want (`/` or `/myapp`); keep the readiness path separate (custo
 apps `/` or `/health`, Streamlit `/_stcore/health` or `/<base>/_stcore/health`);
 then delete any code that still builds absolute links from `APP_BASE_URL_PATH`.
 
----
+## References
 
-## Writing the app
+Read the one a step needs, with `hops skills info hops-app references/<file>` (or from this
+skill's `references/` directory):
 
-### Streamlit
-
-Stay Streamlit-native and root-based. Prefer seaborn over plotly for charts;
-plotly is not installed by default.
-
-```python
-# Users/<username>/app.py
-import hopsworks
-import streamlit as st
-
-st.title("Feature Store Dashboard")
-
-@st.cache_resource
-def get_feature_store():
-    project = hopsworks.login()          # auto-authenticates inside the cluster
-    return project.get_feature_store()
-
-fs = get_feature_store()
-
-@st.cache_data(ttl=300)
-def load_data():
-    return fs.get_feature_group("transactions", version=1).read(dataframe_type="pandas")
-
-df = load_data()
-st.subheader("Transaction Data")
-st.dataframe(df.head(100))
-st.subheader("Amount Distribution")
-st.bar_chart(df["amount"].value_counts().head(20))
-```
-
-### Flask, Gradio and Node.js (5.2+)
-
-Flask: an `app` object in the file; routes at `/` and `/health`; the app is served
-at its root, and `APP_PUBLIC_PATH` / `X-Forwarded-Prefix` carry the public path for
-an app that builds absolute links (`ProxyFix(app.wsgi_app, x_prefix=1)`).
-
-```python
-# Users/<username>/flaskapp.py  — app_kind="FLASK"
-from flask import Flask, jsonify
-
-app = Flask(__name__)
-
-@app.get("/health")
-def health():
-    return jsonify(status="ok")
-
-@app.get("/")
-def home():
-    return jsonify(status="ready")
-```
-
-Gradio: call `demo.launch()` with no `server_port` or `root_path`; Hopsworks sets
-`GRADIO_SERVER_NAME`, `GRADIO_SERVER_PORT` and `GRADIO_ROOT_PATH`, which `launch()`
-reads, and a hardcoded port breaks the readiness probe.
-
-Node.js: listen on `process.env.PORT`; `import` resolves the environment's npm
-packages (install them first, e.g. `env.install_npm(["express@latest"])`).
-
-```javascript
-// Users/<username>/server.mjs  — app_kind="NODEJS"
-import express from "express";
-const app = express();
-app.get("/health", (req, res) => res.json({ status: "ok" }));
-app.get("/", (req, res) => res.json({ status: "ready" }));
-app.listen(process.env.PORT, process.env.HOST ?? "0.0.0.0");
-```
-
-### Custom app
-
-Bind to `0.0.0.0` and the injected `APP_PORT`:
-
-```python
-# Users/<username>/app.py
-import os
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-def index():
-    return {"status": "ok"}
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ["APP_PORT"]))
-```
-
-### Reading Hopsworks data from the app
-
-The SDK calls are the same as anywhere (hops-fg / hops-fv / hops-online-inference);
-three things are app-specific:
-
-- **A just-created feature group is not queryable via Trino/`hops sql` immediately.** The offline table syncs into the Trino catalog with a short lag, so a `SELECT ... FROM <fresh_fg>` right after `insert` can return `TABLE_NOT_FOUND`. Online feature-vector reads are available before the Trino table is, so make the app not-found-safe (warn on an empty online vector) instead of trusting a range from a fresh query.
-- **Embedded model** (predict locally instead of calling a deployment): `model_dir = mr.get_model("fraud_model", version=1).download()`; cache the loaded model and its feature view in `@st.cache_resource` so the download happens once, and read through the feature view so the same MDTs/ODTs the model saw in training are applied (no training/serving skew).
-- **An app over a batch ML system** reads the prediction feature group the batch job writes and
-  never calls a deployment, because a batch system has none; a what-if score uses the embedded
-  model above.
-- **Calling a deployment** (real-time systems only): check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
-- **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Keep app tables there with an `app_` prefix and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, privileges per role, and RonDB table rules: **hops-app-db**.
-
-### Reading Trino from a JavaScript app
-
-The browser cannot query Trino itself: `trino.service.consul` resolves only
-inside the cluster, Trino takes passwords only over HTTPS (port 8080 answers
-`403 Authentication over HTTP is not enabled`), and the password must not reach
-the page. A Node server in the app holds the connection and answers the UI's
-relative `fetch("api/...")` calls with fixed queries, so the browser sends
-parameters, never SQL. `python-agent-pipeline` ships Node.
-
-The connection comes from the SDK: `trino_env.py` logs in, which writes the
-cluster CA to `/tmp/ca_chain.pem`, and writes the coordinator URL, the user
-`<project>__<username>`, its password from the secrets store and the schema
-`<project>_featurestore` to `/tmp/trino.json`, readable only by the app's user.
-Never print the password or export it as an environment variable: both leak it
-into logs and every child process. A feature group is the table
-`<name>_<version>` in catalog `delta` (or `hudi`/`iceberg`, per its format).
-
-```javascript
-import { readFileSync } from "node:fs";
-import pkg from "trino-client";
-const { Trino, BasicAuth } = pkg;
-
-const conn = JSON.parse(readFileSync("/tmp/trino.json", "utf8")); // from trino_env.py
-const trino = Trino.create({
-  server: conn.server, // https://coordinator.trino.service.consul:8443
-  catalog: "delta",
-  schema: conn.schema, // <project>_featurestore
-  auth: new BasicAuth(conn.user, conn.password),
-  ssl: { ca: readFileSync(conn.ca) }, // the cluster CA, not in Node's trust store
-});
-
-const query = await trino.query("SELECT * FROM customers_1 LIMIT 100");
-for await (const result of query) {
-  if (result.error) throw new Error(result.error.message);
-  console.log(result.columns?.map((c) => c.name), result.data); // rows arrive in pages
-}
-```
-
-The whole app (server with `/health`, `/api/rows` and the static UI) is
-[references/trino_js/](references/trino_js/). Install `trino-client` into the
-app directory before the upload, so the app starts without the network, and
-copy `app.css` from the skeleton (`<skills>` is
-`/opt/hopsworks-api/python/hopsworks/skills` in a Hopsworks terminal):
-
-```bash
-cp -r <skills>/dashboards/hops-app/references/trino_js apps/customers
-cp <skills>/dashboards/hops-app/references/app_skeleton/static/app.css apps/customers/static/
-(cd apps/customers && npm install --no-audit --no-fund)
-hops files upload apps/customers Users/<user>/apps/ --overwrite
-hops app create customers --path /Projects/<project>/Users/<user>/apps/customers/server.js \
-  --app-kind custom --app-port 8080 --readiness-probe-path /health \
-  --env python-agent-pipeline --start \
-  --entrypoint-command "bash -lc 'python trino_env.py && APP_TABLE=customers_1 exec node server.js'"
-```
-
-### Streamlit caching and cold start
-
-Heavy work at the top of the script (`login()`, `init_serving()`, a call to an
-online deployment) runs on every cold load and blocks the first paint: the app
-shows RUNNING but the page hangs. Keep the top of the script cheap:
-
-- `@st.cache_resource` for the connection, feature store handle, initialised feature view (`fv.init_serving(...)` inside the cached function) and deployment handle, so they initialise once, not per rerun.
-- `@st.cache_data(ttl=...)` for data reads.
-- Never call a deployment at import time. Trigger it from a button / form submit behind `st.spinner(...)`, and guard on `is_running()`:
-
-```python
-@st.cache_resource
-def get_deployment():
-    return project.get_model_serving().get_deployment("fraud_predictor")
-
-if st.button("Score"):
-    dep = get_deployment()
-    if dep.is_running():
-        with st.spinner("Scoring…"):
-            st.write(dep.predict(inputs=[{"id": user_id}]))
-    else:
-        st.warning("Deployment is starting — try again shortly.")
-```
-
-### Hopsworks look & feel
-
-Apps render as a bare default Streamlit page unless you theme them. Theme them
-with the Hopsworks tokens and follow the layout rules in
-[hops-design](../hops-design/SKILL.md): light, flat, the green accent only on the
-primary action and the selection.
-
-`.streamlit/config.toml` must sit in the same directory as the app script,
-not in `~/.streamlit/`. Streamlit reads config from the script's own directory
-(and CWD), so an app under `customer_spend_fti/app.py` needs
-`customer_spend_fti/.streamlit/config.toml`. Copy it per app directory.
-
-```toml
-[server]
-fileWatcherType = "none"   # REQUIRED on HopsFS/FUSE: the watcher stats the
-headless = true            # script over FUSE on the event loop and blocks the
-runOnSave = false          # readiness probe, making the managed app flap
-                           # serving<->running. Without this the app never holds.
-
-[browser]
-gatherUsageStats = false
-
-[theme]
-base = "light"
-primaryColor = "#1EB182"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F7F7F7"
-textColor = "#252525"
-font = "sans serif"
-```
-
-A plain title, and tabular numbers in metrics, injected once at the top of the app.
-No banner, gradient or emoji:
-```python
-import streamlit as st
-
-st.set_page_config(page_title="Customer spend", layout="wide")
-st.markdown(
-    """
-    <style>
-      div[data-testid="stMetricValue"] {font-variant-numeric: tabular-nums;}
-      div[data-testid="stMetricLabel"] {color: #737373;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-st.title("Customer spend")
-```
-
-A full dashboard (statistics, monitoring history, data sample) is in
-[references/monitoring_dashboard.md](references/monitoring_dashboard.md).
-
----
-
-## Apps built by `/hops app`
-
-`/hops app` turns a description in natural language into a running app from
-[references/app_skeleton/](references/app_skeleton/):
-
-- **Shape.** A `custom` app: `app.py` (FastAPI) serves a JSON API under `/api`
-  and a static UI from `static/` (`index.html`, `app.js` as plain ES modules,
-  `app.css`) in one process on `0.0.0.0:$APP_PORT`, with `/health` for the
-  readiness probe. No build step and no CDN, because the app runs air-gapped;
-  every URL in the UI is relative (`fetch("api/top")`, `src="static/app.js"`),
-  and `index.html` adds the trailing slash relative URLs need under the proxy
-  mount. A framework that needs a build (React, Vue, Svelte) only for a
-  git-backed app whose repository can hold the built assets. Streamlit when the
-  description is a data view with no custom interaction.
-- **Look.** The skeleton's `app.css` carries the Hopsworks tokens; extend it,
-  following [hops-design](../hops-design/SKILL.md) (flat surfaces, records in
-  tables or lists, stats in one row, no shadows, light theme only).
-- **Nothing moves on interaction.** A list or panel that reloads (a filter, a
-  selection) keeps its current content, dimmed with `aria-busy`, until the new
-  content replaces it; placeholders only on the first load. The skeleton's
-  `app.css` reserves the scrollbar gutter, so content that shrinks for a moment
-  never shifts the page sideways.
-- **Charts are Chart.js**, vendored in `static/vendor/chart.umd.min.js` (MIT,
-  licence beside it) and themed once by `static/chart-theme.js` (hops-design
-  tokens, no legend for one series, area fills, padded ticks). A chart sets only
-  its data, labels and axis titles, inside a `.chart` box that fixes its height;
-  the skeleton draws a line over time and bars by category. Never hand-drawn SVG,
-  never a CDN.
-- **Nothing spills sideways.** A table goes in the skeleton's `.table-wrap`, which
-  scrolls it inside its own frame (`contain: inline-size` keeps its width out of
-  the layout around it), and every grid the app adds gives its columns
-  `minmax(0, …)` (`grid-template-columns: minmax(0, 1fr)`): a plain `1fr` or
-  implicit column grows to its widest content and pushes the page past the right
-  edge of the Hopsworks app panel. Check the app at about 600px and 900px wide.
-- **The description is the module docstring** of `app.py`, updated on every
-  edit, so the next edit starts from what the app is now.
-- **Each request reads only what it returns.** The skeleton's routes query the
-  feature group through Trino: the latest row per entity with
-  `ROW_NUMBER() OVER (PARTITION BY <id> ORDER BY <ts> DESC)`, the top k with
-  `ORDER BY ... LIMIT ?`, one entity with `WHERE <id> = ? ORDER BY <ts> DESC
-  LIMIT 1`. Values are bound as `?` parameters, never formatted into the SQL;
-  `limit` is capped (`MAX_LIMIT`), and results are cached for `CACHE_SECONDS`.
-  Never read a whole feature group into pandas to sort or filter it per request.
-- **Where the source lives.** `Users/<user>/apps/<name>/` (`~/apps/<name>/` in a
-  terminal; `./apps/<name>/` from a laptop, uploaded by `hops app deploy`),
-  or a git-backed app when the working directory is a GitHub repository
-  (`--git-url`, `--git-branch`, `--git-auto-redeploy`, so a push is a
-  redeploy). An ML system's app keeps its source in the system's repository
-  under `<slug>/app/`.
-- **Environment.** `python-agent-pipeline` ships FastAPI and uvicorn. A library
-  it lacks goes into `app-requirements.txt`; `hops app deploy` then runs the app
-  in a clone `<name>-app-env` with the file installed.
-
-One command deploys, from a laptop or a terminal, for a new app and for every
-change after it:
-
-```bash
-hops app deploy customer-lookup apps/customer-lookup
-```
-
-It uploads the directory to `Users/<user>/apps/customer-lookup/` (missing
-folders created, files overwritten, dotfiles and `__pycache__` skipped), clones
-`python-agent-pipeline` to `customer-lookup-app-env` when the directory has
-`app-requirements.txt` (installed again only when the file changed), creates the
-app (`app.py` as a custom app on port 8080, readiness on `/health`) or redeploys
-it, and returns once the new execution serves, the URL on the last line. A
-failure exits non-zero and names the next step. `--env` picks another
-environment, `--timeout` the seconds to wait (600), `--check <route>` fetches one
-route of the deployed app through the Hopsworks proxy and fails the deploy on a
-non-2xx answer, and `--json` prints the app and each file's sha256.
-
-**Smoke tests** go to the deployed app with `hops app deploy <name> <dir> --check
-<route>`, one API route that reads data (`api/top`): it passes through the proxy
-with a token minted from the API key, which a plain request with the key does
-not (401). `hops app deploy` returning means the readiness probe on `/health`
-passed on the new files; `--check` means the data answers too. In a Hopsworks terminal, whose `kubectl`
-reaches the project namespace, then call the page and each API route the
-description implies:
-
-```bash
-POD=$(kubectl get pods -o name | grep customer-lookup)
-kubectl port-forward "$POD" 18080:8080 &
-curl -s localhost:18080/health; curl -s localhost:18080/ | head; curl -s localhost:18080/api/top
-```
-
-From an external client without `kubectl`, the readiness probe is the smoke
-test, and the URL is handed to the user to open.
+- [references/hops-app-built.md](references/hops-app-built.md): the app `/hops app` and
+  **hops-app-builder** make from [references/app_skeleton/](references/app_skeleton/), and
+  `hops app deploy`.
+- [references/data.md](references/data.md): reading feature groups (Trino by default), a model or
+  a deployment from the app, and Trino from a JavaScript app.
+- [references/look.md](references/look.md): the Hopsworks theme, and checking the layout.
+- [references/frameworks.md](references/frameworks.md): writing a Streamlit, Flask, Gradio,
+  Node.js or custom app by hand, and Streamlit caching.
+- [references/libraries.md](references/libraries.md): a library the environment lacks, or a
+  pickled model.
+- [references/git.md](references/git.md): an app whose source is a git repository.
 
 ## Fix loop
 
@@ -436,36 +124,6 @@ After the fifth attempt, stop with the last lines of the logs and what was tried
 `hops app delete <name> --yes`, and removes the source directory and the
 environment clone when one was created for the app.
 
-## Custom libraries
-
-If the app needs libraries not in `python-app-pipeline`, clone that base env and
-install the app's `app-requirements.txt` into the **clone** (never the base). It
-takes a few minutes; warn the user, and prompt for a requirements file if none
-exists. Full workflow, including the project-path rule for the requirements
-file: [hops-environments](../../platform/hops-environments/SKILL.md).
-
-```python
-env_api = project.get_environment_api()
-# get_environment returns None for a missing environment, it does NOT raise:
-# guard with `is None`, a try/except never fires.
-cloned_env = env_api.get_environment("my_cloned_env")
-if cloned_env is None:
-    cloned_env = env_api.create_environment(
-        "my_cloned_env", base_environment_name="python-app-pipeline",
-    )
-cloned_env.install_requirements("Users/<username>/app-requirements.txt", await_installation=True)
-```
-
-Then pass `environment="my_cloned_env"` to `create_app(...)`, not the base.
-
-If the app loads a pickled model (e.g. scikit-learn via `joblib`), the base
-`python-app-pipeline` may ship a different scikit-learn than the one that pickled
-it, and the load fails. The base env exposes no library list (no `get_libraries`),
-so pin the model's exact training versions (e.g. `scikit-learn==1.8.0` plus
-matching `numpy`/`scipy`/`joblib`) in the requirements file.
-
----
-
 ## Creating and running the app
 
 ```python
@@ -477,7 +135,7 @@ apps = project.get_app_api()
 app = apps.create_app(
     name="my_dashboard",
     app_path="Users/<username>/app.py",   # project-relative (CLI --path is HopsFS-absolute)
-    environment="python-app-pipeline",    # or the clone from Custom libraries
+    environment="python-app-pipeline",    # or the clone from references/libraries.md
     memory=2048,                          # MB
     cores=1.0,
     db_access=True,                       # default: project database created at start, MYSQL_* injected
@@ -488,57 +146,9 @@ if app.serving:
     print(f"App URL: {app.app_url}")
 ```
 
-### Git-backed apps
+A git-backed app leaves `app_path` unset: [references/git.md](references/git.md).
 
-Leave `app_path` unset and provide the repository fields. Git-backed apps are
-cloned again on each start, so a restart or redeploy picks up new commits;
-`git_auto_redeploy=True` rolls to the branch HEAD on every new commit. Supported
-providers: `GitHub`, `GitLab`, `BitBucket`.
-
-- Streamlit, Flask, Gradio, Node.js: the kind and `entrypoint_script` (the app file) relative to the repository root; `app_port` for all but Streamlit.
-- Custom: `app_kind="CUSTOM"`, an `entrypoint_command`, and `app_port`.
-
-```python
-streamlit_app = apps.create_app(
-    name="streamlitfromgithub",
-    app_kind="STREAMLIT",
-    git_url="https://github.com/<org>/<repo>.git",
-    git_provider="GitHub",
-    git_branch="main",
-    git_auto_redeploy=True,
-    entrypoint_script="streamlitapp.py",
-    environment="python-app-pipeline",
-)
-
-node_app = apps.create_app(
-    name="greeterfromgithub",
-    app_kind="NODEJS",
-    git_url="https://github.com/<org>/<repo>.git",
-    git_provider="GitHub",
-    git_branch="main",
-    entrypoint_script="npm-packages/greeterapp.mjs",
-    app_port=8080,
-    environment="my_cloned_env",          # with express installed via install_npm
-)
-
-fastapi_app = apps.create_app(
-    name="fastapifromgithub",
-    app_kind="CUSTOM",
-    git_url="https://github.com/<org>/<repo>.git",
-    git_provider="GitHub",
-    git_branch="main",
-    entrypoint_command=(
-        'bash -lc "python -m uv pip install --no-cache fastapi uvicorn && '
-        'exec python -m uvicorn fastapiapp:app --host 0.0.0.0 --port \\"$APP_PORT\\""'
-    ),
-    app_port=8080,
-    environment="python-app-pipeline",
-)
-fastapi_app.run()
-print(fastapi_app.app_url)
-```
-
-### Lifecycle and states
+## Lifecycle and states
 
 ```python
 app.run(await_serving=True)
@@ -560,7 +170,7 @@ app = apps.get_app("my_dashboard")
 
 An app is accessible only when `state == "RUNNING"` **and** `serving == True`.
 
-### Monitoring
+## Monitoring
 
 Monitoring is enabled by default. Leave routes empty for the default
 ignored-path behaviour, or add routes to narrow the signal:

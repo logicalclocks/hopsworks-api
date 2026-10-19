@@ -185,12 +185,16 @@ def skills_list(bucket: str | None) -> None:
 
 @skills_group.command("info")
 @click.argument("name")
-def skills_show(name: str) -> None:
-    """Print a skill's SKILL.md.
+@click.argument("file", required=False)
+def skills_show(name: str, file: str | None) -> None:
+    """Print a skill's SKILL.md, or one of its files.
+
+    FILE is relative to the skill's directory, such as references/data.md.
 
     \f
     Args:
         name: Skill name (frontmatter `name`) or folder name.
+        file: A file inside the skill's directory, relative to it (references/data.md).
     """
     skills_dir = _skills_dir()
     if skills_dir is None:
@@ -209,12 +213,27 @@ def skills_show(name: str) -> None:
     if match is None:
         raise click.ClickException(f"Skill '{name}' not found; run `hops skills list`.")
 
+    path = Path(match["path"])
+    if file:
+        root = path.parent.resolve()
+        path = (root / file).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            files = sorted(
+                p.relative_to(root).as_posix()
+                for p in root.rglob("*.md")
+                if p.name != "SKILL.md"
+            )
+            raise click.ClickException(
+                f"No file {file!r} in skill '{match['name']}'"
+                + (f"; it has {', '.join(files)}." if files else ".")
+            )
+
     if output.JSON_MODE:
-        output.print_json({**match, "body": Path(match["path"]).read_text("utf-8")})
+        output.print_json({**match, "path": str(path), "body": path.read_text("utf-8")})
         return
 
-    output.info("# %s  (%s)\n# %s\n", match["name"], match["bucket"], match["path"])
-    click.echo(Path(match["path"]).read_text("utf-8"))
+    output.info("# %s  (%s)\n# %s\n", match["name"], match["bucket"], path)
+    click.echo(path.read_text("utf-8"))
 
 
 # region install

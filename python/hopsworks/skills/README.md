@@ -2,7 +2,8 @@
 
 Markdown playbooks (`SKILL.md`) that drive an agent through Hopsworks workflows.
 The **live, canonical list is `hops skills list`** (read one with
-`hops skills info <name>`); this file is a static index for browsing.
+`hops skills info <name>`, and a file it names with
+`hops skills info <name> references/<file>`); this file is a static index for browsing.
 
 Skills are routed by their **directory name** (e.g. `hops-fg`). They are grouped
 into bucket folders:

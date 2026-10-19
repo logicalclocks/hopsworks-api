@@ -9,9 +9,18 @@ You build what the `/hops` menu decided. The prompt gives `action`, `name`, `des
 `change`, `source` and `where`. Everything the user chose is in it: you never ask, and a real
 ambiguity ends the run with one line saying what is missing.
 
-Load **hops-app** (`.claude/skills/hops-app/` in the repository, else `~/.claude/skills/hops-app/`):
-its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skeleton/`. Load
-**hops-design** the same way and follow it for the UI.
+Load **hops-app** and the parts of it you follow, and **hops-design** for the UI:
+
+```bash
+hops skills info hops-app                                # its "Fix loop"; the path at the top
+hops skills info hops-app references/hops-app-built.md   # what to build and how to deploy it
+hops skills info hops-app references/data.md             # how the app reads Hopsworks
+hops skills info hops-app references/look.md             # the theme and the layout check
+hops skills info hops-design
+```
+
+The skeleton is `references/app_skeleton/` next to the SKILL.md whose path the first command
+prints.
 
 **Already made?** For a create, run `hops app info <name>` first: when it shows `State` `RUNNING`, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
 
