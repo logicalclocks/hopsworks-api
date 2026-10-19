@@ -71,7 +71,7 @@ Pick a supported type up front: a write with an unsupported type fails, and retr
 - For **similarity search**, declare the vector as `array<float>` **and** attach an `EmbeddingIndex` (see Vector Embeddings): the FG is then backed by the vector DB (OpenSearch) instead of RonDB. Without an embedding index an `array<float>` is stored data, not a searchable index.
 - Online is an upsert: one row per primary key, a new write for an existing key overwrites it.
 
-Let the schema be inferred from the DataFrame when you can; pass an explicit `features=[Feature(name, type, ...)]` list only to pin a type (e.g. `bigint` over an inferred `int`, or an `array<float>` embedding column).
+Let the schema be inferred from the DataFrame when you can; pass an explicit `features=[Feature(name, type, ...)]` list (`from hsfs.feature import Feature`; there is no `hopsworks.feature`) only to pin a type (e.g. `bigint` over an inferred `int`, or an `array<float>` embedding column).
 
 ---
 
@@ -323,6 +323,7 @@ the feature view.
 
 ```python
 from hsfs.embedding import EmbeddingIndex, EmbeddingFeature, SimilarityFunctionType
+from hsfs.feature import Feature
 
 embedding_index = EmbeddingIndex()
 embedding_index.add_embedding(

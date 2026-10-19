@@ -22,6 +22,9 @@ Already known, no need to look again:
 - Look things up with the `hops` CLI only when a question needs the answer, and in one Bash call
   when you need several listings.
 - No secrets in arguments or output. Never delete anything the user has not confirmed by name.
+- `where` in a builder's prompt is `Hopsworks terminal` only when `$HOPSFS_USER_HOME_DIR` is set
+  (the line above says which; without it, run `test -n "$HOPSFS_USER_HOME_DIR"`). A laptop, a
+  CI runner or a Hopsable sandbox is an `external client`.
 
 ## Dispatch on the first word
 
