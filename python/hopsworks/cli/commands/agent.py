@@ -31,6 +31,7 @@ def agent_group() -> None:
 def agent_list(ctx: click.Context) -> None:
     """List every agent deployment in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -62,6 +63,7 @@ def agent_list(ctx: click.Context) -> None:
 def agent_info(ctx: click.Context, name: str) -> None:
     """Show details for a single agent.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
@@ -126,16 +128,17 @@ def agent_create(
 ) -> None:
     """Create (or update) an agent from a local script or package.
 
-    ``ENTRY`` is a ``.py`` file or a directory containing ``pyproject.toml``.
+    `ENTRY` is a `.py` file or a directory containing `pyproject.toml`.
     On re-runs, the latest code is uploaded and the deployment's predictor is
-    rewritten; the running state is left untouched (use ``start`` or invoke
-    ``restart`` via the SDK to roll a running agent onto new code).
+    rewritten; the running state is left untouched (use `start` or invoke
+    `restart` via the SDK to roll a running agent onto new code).
 
+    \f
     Args:
         ctx: Click context.
         entry: Local path to script or package.
-        name: Agent name; defaults to the basename of ``entry``.
-        requirements: Optional ``requirements.txt`` path.
+        name: Agent name; defaults to the basename of `entry`.
+        requirements: Optional `requirements.txt` path.
         environment: Python environment name.
         upload_dir: HopsFS upload directory.
         description: Description string.
@@ -171,6 +174,7 @@ def agent_create(
 def agent_start(ctx: click.Context, name: str, wait: int) -> None:
     """Start an agent and optionally wait for the RUNNING state.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
@@ -197,6 +201,7 @@ def agent_start(ctx: click.Context, name: str, wait: int) -> None:
 def agent_stop(ctx: click.Context, name: str, wait: int) -> None:
     """Stop a running agent.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
@@ -228,6 +233,7 @@ def agent_query(
 ) -> None:
     """Send a request to a running agent.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
@@ -326,18 +332,19 @@ def agent_logs(
 ) -> None:
     """Read or follow logs from an agent component.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
-        component: Component to query (e.g. ``predictor``, ``transformer``).
+        component: Component to query (e.g. `predictor`, `transformer`).
         tail: Number of lines.
-        source: ``kubernetes`` or ``opensearch`` (deprecated).
+        source: `kubernetes` or `opensearch` (deprecated).
         since: ISO-8601 lower bound on log timestamp.
         until: ISO-8601 upper bound on log timestamp.
         follow: Stream new lines instead of returning a one-shot tail.
         interval: Seconds between polls when following.
         download: Download the HopsFS log archives instead of reading pods.
-        log_dir: With ``--download``, the directory to download into.
+        log_dir: With `--download`, the directory to download into.
     """
     agent = _get_agent(ctx, name)
 
@@ -403,11 +410,12 @@ def agent_logs(
 def agent_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     """Delete an agent deployment.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
         yes: Skip confirmation when True.
-        force: Pass ``force=True`` to the SDK (stops the agent first if running).
+        force: Pass `force=True` to the SDK (stops the agent first if running).
     """
     agent = _get_agent(ctx, name)
     if not yes and not output.JSON_MODE:

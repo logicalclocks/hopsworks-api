@@ -121,7 +121,10 @@ def git_group() -> None:
 
 @git_group.group("provider")
 def provider_group() -> None:
-    """List, register or remove a Git provider personal access token."""
+    """Git provider tokens Hopsworks holds for you.
+
+    List, register or remove a Git provider personal access token.
+    """
 
 
 @provider_group.command("list")
@@ -129,6 +132,7 @@ def provider_group() -> None:
 def list_cmd(ctx: click.Context) -> None:
     """List the Git providers registered for your account.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -184,8 +188,9 @@ def set_cmd(
     """Register a personal access token for a Git provider.
 
     Idempotent: an existing registration for the same provider and host is left
-    alone unless ``--force`` is given, so scripts can call this unconditionally.
+    alone unless `--force` is given, so scripts can call this unconditionally.
 
+    \f
     Args:
         ctx: Click context.
         provider: github, gitlab or bitbucket.
@@ -236,6 +241,7 @@ def set_cmd(
 def delete_cmd(ctx: click.Context, provider: str, host: str | None) -> None:
     """Remove a registered Git provider token.
 
+    \f
     Args:
         ctx: Click context.
         provider: github, gitlab or bitbucket.

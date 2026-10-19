@@ -19,19 +19,23 @@ from hopsworks.cli import output, session
 
 @click.group("files")
 def files_group() -> None:
-    """File-system commands on HopsFS (list, mkdir, upload, download, share, remove)."""
+    """Files on HopsFS.
+
+    File-system commands on HopsFS (list, mkdir, upload, download, share, remove).
+    """
 
 
 @files_group.command("list")
 @click.argument("path", required=False, default="")
 @click.pass_context
 def dataset_list(ctx: click.Context, path: str) -> None:
-    """List files under ``path`` in the project's HopsFS.
+    """List files under `path` in the project's HopsFS.
 
     An empty path lists the project root. The SDK returns string paths for the
     root and Inode objects for nested directories; we normalize both shapes to
     a simple NAME/KIND/SIZE table.
 
+    \f
     Args:
         ctx: Click context.
         path: HopsFS path relative to the project root.
@@ -67,6 +71,7 @@ def _entry_row(entry: Any) -> list[Any]:
 def dataset_mkdir(ctx: click.Context, path: str) -> None:
     """Create a directory in the project's HopsFS.
 
+    \f
     Args:
         ctx: Click context.
         path: HopsFS path to create.
@@ -89,12 +94,13 @@ def dataset_upload(
 ) -> None:
     """Upload a local file to HopsFS.
 
-    ``REMOTE_PATH`` is the destination path (``cp``/``scp``-style), not the
+    `REMOTE_PATH` is the destination path (`cp`/`scp`-style), not the
     parent directory. When its basename matches the local file's basename
-    the parent is used as the SDK's ``upload_path``; otherwise the remote
+    the parent is used as the SDK's `upload_path`; otherwise the remote
     path is passed through unchanged and the SDK treats it as a directory
-    (file lands under ``REMOTE_PATH/<local basename>``).
+    (file lands under `REMOTE_PATH/<local basename>`).
 
+    \f
     Args:
         ctx: Click context.
         local_path: Local source file.
@@ -132,6 +138,7 @@ def dataset_download(
 ) -> None:
     """Download a file from HopsFS to the local filesystem.
 
+    \f
     Args:
         ctx: Click context.
         remote_path: HopsFS source path.
@@ -172,11 +179,12 @@ def dataset_share(
     Requires the **Data Owner** role in the active (source) project; the
     backend rejects the share otherwise.
 
+    \f
     Args:
         ctx: Click context.
-        path: HopsFS path of the dataset to share (e.g. ``Resources/my_dir``).
+        path: HopsFS path of the dataset to share (e.g. `Resources/my_dir`).
         target_project: Name of the project to share with.
-        permission: One of ``READ_ONLY``, ``EDITABLE``, ``EDITABLE_BY_OWNERS``.
+        permission: One of `READ_ONLY`, `EDITABLE`, `EDITABLE_BY_OWNERS`.
     """
     project = session.get_project(ctx)
     try:
@@ -202,10 +210,11 @@ def dataset_share(
 )
 @click.pass_context
 def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
-    """Revoke a previously-granted dataset share with another project.
+    """Revoke a dataset share with another project.
 
     Requires the **Data Owner** role in the active (source) project.
 
+    \f
     Args:
         ctx: Click context.
         path: HopsFS path of the dataset.
@@ -228,6 +237,7 @@ def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
 def dataset_remove(ctx: click.Context, path: str, yes: bool) -> None:
     """Remove a file or directory from HopsFS.
 
+    \f
     Args:
         ctx: Click context.
         path: HopsFS path.

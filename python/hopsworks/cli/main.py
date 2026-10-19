@@ -60,6 +60,13 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
 }
 
 
+_HELP_OPTION_NAMES = ["-h", "--help"]
+_JSON_HELP = "Output as JSON."
+_VERIFY_HELP = (
+    "Verify the TLS hostname; --no-verify for self-signed certificates. "
+    "HOPSWORKS_HOSTNAME_VERIFICATION overrides it."
+)
+
 # RESTCodes.ApiKeyErrorCode: the key carries none of the scopes the endpoint accepts.
 _NO_VALID_SCOPE = 320004
 
@@ -166,6 +173,9 @@ def _inject_global_options(cmd: click.Command) -> None:
     run before the leaf, flipping JSON mode and the resolved hostname-verification
     setting respectively.
     """
+    # Click caches each command's help option the first time a context asks for
+    # it, so a command invoked without the root's context would lose -h for good.
+    cmd.context_settings.setdefault("help_option_names", _HELP_OPTION_NAMES)
     if not any("--json" in (getattr(p, "opts", None) or []) for p in cmd.params):
         cmd.params.append(
             click.Option(
@@ -174,7 +184,7 @@ def _inject_global_options(cmd: click.Command) -> None:
                 expose_value=False,
                 is_eager=True,
                 callback=_json_eager_callback,
-                help="Output as JSON (machine-readable; for LLMs and scripts).",
+                help=_JSON_HELP,
             )
         )
     if not any("--verify" in (getattr(p, "opts", None) or []) for p in cmd.params):
@@ -185,10 +195,7 @@ def _inject_global_options(cmd: click.Command) -> None:
                 expose_value=False,
                 is_eager=True,
                 callback=_verify_eager_callback,
-                help=(
-                    "Verify the Hopsworks TLS certificate; --no-verify skips "
-                    "verification for self-signed / IP-SAN-mismatched certs."
-                ),
+                help=_VERIFY_HELP,
             )
         )
     # ``LazyGroup`` does its own injection on demand — recursing into it would
@@ -279,41 +286,34 @@ class LazyGroup(click.Group):
     cls=LazyGroup,
     lazy_subcommands=_LAZY_SUBCOMMANDS,
     help=(
-        "Hopsworks CLI — for humans and LLMs.\n\n"
-        "Run `hops setup` to authenticate on a new machine."
+        "Hopsworks CLI for humans and agents.\n\n"
+        "Run `hops setup` to authenticate on a new machine.\n\n"
+        "Run `hops COMMAND -h` for the commands and options of a group."
     ),
-    context_settings={"help_option_names": ["-h", "--help"]},
+    context_settings={"help_option_names": _HELP_OPTION_NAMES},
 )
 @click.version_option(_VERSION, "-v", "--version", prog_name="hops")
 @click.option("--host", "host_flag", help="Hopsworks host URL (overrides config).")
 @click.option(
     "--api-key",
     "api_key_flag",
-    help="API key (overrides config). Avoid in shared shells — a key in argv "
-    "is visible in the process list and shell history. Prefer the "
-    "HOPSWORKS_API_KEY env var or --api-key-stdin.",
+    help="API key (overrides config); visible in shell history, prefer "
+    "HOPSWORKS_API_KEY or --api-key-stdin.",
 )
 @click.option(
     "--api-key-stdin",
     "api_key_stdin",
     is_flag=True,
-    help="Read the API key from the first line of stdin instead of argv "
-    "(keeps the secret out of the process list and shell history).",
+    help="Read the API key from the first line of stdin.",
 )
 @click.option("--project", "project_flag", help="Project name (overrides config).")
 @click.option(
     "--verify/--no-verify",
     "verify_flag",
     default=None,
-    help=(
-        "Verify the Hopsworks TLS certificate (hostname verification). Use "
-        "--no-verify to skip verification when a cluster serves a self-signed "
-        "or IP-SAN-mismatched certificate. Maps to the SDK's "
-        "hopsworks.login(hostname_verification=...); overridden by "
-        "HOPSWORKS_HOSTNAME_VERIFICATION when that env var is set."
-    ),
+    help=_VERIFY_HELP,
 )
-@click.option("--json", "json_flag", is_flag=True, help="Output as JSON (for LLMs).")
+@click.option("--json", "json_flag", is_flag=True, help=_JSON_HELP)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -324,15 +324,16 @@ def cli(
     verify_flag: bool | None,
     json_flag: bool,
 ) -> None:
-    """Root ``hops`` command; child commands pull the resolved config via ``ctx.obj``.
+    """Root `hops` command; child commands pull the resolved config via `ctx.obj`.
 
+    \f
     Args:
-        ctx: Click context; we stash the resolved ``HopsConfig`` on ``ctx.obj``.
-        host_flag: Value of ``--host`` if provided.
-        api_key_flag: Value of ``--api-key`` if provided.
+        ctx: Click context; we stash the resolved `HopsConfig` on `ctx.obj`.
+        host_flag: Value of `--host` if provided.
+        api_key_flag: Value of `--api-key` if provided.
         api_key_stdin: When True, read the API key from stdin.
-        project_flag: Value of ``--project`` if provided.
-        verify_flag: True for ``--verify``, False for ``--no-verify``, None if neither was passed.
+        project_flag: Value of `--project` if provided.
+        verify_flag: True for `--verify`, False for `--no-verify`, None if neither was passed.
         json_flag: When True, every output helper switches to JSON mode.
     """
     # The SDK's package import already ran logging.basicConfig(level=INFO), so

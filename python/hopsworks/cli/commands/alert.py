@@ -98,6 +98,7 @@ def alert_group() -> None:
 def alert_list(ctx: click.Context) -> None:
     """List every project-level alert.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -115,6 +116,7 @@ def alert_list(ctx: click.Context) -> None:
 def alert_get(ctx: click.Context, alert_id: int) -> None:
     """Show a single project alert by ID.
 
+    \f
     Args:
         ctx: Click context.
         alert_id: The numeric alert ID.
@@ -161,12 +163,13 @@ def alert_create(
 ) -> None:
     """Create a project-level alert (Jobs or Featurestore service).
 
+    \f
     Args:
         ctx: Click context.
         receiver: Receiver name the alert notifies.
         status: Trigger status (must match the service).
         severity: Alert severity.
-        service: ``Jobs`` or ``Featurestore``.
+        service: `Jobs` or `Featurestore`.
         threshold: Alert threshold.
     """
     aa = _alerts_api(ctx)
@@ -189,6 +192,7 @@ def alert_create(
 def alert_delete(ctx: click.Context, alert_id: int, yes: bool) -> None:
     """Delete a project alert by ID.
 
+    \f
     Args:
         ctx: Click context.
         alert_id: The numeric alert ID.
@@ -219,6 +223,7 @@ def alert_triggered(
 ) -> None:
     """List currently triggered (firing) alerts.
 
+    \f
     Args:
         ctx: Click context.
         active: Include active alerts.
@@ -282,6 +287,7 @@ def alert_trigger(
 ) -> None:
     """Manually fire a one-off alert through a receiver.
 
+    \f
     Args:
         ctx: Click context.
         receiver_name: Receiver to route the alert to.
@@ -320,8 +326,8 @@ def receiver_group() -> None:
     """Alert receiver (notification channel) commands.
 
     Listing and inspecting receivers is open to any project member. Creating a
-    receiver requires the Hopsworks administrator role (``HOPS_ADMIN``). There
-    is no delete command: the SDK exposes no ``delete_receiver`` method, so
+    receiver requires the Hopsworks administrator role (`HOPS_ADMIN`). There
+    is no delete command: the SDK exposes no `delete_receiver` method, so
     receivers must be removed by an administrator through the cluster admin UI.
     """
 
@@ -331,6 +337,7 @@ def receiver_group() -> None:
 def receiver_list(ctx: click.Context) -> None:
     """List every alert receiver (project and global).
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -356,6 +363,7 @@ def receiver_list(ctx: click.Context) -> None:
 def receiver_get(ctx: click.Context, name: str) -> None:
     """Show a single alert receiver by name.
 
+    \f
     Args:
         ctx: Click context.
         name: Receiver name (with or without the project prefix).
@@ -403,17 +411,18 @@ def receiver_create(
 ) -> None:
     """Create an alert receiver. Provide exactly one channel type.
 
-    Requires the Hopsworks administrator role (``HOPS_ADMIN``). A non-admin
+    Requires the Hopsworks administrator role (`HOPS_ADMIN`). A non-admin
     project member will get a permission error from the backend. Receivers
-    cannot be deleted from the CLI or SDK (no ``delete_receiver`` method);
+    cannot be deleted from the CLI or SDK (no `delete_receiver` method);
     an administrator must remove them through the cluster admin UI.
 
+    \f
     Args:
         ctx: Click context.
         name: Receiver name.
         email: Email recipients.
         slack: Slack channels.
-        pagerduty: ``service_key:routing_key`` pairs.
+        pagerduty: `service_key:routing_key` pairs.
         webhook: Webhook URLs.
         send_resolved: Notify on resolution too.
     """
@@ -473,6 +482,7 @@ def job_group() -> None:
 def job_alert_list(ctx: click.Context, job_name: str) -> None:
     """List alerts attached to a job.
 
+    \f
     Args:
         ctx: Click context.
         job_name: The job name.
@@ -494,6 +504,7 @@ def job_alert_list(ctx: click.Context, job_name: str) -> None:
 def job_alert_get(ctx: click.Context, job_name: str, alert_id: int) -> None:
     """Show a single job alert by ID.
 
+    \f
     Args:
         ctx: Click context.
         job_name: The job name.
@@ -522,8 +533,9 @@ def job_alert_create(
     status: str,
     severity: str,
 ) -> None:
-    """Create an alert that fires on a job event (e.g. ``failed``).
+    """Create an alert that fires on a job event (e.g. `failed`).
 
+    \f
     Args:
         ctx: Click context.
         job_name: The job name.
@@ -559,6 +571,7 @@ def fg_group() -> None:
 def fg_alert_list(ctx: click.Context, name: str, version: int | None) -> None:
     """List alerts attached to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -592,6 +605,7 @@ def fg_alert_create(
 ) -> None:
     """Create a validation / monitoring alert on a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -631,6 +645,7 @@ def fv_group() -> None:
 def fv_alert_list(ctx: click.Context, name: str, version: int | None) -> None:
     """List alerts attached to a feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -664,6 +679,7 @@ def fv_alert_create(
 ) -> None:
     """Create a monitoring alert on a feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.

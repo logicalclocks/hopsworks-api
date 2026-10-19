@@ -26,6 +26,7 @@ def model_group() -> None:
 def model_list(ctx: click.Context) -> None:
     """List every model registered in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -52,6 +53,7 @@ def model_list(ctx: click.Context) -> None:
 def model_info(ctx: click.Context, name: str, version: int | None) -> None:
     """Show details for a single model version.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -181,14 +183,15 @@ def model_register(
     input_example_path: str | None,
     version: int | None,
 ) -> None:
-    """Upload a trained model artifact to the Hopsworks model registry.
+    """Upload a trained model to the model registry.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
         path: Local path to the model artifact (file or directory).
-        framework: ML framework category (``sklearn``/``tensorflow``/``torch``/``python``/``llm``).
-        metrics_spec: Metrics as ``key=value`` pairs.
+        framework: ML framework category (`sklearn`/`tensorflow`/`torch`/`python`/`llm`).
+        metrics_spec: Metrics as `key=value` pairs.
         description: Description string.
         feature_view: Feature view the model was trained on.
         td_version: Training dataset version used for training.
@@ -260,6 +263,7 @@ def model_download(
 ) -> None:
     """Download a model artifact from the registry.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -282,6 +286,7 @@ def model_download(
 def model_delete(ctx: click.Context, name: str, version: int, yes: bool) -> None:
     """Delete a single model version.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -308,6 +313,7 @@ def model_lineage(ctx: click.Context, name: str, version: int | None) -> None:
     Upstream covers the feature view and training dataset the model was
     trained from.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.

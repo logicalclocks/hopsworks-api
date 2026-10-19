@@ -29,13 +29,14 @@ def fg_group() -> None:
 @fg_group.command("list")
 @click.pass_context
 def fg_list(ctx: click.Context) -> None:
-    """List feature groups across every feature store the project can access.
+    """List feature groups in every accessible store.
 
     Includes feature groups in shared feature stores (as the UI does). The
     STORE column shows which feature store each one lives in. ACCESS is your
     own access state on an external feature group whose data source takes
-    provided credentials, and ``-`` for every other feature group.
+    provided credentials, and `-` for every other feature group.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -72,6 +73,7 @@ def fg_info(
 ) -> None:
     """Print metadata for a single feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -107,13 +109,14 @@ def fg_info(
 def fg_test_access(
     ctx: click.Context, name: str, version: int | None, featurestore: str | None
 ) -> None:
-    """Test whether your credentials can read the table behind an external feature group.
+    """Test your access to an external feature group's source.
 
     Runs the check now, as you, and shows the stored state (OK, NO_CREDENTIALS,
     INVALID_CREDENTIALS, NO_ACCESS or ERROR). Add your credentials with
-    ``hops datasource credentials set <data source>`` first when the state is
+    `hops datasource credentials set <data source>` first when the state is
     NO_CREDENTIALS.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -168,12 +171,13 @@ def fg_preview(
     featurestore: str | None,
     columns: str | None,
 ) -> None:
-    """Show the first ``n`` rows of a feature group.
+    """Show the first `n` rows of a feature group.
 
     Wide array/struct columns (embeddings, nested arrays) are collapsed to a
-    ``[len=N] head…`` preview in the table view so one row stays one line; use
-    ``--columns`` to project, or ``--json`` for the untruncated values.
+    `[len=N] head…` preview in the table view so one row stays one line; use
+    `--columns` to project, or `--json` for the untruncated values.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -236,8 +240,11 @@ def fg_preview(
 def fg_features(
     ctx: click.Context, name: str, version: int | None, featurestore: str | None
 ) -> None:
-    """List the schema of a feature group (name, type, primary key).
+    """List the schema of a feature group.
 
+    List the schema of a feature group (name, type, primary key).
+
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -276,6 +283,7 @@ def fg_lineage(
     data source.
     Downstream covers generated feature views and feature groups.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -450,16 +458,17 @@ def fg_create(
 ) -> None:
     """Register a new feature group in the feature store.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
-        features_spec: Comma-separated ``name:type[:description]`` items.
+        features_spec: Comma-separated `name:type[:description]` items.
         event_time: Event-time column name.
         partition_key: Comma-separated partition keys.
         online: Whether to enable the online store.
-        embedding_spec: ``col:dim[:metric]`` for a vector feature.
+        embedding_spec: `col:dim[:metric]` for a vector feature.
         description: Free-form description.
     """
     fs = session.get_feature_store(ctx)
@@ -559,24 +568,25 @@ def fg_create_external(
     event_time: str | None,
     description: str,
 ) -> None:
-    r"""Register an external feature group backed by a storage connector.
+    """Register a feature group that reads a data source.
 
     Exactly one source spec is required:
 
     \b
-    - ``--query`` for SQL / data-warehouse sources (Snowflake, BigQuery,
+    - `--query` for SQL / data-warehouse sources (Snowflake, BigQuery,
       Redshift, SQL, SAP HANA, Unity Catalog).
-    - ``--path`` + ``--data-format`` for object-storage sources (S3 parquet
+    - `--path` + `--data-format` for object-storage sources (S3 parquet
       file or directory, ADLS, GCS).
-    - ``--database`` + ``--table`` for MongoDB collections.
+    - `--database` + `--table` for MongoDB collections.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
         connector_name: Storage connector to query.
         query: SQL backing the feature group (warehouse sources).
         path: Object-storage path (file or prefix) for data-lake sources.
-        data_format: Required with ``--path``; one of parquet/delta/hudi/orc/avro/csv.
+        data_format: Required with `--path`; one of parquet/delta/hudi/orc/avro/csv.
         database: Database/collection-container override for the source.
         table: Table/collection override for the source.
         version: Version; auto-assigned when omitted.
@@ -664,15 +674,16 @@ def fg_insert(
     generate: int | None,
     online: bool,
 ) -> None:
-    """Insert rows into a feature group from a file, stdin, or synthetic data.
+    """Insert rows from a file, stdin or synthetic data.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Feature group version.
         file_path: CSV or JSON file path. When omitted, read JSON from stdin.
         generate: Generate N synthetic rows instead.
-        online: When True, pass ``start_offline_materialization=False``.
+        online: When True, pass `start_offline_materialization=False`.
     """
     fg = _get_fg(ctx, name, version)
 
@@ -736,8 +747,9 @@ def fg_derive(
     online: bool,
     description: str,
 ) -> None:
-    """Create a new feature group derived from joining existing ones.
+    """Create a feature group by joining existing ones.
 
+    \f
     Args:
         ctx: Click context.
         name: Derived feature group name.
@@ -807,7 +819,7 @@ def fg_derive(
 def fg_append_features(
     ctx: click.Context, name: str, features_spec: str, version: int | None
 ) -> None:
-    """Append new columns to an existing feature group, in place.
+    """Add columns to a feature group, keeping its version.
 
     Append-only schema evolution: it keeps the same feature group version so
     downstream consumers are never disturbed. Existing columns cannot be
@@ -817,10 +829,11 @@ def fg_append_features(
     Feature views built on this feature group keep their old projection and do
     not see the appended columns; create a new feature view to use them.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
-        features_spec: New columns as comma-separated ``name:type[:description]`` items.
+        features_spec: New columns as comma-separated `name:type[:description]` items.
         version: Feature group version; defaults to latest.
     """
     fg = _get_fg(ctx, name, version)
@@ -862,6 +875,7 @@ def fg_delete(
 ) -> None:
     """Delete a feature group and all its data.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -905,6 +919,7 @@ def fg_delete(
 def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) -> None:
     """Show or recompute statistics for a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -970,8 +985,9 @@ def fg_search(
     k: int,
     version: int | None,
 ) -> None:
-    """Run a KNN similarity search against a feature group's embedding column.
+    """KNN similarity search on an embedding column.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1020,6 +1036,7 @@ _KEYWORD_SEMANTICS_CHANGED = (
 def fg_keywords(ctx: click.Context, name: str, version: int | None) -> None:
     """Show all keywords attached to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1056,6 +1073,7 @@ def fg_add_keyword(
 ) -> None:
     """Attach a keyword to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1092,6 +1110,7 @@ def fg_remove_keyword(
 ) -> None:
     """Remove a keyword from a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1114,6 +1133,7 @@ def fg_remove_keyword(
 def fg_tags(ctx: click.Context, name: str, version: int | None) -> None:
     """Show all tags attached to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1138,6 +1158,7 @@ def fg_add_tag(
 ) -> None:
     """Attach a tag (name/value pair) to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1163,6 +1184,7 @@ def fg_add_tag(
 def fg_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
     """Remove a tag from a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.

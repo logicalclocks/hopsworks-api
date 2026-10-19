@@ -41,6 +41,7 @@ def _row(env: Any) -> dict[str, Any]:
 def env_list(ctx: click.Context) -> None:
     """List Python environments in the current project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -86,6 +87,7 @@ def env_clone(
     several minutes — the new environment is built from the base image
     and any post-install steps run before the call returns.
 
+    \f
     Args:
         ctx: Click context.
         new_name: Name for the new environment.
@@ -150,14 +152,15 @@ def env_install(
 ) -> None:
     """Install a requirements.txt into ENV_NAME.
 
-    ``--file`` is either a local file — uploaded to HopsFS first, since the
+    `--file` is either a local file — uploaded to HopsFS first, since the
     backend can only read paths inside the project — or a path that already
-    exists in the project (e.g. ``Users/<username>/requirements.txt``).
+    exists in the project (e.g. `Users/<username>/requirements.txt`).
 
     Blocks until the install completes. This usually takes several
     minutes — conda/pip resolves the dependencies and the resulting
     libraries are committed to the environment image.
 
+    \f
     Args:
         ctx: Click context.
         env_name: Environment to install into.

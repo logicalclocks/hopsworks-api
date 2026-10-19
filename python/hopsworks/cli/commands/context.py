@@ -23,6 +23,7 @@ from hopsworks.cli.commands import skills as skills_cmd
 def context_cmd(ctx: click.Context) -> None:
     """Emit a Markdown or JSON summary of the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
