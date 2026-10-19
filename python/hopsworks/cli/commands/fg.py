@@ -55,7 +55,7 @@ fg_group.add_command(fg_alert_group)
     "--type",
     "fg_types",
     multiple=True,
-    type=click.Choice(["cached", "stream", "external", "spine"]),
+    type=click.Choice(["managed", "stream", "external", "spine"]),
     help="Only list feature groups of this type; repeat for several.",
 )
 @click.pass_context
@@ -398,7 +398,7 @@ def _get_fg(
 
 
 def _fg_type_label(fg: Any) -> str:
-    """Best-effort one-word type label: ``stream``, ``external``, ``cached``.
+    """Best-effort one-word type label: ``managed``, ``stream``, ``external``, ``spine``.
 
     Args:
         fg: A FeatureGroup, ExternalFeatureGroup, or SpineGroup instance.
@@ -413,7 +413,7 @@ def _fg_type_label(fg: Any) -> str:
         return "spine"
     if getattr(fg, "stream", False):
         return "stream"
-    return "cached"
+    return "managed"
 
 
 def _access_label(fg: Any) -> str:
