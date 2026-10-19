@@ -4065,6 +4065,43 @@ def build_feedback_app(platform):
     return app
 
 
+class TestTheRelayConnectsAsTheDeployment:
+    def test_nothing_connected_yet_connects_the_in_cluster_client(self, monkeypatch):
+        # The agent process has no client until something first asks the
+        # platform, so this is the path every relayed verdict takes. It called
+        # a name the client module does not have, and each one became a 500.
+        from hopsworks_agents.protocol.platform import PlatformClient
+        from hopsworks_common import client as hopsworks_client
+
+        platform = PlatformClient()
+        monkeypatch.setattr(PlatformClient, "deployment_id", "7", raising=False)
+        monkeypatch.setenv("REST_ENDPOINT", "https://hopsworks:8182")
+        built = []
+
+        def fake_get_instance():
+            if not built:
+                raise Exception("Couldn't find client. Try reconnecting to Hopsworks.")
+            return "the client"
+
+        monkeypatch.setattr(hopsworks_client, "_get_instance", fake_get_instance)
+        monkeypatch.setattr(
+            hopsworks_client, "_init", lambda kind: built.append(kind), raising=False
+        )
+
+        assert platform._connect() == "the client"
+        assert built == ["hopsworks"]
+
+    def test_an_agent_outside_hopsworks_is_told_so(self, monkeypatch):
+        from hopsworks_agents.protocol.platform import PlatformClient
+
+        platform = PlatformClient()
+        monkeypatch.delenv("REST_ENDPOINT", raising=False)
+
+        with pytest.raises(AgentError) as refused:
+            platform._connect()
+        assert refused.value.code == "platform_unavailable"
+
+
 class TestTheRelayWaitsForALateTrace:
     def test_a_404_is_retried_until_the_trace_lands(self, monkeypatch):
         # A verdict given as the reply lands can beat its own trace into the

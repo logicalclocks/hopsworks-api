@@ -128,7 +128,12 @@ class PlatformClient:
             try:
                 self._client = hopsworks_client._get_instance()
             except Exception:  # noqa: BLE001 -- nothing connected yet: connect as the deployment
-                hopsworks_client.init("hopsworks")
+                # _init, not init: the in-cluster client is built from the pod's
+                # own material, and the name it is built under is private. An
+                # agent process has nothing connected until something asks the
+                # platform for the first time, so this is the path every relayed
+                # verdict takes -- and the wrong name made all of them a 500.
+                hopsworks_client._init("hopsworks")
                 self._client = hopsworks_client._get_instance()
         return self._client
 
