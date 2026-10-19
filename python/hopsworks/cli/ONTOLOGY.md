@@ -62,6 +62,15 @@ Each first name is gone; the name after the colon replaces it:
 - `--training-dataset-version`: `--td-version`.
 - `--wait SECONDS`: `--timeout SECONDS`.
 
+## Errors
+
+- A failure reads `Could not <verb> <thing> '<name>': <reason>`.
+- A lookup that raised reads `Could not find <thing> '<name>': <reason>`; the cause may be auth or network, so it does not claim "not found".
+- A lookup that returned nothing reads `<Thing> '<name>' not found.`; ids and versions go unquoted (`Alert 5 not found.`, `Training dataset v3 not found.`).
+- Every other message is a sentence that starts with a capital letter and names the next step when there is one.
+- A REST failure shows the server's message, and the scope to add when an API key lacks one.
+- Exit codes: 0 success, 1 failure, 2 usage error or invalid input, 3 the system.yaml changed since it was read, 4 another invocation holds the build lease.
+
 ## Help
 
 - `hops -h` lists the groups, `hops <group> -h` lists its commands with one line each, `hops <group> <command> -h` shows the description and options.

@@ -64,7 +64,7 @@ def _connect(ctx: click.Context, catalog: str | None, schema: str | None) -> Any
     try:
         return api.connect(catalog=cat, schema=sch, verify=verify)
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
-        raise click.ClickException(f"Trino connect failed: {exc}") from exc
+        raise click.ClickException(f"Could not connect to Trino: {exc}") from exc
 
 
 def _column_names(cursor: Any) -> list[str]:
@@ -328,7 +328,7 @@ def trino_info(ctx: click.Context) -> None:
         port = api.get_port()
         user, _ = api.get_basic_auth()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Trino info failed: {exc}") from exc
+        raise click.ClickException(f"Could not read Trino server info: {exc}") from exc
     payload = {"host": host, "port": port, "user": user}
     if output.JSON_MODE:
         output.print_json(payload)

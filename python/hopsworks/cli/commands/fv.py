@@ -74,7 +74,9 @@ def _get_fv(
     except versions.AmbiguousVersionError:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find feature view '{name}': {exc}"
+        ) from exc
     if fv is None:
         raise click.ClickException(f"Feature view '{name}' not found.")
     return fv
@@ -306,9 +308,11 @@ def fv_create(
     try:
         base = versions.feature_group(fs, base_name, base_ver)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find base feature group '{base_fg}': {exc}"
+        ) from exc
     if base is None:
-        raise click.ClickException(f"Base FG '{base_fg}' not found.")
+        raise click.ClickException(f"Base feature group '{base_fg}' not found.")
 
     query = base.select_all()
     for raw in joins:
@@ -320,10 +324,12 @@ def fv_create(
             other = versions.feature_group(fs, spec.fg_name, spec.version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
-                f"Joined FG '{spec.fg_name}' not found: {exc}"
+                f"Could not find joined feature group '{spec.fg_name}': {exc}"
             ) from exc
         if other is None:
-            raise click.ClickException(f"Joined FG '{spec.fg_name}' not found.")
+            raise click.ClickException(
+                f"Joined feature group '{spec.fg_name}' not found."
+            )
         query = query.join(
             other.select_all(),
             on=[spec.on] if not spec.right_on else None,
@@ -419,7 +425,9 @@ def fv_deploy(
             environment=environment,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Deployment creation failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not deploy feature view '{name}': {exc}"
+        ) from exc
 
     output.success(
         "✓ Deployed feature view %s v%s as %s",
@@ -471,7 +479,9 @@ def fv_get(ctx: click.Context, name: str, version: int | None, entry: str) -> No
     try:
         vector = fv.get_feature_vector(entry=entry_dict, return_type="list")
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Lookup failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not look up a feature vector of feature view '{name}': {exc}"
+        ) from exc
 
     if output.JSON_MODE:
         output.print_json({"entry": entry_dict, "vector": list(vector or [])})
@@ -524,7 +534,9 @@ def fv_read(
             dataframe_type="pandas",
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Batch read failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not read feature view '{name}': {exc}"
+        ) from exc
 
     if output_file:
         _write_dataframe(df, output_file)
@@ -575,7 +587,9 @@ def fv_delete(
     try:
         fv.delete(force=force) if force else fv.delete()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete feature view '{name}': {exc}"
+        ) from exc
     output.success("✓ Deleted feature view %s", name)
 
 
@@ -784,7 +798,7 @@ def _resolve_transforms(fs: Any, transforms: tuple[str, ...]) -> list[Any]:
             fn = fs.get_transformation_function(name=fn_name.strip())
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
-                f"Transformation '{fn_name}' not found: {exc}"
+                f"Could not find transformation function '{fn_name}': {exc}"
             ) from exc
         # The SDK pattern for attaching a TF to a column is calling the
         # HopsworksUdf with the column name as input.

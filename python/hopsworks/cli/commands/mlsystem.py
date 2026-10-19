@@ -64,7 +64,7 @@ def code_location(path: Path, project: str | None = None) -> str:
             )
             if not name:
                 raise click.ClickException(
-                    "cannot tell which project this HopsFS mount belongs to"
+                    "Cannot tell which project this HopsFS mount belongs to"
                 )
             return f"/Projects/{name}/{relative.as_posix()}"
     origin = subprocess.run(
@@ -223,7 +223,7 @@ def _find(system: str) -> dict:
         )
     ]
     if not matches:
-        raise click.ClickException(f"no system {system!r} in this project")
+        raise click.ClickException(f"No system {system!r} in this project")
     if len(matches) > 1:
         raise click.ClickException(
             f"{len(matches)} systems are named {system!r}; use its id"
@@ -357,12 +357,12 @@ def system_delete(
             output.info(f"{directory} is gone, so its assets were deleted before it")
         elif spec is None or not spec.is_file():
             raise click.ClickException(
-                f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
+                f"Cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
             )
         elif "layer" in (doc := yaml.safe_load(spec.read_text(encoding="utf-8")) or {}):
             if repo:
                 raise click.ClickException(
-                    "an analytics layer shares its repository with the other layers; delete it without --repo"
+                    "An analytics layer shares its repository with the other layers; delete it without --repo"
                 )
             steps = [
                 (
@@ -427,7 +427,7 @@ def system_delete(
         )
     if failed:
         raise click.ClickException(
-            f"stopped at {failed}; {entry.get('name')} is still registered, so run the same delete again once that is fixed"
+            f"Stopped at {failed}; {entry.get('name')} is still registered, so run the same delete again once that is fixed"
         )
     kept = (
         ""
@@ -496,7 +496,7 @@ def system_status(
     spec = directory / "system.yaml" if directory else None
     if spec is None or not spec.is_file():
         raise click.ClickException(
-            f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
+            f"Cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
         )
     doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
     if "layer" in doc:
@@ -533,7 +533,7 @@ def _system_path(slug_or_dir: str) -> Path | None:
 def _require_path(slug_or_dir: str) -> Path:
     found = _system_path(slug_or_dir)
     if found is None:
-        raise click.ClickException(f"no system {slug_or_dir!r} under {Path.cwd()}")
+        raise click.ClickException(f"No system {slug_or_dir!r} under {Path.cwd()}")
     return found
 
 
@@ -614,7 +614,7 @@ def lease_show(slug_or_dir: str) -> None:
 
     held = system_doc.lease(_require_path(slug_or_dir))
     if held is None:
-        raise click.ClickException("no build lease")
+        raise click.ClickException("No build lease")
     held = {**held, "expired": system_doc.expired(held)}
     if output.JSON_MODE:
         output.print_json(held)
@@ -764,7 +764,7 @@ def system_delete_assets(
     spec = directory / "system.yaml" if directory else None
     if spec is None or not spec.is_file():
         raise click.ClickException(
-            f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
+            f"Cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
         )
     doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
     requested = [

@@ -80,7 +80,9 @@ def dataset_mkdir(ctx: click.Context, path: str) -> None:
     try:
         created = project.get_dataset_api().mkdir(path)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"mkdir failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create directory '{path}': {exc}"
+        ) from exc
     output.success("✓ Created %s", created or path)
 
 
@@ -119,7 +121,7 @@ def dataset_upload(
             local_path=local_path, upload_path=upload_path, overwrite=overwrite
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Upload failed: {exc}") from exc
+        raise click.ClickException(f"Could not upload '{local_path}': {exc}") from exc
     output.success("✓ Uploaded to %s", uploaded or remote_path)
 
 
@@ -151,7 +153,9 @@ def dataset_download(
             path=remote_path, local_path=local_path, overwrite=overwrite
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Download failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not download '{remote_path}': {exc}"
+        ) from exc
     output.success("✓ Downloaded to %s", path)
 
 
@@ -194,7 +198,7 @@ def dataset_share(
     except PermissionError as exc:
         raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Share failed: {exc}") from exc
+        raise click.ClickException(f"Could not share '{path}': {exc}") from exc
     output.success(
         "✓ Shared %s with project '%s' (%s)", path, target_project, permission
     )
@@ -226,7 +230,7 @@ def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
     except PermissionError as exc:
         raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Unshare failed: {exc}") from exc
+        raise click.ClickException(f"Could not unshare '{path}': {exc}") from exc
     output.success("✓ Unshared %s from project '%s'", path, target_project)
 
 
@@ -249,5 +253,5 @@ def dataset_remove(ctx: click.Context, path: str, yes: bool) -> None:
     try:
         project.get_dataset_api().remove(path)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Remove failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete '{path}': {exc}") from exc
     output.success("✓ Removed %s", path)

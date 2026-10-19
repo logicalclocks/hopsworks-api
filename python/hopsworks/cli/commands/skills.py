@@ -165,8 +165,9 @@ def skills_list(bucket: str | None) -> None:
     """
     skills_dir = _skills_dir()
     if skills_dir is None:
-        output.error("No skills directory found; set HOPS_SKILLS_DIR to override.")
-        raise SystemExit(1)
+        raise click.ClickException(
+            "No skills directory found; set HOPS_SKILLS_DIR to override."
+        )
 
     skills = _collect_skills(skills_dir)
     if bucket:
@@ -193,8 +194,9 @@ def skills_show(name: str) -> None:
     """
     skills_dir = _skills_dir()
     if skills_dir is None:
-        output.error("No skills directory found; set HOPS_SKILLS_DIR to override.")
-        raise SystemExit(1)
+        raise click.ClickException(
+            "No skills directory found; set HOPS_SKILLS_DIR to override."
+        )
 
     match = next(
         (
@@ -205,8 +207,7 @@ def skills_show(name: str) -> None:
         None,
     )
     if match is None:
-        output.error("Skill %r not found; run `hops skills list`.", name)
-        raise SystemExit(1)
+        raise click.ClickException(f"Skill '{name}' not found; run `hops skills list`.")
 
     if output.JSON_MODE:
         output.print_json({**match, "body": Path(match["path"]).read_text("utf-8")})

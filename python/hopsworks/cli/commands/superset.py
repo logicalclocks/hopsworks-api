@@ -100,7 +100,9 @@ def superset_dataset_create(
             description=description,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Create dataset failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create Superset dataset '{table_name}': {exc}"
+        ) from exc
     output.success("✓ Created Superset dataset (id=%s)", _id(result))
 
 
@@ -122,7 +124,9 @@ def superset_dataset_delete(ctx: click.Context, dataset_id: int, yes: bool) -> N
     try:
         _api(ctx).delete_dataset(dataset_id)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete Superset dataset {dataset_id}: {exc}"
+        ) from exc
     output.success("✓ Deleted Superset dataset %s", dataset_id)
 
 
@@ -204,7 +208,9 @@ def superset_chart_create(
             description=description,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Create chart failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create Superset chart '{slice_name}': {exc}"
+        ) from exc
     output.success("✓ Created Superset chart (id=%s)", _id(result))
 
 
@@ -226,7 +232,9 @@ def superset_chart_delete(ctx: click.Context, chart_id: int, yes: bool) -> None:
     try:
         _api(ctx).delete_chart(chart_id)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete Superset chart {chart_id}: {exc}"
+        ) from exc
     output.success("✓ Deleted Superset chart %s", chart_id)
 
 
@@ -287,7 +295,9 @@ def superset_dashboard_create(
             dashboard_title=title, published=published, slug=slug
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Create dashboard failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create Superset dashboard '{title}': {exc}"
+        ) from exc
     output.success("✓ Created Superset dashboard %s (id=%s)", title, _id(result))
 
 
@@ -309,7 +319,9 @@ def superset_dashboard_delete(ctx: click.Context, dashboard_id: int, yes: bool) 
     try:
         _api(ctx).delete_dashboard(dashboard_id)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete Superset dashboard {dashboard_id}: {exc}"
+        ) from exc
     output.success("✓ Deleted Superset dashboard %s", dashboard_id)
 
 

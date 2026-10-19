@@ -171,7 +171,9 @@ def fg_test_access(
     try:
         access = fg.test_data_source_access()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Access test failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not test access to feature group '{name}': {exc}"
+        ) from exc
     if output.JSON_MODE:
         output.print_json(access)
         return
@@ -692,7 +694,7 @@ def fg_create_external(
         data_source = fs.get_data_source(connector_name)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
-            f"Connector '{connector_name}' not found: {exc}"
+            f"Could not find data source '{connector_name}': {exc}"
         ) from exc
 
     # The SDK ignores query and path passed next to a data source, so the
@@ -788,7 +790,7 @@ def fg_insert(
     try:
         import pandas as pd  # noqa: PLC0415 - pandas import cost is high
     except ImportError as exc:  # pragma: no cover - pandas is a base dep
-        raise click.ClickException("pandas is required for hops fg insert.") from exc
+        raise click.ClickException("Pandas is required for `hops fg insert`.") from exc
 
     if generate is not None and generate > 0:
         df = _generate_dataframe(fg, generate)
@@ -798,7 +800,7 @@ def fg_insert(
     else:
         data = sys.stdin.read()
         if not data.strip():
-            raise click.ClickException(
+            raise click.UsageError(
                 "No data provided. Pass --file, --generate N, or pipe JSON on stdin."
             )
         df = pd.DataFrame(json.loads(data))
@@ -808,7 +810,9 @@ def fg_insert(
     try:
         job, _ = fg.insert(df, write_options=write_options)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Insert failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not insert into feature group '{name}': {exc}"
+        ) from exc
 
     output.success("✓ Inserted %d rows into %s", len(df), getattr(fg, "name", name))
     if job is not None and not output.JSON_MODE:
@@ -862,9 +866,11 @@ def fg_derive(
     try:
         base = versions.feature_group(fs, base_fg, None)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find base feature group '{base_fg}': {exc}"
+        ) from exc
     if base is None:
-        raise click.ClickException(f"Base FG '{base_fg}' not found.")
+        raise click.ClickException(f"Base feature group '{base_fg}' not found.")
 
     query = base.select_all()
     parents = [base]
@@ -874,10 +880,12 @@ def fg_derive(
             other = versions.feature_group(fs, spec.fg_name, spec.version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
-                f"Joined FG '{spec.fg_name}' not found: {exc}"
+                f"Could not find joined feature group '{spec.fg_name}': {exc}"
             ) from exc
         if other is None:
-            raise click.ClickException(f"Joined FG '{spec.fg_name}' not found.")
+            raise click.ClickException(
+                f"Joined feature group '{spec.fg_name}' not found."
+            )
         parents.append(other)
         query = query.join(
             other.select_all(),
@@ -941,7 +949,9 @@ def fg_append_features(
     try:
         fg.append_features(features)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Append failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not add features to feature group '{name}': {exc}"
+        ) from exc
     output.success("✓ Appended %d feature(s) to %s", len(features), name)
 
 
@@ -1008,7 +1018,9 @@ def fg_delete(
     try:
         fg.delete(force=force, delete_feature_views=delete_feature_views)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete feature group '{name}': {exc}"
+        ) from exc
     output.success("✓ Deleted feature group %s", name)
 
 
@@ -1029,7 +1041,9 @@ def fg_stats_compute(ctx: click.Context, name: str, version: int | None) -> None
     try:
         fg.compute_statistics()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Stats compute failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not compute statistics of feature group '{name}': {exc}"
+        ) from exc
     output.success("✓ Triggered statistics compute for %s", name)
 
 
@@ -1119,7 +1133,9 @@ def fg_search(
     try:
         results = fg.find_neighbors(embedding=query, col=col, k=k)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"KNN search failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not search feature group '{name}': {exc}"
+        ) from exc
 
     if output.JSON_MODE:
         output.print_json(

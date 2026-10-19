@@ -108,7 +108,9 @@ def env_clone(
             await_creation=True,
         )
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
-        raise click.ClickException(f"Clone failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not clone environment '{source}' to '{new_name}': {exc}"
+        ) from exc
     payload = _row(env)
     if output.JSON_MODE:
         output.print_json(payload)
@@ -173,7 +175,9 @@ def env_install(
     try:
         env = api.get_environment(env_name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Lookup failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find environment '{env_name}': {exc}"
+        ) from exc
     if env is None:
         raise click.ClickException(
             f"No environment named '{env_name}'. Run `hops env list` to see what exists."
@@ -208,7 +212,9 @@ def env_install(
     try:
         env.install_requirements(remote_path, await_installation=True)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Install failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not install into environment '{env_name}': {exc}"
+        ) from exc
     if output.JSON_MODE:
         output.print_json({"environment": env_name, "installed": remote_path})
     else:

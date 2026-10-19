@@ -85,7 +85,9 @@ def connector_info(ctx: click.Context, name: str) -> None:
     try:
         ds = fs.get_data_source(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Connector '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find data source '{name}': {exc}"
+        ) from exc
 
     sc = getattr(ds, "storage_connector", ds)
     if output.JSON_MODE:
@@ -1546,7 +1548,9 @@ def _provided_connector(ctx: click.Context, name: str) -> Any:
     try:
         ds = fs.get_data_source(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find data source '{name}': {exc}"
+        ) from exc
     sc = getattr(ds, "storage_connector", ds)
     if not hasattr(sc, "set_credentials"):
         raise click.ClickException(
@@ -1585,7 +1589,7 @@ def _upload_wallet(ctx: click.Context, sc: Any, local_zip: str) -> tuple[str, st
             shutil.copyfile(local_zip, staged)
             dataset_api.upload(staged, target_dir)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Wallet upload failed: {exc}") from exc
+        raise click.ClickException(f"Could not upload the wallet: {exc}") from exc
     relative = f"{target_dir}/{file_name}"
     output.info("Uploaded wallet to %s", relative)
     return f"/Projects/{project.name}/{relative}", relative
@@ -1605,7 +1609,9 @@ def _validate(sc: Any, name: str, args: dict[str, Any]) -> dict[str, Any]:
     try:
         result = sc._validate_credentials(**args)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Validation failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not validate credentials for data source '{name}': {exc}"
+        ) from exc
     if not result.get("valid"):
         code = result.get("errorCode")
         detail = result.get("message") or "the data source rejected the credentials"
@@ -1780,7 +1786,9 @@ def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
             ),
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete data source '{name}': {exc}"
+        ) from exc
     output.success("✓ Deleted connector %s", name)
 
 
@@ -1853,7 +1861,9 @@ def connector_preview(ctx: click.Context, name: str) -> None:
         ds = fs.get_data_source(name)
         data = ds.get_data()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Preview failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not preview data source '{name}': {exc}"
+        ) from exc
     if output.JSON_MODE:
         to_dict = getattr(data, "to_dict", None)
         output.print_json(to_dict() if callable(to_dict) else str(data))
@@ -1905,7 +1915,9 @@ def connector_infer_metadata(
     except PlatformIntelligenceException as exc:
         raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Infer metadata failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not infer metadata of table '{table}': {exc}"
+        ) from exc
 
     if output.JSON_MODE:
         output.print_json(inferred.to_dict())
@@ -1942,12 +1954,16 @@ def _test_connector(ctx: click.Context, body: dict[str, Any]) -> None:
             json_body=body,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Connection test failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not connect to data source '{body.get('name', '?')}': {exc}"
+        ) from exc
     result = result if isinstance(result, dict) else {}
     message = (result.get("connectionOutput") or "").strip()
     # The checkers report success as exit code 0, or 200 for HTTP sources.
     if result.get("statusCode") not in (0, 200):
-        raise click.ClickException(f"Connection test failed: {message or 'no output'}")
+        raise click.ClickException(
+            f"Could not connect to data source '{body.get('name', '?')}': {message or 'no output'}"
+        )
     output.success(
         "✓ Connection to %s works%s", body["name"], f": {message}" if message else ""
     )
@@ -1966,5 +1982,7 @@ def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
             json_body=body,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Create failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create data source '{body.get('name', '?')}': {exc}"
+        ) from exc
     output.success("✓ Created connector %s", body["name"])

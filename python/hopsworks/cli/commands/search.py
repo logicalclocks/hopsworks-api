@@ -127,7 +127,7 @@ def search_cmd(
             global_search=global_search,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Search failed: {exc}") from exc
+        raise click.ClickException(f"Could not search for '{term}': {exc}") from exc
 
     rows = [
         _row(kind, item)

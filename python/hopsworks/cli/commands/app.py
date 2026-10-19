@@ -423,31 +423,29 @@ def app_create(
     if app_kind != "CUSTOM":
         label = app_kind.capitalize() if app_kind != "NODEJS" else "Node.js"
         if entrypoint_command:
-            raise click.ClickException(
-                f"{label} apps do not accept --entrypoint-command."
-            )
+            raise click.UsageError(f"{label} apps do not accept --entrypoint-command.")
         if git_repo_app:
             if not git_provider:
-                raise click.ClickException(
+                raise click.UsageError(
                     f"{label} Git repository apps require --git-provider."
                 )
             if not entrypoint_script:
-                raise click.ClickException(
+                raise click.UsageError(
                     f"{label} Git repository apps require --entrypoint-script."
                 )
         elif not app_path:
-            raise click.ClickException(f"{label} apps require --path.")
+            raise click.UsageError(f"{label} apps require --path.")
         elif entrypoint_script:
-            raise click.ClickException(
+            raise click.UsageError(
                 "--entrypoint-script is only supported for Git repository apps."
             )
     else:
         if not entrypoint_command:
-            raise click.ClickException("Custom apps require --entrypoint-command.")
+            raise click.UsageError("Custom apps require --entrypoint-command.")
         if git_repo_app and not git_provider:
-            raise click.ClickException("Git repository apps require --git-provider.")
+            raise click.UsageError("Git repository apps require --git-provider.")
         if entrypoint_script:
-            raise click.ClickException(
+            raise click.UsageError(
                 "--entrypoint-script is only supported for Git repository apps of the other kinds."
             )
 
@@ -487,7 +485,7 @@ def app_create(
         idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None
     )
     if idle_scale_to_zero is False and has_idle_timeouts:
-        raise click.ClickException(
+        raise click.UsageError(
             "--idle-cooldown-seconds and --cold-start-timeout-seconds cannot go with --no-idle-scale-to-zero."
         )
     if idle_scale_to_zero is not None:
@@ -570,7 +568,7 @@ def app_stop(ctx: click.Context, name: str) -> None:
     try:
         a.stop()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Stop failed: {exc}") from exc
+        raise click.ClickException(f"Could not stop app '{name}': {exc}") from exc
     output.success("✓ Stopped app %s", name)
 
 
@@ -602,7 +600,7 @@ def app_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     try:
         a.delete()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete app '{name}': {exc}") from exc
     output.success("✓ Deleted app %s", name)
 
 
@@ -641,7 +639,7 @@ def _get_app(ctx: click.Context, name: str) -> Any:
     try:
         a = apps.get_app(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"App '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find app '{name}': {exc}") from exc
     if a is None:
         raise click.ClickException(f"App '{name}' not found.")
     return a
@@ -651,7 +649,9 @@ def _start(a: Any, await_serving: bool = True) -> None:
     try:
         a.run(await_serving=await_serving)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Start failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not start app '{getattr(a, 'name', '?')}': {exc}"
+        ) from exc
     url = getattr(a, "app_url", None)
     state = getattr(a, "state", "-")
     serving = getattr(a, "serving", False)
@@ -669,7 +669,9 @@ def _redeploy(a: Any, await_serving: bool = True) -> None:
     try:
         a.redeploy(await_serving=await_serving)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Redeploy failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not redeploy app '{getattr(a, 'name', '?')}': {exc}"
+        ) from exc
     url = getattr(a, "app_url", None)
     state = getattr(a, "state", "-")
     serving = getattr(a, "serving", False)

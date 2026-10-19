@@ -65,7 +65,7 @@ def test_remove_finds_a_system_by_name_or_id(monkeypatch, logged_in):
     assert CliRunner().invoke(cli, ["factory", "system", "remove", "7"]).exit_code == 0
     assert removed == [8, 7]
     missing = CliRunner().invoke(cli, ["factory", "system", "remove", "nope"])
-    assert missing.exit_code != 0 and "no system" in missing.output
+    assert missing.exit_code != 0 and "No system" in missing.output
 
 
 def test_register_sends_the_path_and_the_name(monkeypatch):

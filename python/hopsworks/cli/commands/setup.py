@@ -512,7 +512,9 @@ def _handle_internal(cfg: config.HopsConfig, no_scaffold: bool = False) -> None:
     try:
         project = auth.login(host=cfg.host or "", project=cfg.project, internal=True)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Internal login failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not log in inside the cluster: {exc}"
+        ) from exc
     output.success(
         "✓ Connected (internal mode) to project %s",
         getattr(project, "name", cfg.project or "?"),
@@ -541,7 +543,7 @@ def _failed(host: str, exc: object) -> click.ClickException:
         hint = (
             " (self-signed certificate? re-run with --insecure, or --ca-bundle <path>)"
         )
-    return click.ClickException(f"Failed to connect to {host}: {_reason(exc)}{hint}")
+    return click.ClickException(f"Could not connect to {host}: {_reason(exc)}{hint}")
 
 
 def _is_ssl_error(exc: BaseException) -> bool:

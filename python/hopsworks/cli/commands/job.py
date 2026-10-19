@@ -122,7 +122,7 @@ def job_info(ctx: click.Context, name: str) -> None:
     try:
         job = project.get_job_api().get_job(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Job '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find job '{name}': {exc}") from exc
     if job is None:
         raise click.ClickException(f"Job '{name}' not found.")
 
@@ -347,7 +347,9 @@ def job_deploy(
         try:
             job.schedule(cron_expression=cron_expr)
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Schedule failed: {exc}") from exc
+            raise click.ClickException(
+                f"Could not schedule job '{name}': {exc}"
+            ) from exc
         output.success("✓ Scheduled %s (%s)", name, cron_expr)
 
     # 5. Run.
@@ -355,7 +357,7 @@ def job_deploy(
         try:
             execution = job.run(args=app_args, await_termination=wait)
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Run failed: {exc}") from exc
+            raise click.ClickException(f"Could not run job '{name}': {exc}") from exc
         output.success(
             "✓ Started %s (execution #%s, state=%s)",
             name,
@@ -424,7 +426,7 @@ def job_run(
             end_time=end_time,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Run failed: {exc}") from exc
+        raise click.ClickException(f"Could not run job '{name}': {exc}") from exc
 
     output.success(
         "✓ Started job %s (execution #%s, state=%s)",
@@ -496,7 +498,7 @@ def job_backfill(
             end_time=end_time,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Backfill failed: {exc}") from exc
+        raise click.ClickException(f"Could not backfill job '{name}': {exc}") from exc
 
     output.success(
         "✓ Backfill of %s started (execution #%s, window %s → %s)",
@@ -527,7 +529,7 @@ def job_stop(ctx: click.Context, name: str) -> None:
     try:
         latest.stop()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Stop failed: {exc}") from exc
+        raise click.ClickException(f"Could not stop job '{name}': {exc}") from exc
     output.success("✓ Stopped execution %s of %s", getattr(latest, "id", "?"), name)
 
 
@@ -796,7 +798,7 @@ def job_schedule(
             max_catchup_runs=max_catchup_runs,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Schedule failed: {exc}") from exc
+        raise click.ClickException(f"Could not schedule job '{name}': {exc}") from exc
     output.success("✓ Scheduled %s (%s)", name, cron)
     if output.JSON_MODE:
         output.print_json(_schedule_to_dict(schedule))
@@ -845,7 +847,9 @@ def job_unschedule(ctx: click.Context, name: str) -> None:
     try:
         job.unschedule()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Unschedule failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete the schedule of job '{name}': {exc}"
+        ) from exc
     output.success("✓ Removed schedule from %s", name)
 
 
@@ -868,7 +872,7 @@ def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
     try:
         job.delete()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete job '{name}': {exc}") from exc
     output.success("✓ Deleted job %s", name)
 
 
@@ -973,7 +977,7 @@ def _get_job(ctx: click.Context, name: str) -> Any:
     try:
         job = project.get_job_api().get_job(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Job '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find job '{name}': {exc}") from exc
     if job is None:
         raise click.ClickException(f"Job '{name}' not found.")
     return job

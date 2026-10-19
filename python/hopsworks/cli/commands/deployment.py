@@ -69,7 +69,9 @@ def deployment_info(ctx: click.Context, name: str) -> None:
     try:
         deployment = ms.get_deployment(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Deployment '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find deployment '{name}': {exc}"
+        ) from exc
     if deployment is None:
         raise click.ClickException(f"Deployment '{name}' not found.")
 
@@ -342,7 +344,9 @@ def deployment_create(
     try:
         model = versions.model(mr, model_name, version)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Model '{model_name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find model '{model_name}': {exc}"
+        ) from exc
     if model is None:
         raise click.ClickException(f"Model '{model_name}' not found.")
 
@@ -380,7 +384,9 @@ def deployment_create(
             resources=_resources(cores, memory),
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Deployment creation failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create deployment '{name or model_name}': {exc}"
+        ) from exc
 
     output.success(
         "✓ Deployed model %s v%s as %s",
@@ -457,7 +463,9 @@ def deployment_start(ctx: click.Context, name: str, wait: bool, timeout: int) ->
     try:
         deployment.start(await_running=timeout if wait else 0)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Start failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not start deployment '{name}': {exc}"
+        ) from exc
     output.success("✓ Started deployment %s", name)
 
 
@@ -491,7 +499,9 @@ def deployment_stop(ctx: click.Context, name: str, wait: bool, timeout: int) -> 
     try:
         deployment.stop(await_stopped=timeout if wait else 0)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Stop failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not stop deployment '{name}': {exc}"
+        ) from exc
     output.success("✓ Stopped deployment %s", name)
 
 
@@ -545,7 +555,9 @@ def deployment_predict(
     try:
         response = deployment.predict(data=payload, validate=not no_validate)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Predict failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not predict with deployment '{name}': {exc}"
+        ) from exc
 
     if output.JSON_MODE:
         output.print_json(response)
@@ -660,7 +672,9 @@ def deployment_logs(
                 os.makedirs(path, exist_ok=True)
             local_paths = deployment.download_logs(path=path)
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Log download failed: {exc}") from exc
+            raise click.ClickException(
+                f"Could not download the logs of deployment '{name}': {exc}"
+            ) from exc
         if output.JSON_MODE:
             output.print_json({"paths": local_paths})
             return
@@ -684,7 +698,9 @@ def deployment_logs(
             # GeneratorExit and ``time.sleep`` is interruptible.
             return
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Log follow failed: {exc}") from exc
+            raise click.ClickException(
+                f"Could not follow the logs of deployment '{name}': {exc}"
+            ) from exc
         return
 
     try:
@@ -696,7 +712,9 @@ def deployment_logs(
             until=until,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Log fetch failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not read the logs of deployment '{name}': {exc}"
+        ) from exc
     if output.JSON_MODE:
         output.print_json({"component": component, "logs": text})
         return
@@ -724,7 +742,9 @@ def deployment_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> 
     try:
         deployment.delete(force=force)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete deployment '{name}': {exc}"
+        ) from exc
     output.success("✓ Deleted deployment %s", name)
 
 
@@ -768,7 +788,9 @@ def _get_deployment(ctx: click.Context, name: str) -> Any:
     try:
         deployment = ms.get_deployment(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Deployment '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find deployment '{name}': {exc}"
+        ) from exc
     if deployment is None:
         raise click.ClickException(f"Deployment '{name}' not found.")
     return deployment

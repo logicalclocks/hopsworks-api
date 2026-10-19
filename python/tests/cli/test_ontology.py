@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -108,3 +109,33 @@ def test_td_names_every_version():
         for path, cmd in _tree()
         if path[:1] == ("td",) and "--version" in _options(cmd)
     ]
+
+
+def _error_messages():
+    root = _ONTOLOGY.parent
+    for path in sorted(root.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            func = getattr(node, "func", None)
+            name = getattr(func, "attr", getattr(func, "id", None))
+            if name != "ClickException" or not node.args:
+                continue
+            arg = node.args[0]
+            if isinstance(arg, ast.JoinedStr):
+                text = "".join(
+                    v.value if isinstance(v, ast.Constant) else "{}" for v in arg.values
+                )
+            elif isinstance(arg, ast.Constant):
+                text = arg.value
+            else:
+                continue
+            yield f"{path.relative_to(root)}:{node.lineno}", text
+
+
+def test_errors_follow_the_format():
+    bad = [
+        (where, text)
+        for where, text in _error_messages()
+        if re.search(r"\bfailed\b|^Failed to|not found: \{", text)
+        or not (text[:1].isupper() or text[:1] in "`{")
+    ]
+    assert not bad

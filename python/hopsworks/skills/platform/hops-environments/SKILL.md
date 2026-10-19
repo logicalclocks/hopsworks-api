@@ -45,7 +45,7 @@ string to the backend, which resolves it against the project root
 `/Projects/<project>/`. A local-only path fails with:
 
 ```
-Error: Install failed: ... HTTP code: 404 ...
+Error: Could not install into environment '<env>': ... HTTP code: 404 ...
 {"errorCode":110008,"usrMsg":"path: /Projects/<project>/requirements.txt",
  "errorMsg":"File not found."}
 ```

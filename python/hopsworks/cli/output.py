@@ -24,7 +24,6 @@ _BOLD = "\033[1m"
 _DIM = "\033[2m"
 _GREEN = "\033[32m"
 _YELLOW = "\033[33m"
-_RED = "\033[31m"
 
 
 def _tty() -> bool:
@@ -246,13 +245,3 @@ def warn(msg: str, *args: Any) -> None:
     if JSON_MODE:
         return
     sys.stderr.write(_wrap(_YELLOW, msg % args if args else msg) + "\n")
-
-
-def error(msg: str, *args: Any) -> None:
-    """Print an error; always visible, even in JSON mode.
-
-    Args:
-        msg: Printf-style format string.
-        *args: Values substituted into ``msg``.
-    """
-    sys.stderr.write(_wrap(_RED, msg % args if args else msg) + "\n")

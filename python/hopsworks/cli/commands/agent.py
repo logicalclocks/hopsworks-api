@@ -157,7 +157,9 @@ def agent_create(
             resources=_memory_limit(memory),
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Agent create failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create agent '{name or entry}': {exc}"
+        ) from exc
 
     output.success("✓ Created agent %s", getattr(agent, "name", name or entry))
 
@@ -192,7 +194,7 @@ def agent_start(ctx: click.Context, name: str, wait: bool, timeout: int) -> None
     try:
         agent.start(await_running=timeout if wait else 0)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Start failed: {exc}") from exc
+        raise click.ClickException(f"Could not start agent '{name}': {exc}") from exc
     output.success("✓ Started agent %s", name)
 
 
@@ -226,7 +228,7 @@ def agent_stop(ctx: click.Context, name: str, wait: bool, timeout: int) -> None:
     try:
         agent.stop(await_stopped=timeout if wait else 0)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Stop failed: {exc}") from exc
+        raise click.ClickException(f"Could not stop agent '{name}': {exc}") from exc
     output.success("✓ Stopped agent %s", name)
 
 
@@ -269,7 +271,7 @@ def agent_query(
     try:
         response = agent.predict(data=payload)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Query failed: {exc}") from exc
+        raise click.ClickException(f"Could not query agent '{name}': {exc}") from exc
 
     if output.JSON_MODE:
         output.print_json(response)
@@ -378,7 +380,9 @@ def agent_logs(
                 os.makedirs(path, exist_ok=True)
             local_paths = agent.download_logs(path=path)
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Log download failed: {exc}") from exc
+            raise click.ClickException(
+                f"Could not download the logs of agent '{name}': {exc}"
+            ) from exc
         if output.JSON_MODE:
             output.print_json({"paths": local_paths})
             return
@@ -398,7 +402,9 @@ def agent_logs(
         except KeyboardInterrupt:
             return
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Log follow failed: {exc}") from exc
+            raise click.ClickException(
+                f"Could not follow the logs of agent '{name}': {exc}"
+            ) from exc
         return
 
     try:
@@ -410,7 +416,9 @@ def agent_logs(
             until=until,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Log fetch failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not read the logs of agent '{name}': {exc}"
+        ) from exc
     if output.JSON_MODE:
         output.print_json({"component": component, "logs": text})
         return
@@ -438,7 +446,7 @@ def agent_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     try:
         agent.delete(force=force)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete agent '{name}': {exc}") from exc
     output.success("✓ Deleted agent %s", name)
 
 
@@ -461,7 +469,7 @@ def _get_agent(ctx: click.Context, name: str) -> Any:
     try:
         d = ms.get_deployment(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Agent '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find agent '{name}': {exc}") from exc
     if d is None or not _is_agent(d):
         raise click.ClickException(f"Agent '{name}' not found.")
     return d

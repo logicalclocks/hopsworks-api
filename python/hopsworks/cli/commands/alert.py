@@ -716,7 +716,9 @@ def _resolve_fg(ctx: click.Context, name: str, version: int | None) -> tuple[int
     try:
         fg = versions.feature_group(fs, name, version)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature group '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find feature group '{name}': {exc}"
+        ) from exc
     if fg is None:
         raise click.ClickException(f"Feature group '{name}' not found.")
     return fs.id, fg.id
@@ -730,7 +732,9 @@ def _resolve_fv(
     try:
         fv = versions.feature_view(fs, name, version)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find feature view '{name}': {exc}"
+        ) from exc
     if fv is None:
         raise click.ClickException(f"Feature view '{name}' not found.")
     return fs.id, getattr(fv, "name", name), fv.version

@@ -266,7 +266,9 @@ def td_delete(
         else:
             fv.delete_all_training_datasets()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete training data of feature view '{feature_view}': {exc}"
+        ) from exc
     output.success("✓ Deleted training dataset for %s", feature_view)
 
 
@@ -467,7 +469,9 @@ def _get_fv(
     except versions.AmbiguousVersionError:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find feature view '{name}': {exc}"
+        ) from exc
     if fv is None:
         raise click.ClickException(f"Feature view '{name}' not found.")
     return fv

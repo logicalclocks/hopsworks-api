@@ -421,12 +421,12 @@ def factory_run(
     definition = factory_api._get(name)
     if not definition.get("enabled", True):
         raise click.ClickException(
-            f"the factory {name} is disabled; `hops factory enable {name}` turns it on"
+            f"The factory {name} is disabled; `hops factory enable {name}` turns it on"
         )
     existing = _recorded(slug)
     if change_id and existing is None:
         raise click.ClickException(
-            "a change is made to a recorded system: name its SLUG, or run this in its directory"
+            "A change is made to a recorded system: name its SLUG, or run this in its directory"
         )
     if existing is not None:
         if not factory_spec.SLUG.match(existing.name):
@@ -450,7 +450,7 @@ def factory_run(
         return
     if slug:
         raise click.ClickException(
-            f"no system {slug!r} under {Path.cwd()}; leave SLUG out to build a new one"
+            f"No system {slug!r} under {Path.cwd()}; leave SLUG out to build a new one"
         )
     spec = definition["spec"]
     chosen = _preset(spec, preset)

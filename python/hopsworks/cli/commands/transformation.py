@@ -180,7 +180,9 @@ def _load_udf(source: str, fn_name: str, origin: str) -> Any:
     try:
         exec(compile(source, origin, "exec"), module.__dict__)  # noqa: S102
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"UDF import failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not import the transformation function: {exc}"
+        ) from exc
     fn = module.__dict__.get(fn_name)
     if fn is None:
         raise click.ClickException(f"Function '{fn_name}' disappeared after import.")

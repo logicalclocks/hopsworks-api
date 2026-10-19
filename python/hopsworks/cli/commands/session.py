@@ -530,7 +530,7 @@ def _upload_manifest(
             )
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
-                f"Failed to upload teleport manifest: {exc}"
+                f"Could not upload the session manifest: {exc}"
             ) from exc
 
 
@@ -803,7 +803,9 @@ def push(
                 local_path=str(snapshot), upload_path=dest_dir, overwrite=True
             )
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Failed to ship session: {exc}") from exc
+            raise click.ClickException(
+                f"Could not push session '{session_id}': {exc}"
+            ) from exc
     output.success("✓ Pushed session %s to %s", resolved_id, project.name)
 
     ws_url = (_launch_pod(project) or {}).get("wsUrl")
@@ -1052,7 +1054,7 @@ def pull(
         force: Steal the baton from a live pod or another machine.
     """
     if ours and theirs:
-        raise click.ClickException("--ours and --theirs are mutually exclusive.")
+        raise click.UsageError("--ours and --theirs are mutually exclusive.")
 
     slug = _cwd_slug()
     project = conn.get_project(ctx)
@@ -1128,7 +1130,9 @@ def pull(
         try:
             dataset_api.download(remote_jsonl, local_path=str(scratch), overwrite=True)
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Failed to pull session: {exc}") from exc
+            raise click.ClickException(
+                f"Could not pull session '{session_id}': {exc}"
+            ) from exc
         remote_text = scratch.read_text(errors="ignore")
     remote_lines = remote_text.splitlines()
 
@@ -1434,7 +1438,7 @@ def stop(ctx: click.Context) -> None:
     try:
         terminal_api.stop_session(project.id)
     except Exception as exc:  # noqa: BLE001 - feature may be disabled on cluster
-        raise click.ClickException(f"Failed to stop the terminal: {exc}") from exc
+        raise click.ClickException(f"Could not stop the terminal: {exc}") from exc
 
     if output.JSON_MODE:
         output.print_json({"project": project.name, "stopped": True})
@@ -1747,7 +1751,7 @@ async def _mirror_session(project_id: int, write: bool) -> None:
         from websockets.exceptions import ConnectionClosed
     except ImportError as exc:
         raise click.ClickException(
-            "hops session mirror requires websockets: pip install 'hopsworks[terminal]'"
+            "`hops session mirror` requires websockets: pip install 'hopsworks[terminal]'"
         ) from exc
 
     mode = "rw" if write else "ro"
@@ -1814,7 +1818,7 @@ def mirror(ctx: click.Context, write: bool) -> None:
     """
     # Fail before logging in: there is nothing machine-readable to produce.
     if output.JSON_MODE:
-        raise click.ClickException(
+        raise click.UsageError(
             "`session mirror` is interactive; --json is not supported."
         )
     project = conn.get_project(ctx)

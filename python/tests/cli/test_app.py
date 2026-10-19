@@ -800,4 +800,4 @@ def test_app_info_surfaces_not_found(mock_project):
     apps.get_app.side_effect = RuntimeError("404")
     result = CliRunner().invoke(cli, ["app", "info", "ghost"])
     assert result.exit_code != 0
-    assert "not found" in result.output.lower()
+    assert "could not find app 'ghost'" in result.output.lower()
