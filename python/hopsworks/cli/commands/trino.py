@@ -207,9 +207,10 @@ def trino_query(
 ) -> None:
     """Run an ad-hoc SQL query.
 
-    Provide the SQL as a positional argument, or use ``-f`` to read from a
-    file, or ``-i`` to read from stdin (useful in shell pipelines).
+    Provide the SQL as a positional argument, or use `-f` to read from a
+    file, or `-i` to read from stdin (useful in shell pipelines).
 
+    \f
     Args:
         ctx: Click context.
         sql: SQL string passed positionally.
@@ -247,6 +248,7 @@ trino_group.add_command(trino_query, name="sql")
 def trino_catalogs(ctx: click.Context) -> None:
     """List Trino catalogs visible to the current user.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -259,6 +261,7 @@ def trino_catalogs(ctx: click.Context) -> None:
 def trino_schemas(ctx: click.Context, catalog: str) -> None:
     """List schemas in CATALOG.
 
+    \f
     Args:
         ctx: Click context.
         catalog: Trino catalog name.
@@ -270,13 +273,16 @@ def trino_schemas(ctx: click.Context, catalog: str) -> None:
 @click.argument("target")
 @click.pass_context
 def trino_tables(ctx: click.Context, target: str) -> None:
-    """List tables in TARGET (``<catalog>.<schema>`` or just ``<schema>``).
+    """List tables in a schema.
+
+    List tables in TARGET (`<catalog>.<schema>` or just `<schema>`).
 
     When TARGET has no dot the active project's default catalog is assumed.
 
+    \f
     Args:
         ctx: Click context.
-        target: ``<catalog>.<schema>`` or just ``<schema>``.
+        target: `<catalog>.<schema>` or just `<schema>`.
     """
     if "." in target:
         cat, sch = target.split(".", 1)
@@ -291,13 +297,16 @@ def trino_tables(ctx: click.Context, target: str) -> None:
 @click.argument("table_ref")
 @click.pass_context
 def trino_describe(ctx: click.Context, table_ref: str) -> None:
-    """Describe TABLE_REF (``<catalog>.<schema>.<table>`` or ``<schema>.<table>``).
+    """Describe a table.
+
+    Describe TABLE_REF (`<catalog>.<schema>.<table>` or `<schema>.<table>`).
 
     Output is one row per column with name, type, extra-info, and comment.
 
+    \f
     Args:
         ctx: Click context.
-        table_ref: ``<catalog>.<schema>.<table>`` or ``<schema>.<table>``.
+        table_ref: `<catalog>.<schema>.<table>` or `<schema>.<table>`.
     """
     parts = table_ref.split(".")
     if len(parts) not in (2, 3):
@@ -315,6 +324,7 @@ def trino_describe(ctx: click.Context, table_ref: str) -> None:
 def trino_info(ctx: click.Context) -> None:
     """Show the host/port/user the CLI would connect with.
 
+    \f
     Args:
         ctx: Click context.
     """

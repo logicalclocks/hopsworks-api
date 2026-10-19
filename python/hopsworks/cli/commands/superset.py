@@ -31,6 +31,7 @@ def superset_dataset_group() -> None:
 def superset_dataset_list(ctx: click.Context) -> None:
     """List every Superset dataset visible to the current user.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -44,6 +45,7 @@ def superset_dataset_list(ctx: click.Context) -> None:
 def superset_dataset_info(ctx: click.Context, dataset_id: int) -> None:
     """Show details for a Superset dataset.
 
+    \f
     Args:
         ctx: Click context.
         dataset_id: Superset dataset ID.
@@ -80,6 +82,7 @@ def superset_dataset_create(
 ) -> None:
     """Create a Superset dataset.
 
+    \f
     Args:
         ctx: Click context.
         database_id: Superset database ID.
@@ -108,6 +111,7 @@ def superset_dataset_create(
 def superset_dataset_delete(ctx: click.Context, dataset_id: int, yes: bool) -> None:
     """Delete a Superset dataset.
 
+    \f
     Args:
         ctx: Click context.
         dataset_id: Superset dataset ID.
@@ -135,6 +139,7 @@ def superset_chart_group() -> None:
 def superset_chart_list(ctx: click.Context) -> None:
     """List every Superset chart visible to the current user.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -148,6 +153,7 @@ def superset_chart_list(ctx: click.Context) -> None:
 def superset_chart_info(ctx: click.Context, chart_id: int) -> None:
     """Show details for a Superset chart.
 
+    \f
     Args:
         ctx: Click context.
         chart_id: Superset chart ID.
@@ -180,6 +186,7 @@ def superset_chart_create(
 ) -> None:
     """Create a Superset chart (slice).
 
+    \f
     Args:
         ctx: Click context.
         slice_name: Slice name.
@@ -208,6 +215,7 @@ def superset_chart_create(
 def superset_chart_delete(ctx: click.Context, chart_id: int, yes: bool) -> None:
     """Delete a Superset chart.
 
+    \f
     Args:
         ctx: Click context.
         chart_id: Superset chart ID.
@@ -235,6 +243,7 @@ def superset_dashboard_group() -> None:
 def superset_dashboard_list(ctx: click.Context) -> None:
     """List every Superset dashboard visible to the current user.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -248,6 +257,7 @@ def superset_dashboard_list(ctx: click.Context) -> None:
 def superset_dashboard_info(ctx: click.Context, dashboard_id: int) -> None:
     """Show details for a Superset dashboard.
 
+    \f
     Args:
         ctx: Click context.
         dashboard_id: Superset dashboard ID.
@@ -265,6 +275,7 @@ def superset_dashboard_create(
 ) -> None:
     """Create a Superset dashboard.
 
+    \f
     Args:
         ctx: Click context.
         title: Dashboard title.
@@ -287,6 +298,7 @@ def superset_dashboard_create(
 def superset_dashboard_delete(ctx: click.Context, dashboard_id: int, yes: bool) -> None:
     """Delete a Superset dashboard.
 
+    \f
     Args:
         ctx: Click context.
         dashboard_id: Superset dashboard ID.
