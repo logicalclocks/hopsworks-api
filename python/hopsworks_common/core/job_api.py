@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from hopsworks_common import (
     client,
     decorators,
+    events,
     execution,
     job,
     job_schedule,
@@ -49,6 +50,7 @@ from hopsworks_apigen import public
 class JobApi:
     @public
     @usage._method_logger
+    @events.tracking("job", "create", key=lambda self, name, *a, **k: {"name": name})
     def create_job(self, name: str, config: dict) -> job.Job:
         """Create a new job or update an existing one.
 
@@ -186,6 +188,7 @@ class JobApi:
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)
 
+    @events.tracking("job", "delete", key=lambda self, job, *a, **k: {"name": job.name})
     def _delete(self, job):
         """Delete the job and all executions.
 
@@ -201,6 +204,7 @@ class JobApi:
         ]
         _client._send_request("DELETE", path_params)
 
+    @events.tracking("job", "update", key=lambda self, name, *a, **k: {"name": name})
     def _update_job(self, name: str, config: dict) -> job.Job:
         """Update the job.
 
@@ -224,6 +228,9 @@ class JobApi:
             )
         )
 
+    @events.tracking(
+        "schedule", "update", key=lambda self, name, *a, **k: {"name": name}
+    )
     def _schedule_job(self, name, schedule_config):
         """Attach the `schedule_config` to the job with the given `name`."""
         _client = client._get_instance()
@@ -237,6 +244,9 @@ class JobApi:
             )
         )
 
+    @events.tracking(
+        "schedule", "delete", key=lambda self, name, *a, **k: {"name": name}
+    )
     def _delete_schedule_job(self, name):
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]

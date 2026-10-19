@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Literal
 
-from hopsworks_common import client
+from hopsworks_common import client, events
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import (
     HAS_AVRO,
@@ -546,6 +546,7 @@ def _build_ack_callback_and_optional_progress_bar(
         # update progress bar for each msg
         if not is_multi_part_insert:
             progress_bar.update()
+            events.progress(progress_bar.n, n_rows, "rows")
 
     return acked, progress_bar
 
