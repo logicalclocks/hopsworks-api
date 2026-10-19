@@ -99,6 +99,54 @@ class TestTransport:
             evals.suites.list()
         assert err.value.status == 400
 
+    def test_an_agents_own_refusal_keeps_its_code_and_message(self):
+        # A handler's AgentError arrives as FastAPI's `detail`, which for this
+        # protocol is {"code", "message", "retryable"}. Only the platform's
+        # usrMsg/errorMsg were read, so the one refusal the protocol defines an
+        # envelope for reached the caller as a bare "HTTP 409" -- no message to
+        # show a person and no code to branch on.
+        evals, _ = client(
+            Reply(
+                {
+                    "detail": {
+                        "code": "contract_refusal",
+                        "message": "the agent refused this turn on purpose",
+                        "retryable": False,
+                    }
+                },
+                status=409,
+            )
+        )
+        with pytest.raises(AgentServingError) as err:
+            evals.suites.list()
+
+        assert err.value.status == 409
+        assert err.value.code == "contract_refusal"
+        assert err.value.retryable is False
+        assert "the agent refused this turn on purpose" in str(err.value)
+        assert "contract_refusal" in str(err.value)
+
+    def test_a_retryable_refusal_says_so(self):
+        evals, _ = client(
+            Reply(
+                {"detail": {"code": "vector_purge_failed", "retryable": True}},
+                status=500,
+            )
+        )
+        with pytest.raises(AgentServingError) as err:
+            evals.suites.list()
+        assert err.value.retryable is True
+        # no message in the envelope, so the status is all there is to say
+        assert "HTTP 500" in str(err.value)
+
+    def test_a_plain_string_detail_is_the_message(self):
+        # FastAPI's own refusals -- request validation, a missing route -- put a
+        # string here rather than the protocol's object.
+        evals, _ = client(Reply({"detail": "Not Found"}, status=404))
+        with pytest.raises(AgentServingError, match="Not Found") as err:
+            evals.suites.list()
+        assert err.value.code == ""
+
     def test_none_parameters_are_not_sent(self):
         evals, session = client(Reply([]))
         evals.runs.list()

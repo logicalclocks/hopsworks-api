@@ -24,11 +24,27 @@ TIMEOUT_S = 60
 
 
 class AgentServingError(EvalApiError):
-    """A refusal from the API, carrying the reason it gave and the status."""
+    """A refusal from the API, carrying the reason it gave and the status.
 
-    def __init__(self, message: str, status: int = 0):
+    ``code`` and ``retryable`` are the agent protocol's error envelope, set when
+    the refusal came from an agent handler rather than from the platform. The
+    code is what a caller branches on -- "the agent declined" reads differently
+    from "the agent broke" -- so it travels as an attribute rather than only
+    inside the message.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        status: int = 0,
+        *,
+        code: str = "",
+        retryable: bool = False,
+    ):
         super().__init__(message)
         self.status = status
+        self.code = code
+        self.retryable = retryable
 
 
 def _stream_lines(response: Any) -> Any:
@@ -58,15 +74,45 @@ def _stream_lines(response: Any) -> Any:
 
 
 def _message(response: Any) -> str:
+    return _refusal(response).args[0]
+
+
+def _refusal(response: Any) -> AgentServingError:
+    """The refusal as an exception, with whatever the answer actually said.
+
+    Two error shapes reach this client. The platform answers with ``usrMsg`` /
+    ``errorMsg``; an agent handler's ``AgentError`` arrives as FastAPI's
+    ``detail``, which for the agent protocol is ``{"code", "message",
+    "retryable"}``. Only the platform's two were read, so a refusal from the
+    agent itself -- the case the protocol defines an envelope for -- reached the
+    caller as a bare "HTTP 409", with the agent's own message and the code they
+    were meant to branch on dropped.
+    """
+    status = int(getattr(response, "status_code", 0) or 0)
+    fallback = f"HTTP {status}"
     try:
         body = response.json()
     except ValueError:
-        return f"HTTP {response.status_code}"
-    if isinstance(body, dict):
-        return (
-            body.get("usrMsg") or body.get("errorMsg") or f"HTTP {response.status_code}"
+        return AgentServingError(fallback, status)
+    if not isinstance(body, dict):
+        return AgentServingError(fallback, status)
+    detail = body.get("detail")
+    if isinstance(detail, dict):
+        message = str(detail.get("message") or "") or fallback
+        code = str(detail.get("code") or "")
+        return AgentServingError(
+            f"{message} ({code})" if code else message,
+            status,
+            code=code,
+            retryable=bool(detail.get("retryable")),
         )
-    return f"HTTP {response.status_code}"
+    if isinstance(detail, str) and detail.strip():
+        # FastAPI's own refusals (a 422 from request validation, say) put a
+        # plain string here.
+        return AgentServingError(detail, status)
+    return AgentServingError(
+        body.get("usrMsg") or body.get("errorMsg") or fallback, status
+    )
 
 
 class Transport:
@@ -130,7 +176,7 @@ class Transport:
             timeout=TIMEOUT_S,
         )
         if response.status_code >= 400:
-            raise AgentServingError(_message(response), response.status_code)
+            raise _refusal(response)
         if raw:
             return getattr(response, "content", b"")
         if not getattr(response, "content", b""):
@@ -193,7 +239,7 @@ class Transport:
             method, url, json=json, headers=headers, timeout=timeout, stream=stream
         )
         if response.status_code >= 400:
-            raise AgentServingError(_message(response), response.status_code)
+            raise _refusal(response)
         if stream:
             return _stream_lines(response)
         if not getattr(response, "content", b""):
@@ -361,4 +407,4 @@ def _through_istio(
         )
     except RestAPIError as err:
         response = err.response
-        raise AgentServingError(_message(response), response.status_code) from err
+        raise _refusal(response) from err
