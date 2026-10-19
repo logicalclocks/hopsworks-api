@@ -207,6 +207,32 @@ summarize=hopsworks_summarizer("my-llm", "llama-3.1-8b")    # when it serves sev
 
 Anything else is just a function with that shape.
 
+### Writing durable memory from your own code
+
+`ctx.state(scope)` reads it and `ctx.remember` / `ctx.forget` write it, under
+the owner each scope is keyed by:
+
+```python
+ctx.remember("preferred_language", "Swedish")       # the subject, across their conversations
+ctx.remember("cart_id", cart.id, scope="session")   # this conversation only
+ctx.forget("cart_id", scope="session")              # one key, or the whole scope with no key
+```
+
+The owner is the point: `user` scope is keyed by the subject and `session` by
+the conversation, and state written under the wrong one is never read back and
+never reports anything. `app` scope is agent-wide and cannot be written from a
+turn — it is injected into every user's context, so one conversation writing it
+is how a prompt injection reaches everybody; operators write it out of band with
+`memory.set_state`.
+
+A fact written this way is recorded as the agent's, which is what bounds it: cut
+to the store's cap, given an expiry, and listed as agent-written in the subject's
+own audit view, with `source_ref` pointing at the turn it came from unless you
+pass your own.
+
+In an `async def` handler use `await ctx.aremember(...)` / `await ctx.aforget(...)`
+— see [Reading memory in an `async def` handler](#reading-memory-in-an-async-def-handler).
+
 ### Agent-callable memory tools
 
 Long-term memory adds `remember` / `recall` / `forget` / `search`, which the agent's own
@@ -325,8 +351,8 @@ async def chat(request, ctx):
 
 `ctx` exposes `conversation_id`, `request`, `memory`, `logger`, `deployment_id`,
 `framework`, `response_id`/`message_id`/`turn_id`, and `emit_event`, plus the
-memory accessors: `history`, `summary`, `state(scope=...)`, `system_context()`,
-and `subject` (see [Memory](#memory)).
+memory accessors: `history`, `summary`, `state(scope=...)`, `remember`/`forget`,
+`system_context()`, and `subject` (see [Memory](#memory)).
 
 ## Progress (tool) events
 
@@ -430,7 +456,11 @@ so do `/health` and `/ready`. Use the awaited forms:
 async def chat(request, ctx):
     history = await ctx.ahistory()
     system = MY_PROMPT + await ctx.asystem_context()
+    await ctx.aremember("preferred_language", "Swedish")
 ```
+
+Writes are round trips too: `aremember` and `aforget` are the awaited forms of
+`remember` and `forget`.
 
 The memory tools are ordinary synchronous functions; a framework that awaits
 tools runs them in a thread of its own, which is why they are not async here.

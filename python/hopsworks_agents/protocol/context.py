@@ -139,6 +139,112 @@ class HandlerContext:
             row["key"]: row["value"] for row in self.memory.list_state(scope, owner)
         }
 
+    def remember(
+        self,
+        key: str,
+        value: str,
+        *,
+        scope: str = "user",
+        source_ref: str | None = None,
+    ) -> bool:
+        """Write one durable fact, under the owner the scope is keyed by.
+
+        The write half of :meth:`state`, which reads with that owner::
+
+            ctx.remember("preferred_language", "Swedish")
+            ctx.remember("cart_id", cart.id, scope="session")
+
+        Without it an agent writing state had to call
+        ``memory.set_state(scope, owner, ...)`` and work the owner out for
+        itself — the subject for ``user``, the conversation for ``session`` —
+        which is a convention that reads correctly and is wrong in a way
+        nothing reports: state written under the wrong owner is simply never
+        read back.
+
+        ``user`` outlives the conversation and ``session`` is this conversation
+        only. ``app`` is agent-wide and may not be written from a turn: it is
+        injected into every user's context, so one conversation writing it is
+        how a prompt injection reaches everybody. Operators write that scope out
+        of band, with :meth:`~hopsworks_agents.protocol.memory.ChatMemory.set_state`.
+
+        The fact is recorded as the agent's, which is what makes it bounded: the
+        value is cut to the store's cap and given an expiry, and it is listed in
+        the subject's own audit view as agent-written. ``source_ref`` defaults to
+        this turn, so "why does the agent believe this?" resolves to a
+        conversation and a message rather than to nothing.
+
+        Args:
+            key: a short, stable identifier. Not normalised: a programmatic
+                caller chose it, unlike the model-facing ``remember`` tool.
+            value: the fact, written so it is useful without the chat around it.
+            scope: ``user`` or ``session``.
+            source_ref: what this fact came from; this turn by default.
+
+        Returns:
+            Whether there was a store to write to. False for an agent running
+            without memory, which is the same way :meth:`state` and
+            :attr:`history` degrade rather than raising.
+
+        Raises:
+            ValueError: the scope cannot be written from a turn.
+        """
+        from .memory import WRITABLE_SCOPES
+
+        if scope not in WRITABLE_SCOPES:
+            raise ValueError(
+                f"cannot write scope {scope!r} from a turn; use 'user' for what "
+                "is true about this person across conversations, or 'session' "
+                f"for this conversation only (writable: {WRITABLE_SCOPES})"
+            )
+        if self.memory is None:
+            return False
+        self.memory.set_state(
+            scope,
+            self._state_owner(scope),
+            key,
+            value,
+            source_ref=source_ref if source_ref is not None else self._provenance(),
+        )
+        return True
+
+    def forget(self, key: str | None = None, *, scope: str = "user") -> int:
+        """Erase one durable fact, or every fact in a scope when ``key`` is omitted.
+
+        The counterpart to :meth:`remember`, with the same owner rule and the
+        same restriction: ``app`` is not a turn's to change.
+
+        Returns:
+            How many facts were removed; 0 for an agent running without memory.
+
+        Raises:
+            ValueError: the scope cannot be written from a turn.
+        """
+        from .memory import WRITABLE_SCOPES
+
+        if scope not in WRITABLE_SCOPES:
+            raise ValueError(
+                f"cannot erase scope {scope!r} from a turn (writable: {WRITABLE_SCOPES})"
+            )
+        if self.memory is None:
+            return 0
+        return self.memory.delete_state(scope, self._state_owner(scope), key)
+
+    def _provenance(self) -> str:
+        """Where a fact written this turn came from, as the store records it.
+
+        The ids rather than the text: the content is in the conversation this
+        points at, and a copy here would be a second place to erase it from.
+        """
+        import json
+
+        return json.dumps(
+            {
+                "conversation_id": self.conversation_id,
+                "turn_id": self.turn_id,
+                "message_id": self.message_id,
+            }
+        )
+
     def rebind_subject(self, subject: str) -> None:
         """Bind durable memory to the end user this turn just identified.
 
@@ -248,6 +354,23 @@ class HandlerContext:
         if self.memory is None:
             return None
         return await asyncio.to_thread(self.memory.get_summary, self.conversation_id)
+
+    async def aremember(
+        self,
+        key: str,
+        value: str,
+        *,
+        scope: str = "user",
+        source_ref: str | None = None,
+    ) -> bool:
+        """:meth:`remember`, written in a worker thread."""
+        return await asyncio.to_thread(
+            lambda: self.remember(key, value, scope=scope, source_ref=source_ref)
+        )
+
+    async def aforget(self, key: str | None = None, *, scope: str = "user") -> int:
+        """:meth:`forget`, run in a worker thread."""
+        return await asyncio.to_thread(lambda: self.forget(key, scope=scope))
 
     async def asystem_context(
         self,

@@ -19,7 +19,7 @@ import logging
 import re
 from typing import get_type_hints
 
-from .memory import WRITABLE_SCOPES, WRITTEN_BY_AGENT
+from .memory import WRITABLE_SCOPES
 
 
 log = logging.getLogger(__name__)
@@ -68,7 +68,14 @@ def _resolve():
 
 
 def _owner(ctx, scope: str) -> str:
-    return ctx.conversation_id if scope == "session" else ctx.subject
+    """The owner a scope is keyed by, from the context itself.
+
+    Delegated rather than reimplemented: a second copy of this rule read
+    correctly and disagreed with the first about ``app``, which is owned by
+    nobody -- so ``recall(key, scope="app")`` looked for an agent-wide fact
+    under the caller's own subject and never found one.
+    """
+    return ctx._state_owner(scope)  # noqa: SLF001 -- same package, one rule
 
 
 #: Words too common to make two keys related. Without this, every key sharing
@@ -162,14 +169,10 @@ def remember(key: str, value: str, scope: str = "user") -> str:
     key = _normalize_key(key)
     # Read before write, so the model sees what it is about to sit beside.
     neighbours = _related_keys(memory, scope, owner, key)
-    memory.set_state(
-        scope,
-        owner,
-        key,
-        value,
-        source_ref=source_ref,
-        written_by=WRITTEN_BY_AGENT,
-    )
+    # Through the context, which owns the owner rule and the provenance shape;
+    # this adds the model-facing part -- one spelling per key, and what the new
+    # fact is about to sit beside.
+    ctx.remember(key, value, scope=scope, source_ref=source_ref)
     stored = f"Stored {key!r} in {scope} memory."
     if neighbours:
         # Nothing is merged automatically — the model knows which of these means

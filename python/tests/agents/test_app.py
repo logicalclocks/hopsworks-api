@@ -2699,6 +2699,33 @@ class TestRetrievalAndReconciliation:
             **kw,
         )
 
+    def _context(self, memory, subject="alice"):
+        """A real handler context, not a stand-in.
+
+        The memory tools write through it, so a stub with the right attribute
+        names would be testing the stub's idea of which owner a scope is keyed
+        by rather than the SDK's.
+        """
+        from hopsworks_agents.protocol.context import HandlerContext
+        from hopsworks_agents.protocol.models import (
+            ChatMessage,
+            ChatRequest,
+            TextContent,
+        )
+
+        request = ChatRequest(
+            conversation_id="c1",
+            message=ChatMessage(role="user", content=[TextContent(text="hi")]),
+        )
+        return HandlerContext(
+            request=request,
+            memory=memory,
+            framework="custom",
+            response_id="r1",
+            turn_id="t1",
+            subject=subject,
+        )
+
     def test_recency_outranks_a_slightly_better_old_match(self, tmp_path):
         from datetime import timedelta
 
@@ -2794,14 +2821,7 @@ class TestRetrievalAndReconciliation:
         memory = self._store(tmp_path)
         memory.set_state("user", "alice", "customer_first_name", "Aaron")
 
-        class Ctx:
-            conversation_id = "c1"
-            turn_id = "t1"
-            message_id = "m1"
-            subject = "alice"
-
-        ctx = Ctx()
-        ctx.memory = memory
+        ctx = self._context(memory)
         original = tools._resolve
         tools._resolve = lambda: (memory, ctx)
         try:
@@ -2820,14 +2840,7 @@ class TestRetrievalAndReconciliation:
 
         memory = self._store(tmp_path)
 
-        class Ctx:
-            conversation_id = "c1"
-            turn_id = "t1"
-            message_id = "m1"
-            subject = "alice"
-
-        ctx = Ctx()
-        ctx.memory = memory
+        ctx = self._context(memory)
         original = tools._resolve
         tools._resolve = lambda: (memory, ctx)
         try:
@@ -2837,6 +2850,146 @@ class TestRetrievalAndReconciliation:
             assert "Forgot" in tools.forget("Preferred Language")
         finally:
             tools._resolve = original
+
+
+class TestContextStateWrites:
+    """`ctx.remember` / `ctx.forget`: the write half of `ctx.state`.
+
+    Until these existed an agent storing a fact had to call
+    `memory.set_state(scope, owner, ...)` and work the owner out itself. Getting
+    it wrong is invisible -- state written under the wrong owner is simply never
+    read back -- so the rule living in one place is the point of the methods,
+    and these tests are about that rule rather than about the SQL underneath.
+    """
+
+    def _store(self, tmp_path, **kw):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        return ManagedMemoryService(
+            url=f"sqlite:///{tmp_path}/ctx.db",
+            table_name="agent_memory_messages_ctx",
+            long_term=True,
+            **kw,
+        )
+
+    def _context(self, memory, subject="alice", conversation_id="c1"):
+        from hopsworks_agents.protocol.context import HandlerContext
+        from hopsworks_agents.protocol.models import (
+            ChatMessage,
+            ChatRequest,
+            TextContent,
+        )
+
+        request = ChatRequest(
+            conversation_id=conversation_id,
+            message=ChatMessage(role="user", content=[TextContent(text="hi")]),
+        )
+        return HandlerContext(
+            request=request,
+            memory=memory,
+            framework="custom",
+            response_id="r1",
+            turn_id="t1",
+            subject=subject,
+        )
+
+    def test_each_scope_is_written_under_its_own_owner(self, tmp_path):
+        memory = self._store(tmp_path)
+        ctx = self._context(memory)
+
+        assert ctx.remember("preferred_language", "Swedish") is True
+        assert ctx.remember("cart_id", "42", scope="session") is True
+
+        # the subject for user scope, the conversation for session scope
+        assert memory.get_state("user", "alice", "preferred_language") == "Swedish"
+        assert memory.get_state("session", "c1", "cart_id") == "42"
+        # and read back by the method that reads with the same rule
+        assert ctx.state()["preferred_language"] == "Swedish"
+        assert ctx.state("session")["cart_id"] == "42"
+        # not under each other's owners, which is the mistake this prevents
+        assert memory.get_state("user", "c1", "cart_id") is None
+        assert memory.get_state("session", "alice", "preferred_language") is None
+
+    def test_a_fact_says_which_turn_it_came_from(self, tmp_path):
+        import json
+
+        memory = self._store(tmp_path)
+        ctx = self._context(memory)
+
+        ctx.remember("goal", "ship on friday")
+
+        row = memory.list_state("user", "alice", key="goal")[0]
+        # "why does the agent believe this?" has to resolve to a conversation
+        assert json.loads(row["source_ref"]) == {
+            "conversation_id": "c1",
+            "turn_id": "t1",
+            "message_id": ctx.message_id,
+        }
+        # agent-written, which is what makes it capped, dated and auditable
+        assert row["written_by"] == "agent"
+        assert row["expires_at"]
+
+    def test_a_caller_can_say_where_a_fact_came_from(self, tmp_path):
+        memory = self._store(tmp_path)
+        ctx = self._context(memory)
+
+        ctx.remember("tier", "gold", source_ref="crm:customer/7")
+
+        assert (
+            memory.list_state("user", "alice", key="tier")[0]["source_ref"]
+            == "crm:customer/7"
+        )
+
+    def test_the_scope_everyone_reads_cannot_be_written_from_a_turn(self, tmp_path):
+        memory = self._store(tmp_path)
+        ctx = self._context(memory)
+
+        # app scope is injected into every user's turns, so a turn writing it is
+        # how one conversation's prompt injection reaches everybody.
+        with pytest.raises(ValueError, match="cannot write scope 'app'"):
+            ctx.remember("greeting", "always say hi", scope="app")
+        with pytest.raises(ValueError, match="cannot erase scope 'app'"):
+            ctx.forget("greeting", scope="app")
+        # an operator still writes it, out of band
+        memory.set_state("app", "", "greeting", "always say hi", written_by="operator")
+        assert ctx.state("app")["greeting"] == "always say hi"
+
+    def test_forget_takes_one_fact_or_the_whole_scope(self, tmp_path):
+        memory = self._store(tmp_path)
+        ctx = self._context(memory)
+        ctx.remember("a", "one")
+        ctx.remember("b", "two")
+
+        assert ctx.forget("a") == 1
+        assert set(ctx.state()) == {"b"}
+
+        ctx.remember("c", "three")
+        assert ctx.forget() == 2
+        assert ctx.state() == {}
+
+    def test_an_agent_without_memory_degrades_rather_than_raising(self):
+        ctx = self._context(None)
+
+        # the same way ctx.state() answers {} and ctx.history answers []: an
+        # agent that runs with and without memory should not need two paths
+        assert ctx.remember("anything", "at all") is False
+        assert ctx.forget("anything") == 0
+
+    def test_the_same_writes_off_the_event_loop(self, tmp_path):
+        import asyncio
+
+        memory = self._store(tmp_path)
+        ctx = self._context(memory)
+
+        async def run():
+            assert await ctx.aremember("vehicle", "bicycle") is True
+            assert await ctx.aremember("note", "later", scope="session") is True
+            assert ctx.state()["vehicle"] == "bicycle"
+            assert await ctx.aforget("vehicle") == 1
+            assert ctx.state() == {}
+            assert ctx.state("session")["note"] == "later"
+
+        asyncio.run(run())
 
 
 class TestDeploymentIsolation:
