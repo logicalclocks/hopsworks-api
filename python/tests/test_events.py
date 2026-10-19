@@ -185,3 +185,22 @@ def test_the_decorator_reports_the_version_the_call_assigned(tmp_path, monkeypat
 
     (line,) = _lines(target)
     assert line["key"] == {"name": "orders", "version": 4}
+
+
+def test_an_online_insert_reports_the_rows_delivered(tmp_path, monkeypatch):
+    from hsfs.core import kafka_engine
+
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+    events._last_progress.clear()
+    acked, _ = kafka_engine._build_ack_callback_and_optional_progress_bar(
+        n_rows=3, is_multi_part_insert=False, offline_write_options={}
+    )
+
+    with events.tracked("fg", "update", long=True, name="orders", version=1):
+        for _ in range(3):
+            acked(None, None)
+
+    progress = [line for line in _lines(target) if line["phase"] == "progress"]
+    assert progress
+    assert progress[0]["progress"] == {"done": 1, "unit": "rows", "total": 3}

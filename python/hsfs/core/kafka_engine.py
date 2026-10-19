@@ -536,7 +536,10 @@ def _build_ack_callback_and_optional_progress_bar(
     else:
         progress_bar = None
 
+    delivered = 0
+
     def acked(err: KafkaError | None, msg: Any) -> None:
+        nonlocal delivered
         if err is not None:
             if offline_write_options.get("debug_kafka", False):
                 print(f"Failed to deliver message: {str(msg)}: {str(err)}")
@@ -546,7 +549,9 @@ def _build_ack_callback_and_optional_progress_bar(
         # update progress bar for each msg
         if not is_multi_part_insert:
             progress_bar.update()
-            events.progress(progress_bar.n, n_rows, "rows")
+        # Counted here: a disabled progress bar (no terminal) does not count.
+        delivered += 1
+        events.progress(delivered, n_rows, "rows")
 
     return acked, progress_bar
 
