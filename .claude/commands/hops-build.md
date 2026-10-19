@@ -87,6 +87,13 @@ a question you are about to ask depends on.
 
 ## The phases
 
+**What makes a phase done, the short path.** With a small budget or a step limit, a phase may
+leave out its optional steps (a full EDA profile, the auto-research loop, alerts), never its
+record: it counts as done only when its block in `system.yaml` has `status: met` (or `skipped`
+with a `reason`), every asset it made under its own key (`writes`, `model`, `deployment`,
+`job`), and its evidence row. A step left out is listed in the block's `skipped_steps` with one
+line why, so `verify` and the next run see what was not done.
+
 ### Starting, resuming and the lock
 
 - **Resume** when `<slug>/system.yaml` exists: take the lock, release a `system.version` not yet
@@ -208,7 +215,12 @@ Complete the rest with the user through `AskUserQuestion`, two or three question
 following "The requirements conversation" in `hops-reqs/SKILL.md`:
 
 - the problem made precise: `task`, `target` (the label column or how to derive it), `entity`,
-  `prediction_time`, `horizon`, `label_maturity`, `generalises_to`, and the business baseline;
+  `prediction_time`, `horizon`, `label_maturity`, `generalises_to`, and the business baseline,
+  recorded in one write before `requirements.status` leaves `pending` (the validator requires
+  `task` from then on):
+  `python <slug>/set.py 'requirements.problem={task: classification, target: won, entity: deal_id,
+  prediction_time: "daily, 06:00 UTC", horizon: 90 days, label_maturity: 90 days,
+  generalises_to: new_periods}'`;
 - the features to compute and where (`feature_pipeline`, `streaming`, `on_demand`), preferring
   features that already exist;
 - the target: a metric, a number and a direction, and how it is measured;
@@ -273,7 +285,11 @@ Make every `requirements.data_sources` entry `present` and record it under `data
 
 - Existing feature group: `hops fg info <name> --version <v>`, `hops fg preview <name> --limit 5`;
   key and event time must match the declared grain. A mismatch goes back to `reqs` as an
-  `open_question`.
+  `open_question`. Check that it stays fresh at the system's cadence: its newest event time
+  (`hops sql "SELECT max(<event_time>) FROM <name>_<v>"`) and the job that writes it, with a
+  schedule (`hops job list`, `hops job schedule info <job>`). With neither, scheduled inference
+  would score the last snapshot forever: the features phase builds the refresh, or `reqs`
+  records an `open_question` saying the source is static.
 - New connector: follow the secret procedure in `references/data-sources.md` (print the exact
   command, which reads each secret with `read -rs` inside a subshell, for the user to paste into a
   separate shell, or redirect a file the user wrote), confirm with `hops datasource info`, find and inspect the

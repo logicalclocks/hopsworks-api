@@ -34,6 +34,11 @@ and running the script as a job after:
 `hops job deploy train train.py --env pandas-training-pipeline --run --wait --overwrite`
 (NAME then SCRIPT are positional; `--overwrite` replaces the uploaded script on re-run).
 
+**The environment by framework:** scikit-learn, XGBoost and CatBoost train in
+`pandas-training-pipeline`; PyTorch in `torch-training-pipeline`; TensorFlow in
+`tensorflow-training-pipeline`; Ray in `ray-training-pipeline`. A library none of them has goes
+into a clone (**hops-environments**), never `pip install` inside the job.
+
 ## 1. Load training data from the feature view
 
 The model trains from the **feature view**, never from a feature group directly
