@@ -544,10 +544,33 @@ class Agent:
             if representative and representative.normalized_correction:
                 expectations = {"expected": representative.normalized_correction}
         task = self._client.tasks.promote(
-            self.id, cluster.representative_trace_id, expectations=expectations
+            self.id,
+            cluster.representative_trace_id,
+            # What the user asked, off the verdict the cluster named. Without it
+            # the promotion produces a task with no content: the platform stores
+            # what it is given, and the redaction gate then refuses to confirm a
+            # task with nothing in it -- so the cluster became a row nobody
+            # could ever put in a suite.
+            question=self._asked_in(cluster.representative_feedback_id) or None,
+            expectations=expectations,
         )
         self.mark_cluster_promoted(cluster, task)
         return task
+
+    def _asked_in(self, feedback_id: str | None) -> list[str]:
+        """The user's turns in the trace one verdict is about.
+
+        Read off the feedback listing, which carries the trace's messages for
+        exactly this: a promotion has to say what the question was, and the
+        conversation is the only place it exists.
+        """
+        if not feedback_id:
+            return []
+        try:
+            rows = self.feedback(feedback_id=feedback_id, limit=1).feedback
+        except AgentServingError:
+            return []
+        return rows[0].questions if rows else []
 
     def _decide_cluster(self, cluster: Cluster | str, **params: Any) -> None:
         cluster_id = cluster.cluster_id if isinstance(cluster, Cluster) else cluster

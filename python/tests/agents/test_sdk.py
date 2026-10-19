@@ -1084,6 +1084,23 @@ class TestTracing:
                     }
                 ]
             ),
+            Reply(
+                {
+                    "count": 1,
+                    "items": [
+                        {
+                            "feedbackId": "f",
+                            "traceId": "t",
+                            "traceMessages": json.dumps(
+                                [
+                                    {"role": "user", "content": "where is order 42?"},
+                                    {"role": "assistant", "content": "no idea"},
+                                ]
+                            ),
+                        }
+                    ],
+                }
+            ),
             Reply({"taskId": "task"}),
             Reply(None),
         )
@@ -1092,9 +1109,15 @@ class TestTracing:
         assert session.sent[0][2] == {"status": "open"}
         task = deployment.promote_cluster(cluster)
         assert task.task_id == "task"
-        assert session.sent[2][1] == "/agent-evals/tasks/from-trace/t"
-        assert session.sent[2][3]["expectations"] == {"expected": "Use the key."}
-        assert session.sent[3] == (
+        assert session.sent[3][1] == "/agent-evals/tasks/from-trace/t"
+        assert session.sent[3][3]["expectations"] == {"expected": "Use the key."}
+        # The question, off the verdict the cluster named. Without it the
+        # promotion writes a task with no content, which the redaction gate then
+        # refuses to confirm -- a cluster promoted into something unusable.
+        assert json.loads(session.sent[3][3]["inputMessages"]) == [
+            {"role": "user", "content": "where is order 42?"}
+        ]
+        assert session.sent[4] == (
             "PUT",
             "/otel/servings/7/feedback/clusters/c",
             {"status": "promoted", "promotedTaskId": "task"},

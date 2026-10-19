@@ -789,6 +789,22 @@ class Feedback(ApiModel):
     trace_messages: str | None = None
 
     @property
+    def questions(self) -> list[str]:
+        """What the user asked in the turn this verdict is about, oldest first.
+
+        The listing carries the trace's messages, which is what a promotion is
+        built from: a task has to carry its question, and the only place the
+        question exists is the conversation the verdict is about.
+        """
+        return [
+            str(message.get("content") or "")
+            for message in as_json(self.trace_messages, [])
+            if isinstance(message, dict)
+            and message.get("role") == "user"
+            and message.get("content")
+        ]
+
+    @property
     def source(self) -> str:
         """Who gave it: a reviewer, an end user of the agent, a detector, or an online judge.
 
