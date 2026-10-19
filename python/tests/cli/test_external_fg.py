@@ -54,10 +54,16 @@ def test_create_external_query_lands_on_the_data_source(mock_project):
 
 def test_create_external_path_and_format(mock_project):
     result, create = _create(
-        mock_project, ["--path", "sales/", "--data-format", "ICEBERG", "--online"]
+        mock_project,
+        ["--path", "sales/", "--data-format", "ICEBERG", "--online"]
+        + ["--features", "id:bigint,city:string"],
     )
     assert result.exit_code == 0, result.output
     kwargs = create.call_args.kwargs
+    assert [(f.name, f.type) for f in kwargs["features"]] == [
+        ("id", "bigint"),
+        ("city", "string"),
+    ]
     assert kwargs["data_source"].path == "sales/"
     assert kwargs["data_format"] == "iceberg"
     assert kwargs["online_enabled"] is True
