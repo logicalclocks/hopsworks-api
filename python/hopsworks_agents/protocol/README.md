@@ -209,12 +209,14 @@ Anything else is just a function with that shape.
 
 ### Writing durable memory from your own code
 
-`ctx.state(scope)` reads it and `ctx.remember` / `ctx.forget` write it, under
-the owner each scope is keyed by:
+`ctx.state(scope)` reads a whole scope, `ctx.recall` one key of it, and
+`ctx.remember` / `ctx.forget` write it — all four under the owner each scope is
+keyed by:
 
 ```python
 ctx.remember("preferred_language", "Swedish")       # the subject, across their conversations
 ctx.remember("cart_id", cart.id, scope="session")   # this conversation only
+ctx.recall("cart_id", scope="session")              # one key; None when it is not there
 ctx.forget("cart_id", scope="session")              # one key, or the whole scope with no key
 ```
 
@@ -230,7 +232,7 @@ to the store's cap, given an expiry, and listed as agent-written in the subject'
 own audit view, with `source_ref` pointing at the turn it came from unless you
 pass your own.
 
-In an `async def` handler use `await ctx.aremember(...)` / `await ctx.aforget(...)`
+In an `async def` handler use `await ctx.arecall(...)` / `await ctx.aremember(...)` / `await ctx.aforget(...)`
 — see [Reading memory in an `async def` handler](#reading-memory-in-an-async-def-handler).
 
 ### Agent-callable memory tools
@@ -351,7 +353,7 @@ async def chat(request, ctx):
 
 `ctx` exposes `conversation_id`, `request`, `memory`, `logger`, `deployment_id`,
 `framework`, `response_id`/`message_id`/`turn_id`, and `emit_event`, plus the
-memory accessors: `history`, `summary`, `state(scope=...)`, `remember`/`forget`,
+memory accessors: `history`, `summary`, `state(scope=...)`, `recall`/`remember`/`forget`,
 `system_context()`, and `subject` (see [Memory](#memory)).
 
 ## Progress (tool) events
@@ -459,8 +461,8 @@ async def chat(request, ctx):
     await ctx.aremember("preferred_language", "Swedish")
 ```
 
-Writes are round trips too: `aremember` and `aforget` are the awaited forms of
-`remember` and `forget`.
+Single-key reads and writes are round trips too: `arecall`, `aremember` and
+`aforget` are the awaited forms of `recall`, `remember` and `forget`.
 
 The memory tools are ordinary synchronous functions; a framework that awaits
 tools runs them in a thread of its own, which is why they are not async here.

@@ -2910,6 +2910,30 @@ class TestContextStateWrites:
         assert memory.get_state("user", "c1", "cart_id") is None
         assert memory.get_state("session", "alice", "preferred_language") is None
 
+    def test_one_fact_can_be_read_back_without_reading_the_scope(self, tmp_path):
+        """`recall` is the read half an agent that stores one thing needs.
+
+        Reading a whole scope to look at one key is what pushed callers back to
+        `memory.get_state(scope, owner, key)` -- and the owner is the part that
+        is wrong in a way nothing reports.
+        """
+        memory = self._store(tmp_path)
+        ctx = self._context(memory)
+        ctx.remember("preferred_language", "Swedish")
+        ctx.remember("cart_id", "42", scope="session")
+
+        assert ctx.recall("preferred_language") == "Swedish"
+        assert ctx.recall("cart_id", scope="session") == "42"
+        # Not under each other's owners, and absent is None rather than an error
+        assert ctx.recall("cart_id") is None
+        assert ctx.recall("nothing_stored_here") is None
+        # app scope is readable -- what a turn may not do is write it
+        memory.set_state("app", "", "greeting", "hello", written_by="operator")
+        assert ctx.recall("greeting", scope="app") == "hello"
+        # and a typo is an error, not "nothing stored"
+        with pytest.raises(ValueError, match="unknown scope"):
+            ctx.recall("preferred_language", scope="users")
+
     def test_a_fact_says_which_turn_it_came_from(self, tmp_path):
         import json
 
@@ -2985,6 +3009,7 @@ class TestContextStateWrites:
             assert await ctx.aremember("vehicle", "bicycle") is True
             assert await ctx.aremember("note", "later", scope="session") is True
             assert ctx.state()["vehicle"] == "bicycle"
+            assert await ctx.arecall("vehicle") == "bicycle"
             assert await ctx.aforget("vehicle") == 1
             assert ctx.state() == {}
             assert ctx.state("session")["note"] == "later"

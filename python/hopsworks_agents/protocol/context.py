@@ -139,6 +139,30 @@ class HandlerContext:
             row["key"]: row["value"] for row in self.memory.list_state(scope, owner)
         }
 
+    def recall(self, key: str, *, scope: str = "user") -> str | None:
+        """One durable fact, read under the owner its scope is keyed by.
+
+        The single-key read beside :meth:`state`, which returns the whole scope::
+
+            language = ctx.recall("preferred_language")
+            cart = ctx.recall("cart_id", scope="session")
+
+        ``None`` when nothing is stored under that key, and for an agent running
+        without memory. Any scope can be read, ``app`` included -- what a turn
+        may not do is *write* that one.
+
+        Raises:
+            ValueError: no such scope. A typo would otherwise read as "nothing
+                stored", which is the failure these methods exist to prevent.
+        """
+        from .memory import SCOPES
+
+        if scope not in SCOPES:
+            raise ValueError(f"unknown scope {scope!r}; expected one of {SCOPES}")
+        if self.memory is None:
+            return None
+        return self.memory.get_state(scope, self._state_owner(scope), key)
+
     def remember(
         self,
         key: str,
@@ -354,6 +378,10 @@ class HandlerContext:
         if self.memory is None:
             return None
         return await asyncio.to_thread(self.memory.get_summary, self.conversation_id)
+
+    async def arecall(self, key: str, *, scope: str = "user") -> str | None:
+        """:meth:`recall`, read in a worker thread."""
+        return await asyncio.to_thread(lambda: self.recall(key, scope=scope))
 
     async def aremember(
         self,
