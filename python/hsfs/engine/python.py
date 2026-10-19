@@ -331,6 +331,15 @@ class Engine:
                 dataframe_type,
             )
         else:
+            from hsfs.core import arrow_flight_client
+
+            query_service = arrow_flight_client._get_instance()
+            if query_service.enabled_on_cluster and query_service.disabled_reason:
+                raise FeatureStoreException(
+                    "Hopsworks Query Service client failed to initialise for this session: "
+                    f"{query_service.disabled_reason}. Call `fs._reset_hopsworks_feature_query_service_client()` on the feature store "
+                    "to retry."
+                )
             raise ValueError(
                 "Reading data with Hive is not supported when using hopsworks client version >= 4.0"
             )

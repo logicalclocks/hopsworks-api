@@ -20,6 +20,7 @@ import base64
 import contextlib
 import logging
 import os
+import tempfile
 from typing import TYPE_CHECKING
 
 import hopsworks_common.client
@@ -216,6 +217,12 @@ class Client(base.Client):
         return res
 
     def _get_certs_folder(self):
+        """The folder holding this client's certificates, once materialized."""
+        if self._cert_folder is not None:
+            return self._cert_folder
+        return self._user_certs_folder()
+
+    def _user_certs_folder(self):
         # Custom cert_folder: use directly
         # Default folder: use hierarchical structure for multi-user support
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
@@ -227,9 +234,16 @@ class Client(base.Client):
     def _materialize_certs(self):
         # Custom cert_folder: use directly
         # Default folder: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}
-        self._cert_folder = self._get_certs_folder()
-        self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
-        self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
+        user_folder = self._user_certs_folder()
+        own_folder = self._cert_folder
+        if not (
+            self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT
+            and own_folder is not None
+            and os.path.dirname(own_folder) == user_folder
+            and os.path.isdir(own_folder)
+        ):
+            own_folder = None
+        self._cert_folder = user_folder
 
         try:
             if os.path.exists(self._cert_folder):
@@ -242,6 +256,14 @@ class Client(base.Client):
                     f"Running in Python environment, creating certificates folder {self._cert_folder}"
                 )
                 self._makedirs_with_sticky_bit()
+            if own_folder is not None:
+                self._cert_folder = own_folder
+            elif self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
+                # Processes of one user share the user folder, and each deletes its files on
+                # close: a folder of its own keeps one exit from deleting another's certificates.
+                self._cert_folder = tempfile.mkdtemp(
+                    prefix=f"{os.getpid()}-", dir=self._cert_folder
+                )
         except PermissionError as e:
             raise PermissionError(
                 f"Permission denied for certificate folder '{self._cert_folder}'. "
@@ -249,6 +271,8 @@ class Client(base.Client):
                 f"Please specify a custom certificate folder: "
                 f"hopsworks.login(cert_folder='/home/$USER/hopsworks-certs', ...)"
             ) from e
+        self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
+        self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
 
         credentials = self._get_credentials(self._project_id)
         self._write_b64_cert_to_bytes(
@@ -312,9 +336,17 @@ class Client(base.Client):
         self._cleanup_file(self._get_client_cert_path())
         self._cleanup_file(self._get_client_key_path())
 
-        # Try to remove user-specific directory (will only succeed if empty)
+        # Remove this process's folder, then the user folder when no other process uses it
+        # (rmdir only succeeds on an empty directory).
         with contextlib.suppress(OSError):
             os.rmdir(self._cert_folder)
+        user_folder = self._user_certs_folder()
+        if (
+            self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT
+            and self._cert_folder != user_folder
+        ):
+            with contextlib.suppress(OSError):
+                os.rmdir(user_folder)
 
         self._cert_folder = None
 
