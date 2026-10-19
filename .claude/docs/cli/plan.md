@@ -162,9 +162,9 @@ Grouped by parent Click group. Flags follow Go names exactly to preserve muscle 
 | `login` | scripted fallback; flags `--host`, `--api-key`, `--project`, `--save-key`. |
 | `project` | `list`, `use <name>`, `info`. |
 | `fs` | `list`. |
-| `fg` | `list`, `info <name> [--version]`, `preview <name> [--n] [--online]`, `features <name>`, `stats <name> [--compute] [--features]`, `keywords <name>`, `add-keyword <name> <kw...>`, `remove-keyword <name> <kw>`, `search <name> --vector --k`, `create <name> --primary-key --features --event-time --online --embedding --description`, `create-external <name> --connector --query --primary-key` (own file), `insert <name> --file|--generate|--online [stdin]`, `derive <name> --base --join --primary-key …`, `delete <name> [--version]`. |
+| `fg` | `list`, `info <name> [--version]`, `preview <name> [--limit] [--online]`, `features <name>`, `stats <name> [--compute] [--features]`, `keywords <name>`, `add-keyword <name> <kw...>`, `remove-keyword <name> <kw>`, `search <name> --vector --k`, `create <name> --primary-key --features --event-time --online --embedding --description`, `create-external <name> --connector --query --primary-key` (own file), `insert <name> --file|--generate|--online [stdin]`, `derive <name> --base --join --primary-key …`, `delete <name> [--version]`. |
 | `connector` (alias `conn`) | `list`, `info <name>`, `test <name>`, `databases <name>`, `tables <name> [--database]`, `preview <name> --table`, `create snowflake|jdbc|s3|bigquery …`, `delete <name>`. |
-| `fv` | `list`, `info <name>`, `create <name> --feature-group|--join --transform --labels --features --description`, `get <name> --entry`, `read <name> [--n] [--output]`, `delete <name>`. |
+| `fv` | `list`, `info <name>`, `create <name> --feature-group|--join --transform --labels --features --description`, `get <name> --entry`, `read <name> [--limit] [--output]`, `delete <name>`. |
 | `transformation` | `list`, `create --file|--code`. |
 | `td` | `list <fv>`, `create`, `compute <fv> <ver> [--split] [--filter] [--start-time --end-time]`, `read <fv> <ver> --td-version [--split] [--output]`, `delete`. |
 | `model` | `list`, `info <name> [--version]`, `register <name> <path> --framework --metrics --feature-view --td-version --input-example --schema --program`, `download <name> [--version] --output`, `delete <name> --version`. |
@@ -362,7 +362,7 @@ Progress is tracked as a flat checklist per pipeline, each pipeline independentl
 FEATURE PIPELINE
   [ ] F0  Data source identified            — check `hops datasource list`
   [ ] F1  Feature group schema declared     — check `hops fg list`
-  [ ] F2  Feature pipeline writes data      — check `hops fg preview <fg> --n 1` returns rows
+  [ ] F2  Feature pipeline writes data      — check `hops fg preview <fg> --limit 1` returns rows
   [ ] F3  Statistics computed               — check `fg stats` has results
   [ ] F4  Scheduled (or streaming)          — check `hops job schedule info <job>`
 

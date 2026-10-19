@@ -95,6 +95,20 @@ def test_no_command_uses_a_retired_flag():
     assert not used
 
 
+def test_no_playbook_or_skill_uses_a_retired_flag():
+    root = _ONTOLOGY.parent
+    retired = "|".join(re.escape(flag) for flag in _retired_flags())
+    pattern = re.compile(rf"hops .*({retired})(?![a-z0-9-])")
+    used = [
+        f"{path.relative_to(root.parent)}:{number}"
+        for folder in (root / "templates", root.parent / "skills")
+        for path in folder.rglob("*.md")
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if pattern.search(line)
+    ]
+    assert not used
+
+
 def test_every_wait_is_a_yes_no_switch():
     for path, cmd in _tree():
         for param in cmd.params:
