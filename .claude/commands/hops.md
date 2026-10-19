@@ -101,17 +101,16 @@ app over the result, or the whole ML system (`/hops-ml`, which starts from these
 ## Status
 
 With a system listed above, run `python <slug>/status.py` and print its output verbatim. Without
-one, list apps (`hops app list`) and, in a terminal, dashboards (`hops superset dashboard list`);
-from an external client list the programs under `./dashboards/` instead, since Superset is
-reachable only inside the cluster.
+one, list apps (`hops app list`) and dashboards (`hops superset dashboard list`, which works from
+anywhere).
 
 ## Dashboard
 
-Superset is reachable only inside the cluster: in a terminal you may run `hops superset ...`; from
-an external client do not, and list the programs under `./dashboards/` instead.
+`hops superset dashboard list` works from anywhere; every other `hops superset` command and the
+SDK reach Superset only inside the cluster, so the builder runs its program as a job from an
+external client.
 
-1. List the dashboards (`hops superset dashboard list` in a terminal; `ls dashboards/` otherwise)
-   and ask: edit one (each by title, marked when a program exists under `dashboards/`), create one,
+1. List the dashboards (`hops superset dashboard list`) and ask: edit one (each by title, marked when a program exists under `dashboards/`), create one,
    or delete one. With none, go to create.
 2. **Create.** `hops fg list` and ask which feature groups to chart (multi-select; a group that is
    online only cannot be charted, since Superset reads the offline store). Read their columns with

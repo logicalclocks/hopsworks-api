@@ -17,7 +17,8 @@ look (the "Look" section of hops-superset applies it to Superset).
 
 ## Where the program runs
 
-Superset is reachable only inside the cluster.
+The SDK reaches Superset only inside the cluster (`hops superset dashboard list` alone works from
+anywhere, through the REST API).
 
 - **Hopsworks terminal:** the program lives at `~/dashboards/<slug>.py` (or the `program` path the
   prompt gives) and runs directly: `python <program>`.

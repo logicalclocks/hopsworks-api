@@ -433,7 +433,8 @@ last line printing the dashboard URL.
   `./dashboards/<slug>.py` from an external client, mirrored with
   `hops files upload` and `hops files download` so both places hold the same programs.
 - **Where they run:** the SDK reaches Superset only inside the cluster
-  (`get_superset_api()` refuses an external client, and so does `hops superset`).
+  (`get_superset_api()` refuses an external client, and so does `hops superset`,
+  except `hops superset dashboard list`, which reads the list through the REST API).
   In a terminal, run the program directly. From an external client, run it as a
   Hopsworks job, which also uploads it to `Users/<user>/dashboards/`; `--list`
   run the same way stands in for `hops superset dashboard list`.

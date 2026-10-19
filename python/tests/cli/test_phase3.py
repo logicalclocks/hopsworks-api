@@ -542,9 +542,29 @@ def test_superset_dashboard_list(mock_project):
 
 def test_superset_outside_the_cluster_fails_with_a_reason(mock_project):
     with mock.patch("hopsworks_common.client._is_external", return_value=True):
-        result = CliRunner().invoke(cli, ["superset", "dashboard", "list"])
+        result = CliRunner().invoke(cli, ["superset", "dataset", "list"])
     assert result.exit_code != 0
     assert "only inside the cluster" in result.output
+    mock_project.get_superset_api.assert_not_called()
+
+
+def test_superset_dashboards_list_from_outside_the_cluster(mock_project):
+    mock_project.id = 119
+    rest = mock.MagicMock()
+    rest._send_request.return_value = {
+        "result": [{"id": 4, "dashboard_title": "Deals", "published": True}]
+    }
+    with (
+        mock.patch("hopsworks_common.client._is_external", return_value=True),
+        mock.patch("hopsworks_common.client._get_instance", return_value=rest),
+    ):
+        result = CliRunner().invoke(cli, ["superset", "dashboard", "list"])
+    assert result.exit_code == 0, result.output
+    assert "Deals" in result.output
+    assert rest._send_request.call_args.args == (
+        "GET",
+        ["project", 119, "superset", "dashboards"],
+    )
     mock_project.get_superset_api.assert_not_called()
 
 

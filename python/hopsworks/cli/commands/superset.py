@@ -251,11 +251,27 @@ def superset_dashboard_group() -> None:
 def superset_dashboard_list(ctx: click.Context) -> None:
     """List every Superset dashboard visible to the current user.
 
+    Works from anywhere: outside the cluster it reads the list through the
+    Hopsworks REST API, which answers for Superset with the API key.
+
     \f
     Args:
         ctx: Click context.
     """
-    payload = _api(ctx).list_dashboards()
+    from hopsworks_common import client
+
+    project = session.get_project(ctx)
+    if client._is_external():
+        try:
+            payload = client._get_instance()._send_request(
+                "GET", ["project", project.id, "superset", "dashboards"]
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not list Superset dashboards: {exc}"
+            ) from exc
+    else:
+        payload = _api(ctx).list_dashboards()
     _render(payload, ["id", "dashboard_title", "published", "slug"])
 
 
@@ -337,7 +353,8 @@ def _api(ctx: click.Context) -> Any:
     if client._is_external():
         raise click.ClickException(
             "Superset is reachable only inside the cluster: run this in a "
-            "Hopsworks terminal, or as a Hopsworks job from an external client."
+            "Hopsworks terminal, or as a Hopsworks job from an external client "
+            "(`hops superset dashboard list` works from anywhere)."
         )
     return project.get_superset_api()
 
