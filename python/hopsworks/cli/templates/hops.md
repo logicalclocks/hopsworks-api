@@ -65,7 +65,7 @@ is the whole dispatch:
 | inference | model `<m>` on a feature view | feature group `<m>_predictions` with rows, job `<m>-score` | `hops fg preview <m>_predictions --limit 1` prints a row | **hops-infer-builder** |
 | dashboard | feature groups with rows | Superset dashboard `<title>` | `hops superset dashboard list` lists `<title>` | **hops-dashboard-builder** (Dashboard below) |
 | app | what it reads: feature groups, a model or a deployment | app `<a>` serving | `hops app info <a>` shows `State` `RUNNING` | **hops-app-builder** (App below) |
-| analytics layer | bronze: a source; silver: bronze tables; gold: silver tables | the layer's tables with rows | `hops fg preview <table> --limit 1` for each table its `system.yaml` lists | `/hops-bronze`, `/hops-silver`, `/hops-gold` |
+| analytics layer | bronze: a source; silver: feature groups with rows, used as bronze by name, never copied; gold: silver tables | the layer's tables with rows | `hops fg preview <table> --limit 1` for each table its `system.yaml` lists | `/hops-bronze`, `/hops-silver`, `/hops-gold` |
 
 1. **The goal.** Write down the pieces the request names, each with its asset name. Add a piece
    one of them needs only when that need's exit check fails: "a model on the deals" with no

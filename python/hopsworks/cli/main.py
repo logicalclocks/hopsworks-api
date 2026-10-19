@@ -69,6 +69,8 @@ _VERIFY_HELP = (
 
 # RESTCodes.ApiKeyErrorCode: the key carries none of the scopes the endpoint accepts.
 _NO_VALID_SCOPE = 320004
+# RESTCodes.SchematizedTagErrorCode: the tag's schema is not defined on the cluster.
+_TAG_SCHEMA_NOT_DEFINED = 370000
 
 
 def _explain_rest_error(exc: BaseException | None) -> str | None:
@@ -122,6 +124,13 @@ def _explain_rest_error(exc: BaseException | None) -> str | None:
             f" Check the key in {config.CONFIG_PATH}, or run `hops setup --force` "
             "to create a new one."
         )
+    elif code == _TAG_SCHEMA_NOT_DEFINED:
+        hint = (
+            " This cluster has no such tag schema, and only a Hopsworks admin can "
+            "define one; nothing was tagged."
+        )
+    if hint and not detail.endswith("."):
+        detail += "."
     return f"Hopsworks refused the request ({where}): {detail}{hint}"
 
 

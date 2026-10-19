@@ -15,8 +15,8 @@ Each layer is its own Factory entry and directory; an analytics pipeline's layer
 
 - **Input:** one or more bronze feature groups, the silver tasks to perform, and the engine (dbt on Trino by default, PySpark when a task needs it).
 - **Output:** silver feature groups tagged `analytics_table` `{"layer": "silver"}`, written by one scheduled Hopsworks job that processes only the bronze rows that arrived since its last run, and `system.yaml` describing what runs.
-- **Pre-condition:** the project has bronze feature groups with raw data.
-  Without them there is nothing to build a silver or gold layer from: say that bronze tables with raw data are needed first (ingest them with a DLTHub data source, **hops-data-sources**, and tick "Tag as a bronze table", or build the example bronze layer of generated data).
+- **Pre-condition:** the project has feature groups with raw data, tagged bronze or not (An existing table as bronze, below).
+  Without them there is nothing to build a silver or gold layer from: say that tables with raw data are needed first (ingest them with a DLTHub data source, **hops-data-sources**, and tick "Tag as a bronze table", or build the example bronze layer of generated data).
 
 ## The analytics_table tag
 
@@ -41,6 +41,19 @@ fg.add_tag("analytics_table", {"layer": "silver", "lifecycle": "dev"})
 
 A table's layer never changes; its lifecycle moves from `dev` to `staging` to `prod` as it is promoted, and the history records when.
 A cluster installed before the tag existed gets it from a platform admin: `POST /hopsworks-api/api/tags?name=analytics_table&archive=true` with the schema above as the body.
+Without it, tagging fails with HTTP 404, error 370000, and nothing is tagged: build the layer untagged, record that in `decisions`, and tell the user once that an admin installs the schema.
+A layer never deletes its sources, tagged or not; the tag adds the Factory's listing, and guards a lower layer's tables that a layer does not list as sources.
+
+### An existing table as bronze
+
+Any feature group with raw data is a bronze source as it is: ingested by a data source, written by a job, or uploaded. Never copy it into a new table to make it bronze.
+The Factory's **Bronze tables** picker lists only tables tagged `layer: bronze`; `hops factory run analytics-silver --answers <file>` takes any feature group by name, untagged included:
+
+```json
+{"slug": "deals-silver", "sources": [{"name": "hubspot_deals", "version": 1, "cadence": "daily"}]}
+```
+
+Tag the table bronze only when the user confirms that table by name (`AskUserQuestion`: "Tag `hubspot_deals` v1 as a bronze table?"), since the tag is visible to everyone in the project and is kept in its history; then the Factory lists it too.
 
 ## Silver is in third normal form
 

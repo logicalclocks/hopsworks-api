@@ -87,6 +87,7 @@ Fix and rerun until the checks pass; record the counts in `outputs`.
 Schedule each job with catch-up (`hops job schedule set <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <its max_catchup_runs>`), so the windows continue from the backfill and missed ones are replayed.
 With `quality.alert_on_failure`, create a failure alert on each job (`hops job alert create <slug>-silver-<cadence> --receiver <receiver> --status failed --severity critical`; `hops alert receiver list` for the receiver, asking which one when there are several, and recording it).
 Tag every silver and rejects feature group `analytics_table` with `{"layer": "silver", "lifecycle": "<layer.lifecycle>"}` (`hops fg tag add <name> analytics_table --value '...'`).
+When the cluster has no `analytics_table` tag schema (HTTP 404, error 370000), leave the tables untagged, record it in `decisions`, and say once that an admin installs it (hops-analytics, The analytics_table tag).
 
 ### verify
 
