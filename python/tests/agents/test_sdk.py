@@ -1336,6 +1336,25 @@ class TestAgents:
         _, agent7, _ = agent()
         assert agent7.url == "https://gw/v1/g1/support"
 
+    def test_an_agents_own_route_can_carry_a_query(self):
+        # The routes an agent serves for its memory take their arguments in the
+        # query string -- which subject's conversations, which fact to forget,
+        # whether to include the turns it abandoned. Folded into the last
+        # segment they are url-encoded with it, "?" and all, and the route stops
+        # matching: every one of those calls came back 404.
+        _, agent7, session = agent(Reply({"conversations": []}))
+
+        agent7._http.agent_request(
+            "GET",
+            ["v1", "g1", "support", "v1", "conversations"],
+            params={"subject": "alice@example.com", "limit": None},
+        )
+
+        method, url, params, _ = session.sent[0]
+        assert (method, url) == ("GET", "https://gw/v1/g1/support/v1/conversations")
+        # and nothing was invented for what the caller left out
+        assert params == {"subject": "alice@example.com"}
+
     def test_chat_speaks_the_protocol_and_threads_a_conversation(self):
         _, agent7, session = agent(
             Reply({"endpoints": {"chat": "/v1/chat"}, "capabilities": ["tracing"]}),

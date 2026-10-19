@@ -217,6 +217,7 @@ class Transport:
         method: str,
         segments: list[str],
         *,
+        params: dict[str, Any] | None = None,
         json: Any = None,
         headers: dict[str, str] | None = None,
         timeout: float | None = None,
@@ -229,20 +230,34 @@ class Transport:
         the cluster's certificates. Otherwise through this transport's session,
         whose credential the gateway accepts as well.
 
+        ``params`` is the query string, which an agent's own routes take: which
+        subject's conversations to list, which fact to forget, whether to
+        include the turns the agent abandoned. It travels as parameters rather
+        than inside the last segment, because a segment is url-encoded whole --
+        a "?" in one becomes %3F and the route stops matching.
+
         With ``stream`` the body is not read: the response's lines come back as
         an iterator of text, for server-sent events.
         """
         timeout = TIMEOUT_S if timeout is None else timeout
+        # None means "not given", never the string "None"
+        clean = {k: v for k, v in (params or {}).items() if v is not None} or None
         if self._gateway_url is None:
             istio = _istio_client()
             if istio is not None:
                 response = _through_istio(
-                    istio, method, segments, json, headers, timeout, stream
+                    istio, method, segments, json, headers, timeout, stream, clean
                 )
                 return _stream_lines(response) if stream else response
         url = self.gateway_url + "/" + "/".join(segments)
         response = self._session.request(
-            method, url, json=json, headers=headers, timeout=timeout, stream=stream
+            method,
+            url,
+            params=clean,
+            json=json,
+            headers=headers,
+            timeout=timeout,
+            stream=stream,
         )
         if response.status_code >= 400:
             raise _refusal(response)
@@ -401,6 +416,7 @@ def _through_istio(
     headers: dict[str, str] | None,
     timeout: float,
     stream: bool = False,
+    params: dict[str, Any] | None = None,
 ) -> Any:
     import json as json_module  # noqa: PLC0415
 
@@ -413,6 +429,7 @@ def _through_istio(
         return istio._send_request(
             method,
             segments,
+            query_params=params,
             headers=sent or None,
             data=None if json is None else json_module.dumps(json),
             with_base_path_params=False,
