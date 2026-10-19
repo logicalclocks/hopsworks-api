@@ -38,7 +38,7 @@ def _normalize_window(window: str) -> str:
 class CostsApi:
     """API for inspecting the Kubernetes cost of each namespace, or each department, in a Hopsworks cluster.
 
-    The cluster-wide views, [`get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] and [`get_department_costs`][hopsworks_common.core.costs_api.CostsApi.get_department_costs], are admin-only: the calling account must hold the `HOPS_ADMIN` platform role.
+    The cluster-wide views, [`get_namespace_costs`][hopsworks_common.core.costs_api.CostsApi.get_namespace_costs] and [`get_department_costs`][hopsworks_common.core.costs_api.CostsApi.get_department_costs], are admin-only: the calling account must hold the `HOPS_ADMIN` platform role, and an API key needs the `ADMIN` scope, which keys created by `hops setup` do not have.
     [`get_project_costs`][hopsworks_common.core.costs_api.CostsApi.get_project_costs] is for a project's data owners and shows that project alone.
     The cost is computed by OpenCost, which must be installed with the cluster.
 
@@ -74,7 +74,7 @@ class CostsApi:
 
         Raises:
             ValueError: If `window` is not one of the supported values.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403), cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin or the API key lacks the `ADMIN` scope (HTTP 403, error code 320004 for the scope), cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
         """
         return self._get_costs("namespaces", window)
 
@@ -108,7 +108,7 @@ class CostsApi:
 
         Raises:
             ValueError: If `window` is not one of the supported values.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin (HTTP 403), cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin or the API key lacks the `ADMIN` scope (HTTP 403, error code 320004 for the scope), cost tracking is not enabled on the cluster (HTTP 404, error code 100083, the `enable_opencost` variable is off), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
         """
         return self._get_costs("departments", window)
 
@@ -146,7 +146,7 @@ class CostsApi:
 
         Raises:
             ValueError: If `window` is not one of the supported values, or no project is given and none is logged in to.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a data owner of the project (HTTP 403), cost tracking is not enabled on the cluster (HTTP 404, error code 100083), or OpenCost is not reachable (HTTP 503, error code 100081, with the cause in `user_message`).
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a data owner of the project (HTTP 403), cost tracking is not enabled on the cluster (HTTP 404, error code 100083), the project runs in a namespace shared with other projects, whose cost cannot be split between them (HTTP 409, error code 100084), or OpenCost is not reachable (HTTP 503, error code 100081).
         """
         query_params = {"window": _normalize_window(window)}
         _client = client._get_instance()

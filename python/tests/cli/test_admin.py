@@ -210,10 +210,29 @@ def test_admin_costs_shows_backend_user_message(costs_api):
 
     assert result.exit_code != 0
     assert (
-        "Could not get namespace costs: No OpenCost certificate at "
-        "/var/run/secrets/opencost/ca.crt"
-    ) in result.output
+        "Could not get namespace costs: Hopsworks refused the request" in result.output
+    )
+    assert result.output.count("No OpenCost certificate") == 1, result.output
     assert "Server response" not in result.output
+
+
+def test_admin_costs_names_the_scopes_a_key_without_admin_lacks(costs_api):
+    response = mock.MagicMock(status_code=403)
+    response.json.return_value = {
+        "errorCode": 320004,
+        "errorMsg": "No valid scope found for this invocation",
+        "usrMsg": "Endpoint requires one of [ADMIN]",
+    }
+    costs_api.get_namespace_costs.side_effect = RestAPIError(
+        "admin/costs/namespaces", response
+    )
+
+    result = CliRunner().invoke(cli, ["admin", "costs"])
+
+    assert result.exit_code != 0
+    assert "ADMIN and PROJECT scopes" in result.output
+    assert "hops login --api-key" in result.output
+    assert "hops setup --force" not in result.output
 
 
 def test_admin_costs_json(costs_api):

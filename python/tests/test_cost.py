@@ -152,6 +152,15 @@ class TestNamespaceCosts:
         assert list(df["gpu_workload_cost"]) == [1.5, 0]
         assert list(df["cpu_workload_cost"]) == [3.2, 0]
 
+    def test_to_pandas_keeps_ids_and_counts_integers(self, backend_fixtures):
+        json = backend_fixtures["cost"]["get_department_costs"]["response"]
+
+        df = NamespaceCosts.from_response_json(json).to_pandas()
+
+        assert str(df["department_id"].dtype) == "Int64"
+        assert str(df["namespace_count"].dtype) == "Int64"
+        assert df["department_id"].isna().any()
+
     def test_to_pandas_empty_keeps_columns(self):
         df = NamespaceCosts(window="HOUR").to_pandas()
 

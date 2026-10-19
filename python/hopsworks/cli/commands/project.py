@@ -156,8 +156,7 @@ def project_costs(ctx: click.Context, window: str, project_name: str | None) -> 
             window, project=project_name
         )
     except RestAPIError as exc:
-        reason = exc.user_message or exc
-        raise click.ClickException(f"Could not get project costs: {reason}") from exc
+        raise click.ClickException(f"Could not get project costs: {exc}") from exc
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Could not get project costs: {exc}") from exc
     print_costs(costs, "namespace", window, show_idle=False)

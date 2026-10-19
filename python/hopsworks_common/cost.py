@@ -262,7 +262,9 @@ class NamespaceCosts:
         import pandas as pd
 
         columns = list(CostRow.__dataclass_fields__)
-        return pd.DataFrame([row.to_dict() for row in self.items], columns=columns)
+        df = pd.DataFrame([row.to_dict() for row in self.items], columns=columns)
+        # Nullable integers: with a None anywhere, plain pandas turns them into floats.
+        return df.astype({"department_id": "Int64", "namespace_count": "Int64"})
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

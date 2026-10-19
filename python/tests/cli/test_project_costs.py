@@ -87,3 +87,4 @@ def test_project_costs_reports_a_forbidden_project(costs_api):
 
     assert result.exit_code != 0
     assert "Could not get project costs" in result.output
+    assert result.output.count("Your role in this project is not authorized") == 1

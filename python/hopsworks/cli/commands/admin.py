@@ -15,6 +15,14 @@ from hopsworks_common.client.exceptions import RestAPIError
 
 
 _WINDOWS = ("hour", "day", "week", "month", "year")
+# RESTCodes.ApiKeyErrorCode.NO_VALID_SCOPE.
+_NO_VALID_SCOPE = 320004
+_ADMIN_KEY_NEEDED = (
+    "hops admin costs needs an API key with the ADMIN and PROJECT scopes. Keys "
+    "created by `hops setup` never have ADMIN: create one as a platform admin "
+    "under Account Settings > API keys and use it with "
+    "`hops login --api-key <key>`."
+)
 _VIEWS = ("namespace", "department")
 _WORKLOAD_KINDS = ("NAMESPACE", "DEPARTMENT", "UNASSIGNED")
 _COST_HEADERS = [
@@ -116,6 +124,9 @@ def admin_costs(ctx: click.Context, window: str, by: str) -> None:
     When some buckets of the window have no data, a coverage line says how
     many do; missing buckets are unknown cost, not zero.
 
+    Needs a platform admin and an API key with the ADMIN and PROJECT scopes;
+    keys created by `hops setup` do not have ADMIN.
+
     --by department sums each department's namespaces into one row, counting
     projects in their current department. Namespaces that are no project's,
     or are shared by projects of different departments, show as one
@@ -136,10 +147,15 @@ def admin_costs(ctx: click.Context, window: str, by: str) -> None:
         else:
             costs = api.get_namespace_costs(window)
     except RestAPIError as exc:
-        reason = exc.user_message or exc
-        raise click.ClickException(f"Could not get {by} costs: {reason}") from exc
+        if exc.error_code != _NO_VALID_SCOPE:
+            raise click.ClickException(f"Could not get {by} costs: {exc}") from exc
+        costs = None
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Could not get {by} costs: {exc}") from exc
+    if costs is None:
+        # Raised outside the handler, with no cause or context, so the CLI-wide scope hint, which suggests
+        # `hops setup`, whose keys never have ADMIN, is not added.
+        raise click.ClickException(_ADMIN_KEY_NEEDED)
     print_costs(costs, by, window)
 
 
