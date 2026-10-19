@@ -582,6 +582,12 @@ def fg_create(
         "MongoDB this is the collection name; for SQL the table name."
     ),
 )
+@click.option(
+    "--features",
+    "features_spec",
+    help='Schema "name:type[:description]", comma-separated; required outside Spark, '
+    'e.g. "id:bigint,city:string,amount:double".',
+)
 @click.option("--version", type=int, help="Feature group version.")
 @click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
 @click.option("--event-time", "event_time", help="Event-time column.")
@@ -601,6 +607,7 @@ def fg_create_external(
     data_format: str | None,
     database: str | None,
     table: str | None,
+    features_spec: str | None,
     version: int | None,
     primary_key: str | None,
     event_time: str | None,
@@ -627,6 +634,7 @@ def fg_create_external(
         data_format: Required with ``--path``; one of parquet/delta/hudi/orc/avro/csv.
         database: Database/collection-container override for the source.
         table: Table/collection override for the source.
+        features_spec: Comma-separated ``name:type[:description]`` items.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
         event_time: Event-time column.
@@ -672,6 +680,7 @@ def fg_create_external(
             primary_key=_split_csv(primary_key) or None,
             event_time=event_time,
             online_enabled=online,
+            features=_build_features(features_spec) or None,
         )
         fg.save()
     except Exception as exc:  # noqa: BLE001
