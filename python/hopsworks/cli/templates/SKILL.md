@@ -190,7 +190,7 @@ hops deployment delete <name> --yes
 ```
 
 **Tips**
-- sklearn serving image uses pinned versions — train with `scikit-learn==1.3.2` to match.
+- The serving and training images run scikit-learn 1.8.0 (pandas-training-pipeline pins it to match the KServe sklearn server; pandas-inference-pipeline is built on it): train with that version.
 - Deployment names must be alphanumeric only.
 - Artifact layout at inference time: predictor script at `/mnt/artifacts/`, model at `/mnt/models/`.
 

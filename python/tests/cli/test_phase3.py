@@ -134,6 +134,33 @@ def test_deployment_create_via_model_deploy(mock_project):
     model.deploy.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    ("framework", "has_view", "args", "expected"),
+    [
+        ("SKLEARN", True, [], True),
+        ("PYTHON", True, [], True),
+        ("SKLEARN", False, [], None),
+        ("TENSORFLOW", True, [], None),
+        ("SKLEARN", True, ["--no-default-predictor"], False),
+        ("TENSORFLOW", True, ["--default-predictor"], True),
+    ],
+)
+def test_deployment_create_serves_a_model_with_a_view_by_the_default_predictor(
+    mock_project, framework, has_view, args, expected
+):
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.version = 1
+    model.framework = framework
+    model.get_feature_view.return_value = mock.MagicMock() if has_view else None
+    model.deploy.return_value = mock.MagicMock()
+    mr.get_models.return_value = [model]
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(cli, ["deployment", "create", "fraud", *args])
+    assert result.exit_code == 0, result.output
+    assert model.deploy.call_args.kwargs["default_predictor"] is expected
+
+
 def test_deployment_create_sets_the_cores_and_memory_it_is_given(mock_project):
     mr = mock.MagicMock()
     model = mock.MagicMock()

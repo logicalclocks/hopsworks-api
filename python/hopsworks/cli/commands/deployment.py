@@ -285,10 +285,11 @@ DEFAULT_MEMORY_MB = 1024
     "Only with the default predictor.",
 )
 @click.option(
-    "--no-default-predictor",
-    "no_default_predictor",
-    is_flag=True,
-    help="Never use the library's default predictor.",
+    "--default-predictor/--no-default-predictor",
+    "default_predictor",
+    default=None,
+    help="Serve with the library's default predictor (no script). Unset: on for a Python or "
+    "scikit-learn model registered with a feature view and deployed without a script.",
 )
 @click.option(
     "--cores",
@@ -313,7 +314,7 @@ def deployment_create(
     knative_mode: bool | None,
     description: str,
     passed_features: tuple[str, ...],
-    no_default_predictor: bool,
+    default_predictor: bool | None,
     cores: float | None,
     memory: int | None,
 ) -> None:
@@ -336,7 +337,7 @@ def deployment_create(
         knative_mode: KServe Knative (True) vs Standard (False) mode; None lets the backend decide.
         description: Deployment description.
         passed_features: Features clients send with each request.
-        no_default_predictor: Disable the default predictor.
+        default_predictor: Serve with the default predictor; None decides from the model.
         cores: CPU cores per instance; None keeps the backend's default resources.
         memory: Memory per instance in MB; None keeps the backend's default resources.
     """
@@ -352,6 +353,8 @@ def deployment_create(
         raise click.ClickException(f"Model '{model_name}' not found.")
 
     deploy_name = name or model_name
+    if default_predictor is None and not script_file:
+        default_predictor = _serves_by_default(model, serving_tool) or None
     # Upload a local predictor to HopsFS (the backend needs a HopsFS path);
     # an existing HopsFS path passes through untouched.
     if script_file and Path(script_file).is_file():
@@ -379,7 +382,7 @@ def deployment_create(
             environment=environment,
             serving_tool=(serving_tool or "").upper() or None,
             passed_features=list(passed_features) or None,
-            default_predictor=False if no_default_predictor else None,
+            default_predictor=default_predictor,
             knative_mode=knative_mode,
             resources=_resources(cores, memory),
         )
@@ -395,6 +398,22 @@ def deployment_create(
         getattr(deployment, "name", name or model_name),
     )
     _report_schema(deployment)
+
+
+def _serves_by_default(model: Any, serving_tool: str | None) -> bool:
+    """Whether the default predictor can serve the model with no script.
+
+    The library turns it on by itself only for Python models; a scikit-learn model with a
+    feature view is served the same way once asked.
+    """
+    if (serving_tool or "kserve").lower() != "kserve":
+        return False
+    if str(getattr(model, "framework", "") or "").upper() not in ("PYTHON", "SKLEARN"):
+        return False
+    try:
+        return model.get_feature_view(init=False) is not None
+    except Exception:  # noqa: BLE001 - a model may have no feature view in its provenance
+        return False
 
 
 def _resources(cores: float | None, memory: int | None) -> Any:

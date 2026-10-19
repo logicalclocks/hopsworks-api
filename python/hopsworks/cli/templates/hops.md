@@ -32,7 +32,7 @@ Already known, no need to look again:
 | --- | --- |
 | none | Ask "What do you want to do?": **Explore data**, **Make a table and look at it**, **Build or resume an ML system**, **A dashboard or an app** (then ask which). Then continue with that choice below. |
 | `explore` | Explore (below). |
-| an instruction to make something outside an ML system (a table, features, a model or candidates, scoring, a dashboard, an app, an analytics layer), alone or several together | Pieces (below), whatever its first word. |
+| an instruction to make something outside an ML system (a table, features, a model or candidates, scoring, a real-time endpoint for a model, a dashboard, an app, an analytics layer), alone or several together | Pieces (below), whatever its first word. |
 | `dashboard` | Dashboard (below), with the rest as the instruction. |
 | `app` | App (below), with the rest as the instruction. |
 | `status` | Status (below). |
@@ -63,14 +63,16 @@ is the whole dispatch:
 | features | feature groups with rows, or a data source | feature group `<f>` with rows, job `<f>-features` | `hops fg preview <f> --limit 1` prints a row | **hops-features-builder** |
 | model | feature view `<v>`, or feature groups with rows and the label | model `<m>` registered on `<v>` | `hops model info <m>` shows `Feature view` `<v> v<n>`; a model the user names is made, whatever its view | **hops-model-builder** |
 | inference | model `<m>`, and the feature view the user names or the one its training dataset reads | feature group `<m>_predictions` with rows; job `<m>-score` only on a schedule | `hops fg list` shows a feature group whose name or description names `<m>`, and `hops fg preview <it> --limit 1` prints a row | **hops-infer-builder** |
+| deployment | model `<m>:<v>` registered with `feature_view=` on `<v>`, with a training dataset version; every feature group `<v>` reads online | deployment `<d>` serving `<m>:<v>` with the default predictor, no script | `hops deployment info <d>` shows `RUNNING` and model version `<v>`, and `hops deployment predict <d>` for a known entity returns a prediction | **hops-deploy-builder** |
 | dashboard | feature groups with rows | Superset dashboard `<title>` | `hops superset dashboard list` lists `<title>` | **hops-dashboard-builder** (Dashboard below) |
-| app | what it reads: feature groups, a model or a deployment | app `<a>` serving | `hops app info <a>` shows `State` `RUNNING` | **hops-app-builder** (App below) |
+| app | what it reads: feature groups, or a deployment for predictions (never the model file) | app `<a>` serving | `hops app info <a>` shows `State` `RUNNING` | **hops-app-builder** (App below) |
 | analytics layer | bronze: a source; silver: feature groups with rows, used as bronze by name, never copied; gold: silver tables | the layer's tables with rows | `hops fg preview <table> --limit 1` for each table its `system.yaml` lists | `/hops-bronze`, `/hops-silver`, `/hops-gold` |
 
 1. **The goal.** Write down the pieces the request names, each with its asset name. Add a piece
    one of them needs only when that need's exit check fails: "a model on the deals" with no
    feature view makes the view inside the model piece; "score the deals daily with the best
-   model" when a model exists is the inference piece alone.
+   model" when a model exists is the inference piece alone. "Serve", "real-time", "an endpoint" or
+   "an API for predictions" is the deployment piece; "score daily" or "in batch" is inference.
 2. **Run what is missing, in needs order.** For each piece, run its exit check. Passing: the piece
    exists; say so in one line and go on. Failing: spawn its builder with the Agent tool and its
    prompt below, then run the exit check again. Failing again: stop and say which check failed
@@ -94,6 +96,7 @@ Ask only what the request leaves open, in one `AskUserQuestion` call. Every prom
 | hops-features-builder | `name`, `sources` (feature groups or a data source), `features` (name, meaning, type), `grain` (the key and the event time), `schedule` (a Quartz cron, or none) |
 | hops-model-builder | `name`, `feature_view` (name:version, or the feature groups and the label to make one), `label`, `task` (classification, regression), `candidates` (what the user named, or none), `metric` |
 | hops-infer-builder | `name`, `model` (name:version, or the best by a metric), `feature_view` (name:version), `population` (the entities to score, such as open deals, and the feature group that lists them), `schedule` |
+| hops-deploy-builder | `name` (the deployment), `model` (name:version, or the best by a metric), `feature_view` (name:version), `passed_features` (sent by the caller instead of looked up, or none), `known_entity` (a key to check with, or none), `cores` and `memory` (1 and 1024 unless the user said) |
 
 ## Status
 
