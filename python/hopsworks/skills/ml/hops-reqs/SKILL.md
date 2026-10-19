@@ -112,7 +112,7 @@ requirements back and ask to proceed; write `status: met` on yes.
 `status.py` (the progress table, runnable from any terminal), `bundle.py` (the
 run bundle), the self-contained entrypoints under `src/<slug_pkg>/` (feature,
 training with its three modes, the frozen `evaluate.py` harness, `charts.py` for the
-model's performance charts in `images/`, batch
+model's performance charts in `images/` (in the **hops-design** look), batch
 inference, and `predictor.py` for a realtime deployment), `tests/` (the `system.yaml` validator, the unit tests, the
 integration conftest, the parity test, `run_integration.py`) and
 `benchmarks/benchmark_inference.py`.
@@ -182,4 +182,4 @@ marks the owning phase `stale`; nothing is silently repaired.
 ## Next Steps
 - Data: **hops-data-sources**, **hops-synthetic-data**. Features: **hops-features**, **hops-fg**.
 - Training: **hops-eda**, **hops-fv**, **hops-train**. Inference: **hops-batch-inference**, **hops-online-inference**.
-- Jobs and schedules: **hops-job**. Environments: **hops-environments**. Consumers: **hops-superset**, **hops-app**.
+- Jobs and schedules: **hops-job**. Environments: **hops-environments**. Consumers: **hops-superset**, **hops-app**, both in the **hops-design** look.

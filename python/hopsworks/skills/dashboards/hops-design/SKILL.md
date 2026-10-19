@@ -114,5 +114,9 @@ and the actions on it; it does not explain itself.
 
 ## Related skills
 - [hops-app](../hops-app/SKILL.md): Streamlit theme and the custom app skeleton
-  (`references/app_skeleton/static/app.css` carries these tokens).
+  (`references/app_skeleton/static/app.css` and `chart-theme.js` carry these tokens).
 - [hops-superset](../hops-superset/SKILL.md): dashboards and charts in Superset.
+- [hops-reqs](../../ml/hops-reqs/SKILL.md): `charts.py` draws a model's registry charts
+  in matplotlib with these tokens; [hops-train](../../ml/hops-train/SKILL.md),
+  [hops-eda](../../ml/hops-eda/SKILL.md), [hops-monitoring](../../ml/hops-monitoring/SKILL.md)
+  and [hops-analytics](../../data/hops-analytics/SKILL.md) chart the same way.

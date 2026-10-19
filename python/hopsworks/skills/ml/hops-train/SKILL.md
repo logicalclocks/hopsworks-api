@@ -115,7 +115,10 @@ model.fit(X_train, y_train)
 
 Compute the metrics that fit the task (R²/MAE for regression, precision/recall/
 AUC for classification, …) and save plots as PNGs alongside the model so they
-land in the registry.
+land in the registry, in the **hops-design** look: the accent for the model's
+series, greys for references and baselines, no top or right spine, a light grid,
+axis labels with units. An ML system's `charts.py` (**hops-reqs** template) draws
+them that way.
 
 Evaluation (metrics on the test set) is distinct from **model validation**:
 checking the model on slices of the data at risk of bias before it ships. Use
