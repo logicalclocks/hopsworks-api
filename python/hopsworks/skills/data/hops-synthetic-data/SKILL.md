@@ -21,8 +21,8 @@ the system, seeded and run as a Hopsworks job, never on the laptop.
 
 ## Smoke-test (cheap pre/post-flight)
 ```bash
-hops fg preview usage_events --n 5          # rows landed (offline)
-hops fg preview usage_events --n 5 --online # the stream is fresh (online)
+hops fg preview usage_events --limit 5          # rows landed (offline)
+hops fg preview usage_events --limit 5 --online # the stream is fresh (online)
 hops job history <slug>-events              # the live writer has a RUNNING execution
 ```
 

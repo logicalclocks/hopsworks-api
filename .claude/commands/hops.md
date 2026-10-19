@@ -42,7 +42,7 @@ system's `requirements.status` is already `met`, reply with one line that `/hops
 
 Read-only. Run what the user's words need: `hops fg list`, `hops fv list`, `hops datasource
 list`, `hops search <term>`, `hops fg info <name>`, `hops fg feature list <name>`,
-`hops fg preview <name> --n 10`, `hops sql "<query>"` with a `LIMIT`. Summarise in a few lines and
+`hops fg preview <name> --limit 10`, `hops sql "<query>"` with a `LIMIT`. Summarise in a few lines and
 offer the next step with `AskUserQuestion` (look deeper, a dashboard over it, an app over it, an ML
 system over it).
 

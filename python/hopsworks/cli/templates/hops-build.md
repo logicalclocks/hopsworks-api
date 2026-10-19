@@ -267,7 +267,7 @@ Make every `requirements.data_sources` entry `present` and record it under `data
 **hops-data-sources** for new connectors, **hops-synthetic-data** for synthetic sources,
 **hops-fg**, **hops-job**, **hops-environments**.
 
-- Existing feature group: `hops fg info <name> --version <v>`, `hops fg preview <name> --n 5`;
+- Existing feature group: `hops fg info <name> --version <v>`, `hops fg preview <name> --limit 5`;
   key and event time must match the declared grain. A mismatch goes back to `reqs` as an
   `open_question`.
 - New connector: follow the secret procedure in `references/data-sources.md` (print the exact

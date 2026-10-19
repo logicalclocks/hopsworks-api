@@ -25,7 +25,7 @@ Before writing Python, and to confirm results after, use the CLI. No Spark sessi
 hops fg list                              # is the name/version free? did it register? (note the STORE column)
 hops fg info <name> --version 1           # metadata: id, online flag, primary key, event_time
 hops fg feature list <name> --version 1       # schema with primary-key / partition flags
-hops fg preview <name> --version 1 --n 10 # first rows (flag is --n, not -n)
+hops fg preview <name> --version 1 --limit 10 # first rows
 hops fg preview <name> --columns a,b,c    # project away wide embedding/array columns
 hops fg stats info <name> --version 1          # null counts / ranges — spot bad data early
 ```

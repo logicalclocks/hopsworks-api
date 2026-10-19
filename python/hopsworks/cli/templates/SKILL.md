@@ -49,7 +49,7 @@ hops project info                         # Current project details
 ```bash
 hops fg list                              # List all feature groups
 hops fg info <name> [--version N]         # Show details + schema + tags
-hops fg preview <name> [--n 10]           # Preview data rows
+hops fg preview <name> [--limit 10]           # Preview data rows
 hops fg feature list <name>                   # List features with types
 hops fg stats compute <name>            # Trigger statistics computation
 hops fg search <name> --vector "0.1,..."  # KNN similarity search
@@ -131,7 +131,7 @@ hops fv list
 hops fv info <name> [--version N]
 hops fv create <name> --feature-group <fg> [--join <spec>] [--transform <fn:col>]
 hops fv lookup <name> --entry "id=42,region=eu"       # Online vector lookup
-hops fv read <name> [--n 100] [--output data.parquet]
+hops fv read <name> [--limit 100] [--output data.parquet]
 hops fv lineage <name> [--version N]               # Parent FGs + generated models
 hops fv delete <name> --version N --yes
 ```
