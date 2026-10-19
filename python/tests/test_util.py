@@ -765,6 +765,27 @@ class TestUtil:
         )
         assert dt == 1640995200000
 
+    def test_convert_event_time_to_timestamp_iso_with_offset(self):
+        # datetime.isoformat() of an aware value, as `hops job backfill` used to
+        # inject HOPS_START_TIME; fg.read() in the job raised on it.
+        parse = hopsworks_common.util._get_timestamp_from_date_string
+        assert parse("2022-01-01T00:00:00+00:00") == 1640995200000
+        assert parse("2022-01-01T00:00:00.000+00:00") == 1640995200000
+        assert parse("2021-12-31T19:00:00-05:00") == 1640995200000
+
+    def test_a_backfill_window_parses(self):
+        from datetime import datetime
+
+        from hopsworks_common.core.execution_api import _to_iso
+
+        # What `hops job backfill` puts in HOPS_START_TIME for a date.
+        assert (
+            hopsworks_common.util._get_timestamp_from_date_string(
+                _to_iso(datetime(2022, 1, 1))
+            )
+            == 1640995200000
+        )
+
     def test_convert_event_time_to_timestamp_yyyy_mm_dd(self):
         timestamp = hopsworks_common.util._get_timestamp_from_date_string("2022-01-01")
         assert timestamp == 1640995200000

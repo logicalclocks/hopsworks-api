@@ -242,6 +242,13 @@ def _check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]
         # plain fg.read() in a scheduled job blew up where it passed interactively.
         r"^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$": "ISO",
     }
+    # ISO-8601 with a UTC offset, as datetime.isoformat() writes an aware value
+    # (``2026-10-01T00:00:00+00:00``). Matched before normalizing, which drops the
+    # sign of a negative offset.
+    if re.match(
+        r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}:\d{2}$", input_date
+    ):
+        return input_date, "ISO_OFFSET"
     normalized_date = (
         input_date.replace("/", "")
         .replace("-", "")
@@ -269,7 +276,9 @@ def _check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]
 def _get_timestamp_from_date_string(input_date: str) -> int:
     norm_input_date, date_format = _check_timestamp_format_from_date_string(input_date)
     try:
-        if date_format != "ISO":
+        if date_format == "ISO_OFFSET":
+            date_time = datetime.fromisoformat(input_date)
+        elif date_format != "ISO":
             date_time = datetime.strptime(norm_input_date, date_format)
         else:
             date_time = datetime.fromisoformat(input_date[:-1])
