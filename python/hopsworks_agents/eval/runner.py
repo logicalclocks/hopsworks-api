@@ -79,6 +79,10 @@ class RunnerConfig:
     n_trials: int = 1
     timeout_s: float = 120.0
     max_concurrency: int = 4
+    #: How many finished trials to hand `on_progress` at a time. One insert per
+    #: trial would be one feature-store write per trial; one per suite is what
+    #: left a killed run with nothing. A batch is the middle.
+    write_batch: int = 25
     # Derived from the Stage 1 probe's trajectory-stable p95, not guessed. A
     # full suite is n_tasks x n_trials requests at a shared endpoint, so this
     # and max_concurrency are the difference between an eval run and a
@@ -539,6 +543,7 @@ def run_suite(
     evaluators: Sequence[Evaluator] | Callable[[Task], Sequence[Evaluator]],
     config: RunnerConfig | None = None,
     sleep=time.sleep,
+    on_progress: Callable[[list[Trial]], None] | None = None,
 ) -> RunResult:
     """Execute every task, ``n_trials`` times each, and grade the results.
 
@@ -547,6 +552,13 @@ def run_suite(
     what a task declares, so one fixed list either judges a task on tools it
     never claimed to use, or judges nothing at all and reports a run that says
     nothing while looking complete.
+
+    ``on_progress`` is handed each batch of finished trials as they arrive, so
+    the caller can write them while the run is still going. Without it the rows
+    appeared only when the suite was over, and a run whose pod was stopped or
+    killed left nothing at all behind -- no record of the hundred trials it had
+    already graded. A callback that raises is logged and does not stop the run:
+    a write that failed is a row missing, not a suite to abandon.
     """
     config = config or RunnerConfig()
     check_deployment_supports(suite, _manifest_when_ready(client, config, sleep))
@@ -597,9 +609,24 @@ def run_suite(
             )
             for task, index in work
         ]
+        batch: list[Trial] = []
+
+        def report_batch(force: bool = False) -> None:
+            if on_progress is None or not batch:
+                return
+            if not force and len(batch) < config.write_batch:
+                return
+            try:
+                on_progress(list(batch))
+            except Exception:  # noqa: BLE001 — a failed write is not a failed run
+                log.exception("could not record %d finished trials", len(batch))
+            batch.clear()
+
         for (task, index), future in zip(work, futures, strict=True):
             try:
-                result.trials.append(future.result())
+                finished = future.result()
+                result.trials.append(finished)
+                batch.append(finished)
             except Exception as err:  # noqa: BLE001 — one trial must not lose the run
                 # Everything inside _run_trial that can fail on the agent's
                 # behalf is already caught and classified; reaching here is the
@@ -607,22 +634,24 @@ def run_suite(
                 # away every other trial of the run as well -- the whole suite's
                 # work, written nowhere, because one evaluator had a bug.
                 log.exception("trial %s/%s could not be run", task.task_id, index)
-                result.trials.append(
-                    Trial(
-                        trial_id=derive_trial_id(
-                            run_id, task.task_id, task.task_version, index
-                        ),
-                        run_id=run_id,
-                        task_id=task.task_id,
-                        task_version=task.task_version,
-                        trial_index=index,
-                        deployment_id=deployment_id,
-                        status=TrialStatus.INFRA_ERROR,
-                        error_type=type(err).__name__,
-                        error_message=str(err),
-                        completed_at=datetime.now(tz=timezone.utc),
-                    )
+                broken = Trial(
+                    trial_id=derive_trial_id(
+                        run_id, task.task_id, task.task_version, index
+                    ),
+                    run_id=run_id,
+                    task_id=task.task_id,
+                    task_version=task.task_version,
+                    trial_index=index,
+                    deployment_id=deployment_id,
+                    status=TrialStatus.INFRA_ERROR,
+                    error_type=type(err).__name__,
+                    error_message=str(err),
+                    completed_at=datetime.now(tz=timezone.utc),
                 )
+                result.trials.append(broken)
+                batch.append(broken)
+            report_batch()
+        report_batch(force=True)
 
     result.trials.sort(key=lambda t: (t.task_id, t.trial_index))
     missing = sum(1 for t in result.trials if t.trace_status is TraceStatus.MISSING)

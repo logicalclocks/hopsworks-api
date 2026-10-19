@@ -20,7 +20,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .api import hopsworks_session
 from .evaluator_spec import SpecError, evaluators_for_suite
@@ -30,6 +30,10 @@ from .models import ExecutionMode, PassPolicy, Suite, Task
 from .run_fields import run_trials
 from .runner import RunnerConfig, SuiteRefused, run_suite
 from .sample_job import evaluators_for, run_sample
+
+
+if TYPE_CHECKING:
+    from collections.abc import Collection, Sequence
 
 
 log = logging.getLogger(__name__)
@@ -163,16 +167,39 @@ def _short(message: str) -> str:
     )
 
 
-def _write_results(
-    feature_store: Any,
-    result: Any,
-    run: dict[str, Any],
-    tasks: list[dict[str, Any]] | None = None,
-) -> None:
+def _write_trials(feature_store: Any, trials: Sequence[Any]) -> None:
+    """The trial and evaluator-result rows for trials that have finished.
+
+    Called while the run is still going, so a run whose pod is stopped or
+    killed leaves the work it had already done rather than nothing at all --
+    and `.partial`, which the SDK documents, has rows to show. The run-level
+    metrics are not written here: they are an aggregate over the whole run, and
+    writing them per batch would append a different set of numbers for the same
+    run to the offline table each time.
+    """
+    if not trials:
+        return
     import pandas as pd
 
     now = datetime.now(tz=timezone.utc)
-    trials = [
+    rows = _trial_rows(trials, now)
+    evaluator_rows = _evaluator_rows(trials, now)
+    for name, batch in (
+        (TRIALS_FG, rows),
+        (EVALUATOR_RESULTS_FG, evaluator_rows),
+    ):
+        if not batch:
+            continue
+        group = feature_store.get_feature_group(name, 1)
+        group.insert(
+            _match_schema(group, pd.DataFrame(batch)),
+            write_options={"mode": "append"},
+        )
+        log.info("wrote %d rows to %s", len(batch), name)
+
+
+def _trial_rows(trials: Sequence[Any], now: datetime) -> list[dict[str, Any]]:
+    return [
         {
             "run_id": t.run_id,
             "trial_id": t.trial_id,
@@ -195,9 +222,12 @@ def _write_results(
             "error_message": t.error_message,
             "created_at": now,
         }
-        for t in result.trials
+        for t in trials
     ]
-    evaluator_rows = [
+
+
+def _evaluator_rows(trials: Sequence[Any], now: datetime) -> list[dict[str, Any]]:
+    return [
         {
             "run_id": t.run_id,
             "result_id": f"{t.trial_id}/{g.evaluator_name}",
@@ -214,9 +244,32 @@ def _write_results(
             "evaluator_version": "1",
             "created_at": now,
         }
-        for t in result.trials
+        for t in trials
         for g in t.evaluator_results
     ]
+
+
+def _write_results(
+    feature_store: Any,
+    result: Any,
+    run: dict[str, Any],
+    tasks: list[dict[str, Any]] | None = None,
+    *,
+    already_written: Collection[str] = (),
+) -> None:
+    """Everything the run produced, minus the trials already written as they finished.
+
+    `already_written` holds the trial ids a progress writer has flushed. They are
+    skipped rather than written again: the online row would be replaced, but the
+    offline table appends, and a run would read as having run each of those trials
+    twice.
+    """
+    import pandas as pd
+
+    now = datetime.now(tz=timezone.utc)
+    pending = [t for t in result.trials if t.trial_id not in set(already_written)]
+    trials = _trial_rows(pending, now)
+    evaluator_rows = _evaluator_rows(pending, now)
     metric_rows = [
         # A sample has no suite, so its metric rows carry an empty suite id and
         # version 0. Empty rather than absent: the row records that this run
@@ -383,6 +436,16 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
         # Which question this run answers. Read off the row rather than taken as
         # an argument, so a scheduled execution and a hand-started one cannot
         # differ.
+        # Written as they are graded rather than only at the end: a run that is
+        # stopped, or whose pod is killed, leaves the work it had already done.
+        # The ids are remembered so the final write does not append them twice.
+        written: set[str] = set()
+        store = project.get_feature_store()
+
+        def record(finished: list) -> None:
+            _write_trials(store, finished)
+            written.update(t.trial_id for t in finished)
+
         if run.get("runType") == "ONLINE_SAMPLE":
             result = run_sample(
                 client,
@@ -393,8 +456,9 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
                 evaluators_for(run, judge_completer=completer),
                 strategy=args.sample_strategy,
                 shared=not args.sample_independent,
+                on_progress=record,
             )
-            _write_results(project.get_feature_store(), result, run)
+            _write_results(store, result, run, already_written=written)
             report(
                 result.status,
                 error=result.error_message or None,
@@ -433,8 +497,9 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
                 input_token_price_per_million=run.get("inputTokenPricePerMillion"),
                 output_token_price_per_million=run.get("outputTokenPricePerMillion"),
             ),
+            on_progress=record,
         )
-        _write_results(project.get_feature_store(), result, run, tasks)
+        _write_results(store, result, run, tasks, already_written=written)
         report(result.status)
         log.info("run %s finished: %s", run_id, result.status)
         return result.status == "SUCCEEDED"

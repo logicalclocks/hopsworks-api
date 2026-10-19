@@ -42,13 +42,18 @@ from .runner import RunResult, _transcript
 
 if TYPE_CHECKING:
     import random
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 
 log = logging.getLogger(__name__)
 
 #: How many trace summaries to pull before sampling. The window filter is
 #: applied client-side, so this bounds the read rather than the sample.
+#: How many graded conversations to hand a progress writer at a time. One write
+#: per trace would be one feature-store insert per trace; one per run is what
+#: left a stopped monitor with nothing.
+WRITE_BATCH = 25
+
 LISTING_LIMIT = 500
 #: How many earlier turns of the same conversation a judge is shown. Enough
 #: that "you already told me" is checkable; bounded so a support chat that has
@@ -350,6 +355,7 @@ def run_sample(
     rng: random.Random | None = None,
     strategy: str = "oldest",
     shared: bool = True,
+    on_progress: Callable[[list[Trial]], None] | None = None,
 ) -> RunResult:
     """List, sample, grade.
 
@@ -443,7 +449,8 @@ def run_sample(
     else:
         log.info("grading %d conversations in the window", len(sampled))
 
-    trials = []
+    trials: list[Trial] = []
+    reported = 0
     sessions: dict[str, list[dict[str, Any]]] = {}
     for summary in sampled:
         trace_id = summary.get("traceId")
@@ -471,6 +478,25 @@ def run_sample(
                 session_id=session_id,
             )
         )
+        # Written as they are graded, so a monitor that is stopped half way
+        # through a long window leaves what it graded rather than nothing.
+        if on_progress is not None and len(trials) - reported >= WRITE_BATCH:
+            try:
+                on_progress(trials[reported:])
+            except Exception:  # noqa: BLE001 -- a failed write is not a failed run
+                log.exception(
+                    "could not record %d graded conversations", len(trials) - reported
+                )
+            reported = len(trials)
+
+    if on_progress is not None and len(trials) > reported:
+        try:
+            on_progress(trials[reported:])
+        except Exception:  # noqa: BLE001 -- a failed write is not a failed run
+            log.exception(
+                "could not record the last %d graded conversations",
+                len(trials) - reported,
+            )
 
     # Where this run stopped, when it stopped short: the newest conversation it
     # graded, so the next window opens there and the ones it left are graded

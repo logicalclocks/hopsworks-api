@@ -143,7 +143,7 @@ def suite(**kwargs):
     return Suite(**defaults)
 
 
-def go(client, s=None, evaluators=None, **config_kwargs):
+def go(client, s=None, evaluators=None, on_progress=None, **config_kwargs):
     return run_suite(
         client,
         s or suite(),
@@ -154,6 +154,7 @@ def go(client, s=None, evaluators=None, **config_kwargs):
             readiness_timeout_s=0.01, readiness_poll_s=0.001, **config_kwargs
         ),
         sleep=lambda _: None,
+        on_progress=on_progress,
     )
 
 
@@ -343,6 +344,40 @@ class TestWhenTheHarnessItselfBreaks:
         assert len(broken) == 1
         assert "harness bug" in broken[0].error_message
         assert broken[0].trial_id == "run-1/t1/1/0"
+
+
+class TestResultsAsTheyArrive:
+    """A killed pod used to leave nothing, however far the run had got."""
+
+    def test_finished_trials_are_handed_over_while_the_run_is_going(self):
+        batches = []
+        go(
+            FakeClient(),
+            s=suite(tasks=[task(task_id=f"t{i}") for i in range(5)]),
+            n_trials=2,
+            write_batch=3,
+            on_progress=batches.append,
+        )
+        # ten trials in batches of three, so the last four rows are not the only
+        # thing a run that died half way through would have left
+        assert [len(b) for b in batches] == [3, 3, 3, 1]
+        assert sum(len(b) for b in batches) == 10
+
+    def test_a_write_that_fails_does_not_fail_the_run(self):
+        def explode(_trials):
+            raise RuntimeError("the store is down")
+
+        result = go(
+            FakeClient(trace={"root_span_id": "a", "tool_names": "[]"}),
+            on_progress=explode,
+        )
+        assert result.status == "SUCCEEDED"
+        assert len(result.trials) == 1
+
+    def test_nothing_is_handed_over_when_nobody_asked(self):
+        # the default stays what it was: one write at the end
+        healthy = FakeClient(trace={"root_span_id": "a", "tool_names": "[]"})
+        assert go(healthy).status == "SUCCEEDED"
 
 
 class TestGuardrails:

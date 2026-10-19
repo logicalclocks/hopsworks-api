@@ -67,6 +67,38 @@ class TestReadingADirectory:
             == "https://github.com/o/r@v2"
         )
 
+    def test_a_failed_clone_does_not_log_the_command_it_ran(self):
+        # str() on a CalledProcessError is the whole argv, credentialled remote
+        # included, and git echoes the remote into its own stderr too. Both went
+        # into the log and into the "unreadable: ..." origin the prompt renders.
+        import subprocess
+
+        err = subprocess.CalledProcessError(
+            128,
+            ["git", "clone", "https://u:ghp_realtoken@h/r"],
+            output=b"",
+            stderr=b"fatal: unable to access 'https://u:ghp_realtoken@h/r/': "
+            b"Could not resolve host\n",
+        )
+        reason = src._reason(err)
+        assert "ghp_realtoken" not in reason
+        assert "128" in reason and "Could not resolve host" in reason
+
+        def explode(*args, **kwargs):
+            raise err
+
+        original = src.clone_repository
+        src.clone_repository = explode
+        try:
+            bundle = src.load_agent_source(
+                src.CodeLocation(git_url="https://u:ghp_realtoken@h/r")
+            )
+        finally:
+            src.clone_repository = original
+        assert bundle.files == {}
+        assert "ghp_realtoken" not in bundle.origin
+        assert bundle.origin.startswith("unreadable: git exited 128")
+
     def test_the_entry_is_found_under_a_hopsfs_or_git_relative_name(self):
         files = {"chinook/support_agent.py": "", "chinook/tools.py": ""}
         assert (

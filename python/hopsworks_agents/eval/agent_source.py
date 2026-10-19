@@ -332,19 +332,41 @@ def download_hopsfs_directory(dataset_api: Any, path: str, into: str) -> str:
     return target
 
 
-def _without_credentials(url: str) -> str:
-    """A git URL safe to log and to show a model: "https://user:token@host/x" loses the pair.
+#: "scheme://user:token@" anywhere in a piece of text. The credential has to end before the
+#: first "/" after the scheme, so an "@" in a path -- "github.com/o/r@v2" -- is not a match.
+_CREDENTIAL_IN_URL = re.compile(r"(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)[^/\s'\"]*@")
 
-    A location typed into the job's settings may carry a personal access token, and the
-    origin string travels into the log and into the triage prompt as the source's name.
+
+def _without_credentials(text: str) -> str:
+    """Text safe to log and to show a model: "https://user:token@host/x" loses the pair.
+
+    Applied to free text, not only to a bare URL, because the places a token turns up are
+    not all URLs: git echoes the remote it could not reach into its own error message, and a
+    CalledProcessError renders the whole command line it ran. Both end up in the log and in
+    the "unreadable: ..." origin the triage prompt shows the model.
     """
-    if "@" not in url or "://" not in url:
-        return url
-    scheme, _, rest = url.partition("://")
-    authority, _, tail = rest.partition("@")
-    if "/" in authority:  # the "@" belongs to the path, not to a credential
-        return url
-    return f"{scheme}://{tail}"
+    return _CREDENTIAL_IN_URL.sub(lambda m: m.group("scheme"), str(text or ""))
+
+
+def _reason(err: BaseException) -> str:
+    """Why the source could not be read, with nothing secret in it.
+
+    `str(err)` on a CalledProcessError is "Command '[...]' returned non-zero exit status
+    128" -- the whole argv, credentialled remote included. git's own stderr says the useful
+    part anyway, and it is redacted before it travels.
+    """
+    if isinstance(err, subprocess.CalledProcessError):
+        detail = err.stderr if err.stderr else err.stdout
+        if isinstance(detail, (bytes, bytearray)):
+            detail = detail.decode("utf-8", errors="replace")
+        lines = [
+            line.strip() for line in str(detail or "").splitlines() if line.strip()
+        ]
+        said = lines[-1] if lines else ""
+        return _without_credentials(
+            f"git exited {err.returncode}" + (f": {said}" if said else "")
+        )
+    return _without_credentials(f"{type(err).__name__}: {err}")
 
 
 def load_agent_source(
@@ -387,12 +409,15 @@ def load_agent_source(
         )
         return bundle
     except Exception as err:  # noqa: BLE001 -- said in the log, not thrown at the run
+        # Never the exception itself: see _reason. Logged without exc_info for the same
+        # reason -- the traceback would carry the command line back in.
+        reason = _reason(err)
         log.warning(
             "could not read the agent's source from %s: %s",
             _without_credentials(location.git_url) or location.model_path,
-            err,
+            reason,
         )
-        return SourceBundle(files={}, origin=f"unreadable: {err}")
+        return SourceBundle(files={}, origin=f"unreadable: {reason}")
     finally:
         if workdir is None:
             shutil.rmtree(into, ignore_errors=True)

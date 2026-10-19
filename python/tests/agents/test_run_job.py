@@ -48,6 +48,83 @@ def task(**overrides):
     return base
 
 
+class TestWritingTrialsAsTheyFinish:
+    """A run that is stopped or killed used to leave no rows at all."""
+
+    class FakeGroup:
+        def __init__(self):
+            self.frames = []
+            self.features = []
+
+        def insert(self, frame, write_options=None):  # noqa: ARG002
+            self.frames.append(frame)
+
+    class FakeStore:
+        def __init__(self):
+            self.groups = {}
+
+        def get_feature_group(self, name, version):  # noqa: ARG002
+            return self.groups.setdefault(
+                name, TestWritingTrialsAsTheyFinish.FakeGroup()
+            )
+
+    def trial(self, index):
+        from hopsworks_agents.eval.models import TraceStatus, Trial, TrialStatus
+
+        return Trial(
+            trial_id=f"run-1/t1/1/{index}",
+            run_id="run-1",
+            task_id="t1",
+            task_version=1,
+            trial_index=index,
+            deployment_id=7,
+            status=TrialStatus.PASSED,
+            trace_status=TraceStatus.RECEIVED,
+        )
+
+    def test_a_batch_writes_the_trial_and_result_rows_but_not_the_metrics(self):
+        from hopsworks_agents.eval.run_job import (
+            EVALUATOR_RESULTS_FG,
+            RUN_METRICS_FG,
+            TRIALS_FG,
+            _write_trials,
+        )
+
+        store = self.FakeStore()
+        _write_trials(store, [self.trial(0), self.trial(1)])
+
+        assert len(store.groups[TRIALS_FG].frames) == 1
+        assert len(store.groups[TRIALS_FG].frames[0]) == 2
+        # Metrics are an aggregate over the whole run: written per batch, the
+        # offline table would hold a different set of numbers for the same run
+        # once per batch.
+        assert RUN_METRICS_FG not in store.groups
+        # no evaluator results on these trials, so nothing to write
+        assert EVALUATOR_RESULTS_FG not in store.groups
+
+    def test_the_final_write_skips_what_was_already_written(self):
+        from hopsworks_agents.eval.run_job import TRIALS_FG, _write_results
+
+        store = self.FakeStore()
+        result = type(
+            "R",
+            (),
+            {"run_id": "run-1", "trials": [self.trial(0), self.trial(1)]},
+        )()
+        _write_results(
+            store,
+            result,
+            {"deploymentId": 7, "suiteId": "s1", "suiteVersion": 1},
+            already_written={"run-1/t1/1/0"},
+        )
+
+        # Only the one that was not streamed. The online row would be replaced,
+        # but the offline table appends, so a run would read as having run the
+        # streamed trials twice.
+        assert len(store.groups[TRIALS_FG].frames[0]) == 1
+        assert list(store.groups[TRIALS_FG].frames[0]["trial_id"]) == ["run-1/t1/1/1"]
+
+
 class TestReportingAFailure:
     def test_a_stack_trace_does_not_break_the_report_that_carries_it(self):
         # It travels as a query parameter and the column holds 1000 characters,

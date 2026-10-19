@@ -688,6 +688,31 @@ class TestTheWindowIsTheServersJob:
         )
         assert len(result.trials) == 3
 
+    def test_graded_conversations_are_handed_over_as_they_go(self):
+        # A monitor stopped half way through a long window used to leave nothing
+        # at all, however many conversations it had already graded.
+        import hopsworks_agents.eval.sample_job as sj
+
+        summaries = [summary(str(i), i + 1) for i in range(5)]
+        session = FakeSession(summaries, {str(i): detail() for i in range(5)}, count=5)
+        batches = []
+        saved, sj.WRITE_BATCH = sj.WRITE_BATCH, 2
+        try:
+            result = run_sample(
+                FakeClient(),
+                session,
+                "https://h",
+                1,
+                sample_run(),
+                trace_only(),
+                on_progress=batches.append,
+            )
+        finally:
+            sj.WRITE_BATCH = saved
+
+        assert len(result.trials) == 5
+        assert [len(b) for b in batches] == [2, 2, 1]
+
     def test_a_window_whose_every_trace_is_unreadable_fails(self):
         # Not a quiet night: a broken read. Reported SUCCEEDED it moved the watermark over all
         # of them, so the traffic nobody graded was never offered again.
