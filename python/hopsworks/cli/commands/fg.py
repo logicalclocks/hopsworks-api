@@ -95,6 +95,10 @@ def fg_info(
         ["Description", output.first_line(getattr(fg, "description", ""))],
         ["Tags", output.format_mapping(output.read_tags(fg))],
     ]
+    source = _source_to_dict(fg)
+    if source is not None:
+        rows += [[_SOURCE_LABELS[k], v or "-"] for k, v in source.items()]
+        rows.append(["Access", _access_label(fg)])
     output.print_table(["FIELD", "VALUE"], rows)
 
 
@@ -367,7 +371,7 @@ def _fg_type_label(fg: Any) -> str:
     Returns:
         A short label suitable for table output.
     """
-    cls = type(fg).__name__.lower()
+    cls = fg.__class__.__name__.lower()
     if "external" in cls:
         return "external"
     if "spine" in cls:
@@ -384,6 +388,31 @@ def _access_label(fg: Any) -> str:
     return str(access.get("status", "-")).lower()
 
 
+_SOURCE_LABELS = {
+    "connector": "Connector",
+    "query": "Query",
+    "path": "Path",
+    "database": "Database",
+    "table": "Table",
+    "data_format": "Data format",
+}
+
+
+def _source_to_dict(fg: Any) -> dict[str, Any] | None:
+    """Where an external feature group reads from; None for other types."""
+    if _fg_type_label(fg) != "external":
+        return None
+    ds = getattr(fg, "data_source", None)
+    return {
+        "connector": getattr(getattr(ds, "storage_connector", None), "name", None),
+        "query": getattr(ds, "query", None),
+        "path": getattr(ds, "path", None),
+        "database": getattr(ds, "database", None),
+        "table": getattr(ds, "table", None),
+        "data_format": getattr(fg, "data_format", None),
+    }
+
+
 def _fg_to_dict(fg: Any) -> dict[str, Any]:
     access = getattr(fg, "data_source_access", None)
     return {
@@ -393,6 +422,7 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
         "type": _fg_type_label(fg),
         "online_enabled": getattr(fg, "online_enabled", False),
         "data_source_access": access if isinstance(access, dict) else None,
+        "source": _source_to_dict(fg),
         "primary_key": list(getattr(fg, "primary_key", []) or []),
         "event_time": getattr(fg, "event_time", None),
         "description": getattr(fg, "description", None),
@@ -529,7 +559,8 @@ def fg_create(
     "--data-format",
     "data_format",
     type=click.Choice(
-        ["parquet", "delta", "hudi", "orc", "avro", "csv"], case_sensitive=False
+        ["parquet", "delta", "hudi", "iceberg", "orc", "avro", "csv"],
+        case_sensitive=False,
     ),
     help="Required for object-storage sources (e.g. `parquet` for an S3 source).",
 )
@@ -552,6 +583,11 @@ def fg_create(
 @click.option("--version", type=int, help="Feature group version.")
 @click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
 @click.option("--event-time", "event_time", help="Event-time column.")
+@click.option(
+    "--online",
+    is_flag=True,
+    help="Enable the online feature store; rows are then written with `fg insert`.",
+)
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
 def fg_create_external(
@@ -566,6 +602,7 @@ def fg_create_external(
     version: int | None,
     primary_key: str | None,
     event_time: str | None,
+    online: bool,
     description: str,
 ) -> None:
     """Register a feature group that reads a data source.
@@ -592,8 +629,11 @@ def fg_create_external(
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
         event_time: Event-time column.
+        online: Whether to enable the online store.
         description: Free-form description.
     """
+    if query and path:
+        raise click.UsageError("Pass either --query or --path, not both.")
     if not query and not path and not table:
         raise click.UsageError(
             "Provide one of --query (SQL sources), --path + --data-format "
@@ -605,40 +645,33 @@ def fg_create_external(
     fs = session.get_feature_store(ctx)
     try:
         data_source = fs.get_data_source(connector_name)
-        connector = data_source.storage_connector
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Connector '{connector_name}' not found: {exc}"
         ) from exc
 
-    # Apply per-FG database/collection overrides to the data source. The
-    # backend's MongoDB controller and the broader DataSource entity pick
-    # the FG-level values over the connector defaults at read time.
+    # The SDK ignores query and path passed next to a data source, so the
+    # whole source spec goes on the data source itself.
+    if query:
+        data_source.query = query
+    if path:
+        data_source.path = path
     if database is not None:
         data_source.database = database
     if table is not None:
-        # MongoDB exposes collection-as-table; SQL exposes table-as-table.
-        # Both end up on `DataSource.table_name` server-side.
         data_source.table = table
 
-    create_kwargs = {
-        "name": name,
-        "storage_connector": connector,
-        "data_source": data_source,
-        "version": version,
-        "description": description,
-        "primary_key": _split_csv(primary_key) or None,
-        "event_time": event_time,
-    }
-    if query:
-        create_kwargs["query"] = query
-    if path:
-        create_kwargs["path"] = path
-    if data_format:
-        create_kwargs["data_format"] = data_format.lower()
-
     try:
-        fg = fs.create_external_feature_group(**create_kwargs)
+        fg = fs.create_external_feature_group(
+            name=name,
+            data_source=data_source,
+            data_format=data_format.lower() if data_format else None,
+            version=version,
+            description=description,
+            primary_key=_split_csv(primary_key) or None,
+            event_time=event_time,
+            online_enabled=online,
+        )
         fg.save()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not create external FG: {exc}") from exc
@@ -648,6 +681,8 @@ def fg_create_external(
         getattr(fg, "name", name),
         getattr(fg, "version", "?"),
     )
+    if output.JSON_MODE:
+        output.print_json(_fg_to_dict(fg))
 
 
 @fg_group.command("insert")
@@ -686,6 +721,11 @@ def fg_insert(
         online: When True, pass `start_offline_materialization=False`.
     """
     fg = _get_fg(ctx, name, version)
+    if _fg_type_label(fg) == "spine":
+        raise click.ClickException(
+            f"Feature group '{name}' is a spine group; spine groups hold no data. "
+            "Pass the spine DataFrame when reading the feature view instead."
+        )
 
     try:
         import pandas as pd  # noqa: PLC0415 - pandas import cost is high
@@ -895,9 +935,16 @@ def fg_delete(
             )
         else:
             extra = ""
+        if _fg_type_label(fg) == "external":
+            wipes = (
+                "This removes its metadata and any online rows; the external "
+                "table is left untouched."
+            )
+        else:
+            wipes = "This wipes all offline and online data."
         click.confirm(
             f"Delete feature group '{name}' v{getattr(fg, 'version', '?')}? "
-            f"This wipes all offline and online data.{extra}",
+            f"{wipes}{extra}",
             abort=True,
         )
     try:
