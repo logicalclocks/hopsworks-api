@@ -340,7 +340,7 @@ def test_app_create_forwards_args(mock_project):
             "4096",
             "--cores",
             "2",
-            "--environment",
+            "--env",
             "custom-env",
             "--app-base-path",
             "/myapp",
@@ -512,7 +512,7 @@ def test_app_create_custom_forwards_args(mock_project):
             "4096",
             "--cores",
             "2",
-            "--environment",
+            "--env",
             "custom-env",
             "--app-base-path",
             "/myapp",
@@ -610,7 +610,7 @@ def test_app_create_streamlit_git_forwards_args(mock_project):
             "main",
             "--entrypoint-script",
             "streamlitapp.py",
-            "--environment",
+            "--env",
             "custom-env",
         ],
     )
@@ -800,4 +800,4 @@ def test_app_info_surfaces_not_found(mock_project):
     apps.get_app.side_effect = RuntimeError("404")
     result = CliRunner().invoke(cli, ["app", "info", "ghost"])
     assert result.exit_code != 0
-    assert "not found" in result.output.lower()
+    assert "could not find app 'ghost'" in result.output.lower()

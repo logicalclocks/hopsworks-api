@@ -18,7 +18,7 @@ from hopsworks.cli import lineage, output, session, versions
 
 @click.group("model")
 def model_group() -> None:
-    """Model registry commands."""
+    """Models in the model registry."""
 
 
 @model_group.command("list")
@@ -26,6 +26,7 @@ def model_group() -> None:
 def model_list(ctx: click.Context) -> None:
     """List every model registered in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -52,6 +53,7 @@ def model_list(ctx: click.Context) -> None:
 def model_info(ctx: click.Context, name: str, version: int | None) -> None:
     """Show details for a single model version.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -62,7 +64,7 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
     try:
         model = versions.model(mr, name, version)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Model '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find model '{name}': {exc}") from exc
 
     if model is None:
         raise click.ClickException(f"Model '{name}' not found.")
@@ -181,14 +183,15 @@ def model_register(
     input_example_path: str | None,
     version: int | None,
 ) -> None:
-    """Upload a trained model artifact to the Hopsworks model registry.
+    """Upload a trained model to the model registry.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
         path: Local path to the model artifact (file or directory).
-        framework: ML framework category (``sklearn``/``tensorflow``/``torch``/``python``/``llm``).
-        metrics_spec: Metrics as ``key=value`` pairs.
+        framework: ML framework category (`sklearn`/`tensorflow`/`torch`/`python`/`llm`).
+        metrics_spec: Metrics as `key=value` pairs.
         description: Description string.
         feature_view: Feature view the model was trained on.
         td_version: Training dataset version used for training.
@@ -219,7 +222,7 @@ def model_register(
             fv_obj = versions.feature_view(fs, feature_view, None)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
-                f"Feature view '{feature_view}' not found: {exc}"
+                f"Could not find feature view '{feature_view}': {exc}"
             ) from exc
         if fv_obj is None:
             raise click.ClickException(f"Feature view '{feature_view}' not found.")
@@ -236,7 +239,7 @@ def model_register(
         )
         model.save(path)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Model register failed: {exc}") from exc
+        raise click.ClickException(f"Could not register model '{name}': {exc}") from exc
 
     output.success(
         "✓ Registered model %s v%s",
@@ -260,6 +263,7 @@ def model_download(
 ) -> None:
     """Download a model artifact from the registry.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -270,7 +274,7 @@ def model_download(
     try:
         path = model.download(local_path=output_dir)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Download failed: {exc}") from exc
+        raise click.ClickException(f"Could not download model '{name}': {exc}") from exc
     output.success("✓ Downloaded model %s to %s", name, path)
 
 
@@ -282,6 +286,7 @@ def model_download(
 def model_delete(ctx: click.Context, name: str, version: int, yes: bool) -> None:
     """Delete a single model version.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -294,7 +299,7 @@ def model_delete(ctx: click.Context, name: str, version: int, yes: bool) -> None
     try:
         model.delete()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete model '{name}': {exc}") from exc
     output.success("✓ Deleted model %s v%s", name, version)
 
 
@@ -308,6 +313,7 @@ def model_lineage(ctx: click.Context, name: str, version: int | None) -> None:
     Upstream covers the feature view and training dataset the model was
     trained from.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -341,7 +347,7 @@ def _get_model(ctx: click.Context, name: str, version: int | None) -> Any:
     except click.ClickException:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Model '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find model '{name}': {exc}") from exc
 
 
 def _parse_metrics(spec: str | None) -> dict[str, float]:

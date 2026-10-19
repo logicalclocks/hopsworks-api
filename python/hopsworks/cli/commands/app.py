@@ -29,7 +29,7 @@ from hopsworks.cli import output, session
 
 @click.group("app")
 def app_group() -> None:
-    """Python app commands."""
+    """Apps: Python web apps served by the cluster."""
 
 
 @app_group.command("list")
@@ -37,6 +37,7 @@ def app_group() -> None:
 def app_list(ctx: click.Context) -> None:
     """List every app in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -66,6 +67,7 @@ def app_list(ctx: click.Context) -> None:
 def app_info(ctx: click.Context, name: str) -> None:
     """Show details for a single app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -119,6 +121,7 @@ def app_url(ctx: click.Context, name: str) -> None:
     Exits non-zero with a clear message when the app is not serving yet,
     so this composes cleanly in shell pipelines.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -155,10 +158,11 @@ def app_logs(ctx: click.Context, name: str, stream: str) -> None:
     case where you most want logs, so this points at the live logs in the
     Hopsworks UI instead of failing with an opaque error.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
-        stream: Which stream(s) to print: ``stdout``, ``stderr``, or ``both``.
+        stream: Which stream(s) to print: `stdout`, `stderr`, or `both`.
     """
     a = _get_app(ctx, name)
 
@@ -341,7 +345,8 @@ def _report_running(name: str, a: Any) -> None:
     help="Optional app description.",
 )
 @click.option(
-    "--environment",
+    "--env",
+    "environment",
     default="python-app-pipeline",
     show_default=True,
     help="Python environment name backing the app.",
@@ -385,6 +390,7 @@ def app_create(
     Monitoring is enabled by default in the backend. Route filters are optional
     and narrow the traffic counted by Envoy.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -417,31 +423,29 @@ def app_create(
     if app_kind != "CUSTOM":
         label = app_kind.capitalize() if app_kind != "NODEJS" else "Node.js"
         if entrypoint_command:
-            raise click.ClickException(
-                f"{label} apps do not accept --entrypoint-command."
-            )
+            raise click.UsageError(f"{label} apps do not accept --entrypoint-command.")
         if git_repo_app:
             if not git_provider:
-                raise click.ClickException(
+                raise click.UsageError(
                     f"{label} Git repository apps require --git-provider."
                 )
             if not entrypoint_script:
-                raise click.ClickException(
+                raise click.UsageError(
                     f"{label} Git repository apps require --entrypoint-script."
                 )
         elif not app_path:
-            raise click.ClickException(f"{label} apps require --path.")
+            raise click.UsageError(f"{label} apps require --path.")
         elif entrypoint_script:
-            raise click.ClickException(
+            raise click.UsageError(
                 "--entrypoint-script is only supported for Git repository apps."
             )
     else:
         if not entrypoint_command:
-            raise click.ClickException("Custom apps require --entrypoint-command.")
+            raise click.UsageError("Custom apps require --entrypoint-command.")
         if git_repo_app and not git_provider:
-            raise click.ClickException("Git repository apps require --git-provider.")
+            raise click.UsageError("Git repository apps require --git-provider.")
         if entrypoint_script:
-            raise click.ClickException(
+            raise click.UsageError(
                 "--entrypoint-script is only supported for Git repository apps of the other kinds."
             )
 
@@ -481,7 +485,7 @@ def app_create(
         idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None
     )
     if idle_scale_to_zero is False and has_idle_timeouts:
-        raise click.ClickException(
+        raise click.UsageError(
             "--idle-cooldown-seconds and --cold-start-timeout-seconds cannot go with --no-idle-scale-to-zero."
         )
     if idle_scale_to_zero is not None:
@@ -504,45 +508,49 @@ def app_create(
 @app_group.command("start")
 @click.argument("name")
 @click.option(
-    "--no-wait",
-    is_flag=True,
-    help="Return immediately after submission; do not wait for serving.",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the app is serving.",
 )
 @click.pass_context
-def app_start(ctx: click.Context, name: str, no_wait: bool) -> None:
+def app_start(ctx: click.Context, name: str, wait: bool) -> None:
     """Start an app.
 
-    Blocks until the app is ``serving`` unless ``--no-wait`` is set.
+    Blocks until the app is `serving` unless `--no-wait` is set.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
-        no_wait: Skip the wait-for-serving loop.
+        wait: Whether to wait until the app is serving.
     """
     a = _get_app(ctx, name)
-    _start(a, await_serving=not no_wait)
+    _start(a, await_serving=wait)
 
 
 @app_group.command("redeploy")
 @click.argument("name")
 @click.option(
-    "--no-wait",
-    is_flag=True,
-    help="Return immediately after submission; do not wait for serving.",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the app is serving.",
 )
 @click.pass_context
-def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
+def app_redeploy(ctx: click.Context, name: str, wait: bool) -> None:
     """Redeploy a running app.
 
-    Blocks until the app is ``serving`` unless ``--no-wait`` is set.
+    Blocks until the app is `serving` unless `--no-wait` is set.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
-        no_wait: Skip the wait-for-serving loop.
+        wait: Whether to wait until the app is serving.
     """
     a = _get_app(ctx, name)
-    _redeploy(a, await_serving=not no_wait)
+    _redeploy(a, await_serving=wait)
 
 
 @app_group.command("stop")
@@ -551,6 +559,7 @@ def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
 def app_stop(ctx: click.Context, name: str) -> None:
     """Stop a running app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -559,7 +568,7 @@ def app_stop(ctx: click.Context, name: str) -> None:
     try:
         a.stop()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Stop failed: {exc}") from exc
+        raise click.ClickException(f"Could not stop app '{name}': {exc}") from exc
     output.success("✓ Stopped app %s", name)
 
 
@@ -573,6 +582,7 @@ def app_stop(ctx: click.Context, name: str) -> None:
 def app_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     """Delete an app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -590,7 +600,7 @@ def app_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     try:
         a.delete()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete app '{name}': {exc}") from exc
     output.success("✓ Deleted app %s", name)
 
 
@@ -629,7 +639,7 @@ def _get_app(ctx: click.Context, name: str) -> Any:
     try:
         a = apps.get_app(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"App '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find app '{name}': {exc}") from exc
     if a is None:
         raise click.ClickException(f"App '{name}' not found.")
     return a
@@ -639,7 +649,9 @@ def _start(a: Any, await_serving: bool = True) -> None:
     try:
         a.run(await_serving=await_serving)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Start failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not start app '{getattr(a, 'name', '?')}': {exc}"
+        ) from exc
     url = getattr(a, "app_url", None)
     state = getattr(a, "state", "-")
     serving = getattr(a, "serving", False)
@@ -657,7 +669,9 @@ def _redeploy(a: Any, await_serving: bool = True) -> None:
     try:
         a.redeploy(await_serving=await_serving)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Redeploy failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not redeploy app '{getattr(a, 'name', '?')}': {exc}"
+        ) from exc
     url = getattr(a, "app_url", None)
     state = getattr(a, "state", "-")
     serving = getattr(a, "serving", False)

@@ -77,7 +77,8 @@ def test_fg_append_features_parses_and_calls_sdk(mock_project):
         cli,
         [
             "fg",
-            "append-features",
+            "feature",
+            "add",
             "txn",
             "--features",
             "score:double:Risk score,tier:string,extra:int:",
@@ -99,7 +100,7 @@ def test_fg_append_features_rejects_bad_spec(mock_project):
     fg.name, fg.version = "txn", 1
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
-        cli, ["fg", "append-features", "txn", "--features", "noType"]
+        cli, ["fg", "feature", "add", "txn", "--features", "noType"]
     )
     assert result.exit_code != 0
     fg.append_features.assert_not_called()
@@ -113,20 +114,20 @@ def test_fg_keywords_table(mock_project):
     fg = mock.MagicMock()
     fg.get_keywords_metadata.return_value = {"prod": datetime(2026, 3, 4, 5, 6, 7)}
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "keywords", "txn"])
+    result = CliRunner().invoke(cli, ["fg", "keyword", "list", "txn"])
     assert result.exit_code == 0, result.output
     assert "prod" in result.output
     assert "2026-03-04" in result.output
     # The semantics notice has to be visible, which is why it goes to stderr
     # rather than through the warnings module.
-    assert "moved to 'hops fg tags/add-tag/remove-tag'" in result.output
+    assert "moved to 'hops fg tag list/add-tag/remove-tag'" in result.output
 
 
 def test_fg_add_keyword(mock_project):
     fs = mock_project.get_feature_store.return_value
     fg = mock.MagicMock()
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "add-keyword", "txn", "prod"])
+    result = CliRunner().invoke(cli, ["fg", "keyword", "add", "txn", "prod"])
     assert result.exit_code == 0, result.output
     fg.add_keywords.assert_called_with(["prod"])
     fg.add_tag.assert_not_called()
@@ -137,10 +138,10 @@ def test_fg_add_keyword_value_is_retired(mock_project):
     fg = mock.MagicMock()
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
-        cli, ["fg", "add-keyword", "txn", "prod", "--value", "true"]
+        cli, ["fg", "keyword", "add", "txn", "prod", "--value", "true"]
     )
     assert result.exit_code != 0
-    assert "hops fg add-tag txn prod" in result.output
+    assert "hops fg tag add txn prod" in result.output
     fg.add_keywords.assert_not_called()
     fg.add_tag.assert_not_called()
 
@@ -149,7 +150,7 @@ def test_fg_remove_keyword(mock_project):
     fs = mock_project.get_feature_store.return_value
     fg = mock.MagicMock()
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "remove-keyword", "txn", "prod"])
+    result = CliRunner().invoke(cli, ["fg", "keyword", "remove", "txn", "prod"])
     assert result.exit_code == 0, result.output
     fg.delete_keyword.assert_called_with("prod")
     fg.delete_tag.assert_not_called()
@@ -165,7 +166,7 @@ def test_fg_tags_table(mock_project):
         "owner": {"value": {"team": "risk"}, "createdOn": datetime(2026, 3, 4)}
     }
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "tags", "txn"])
+    result = CliRunner().invoke(cli, ["fg", "tag", "list", "txn"])
     assert result.exit_code == 0, result.output
     assert "owner" in result.output
 
@@ -175,7 +176,7 @@ def test_fg_add_tag_parses_json_value(mock_project):
     fg = mock.MagicMock()
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
-        cli, ["fg", "add-tag", "txn", "owner", "--value", '{"team": "risk"}']
+        cli, ["fg", "tag", "add", "txn", "owner", "--value", '{"team": "risk"}']
     )
     assert result.exit_code == 0, result.output
     fg.add_tag.assert_called_with(name="owner", value={"team": "risk"})
@@ -185,7 +186,7 @@ def test_fg_remove_tag(mock_project):
     fs = mock_project.get_feature_store.return_value
     fg = mock.MagicMock()
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "remove-tag", "txn", "owner"])
+    result = CliRunner().invoke(cli, ["fg", "tag", "remove", "txn", "owner"])
     assert result.exit_code == 0, result.output
     fg.delete_tag.assert_called_with("owner")
 
@@ -197,7 +198,7 @@ def test_fg_stats_compute(mock_project):
     fs = mock_project.get_feature_store.return_value
     fg = mock.MagicMock()
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "stats", "txn", "--compute"])
+    result = CliRunner().invoke(cli, ["fg", "stats", "compute", "txn"])
     assert result.exit_code == 0, result.output
     fg.compute_statistics.assert_called_once()
 
@@ -286,7 +287,7 @@ def test_fv_get_parses_entry(mock_project):
     fv.get_feature_vector.return_value = [1, 2, 3]
     fs.get_feature_view.return_value = fv
     result = CliRunner().invoke(
-        cli, ["--json", "fv", "get", "enriched", "--entry", "id=42,region=eu"]
+        cli, ["--json", "fv", "lookup", "enriched", "--entry", "id=42,region=eu"]
     )
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
@@ -315,7 +316,7 @@ def test_td_compute_without_split(mock_project):
     fv = mock.MagicMock()
     fv.create_training_data.return_value = (5, mock.MagicMock())
     fs.get_feature_view.return_value = fv
-    result = CliRunner().invoke(cli, ["td", "compute", "enriched", "1"])
+    result = CliRunner().invoke(cli, ["td", "compute", "enriched", "--fv-version", "1"])
     assert result.exit_code == 0, result.output
     fv.create_training_data.assert_called_once()
 
@@ -326,7 +327,16 @@ def test_td_compute_with_split(mock_project):
     fv.create_train_test_split.return_value = (7, mock.MagicMock())
     fs.get_feature_view.return_value = fv
     result = CliRunner().invoke(
-        cli, ["td", "compute", "enriched", "1", "--split", "train:0.8,test:0.2"]
+        cli,
+        [
+            "td",
+            "compute",
+            "enriched",
+            "--fv-version",
+            "1",
+            "--split",
+            "train:0.8,test:0.2",
+        ],
     )
     assert result.exit_code == 0, result.output
     fv.create_train_test_split.assert_called_once()
@@ -347,6 +357,7 @@ def test_td_compute_with_split_refuses_a_time_window(mock_project):
             "td",
             "compute",
             "enriched",
+            "--fv-version",
             "1",
             "--split",
             "train:0.8,test:0.2",

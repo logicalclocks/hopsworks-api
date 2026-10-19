@@ -151,21 +151,23 @@ def _collect_skills(skills_dir: Path) -> list[dict[str, str]]:
 
 @click.group("skills")
 def skills_group() -> None:
-    """Discover the Hopsworks skills (Markdown playbooks) available to agents."""
+    """Hopsworks skills (Markdown playbooks) for agents."""
 
 
 @skills_group.command("list")
 @click.option("--bucket", default=None, help="Only show skills in this bucket.")
 def skills_list(bucket: str | None) -> None:
-    """List available skills as a table (or JSON with ``--json``).
+    """List the available skills.
 
+    \f
     Args:
         bucket: When given, restrict the listing to this bucket folder.
     """
     skills_dir = _skills_dir()
     if skills_dir is None:
-        output.error("No skills directory found; set HOPS_SKILLS_DIR to override.")
-        raise SystemExit(1)
+        raise click.ClickException(
+            "No skills directory found; set HOPS_SKILLS_DIR to override."
+        )
 
     skills = _collect_skills(skills_dir)
     if bucket:
@@ -181,18 +183,20 @@ def skills_list(bucket: str | None) -> None:
     )
 
 
-@skills_group.command("show")
+@skills_group.command("info")
 @click.argument("name")
 def skills_show(name: str) -> None:
-    """Print a skill's ``SKILL.md`` so an agent can load it.
+    """Print a skill's SKILL.md.
 
+    \f
     Args:
-        name: Skill name (frontmatter ``name``) or folder name.
+        name: Skill name (frontmatter `name`) or folder name.
     """
     skills_dir = _skills_dir()
     if skills_dir is None:
-        output.error("No skills directory found; set HOPS_SKILLS_DIR to override.")
-        raise SystemExit(1)
+        raise click.ClickException(
+            "No skills directory found; set HOPS_SKILLS_DIR to override."
+        )
 
     match = next(
         (
@@ -203,8 +207,7 @@ def skills_show(name: str) -> None:
         None,
     )
     if match is None:
-        output.error("Skill %r not found; run `hops skills list`.", name)
-        raise SystemExit(1)
+        raise click.ClickException(f"Skill '{name}' not found; run `hops skills list`.")
 
     if output.JSON_MODE:
         output.print_json({**match, "body": Path(match["path"]).read_text("utf-8")})
@@ -266,11 +269,12 @@ SKILLS_MANIFEST = ".hops-skills.json"
     help="Overwrite skills you have edited.",
 )
 def skills_install(agents: tuple[str, ...], target_dir: str, force: bool) -> None:
-    """Copy the Hopsworks skills into this repository for a coding agent.
+    """Copy the Hopsworks skills into this repository.
 
     Re-running updates a skill you have not edited, leaves one you have, and
     removes one this release no longer ships.
 
+    \f
     Args:
         agents: Agents to materialize for.
         target_dir: Repository root to write into.

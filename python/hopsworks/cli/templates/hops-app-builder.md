@@ -25,7 +25,7 @@ its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skel
   ```bash
   hops app create <name> --path /Projects/<project>/Users/<user>/apps/<name>/app.py \
     --app-kind custom --entrypoint-command "python app.py" --app-port 8080 \
-    --readiness-probe-path /health --environment <env> --start
+    --readiness-probe-path /health --env <env> --start
   hops app url <name>
   ```
 

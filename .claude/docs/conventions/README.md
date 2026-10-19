@@ -16,3 +16,4 @@ Cross-references in docstrings use `` [`ClassName`][full.module.path.ClassName] 
 - @docs/conventions/docstrings.md — structure, tautology examples, admonitions, deprecation, patch notes, linking
 - @docs/conventions/code-style.md — naming, imports, type hints, error handling, logging, serialization
 - @docs/conventions/public-api.md — `@public`, `@also_available_as`, `@deprecated`, doc pages, patch notes
+- @../python/hopsworks/cli/ONTOLOGY.md: `hops` CLI command shape, vocabulary and help rules, enforced by `tests/cli/test_ontology.py`
