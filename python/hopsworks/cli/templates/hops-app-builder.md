@@ -22,7 +22,7 @@ hops skills info hops-design
 The skeleton is `references/app_skeleton/` next to the SKILL.md whose path the first command
 prints.
 
-**Already made?** For a create, run `hops app info <name>` first: when it shows `State` `RUNNING`, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
+**Already made?** For a create, run `hops app list` first: when it lists `<name>` as `RUNNING`, the piece exists; return that in one line and stop. Your exit check at the end is `hops app info <name>` showing `State` `RUNNING`.
 
 ## Actions
 
@@ -73,7 +73,8 @@ skeleton's `static/chart-theme.js`, never hand-drawn SVG. Follow **hops-design**
 sections grouped by spacing and hairlines with no box per section, stats that fit their cell.
 Look at the page at about 600px and 900px wide once it first shows all its sections, and again
 before each deploy (a screenshot tool when one is available); fix what spills, clips or leaves
-a gap.
+a gap. That pass also checks the JavaScript: it loads the page and reports script errors, so
+there is no separate syntax check (a Hopsable sandbox has no Node.js).
 
 ## Fix loop
 

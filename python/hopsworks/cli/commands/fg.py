@@ -550,7 +550,8 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
 @click.option(
     "--features",
     "features_spec",
-    help='Comma-separated schema "name:type[:description]", e.g. "id:bigint:User id,amount:double".',
+    help='Comma-separated schema "name:type[:description]", e.g. "id:bigint:User id,amount:double". '
+    "Types are Hive names: int is 32-bit, bigint 64-bit (Polars and pandas int64); a description holds no comma.",
 )
 @click.option("--event-time", "event_time", help="Name of the event-time column.")
 @click.option(
@@ -685,7 +686,8 @@ def fg_create(
     "--features",
     "features_spec",
     help='Schema "name:type[:description]", comma-separated; required outside Spark, '
-    'e.g. "id:bigint,city:string,amount:double".',
+    'e.g. "id:bigint,city:string,amount:double". Types are Hive names: int is 32-bit, '
+    "bigint 64-bit (Polars and pandas int64); a description holds no comma.",
 )
 @click.option("--version", type=int, help="Feature group version.")
 @click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
@@ -978,7 +980,8 @@ def fg_derive(
     "--features",
     "features_spec",
     required=True,
-    help='New columns "name:type[:description]", e.g. "score:double:Risk score,tier:string".',
+    help='New columns "name:type[:description]", e.g. "score:double:Risk score,tier:string". '
+    "Types are Hive names: int is 32-bit, bigint 64-bit; a description holds no comma.",
 )
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
 @click.pass_context

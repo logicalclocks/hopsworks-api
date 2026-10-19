@@ -71,6 +71,8 @@ Pick a supported type up front: a write with an unsupported type fails, and retr
 - For **similarity search**, declare the vector as `array<float>` **and** attach an `EmbeddingIndex` (see Vector Embeddings): the FG is then backed by the vector DB (OpenSearch) instead of RonDB. Without an embedding index an `array<float>` is stored data, not a searchable index.
 - Online is an upsert: one row per primary key, a new write for an existing key overwrites it.
 
+Types are Hive names: `int` is 32-bit and `bigint` 64-bit, so a Polars or pandas `int64` column is `bigint` (an `int` column refuses it). The CLI spec `name:type[:description]` is comma-separated, so a description holds no comma.
+
 Let the schema be inferred from the DataFrame when you can; pass an explicit `features=[Feature(name, type, ...)]` list (`from hsfs.feature import Feature`; there is no `hopsworks.feature`) only to pin a type (e.g. `bigint` over an inferred `int`, or an `array<float>` embedding column).
 
 ---
@@ -154,6 +156,7 @@ fg.insert(df, wait=False)  # async: returns immediately
 - Accepts: Pandas DataFrame, Polars DataFrame, PySpark DataFrame, NumPy array, or Python list
 - `wait=False` (default): returns immediately; ingestion runs in background
 - `wait=True`: blocks until online ingestion AND offline materialization complete
+- An offline insert upserts on the primary key **plus** `event_time` (plus partition columns): a row with a known key and a new event time is a new row. A table keyed by snapshot takes the snapshot as `event_time`, never the time it was written.
 
 ### When to Use `wait=True`
 
@@ -174,7 +177,7 @@ Estimate before writing: rows × columns × ~8 bytes (numeric) × 3. A 1M × 40 
 
 ## Statistics
 
-By default, Hopsworks computes descriptive statistics on every insert. For large data volumes (GBs+), this adds significant overhead.
+By default, Hopsworks computes descriptive statistics on every insert. For large data volumes (GBs+), this adds significant overhead. Hopsworks creates the job `<fg>_<version>_compute_stats` with every feature group; with statistics off it never runs (`hops job history` lists no execution).
 
 ### Disable Statistics at Creation Time
 

@@ -41,6 +41,8 @@ RENAMED_COMMANDS: dict[tuple[str, ...], tuple[str, ...]] = {
     ("fv", "get"): ("fv", "lookup"),
     ("job", "schedule-info"): ("job", "schedule", "info"),
     ("job", "unschedule"): ("job", "schedule", "delete"),
+    # Not a former name: without it, the old `schedule` default turns `list` into a job name.
+    ("job", "schedule", "list"): ("job", "schedule", "info"),
     ("job", "describe"): ("job", "update"),
     ("alert", "get"): ("alert", "info"),
     ("alert", "receiver", "get"): ("alert", "receiver", "info"),

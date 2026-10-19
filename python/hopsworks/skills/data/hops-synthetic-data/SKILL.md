@@ -7,7 +7,9 @@ description: Generate seeded synthetic data into feature groups with Polars, as 
 
 Generate data that has a known story, so a pipeline or an ML system can be built
 and trained before a real source is connected. The generator is a program of
-the system, seeded and run as a Hopsworks job, never on the laptop.
+the system, seeded, run where the agent runs when its frame fits in memory (rows x columns x
+8 bytes under 1 GB), and as a Hopsworks job for live mode, a larger history, or a run that
+runs out of memory.
 
 ## A table for a question, with no model
 
@@ -16,7 +18,7 @@ target and no signal columns: its story is what the question should find (what
 grows over time, which category or country dominates, a seasonal peak). Use the
 rules below for the code (seeded, Polars, whole columns, no statistics jobs) and
 skip everything about targets, prevalence, `system.yaml`, the bundle and live
-mode: one generator `./data/<name>/generate.py` run once as the job `<name>-data`,
+mode: one generator `./data/<name>/generate.py` run once where the agent runs,
 one offline Delta feature group. `/hops` spawns **hops-data-builder** for it.
 
 ## Contract
@@ -51,10 +53,10 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
   dependency plus noise; the target's positive rate follows
   `requirements.targets.prevalence`. No column is a function of the target the
   real world would not have at prediction time.
-- **Polars, in a Python job in `python-feature-pipeline`.** The columns and the
+- **Polars, and as a job in `python-feature-pipeline`.** The columns and the
   relational steps that shape the story (joins between entities and events,
-  window aggregates) are Polars; the base ships it, so the generator runs there
-  and no environment is cloned. Never a Spark job: Polars generates the small
+  window aggregates) are Polars; the job base ships it, so a generator run as a
+  job needs no cloned environment. Never a Spark job: Polars generates the small
   tier's history in seconds.
 - **Whole columns, never rows.** Draw each random column in one call on a
   seeded `numpy.random.default_rng` (`choice`, `normal`, `gamma`, `poisson`,

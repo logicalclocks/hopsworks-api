@@ -46,11 +46,14 @@ program as a job. Print `[time] <step> <seconds>s` after the split, each fit, an
    regression`, `random forest`, ...); with none, fit one model that fits `task` and the data's
    size. Fit them in parallel in one process (`concurrent.futures.ProcessPoolExecutor`, one
    candidate each), score each with `metric` on validation and test, and register each as a new
-   version of model `<name>` with `feature_view=` (so `hops model info` names the view),
+   version of model `<name>`, in the process that split, with `feature_view=` (the model then
+   records the split's training dataset version, which scoring reads; `hops model info` prints
+   the view and `Training dataset`),
    `metrics=` (`val_<metric>` and `test_<metric>`), a `description=` naming the candidate, and the
    charts hops-train saves. As a job, the same program in one run, so every candidate fits on
    the one split it registers: `hops job run <name>-train --wait`.
-4. **The model file.** Each version's directory holds `model.joblib`: one scikit-learn
+4. **The model file.** `model.joblib` sits at the root of the directory passed to `save()`, never
+   in a subdirectory: `download()` returns that directory as it was. It is one scikit-learn
    `Pipeline` with its preprocessing inside (encoders, scaling, the column selection of step 2),
    so `joblib.load(Path(model_dir) / "model.joblib").predict_proba(df)` takes the feature view's
    batch frame as it comes. The `description=` says so. A framework without a scikit-learn

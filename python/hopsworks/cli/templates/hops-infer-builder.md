@@ -31,15 +31,19 @@ prediction and the insert.
 
 1. **Show it first.** Write `./inference/<name>/score.py` before anything runs, then create the
    predictions feature group `<name>_predictions` with `statistics_config=False`: primary key
-   the entity key plus the snapshot (`deal_id`, `snapshot_date`), the prediction, the model
-   version, `predicted_at` as event time, and a description naming the model and version. Its
-   insert upserts on that key, so a rerun replaces a snapshot instead of adding rows.
+   the entity key (`deal_id`), the snapshot as event time (`snapshot_date`), the prediction, the
+   model version, `predicted_at` as a plain column, and a description naming the model and
+   version. An offline insert upserts on the primary key plus the event time, so a rerun replaces
+   a snapshot instead of adding rows; `predicted_at` as event time would add a copy per run.
 2. **Score the `population`.** A feature view that joins the label holds only
    entities with a known outcome; the ones to score (open deals) have none yet. Read them with a
    spine of those entities, `fv.get_batch_data(spine_df=<frame of keys and snapshot times>)`
    (**hops-batch-inference**), or a feature view without the label join, and check the row count
    against the population (`hops sql "SELECT count(DISTINCT <key>) ..."` over the entities'
    feature group): a count far below it means the label join dropped them.
+   Before the read, `fv.init_batch_scoring(training_dataset_version=model.training_dataset_version)`:
+   the model's own training dataset version (`hops model info` prints it as `Training dataset`),
+   whose statistics the view's transformations use. Never the newest version of the view.
 3. **Load the model as the model builder saved it.** `model_dir = mr.get_model(name,
    version=v).download()`, then `joblib.load(Path(model_dir) / "model.joblib")`, a scikit-learn
    `Pipeline` that takes the batch frame as it comes (its description says so; a model saved
