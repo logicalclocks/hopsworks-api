@@ -51,6 +51,27 @@ class TestFeatureGroupApi:
         assert isinstance(external_fg, fg_mod.ExternalFeatureGroup)
         assert isinstance(spine_fg, fg_mod.SpineGroup)
 
+    def test_get_all_builds_the_class_of_each_type(self, mocker, backend_fixtures):
+        fg_api = feature_group_api.FeatureGroupApi()
+        items = [
+            backend_fixtures["feature_group"]["get"]["response"],
+            backend_fixtures["external_feature_group"]["get"]["response"],
+            backend_fixtures["spine_group"]["get"]["response"],
+            {"type": "unknownFeaturegroupDTO", "name": "future"},
+        ]
+        client_mock = Mock()
+        client_mock._send_request.return_value = {"items": items}
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        mocker.patch("hsfs.engine._get_instance")
+
+        fgs = fg_api._get_all(99)
+
+        assert [type(fg) for fg in fgs] == [
+            fg_mod.FeatureGroup,
+            fg_mod.ExternalFeatureGroup,
+            fg_mod.SpineGroup,
+        ]
+
     def test_check_features(self, mocker, backend_fixtures):
         # Arrange
         fg_api = feature_group_api.FeatureGroupApi()

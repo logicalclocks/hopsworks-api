@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import logging
 import warnings
 
 from hopsworks_common import client
@@ -26,6 +27,9 @@ from hsfs.core import (
     ingestion_job_conf,
     job,
 )
+
+
+_logger = logging.getLogger(__name__)
 
 
 class FeatureGroupApi:
@@ -158,18 +162,9 @@ class FeatureGroupApi:
         # In principle unique names are enforced across fg type and this should therefore
         # return only list of the same type. But it cost nothing to check in case this gets forgotten.
         for fg_json in fgs_json:
-            if (
-                fg_json["type"] == FeatureGroupApi.BACKEND_FG_STREAM
-                or fg_json["type"] == FeatureGroupApi.BACKEND_FG_BATCH
-            ):
-                fg_objs.append(fg_mod.FeatureGroup.from_response_json(fg_json))
-            elif fg_json["type"] == FeatureGroupApi.BACKEND_FG_EXTERNAL:
-                if fg_json.get("spine", False):
-                    fg_objs.append(fg_mod.SpineGroup.from_response_json(fg_json))
-                else:
-                    fg_objs.append(
-                        fg_mod.ExternalFeatureGroup.from_response_json(fg_json)
-                    )
+            fg_obj = self._from_json(fg_json)
+            if fg_obj is not None:
+                fg_objs.append(fg_obj)
             else:
                 list_of_types = [
                     FeatureGroupApi.BACKEND_FG_STREAM,
@@ -222,12 +217,19 @@ class FeatureGroupApi:
             ]
         }
         fg_json = _client._send_request("GET", path_params, query_params)
-        if (
-            fg_json["type"] == FeatureGroupApi.BACKEND_FG_STREAM
-            or fg_json["type"] == FeatureGroupApi.BACKEND_FG_BATCH
+        return self._from_json(fg_json)
+
+    @staticmethod
+    def _from_json(
+        fg_json: dict,
+    ) -> fg_mod.FeatureGroup | fg_mod.SpineGroup | fg_mod.ExternalFeatureGroup | None:
+        """Build the feature group class matching the backend type, or None for an unknown type."""
+        if fg_json.get("type") in (
+            FeatureGroupApi.BACKEND_FG_STREAM,
+            FeatureGroupApi.BACKEND_FG_BATCH,
         ):
             return fg_mod.FeatureGroup.from_response_json(fg_json)
-        if fg_json["type"] == FeatureGroupApi.BACKEND_FG_EXTERNAL:
+        if fg_json.get("type") == FeatureGroupApi.BACKEND_FG_EXTERNAL:
             if fg_json.get("spine", False):
                 return fg_mod.SpineGroup.from_response_json(fg_json)
             return fg_mod.ExternalFeatureGroup.from_response_json(fg_json)
@@ -261,13 +263,18 @@ class FeatureGroupApi:
 
         res = _client._send_request("GET", path_params, query_params)
 
-        if "items" not in res:
-            try:
-                return [fg_mod.FeatureGroup.from_response_json(res)]
-            except TypeError:
-                return []
-
-        return [fg_mod.FeatureGroup.from_response_json(r) for r in res["items"]]
+        fgs = []
+        for fg_json in res.get("items", [res] if "type" in res else []):
+            fg_obj = self._from_json(fg_json)
+            if fg_obj is None:
+                _logger.warning(
+                    "Skipping feature group %s of unknown type %s.",
+                    fg_json.get("name"),
+                    fg_json.get("type"),
+                )
+            else:
+                fgs.append(fg_obj)
+        return fgs
 
     def _delete_content(
         self,
