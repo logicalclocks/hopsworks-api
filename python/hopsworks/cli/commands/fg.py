@@ -670,6 +670,7 @@ def fg_create_external(
     if table is not None:
         data_source.table = table
 
+    fg = None
     try:
         fg = fs.create_external_feature_group(
             name=name,
@@ -684,13 +685,21 @@ def fg_create_external(
         )
         fg.save()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not create external FG: {exc}") from exc
+        # save() registers the metadata first and computes statistics after, so
+        # a failure in the second step leaves a usable feature group behind.
+        if getattr(fg, "id", None) is None:
+            raise click.ClickException(f"Could not create external FG: {exc}") from exc
+        stats_error = exc
+    else:
+        stats_error = None
 
     output.success(
         "✓ Created external feature group %s v%s",
         getattr(fg, "name", name),
         getattr(fg, "version", "?"),
     )
+    if stats_error is not None:
+        output.warn("Statistics were not computed: %s", _reason(stats_error))
     if output.JSON_MODE:
         output.print_json(_fg_to_dict(fg))
 
@@ -1278,6 +1287,16 @@ def _truncate_cell(value: Any, width: int = 60) -> str:
             return f"[len={len(seq)}] {head}{tail}"
     text = str(value)
     return text if len(text) <= width else text[: width - 1] + "…"
+
+
+def _reason(exc: Exception) -> str:
+    """The server's user message of a REST error, else the exception text."""
+    response = getattr(exc, "response", None)
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001 - no response or not JSON
+        return str(exc)
+    return body.get("usrMsg") or body.get("errorMsg") or str(exc)
 
 
 def _split_csv(value: str | None) -> list[str]:
