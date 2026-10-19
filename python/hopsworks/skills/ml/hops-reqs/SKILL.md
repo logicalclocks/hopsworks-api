@@ -121,6 +121,7 @@ integration conftest, the parity test, `run_integration.py`) and
 - Run bundles and `result.json`: [references/bundle.md](references/bundle.md).
 - Tests and benchmarks: [references/tests.md](references/tests.md).
 - The GitHub repository, commits, the pull request and its review: [references/repo.md](references/repo.md).
+- `/hops-build`'s parts, each read at the step its command names: [references/build-reqs.md](references/build-reqs.md) (the repository and `reqs`), [references/build-edits.md](references/build-edits.md) (edits from the Hopsworks UI), [references/build-phases.md](references/build-phases.md) (`data` to `app`).
 
 Logs never go into a system's directory, which is a git work tree.
 Jobs and deployments log to stdout and stderr, archived in the project's `Logs` dataset; a program the user runs in the terminal as part of the factory logs to `${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>/`.

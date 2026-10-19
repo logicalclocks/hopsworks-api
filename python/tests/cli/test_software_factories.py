@@ -198,8 +198,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
     for slug in labels:
         assert f"`{slug}`" in text
     assert "--example <example>" in text
-    build = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
-    assert "`app.wanted` is recorded, never ask" in build
+    assert "`app.wanted` is recorded, never ask" in _build_text()
 
 
 def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
@@ -255,18 +254,34 @@ def test_every_example_creates_a_valid_system(tmp_path, example):
     assert doc["app"]["wanted"] is True
 
 
+def _build_text() -> str:
+    """/hops-build: its command and the parts it reads from hops-reqs/references."""
+    parts = sorted(REQS.glob("build-*.md"))
+    return "\n".join(
+        p.read_text(encoding="utf-8") for p in [TEMPLATES / "hops-build.md", *parts]
+    )
+
+
+def test_the_build_names_each_part_where_it_is_read():
+    core = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
+    parts = sorted(p.name for p in REQS.glob("build-*.md"))
+    assert parts == ["build-edits.md", "build-phases.md", "build-reqs.md"]
+    for part in parts:
+        assert f"read `hops-reqs/references/{part}`" in core, part
+
+
 def test_the_builder_runs_on_the_session_model():
     front = _front("hops-build.md")
-    text = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
+    text = _build_text()
     assert "model" not in front
     assert "argument-hint" in front
     for phase in (
-        "### reqs",
-        "### data",
-        "### features",
-        "### train",
-        "### infer",
-        "### app",
+        "## reqs",
+        "## data",
+        "## features",
+        "## train",
+        "## infer",
+        "## app",
         "### verify",
         "### stop",
         "### Finishing",
