@@ -31,6 +31,7 @@ from hsfs.core import (
 
 _logger = logging.getLogger(__name__)
 
+
 class FeatureGroupApi:
     BACKEND_FG_STREAM = "streamFeatureGroupDTO"
     BACKEND_FG_BATCH = "cachedFeaturegroupDTO"
