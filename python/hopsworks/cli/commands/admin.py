@@ -15,13 +15,11 @@ from hopsworks_common.client.exceptions import RestAPIError
 
 
 _WINDOWS = ("hour", "day", "week", "month", "year")
-# RESTCodes.ApiKeyErrorCode.NO_VALID_SCOPE.
-_NO_VALID_SCOPE = 320004
 _ADMIN_KEY_NEEDED = (
     "hops admin costs needs an API key with the ADMIN and PROJECT scopes. Keys "
     "created by `hops setup` never have ADMIN: create one as a platform admin "
-    "under Account Settings > API keys and use it with "
-    "`hops login --api-key <key>`."
+    "under Account Settings > API keys and log in with it: `hops login` "
+    "prompts for the key without echoing it."
 )
 _VIEWS = ("namespace", "department")
 _WORKLOAD_KINDS = ("NAMESPACE", "DEPARTMENT", "UNASSIGNED")
@@ -138,8 +136,10 @@ def admin_costs(ctx: click.Context, window: str, by: str) -> None:
         by: One of namespace, department.
     """
     import hopsworks
+    from hopsworks.cli.main import _NO_VALID_SCOPE
 
     session.get_project(ctx)
+    missing_admin_scope = False
     try:
         api = hopsworks.get_costs_api()
         if by == "department":
@@ -147,12 +147,13 @@ def admin_costs(ctx: click.Context, window: str, by: str) -> None:
         else:
             costs = api.get_namespace_costs(window)
     except RestAPIError as exc:
-        if exc.error_code != _NO_VALID_SCOPE:
+        # error_code is set only when the response has a JSON body.
+        if getattr(exc, "error_code", None) != _NO_VALID_SCOPE:
             raise click.ClickException(f"Could not get {by} costs: {exc}") from exc
-        costs = None
+        missing_admin_scope = True
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Could not get {by} costs: {exc}") from exc
-    if costs is None:
+    if missing_admin_scope:
         # Raised outside the handler, with no cause or context, so the CLI-wide scope hint, which suggests
         # `hops setup`, whose keys never have ADMIN, is not added.
         raise click.ClickException(_ADMIN_KEY_NEEDED)

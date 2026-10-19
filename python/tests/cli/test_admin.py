@@ -231,8 +231,23 @@ def test_admin_costs_names_the_scopes_a_key_without_admin_lacks(costs_api):
 
     assert result.exit_code != 0
     assert "ADMIN and PROJECT scopes" in result.output
-    assert "hops login --api-key" in result.output
+    assert "`hops login` prompts for the key" in result.output
     assert "hops setup --force" not in result.output
+
+
+def test_admin_costs_reports_an_error_without_a_json_body(costs_api):
+    response = mock.MagicMock(status_code=502)
+    response.json.return_value = {}
+    response.content = b""
+    costs_api.get_namespace_costs.side_effect = RestAPIError(
+        "admin/costs/namespaces", response
+    )
+
+    result = CliRunner().invoke(cli, ["admin", "costs"])
+
+    assert result.exit_code != 0
+    assert "Could not get namespace costs" in result.output
+    assert not isinstance(result.exception, AttributeError)
 
 
 def test_admin_costs_json(costs_api):

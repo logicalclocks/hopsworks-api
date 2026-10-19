@@ -6,7 +6,6 @@ from typing import Any
 
 import click
 from hopsworks.cli import auth, config, output, session
-from hopsworks_common.client.exceptions import RestAPIError
 
 
 @click.group("project")
@@ -155,8 +154,6 @@ def project_costs(ctx: click.Context, window: str, project_name: str | None) -> 
         costs = hopsworks.get_costs_api().get_project_costs(
             window, project=project_name
         )
-    except RestAPIError as exc:
-        raise click.ClickException(f"Could not get project costs: {exc}") from exc
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Could not get project costs: {exc}") from exc
     print_costs(costs, "namespace", window, show_idle=False)
