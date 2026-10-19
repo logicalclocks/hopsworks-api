@@ -66,3 +66,17 @@ class TestGpuAvailability:
             "GET", ["project", 119, "kube", "gpu"]
         )
         assert gpus.available_non_preemptible == 1.0
+
+    def test_project_requests_its_own_gpus_when_the_client_is_on_another_project(
+        self, mocker
+    ):
+        client = mocker.MagicMock()
+        client._project_id = 221
+        client._send_request.return_value = RUN_AI_RESPONSE
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client)
+
+        project.Project(project_id=119, project_name="demo").get_gpu_availability()
+
+        client._send_request.assert_called_once_with(
+            "GET", ["project", 119, "kube", "gpu"]
+        )

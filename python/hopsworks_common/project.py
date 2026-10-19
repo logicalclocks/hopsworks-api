@@ -356,7 +356,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return gpu_api.GpuApi()._get_gpu_availability()
+        return gpu_api.GpuApi()._get_gpu_availability(self.id)
 
     @public
     def get_members_api(self) -> project_members_api.ProjectMembersApi:

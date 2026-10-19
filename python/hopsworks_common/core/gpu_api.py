@@ -20,8 +20,13 @@ from hopsworks_common import gpu_availability as gpu_availability_mod
 
 
 class GpuApi:
-    def _get_gpu_availability(self) -> gpu_availability_mod.GpuAvailability:
-        """Get the GPUs the current project can use.
+    def _get_gpu_availability(
+        self, project_id: int
+    ) -> gpu_availability_mod.GpuAvailability:
+        """Get the GPUs a project can use.
+
+        Parameters:
+            project_id: ID of the project, which need not be the client's active project.
 
         Returns:
             The project's GPU availability.
@@ -30,7 +35,7 @@ class GpuApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "kube", "gpu"]
+        path_params = ["project", project_id, "kube", "gpu"]
         return gpu_availability_mod.GpuAvailability.from_response_json(
             _client._send_request("GET", path_params)
         )
