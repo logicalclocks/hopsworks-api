@@ -287,6 +287,28 @@ class TestTasks:
         evals.tasks.list(pending_redaction=True)
         assert session.sent[0][2] == {"pendingRedaction": "true"}
 
+    def test_forgetting_a_trace_says_what_it_erased(self):
+        """A deletion request has to be answerable with what was removed.
+
+        And it is more than the tasks: the verdicts about the trace quote the
+        turn, and the analysis model's proposals quote those.
+        """
+        evals, session = client(
+            Reply({"removed": 1, "tasks": 1, "feedback": 2, "triage": 3, "clusters": 1})
+        )
+
+        removed = evals.tasks.forget_trace(7, "t")
+
+        assert session.sent[0][:3] == (
+            "DELETE",
+            "/agent-evals/tasks/from-trace/t",
+            {"deploymentId": 7},
+        )
+        assert removed["tasks"] == 1
+        assert removed["feedback"] == 2
+        assert removed["triage"] == 3
+        assert removed["clusters"] == 1
+
     def test_promoting_a_trace_and_confirming_its_redaction(self):
         evals, session = client(
             Reply({"taskId": "t", "redactionStatus": "PENDING_REDACTION"}),

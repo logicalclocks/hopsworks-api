@@ -495,10 +495,24 @@ class Tasks:
             )
         )
 
-    def forget_trace(self, deployment_id: int, trace_id: str) -> None:
-        """Remove every task promoted from a trace, for a deletion request."""
-        self._http.delete(
-            f"{EVALS}/tasks/from-trace/{trace_id}", deploymentId=deployment_id
+    def forget_trace(self, deployment_id: int, trace_id: str) -> dict[str, int]:
+        """Erase everything derived from a trace, for a deletion request.
+
+        The tasks promoted from it and the frozen copies of those in any published
+        suite, the verdicts people gave on it -- a corrected answer quotes the turn
+        it corrects -- and the proposals the analysis model wrote from those. The
+        trace's own spans go with the tracing store's retention.
+
+        Returns what was removed: ``{"tasks": n, "feedback": n, "triage": n,
+        "clusters": n}``, where ``clusters`` counts the recurring failures that
+        pointed at this trace as their representative and no longer do. A partial
+        erasure raises rather than answering, so it can be run again.
+        """
+        return (
+            self._http.delete(
+                f"{EVALS}/tasks/from-trace/{trace_id}", deploymentId=deployment_id
+            )
+            or {}
         )
 
     def add_to_regressions(
