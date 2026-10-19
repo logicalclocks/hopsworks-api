@@ -137,6 +137,7 @@ def dataset_upload(
     """
     import os
 
+    remote_path = remote_path.rstrip("/") or remote_path
     upload_path = remote_path
     if os.path.basename(remote_path) == os.path.basename(local_path):
         upload_path = os.path.dirname(remote_path) or "."

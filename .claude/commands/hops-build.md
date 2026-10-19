@@ -189,6 +189,10 @@ system. Every phase ends with one commit,
 `[<slug>] <phase>: <one line>`, pushed. Run `hops factory system register <slug>` once at the start: it
 lists the system in the project's ML systems in the Hopsworks UI (from an external client it
 records the repository URL) and is a no-op refresh when the interview already registered it.
+With `url: local` from an external client the code has no remote and no HopsFS mount, so it gets
+a home in HopsFS: after each phase commit, `hops files upload <slug> Users/<user>/systems/
+--overwrite` (the `.git` directory too), and register once with
+`--location /Projects/<project>/Users/<user>/systems/<slug>`.
 
 ### reqs: complete the specification
 

@@ -81,7 +81,11 @@ def code_location(path: Path, project: str | None = None) -> str:
 
 
 def register(
-    ctx: click.Context, path: Path, name: str | None = None, factory: str | None = None
+    ctx: click.Context,
+    path: Path,
+    name: str | None = None,
+    factory: str | None = None,
+    location: str | None = None,
 ) -> dict:
     """Register the system at `path`, built by `factory`, with the project's registry; returns the stored entry.
 
@@ -93,6 +97,8 @@ def register(
         path: The system's directory.
         name: Its display name.
         factory: The factory that built it.
+        location: The HopsFS folder holding a copy of its code, for a directory that is
+            neither on the HopsFS mount nor in a Git repository with an origin.
 
     Returns:
         The registry entry.
@@ -106,8 +112,12 @@ def register(
         factory is not None and recorded.get("name") not in (None, factory)
     ):
         recorded = {}
+    if location is not None and not location.startswith(f"/Projects/{project.name}/"):
+        raise click.UsageError(
+            f"--location must be a folder of this project: /Projects/{project.name}/..."
+        )
     return ml_system_api._register(
-        code_location(path, getattr(project, "name", None)),
+        location or code_location(path, getattr(project, "name", None)),
         name,
         factory or recorded.get("name"),
         factory_version=recorded.get("version"),
@@ -186,9 +196,20 @@ def system_list(ctx: click.Context, factory: str | None) -> None:
     "--factory",
     help="The factory that built it (hops factory list); a new entry defaults to ml-batch.",
 )
+@click.option(
+    "--location",
+    help=(
+        "HopsFS folder with a copy of the code (/Projects/<project>/...), for a directory "
+        "outside the HopsFS mount with no Git origin."
+    ),
+)
 @click.pass_context
 def system_register(
-    ctx: click.Context, path: Path, name: str | None, factory: str | None
+    ctx: click.Context,
+    path: Path,
+    name: str | None,
+    factory: str | None,
+    location: str | None,
 ) -> None:
     """Register a system directory, or refresh its entry.
 
@@ -200,8 +221,9 @@ def system_register(
         path: The system's directory, the one holding its system.yaml.
         name: Display name.
         factory: The factory that built it.
+        location: HopsFS folder with a copy of the code.
     """
-    entry = register(ctx, path, name, factory)
+    entry = register(ctx, path, name, factory, location)
     output.success(f"Registered {entry.get('name')} at {entry.get('pathToCode')}")
 
 
