@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import logging
 import os
+import uuid
 import warnings
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
     from hsfs.constructor import hudi_feature_group_alias
+    from hsfs.core import partition_selection
 
 # Note: Avoid importing optional Delta dependencies at module import time.
 # They are imported on-demand inside methods to provide friendly errors only
@@ -513,6 +516,243 @@ class DeltaEngine:
             self._spark_session, location, storage_options=storage_options
         )
         return self._feature_group_api._commit(self._feature_group, fg_commit)
+
+    # region Partition delete
+
+    # Delta copies this session setting into the commitInfo of the next commit, which is
+    # how the Spark path finds its own DELETE among commits from concurrent writers.
+    COMMIT_USER_METADATA_CONF = "spark.databricks.delta.commitInfo.userMetadata"
+
+    def _delete_partitions(
+        self, selection: partition_selection.PartitionSelection
+    ) -> tuple[feature_group_commit.FeatureGroupCommit, str] | None:
+        """Delete the selected partitions with a DELETE on partition columns only.
+
+        Returns:
+            The commit to register and a label naming the Delta version, or None when
+            the delete removed no file.
+        """
+        partition_transforms._require_writable(self._feature_group)
+        if self._spark_session is not None:
+            return self._delete_partitions_spark(selection)
+        return self._delete_partitions_delta_rs(selection)
+
+    def _delete_partitions_spark(self, selection):
+        location = self._feature_group.prepare_spark_location()
+        if not _is_delta_table_at(self._spark_session, location):
+            raise FeatureStoreException(
+                f"Feature group {self._feature_group.name} is not DELTA enabled "
+            )
+        table = _delta_table_for_path(self._spark_session, location)
+
+        marker = str(uuid.uuid4())
+        conf = self._spark_session.conf
+        previous = conf.get(self.COMMIT_USER_METADATA_CONF, None)
+        # Set without _spark_conf's error suppression: a marker that silently failed
+        # to apply would make a committed delete look like one that matched nothing.
+        conf.set(self.COMMIT_USER_METADATA_CONF, marker)
+        try:
+            table.delete(selection._spark_condition())
+        finally:
+            if previous is None:
+                conf.unset(self.COMMIT_USER_METADATA_CONF)
+            else:
+                conf.set(self.COMMIT_USER_METADATA_CONF, previous)
+
+        marked = self._find_marked_commit(location, marker)
+        if marked is None:
+            _logger.info(
+                f"delete_partitions on {self._feature_group.name} wrote no commit."
+            )
+            return None
+        version, timestamp, removed_stats = marked
+        if not removed_stats:
+            _logger.info(
+                f"delete_partitions on {self._feature_group.name} matched no partition "
+                f"(Delta version {version} removed no file)."
+            )
+            return None
+        rows_deleted = self._sum_num_records(removed_stats)
+        fg_commit = self._partition_delete_commit(
+            timestamp, rows_deleted, self._spark_session, location
+        )
+        return fg_commit, f"Delta version {version}"
+
+    def _find_marked_commit(
+        self, location: str, marker: str
+    ) -> tuple[int, int, list[str | None]] | None:
+        """Find the commit carrying *marker* as its `userMetadata`.
+
+        Read from `_delta_log/*.json` rather than `history()`, which needs a Hive
+        client under Spark Connect.
+
+        Returns:
+            The commit's version, its in-commit timestamp in milliseconds and the
+            `stats` of every file it removed; None when no commit carries the marker.
+        """
+        from pyspark.sql import functions as F
+        from pyspark.sql.types import LongType, StringType, StructField, StructType
+
+        log_schema = StructType(
+            [
+                StructField(
+                    "commitInfo",
+                    StructType(
+                        [
+                            StructField("timestamp", LongType()),
+                            StructField("userMetadata", StringType()),
+                        ]
+                    ),
+                ),
+                StructField(
+                    "remove",
+                    StructType(
+                        [
+                            StructField("path", StringType()),
+                            StructField("stats", StringType()),
+                        ]
+                    ),
+                ),
+            ]
+        )
+        log_dir = location.rstrip("/") + "/_delta_log/"
+        marked = (
+            self._spark_session.read.schema(log_schema)
+            .json(log_dir + "*.json")
+            .filter(F.col("commitInfo.userMetadata") == marker)
+            .withColumn(
+                "version",
+                F.regexp_extract(F.input_file_name(), r"(\d{20})\.json$", 1).cast(
+                    "long"
+                ),
+            )
+            .select("version", F.col("commitInfo.timestamp").alias("timestamp"))
+            .collect()
+        )
+        if not marked:
+            return None
+        version = int(marked[0]["version"])
+        removed = (
+            self._spark_session.read.schema(log_schema)
+            .json(f"{log_dir}{version:020d}.json")
+            .filter(F.col("remove").isNotNull())
+            .select(F.col("remove.stats").alias("stats"))
+            .collect()
+        )
+        return version, int(marked[0]["timestamp"]), [row["stats"] for row in removed]
+
+    @staticmethod
+    def _sum_num_records(stats_json: list[str | None]) -> int | None:
+        """Total `numRecords` over Delta file statistics, or None if any file has none."""
+        total = 0
+        for stats in stats_json:
+            num_records = json.loads(stats).get("numRecords") if stats else None
+            if num_records is None:
+                return None
+            total += int(num_records)
+        return total
+
+    def _delete_partitions_delta_rs(self, selection):
+        try:
+            from deltalake import DeltaTable as DeltaRsTable
+            from deltalake.exceptions import TableNotFoundError
+        except ImportError as e:
+            raise ImportError(
+                "Delta Lake (deltalake) is required for non-Spark operations. "
+                "Install 'hops-deltalake' to enable Delta RS features."
+            ) from e
+        self._require_spark_for_clustered("delete partitions from")
+        location = self._get_delta_rs_location()
+        storage_options = self._get_delta_rs_storage_options()
+        try:
+            table = DeltaRsTable(location, storage_options=storage_options)
+        except TableNotFoundError as e:
+            raise FeatureStoreException(
+                f"Feature group {self._feature_group.name} is not DELTA enabled "
+            ) from e
+
+        physical = set(table.metadata().partition_columns)
+        not_physical = [c for c in selection.columns if c not in physical]
+        if not_physical:
+            raise FeatureStoreException(
+                f"{not_physical} are partition columns of feature group "
+                f"{self._feature_group.name} but not of its Delta table, which is "
+                f"partitioned by {sorted(physical)}. Deleting by them would read and "
+                "rewrite data files instead of dropping whole partitions."
+            )
+
+        # Counted from the snapshot the delete runs against: delta-rs does not report
+        # deleted rows when a delete drops whole files.
+        rows_deleted = self._count_selected_records(table, selection)
+        version_before = table.version()
+        _logger.debug(
+            f"Deleting partitions {selection.columns} from Delta table at {location}"
+        )
+        metrics = table.delete(selection._sql_predicate())
+        # The handle that ran the delete carries the version that delete committed.
+        version = table.version()
+        if version == version_before or not metrics.get("num_removed_files"):
+            _logger.info(
+                f"delete_partitions on {self._feature_group.name} matched no partition."
+            )
+            return None
+
+        entry = next(
+            (e for e in table.history(limit=10) if e.get("version") == version), None
+        ) or next(e for e in table.history() if e.get("version") == version)
+        fg_commit = self._partition_delete_commit(
+            entry["timestamp"], rows_deleted, None, location, storage_options
+        )
+        return fg_commit, f"Delta version {version}"
+
+    @staticmethod
+    def _count_selected_records(table, selection) -> int | None:
+        """Records in the files of the selected partitions, or None if any lacks stats."""
+        import pyarrow as pa
+
+        actions = pa.record_batch(table.get_add_actions(flatten=True)).to_pydict()
+        total = 0
+        for index, num_records in enumerate(actions["num_records"]):
+            stored = {
+                column: actions[f"partition.{column}"][index]
+                for column in selection.columns
+            }
+            if not selection._matches(stored):
+                continue
+            if num_records is None:
+                return None
+            total += num_records
+        return total
+
+    def _partition_delete_commit(
+        self,
+        commit_timestamp,
+        rows_deleted: int | None,
+        spark_session,
+        location: str,
+        storage_options: dict | None = None,
+    ) -> feature_group_commit.FeatureGroupCommit:
+        commit_time = util._convert_event_time_to_timestamp(commit_timestamp)
+        # The backend archives every commit older than last_active_commit_time, so it
+        # keeps the meaning every other Delta write gives it: the oldest MERGE or WRITE.
+        last_data_commit = self._get_last_commit_metadata(
+            spark_session, location, storage_options=storage_options
+        )
+        return feature_group_commit.FeatureGroupCommit(
+            commitid=None,
+            commit_date_string=util._get_hudi_datestr_from_timestamp(commit_time),
+            commit_time=commit_time,
+            rows_inserted=0,
+            rows_updated=0,
+            rows_deleted=rows_deleted,
+            last_active_commit_time=(
+                last_data_commit.last_active_commit_time
+                if last_data_commit is not None
+                else commit_time
+            ),
+        )
+
+    # endregion
 
     # Delta collects data-skipping statistics for the first N columns
     # (delta.dataSkippingNumIndexedCols, default 32). Liquid clustering only

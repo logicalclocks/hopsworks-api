@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from datetime import date
+
 import pytest
 from hopsworks_common.core import sink_job_configuration
 from hsfs import feature, feature_group, feature_group_commit, validation_report
@@ -1638,6 +1640,120 @@ class TestFeatureGroupEngine:
             fg_engine._commit_delete(
                 feature_group=fg, delete_df=None, write_options=None
             )
+
+    def _partition_delete_setup(self, mocker, time_travel_format, spark_context="set"):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine"
+            "._get_spark_session_and_context",
+            return_value=(
+                mocker.Mock(),
+                mocker.Mock() if spark_context == "set" else spark_context,
+            ),
+        )
+        fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=99)
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=["day"],
+            id=10,
+            time_travel_format=time_travel_format,
+            features=[
+                feature.Feature("id", type="bigint", hudi_precombine_key=True),
+                feature.Feature("day", type="date", partition=True),
+            ],
+        )
+        return fg_engine, fg, fg_api.return_value
+
+    @pytest.mark.parametrize(
+        ("time_travel_format", "engine_path"),
+        [
+            ("DELTA", "hsfs.core.delta_engine.DeltaEngine"),
+            ("ICEBERG", "hsfs.core.iceberg_engine.IcebergEngine"),
+            ("HUDI", "hsfs.core.hudi_engine.HudiEngine"),
+        ],
+    )
+    def test_delete_partitions_dispatches_and_registers(
+        self, mocker, time_travel_format, engine_path
+    ):
+        # Arrange
+        fg_engine, fg, fg_api = self._partition_delete_setup(mocker, time_travel_format)
+        storage_engine = mocker.patch(engine_path)
+        storage_engine.return_value._delete_partitions.return_value = (
+            "fg_commit",
+            "label",
+        )
+
+        # Act
+        result = fg_engine._delete_partitions(fg, {"day": ["2026-09-02"]})
+
+        # Assert
+        selection = storage_engine.return_value._delete_partitions.call_args.args[0]
+        assert selection.columns == {"day": [date(2026, 9, 2)]}
+        fg_api._commit.assert_called_once_with(fg, "fg_commit")
+        assert result is fg_api._commit.return_value
+
+    def test_delete_partitions_no_match_registers_nothing(self, mocker):
+        # Arrange
+        fg_engine, fg, fg_api = self._partition_delete_setup(mocker, "DELTA")
+        delta = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        delta.return_value._delete_partitions.return_value = None
+
+        # Act & Assert
+        assert fg_engine._delete_partitions(fg, {"day": ["2026-09-02"]}) is None
+        fg_api._commit.assert_not_called()
+
+    def test_delete_partitions_registration_failure_names_the_commit(self, mocker):
+        # Arrange
+        fg_engine, fg, fg_api = self._partition_delete_setup(mocker, "DELTA")
+        delta = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        delta.return_value._delete_partitions.return_value = (
+            "fg_commit",
+            "Delta version 8",
+        )
+        fg_api._commit.side_effect = RuntimeError("backend down")
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="deleted in Delta version 8"
+        ) as e:
+            fg_engine._delete_partitions(fg, {"day": ["2026-09-02"]})
+        assert isinstance(e.value.__cause__, RuntimeError)
+
+    def test_delete_partitions_validates_before_opening_the_table(self, mocker):
+        # Arrange
+        fg_engine, fg, _ = self._partition_delete_setup(mocker, "DELTA")
+        delta = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException, match="does not fit"):
+            fg_engine._delete_partitions(fg, {"day": ["2026-13-01"]})
+        delta.assert_not_called()
+
+    def test_delete_partitions_rejects_hudi_without_spark(self, mocker):
+        # Arrange
+        fg_engine, fg, _ = self._partition_delete_setup(mocker, "HUDI")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException, match="Spark engine"):
+            fg_engine._delete_partitions(fg, {"day": ["2026-09-02"]})
+
+    def test_delete_partitions_rejects_hudi_on_spark_connect(self, mocker):
+        # Arrange
+        fg_engine, fg, _ = self._partition_delete_setup(
+            mocker, "HUDI", spark_context=None
+        )
+        hudi = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException, match="Spark Connect"):
+            fg_engine._delete_partitions(fg, {"day": ["2026-09-02"]})
+        hudi.assert_not_called()
 
     def test_clean_delta(self, mocker):
         # Arrange

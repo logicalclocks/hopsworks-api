@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
     from hsfs.constructor import hudi_feature_group_alias
+    from hsfs.core import partition_selection
 
 # Note: Avoid importing optional PyIceberg dependencies at module import time.
 # They are imported on-demand inside methods to provide friendly errors only
@@ -828,6 +829,145 @@ class IcebergEngine:
             rows_deleted=rows_deleted,
         )
         return self._feature_group_api._commit(self._feature_group, fg_commit)
+
+    # region Partition delete
+
+    def _delete_partitions(
+        self, selection: partition_selection.PartitionSelection
+    ) -> tuple[feature_group_commit.FeatureGroupCommit, str] | None:
+        """Delete the selected partitions as a snapshot that drops whole data files.
+
+        Returns:
+            The commit to register and a label naming the snapshot, or None when no
+            data file was removed.
+        """
+        partition_transforms._require_writable(self._feature_group)
+        if self._spark_session is None:
+            return self._delete_partitions_pyiceberg(selection)
+        if self._spark_context is None:
+            raise FeatureStoreException(
+                "delete_partitions on an ICEBERG feature group needs classic Spark or "
+                "the Python engine: it commits through the Iceberg Java API, which "
+                "Spark Connect does not expose."
+            )
+        return self._delete_partitions_jvm(selection)
+
+    def _delete_partitions_jvm(self, selection):
+        table = self._load_jvm_table()
+        before = table.currentSnapshot()
+        before_id = before.snapshotId() if before is not None else None
+        _logger.debug(
+            f"Deleting partitions {selection.columns} from Iceberg table "
+            f"{self._feature_group.name} through the Java API"
+        )
+        # deleteFromRowFilter only drops files whose rows all match and fails the commit
+        # when a file matches partly, so it cannot turn into a data rewrite.
+        table.newDelete().deleteFromRowFilter(
+            selection._iceberg_jvm_expression(self._spark_context._jvm)
+        ).commit()
+        after = table.currentSnapshot()
+        if after is None or after.snapshotId() == before_id:
+            _logger.info(
+                f"delete_partitions on {self._feature_group.name} matched no partition."
+            )
+            return None
+
+        summary = after.summary()
+        data_snapshot_times = []
+        snapshots = table.snapshots().iterator()
+        while snapshots.hasNext():
+            snapshot = snapshots.next()
+            if snapshot.operation() in self.DATA_OPERATIONS:
+                data_snapshot_times.append(snapshot.timestampMillis())
+        return self._partition_delete_commit(
+            after.snapshotId(),
+            after.timestampMillis(),
+            {key: summary.get(key) for key in summary.keySet()},
+            data_snapshot_times,
+        )
+
+    @_uses_pyiceberg
+    def _delete_partitions_pyiceberg(self, selection):
+        if not self._pyiceberg_write_supported():
+            raise FeatureStoreException(
+                "delete_partitions on an ICEBERG feature group stored on HopsFS needs "
+                "the Spark engine or a Python environment inside the Hopsworks "
+                "cluster: pyiceberg reaches HopsFS through libhdfs."
+            )
+        self._setup_pyiceberg()
+        location = self._get_pyiceberg_location()
+        catalog = self._make_pyiceberg_catalog()
+        version, table = self._load_pyiceberg_table(catalog, location)
+        if table is None:
+            raise FeatureStoreException(
+                f"Feature group {self._feature_group.name} is not ICEBERG enabled."
+            )
+        before = table.current_snapshot()
+        before_id = before.snapshot_id if before is not None else None
+        _logger.debug(
+            f"Deleting partitions {selection.columns} from Iceberg table at {location}"
+        )
+        table.delete(delete_filter=selection._pyiceberg_expression())
+        after = table.current_snapshot()
+        if after is None or after.snapshot_id == before_id:
+            _logger.info(
+                f"delete_partitions on {self._feature_group.name} matched no partition."
+            )
+            return None
+        self._publish_hadoop_metadata(table, location, (version or 0) + 1)
+
+        snapshots = self._pyiceberg_snapshots(table)
+        current = next(s for s in snapshots if s["snapshot_id"] == after.snapshot_id)
+        return self._partition_delete_commit(
+            after.snapshot_id,
+            current["committed_at"],
+            current["summary"],
+            [
+                s["committed_at"]
+                for s in snapshots
+                if s["operation"] in self.DATA_OPERATIONS
+            ],
+        )
+
+    def _partition_delete_commit(
+        self,
+        snapshot_id: int,
+        committed_at: int,
+        summary: dict[str, str],
+        data_snapshot_times: list[int],
+    ) -> tuple[feature_group_commit.FeatureGroupCommit, str] | None:
+        if not int(summary.get("deleted-data-files") or 0):
+            _logger.info(
+                f"delete_partitions on {self._feature_group.name} matched no partition "
+                f"(snapshot {snapshot_id} removed no data file)."
+            )
+            return None
+        if int(summary.get("added-data-files") or 0):
+            # pyiceberg rewrites a file the filter matches only partly, which happens
+            # for files written under an older partition spec. The result is still
+            # correct, so the commit stands and is registered.
+            _logger.warning(
+                f"delete_partitions on {self._feature_group.name} rewrote "
+                f"{summary.get('added-data-files')} data file(s) in snapshot "
+                f"{snapshot_id}: some files are not partitioned by the selected "
+                "columns."
+            )
+        deleted_records = summary.get("deleted-records")
+        commit_time = util._convert_event_time_to_timestamp(committed_at)
+        fg_commit = feature_group_commit.FeatureGroupCommit(
+            commitid=None,
+            commit_date_string=util._get_hudi_datestr_from_timestamp(commit_time),
+            commit_time=commit_time,
+            rows_inserted=0,
+            rows_updated=0,
+            rows_deleted=int(deleted_records) if deleted_records is not None else None,
+            last_active_commit_time=util._convert_event_time_to_timestamp(
+                min(data_snapshot_times, default=committed_at)
+            ),
+        )
+        return fg_commit, f"Iceberg snapshot {snapshot_id}"
+
+    # endregion
 
     def _delete_record_via_catalog(
         self, glue: glue_catalog.GlueCatalog, delete_df

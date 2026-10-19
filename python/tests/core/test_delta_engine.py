@@ -2788,6 +2788,190 @@ class TestDeltaEngine:
         # Assert
         assert q.endswith("s.region IN ('o''x')")
 
+    def _delta_rs_partition_delete_engine(self, mocker, monkeypatch, table):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        _patch_deltalake_modules(mocker, monkeypatch, mocker.Mock(return_value=table))
+        mocker.patch.object(
+            engine,
+            "_get_last_commit_metadata",
+            return_value=FeatureGroupCommit(last_active_commit_time=1000),
+        )
+        return engine
+
+    def _delta_rs_table(self, mocker, versions, num_records=(4, 5, 6)):
+        table = mocker.Mock()
+        table.metadata.return_value.partition_columns = ["day"]
+        table.get_add_actions.return_value = pa.record_batch(
+            {
+                "num_records": pa.array(num_records, pa.int64()),
+                "partition.day": pa.array(
+                    [date(2026, 9, 1), date(2026, 9, 2), date(2026, 9, 3)]
+                ),
+            }
+        )
+        table.version.side_effect = versions
+        table.delete.return_value = {"num_removed_files": 2, "num_deleted_rows": 0}
+        table.history.return_value = [{"version": 8, "timestamp": 1792417951699}]
+        return table
+
+    def _day_selection(self):
+        from hsfs.core.partition_selection import PartitionSelection
+
+        return PartitionSelection(
+            {"day": [date(2026, 9, 2), date(2026, 9, 3)]}, {"day": "date"}
+        )
+
+    def test_delete_partitions_delta_rs_counts_rows_from_add_actions(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        table = self._delta_rs_table(mocker, versions=[7, 8])
+        engine = self._delta_rs_partition_delete_engine(mocker, monkeypatch, table)
+
+        # Act
+        fg_commit, committed = engine._delete_partitions(self._day_selection())
+
+        # Assert
+        table.delete.assert_called_once_with(
+            "\"day\" IN (CAST('2026-09-02' AS DATE), CAST('2026-09-03' AS DATE))"
+        )
+        assert committed == "Delta version 8"
+        # delta-rs reports num_deleted_rows 0 for a partition delete; the count comes
+        # from the add actions of the selected partitions instead.
+        assert fg_commit.rows_deleted == 11
+        assert fg_commit.rows_inserted == 0
+        assert fg_commit.commit_time == 1792417951699
+        assert fg_commit.last_active_commit_time == 1000
+
+    def test_delete_partitions_delta_rs_unknown_count_without_stats(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        table = self._delta_rs_table(mocker, versions=[7, 8], num_records=(4, None, 6))
+        engine = self._delta_rs_partition_delete_engine(mocker, monkeypatch, table)
+
+        # Act
+        fg_commit, _ = engine._delete_partitions(self._day_selection())
+
+        # Assert
+        assert fg_commit.rows_deleted is None
+
+    def test_delete_partitions_delta_rs_no_match_registers_nothing(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        table = self._delta_rs_table(mocker, versions=[7, 7])
+        table.delete.return_value = {"num_removed_files": 0}
+        engine = self._delta_rs_partition_delete_engine(mocker, monkeypatch, table)
+
+        # Act & Assert
+        assert engine._delete_partitions(self._day_selection()) is None
+        engine._get_last_commit_metadata.assert_not_called()
+
+    def test_delete_partitions_delta_rs_rejects_non_physical_partition_column(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        table = self._delta_rs_table(mocker, versions=[7, 8])
+        table.metadata.return_value.partition_columns = ["region"]
+        engine = self._delta_rs_partition_delete_engine(mocker, monkeypatch, table)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="not of its Delta table"):
+            engine._delete_partitions(self._day_selection())
+        table.delete.assert_not_called()
+
+    def test_delete_partitions_delta_rs_rejects_clustered_fg(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="Cannot delete partitions"):
+            engine._delete_partitions(self._day_selection())
+
+    def _spark_partition_delete_engine(self, mocker, marked):
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        spark = mocker.MagicMock()
+        engine = DeltaEngine(1, "fs", fg, spark, mocker.MagicMock())
+        mocker.patch("hsfs.core.delta_engine._is_delta_table_at", return_value=True)
+        table = mocker.Mock()
+        mocker.patch("hsfs.core.delta_engine._delta_table_for_path", return_value=table)
+        mocker.patch.object(engine, "_find_marked_commit", return_value=marked)
+        mocker.patch.object(
+            engine,
+            "_get_last_commit_metadata",
+            return_value=FeatureGroupCommit(last_active_commit_time=1000),
+        )
+        return engine, spark, table
+
+    def test_delete_partitions_spark_marks_and_finds_its_own_commit(self, mocker):
+        # Arrange
+        engine, spark, table = self._spark_partition_delete_engine(
+            mocker,
+            marked=(12, 1792417951699, ['{"numRecords": 3}', '{"numRecords": 4}']),
+        )
+        spark.conf.get.return_value = None
+        selection = mocker.Mock()
+        markers_during_delete = []
+        table.delete.side_effect = lambda condition: markers_during_delete.append(
+            spark.conf.set.call_args
+        )
+
+        # Act
+        fg_commit, committed = engine._delete_partitions(selection)
+
+        # Assert
+        table.delete.assert_called_once_with(selection._spark_condition.return_value)
+        marker_key, marker = markers_during_delete[0].args
+        assert marker_key == DeltaEngine.COMMIT_USER_METADATA_CONF
+        engine._find_marked_commit.assert_called_once_with("hopsfs://nn:8020/p", marker)
+        spark.conf.unset.assert_called_once_with(DeltaEngine.COMMIT_USER_METADATA_CONF)
+        assert committed == "Delta version 12"
+        assert fg_commit.rows_deleted == 7
+        assert fg_commit.commit_time == 1792417951699
+
+    def test_delete_partitions_spark_restores_previous_user_metadata(self, mocker):
+        # Arrange
+        engine, spark, table = self._spark_partition_delete_engine(mocker, marked=None)
+        spark.conf.get.return_value = "theirs"
+        table.delete.side_effect = RuntimeError("delete failed")
+
+        # Act & Assert
+        with pytest.raises(RuntimeError):
+            engine._delete_partitions(mocker.Mock())
+        assert spark.conf.set.call_args.args == (
+            DeltaEngine.COMMIT_USER_METADATA_CONF,
+            "theirs",
+        )
+
+    @pytest.mark.parametrize("marked", [None, (12, 1792417951699, [])])
+    def test_delete_partitions_spark_without_removed_files_registers_nothing(
+        self, mocker, marked
+    ):
+        # Arrange
+        engine, _, _ = self._spark_partition_delete_engine(mocker, marked=marked)
+
+        # Act & Assert
+        assert engine._delete_partitions(mocker.Mock()) is None
+
+    @pytest.mark.parametrize(
+        ("stats", "expected"),
+        [
+            (['{"numRecords": 3}', '{"numRecords": 4}'], 7),
+            (['{"numRecords": 3}', None], None),
+            (['{"numRecords": 3}', '{"minValues": {}}'], None),
+        ],
+    )
+    def test_sum_num_records(self, stats, expected):
+        # Act & Assert
+        assert DeltaEngine._sum_num_records(stats) == expected
+
 
 class TestDeltaEngineConnectMode:
     """Tests for DeltaEngine initialization in Spark Connect mode."""

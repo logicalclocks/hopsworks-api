@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 import copy
+import logging
 import os
+from typing import TYPE_CHECKING
 from urllib.parse import unquote, urlsplit
 
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -27,6 +29,13 @@ from hsfs.core import (
     partition_grains,
     partition_transforms,
 )
+
+
+if TYPE_CHECKING:
+    from hsfs.core import partition_selection
+
+
+_logger = logging.getLogger(__name__)
 
 
 class HudiEngine:
@@ -143,6 +152,139 @@ class HudiEngine:
             delete_df, "append", self.HUDI_DELETE, write_options
         )
         return self._feature_group_api._commit(self._feature_group, fg_commit)
+
+    # region Partition delete
+
+    HUDI_DELETE_PARTITION = "delete_partition"
+    HUDI_PARTITIONS_TO_DELETE = "hoodie.datasource.write.partitions.to.delete"
+    HUDI_REPLACE_COMMIT_ACTION = "replacecommit"
+
+    def _delete_partitions(
+        self, selection: partition_selection.PartitionSelection
+    ) -> tuple[feature_group_commit.FeatureGroupCommit, str] | None:
+        """Delete the selected partitions with Hudi's `delete_partition` operation.
+
+        It writes a `replacecommit` that retires every file group of those partitions
+        without reading or rewriting any of them.
+
+        Returns:
+            The commit to register and a label naming the Hudi instant, or None when no
+            existing partition is selected.
+        """
+        partition_transforms._require_writable(self._feature_group)
+        location = self._feature_group.prepare_spark_location()
+        hudi_options = self._setup_hudi_write_opts(self.HUDI_DELETE_PARTITION, {})
+        fields = [
+            field.split(":")[0]
+            for field in (hudi_options.get(self.HUDI_PARTITION_FIELD) or "").split(",")
+            if field
+        ]
+        # Matched against the partition paths that exist, rather than formatted from
+        # the values, since the path format depends on the key generator, Hive-style
+        # naming and the null placeholder.
+        paths = [
+            path
+            for path, stored in self._list_partition_paths(
+                location, fields, hudi_options
+            )
+            if selection._matches(stored)
+        ]
+        if not paths:
+            _logger.info(
+                f"delete_partitions on {self._feature_group.name} matched no partition."
+            )
+            return None
+        hudi_options[self.HUDI_PARTITIONS_TO_DELETE] = ",".join(paths)
+        _logger.debug(
+            f"Deleting Hudi partitions {paths} of {self._feature_group.name} at {location}"
+        )
+
+        before = self._latest_completed_instant(location)
+        self._migrate_table(self._spark_context, hudi_options, location)
+        # delete_partition takes the partitions from its options; the frame only has to
+        # carry the table schema, so no row is read.
+        table = self._spark_session.read.format(self.HUDI_SPARK_FORMAT).load(location)
+        empty = table.select(
+            *[c for c in table.columns if c not in self.HUDI_SPEC_FEATURE_NAMES]
+        ).limit(0)
+        empty.write.format(self.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
+            "append"
+        ).save(location)
+
+        after = self._latest_completed_instant(location)
+        if (
+            after is None
+            or after.getAction() != self.HUDI_REPLACE_COMMIT_ACTION
+            or (
+                before is not None
+                and after.getCompletionTime() == before.getCompletionTime()
+            )
+        ):
+            raise FeatureStoreException(
+                f"delete_partitions on {self._feature_group.name} expected Hudi to "
+                f"complete a {self.HUDI_REPLACE_COMMIT_ACTION} for partitions {paths}, "
+                f"but the latest completed instant is {after}."
+            )
+        fg_commit = self._get_last_commit_metadata(self._spark_context, location)
+        fg_commit.rows_inserted = 0
+        fg_commit.rows_updated = 0
+        # A replace commit records no write statistics, so the count is unknown.
+        fg_commit.rows_deleted = None
+        return fg_commit, f"Hudi instant {after.getCompletionTime()}"
+
+    def _list_partition_paths(
+        self, location: str, fields: list[str], hudi_options: dict
+    ) -> list[tuple[str, dict[str, str]]]:
+        """Every partition path of the table, with the value of each partition field.
+
+        Returns:
+            Pairs of the path relative to the table root and the raw path segment of
+            each field, Hive-style `field=` prefixes removed.
+        """
+        if not fields:
+            return []
+        jvm = self._spark_context._jvm
+        root = jvm.org.apache.hadoop.fs.Path(location)
+        fs = root.getFileSystem(self._spark_context._jsc.hadoopConfiguration())
+        hive_style = hudi_options.get(self.HUDI_HIVE_STYLE_PARTITIONING) == "true"
+
+        levels = [[]]
+        for _ in fields:
+            next_levels = []
+            for segments in levels:
+                directory = jvm.org.apache.hadoop.fs.Path(
+                    "/".join([location.rstrip("/"), *segments])
+                )
+                for status in fs.listStatus(directory):
+                    name = status.getPath().getName()
+                    if status.isDirectory() and not name.startswith("."):
+                        next_levels.append([*segments, name])
+            levels = next_levels
+
+        partitions = []
+        for segments in levels:
+            stored = {}
+            for index, field in enumerate(fields):
+                segment = segments[index]
+                prefix = f"{field}="
+                stored[field] = (
+                    segment[len(prefix) :]
+                    if hive_style and segment.startswith(prefix)
+                    else segment
+                )
+            partitions.append(("/".join(segments), stored))
+        return partitions
+
+    def _latest_completed_instant(self, location: str):
+        jvm = self._spark_context._jvm
+        fs = jvm.org.apache.hadoop.fs.FileSystem.get(
+            self._spark_context._jsc.hadoopConfiguration()
+        )
+        return jvm.org.apache.hudi.HoodieDataSourceHelpers.latestCompletedCommit(
+            fs, location
+        )
+
+    # endregion
 
     def _register_temporary_table(self, hudi_fg_alias, read_options):
         location = self._feature_group.prepare_spark_location()
