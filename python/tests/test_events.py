@@ -219,3 +219,29 @@ def test_an_insert_reports_its_row_count(tmp_path, monkeypatch):
     assert [line["phase"] for line in lines] == ["started", "progress", "done"]
     assert lines[1]["progress"] == {"done": 0, "unit": "rows", "total": 5}
     assert lines[2]["detail"] == {"rows": 5}
+
+
+def test_a_training_dataset_names_its_feature_view_and_version(
+    tmp_path, monkeypatch, mocker
+):
+    from hsfs.core import feature_view_engine
+
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+    engine = feature_view_engine.FeatureViewEngine.__new__(
+        feature_view_engine.FeatureViewEngine
+    )
+    engine._feature_view_api = mocker.Mock()
+    engine._feature_view_api._create_training_dataset.return_value = mocker.Mock(
+        version=3
+    )
+    view = mocker.Mock()
+    view.name, view.version = "churn", 2
+
+    engine._create_training_data_metadata(view, mocker.Mock())
+    engine._delete_training_data(view, 3)
+
+    created, deleted = _lines(target)
+    for line in (created, deleted):
+        assert line["key"] == {"name": "churn", "version": 3}
+        assert line["detail"] == {"fv_version": 2}

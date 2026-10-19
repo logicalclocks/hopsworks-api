@@ -1114,6 +1114,7 @@ class FeatureViewEngine:
 
     def _create_training_data_metadata(self, feature_view_obj, training_dataset_obj):
         with events.tracked("td", "create", name=feature_view_obj.name) as change:
+            change.detail["fv_version"] = feature_view_obj.version
             created = self._feature_view_api._create_training_dataset(
                 feature_view_obj.name, feature_view_obj.version, training_dataset_obj
             )
@@ -1129,6 +1130,7 @@ class FeatureViewEngine:
         },
     )
     def _delete_training_data(self, feature_view_obj, training_data_version=None):
+        events.note(fv_version=feature_view_obj.version)
         if training_data_version:
             self._feature_view_api._delete_training_data_version(
                 feature_view_obj.name, feature_view_obj.version, training_data_version
@@ -1149,6 +1151,7 @@ class FeatureViewEngine:
     def _delete_training_dataset_only(
         self, feature_view_obj, training_data_version=None
     ):
+        events.note(fv_version=feature_view_obj.version)
         if training_data_version:
             self._feature_view_api._delete_training_dataset_only_version(
                 feature_view_obj.name, feature_view_obj.version, training_data_version
