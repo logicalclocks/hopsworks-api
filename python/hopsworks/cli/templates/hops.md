@@ -1,5 +1,5 @@
 ---
-description: Hopsworks menu. Explore data, start an ML system, build or edit a Superset dashboard or a Python app with a JavaScript UI, show status.
+description: Hopsworks menu. Explore data, make a table and look at it, start an ML system, build or edit a Superset dashboard or a Python app with a JavaScript UI, show status.
 argument-hint: "[explore | ml | dashboard | app | status] [instruction]"
 model: haiku
 ---
@@ -27,8 +27,9 @@ Already known, no need to look again:
 
 | First word | Do |
 | --- | --- |
-| none | Ask "What do you want to do?": **Explore data**, **Build or resume an ML system**, **A dashboard**, **An app**. Then continue with that choice below. |
+| none | Ask "What do you want to do?": **Explore data**, **Make a table and look at it**, **Build or resume an ML system**, **A dashboard or an app** (then ask which). Then continue with that choice below. |
 | `explore` | Explore (below). |
+| an instruction that asks for a table and a question about it, with no model | A table, then a look (below), whatever its first word. |
 | `dashboard` | Dashboard (below), with the rest as the instruction. |
 | `app` | App (below), with the rest as the instruction. |
 | `status` | Status (below). |
@@ -45,6 +46,32 @@ list`, `hops search <term>`, `hops fg info <name>`, `hops fg feature list <name>
 `hops fg preview <name> --limit 10`, `hops sql "<query>"` with a `LIMIT`. Summarise in a few lines and
 offer the next step with `AskUserQuestion` (look deeper, a dashboard over it, an app over it, an ML
 system over it).
+
+## A table, then a look
+
+A request for a table and a question about it, with no model ("generate sales, then show where
+revenue comes from by country, category and month"), is one feature group and an answer in the
+chat. It is never the bronze, silver and gold layers (those are for an analytics pipeline the
+user asks for by name), never an ML system, and never a dashboard or an app unless the user asks
+for one by name.
+
+1. From the instruction, take the table's name, its columns, the rows (generated, or a data source
+   from `hops datasource list`) and the story the question needs (what grows, what dominates).
+   Ask only what the instruction leaves open, in one `AskUserQuestion` call.
+2. Spawn **hops-data-builder** with the Agent tool and this prompt:
+
+   ```
+   name: <table name>
+   rows: <how many, 10000 unless the user said>
+   columns: <name and type, one per line>
+   story: <what the question should find in the data>
+   source: <synthetic | the data source name>
+   where: <Hopsworks terminal | external client>
+   ```
+
+3. Answer the question from a few `hops sql "<query>"` calls over `<name>_1`, each with a
+   `GROUP BY` and a `LIMIT`: a short table or a few lines per breakdown the user asked for.
+4. Offer the next step with `AskUserQuestion`: look deeper, a dashboard over it, an app over it.
 
 ## Status
 

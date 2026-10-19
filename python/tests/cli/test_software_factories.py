@@ -94,6 +94,7 @@ AGENTS = {
     # Spawned from /hops, which runs on Haiku: inheriting would build on Haiku too.
     "hops-dashboard-builder": "opus",
     "hops-app-builder": "opus",
+    "hops-data-builder": "opus",
 }
 
 
@@ -139,6 +140,7 @@ def test_the_menu_runs_on_haiku_and_hands_every_build_to_a_stronger_agent():
     for section in ("## Explore", "## Status", "## Dashboard", "## App"):
         assert section in text
     assert "hops-dashboard-builder" in text and "hops-app-builder" in text
+    assert "## A table, then a look" in text and "hops-data-builder" in text
     assert "`/hops-ml`" in text
     # The menu carries no build instructions of its own.
     for build_step in ("hops app create", "dashboard_program.py", "system_template"):
@@ -258,7 +260,8 @@ def test_the_builder_runs_on_the_session_model():
         "### Finishing",
     ):
         assert phase in text
-    for agent in AGENTS:
+    # Its data phase writes the system's data itself; hops-data-builder serves /hops.
+    for agent in set(AGENTS) - {"hops-data-builder"}:
         assert agent in text
     assert "!`hops fg list" in text and "*/system.yaml 2>/dev/null" in text
 
