@@ -31,7 +31,7 @@ from . import conventions
 from .context import HandlerContext
 from .evaluation import RunVerifier, env_eval_mode, parse_baggage
 from .evaluation import active as eval_active
-from .memory import TURN_ABANDONED, TURN_CLOSED, ChatMemory
+from .memory import TURN_ABANDONED, TURN_CLOSED, ChatMemory, MemoryEraseError
 from .memory_config import memory_from_env
 from .models import (
     PROTOCOL,
@@ -181,6 +181,22 @@ class AgentApp(FastAPI):
         # tracing: None auto-detects from the platform-injected OTLP endpoint
         # env var (set iff tracing is enabled on the deployment)
         self.tracer_provider = setup_tracing(self.framework, enabled=tracing)
+        if self.tracer_provider is not None:
+            # The batch processor exports on its own thread, so the last turn's
+            # spans can still be queued when the pod is told to stop. SIGTERM ends
+            # the lifespan before the process exits, which is the last point at
+            # which the queue can be drained in an orderly way -- the SDK's own
+            # atexit hook runs later, and after the event loop is gone.
+            @self.on_event("shutdown")
+            async def _flush_spans() -> None:  # pragma: no cover - lifespan hook
+                import logging  # noqa: PLC0415 -- the module's one logger use
+
+                try:
+                    await asyncio.to_thread(self.tracer_provider.force_flush, 5000)
+                except Exception:  # noqa: BLE001 -- shutdown must not raise
+                    logging.getLogger(__name__).debug(
+                        "could not flush spans on shutdown", exc_info=True
+                    )
 
         # optional conversation memory: the user message is recorded when the
         # turn opens and the reply when it closes, so a failed turn is marked
@@ -895,10 +911,23 @@ class AgentApp(FastAPI):
             # not erase what the agent knows about the person. Forgetting that
             # is a separate, explicit action (the /subjects routes below).
             assert self.memory is not None
-            await asyncio.to_thread(self.memory.clear, conversation_id)
-            await asyncio.to_thread(
-                self.memory.delete_state, "session", conversation_id
-            )
+            try:
+                await asyncio.to_thread(self.memory.clear, conversation_id)
+                await asyncio.to_thread(
+                    self.memory.delete_state, "session", conversation_id
+                )
+            except MemoryEraseError as err:
+                # A database outage answered 204 and the conversation was still
+                # there on the next read. Erasure is the one operation where an
+                # unreported failure is worse than an error.
+                return _error_response(
+                    AgentError(
+                        f"the conversation could not be deleted: {err}",
+                        code="memory_erase_failed",
+                        status_code=500,
+                        retryable=True,
+                    )
+                )
             # the vector store holds a copy of the content, so deleting from
             # SQL alone would leave it searchable
             try:
@@ -951,9 +980,19 @@ class AgentApp(FastAPI):
             subject: str, key: str | None = None
         ) -> JSONResponse:
             assert self.memory is not None
-            removed = await asyncio.to_thread(
-                self.memory.delete_state, "user", subject, key
-            )
+            try:
+                removed = await asyncio.to_thread(
+                    self.memory.delete_state, "user", subject, key
+                )
+            except MemoryEraseError as err:
+                return _error_response(
+                    AgentError(
+                        f"this subject's stored facts could not be deleted: {err}",
+                        code="memory_erase_failed",
+                        status_code=500,
+                        retryable=True,
+                    )
+                )
             vectors = 0
             if key is None:
                 # forgetting a whole subject includes their embedded messages

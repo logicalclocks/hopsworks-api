@@ -575,6 +575,17 @@ class ChatMemory(ABC):
         return 0
 
 
+class MemoryEraseError(RuntimeError):
+    """An erasure could not be completed, so the content may still be readable.
+
+    The same rule as :class:`~hopsworks_agents.protocol.vectorstore.VectorPurgeError`,
+    for the SQL tier: a database outage during a delete must not answer 204. A
+    best-effort write during a chat can be logged and dropped -- the next turn
+    carries on -- but a caller who asked to be forgotten and was told "done" has
+    been told something false.
+    """
+
+
 class InMemoryAgentMemory(ChatMemory):
     """Process-local store for development: lost on restart (agent.
 
@@ -1310,29 +1321,41 @@ class ManagedMemoryService(ChatMemory):
 
         Both statements share a transaction: a half-cleared conversation whose
         summary outlived its messages is the exact state this exists to prevent.
+
+        Raises :class:`MemoryEraseError` when the delete could not run. This is
+        the explicit erase path, not a best-effort write during a chat: logged
+        and swallowed, a database outage answered 204 and the conversation was
+        still there on the next read.
         """
-        if self._ensure_engine():
-            try:
-                with self._engine.begin() as conn:
+        if not self._ensure_engine():
+            raise MemoryEraseError(
+                f"the memory store could not be opened, so conversation "
+                f"{conversation_id} was not deleted"
+            )
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    self._mine(
+                        self._table.delete().where(
+                            self._table.c.conversation_id == conversation_id
+                        ),
+                        self._table,
+                    )
+                )
+                if self._sessions is not None:
                     conn.execute(
                         self._mine(
-                            self._table.delete().where(
-                                self._table.c.conversation_id == conversation_id
+                            self._sessions.delete().where(
+                                self._sessions.c.conversation_id == conversation_id
                             ),
-                            self._table,
+                            self._sessions,
                         )
                     )
-                    if self._sessions is not None:
-                        conn.execute(
-                            self._mine(
-                                self._sessions.delete().where(
-                                    self._sessions.c.conversation_id == conversation_id
-                                ),
-                                self._sessions,
-                            )
-                        )
-            except Exception:  # noqa: BLE001
-                log.exception("Memory clear failed")
+        except Exception as err:  # noqa: BLE001
+            log.exception("Memory clear failed")
+            raise MemoryEraseError(
+                f"conversation {conversation_id} could not be deleted: {err}"
+            ) from err
         with self._lock:
             self._cache.pop(conversation_id, None)
 
@@ -2317,8 +2340,20 @@ class ManagedMemoryService(ChatMemory):
         ]
 
     def delete_state(self, scope: str, owner: str, key: str | None = None) -> int:
-        """Forget one value, or every value for an owner. Returns rows removed."""
-        if not self._ensure_engine() or self._state is None:
+        """Forget one value, or every value for an owner. Returns rows removed.
+
+        Raises :class:`MemoryEraseError` rather than returning 0 when the delete
+        could not run: "nothing was there" and "the delete failed" are the two
+        answers an erasure must never confuse, and 0 said both.
+        """
+        if not self._ensure_engine():
+            raise MemoryEraseError(
+                f"the memory store could not be opened, so {scope}:{owner} state "
+                "was not deleted"
+            )
+        if self._state is None:
+            # Durable facts are not configured at all, so there is nothing of
+            # this kind to delete -- a real zero, not a failure.
             return 0
         st = self._state
         stmt = self._mine(
@@ -2329,9 +2364,11 @@ class ManagedMemoryService(ChatMemory):
         try:
             with self._engine.begin() as conn:
                 return conn.execute(stmt).rowcount or 0
-        except Exception:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001
             log.exception("State delete failed")
-            return 0
+            raise MemoryEraseError(
+                f"{scope}:{owner} state could not be deleted: {err}"
+            ) from err
 
     def state_block(self, subject: str, conversation_id: str) -> str:
         """The state part of ``ctx.system_context()``.
@@ -2442,7 +2479,11 @@ class ManagedMemoryService(ChatMemory):
             weight = 1.0
             if created:
                 try:
-                    when = datetime.fromisoformat(str(created))
+                    when = (
+                        created
+                        if isinstance(created, datetime)
+                        else datetime.fromisoformat(str(created))
+                    )
                     if when.tzinfo is not None:
                         when = when.replace(tzinfo=None)
                     age_days = max((now - when).total_seconds(), 0.0) / 86400.0
@@ -2543,9 +2584,13 @@ class ManagedMemoryService(ChatMemory):
                         "memory_type": r.memory_type,
                         "role": r.role,
                         "content": r.content,
-                        "created_at": (
-                            r.created_at.isoformat() if r.created_at else None
-                        ),
+                        # A datetime, not its isoformat: created_at is the vector
+                        # feature group's event time, and the backend accepts only
+                        # TIMESTAMP, DATE or BIGINT there. Sent as a string, the
+                        # schema inferred from the first insert was `string` and
+                        # every insert was refused -- silently, since vector ingest
+                        # is best-effort.
+                        "created_at": r.created_at,
                         "embedding": self._embedder(r.content),
                     }
                 )

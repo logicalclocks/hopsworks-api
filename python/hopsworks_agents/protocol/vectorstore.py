@@ -295,6 +295,15 @@ class HopsworksVectorStore(VectorStore):
             import pandas as pd
 
             frame = pd.DataFrame(rows, columns=list(FEATURES))
+            # created_at is this feature group's event time, and the backend accepts
+            # only TIMESTAMP, DATE or BIGINT for one. The schema is inferred from the
+            # first insert, so a column of ISO strings made it `string` and every
+            # insert was refused from then on -- silently, because vector ingest is
+            # best-effort. Coerced here as well as sent as a datetime, so a caller
+            # that still formats its timestamps lands in the right type.
+            frame["created_at"] = pd.to_datetime(
+                frame["created_at"], utc=True, errors="coerce"
+            ).dt.tz_localize(None)
             # storage="online" skips the offline Delta write, which needs
             # HopsFS/Spark and fails outright from an agent pod. Memory is an
             # online-only concern anyway: it is read by vector lookup, never
@@ -403,9 +412,6 @@ class HopsworksVectorStore(VectorStore):
     def purge(
         self, *, conversation_id: str | None = None, subject: str | None = None
     ) -> int:
-        fg = self._ensure_fg()
-        if fg is None:
-            return 0
         probe = {}
         if conversation_id is not None:
             probe["conversation_id"] = conversation_id
@@ -414,22 +420,28 @@ class HopsworksVectorStore(VectorStore):
         if not probe:
             return 0
 
+        fg = self._ensure_fg()
+        if fg is None:
+            # "Nothing to delete" and "the store could not be opened" are the two
+            # answers a deletion request must never confuse, and 0 said both.
+            raise VectorPurgeError(
+                f"The vector store {self._name} could not be opened, so {probe} was "
+                "not purged; the rows remain searchable"
+            )
+
         # NOT `fg.delete(...)`: on the FeatureGroup API that name drops the
         # entire feature group, so guessing here risks destroying every user's
-        # memories instead of one conversation's. Only a row-level deletion
-        # method is acceptable, and if this hsfs version does not expose one we
-        # say so loudly rather than silently reporting success.
-        delete_rows = getattr(fg, "delete_from_online_store", None)
-        if not callable(delete_rows):
-            log.error(
-                "This hsfs version exposes no row-level delete on feature group "
-                "%s, so %s could not be purged from the vector index. The rows "
-                "remain searchable until they are removed out of band — do not "
-                "treat this deletion as complete.",
-                self._name,
-                probe,
+        # memories instead of one conversation's. `remove_rows` is the
+        # row-level API this client has -- the earlier name was never on it, so
+        # every purge logged and returned 0 while reporting success to a caller
+        # who had asked to be forgotten.
+        remove_rows = getattr(fg, "remove_rows", None)
+        if not callable(remove_rows):
+            raise VectorPurgeError(
+                f"This hsfs version exposes no row-level delete on feature group "
+                f"{self._name}, so {probe} could not be purged from the vector "
+                "index; the rows remain searchable"
             )
-            return 0
         try:
             # `online=True` is not optional: ingest writes with
             # storage="online" only, so the offline Delta table this defaults to
@@ -439,14 +451,26 @@ class HopsworksVectorStore(VectorStore):
             # happened. The filter stays client-side because the online store is
             # a key-value lookup, not a query engine; there is no predicate to
             # push down.
+            import pandas as pd
+
             frame = fg.read(online=True)
             keys = [
                 row["item_id"]
                 for _, row in frame.iterrows()
                 if all(row.get(col) == val for col, val in probe.items())
             ]
-            for key in keys:
-                delete_rows({"item_id": key})
+            if not keys:
+                return 0
+            # One call, not one per row: the online delete matches on the primary
+            # key alone and ignores every other column, so the frame carries the
+            # keys and nothing else. storage="online" keeps it off the offline
+            # table, which is empty here (ingest writes online only) and which a
+            # serving pod cannot reach anyway.
+            remove_rows(
+                pd.DataFrame({"item_id": keys}),
+                storage="online",
+                write_options={"wait_for_online_ingestion": True},
+            )
             return len(keys)
         except Exception as err:  # noqa: BLE001
             # Raise rather than return 0. This is the erasure path: a caller

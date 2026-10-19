@@ -568,12 +568,17 @@ class TestDeploymentMysqlUrl:
 class TestSqlMemoryResilience:
     def test_unreachable_db_does_not_crash_construction_or_turns(self):
         from hopsworks_agents.protocol import ManagedMemoryService
+        from hopsworks_agents.protocol.memory import MemoryEraseError
 
         memory = ManagedMemoryService(url="mysql+pymysql://x:y@127.0.0.1:1/nope")
         assert memory.get("c1") == []
         memory.append("c1", "user", "hi")
         assert memory.get("c1") == []
-        memory.clear("c1")
+        # Reading and writing degrade quietly -- a chat carries on without
+        # history. Erasing does not: "deleted" is a thing the caller is told,
+        # and a database that cannot be reached has deleted nothing.
+        with pytest.raises(MemoryEraseError):
+            memory.clear("c1")
 
     def test_lazy_url_resolution_defers_env_errors(self, monkeypatch):
         from hopsworks_agents.protocol import ManagedMemoryService
@@ -2160,6 +2165,44 @@ class TestStateAuditEndpoints:
         # the SQL half still happened, and the answer says so
         assert memory.get_state("user", "alice", "lang") is None
 
+    def test_a_failed_sql_erase_is_not_a_204(self, tmp_path):
+        # The same rule for the SQL tier: the delete was caught and logged, the
+        # route answered 204, and a GET right afterwards still returned the
+        # conversation. A database outage must not look like a deletion.
+        from hopsworks_agents.protocol.memory import MemoryEraseError
+
+        app, memory = self._app(tmp_path)
+        memory.append("c1", "user", "remember me")
+
+        def refuse(conversation_id):
+            raise MemoryEraseError("the database is gone")
+
+        memory.clear = refuse
+        client = TestClient(app)
+
+        answer = client.delete("/v1/conversations/c1")
+        assert answer.status_code == 500
+        assert answer.json()["detail"]["code"] == "memory_erase_failed"
+        assert answer.json()["detail"]["retryable"] is True
+        # and the content really is still there, which is what the caller was
+        # being told was gone
+        assert client.get("/v1/conversations/c1/messages").json()["messages"]
+
+    def test_a_failed_state_erase_is_not_a_success(self, tmp_path):
+        from hopsworks_agents.protocol.memory import MemoryEraseError
+
+        app, memory = self._app(tmp_path)
+        memory.set_state("user", "alice", "lang", "python")
+
+        def refuse(scope, owner, key=None):
+            raise MemoryEraseError("the database is gone")
+
+        memory.delete_state = refuse
+
+        answer = TestClient(app).delete("/v1/subjects/alice/state")
+        assert answer.status_code == 500
+        assert answer.json()["detail"]["code"] == "memory_erase_failed"
+
     def test_clearing_a_conversation_spares_user_state(self, tmp_path):
         app, memory = self._app(tmp_path)
         memory.set_state("user", "alice", "lang", "python")
@@ -2577,7 +2620,7 @@ class TestReviewRegressions:
             def read(self, online=False):
                 raise RuntimeError("Connection to HopsFS failed")
 
-            def delete_from_online_store(self, keys):
+            def remove_rows(self, delete_df, storage=None, write_options=None):
                 raise AssertionError("should not be reached")
 
         store = HopsworksVectorStore("d1", 3)
@@ -2601,8 +2644,9 @@ class TestReviewRegressions:
                 rows = [{"item_id": "i1", "conversation_id": "c1"}]
                 return type("Frame", (), {"iterrows": lambda self: enumerate(rows)})()
 
-            def delete_from_online_store(self, keys):
-                seen.setdefault("deleted", []).append(keys)
+            def remove_rows(self, delete_df, storage=None, write_options=None):
+                seen["deleted"] = list(delete_df["item_id"])
+                seen["storage"] = storage
 
         store = HopsworksVectorStore("d1", 3)
         store._fg = Recording()
@@ -2610,6 +2654,36 @@ class TestReviewRegressions:
         # ingest writes online-only, so the offline table this defaults to is
         # always empty — and unreachable from a serving pod
         assert seen["online"] is True
+        # the row-level delete this client actually has: the old name was never
+        # on a feature group, so every purge reported success and deleted nothing
+        assert seen["deleted"] == ["i1"]
+        assert seen["storage"] == "online"
+
+    def test_purge_refuses_rather_than_reporting_zero_without_a_delete_api(self):
+        from hopsworks_agents.protocol.vectorstore import (
+            HopsworksVectorStore,
+            VectorPurgeError,
+        )
+
+        class WithoutDelete:
+            def read(self, online=False):  # noqa: ARG002
+                return type("Frame", (), {"iterrows": lambda self: iter(())})()
+
+        store = HopsworksVectorStore("d1", 3)
+        store._fg = WithoutDelete()
+        with pytest.raises(VectorPurgeError):
+            store.purge(conversation_id="c1")
+
+    def test_purge_refuses_when_the_store_cannot_be_opened(self):
+        from hopsworks_agents.protocol.vectorstore import (
+            HopsworksVectorStore,
+            VectorPurgeError,
+        )
+
+        store = HopsworksVectorStore("d1", 3)
+        store._failed = True  # _ensure_fg gives up and returns None
+        with pytest.raises(VectorPurgeError):
+            store.purge(subject="alice")
 
 
 class TestRetrievalAndReconciliation:
@@ -3542,6 +3616,45 @@ class TestTurnSpan:
         assert format(span.get_span_context().trace_id, "032x") == trace_id
         # and the caller can find it from the response alone
         assert body["metadata"]["trace_id"] == trace_id
+
+    def test_the_exporter_does_not_run_on_the_request_task(self, monkeypatch):
+        # The turn span ends on the async request task even when the handler ran
+        # in a worker thread, so a SimpleSpanProcessor's synchronous export
+        # stopped the whole replica: other chats waited on a slow collector, and
+        # so did /health, which is what the kubelet reads to decide a pod is alive.
+        pytest.importorskip("opentelemetry.sdk")
+        pytest.importorskip("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+        from hopsworks_agents.protocol import tracing
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+        installed = []
+
+        class FakeProvider:
+            def add_span_processor(self, processor):
+                installed.append(processor)
+
+            def get_tracer(self, *args, **kwargs):
+                return trace_api.NoOpTracer()
+
+        monkeypatch.setenv(tracing.TRACES_ENDPOINT_ENV, "http://localhost:4318/v1/traces")
+        monkeypatch.setattr(
+            tracing, "install_baggage_propagation", lambda provider: True
+        )
+        monkeypatch.setattr(tracing, "_instrument", lambda framework, provider: False)
+        monkeypatch.setattr(
+            tracing, "install_llm_span_detection", lambda provider: None, raising=False
+        )
+        import opentelemetry.sdk.trace as trace_sdk
+        from opentelemetry import trace as trace_api
+
+        monkeypatch.setattr(trace_sdk, "TracerProvider", lambda: FakeProvider())
+        # Not registered globally from a test: it would outlive it, and every
+        # later test's spans would go to this stub.
+        monkeypatch.setattr(trace_api, "set_tracer_provider", lambda provider: None)
+
+        tracing.setup_tracing(None, enabled=True)
+
+        assert any(isinstance(p, BatchSpanProcessor) for p in installed)
 
     def test_copies_eval_baggage_onto_the_span(self):
         app, exporter = self._traced_app()

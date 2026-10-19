@@ -241,7 +241,11 @@ def search(query: str) -> str:
         return f"Nothing found in earlier conversations about {query!r}."
     lines = []
     for hit in hits:
-        when = (hit.get("created_at") or "")[:10]
+        # A date, however the store carries the timestamp: the vector tier now
+        # keeps it as a datetime (its feature group's event time has to be one),
+        # and the SQL tier as an ISO string.
+        created = hit.get("created_at")
+        when = str(created)[:10] if created else ""
         # timestamp and speaker are deliberately included: the model needs to
         # know how old a memory is to weigh it against the current turn
         lines.append(f"[{when} {hit.get('role', '?')}] {hit['content']}")

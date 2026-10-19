@@ -39,6 +39,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 TRACES_ENDPOINT_ENV = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+
+#: How long a finished span may wait to be exported, in milliseconds. The SDK's
+#: default is five seconds; a trace here is read back within a turn or two, by
+#: the chat UI's feedback control and by the eval runner's trace poll.
+EXPORT_DELAY_MS = 1000
+
 FRAMEWORK_ENV = "AGENT_FRAMEWORK"
 
 FRAMEWORK_LANGGRAPH = "langgraph"
@@ -108,7 +114,7 @@ def setup_tracing(framework: str, enabled: bool | None = None) -> Any | None:
             OTLPSpanExporter,
         )
         from opentelemetry.sdk import trace as trace_sdk
-        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError:
         log.warning(
             "Tracing endpoint %s is set but the OpenTelemetry SDK is not "
@@ -119,10 +125,22 @@ def setup_tracing(framework: str, enabled: bool | None = None) -> Any | None:
         return None
 
     provider = trace_sdk.TracerProvider()
-    # SimpleSpanProcessor on purpose: the Hopsworks OTLP sidecar relies on
-    # spans arriving individually for its span propagation.
+    # On its own thread, not on the request's. SimpleSpanProcessor exports when a
+    # span ends, and the turn span ends on the async request task even when the
+    # handler itself ran in a worker thread -- so a slow collector, or one
+    # exporter retry, stopped the whole replica: other chats waited, and so did
+    # /health, which is what the kubelet reads to decide the pod is alive.
+    #
+    # The sidecar is fine with a batch: it fills its per-trace message cache from
+    # every row of a request before it propagates them to the root span, and
+    # children still end (and so queue) before their parent either way. The delay
+    # is kept short because a trace is read back almost immediately -- the chat
+    # UI's feedback control and the eval runner both go looking for it.
     provider.add_span_processor(
-        SimpleSpanProcessor(OTLPSpanExporter(endpoint=endpoint))
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=endpoint),
+            schedule_delay_millis=EXPORT_DELAY_MS,
+        )
     )
     install_baggage_propagation(provider)
 

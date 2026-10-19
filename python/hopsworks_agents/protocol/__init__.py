@@ -84,6 +84,7 @@ _EXPORTS: dict[str, str] = {
     "ChatMemory": "memory",
     "InMemoryAgentMemory": "memory",
     "ManagedMemoryService": "memory",
+    "MemoryEraseError": "memory",
     "deployment_mysql_url": "memory",
     "memory_from_env": "memory_config",
     "load_sentence_transformer": "embeddings",
