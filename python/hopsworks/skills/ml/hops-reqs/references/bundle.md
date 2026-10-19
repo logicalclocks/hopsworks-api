@@ -24,6 +24,10 @@ It contains `manifest.json`:
  "files": {"system.yaml": "<sha256>", "pyproject.toml": "<sha256>", "src/telco_churn/evaluate.py": "<sha256>"}}
 ```
 
+A run where the agent runs passes the local archive (`--bundle runs/train-3-1/bundle.tar.gz`)
+and writes the same `result.json` to `Resources/<slug>/runs/<run_id>/` as a job does, so the
+record is the same either way; upload the bundle beside it all the same.
+
 A bundle is never rewritten; a new run gets a new id (`<kind>-<n>-<attempt>`,
 for example `train-3-2` for the second attempt of run 3). `runs/` is gitignored.
 

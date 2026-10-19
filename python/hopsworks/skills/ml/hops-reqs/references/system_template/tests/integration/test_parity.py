@@ -32,7 +32,10 @@ def test_batch_and_online_paths_agree(project, system):
     fv = fs.get_feature_view(
         training["feature_view"]["name"], version=training["feature_view"]["version"]
     )
-    td_version = training["harness"]["training_dataset_version"]
+    model = project.get_model_registry().get_model(
+        training["model"]["name"], version=training["model"]["version"]
+    )
+    td_version = model.training_dataset_version
     fv.init_serving(training_dataset_version=td_version)
     fv.init_batch_scoring(training_dataset_version=td_version)
 

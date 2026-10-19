@@ -18,7 +18,7 @@ import sys
 import tarfile
 import textwrap
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1964,6 +1964,121 @@ def test_the_template_metrics_handle_ties_and_probabilities():
     assert evaluate.roc_auc([1, 0, 1, 0], [0.9, 0.5, 0.1, 0.3]) == 0.5
     assert evaluate.accuracy([0, 1], [0.1, 0.9]) == 1.0
     assert evaluate.accuracy(["a", "b"], ["a", "c"]) == 0.5
+
+
+class FakeFeatureView:
+    """A feature view over one frame that, like the query service, returns rows in a new order per read."""
+
+    def __init__(self, rows):
+        self.rows, self.reads = rows, 0
+
+    def _shuffled(self, frame):
+        self.reads += 1
+        return frame.sample(frac=1, random_state=self.reads).reset_index(drop=True)
+
+    def _xy(self, frame, primary_key):
+        frame = self._shuffled(frame)
+        x = frame.drop(columns=["won"] + ([] if primary_key else ["deal_id"]))
+        return x, frame[["won"]]
+
+    def training_data(self, end_time=None, primary_key=False, statistics_config=None):
+        frame = self.rows if end_time is None else self.rows[self.rows.ts <= end_time]
+        return self._xy(frame, primary_key)
+
+    def train_validation_test_split(self, statistics_config=None, **bounds):
+        parts = []
+        for part in ("train", "validation", "test"):
+            start, end = bounds[f"{part}_start"], bounds[f"{part}_end"]
+            parts.append(
+                self._xy(
+                    self.rows[(self.rows.ts >= start) & (self.rows.ts < end)], False
+                )
+            )
+        (x_tr, y_tr), (x_va, y_va), (x_te, y_te) = parts
+        return x_tr, x_va, x_te, y_tr, y_va, y_te
+
+    def get_train_validation_test_split(self, training_dataset_version):
+        self.materialized = training_dataset_version
+        x, y = self._xy(self.rows, False)
+        return x, x, x, y, y, y
+
+
+def _deals(days=60):
+    import pandas as pd
+
+    start = datetime(2026, 8, 1)
+    return pd.DataFrame(
+        {
+            "deal_id": [i % 40 for i in range(days * 10)],
+            "ts": [start + timedelta(hours=i * 2.4) for i in range(days * 10)],
+            "amount": [float(i % 17) for i in range(days * 10)],
+            "won": [i % 3 == 0 for i in range(days * 10)],
+        }
+    )
+
+
+def _harness_case(kind):
+    split = {"kind": kind, "validation_fraction": 0.15, "test_fraction": 0.15}
+    if kind == "temporal":
+        split["start"] = "2026-08-01T00:00:00"
+    return (
+        {"split": split, "harness": {"evaluate": "src/x/evaluate.py", "commit": "abc"}},
+        {"problem": {"entity": "deal_id", "label_maturity": "7 days"}},
+    )
+
+
+@needs_cluster_python
+@pytest.mark.parametrize("kind", ["random", "grouped", "temporal"])
+def test_a_frozen_in_memory_split_reads_the_same_rows_after_appends(kind):
+    evaluate = _load(TEMPLATE / "src" / "slug_pkg" / "evaluate.py", "template_harness")
+    import pandas as pd
+
+    rows = _deals()
+    fv = FakeFeatureView(rows)
+    training, requirements = _harness_case(kind)
+    record, parts = evaluate.freeze(fv, training, requirements, datetime(2026, 9, 20))
+    training["harness"].update(record)
+    assert all(record["parts"][p]["rows"] for p in evaluate.PARTS)
+
+    later = rows.assign(ts=rows.ts + timedelta(days=120))
+    fv.rows = pd.concat([rows, later], ignore_index=True)
+    again = evaluate.read_parts(fv, training, requirements)
+    assert {p: evaluate.fingerprint(*again[p]) for p in again} == record["parts"]
+    assert all("deal_id" not in x.columns for x, _ in parts.values())
+
+
+@needs_cluster_python
+def test_a_row_changed_inside_the_frozen_split_stops_the_run():
+    evaluate = _load(
+        TEMPLATE / "src" / "slug_pkg" / "evaluate.py", "template_harness_drift"
+    )
+    rows = _deals()
+    fv = FakeFeatureView(rows)
+    training, requirements = _harness_case("random")
+    record, _ = evaluate.freeze(fv, training, requirements, datetime(2026, 9, 20))
+    training["harness"].update(record)
+
+    changed = rows.copy()
+    changed.loc[3, "amount"] = 999.0
+    fv.rows = changed
+    with pytest.raises(
+        SystemExit,
+        match=r"data changed inside the frozen split \(\w+: \d+ rows recorded, \d+ now\): refreeze, which starts a new round",
+    ):
+        evaluate.read_parts(fv, training, requirements)
+    assert evaluate.read_parts(fv, training, requirements, check=False)
+
+
+@needs_cluster_python
+def test_a_harness_frozen_as_a_training_dataset_still_reads_it():
+    evaluate = _load(
+        TEMPLATE / "src" / "slug_pkg" / "evaluate.py", "template_harness_td"
+    )
+    fv = FakeFeatureView(_deals())
+    training, requirements = _harness_case("random")
+    training["harness"]["training_dataset_version"] = 3
+    parts = evaluate.read_parts(fv, training, requirements)
+    assert fv.materialized == 3 and set(parts) == set(evaluate.PARTS)
 
 
 def test_the_app_skeleton_aggregates_in_the_query_engine(monkeypatch):
