@@ -941,6 +941,23 @@ class TestTracing:
         with pytest.raises(ValueError, match="verdict must be"):
             deployment.give_feedback("t", "meh")
 
+    def test_an_end_users_verdict_is_retracted_on_their_behalf(self):
+        """An end user has no session here, so a member takes it back for them.
+
+        The route has always accepted it and the SDK had no way to say it, which
+        left the one verdict a person cannot retract themselves reachable only
+        from the UI.
+        """
+        evals, agent7, session = agent(Reply(None))
+
+        agent7.retract_feedback("t", reviewer="user:customer-7")
+
+        assert session.sent[0][:3] == (
+            "DELETE",
+            "/otel/servings/7/traces/t/feedback",
+            {"reviewer": "user:customer-7"},
+        )
+
     def test_all_feedback_walks_the_pages(self):
         evals, agent7, session = agent(
             Reply({"count": 3, "items": [{"feedbackId": "1"}, {"feedbackId": "2"}]}),

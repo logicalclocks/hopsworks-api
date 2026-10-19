@@ -419,7 +419,12 @@ class Agent:
         expected_tool_behavior: str | None = None,
         note: str | None = None,
     ) -> Feedback:
-        """Your verdict on a trace. One per reviewer per trace: giving it again replaces yours."""
+        """Your verdict on a trace. One per reviewer per trace: giving it again replaces yours.
+
+        The whole verdict, not a patch: the row is replaced, so a field left out
+        is cleared rather than kept. Re-saving a correction without the note that
+        came with it drops the note.
+        """
         if verdict not in VERDICTS:
             raise ValueError(f"verdict must be one of {', '.join(VERDICTS)}")
         body = {
@@ -436,9 +441,14 @@ class Agent:
             )
         )
 
-    def retract_feedback(self, trace_id: str) -> None:
-        """Take back your own verdict on a trace. Never anyone else's."""
-        self._http.delete(f"{self._otel}/traces/{trace_id}/feedback")
+    def retract_feedback(self, trace_id: str, *, reviewer: str | None = None) -> None:
+        """Take back your own verdict on a trace, or an end user's.
+
+        ``reviewer`` may only name an end user (``user:<subject>``), whose verdict
+        the agent relayed and who has no session here to take it back from; a
+        project member's verdict is theirs alone and naming an account is refused.
+        """
+        self._http.delete(f"{self._otel}/traces/{trace_id}/feedback", reviewer=reviewer)
 
     def feedback_summary(
         self,
