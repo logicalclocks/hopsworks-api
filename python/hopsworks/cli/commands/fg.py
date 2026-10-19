@@ -615,6 +615,12 @@ def fg_create(
         "MongoDB this is the collection name; for SQL the table name."
     ),
 )
+@click.option(
+    "--features",
+    "features_spec",
+    help='Schema "name:type[:description]", comma-separated; required outside Spark, '
+    'e.g. "id:bigint,city:string,amount:double".',
+)
 @click.option("--version", type=int, help="Feature group version.")
 @click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
 @click.option("--event-time", "event_time", help="Event-time column.")
@@ -634,6 +640,7 @@ def fg_create_external(
     data_format: str | None,
     database: str | None,
     table: str | None,
+    features_spec: str | None,
     version: int | None,
     primary_key: str | None,
     event_time: str | None,
@@ -661,6 +668,7 @@ def fg_create_external(
         data_format: Required with `--path`; one of parquet/delta/hudi/orc/avro/csv.
         database: Database/collection-container override for the source.
         table: Table/collection override for the source.
+        features_spec: Comma-separated ``name:type[:description]`` items.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
         event_time: Event-time column.
@@ -696,6 +704,7 @@ def fg_create_external(
     if table is not None:
         data_source.table = table
 
+    fg = None
     try:
         fg = fs.create_external_feature_group(
             name=name,
@@ -706,16 +715,25 @@ def fg_create_external(
             primary_key=_split_csv(primary_key) or None,
             event_time=event_time,
             online_enabled=online,
+            features=_build_features(features_spec) or None,
         )
         fg.save()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not create external FG: {exc}") from exc
+        # save() registers the metadata first and computes statistics after, so
+        # a failure in the second step leaves a usable feature group behind.
+        if getattr(fg, "id", None) is None:
+            raise click.ClickException(f"Could not create external FG: {exc}") from exc
+        stats_error = exc
+    else:
+        stats_error = None
 
     output.success(
         "✓ Created external feature group %s v%s",
         getattr(fg, "name", name),
         getattr(fg, "version", "?"),
     )
+    if stats_error is not None:
+        output.warn("Statistics were not computed: %s", _reason(stats_error))
     if output.JSON_MODE:
         output.print_json(_fg_to_dict(fg))
 
@@ -1322,6 +1340,16 @@ def _truncate_cell(value: Any, width: int = 60) -> str:
             return f"[len={len(seq)}] {head}{tail}"
     text = str(value)
     return text if len(text) <= width else text[: width - 1] + "…"
+
+
+def _reason(exc: Exception) -> str:
+    """The server's user message of a REST error, else the exception text."""
+    response = getattr(exc, "response", None)
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001 - no response or not JSON
+        return str(exc)
+    return body.get("usrMsg") or body.get("errorMsg") or str(exc)
 
 
 def _split_csv(value: str | None) -> list[str]:

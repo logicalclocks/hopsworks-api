@@ -95,6 +95,7 @@ hops fg create-external <name> --connector <ds> --path sales/ --data-format parq
 hops fg create-external <name> --connector <ds> --database <db> --table <collection> --primary-key <cols>
 ```
 
+- Outside Spark, give the schema with `--features "id:bigint,city:string,..."`.
 - `--online` enables the online store; rows then go in with `hops fg insert`, offline data stays in the source.
 - `hops fg list` shows every type in its TYPE column; `--type external` lists only external groups.
 - `hops fg info <name>` shows the connector, query or path, and the access state.

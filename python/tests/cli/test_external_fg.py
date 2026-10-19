@@ -54,10 +54,16 @@ def test_create_external_query_lands_on_the_data_source(mock_project):
 
 def test_create_external_path_and_format(mock_project):
     result, create = _create(
-        mock_project, ["--path", "sales/", "--data-format", "ICEBERG", "--online"]
+        mock_project,
+        ["--path", "sales/", "--data-format", "ICEBERG", "--online"]
+        + ["--features", "id:bigint,city:string"],
     )
     assert result.exit_code == 0, result.output
     kwargs = create.call_args.kwargs
+    assert [(f.name, f.type) for f in kwargs["features"]] == [
+        ("id", "bigint"),
+        ("city", "string"),
+    ]
     assert kwargs["data_source"].path == "sales/"
     assert kwargs["data_format"] == "iceberg"
     assert kwargs["online_enabled"] is True
@@ -131,3 +137,31 @@ def test_list_shows_every_type_and_filters_by_type(mock_project):
     result = CliRunner().invoke(cli, ["fg", "list", "--type", "external"])
     assert result.exit_code == 0, result.output
     assert "sales" in result.output and "orders" not in result.output
+
+
+def test_create_external_warns_when_only_statistics_fail(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = DataSource(storage_connector=mock.MagicMock())
+    fg = _external_fg()
+    fg.save.side_effect = RuntimeError("statistics job refused")
+    fs.create_external_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "create-external", "sales", "--connector", "src", "--query", "q"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Created external feature group sales" in result.output
+    assert "Statistics were not computed: statistics job refused" in result.output
+
+
+def test_create_external_fails_when_nothing_was_saved(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = DataSource(storage_connector=mock.MagicMock())
+    fg = _external_fg()
+    fg.id = None
+    fg.save.side_effect = RuntimeError("bad schema")
+    fs.create_external_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "create-external", "sales", "--connector", "src", "--query", "q"]
+    )
+    assert result.exit_code == 1
+    assert "Could not create external FG: bad schema" in result.output
