@@ -134,6 +134,7 @@ def test_list_shows_every_type_and_filters_by_type(mock_project):
     result = CliRunner().invoke(cli, ["fg", "list"])
     assert result.exit_code == 0, result.output
     assert "orders" in result.output and "sales" in result.output
+    assert "managed" in result.output and "external" in result.output
     result = CliRunner().invoke(cli, ["fg", "list", "--type", "external"])
     assert result.exit_code == 0, result.output
     assert "sales" in result.output and "orders" not in result.output
