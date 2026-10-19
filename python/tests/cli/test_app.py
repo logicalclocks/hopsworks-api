@@ -909,6 +909,29 @@ def test_deploy_creates_the_app_and_prints_the_url_last(mock_project, tmp_path):
     ]
 
 
+def test_deploy_sets_the_description_of_a_new_app(mock_project, tmp_path):
+    root = _app_dir(tmp_path)
+    mock_project.get_app_api.return_value.create_app.return_value = _fake_app(
+        name="shop"
+    )
+    result, apps, _ = _deploy(
+        mock_project, root, "--description", "Revenue by country", polls=[_app(5)]
+    )
+    assert result.exit_code == 0, result.output
+    assert apps.create_app.call_args.kwargs["description"] == "Revenue by country"
+
+
+def test_deploy_keeps_the_description_of_an_existing_app(mock_project, tmp_path):
+    root = _app_dir(tmp_path)
+    running = _app(3)
+    running.description = "Old"
+    result, _, _ = _deploy(
+        mock_project, root, "--description", "New", existing=running, polls=[_app(4)]
+    )
+    assert result.exit_code == 0, result.output
+    assert "keeps its description" in result.output
+
+
 def test_deploy_waits_for_the_new_execution_of_a_running_app(mock_project, tmp_path):
     root = _app_dir(tmp_path)
     running = _app(3)

@@ -22,7 +22,7 @@ Leaves:
 
 - Core: `list`, `info`, `create`, `update`, `delete`.
 - Membership: `add`, `remove`, `set`.
-- Lifecycle: `start`, `stop`, `run`, `deploy`, `redeploy`, `extend`, `reset`, `enable`, `disable`.
+- Lifecycle: `start`, `stop`, `run`, `deploy`, `redeploy`, `extend`, `reset`, `enable`, `disable`, `wait`.
 - Data: `insert`, `read`, `preview`, `lookup`, `query`, `predict`, `search`, `derive`, `compute`, `backfill`.
 - Transfer: `upload`, `download`, `import`, `export`, `clone`, `push`, `pull`, `mirror`, `share`, `unshare`, `install`, `register`.
 - Domain: `create-external`, `infer-metadata`, `test-access`, `validate`, `trigger`, `use`, `mkdir`, `acquire`, `release`, `renew`, `write-doc`, `delete-assets`.

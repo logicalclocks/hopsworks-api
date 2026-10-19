@@ -188,7 +188,11 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
     "environment",
     help="Python environment name (sets environmentName; otherwise the type default).",
 )
-@click.option("--args", "app_args", help="Arguments passed to the program.")
+@click.option(
+    "--args",
+    "app_args",
+    help="Arguments passed to the program. Split on spaces; quotes stay literal, so keep each value space-free (2026-10-16T00:00:00).",
+)
 @click.option("--description", help="Free-form description of the job.")
 @click.pass_context
 def job_create(
@@ -248,7 +252,11 @@ def job_create(
     "environment",
     help="Python environment name (sets environmentName; otherwise the type default).",
 )
-@click.option("--args", "app_args", help="Arguments passed to the program.")
+@click.option(
+    "--args",
+    "app_args",
+    help="Arguments passed to the program. Split on spaces; quotes stay literal, so keep each value space-free (2026-10-16T00:00:00).",
+)
 @click.option(
     "--cron",
     help="Schedule (Quartz cron or @hourly/@daily/@weekly/@monthly shorthand).",
@@ -353,11 +361,78 @@ def job_deploy(
 
     # 5. Run.
     if do_run:
-        try:
-            execution = job.run(args=app_args, await_termination=wait)
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Could not run job '{name}': {exc}") from exc
-        _report_run(name, execution, wait)
+        _run(job, name, wait, "run", args=app_args)
+
+
+LOG_TAIL = 50
+
+
+def _run(
+    job: Any, name: str, wait: bool, verb: str, window: str = "", **run_args: Any
+) -> Any:
+    """Run `job` once, report it, and on a failed wait print its log tails and exit non-zero."""
+    try:
+        execution = job.run(await_termination=False, **run_args)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not {verb} job '{name}': {exc}") from exc
+    if wait and execution is not None:
+        execution = _await(job, name, execution, None, window)
+    _report_run(name, execution, wait, window)
+    return execution
+
+
+def _await(
+    job: Any, name: str, execution: Any, timeout: int | None, window: str = ""
+) -> Any:
+    """The execution once it ends; a failure prints its log tails and exits 1."""
+    from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
+        JobExecutionException,
+    )
+
+    try:
+        execution.await_termination(timeout)
+    except JobExecutionException:
+        _failed(job, name, _refreshed(job, execution), window)
+    final = _refreshed(job, execution)
+    if final.success is False:
+        _failed(job, name, final, window)
+    if final.success is None:
+        raise click.ClickException(
+            f"{name}{window}: execution #{final.id} still {final.state} after {timeout}s."
+        )
+    return final
+
+
+def _failed(job: Any, name: str, execution: Any, window: str = "") -> None:
+    """Print the last lines of a failed execution's stdout and stderr, then exit 1."""
+    ident = getattr(execution, "id", "?")
+    status = getattr(execution, "final_status", None) or getattr(
+        execution, "state", "?"
+    )
+    tmp = tempfile.mkdtemp(prefix="hops-joblogs-")
+    try:
+        stdout_path, stderr_path = execution.download_logs(path=tmp)
+        for stream, path in (("stdout", stdout_path), ("stderr", stderr_path)):
+            text = _read_log(path, LOG_TAIL)
+            if text.strip():
+                click.echo(f"=== {stream}, last {LOG_TAIL} lines ===", err=True)
+                click.echo(text.rstrip("\n"), err=True)
+    except Exception as exc:  # noqa: BLE001 - the failure is reported either way
+        click.echo(f"(logs not readable: {exc})", err=True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    raise click.ClickException(
+        f"{name}{window}: execution #{ident} {status}. "
+        f"Full logs: hops job logs {name} --execution {ident} --stdout"
+    )
+
+
+def _refreshed(job: Any, execution: Any) -> Any:
+    """The execution as the backend has it now."""
+    ident = getattr(execution, "id", None)
+    return next(
+        (e for e in _executions(job) if getattr(e, "id", None) == ident), execution
+    )
 
 
 def _report_run(name: str, execution: Any, waited: bool, window: str = "") -> None:
@@ -388,7 +463,11 @@ _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 
 @job_group.command("run")
 @click.argument("name")
-@click.option("--args", "app_args", help="Argument string passed to this execution.")
+@click.option(
+    "--args",
+    "app_args",
+    help="Argument string passed to this execution. Split on spaces; quotes stay literal, so keep each value space-free (2026-10-16T00:00:00).",
+)
 @click.option(
     "--wait/--no-wait",
     default=False,
@@ -435,17 +514,9 @@ def job_run(
     if end_time is not None and start_time is None:
         raise click.UsageError("--end-time requires --start-time.")
     job = _get_job(ctx, name)
-    try:
-        execution = job.run(
-            args=app_args,
-            await_termination=wait,
-            start_time=start_time,
-            end_time=end_time,
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not run job '{name}': {exc}") from exc
-
-    _report_run(name, execution, wait)
+    execution = _run(
+        job, name, wait, "run", args=app_args, start_time=start_time, end_time=end_time
+    )
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(execution))
 
@@ -464,7 +535,11 @@ def job_run(
     required=True,
     help="ISO timestamp for the end of the backfill window (HOPS_END_TIME).",
 )
-@click.option("--args", "app_args", help="Argument string passed to this execution.")
+@click.option(
+    "--args",
+    "app_args",
+    help="Argument string passed to this execution. Split on spaces; quotes stay literal, so keep each value space-free (2026-10-16T00:00:00).",
+)
 @click.option(
     "--wait/--no-wait",
     "wait",
@@ -502,24 +577,63 @@ def job_backfill(
     if end_time <= start_time:
         raise click.UsageError("--end-time must be strictly after --start-time.")
     job = _get_job(ctx, name)
-    try:
-        execution = job.run(
-            args=app_args,
-            await_termination=wait,
-            start_time=start_time,
-            end_time=end_time,
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not backfill job '{name}': {exc}") from exc
-
-    _report_run(
+    execution = _run(
+        job,
         name,
-        execution,
         wait,
+        "backfill",
         f" for {start_time.isoformat()} to {end_time.isoformat()}",
+        args=app_args,
+        start_time=start_time,
+        end_time=end_time,
     )
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(execution))
+
+
+@job_group.command("wait")
+@click.argument("name")
+@click.option(
+    "--execution",
+    "execution_id",
+    type=int,
+    help="Specific execution ID; defaults to the most recent.",
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help="Seconds to wait before giving up; unbounded by default.",
+)
+@click.pass_context
+def job_wait(
+    ctx: click.Context, name: str, execution_id: int | None, timeout: int | None
+) -> None:
+    """Wait for an execution to end.
+
+    A failed execution prints the last lines of its logs and exits 1.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: Job name.
+        execution_id: Specific execution; latest if omitted.
+        timeout: Seconds to wait; unbounded when omitted.
+    """
+    job = _get_job(ctx, name)
+    executions = _executions(job)
+    if not executions:
+        raise click.ClickException(f"No executions for job '{name}'.")
+    target = executions[0]
+    if execution_id is not None:
+        matches = [e for e in executions if getattr(e, "id", None) == execution_id]
+        if not matches:
+            raise click.ClickException(f"Execution #{execution_id} not found.")
+        target = matches[0]
+    final = _await(job, name, target, timeout)
+    _report_run(name, final, True)
+    if output.JSON_MODE:
+        output.print_json(_execution_to_dict(final))
 
 
 @job_group.command("stop")

@@ -268,7 +268,7 @@ def _tf_inputs(udf: Any) -> str:
     "--join",
     "joins",
     multiple=True,
-    help='Join spec, repeatable: "<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>] [prefix]".',
+    help='Join spec, repeatable: "<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>][,...] [prefix]"; a composite key is comma-separated.',
 )
 @click.option(
     "--transform",
@@ -332,9 +332,7 @@ def fv_create(
             )
         query = query.join(
             other.select_all(),
-            on=[spec.on] if not spec.right_on else None,
-            left_on=[spec.on] if spec.right_on else None,
-            right_on=[spec.right_on] if spec.right_on else None,
+            **spec.join_kwargs(),
             join_type=spec.join_type.lower(),
             prefix=spec.prefix,
         )

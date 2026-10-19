@@ -84,6 +84,64 @@ def test_fg_info_renders_fields(mock_project):
     assert "id" in result.output
 
 
+def test_fg_info_shows_table_format_and_offline_size(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("orders")
+    fg.time_travel_format = "DELTA"
+    fg.location = (
+        "hopsfs://namenode:8020/apps/hive/warehouse/demo_featurestore.db/orders_1"
+    )
+    fs.get_feature_group.return_value = fg
+
+    def entry(name, size=None, is_dir=False):
+        e = mock.MagicMock()
+        e.name, e.size, e.dir = name, size, is_dir
+        e.path = f"/apps/hive/warehouse/demo_featurestore.db/orders_1/{name}"
+        return e
+
+    listings = {
+        "/apps/hive/warehouse/demo_featurestore.db/orders_1": [
+            entry("part-0.parquet", 1_000_000),
+            entry("_delta_log", is_dir=True),
+        ],
+        "/apps/hive/warehouse/demo_featurestore.db/orders_1/_delta_log": [
+            entry("00000.json", 2048)
+        ],
+    }
+    dataset_api = mock_project.get_dataset_api.return_value
+    dataset_api._list_dataset_path.side_effect = lambda path, cls, offset=0: (
+        len(listings[path]),
+        listings[path][offset:],
+    )
+    result = CliRunner().invoke(cli, ["fg", "info", "orders"])
+    assert result.exit_code == 0, result.output
+    assert "DELTA" in result.output
+    assert "978.6 KB (2 files)" in result.output
+
+    result = CliRunner().invoke(cli, ["--json", "fg", "info", "orders"])
+    payload = json.loads(result.stdout)
+    assert payload["table_format"] == "DELTA"
+    assert payload["offline_size_bytes"] == 1_002_048
+
+
+def test_fg_info_without_offline_table_shows_a_dash(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("orders")
+    fg.location = (
+        "hopsfs://namenode:8020/apps/hive/warehouse/demo_featurestore.db/orders_1"
+    )
+    fs.get_feature_group.return_value = fg
+    mock_project.get_dataset_api.return_value._list_dataset_path.side_effect = (
+        RuntimeError("not found")
+    )
+    result = CliRunner().invoke(cli, ["fg", "info", "orders"])
+    assert result.exit_code == 0, result.output
+    assert any(
+        line.split()[:3] == ["Offline", "size", "-"]
+        for line in result.output.splitlines()
+    )
+
+
 def test_fg_info_not_found(mock_project):
     fs = mock_project.get_feature_store.return_value
     fs.get_feature_group.side_effect = RuntimeError("missing")
@@ -400,6 +458,19 @@ def test_model_info_specific_version(mock_project):
     )
     assert result.exit_code == 0, result.output
     mr.get_model.assert_called_with("fraud_detector", version=2)
+
+
+def test_model_info_prints_every_metric(mock_project):
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.name, model.version, model.framework = "deal_model", 1, "sklearn"
+    model.training_metrics = {"auc": 0.9, "f1": 0.8, "recall": 0.7, "test_pr_auc": 0.6}
+    model.created, model.description = "2026-04-01", ""
+    mr.get_model.return_value = model
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(cli, ["model", "info", "deal_model", "--version", "1"])
+    assert result.exit_code == 0, result.output
+    assert "test_pr_auc=0.6" in result.output
 
 
 # --- deployment ------------------------------------------------------------

@@ -447,8 +447,15 @@ def _loading_animation(message: str, stop_event: threading.Event) -> None:
         time.sleep(0.5)
 
 
+def _progress_disabled() -> bool:
+    """Whether progress bars and animations are off: TQDM_DISABLE, read at each call (the hops CLI sets it off a terminal)."""
+    return os.environ.get("TQDM_DISABLE", "").lower() in ("1", "true")
+
+
 @also_available_as("hopsworks.util._run_with_loading_animation")
 def _run_with_loading_animation(message: str, func: Callable, *args, **kwargs) -> Any:
+    if _progress_disabled():
+        return func(*args, **kwargs)
     stop_event = threading.Event()
     t = threading.Thread(
         target=_loading_animation,
