@@ -365,28 +365,35 @@ A full dashboard (statistics, monitoring history, data sample) is in
   `limit` is capped (`MAX_LIMIT`), and results are cached for `CACHE_SECONDS`.
   Never read a whole feature group into pandas to sort or filter it per request.
 - **Where the source lives.** `Users/<user>/apps/<name>/` (`~/apps/<name>/` in a
-  terminal; `./apps/<name>/` from a laptop, mirrored with `hops files upload`),
+  terminal; `./apps/<name>/` from a laptop, uploaded by `hops app deploy`),
   or a git-backed app when the working directory is a GitHub repository
   (`--git-url`, `--git-branch`, `--git-auto-redeploy`, so a push is a
   redeploy). An ML system's app keeps its source in the system's repository
   under `<slug>/app/`.
-- **Environment.** `python-agent-pipeline` ships FastAPI and uvicorn; the
-  skeleton's `app-requirements.txt` adds the Trino client where it is missing. A library neither base has goes into
-  `app-requirements.txt` and a clone `<name>-app-env` (see **Custom libraries**).
+- **Environment.** `python-agent-pipeline` ships FastAPI and uvicorn. A library
+  it lacks goes into `app-requirements.txt`; `hops app deploy` then runs the app
+  in a clone `<name>-app-env` with the file installed.
+
+One command deploys, from a laptop or a terminal, for a new app and for every
+change after it:
 
 ```bash
-find apps/customer-lookup -name __pycache__ -prune -exec rm -rf {} +
-hops files mkdir Users/<user>/apps                    # the parent must exist; the upload copies the directory
-hops files upload apps/customer-lookup Users/<user>/apps/
-hops app create customer-lookup --path /Projects/<project>/Users/<user>/apps/customer-lookup/app.py \
-  --app-kind custom --entrypoint-command "python app.py" --app-port 8080 \
-  --readiness-probe-path /health --env python-agent-pipeline --start
-hops app url customer-lookup
+hops app deploy customer-lookup apps/customer-lookup
 ```
 
+It uploads the directory to `Users/<user>/apps/customer-lookup/` (missing
+folders created, files overwritten, dotfiles and `__pycache__` skipped), clones
+`python-agent-pipeline` to `customer-lookup-app-env` when the directory has
+`app-requirements.txt` (installed again only when the file changed), creates the
+app (`app.py` as a custom app on port 8080, readiness on `/health`) or redeploys
+it, and returns once the new execution serves, the URL on the last line. A
+failure exits non-zero and names the next step. `--env` picks another
+environment, `--timeout` the seconds to wait (600), and `--json` prints the
+app and each file's sha256.
+
 **Smoke tests** go to the app itself, not the proxy URL, which needs a browser
-session (an API key gets a 401). `--start` returning `serving=yes` means the
-readiness probe on `/health` passed. In a Hopsworks terminal, whose `kubectl`
+session (an API key gets a 401). `hops app deploy` returning means the
+readiness probe on `/health` passed on the new files. In a Hopsworks terminal, whose `kubectl`
 reaches the project namespace, then call the page and each API route the
 description implies:
 
@@ -408,15 +415,13 @@ without asking, at most five attempts:
 2. Change the source. A missing library is an environment fix (a pin in
    `app-requirements.txt` installed into the clone), never a workaround in the
    code. Out of memory: raise `--memory` once and say so.
-3. Upload (`hops files upload ... --overwrite`), or push for a git-backed app.
-4. A running app: `hops app redeploy <name>`. An app that failed to start:
-   `hops app start <name>` (redeploy refuses an app that is not running). Wait
-   for `RUNNING` and serving, and rerun the smoke tests.
+3. `hops app deploy <name> <dir>` (push, for a git-backed app), and rerun the
+   smoke tests.
 
 After the fifth attempt, stop with the last lines of the logs and what was tried.
 
-**Edit** changes the source as asked, updates the docstring, redeploys and
-reruns the smoke tests. **Delete** confirms the exact name, runs
+**Edit** changes the source as asked, updates the docstring, runs
+`hops app deploy` and reruns the smoke tests. **Delete** confirms the exact name, runs
 `hops app delete <name> --yes`, and removes the source directory and the
 environment clone when one was created for the app.
 

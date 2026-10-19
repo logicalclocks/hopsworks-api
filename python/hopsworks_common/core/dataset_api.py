@@ -965,7 +965,7 @@ class DatasetApi:
         """Read the content of a file.
 
         Parameters:
-            path: The path to the file to read.
+            path: The path to the file to read, absolute or relative to the project.
             dataset_type:
                 The type of dataset, can be `DATASET` or `HIVEDB`; defaults to `DATASET`.
                 `HIVEDB` type is used to read files from Apache Hive.
@@ -981,7 +981,7 @@ class DatasetApi:
             "dataset",
             "download",
             "with_auth",
-            path[1:],
+            path.lstrip("/"),
         ]
 
         query_params = {
