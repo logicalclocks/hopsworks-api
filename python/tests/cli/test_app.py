@@ -1028,3 +1028,27 @@ def test_deploy_json_lists_every_file_with_its_sha256(mock_project, tmp_path):
             "sha256": hashlib.sha256(b"<p>hi</p>").hexdigest(),
         },
     ]
+
+
+def test_deploy_checks_a_route_through_the_proxy(mock_project, tmp_path):
+    root = _app_dir(tmp_path)
+    mock_project.id = 119
+    mock_project.get_app_api.return_value.create_app.return_value = _fake_app()
+    proxy_client = mock.MagicMock(_verify=False)
+    proxy_client._send_request.return_value = {"token": "jwt"}
+    answer = mock.MagicMock(ok=False, status_code=500, text="Internal Server Error")
+    with (
+        mock.patch("hopsworks_common.client._get_instance", return_value=proxy_client),
+        mock.patch("requests.get", return_value=answer) as get,
+    ):
+        result, _, _ = _deploy(
+            mock_project, root, "--check", "api/top", polls=[_app(1)]
+        )
+    assert result.exit_code == 1
+    assert "api/top answered 500" in result.output
+    assert proxy_client._send_request.call_args.args == (
+        "POST",
+        ["project", 119, "apps", "shop", "proxy-token"],
+    )
+    assert get.call_args.args == (_URL + "api/top",)
+    assert get.call_args.kwargs["cookies"] == {"proxy_session": "jwt"}

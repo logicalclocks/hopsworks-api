@@ -86,8 +86,14 @@ def _connection():
     import hopsworks
 
     project = hopsworks.login()
+    # Off only where the client turns it off: run outside the cluster (a laptop, a build
+    # sandbox), Trino answers on an IP its certificate does not name. The app's pod
+    # leaves the variable unset and verifies.
+    verify = os.environ.get("HOPSWORKS_HOSTNAME_VERIFICATION", "true").lower() != "false"
     return project.get_trino_api().connect(
-        catalog=PREDICTIONS["catalog"], schema=f"{project.name.lower()}_featurestore"
+        catalog=PREDICTIONS["catalog"],
+        schema=f"{project.name.lower()}_featurestore",
+        verify=verify,
     )
 
 

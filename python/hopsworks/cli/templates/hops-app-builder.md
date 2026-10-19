@@ -22,7 +22,7 @@ its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skel
   lacks goes into `app-requirements.txt`. Then deploy, the only deploy step:
 
   ```bash
-  hops app deploy <name> apps/<name>
+  hops app deploy <name> apps/<name> --check <one api route the description implies>
   ```
 
   It uploads the directory to `Users/<user>/apps/<name>/`, runs the app in a clone

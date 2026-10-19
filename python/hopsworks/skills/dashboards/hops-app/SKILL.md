@@ -396,12 +396,15 @@ folders created, files overwritten, dotfiles and `__pycache__` skipped), clones
 app (`app.py` as a custom app on port 8080, readiness on `/health`) or redeploys
 it, and returns once the new execution serves, the URL on the last line. A
 failure exits non-zero and names the next step. `--env` picks another
-environment, `--timeout` the seconds to wait (600), and `--json` prints the
-app and each file's sha256.
+environment, `--timeout` the seconds to wait (600), `--check <route>` fetches one
+route of the deployed app through the Hopsworks proxy and fails the deploy on a
+non-2xx answer, and `--json` prints the app and each file's sha256.
 
-**Smoke tests** go to the app itself, not the proxy URL, which needs a browser
-session (an API key gets a 401). `hops app deploy` returning means the
-readiness probe on `/health` passed on the new files. In a Hopsworks terminal, whose `kubectl`
+**Smoke tests** go to the deployed app with `hops app deploy <name> <dir> --check
+<route>`, one API route that reads data (`api/top`): it passes through the proxy
+with a token minted from the API key, which a plain request with the key does
+not (401). `hops app deploy` returning means the readiness probe on `/health`
+passed on the new files; `--check` means the data answers too. In a Hopsworks terminal, whose `kubectl`
 reaches the project namespace, then call the page and each API route the
 description implies:
 

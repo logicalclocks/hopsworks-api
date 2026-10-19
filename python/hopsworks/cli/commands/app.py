@@ -581,6 +581,12 @@ _POLL_SECONDS = 3.0
     show_default=True,
     help="Seconds to wait for the app to serve the new files.",
 )
+@click.option(
+    "--check",
+    "check_path",
+    default=None,
+    help="A route to fetch through the Hopsworks proxy once the app serves (api/top); a non-2xx answer fails the deploy.",
+)
 @click.pass_context
 def app_deploy(
     ctx: click.Context,
@@ -588,6 +594,7 @@ def app_deploy(
     local_dir: str,
     environment: str | None,
     timeout: int,
+    check_path: str | None,
 ) -> None:
     """Create or update an app from a local directory.
 
@@ -604,6 +611,7 @@ def app_deploy(
         local_dir: Directory holding `app.py`.
         environment: Python environment; derived from LOCAL_DIR when None.
         timeout: Seconds to wait for serving.
+        check_path: A route to fetch through the proxy after serving.
     """
     import hashlib
     import os
@@ -715,6 +723,8 @@ def app_deploy(
     a = _await_new_execution(apps, name, previous, timeout)
     url = getattr(a, "app_url", None)
     output.success("✓ App %s serves the new files", name)
+    if check_path is not None:
+        _check_route(project, name, url, check_path)
     if output.JSON_MODE:
         output.print_json(
             {
@@ -736,6 +746,40 @@ def app_deploy(
         )
     else:
         click.echo(url)
+
+
+def _check_route(project: Any, name: str, url: str | None, path: str) -> None:
+    """GET `path` of the deployed app through the proxy, as a browser would.
+
+    The proxy wants a session, not an API key: an app proxy token minted with the
+    key stands in for it, as the Hopsworks UI and Hopsable's previews do.
+    """
+    import requests
+    from hopsworks_common import client
+
+    if not url:
+        raise click.ClickException(f"Could not check app '{name}': it has no URL.")
+    _client = client._get_instance()
+    try:
+        token = _client._send_request(
+            "POST", ["project", project.id, "apps", name, "proxy-token"]
+        )["token"]
+        answer = requests.get(
+            url.rstrip("/") + "/" + path.lstrip("/"),
+            cookies={"proxy_session": token},
+            verify=_client._verify,
+            timeout=60,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not check app '{name}' at {path}: {exc}"
+        ) from exc
+    if not answer.ok:
+        raise click.ClickException(
+            f"Could not check app '{name}': {path} answered {answer.status_code}: "
+            f"{answer.text[:300]}. Read `hops app logs {name}`."
+        )
+    output.success("✓ %s answered %s", path, answer.status_code)
 
 
 def _deploy_files(local_dir: str) -> list[str]:
