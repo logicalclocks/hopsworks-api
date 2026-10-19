@@ -1398,12 +1398,21 @@ class FakeSuperset:
         self.next_id = 100
         self.databases = [{"id": 3, "database_name": "Trino"}]
         self.datasets, self.charts, self.dashboards = {}, {}, {}
+        # What /api/v1/chart/data answers per dataset id: rows by default.
+        self.chart_data = {}
+        self.queries = []
 
     def _id(self) -> int:
         self.next_id += 1
         return self.next_id
 
-    def _request(self, method, path):
+    def _request(self, method, path, json_data=None):
+        if path == "/api/v1/chart/data":
+            self.queries.append(json_data)
+            answer = self.chart_data.get(json_data["datasource"]["id"], {"rowcount": 1})
+            if isinstance(answer, Exception):
+                raise answer
+            return {"result": [answer]}
         resource, page = re.match(r"/api/v1/(\w+)/\?q=\(page:(\d+)", path).groups()
         store = {
             "dataset": self.datasets,
@@ -1487,6 +1496,37 @@ def test_the_dashboard_program_creates_then_updates_in_place():
     layout = json.loads(api.dashboards[first]["position_json"])
     for row in layout["GRID_ID"]["children"]:
         assert sum(layout[c]["meta"]["width"] for c in layout[row]["children"]) <= 12
+
+
+def test_two_dashboards_over_one_feature_group_keep_their_own_datasets():
+    first, second, api = _dashboard_program(), _dashboard_program(), FakeSuperset()
+    second.SLUG, second.TITLE = "customers-churn", "Customers Churn"
+    first.build(api, "p")
+    second.build(api, "p")
+    names = sorted(d["table_name"] for d in api.datasets.values())
+    assert names == ["customers-churn__customers_1", "customers-overview__customers_1"]
+    second.delete(api, "p")
+    assert [d["table_name"] for d in api.datasets.values()] == [
+        "customers-overview__customers_1"
+    ]
+    assert len(api.charts) == len(first.CHARTS)
+
+
+def test_a_chart_that_does_not_render_fails_the_build():
+    program, api = _dashboard_program(), FakeSuperset()
+    program.build(api, "p")
+    assert len(api.queries) == len(program.CHARTS)
+    bar = next(q for q in api.queries if q["queries"][0]["columns"] == ["plan"])
+    assert bar["queries"][0]["metrics"][0]["sqlExpression"] == "COUNT(*)"
+    dataset = next(iter(api.datasets))
+    api.chart_data[dataset] = {"rowcount": 0, "data": []}
+    with pytest.raises(SystemExit, match="Total Customers .*returns no rows"):
+        program.build(api, "p")
+    api.chart_data[dataset] = RuntimeError("Column 'plan' does not exist")
+    with pytest.raises(
+        SystemExit, match="Customers by Plan .*Column 'plan' does not exist"
+    ):
+        program.build(api, "p")
 
 
 def test_an_edit_that_drops_a_chart_leaves_no_trace_of_it():

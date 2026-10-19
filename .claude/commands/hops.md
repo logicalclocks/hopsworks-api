@@ -103,9 +103,8 @@ anywhere).
 
 ## Dashboard
 
-`hops superset dashboard list` works from anywhere; every other `hops superset` command and the
-SDK reach Superset only inside the cluster, so the builder runs its program as a job from an
-external client.
+`hops superset` and the SDK reach Superset from anywhere, through the Hopsworks proxy, so the
+builder runs its program where it runs.
 
 1. List the dashboards (`hops superset dashboard list`) and ask: edit one (each by title, marked when a program exists under `dashboards/`), create one,
    or delete one. With none, go to create.

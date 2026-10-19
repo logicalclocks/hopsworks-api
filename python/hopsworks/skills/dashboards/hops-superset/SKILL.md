@@ -432,13 +432,15 @@ last line printing the dashboard URL.
   is `~/dashboards/<slug>.py` in a Hopsworks terminal (the FUSE mount) and
   `./dashboards/<slug>.py` from an external client, mirrored with
   `hops files upload` and `hops files download` so both places hold the same programs.
-- **Where they run:** the SDK reaches Superset only inside the cluster
-  (`get_superset_api()` refuses an external client, and so does `hops superset`,
-  except `hops superset dashboard list`, which reads the list through the REST API).
-  In a terminal, run the program directly. From an external client, run it as a
-  Hopsworks job, which also uploads it to `Users/<user>/dashboards/`; `--list`
-  run the same way stands in for `hops superset dashboard list`.
-- **A re-run is an update.** Datasets are reused by name, the charts the
+- **Where they run:** where you run, a Hopsworks terminal or an external client:
+  `get_superset_api()` and `hops superset` reach Superset through the Hopsworks
+  proxy. Go through the SDK or the CLI, never raw requests: Superset's writes need
+  the headers the SDK sets.
+- **Each dashboard has its own datasets**, named `<SLUG>__<feature group>_<version>`,
+  so two dashboards over one feature group never share or delete each other's.
+- **Every chart is checked.** After a build the program runs each chart's query once
+  (`/api/v1/chart/data`) and exits non-zero naming the charts that error or return no rows.
+- **A re-run is an update.** The dashboard's datasets are reused by name, the charts the
   dashboard had are replaced (so a chart dropped from `CHARTS` goes too), and the
   dashboard keeps its id, URL and title.
 - **`--delete` removes only what the program made:** the dashboard, its
@@ -451,10 +453,6 @@ last line printing the dashboard URL.
 python ~/dashboards/customers-overview.py            # create or update, prints the URL
 python ~/dashboards/customers-overview.py --delete   # after confirming the exact title
 hops superset dashboard list                         # confirm
-# from an external client: the same program as a job
-hops job deploy customers-overview-dashboard dashboards/customers-overview.py \
-  --env python-feature-pipeline --upload-dir Users/<user>/dashboards --overwrite --run --wait
-hops job logs customers-overview-dashboard --stdout                 # the URL, or the --list JSON
 ```
 
 A chart Superset rejects (a legacy viz type, `Empty query?`, an unknown field)
