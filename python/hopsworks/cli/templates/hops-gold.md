@@ -23,7 +23,7 @@ Without a slug and with no `system.yaml` here, reply that the Factory's **From T
 
 Load **hops-analytics** first: its `SKILL.md` (the tag, lineage, the schedule, incremental processing) and `references/gold-marts.md` (the requirement questions, Kimball modeling, the standards, the jobs) are what this builder runs on.
 Load **hops-dbt** for the dbt project and its runner, **hops-job** before deploying a job, **hops-fg** before creating a feature group, and **hops-trino-sql** for the queries.
-Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
+Read a skill with `hops skills info <name>`, one skill per command, and a file it names with `hops skills info <name> references/<file>`.
 
 **Where it runs.** The Factory starts Claude Code in the layer's directory, `<slug>/`, so it reads the layer's `AGENTS.md`; every `<slug>/<path>` here is `<path>` in the current directory.
 

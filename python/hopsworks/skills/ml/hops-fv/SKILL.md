@@ -173,7 +173,7 @@ Feature groups with an `embedding_index` (vector embeddings) **can** be included
 - Use `find_neighbors()` on the feature view to perform similarity search, which then automatically retrieves the full feature vector for each neighbor
 
 ```python
-# embedding_fg was created with embedding_index=EmbeddingIndex(...) (see hops-fg)
+# embedding_fg was created with embedding_index=EmbeddingIndex(...) (hops-fg references/embeddings.md)
 fv = fs.create_feature_view(
     name="recommendation_fv",
     query=embedding_fg.select_all().join(profile_fg.select_all(), on=["user_id"]),

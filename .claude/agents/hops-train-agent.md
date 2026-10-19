@@ -9,7 +9,7 @@ the prompt: the path of `system.yaml`, the goal (`requirements.targets`), the bu
 (`requirements.budget.training`), the loop protocol to follow, the round number, and an
 instruction.
 
-Load these skills before you start, each with `hops skills info <name>`: **hops-reqs** (the
+Load these skills before you start, each with `hops skills info <name>`, one skill per command: **hops-reqs** (the
 schema, the rules and the template), **hops-eda**, **hops-fv**, **hops-train**, **hops-job**,
 **hops-environments**.
 

@@ -1,8 +1,8 @@
 # ruff: noqa: INP001
 """Copy the system template into a new ML system directory, and each build phase's stubs when it starts.
 
-    python <skills>/hops-reqs/references/new_system.py <dir>/<slug> [--example <name>]
-    python <skills>/hops-reqs/references/new_system.py <dir>/<slug> --phase features|train|infer
+    python <hops-reqs>/references/new_system.py <dir>/<slug> [--example <name>]
+    python <hops-reqs>/references/new_system.py <dir>/<slug> --phase features|train|infer
 
 Copies system_template/ to the target without the stubs a build phase fills,
 renames `src/slug_pkg` to the package named after the slug (`telco-churn`

@@ -8,8 +8,7 @@ To change how the loop searches, copy this file into the system directory, edit
 it, and name the copy in `training.autoresearch`:
 
 ```bash
-cp .claude/skills/hops-train/references/autoresearch.md <slug>/autoresearch.md           # external repository
-cp /opt/hops/agent-skills/hops-train/references/autoresearch.md <slug>/autoresearch.md   # Hopsworks terminal
+hops skills info hops-train references/autoresearch.md > <slug>/autoresearch.md
 ```
 
 A copy changes how the loop searches, never what it may touch: the rules under

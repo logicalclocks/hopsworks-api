@@ -53,7 +53,7 @@ with exactly two options:
 Then create the system, with a slug of two or three words from the problem:
 
 ```bash
-python <skills>/hops-reqs/references/new_system.py <slug>      # <skills>: .claude/skills, else ~/.claude/skills
+python <hops-reqs>/references/new_system.py <slug>      # <hops-reqs>: the directory of the path `hops skills info hops-reqs` prints
 python <slug>/set.py 'schema_version=1' 'system.name=<short title>' 'system.slug=<slug>' \
   'system.target={cluster: <Host>, project: <Project>, stage: development}' 'system.version=0.1.0' 'system.status=draft' \
   'requirements.status=pending' 'requirements.description=<the problem in the user words>'
@@ -155,7 +155,7 @@ as the option's description. Create it with the
 example's own slug, which writes its whole `system.yaml`, then record the target:
 
 ```bash
-python <skills>/hops-reqs/references/new_system.py <example> --example <example>
+python <hops-reqs>/references/new_system.py <example> --example <example>
 python <example>/set.py 'system.target={cluster: <Host>, project: <Project>, stage: development}'
 ```
 

@@ -8,8 +8,7 @@ You are the inference agent of an ML system built by `/hops-build`. The orchestr
 the prompt: the path of `system.yaml`, the goal (`requirements.sla.<system_type>`), the budget
 (`requirements.budget.inference`), the mode, and an instruction.
 
-Load these skills before you start (from `.claude/skills/<name>/` in the repository, else
-`~/.claude/skills/<name>/`): **hops-reqs**, the skill for the mode (**hops-batch-inference** or
+Load these skills before you start, each with `hops skills info <name>`, one skill per command: **hops-reqs**, the skill for the mode (**hops-batch-inference** or
 **hops-online-inference**), **hops-job**, **hops-monitoring**, **hops-environments**, and
 **hops-kubectl-debug** when a deployment is pending, crashlooping, or slower than its own
 breakdown predicts.

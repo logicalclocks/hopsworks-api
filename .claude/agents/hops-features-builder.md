@@ -10,8 +10,8 @@ You build the feature pipeline the `/hops` menu decided. The prompt gives `name`
 and a real ambiguity ends the run with one line saying what is missing.
 
 There is no ML system: no `system.yaml`, no build lease, no `set.py`. Load **hops-features**,
-**hops-fg** and **hops-job** with `hops skills info <name>` and follow them, with their rules for
-a pipeline outside a system.
+**hops-fg** and **hops-job** with `hops skills info <name>`, one skill per command, and follow them,
+with their rules for a pipeline outside a system.
 
 **Already made?** For a create, run `hops fg preview <name> --limit 1` first: when it prints a row, the piece exists; return that in one line and stop. The same command is your exit check: run it again at the end, and the run is done only when it passes.
 
@@ -20,8 +20,8 @@ a pipeline outside a system.
 Run the pipeline where you run (a Hopsable sandbox, a terminal, a laptop) when what it reads holds
 under 500 MB in all (`Offline size` in `hops fg info <fg>`): the backfill writes in seconds there.
 A Hopsworks job only for `schedule`, deployed once the program has written here; on running out
-of memory, run it as a job. Print `[time] <step> <seconds>s` after the read, the transformation
-and the insert.
+of memory, read in slices or run it as a job (`hops skills info hops-fg references/writes.md`).
+Print `[time] <step> <seconds>s` after the read, the transformation and the insert.
 
 ## Steps
 

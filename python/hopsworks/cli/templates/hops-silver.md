@@ -23,7 +23,7 @@ When every phase is `done` and the spec differs from `outputs.applied_spec`, a b
 
 Load **hops-analytics** first: its `SKILL.md` (the tag, the tasks, the settings, the engine, incremental processing, lineage, partitioning, schedule, the phases) and `references/silver-tasks.md` are what this builder runs on, and **hops-partitioning** for the design.
 Load **hops-dbt** for a `dbt_trino` engine and **hops-spark** for `pyspark`, and **hops-job** and **hops-fg** before deploying the job or creating a feature group.
-Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
+Read a skill with `hops skills info <name>`, one skill per command, and a file it names with `hops skills info <name> references/<file>`.
 
 **Where it runs.** The Factory starts Claude Code in the layer's directory, `<slug>/`, so it reads the layer's `AGENTS.md`; every `<slug>/<path>` here is `<path>` in the current directory.
 

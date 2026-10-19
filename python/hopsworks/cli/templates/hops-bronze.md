@@ -22,7 +22,7 @@ An existing feature group needs no bronze layer: a silver layer reads it as it i
 | `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 
 Load **hops-analytics** first (the `analytics_table` tag and the layers built on bronze), and **hops-job** and **hops-fg** before deploying a job or checking a feature group.
-Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
+Read a skill with `hops skills info <name>`, one skill per command, and a file it names with `hops skills info <name> references/<file>`.
 
 **Where it runs.** The Factory starts Claude Code in the layer's directory, `<slug>/`, so it reads the layer's `AGENTS.md`; every `<slug>/<path>` here is `<path>` in the current directory.
 

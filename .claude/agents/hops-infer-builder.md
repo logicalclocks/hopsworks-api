@@ -10,8 +10,8 @@ You build the scoring the `/hops` menu decided. The prompt gives `name`, `model`
 real ambiguity ends the run with one line saying what is missing.
 
 There is no ML system: no `system.yaml`, no build lease, no `set.py`, no deployment. Load
-**hops-batch-inference**, **hops-fg** and **hops-job** with `hops skills info <name>` and follow
-them.
+**hops-batch-inference**, **hops-fg** and **hops-job** with `hops skills info <name>`, one skill per
+command, and follow them.
 
 **Already made?** For a create, look for predictions of this model first: `hops fg list` and
 `hops job list`, a feature group or job whose name or description names `<model>` (the project

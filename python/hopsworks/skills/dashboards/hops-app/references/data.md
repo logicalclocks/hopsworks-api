@@ -78,12 +78,11 @@ for await (const result of query) {
 The whole app (server with `/health`, `/api/rows` and the static UI) is
 [references/trino_js/](trino_js/). Install `trino-client` into the
 app directory before the upload, so the app starts without the network, and
-copy `app.css` from the skeleton (`<skills>` is
-`/opt/hopsworks-api/python/hopsworks/skills` in a Hopsworks terminal):
+copy `app.css` from the skeleton (`<hops-app>` is the directory of the path `hops skills info hops-app` prints):
 
 ```bash
-cp -r <skills>/dashboards/hops-app/references/trino_js apps/customers
-cp <skills>/dashboards/hops-app/references/app_skeleton/static/app.css apps/customers/static/
+cp -r <hops-app>/references/trino_js apps/customers
+cp <hops-app>/references/app_skeleton/static/app.css apps/customers/static/
 (cd apps/customers && npm install --no-audit --no-fund)
 hops files upload apps/customers Users/<user>/apps/ --overwrite
 hops app create customers --path /Projects/<project>/Users/<user>/apps/customers/server.js \

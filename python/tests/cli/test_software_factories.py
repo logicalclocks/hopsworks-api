@@ -267,7 +267,7 @@ def test_the_build_names_each_part_where_it_is_read():
     parts = sorted(p.name for p in REQS.glob("build-*.md"))
     assert parts == ["build-edits.md", "build-phases.md", "build-reqs.md"]
     for part in parts:
-        assert f"read `hops-reqs/references/{part}`" in core, part
+        assert f"read `hops skills info hops-reqs references/{part}`" in core, part
 
 
 def test_the_builder_runs_on_the_session_model():

@@ -30,9 +30,9 @@ Already known, no need to look again before the first question:
 
 Load **hops-reqs** first: its `SKILL.md` and `references/` are the knowledge this factory runs on
 (the schema and rules in `references/system-yaml.md`, the data-source routes, the system
-template, bundles, tests, the repository contract). Find a skill at `.claude/skills/<name>/` in the
-repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to
-`/opt/hops/agent-skills/`).
+template, bundles, tests, the repository contract). Read a skill with `hops skills info <name>`, one
+skill per command, and a file it names with `hops skills info <name> references/<file>`. The second
+line it prints is the skill's `SKILL.md` path: `<hops-reqs>` below is the directory of hops-reqs.
 
 **Where it runs.** Factory and `hops factory run` start Claude Code in the system's directory, `<slug>/`,
 so it reads the system's `AGENTS.md`. There, every `<slug>/<path>` in this command and in the
@@ -143,19 +143,18 @@ line why, so `verify` and the next run see what was not done.
   each phase commit, `hops files upload <slug> Users/<user>/systems/ --overwrite` (the `.git`
   directory too), and register once with `--location /Projects/<project>/Users/<user>/systems/<slug>`.
 - **The repository and `reqs`.** While `requirements.status` is `pending`, or on `/hops-build
-  <slug> reqs`, read `hops-reqs/references/build-reqs.md` (in the hops-reqs skill
-  directory found above) and follow it: it sets up the repository `system.repo` names, then completes the specification.
+  <slug> reqs`, read `hops skills info hops-reqs references/build-reqs.md` and follow it: it sets up the repository `system.repo` names, then completes the specification.
 - **Edits from the Hopsworks UI.** When `system.edits` lists entries, or the instruction is to
-  apply the edits made in the Hopsworks UI, read `hops-reqs/references/build-edits.md` and follow it.
+  apply the edits made in the Hopsworks UI, read `hops skills info hops-reqs references/build-edits.md` and follow it.
 
 ### data, features, train, infer, app
 
-When the first of these phases starts, read `hops-reqs/references/build-phases.md` and follow its
+When the first of these phases starts, read `hops skills info hops-reqs references/build-phases.md` and follow its
 section for each phase in turn.
 
 ### verify
 
-Read-only everywhere except the `verify` block. Follow "Verification" in `hops-reqs/SKILL.md`:
+Read-only everywhere except the `verify` block. Follow "Verification" in hops-reqs (`hops skills info hops-reqs`):
 the pushed head (a dirty tree or unpushed commits fail; with `system.repo.url: local`, a dirty tree), existence and state, identity, expiry,
 bounded reads only. Run `pytest` in the system directory; `verify integration` also runs the
 `<slug>-tests` job per environment, `verify benchmark` reruns the benchmark at full length.
