@@ -7,7 +7,7 @@ a running system is an integration test, never a unit test behind a skip guard.
 
 ## Layout
 
-The [system template](system_template/) carries the harness; copy it once per system.
+The [system template](system_template/) carries the harness; copy it once per system, and each phase's stubs when it starts (`new_system.py <slug> --phase <phase>`).
 
 | File | What it is |
 | --- | --- |

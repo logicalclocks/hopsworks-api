@@ -821,7 +821,36 @@ def _new_system(tmp_path: Path) -> Path:
     (target / "system.yaml").write_text(
         EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8"
     )
+    for phase in new_system.PHASES:
+        new_system.add_phase(target, phase)
     return target
+
+
+def test_each_phase_brings_its_own_stubs(tmp_path):
+    new_system = _load(REQS / "new_system.py")
+    target = new_system.create(tmp_path / "telco-churn")
+    package = target / "src" / "telco_churn"
+    assert (package / "__init__.py").is_file() and (target / "status.py").is_file()
+    assert not (package / "feature_pipeline.py").exists()
+    assert not (target / "benchmarks").exists()
+    with pytest.raises(SystemExit, match="no system.yaml"):
+        new_system.add_phase(target, "train")
+
+    (target / "system.yaml").write_text("schema_version: 1\n", encoding="utf-8")
+    created = new_system.add_phase(target, "train")
+    assert sorted(p.name for p in created) == [
+        "charts.py",
+        "evaluate.py",
+        "test_training.py",
+        "training_pipeline.py",
+    ]
+    assert (
+        "slug_pkg" not in (target / "tests" / "unit" / "test_training.py").read_text()
+    )
+    (package / "evaluate.py").write_text("# the phase's work\n", encoding="utf-8")
+    assert new_system.add_phase(target, "train") == []
+    assert (package / "evaluate.py").read_text() == "# the phase's work\n"
+    assert not (package / "predictor.py").exists()
 
 
 def test_new_system_names_the_package_after_the_slug(tmp_path):

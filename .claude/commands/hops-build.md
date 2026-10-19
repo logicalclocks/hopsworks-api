@@ -311,7 +311,8 @@ Make every `requirements.data_sources` entry `present` and record it under `data
 ### features
 
 Load **hops-features**, **hops-fg**, **hops-transformations**, **hops-job**,
-**hops-environments**. For each `requirements.features` entry `computed_in: feature_pipeline` or
+**hops-environments**. Create the phase's stubs first: `python <skills>/hops-reqs/references/new_system.py <slug> --phase features` (`<skills>`
+is the directory the skills were found in; a file the system has is kept). For each `requirements.features` entry `computed_in: feature_pipeline` or
 `streaming`, write a pipeline from `src/<slug_pkg>/feature_pipeline.py` (one per pipeline) that
 runs as `requirements.operations.features` says: scheduled (the window from `HOPS_START_TIME` and
 `HOPS_END_TIME`) or continuous (Structured Streaming). Polars in a Python job by default (hops-features says
@@ -331,8 +332,8 @@ schedule or running execution with its alert, and passing tests.
 
 ### train
 
-Before spawning, ask anything the round will need (the split kind when it is unclear), print the
-estimate (the budget's `wall_clock`), write `training.status: running` and `started`, then spawn
+Before spawning, create the phase's stubs (`python <skills>/hops-reqs/references/new_system.py <slug> --phase train`), ask anything the round
+will need (the split kind when it is unclear), print the estimate (the budget's `wall_clock`), write `training.status: running` and `started`, then spawn
 the **hops-train-agent** sub-agent with the Agent tool and this prompt:
 
 ```
@@ -355,7 +356,8 @@ unreachable target, offering to accept the best model, which runs acceptance and
 
 ### infer
 
-Print the estimate (attempts x 3 min), write `inference.status: running`, then spawn the
+Create the phase's stubs (`python <skills>/hops-reqs/references/new_system.py <slug> --phase infer`), print the estimate (attempts x 3
+min), write `inference.status: running`, then spawn the
 **hops-infer-agent** sub-agent with:
 
 ```

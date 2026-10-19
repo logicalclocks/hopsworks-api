@@ -108,7 +108,8 @@ requirements back and ask to proceed; write `status: met` on yes.
 ## The system template
 
 `python references/new_system.py <dir>/<slug>` copies
-[references/system_template/](references/system_template/) into the system:
+[references/system_template/](references/system_template/) into the system, and
+`--phase features|train|infer` adds that phase's stubs when the phase starts:
 `status.py` (the progress table, runnable from any terminal), `bundle.py` (the
 run bundle), the self-contained entrypoints under `src/<slug_pkg>/` (feature,
 training with its three modes, the frozen `evaluate.py` harness, `charts.py` for the
