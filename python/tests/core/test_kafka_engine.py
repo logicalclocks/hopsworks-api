@@ -16,6 +16,7 @@
 import importlib
 import io
 import json
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -381,6 +382,14 @@ class TestKafkaEngine:
         # Assert
         assert result == f"{topic_name},0:0"
 
+    @staticmethod
+    def _patch_time(mocker, monotonic=time.monotonic):
+        # kafka_engine's own name for time: patching time.sleep or time.monotonic would replace them for
+        # every thread in the process, and a thread that calls them meanwhile skews these counts and clocks.
+        mock_time = mocker.patch("hsfs.core.kafka_engine.time")
+        mock_time.monotonic.side_effect = monotonic
+        return mock_time
+
     def _single_partition_consumer(self, mocker, get_watermark_offsets):
         partition_metadata = PartitionMetadata()
         partition_metadata.id = 0
@@ -402,7 +411,7 @@ class TestKafkaEngine:
         self, mocker
     ):
         # Arrange: a topic created a moment ago, whose broker has not loaded partition 0 yet
-        sleep = mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        sleep = self._patch_time(mocker).sleep
         get_watermark_offsets = mocker.MagicMock(
             side_effect=[
                 KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION)),
@@ -428,7 +437,7 @@ class TestKafkaEngine:
 
     def test_kafka_get_offsets_does_not_retry_other_errors(self, mocker):
         # Arrange
-        sleep = mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        sleep = self._patch_time(mocker).sleep
         get_watermark_offsets = mocker.MagicMock(
             side_effect=KafkaException(
                 KafkaError(KafkaError.TOPIC_AUTHORIZATION_FAILED)
@@ -453,10 +462,7 @@ class TestKafkaEngine:
     def test_kafka_get_offsets_gives_up_on_a_leader_that_never_serves(self, mocker):
         # Arrange: a clock that moves a second per reading, against a two second timeout
         clock = iter(range(100))
-        mocker.patch(
-            "hsfs.core.kafka_engine.time.monotonic", side_effect=lambda: next(clock)
-        )
-        mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        self._patch_time(mocker, monotonic=lambda: next(clock))
         get_watermark_offsets = mocker.MagicMock(
             side_effect=KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION))
         )
@@ -479,7 +485,7 @@ class TestKafkaEngine:
         self, mocker
     ):
         # Arrange
-        mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        self._patch_time(mocker)
         consumer = self._offsets_for_times_consumer(
             mocker, partitions={0: (0, 11)}, results={0: (5, None)}
         )
