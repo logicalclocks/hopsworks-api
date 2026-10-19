@@ -19,30 +19,66 @@ from typing import Any
 
 import click
 from hopsworks.cli import joinspec, lineage, output, session, versions
+from hopsworks.cli.commands.alert import fg_alert_group
 
 
 @click.group("fg")
 def fg_group() -> None:
-    """Feature group commands."""
+    """Feature groups: tables of features."""
+
+
+@fg_group.group("feature")
+def fg_feature_group() -> None:
+    """Columns of a feature group."""
+
+
+@fg_group.group("stats")
+def fg_stats_group() -> None:
+    """Descriptive statistics of a feature group."""
+
+
+@fg_group.group("tag")
+def fg_tag_group() -> None:
+    """Tags (name/value pairs) on a feature group."""
+
+
+@fg_group.group("keyword")
+def fg_keyword_group() -> None:
+    """Keywords (plain labels) on a feature group."""
+
+
+fg_group.add_command(fg_alert_group)
 
 
 @fg_group.command("list")
+@click.option(
+    "--type",
+    "fg_types",
+    multiple=True,
+    type=click.Choice(["managed", "stream", "external", "spine"]),
+    help="Only list feature groups of this type; repeat for several.",
+)
 @click.pass_context
-def fg_list(ctx: click.Context) -> None:
-    """List feature groups across every feature store the project can access.
+def fg_list(ctx: click.Context, fg_types: tuple[str, ...]) -> None:
+    """List feature groups in every accessible store.
 
     Includes feature groups in shared feature stores (as the UI does). The
     STORE column shows which feature store each one lives in. ACCESS is your
     own access state on an external feature group whose data source takes
-    provided credentials, and ``-`` for every other feature group.
+    provided credentials, and `-` for every other feature group.
+    Every type is listed unless `--type` narrows it.
 
+    \f
     Args:
         ctx: Click context.
+        fg_types: Types to keep; all when empty.
     """
     stores = session.get_accessible_feature_stores(ctx)
     rows = []
     for fs in stores:
         for fg in fs.get_feature_groups():
+            if fg_types and _fg_type_label(fg) not in fg_types:
+                continue
             rows.append(
                 [
                     getattr(fg, "id", "?"),
@@ -72,6 +108,7 @@ def fg_info(
 ) -> None:
     """Print metadata for a single feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -93,6 +130,10 @@ def fg_info(
         ["Description", output.first_line(getattr(fg, "description", ""))],
         ["Tags", output.format_mapping(output.read_tags(fg))],
     ]
+    source = _source_to_dict(fg)
+    if source is not None:
+        rows += [[_SOURCE_LABELS[k], v or "-"] for k, v in source.items()]
+        rows.append(["Access", _access_label(fg)])
     output.print_table(["FIELD", "VALUE"], rows)
 
 
@@ -107,13 +148,14 @@ def fg_info(
 def fg_test_access(
     ctx: click.Context, name: str, version: int | None, featurestore: str | None
 ) -> None:
-    """Test whether your credentials can read the table behind an external feature group.
+    """Test your access to an external feature group's source.
 
     Runs the check now, as you, and shows the stored state (OK, NO_CREDENTIALS,
     INVALID_CREDENTIALS, NO_ACCESS or ERROR). Add your credentials with
-    ``hops datasource credentials set <data source>`` first when the state is
+    `hops datasource credentials set <data source>` first when the state is
     NO_CREDENTIALS.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -168,12 +210,13 @@ def fg_preview(
     featurestore: str | None,
     columns: str | None,
 ) -> None:
-    """Show the first ``n`` rows of a feature group.
+    """Show the first rows of a feature group.
 
     Wide array/struct columns (embeddings, nested arrays) are collapsed to a
-    ``[len=N] head…`` preview in the table view so one row stays one line; use
-    ``--columns`` to project, or ``--json`` for the untruncated values.
+    `[len=N] head…` preview in the table view so one row stays one line; use
+    `--columns` to project, or `--json` for the untruncated values.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -225,7 +268,7 @@ def fg_preview(
     output.print_table(cols, rows)
 
 
-@fg_group.command("features")
+@fg_feature_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
 @click.option(
@@ -236,8 +279,11 @@ def fg_preview(
 def fg_features(
     ctx: click.Context, name: str, version: int | None, featurestore: str | None
 ) -> None:
-    """List the schema of a feature group (name, type, primary key).
+    """List the schema of a feature group.
 
+    List the schema of a feature group (name, type, primary key).
+
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -276,6 +322,7 @@ def fg_lineage(
     data source.
     Downstream covers generated feature views and feature groups.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -351,7 +398,7 @@ def _get_fg(
 
 
 def _fg_type_label(fg: Any) -> str:
-    """Best-effort one-word type label: ``stream``, ``external``, ``cached``.
+    """Best-effort one-word type label: ``managed``, ``stream``, ``external``, ``spine``.
 
     Args:
         fg: A FeatureGroup, ExternalFeatureGroup, or SpineGroup instance.
@@ -359,14 +406,14 @@ def _fg_type_label(fg: Any) -> str:
     Returns:
         A short label suitable for table output.
     """
-    cls = type(fg).__name__.lower()
+    cls = fg.__class__.__name__.lower()
     if "external" in cls:
         return "external"
     if "spine" in cls:
         return "spine"
     if getattr(fg, "stream", False):
         return "stream"
-    return "cached"
+    return "managed"
 
 
 def _access_label(fg: Any) -> str:
@@ -374,6 +421,31 @@ def _access_label(fg: Any) -> str:
     if not isinstance(access, dict):
         return "-"
     return str(access.get("status", "-")).lower()
+
+
+_SOURCE_LABELS = {
+    "connector": "Connector",
+    "query": "Query",
+    "path": "Path",
+    "database": "Database",
+    "table": "Table",
+    "data_format": "Data format",
+}
+
+
+def _source_to_dict(fg: Any) -> dict[str, Any] | None:
+    """Where an external feature group reads from; None for other types."""
+    if _fg_type_label(fg) != "external":
+        return None
+    ds = getattr(fg, "data_source", None)
+    return {
+        "connector": getattr(getattr(ds, "storage_connector", None), "name", None),
+        "query": getattr(ds, "query", None),
+        "path": getattr(ds, "path", None),
+        "database": getattr(ds, "database", None),
+        "table": getattr(ds, "table", None),
+        "data_format": getattr(fg, "data_format", None),
+    }
 
 
 def _fg_to_dict(fg: Any) -> dict[str, Any]:
@@ -385,6 +457,7 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
         "type": _fg_type_label(fg),
         "online_enabled": getattr(fg, "online_enabled", False),
         "data_source_access": access if isinstance(access, dict) else None,
+        "source": _source_to_dict(fg),
         "primary_key": list(getattr(fg, "primary_key", []) or []),
         "event_time": getattr(fg, "event_time", None),
         "description": getattr(fg, "description", None),
@@ -450,16 +523,17 @@ def fg_create(
 ) -> None:
     """Register a new feature group in the feature store.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
-        features_spec: Comma-separated ``name:type[:description]`` items.
+        features_spec: Comma-separated `name:type[:description]` items.
         event_time: Event-time column name.
         partition_key: Comma-separated partition keys.
         online: Whether to enable the online store.
-        embedding_spec: ``col:dim[:metric]`` for a vector feature.
+        embedding_spec: `col:dim[:metric]` for a vector feature.
         description: Free-form description.
     """
     fs = session.get_feature_store(ctx)
@@ -520,7 +594,8 @@ def fg_create(
     "--data-format",
     "data_format",
     type=click.Choice(
-        ["parquet", "delta", "hudi", "orc", "avro", "csv"], case_sensitive=False
+        ["parquet", "delta", "hudi", "iceberg", "orc", "avro", "csv"],
+        case_sensitive=False,
     ),
     help="Required for object-storage sources (e.g. `parquet` for an S3 source).",
 )
@@ -540,9 +615,20 @@ def fg_create(
         "MongoDB this is the collection name; for SQL the table name."
     ),
 )
+@click.option(
+    "--features",
+    "features_spec",
+    help='Schema "name:type[:description]", comma-separated; required outside Spark, '
+    'e.g. "id:bigint,city:string,amount:double".',
+)
 @click.option("--version", type=int, help="Feature group version.")
 @click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
 @click.option("--event-time", "event_time", help="Event-time column.")
+@click.option(
+    "--online",
+    is_flag=True,
+    help="Enable the online feature store; rows are then written with `fg insert`.",
+)
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
 def fg_create_external(
@@ -554,36 +640,43 @@ def fg_create_external(
     data_format: str | None,
     database: str | None,
     table: str | None,
+    features_spec: str | None,
     version: int | None,
     primary_key: str | None,
     event_time: str | None,
+    online: bool,
     description: str,
 ) -> None:
-    r"""Register an external feature group backed by a storage connector.
+    """Register a feature group that reads a data source.
 
     Exactly one source spec is required:
 
     \b
-    - ``--query`` for SQL / data-warehouse sources (Snowflake, BigQuery,
+    - `--query` for SQL / data-warehouse sources (Snowflake, BigQuery,
       Redshift, SQL, SAP HANA, Unity Catalog).
-    - ``--path`` + ``--data-format`` for object-storage sources (S3 parquet
+    - `--path` + `--data-format` for object-storage sources (S3 parquet
       file or directory, ADLS, GCS).
-    - ``--database`` + ``--table`` for MongoDB collections.
+    - `--database` + `--table` for MongoDB collections.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
         connector_name: Storage connector to query.
         query: SQL backing the feature group (warehouse sources).
         path: Object-storage path (file or prefix) for data-lake sources.
-        data_format: Required with ``--path``; one of parquet/delta/hudi/orc/avro/csv.
+        data_format: Required with `--path`; one of parquet/delta/hudi/orc/avro/csv.
         database: Database/collection-container override for the source.
         table: Table/collection override for the source.
+        features_spec: Comma-separated ``name:type[:description]`` items.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
         event_time: Event-time column.
+        online: Whether to enable the online store.
         description: Free-form description.
     """
+    if query and path:
+        raise click.UsageError("Pass either --query or --path, not both.")
     if not query and not path and not table:
         raise click.UsageError(
             "Provide one of --query (SQL sources), --path + --data-format "
@@ -595,49 +688,54 @@ def fg_create_external(
     fs = session.get_feature_store(ctx)
     try:
         data_source = fs.get_data_source(connector_name)
-        connector = data_source.storage_connector
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Connector '{connector_name}' not found: {exc}"
         ) from exc
 
-    # Apply per-FG database/collection overrides to the data source. The
-    # backend's MongoDB controller and the broader DataSource entity pick
-    # the FG-level values over the connector defaults at read time.
+    # The SDK ignores query and path passed next to a data source, so the
+    # whole source spec goes on the data source itself.
+    if query:
+        data_source.query = query
+    if path:
+        data_source.path = path
     if database is not None:
         data_source.database = database
     if table is not None:
-        # MongoDB exposes collection-as-table; SQL exposes table-as-table.
-        # Both end up on `DataSource.table_name` server-side.
         data_source.table = table
 
-    create_kwargs = {
-        "name": name,
-        "storage_connector": connector,
-        "data_source": data_source,
-        "version": version,
-        "description": description,
-        "primary_key": _split_csv(primary_key) or None,
-        "event_time": event_time,
-    }
-    if query:
-        create_kwargs["query"] = query
-    if path:
-        create_kwargs["path"] = path
-    if data_format:
-        create_kwargs["data_format"] = data_format.lower()
-
+    fg = None
     try:
-        fg = fs.create_external_feature_group(**create_kwargs)
+        fg = fs.create_external_feature_group(
+            name=name,
+            data_source=data_source,
+            data_format=data_format.lower() if data_format else None,
+            version=version,
+            description=description,
+            primary_key=_split_csv(primary_key) or None,
+            event_time=event_time,
+            online_enabled=online,
+            features=_build_features(features_spec) or None,
+        )
         fg.save()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not create external FG: {exc}") from exc
+        # save() registers the metadata first and computes statistics after, so
+        # a failure in the second step leaves a usable feature group behind.
+        if getattr(fg, "id", None) is None:
+            raise click.ClickException(f"Could not create external FG: {exc}") from exc
+        stats_error = exc
+    else:
+        stats_error = None
 
     output.success(
         "✓ Created external feature group %s v%s",
         getattr(fg, "name", name),
         getattr(fg, "version", "?"),
     )
+    if stats_error is not None:
+        output.warn("Statistics were not computed: %s", _reason(stats_error))
+    if output.JSON_MODE:
+        output.print_json(_fg_to_dict(fg))
 
 
 @fg_group.command("insert")
@@ -664,17 +762,23 @@ def fg_insert(
     generate: int | None,
     online: bool,
 ) -> None:
-    """Insert rows into a feature group from a file, stdin, or synthetic data.
+    """Insert rows from a file, stdin or synthetic data.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Feature group version.
         file_path: CSV or JSON file path. When omitted, read JSON from stdin.
         generate: Generate N synthetic rows instead.
-        online: When True, pass ``start_offline_materialization=False``.
+        online: When True, pass `start_offline_materialization=False`.
     """
     fg = _get_fg(ctx, name, version)
+    if _fg_type_label(fg) == "spine":
+        raise click.ClickException(
+            f"Feature group '{name}' is a spine group; spine groups hold no data. "
+            "Pass the spine DataFrame when reading the feature view instead."
+        )
 
     try:
         import pandas as pd  # noqa: PLC0415 - pandas import cost is high
@@ -736,8 +840,9 @@ def fg_derive(
     online: bool,
     description: str,
 ) -> None:
-    """Create a new feature group derived from joining existing ones.
+    """Create a feature group by joining existing ones.
 
+    \f
     Args:
         ctx: Click context.
         name: Derived feature group name.
@@ -794,7 +899,7 @@ def fg_derive(
     output.success("✓ Derived feature group %s from %s", name, base_fg)
 
 
-@fg_group.command("append-features")
+@fg_feature_group.command("add")
 @click.argument("name")
 @click.option(
     "--features",
@@ -807,7 +912,7 @@ def fg_derive(
 def fg_append_features(
     ctx: click.Context, name: str, features_spec: str, version: int | None
 ) -> None:
-    """Append new columns to an existing feature group, in place.
+    """Add columns to a feature group, keeping its version.
 
     Append-only schema evolution: it keeps the same feature group version so
     downstream consumers are never disturbed. Existing columns cannot be
@@ -817,10 +922,11 @@ def fg_append_features(
     Feature views built on this feature group keep their old projection and do
     not see the appended columns; create a new feature view to use them.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
-        features_spec: New columns as comma-separated ``name:type[:description]`` items.
+        features_spec: New columns as comma-separated `name:type[:description]` items.
         version: Feature group version; defaults to latest.
     """
     fg = _get_fg(ctx, name, version)
@@ -862,6 +968,7 @@ def fg_delete(
 ) -> None:
     """Delete a feature group and all its data.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -881,9 +988,16 @@ def fg_delete(
             )
         else:
             extra = ""
+        if _fg_type_label(fg) == "external":
+            wipes = (
+                "This removes its metadata and any online rows; the external "
+                "table is left untouched."
+            )
+        else:
+            wipes = "This wipes all offline and online data."
         click.confirm(
             f"Delete feature group '{name}' v{getattr(fg, 'version', '?')}? "
-            f"This wipes all offline and online data.{extra}",
+            f"{wipes}{extra}",
             abort=True,
         )
     try:
@@ -893,33 +1007,41 @@ def fg_delete(
     output.success("✓ Deleted feature group %s", name)
 
 
-@fg_group.command("stats")
+@fg_stats_group.command("compute")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version.")
-@click.option(
-    "--compute",
-    is_flag=True,
-    help="Trigger recomputation; otherwise read cached stats.",
-)
 @click.pass_context
-def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) -> None:
-    """Show or recompute statistics for a feature group.
+def fg_stats_compute(ctx: click.Context, name: str, version: int | None) -> None:
+    """Start a job that recomputes the statistics.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Feature group version.
-        compute: When True, trigger a recomputation job.
     """
     fg = _get_fg(ctx, name, version)
-    if compute:
-        try:
-            fg.compute_statistics()
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Stats compute failed: {exc}") from exc
-        output.success("✓ Triggered statistics compute for %s", name)
-        return
+    try:
+        fg.compute_statistics()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Stats compute failed: {exc}") from exc
+    output.success("✓ Triggered statistics compute for %s", name)
 
+
+@fg_stats_group.command("info")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature group version.")
+@click.pass_context
+def fg_stats_info(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show the latest statistics per feature.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        version: Feature group version.
+    """
+    fg = _get_fg(ctx, name, version)
     try:
         stats = fg.statistics
     except Exception as exc:  # noqa: BLE001
@@ -970,8 +1092,9 @@ def fg_search(
     k: int,
     version: int | None,
 ) -> None:
-    """Run a KNN similarity search against a feature group's embedding column.
+    """KNN similarity search on an embedding column.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1009,17 +1132,18 @@ def fg_search(
 # needs to read this would never see it.
 _KEYWORD_SEMANTICS_CHANGED = (
     "The *-keyword commands now operate on keywords (plain labels without "
-    "values); tag name/value pairs moved to 'hops fg tags/add-tag/remove-tag'."
+    "values); tag name/value pairs moved to 'hops fg tag list/add-tag/remove-tag'."
 )
 
 
-@fg_group.command("keywords")
+@fg_keyword_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version.")
 @click.pass_context
 def fg_keywords(ctx: click.Context, name: str, version: int | None) -> None:
     """Show all keywords attached to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1041,13 +1165,13 @@ def fg_keywords(ctx: click.Context, name: str, version: int | None) -> None:
     output.print_table(["KEYWORD", "ADDED"], rows)
 
 
-@fg_group.command("add-keyword")
+@fg_keyword_group.command("add")
 @click.argument("name")
 @click.argument("keyword")
 @click.option(
     "--value",
     default=None,
-    help="Retired. Keywords carry no value; use 'hops fg add-tag' for name/value tags.",
+    help="Retired. Keywords carry no value; use 'hops fg tag add' for name/value tags.",
 )
 @click.option("--version", type=int, help="Feature group version.")
 @click.pass_context
@@ -1056,6 +1180,7 @@ def fg_add_keyword(
 ) -> None:
     """Attach a keyword to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1070,7 +1195,7 @@ def fg_add_keyword(
     if value is not None:
         raise click.UsageError(
             "--value is retired: keywords carry no value. To write a "
-            f"name/value tag use: hops fg add-tag {name} {keyword} --value ..."
+            f"name/value tag use: hops fg tag add {name} {keyword} --value ..."
         )
     fg = _get_fg(ctx, name, version)
     try:
@@ -1080,7 +1205,7 @@ def fg_add_keyword(
     output.success("✓ Added keyword '%s' to %s", keyword, name)
 
 
-@fg_group.command("remove-keyword")
+@fg_keyword_group.command("remove")
 @click.argument("name")
 @click.argument("keyword")
 @click.option(
@@ -1092,6 +1217,7 @@ def fg_remove_keyword(
 ) -> None:
     """Remove a keyword from a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1107,13 +1233,14 @@ def fg_remove_keyword(
     output.success("✓ Removed keyword '%s' from %s", keyword, name)
 
 
-@fg_group.command("tags")
+@fg_tag_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version.")
 @click.pass_context
 def fg_tags(ctx: click.Context, name: str, version: int | None) -> None:
     """Show all tags attached to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1127,7 +1254,7 @@ def fg_tags(ctx: click.Context, name: str, version: int | None) -> None:
     output.render_tags(tags)
 
 
-@fg_group.command("add-tag")
+@fg_tag_group.command("add")
 @click.argument("name")
 @click.argument("tag")
 @click.option("--value", required=True, help="Tag value, JSON or a plain string.")
@@ -1138,6 +1265,7 @@ def fg_add_tag(
 ) -> None:
     """Attach a tag (name/value pair) to a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1153,7 +1281,7 @@ def fg_add_tag(
     output.success("✓ Added tag '%s' to %s", tag, name)
 
 
-@fg_group.command("remove-tag")
+@fg_tag_group.command("remove")
 @click.argument("name")
 @click.argument("tag")
 @click.option(
@@ -1163,6 +1291,7 @@ def fg_add_tag(
 def fg_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
     """Remove a tag from a feature group.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature group name.
@@ -1211,6 +1340,16 @@ def _truncate_cell(value: Any, width: int = 60) -> str:
             return f"[len={len(seq)}] {head}{tail}"
     text = str(value)
     return text if len(text) <= width else text[: width - 1] + "…"
+
+
+def _reason(exc: Exception) -> str:
+    """The server's user message of a REST error, else the exception text."""
+    response = getattr(exc, "response", None)
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001 - no response or not JSON
+        return str(exc)
+    return body.get("usrMsg") or body.get("errorMsg") or str(exc)
 
 
 def _split_csv(value: str | None) -> list[str]:

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 @click.group("datasource")
 def datasource_group() -> None:
-    """Data source (storage connector) commands."""
+    """Data sources: connections to external storage."""
 
 
 @datasource_group.command("list")
@@ -40,6 +40,7 @@ def datasource_group() -> None:
 def connector_list(ctx: click.Context) -> None:
     """List all storage connectors in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -75,6 +76,7 @@ def _credentials_label(connector: dict[str, Any]) -> str:
 def connector_info(ctx: click.Context, name: str) -> None:
     """Show details for a single storage connector.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.
@@ -232,7 +234,7 @@ def _secret_option(
 
 @datasource_group.group("create")
 def connector_create() -> None:
-    """Create a storage connector (subcommand per backend)."""
+    """Create a data source; one command per source type."""
 
 
 @connector_create.command("jdbc", help="Register a JDBC connector.")
@@ -252,6 +254,7 @@ def connector_create_jdbc(
 ) -> None:
     """Register a JDBC connector.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.
@@ -295,6 +298,7 @@ def connector_create_s3(
 ) -> None:
     """Register an S3 connector.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.
@@ -345,6 +349,7 @@ def connector_create_snowflake(
 ) -> None:
     """Register a Snowflake connector.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.
@@ -1432,7 +1437,7 @@ for _name, _spec in _SPECS.items():
 
 @datasource_group.group("credentials")
 def connector_credentials() -> None:
-    """Your own credentials for a data source with provided credentials."""
+    """Your own credentials for a data source."""
 
 
 _CREDENTIAL_PAIRS = (
@@ -1629,12 +1634,15 @@ def _binding_rows(binding: dict[str, Any]) -> list[list[Any]]:
 @_credential_options
 @click.pass_context
 def credentials_set(ctx: click.Context, name: str, **values: Any) -> None:  # noqa: D417
-    """Save your credentials for a data source to your account, once the data source accepts them.
+    """Save your credentials for a data source.
+
+    Save your credentials for a data source to your account, once the data source accepts them.
 
     Nothing is saved when the data source rejects them.
     An option not given keeps what is already bound, so `--password` alone rotates the password and keeps the username and wallet.
     Each credential option is given by value or by account entry name.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -1665,12 +1673,13 @@ def credentials_set(ctx: click.Context, name: str, **values: Any) -> None:  # no
 @_credential_options
 @click.pass_context
 def credentials_validate(ctx: click.Context, name: str, **values: Any) -> None:  # noqa: D417
-    """Test your credentials against a data source without saving them.
+    """Test credentials against a data source without saving.
 
     A wallet is uploaded under a new name for the test, which reads it from HopsFS,
     and removed again afterwards.
     Each credential option is given by value or by account entry name.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -1690,12 +1699,15 @@ def credentials_validate(ctx: click.Context, name: str, **values: Any) -> None: 
     output.success("✓ Data source %s accepted the credentials", name)
 
 
-@connector_credentials.command("show")
+@connector_credentials.command("info")
 @click.argument("name")
 @click.pass_context
 def credentials_show(ctx: click.Context, name: str) -> None:
-    """Show your binding for a data source: status and account entry names, never values.
+    """Show your credential binding, never the values.
 
+    Show your binding for a data source: status and account entry names, never values.
+
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -1716,10 +1728,13 @@ def credentials_show(ctx: click.Context, name: str) -> None:
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
 @click.pass_context
 def credentials_delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Remove your binding for a data source, its wallet file and its default-named account entries.
+    """Remove your credentials for a data source.
+
+    Remove your binding for a data source, its wallet file and its default-named account entries.
 
     The default env var and secrets (DS_<NAME>_<feature store id>_USER, ds_<name>_<feature store id>_password and ds_<name>_<feature store id>_wallet_password) are deleted from your account; ones you named yourself stay.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -1745,6 +1760,7 @@ def credentials_delete(ctx: click.Context, name: str, yes: bool) -> None:
 def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
     """Delete a storage connector.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.
@@ -1774,6 +1790,7 @@ def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
 def connector_databases(ctx: click.Context, name: str) -> None:
     """List databases visible through a connector.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.
@@ -1797,6 +1814,7 @@ def connector_databases(ctx: click.Context, name: str) -> None:
 def connector_tables(ctx: click.Context, name: str, database: str | None) -> None:
     """List tables in a database reachable through a connector.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.
@@ -1825,6 +1843,7 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
 def connector_preview(ctx: click.Context, name: str) -> None:
     """Fetch a small data preview through a connector.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.
@@ -1850,7 +1869,7 @@ def connector_preview(ctx: click.Context, name: str) -> None:
 def connector_infer_metadata(
     ctx: click.Context, name: str, table: str, database: str | None
 ) -> None:
-    """Use platform intelligence to infer feature metadata for a table.
+    """Infer feature metadata for a table.
 
     Calls the same LLM-backed endpoint as the "Infer metadata" button in the
     UI: suggests a renamed feature name, Hopsworks type, and description per
@@ -1858,6 +1877,7 @@ def connector_infer_metadata(
     external table as an external feature group, or before creating a new
     feature group from it.
 
+    \f
     Args:
         ctx: Click context.
         name: Connector name.

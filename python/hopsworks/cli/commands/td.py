@@ -16,7 +16,12 @@ from hopsworks.cli import lineage, output, session, versions
 
 @click.group("td")
 def td_group() -> None:
-    """Training dataset commands."""
+    """Training datasets materialized from feature views."""
+
+
+@td_group.group("keyword")
+def td_keyword_group() -> None:
+    """Keywords (plain labels) on a training dataset."""
 
 
 @td_group.command("list")
@@ -35,16 +40,17 @@ def td_list(
     fv_version: int | None,
     version_opt: int | None,
 ) -> None:
-    """List training dataset versions generated from a feature view.
+    """List training datasets of a feature view.
 
-    The FV version can be given positionally (``td list <fv> 2``, matching
-    ``td compute``) or via ``--version``; the positional form wins.
+    The FV version can be given positionally (`td list <fv> 2`, matching
+    `td compute`) or via `--version`; the positional form wins.
 
+    \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.
         fv_version: Feature view version (positional, optional).
-        version_opt: Feature view version (``--version``, optional).
+        version_opt: Feature view version (`--version`, optional).
     """
     version = fv_version if fv_version is not None else version_opt
     fs = session.get_feature_store(ctx)
@@ -102,11 +108,12 @@ def td_compute(
 ) -> None:
     """Materialize a training dataset from a feature view.
 
+    \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.
         fv_version: Feature view version.
-        split: Comma-separated ``name:ratio`` split definitions.
+        split: Comma-separated `name:ratio` split definitions.
         start_time: ISO timestamp lower bound.
         end_time: ISO timestamp upper bound.
         description: Free-form description.
@@ -177,6 +184,7 @@ def td_read(
 ) -> None:
     """Retrieve a previously materialized training dataset.
 
+    \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.
@@ -184,7 +192,7 @@ def td_read(
         td_version: Training dataset version.
         split: Optional split name.
         output_file: Optional file to write the dataframe to.
-        n: Max rows rendered when no ``--output`` file is given.
+        n: Max rows rendered when no `--output` file is given.
     """
     fv = _get_fv(ctx, feature_view, fv_version)
     try:
@@ -234,6 +242,7 @@ def td_delete(
 ) -> None:
     """Delete a training dataset (single version or all).
 
+    \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.
@@ -284,14 +293,15 @@ def td_lineage(
 
     Training datasets inherit their upstream lineage from the parent feature
     view (its parent feature groups).
-    Downstream covers models trained on the dataset; pass ``--td-version`` to
+    Downstream covers models trained on the dataset; pass `--td-version` to
     scope downstream models to a single training dataset version.
 
+    \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.
         fv_version: Feature view version (positional, optional).
-        version_opt: Feature view version (``--version``, optional).
+        version_opt: Feature view version (`--version`, optional).
         td_version: Training dataset version to scope downstream models.
     """
     version = fv_version if fv_version is not None else version_opt
@@ -318,7 +328,7 @@ def td_lineage(
     lineage.render(label, sections)
 
 
-@td_group.command("keywords")
+@td_keyword_group.command("list")
 @click.argument("feature_view")
 @click.argument("td_version", type=int)
 @click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
@@ -328,6 +338,7 @@ def td_keywords(
 ) -> None:
     """Show all keywords attached to a training dataset.
 
+    \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.
@@ -349,7 +360,7 @@ def td_keywords(
     output.print_table(["KEYWORD", "ADDED"], rows)
 
 
-@td_group.command("add-keyword")
+@td_keyword_group.command("add")
 @click.argument("feature_view")
 @click.argument("td_version", type=int)
 @click.argument("keyword")
@@ -364,6 +375,7 @@ def td_add_keyword(
 ) -> None:
     """Attach a keyword to a training dataset.
 
+    \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.
@@ -381,7 +393,7 @@ def td_add_keyword(
     )
 
 
-@td_group.command("remove-keyword")
+@td_keyword_group.command("remove")
 @click.argument("feature_view")
 @click.argument("td_version", type=int)
 @click.argument("keyword")
@@ -401,6 +413,7 @@ def td_remove_keyword(
 ) -> None:
     """Remove a keyword from a training dataset.
 
+    \f
     Args:
         ctx: Click context.
         feature_view: Feature view name.

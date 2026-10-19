@@ -29,7 +29,7 @@ from hopsworks.cli import output, session
 
 @click.group("app")
 def app_group() -> None:
-    """Python app commands."""
+    """Apps: Python web apps served by the cluster."""
 
 
 @app_group.command("list")
@@ -37,6 +37,7 @@ def app_group() -> None:
 def app_list(ctx: click.Context) -> None:
     """List every app in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -66,6 +67,7 @@ def app_list(ctx: click.Context) -> None:
 def app_info(ctx: click.Context, name: str) -> None:
     """Show details for a single app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -119,6 +121,7 @@ def app_url(ctx: click.Context, name: str) -> None:
     Exits non-zero with a clear message when the app is not serving yet,
     so this composes cleanly in shell pipelines.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -155,10 +158,11 @@ def app_logs(ctx: click.Context, name: str, stream: str) -> None:
     case where you most want logs, so this points at the live logs in the
     Hopsworks UI instead of failing with an opaque error.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
-        stream: Which stream(s) to print: ``stdout``, ``stderr``, or ``both``.
+        stream: Which stream(s) to print: `stdout`, `stderr`, or `both`.
     """
     a = _get_app(ctx, name)
 
@@ -385,6 +389,7 @@ def app_create(
     Monitoring is enabled by default in the backend. Route filters are optional
     and narrow the traffic counted by Envoy.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -512,8 +517,9 @@ def app_create(
 def app_start(ctx: click.Context, name: str, no_wait: bool) -> None:
     """Start an app.
 
-    Blocks until the app is ``serving`` unless ``--no-wait`` is set.
+    Blocks until the app is `serving` unless `--no-wait` is set.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -534,8 +540,9 @@ def app_start(ctx: click.Context, name: str, no_wait: bool) -> None:
 def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
     """Redeploy a running app.
 
-    Blocks until the app is ``serving`` unless ``--no-wait`` is set.
+    Blocks until the app is `serving` unless `--no-wait` is set.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -551,6 +558,7 @@ def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
 def app_stop(ctx: click.Context, name: str) -> None:
     """Stop a running app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -573,6 +581,7 @@ def app_stop(ctx: click.Context, name: str) -> None:
 def app_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     """Delete an app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.

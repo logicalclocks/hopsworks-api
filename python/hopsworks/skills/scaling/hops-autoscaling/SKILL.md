@@ -17,8 +17,8 @@ A Hopsworks **app** (Streamlit, Flask, Gradio, Node.js, custom; **hops-app** ter
 
 ## Smoke-test (cheap pre/post-flight)
 ```bash
-hops deployment info <name>                       # mode, components; status via `hops deployment status <name>`
-hops deployment status <name>                     # Running, Idle (at zero), Updating, ...
+hops deployment info <name>                       # mode, components; status via `hops deployment info <name>`
+hops deployment info <name>                     # Running, Idle (at zero), Updating, ...
 ```
 ```python
 d = project.get_model_serving().get_deployment("<name>")

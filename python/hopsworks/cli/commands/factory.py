@@ -35,10 +35,13 @@ CLUSTER_FREE = {"validate"}
 @click.group("factory")
 @click.pass_context
 def factory_group(ctx: click.Context) -> None:
-    """The software factories: the built-in ML system and analytics layer factories, and the project's own.
+    """Software factories: built-in and the project's own.
+
+    The software factories: the built-in ML system and analytics layer factories, and the project's own.
 
     Every subcommand but validate refuses to run unless the cluster's factory_enabled variable is true.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -76,8 +79,11 @@ factory_group.add_command(mlsystem.system_group)
 @factory_group.command("list")
 @click.pass_context
 def factory_list(ctx: click.Context) -> None:
-    """List the factories: the built-in ones and the project's own, with how many systems each built.
+    """List factories and how many systems each built.
 
+    List the factories: the built-in ones and the project's own, with how many systems each built.
+
+    \f
     Args:
         ctx: Click context.
     """
@@ -109,13 +115,14 @@ def factory_list(ctx: click.Context) -> None:
     )
 
 
-@factory_group.command("get")
+@factory_group.command("info")
 @click.argument("name")
 @click.option("--version", type=int, help="An earlier version of the definition.")
 @click.pass_context
 def factory_get(ctx: click.Context, name: str, version: int | None) -> None:
     """Print the YAML definition of factory NAME.
 
+    \f
     Args:
         ctx: Click context.
         name: The factory.
@@ -145,8 +152,11 @@ def factory_get(ctx: click.Context, name: str, version: int | None) -> None:
 def factory_export(
     ctx: click.Context, name: str, version: int | None, out: Path | None
 ) -> None:
-    """Write the YAML definition of factory NAME to a file, to import in another project or cluster.
+    """Write a factory definition to a YAML file.
 
+    Write the YAML definition of factory NAME to a file, to import in another project or cluster.
+
+    \f
     Args:
         ctx: Click context.
         name: The factory.
@@ -168,6 +178,7 @@ def factory_export(
 def factory_validate(file: Path) -> None:
     """Check the factory definition in FILE, without a cluster.
 
+    \f
     Args:
         file: The definition.
     """
@@ -190,11 +201,14 @@ def factory_validate(file: Path) -> None:
 def factory_import(
     ctx: click.Context, file: Path, name: str | None, update: bool, yes: bool
 ) -> None:
-    """Import the factory definition in FILE, written here or exported from another project.
+    """Import a factory definition from a YAML file.
+
+    Import the factory definition in FILE, written here or exported from another project.
 
     The review prints its questions, phases, skills and its build instructions in full:
     Claude Code follows those instructions in your Terminal, with your credentials.
 
+    \f
     Args:
         ctx: Click context.
         file: The definition.
@@ -230,8 +244,11 @@ def factory_import(
 def factory_clone(
     ctx: click.Context, source: str, name: str, title: str | None
 ) -> None:
-    """Clone factory SOURCE, built-in or the project's own, into a new project factory NAME.
+    """Clone a factory into a new project factory.
 
+    Clone factory SOURCE, built-in or the project's own, into a new project factory NAME.
+
+    \f
     Args:
         ctx: Click context.
         source: The factory to clone.
@@ -255,6 +272,7 @@ def factory_clone(
 def factory_enable(ctx: click.Context, name: str) -> None:
     """Show the project factory NAME in the Factory again.
 
+    \f
     Args:
         ctx: Click context.
         name: The factory.
@@ -266,8 +284,9 @@ def factory_enable(ctx: click.Context, name: str) -> None:
 @click.argument("name")
 @click.pass_context
 def factory_disable(ctx: click.Context, name: str) -> None:
-    """Hide the project factory NAME from the Factory; its systems are kept.
+    """Hide a project factory; its systems are kept.
 
+    \f
     Args:
         ctx: Click context.
         name: The factory.
@@ -280,8 +299,11 @@ def factory_disable(ctx: click.Context, name: str) -> None:
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.pass_context
 def factory_delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Delete the project factory NAME; refused while systems it built still exist.
+    """Delete a project factory.
 
+    Delete the project factory NAME; refused while systems it built still exist.
+
+    \f
     Args:
         ctx: Click context.
         name: The factory.
@@ -348,12 +370,12 @@ def _review(doc: dict) -> None:
 )
 @click.option(
     "--preset",
-    help="Start from one of the factory's examples (`hops factory get NAME` lists them under presets).",
+    help="Start from one of the factory's examples (`hops factory info NAME` lists them under presets).",
 )
 @click.option(
     "--change",
     "change_id",
-    help="Request this change of a recorded system (`hops factory get NAME` lists the factory's changes); its answers come from --answers or are asked here.",
+    help="Request this change of a recorded system (`hops factory info NAME` lists the factory's changes); its answers come from --answers or are asked here.",
 )
 @click.option(
     "--no-launch",
@@ -370,7 +392,9 @@ def factory_run(
     change_id: str | None,
     no_launch: bool,
 ) -> None:
-    """Build a system with the factory NAME, resume the system SLUG, or change it.
+    """Build, resume or change a system with a factory.
+
+    Build a system with the factory NAME, resume the system SLUG, or change it.
 
     A new system's answers come from --answers, or each of the factory's
     questions is asked in turn. The system is recorded in ./<slug>/system.yaml,
@@ -381,6 +405,7 @@ def factory_run(
     the change's answers are recorded in system.yaml as a pending request,
     which the build carries out when it resumes.
 
+    \f
     Args:
         ctx: Click context.
         name: The factory.

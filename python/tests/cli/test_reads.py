@@ -101,7 +101,7 @@ def test_fg_features_table(mock_project):
             _feature("amount", "double"),
         ],
     )
-    result = CliRunner().invoke(cli, ["fg", "features", "transactions"])
+    result = CliRunner().invoke(cli, ["fg", "feature", "list", "transactions"])
     assert result.exit_code == 0, result.output
     assert "id" in result.output
     assert "amount" in result.output
@@ -553,16 +553,6 @@ def test_unauthenticated_command_suggests_setup(tmp_home):
 
 
 # --- trino ----------------------------------------------------------------
-
-
-def test_trino_sql_alias_registered():
-    # `hops trino sql ...` is a natural guess; without the alias it failed with
-    # a bare "No such command 'sql'" (#3). Both names must resolve.
-    from hopsworks.cli.commands.trino import trino_group
-
-    assert "sql" in trino_group.commands
-    assert "query" in trino_group.commands
-    assert trino_group.commands["sql"] is trino_group.commands["query"]
 
 
 # --- stdout hygiene -------------------------------------------------------

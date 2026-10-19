@@ -19,7 +19,7 @@ from hopsworks.cli import lineage, output, session, versions
 
 @click.group("deployment")
 def deployment_group() -> None:
-    """Model serving deployment commands."""
+    """Deployments: models served behind an endpoint."""
 
 
 @deployment_group.command("list")
@@ -27,6 +27,7 @@ def deployment_group() -> None:
 def deployment_list(ctx: click.Context) -> None:
     """List every deployment in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -58,6 +59,7 @@ def deployment_list(ctx: click.Context) -> None:
 def deployment_info(ctx: click.Context, name: str) -> None:
     """Show details for a single deployment.
 
+    \f
     Args:
         ctx: Click context.
         name: Deployment name.
@@ -110,6 +112,7 @@ def deployment_schema(
 ) -> None:
     """Show the request contract of a deployment.
 
+    \f
     Args:
         ctx: Click context.
         name: Deployment name.
@@ -177,24 +180,6 @@ def _schema_label(d: Any) -> str:
     if schema is None:
         return "-"
     return "inferred" if schema.inferred else "manual"
-
-
-@deployment_group.command("status")
-@click.argument("name")
-@click.pass_context
-def deployment_status(ctx: click.Context, name: str) -> None:
-    """Show the current status of a deployment.
-
-    Args:
-        ctx: Click context.
-        name: Deployment name.
-    """
-    deployment = _get_deployment(ctx, name)
-    status = _deployment_status_live(deployment)
-    if output.JSON_MODE:
-        output.print_json({"name": name, "status": status})
-        return
-    click.echo(status)
 
 
 def _deployment_status(d: Any) -> str:
@@ -331,11 +316,12 @@ def deployment_create(
 ) -> None:
     """Deploy a model from the registry.
 
-    A local ``--script`` is uploaded to HopsFS first (the backend needs a
-    HopsFS path); an existing HopsFS path is passed through. ``--env`` selects
+    A local `--script` is uploaded to HopsFS first (the backend needs a
+    HopsFS path); an existing HopsFS path is passed through. `--env` selects
     the inference environment. Without a script, a Python model registered
     with a feature view gets the default predictor and a deployment schema.
 
+    \f
     Args:
         ctx: Click context.
         model_name: Model registry name.
@@ -343,7 +329,7 @@ def deployment_create(
         name: Deployment name; defaults to the model name.
         script_file: Predictor script, local or HopsFS.
         environment: Inference environment name.
-        serving_tool: ``KSERVE`` or ``DEFAULT``.
+        serving_tool: `KSERVE` or `DEFAULT`.
         knative_mode: KServe Knative (True) vs Standard (False) mode; None lets the backend decide.
         description: Deployment description.
         passed_features: Features clients send with each request.
@@ -450,8 +436,11 @@ def _report_schema(deployment: Any) -> None:
 )
 @click.pass_context
 def deployment_start(ctx: click.Context, name: str, wait: int) -> None:
-    """Start a deployment and optionally wait for the RUNNING state.
+    """Start a deployment.
 
+    Start a deployment and optionally wait for the RUNNING state.
+
+    \f
     Args:
         ctx: Click context.
         name: Deployment name.
@@ -478,6 +467,7 @@ def deployment_start(ctx: click.Context, name: str, wait: int) -> None:
 def deployment_stop(ctx: click.Context, name: str, wait: int) -> None:
     """Stop a running deployment.
 
+    \f
     Args:
         ctx: Click context.
         name: Deployment name.
@@ -519,6 +509,7 @@ def deployment_predict(
 ) -> None:
     """Send an inference request to a running deployment.
 
+    \f
     Args:
         ctx: Click context.
         name: Deployment name.
@@ -618,24 +609,25 @@ def deployment_logs(
 ) -> None:
     """Read or follow logs from a deployment component.
 
-    Without ``--follow``: prints the last ``--tail`` lines and exits.
-    With ``--follow``: yields new chunks every ``--interval`` seconds
+    Without `--follow`: prints the last `--tail` lines and exits.
+    With `--follow`: yields new chunks every `--interval` seconds
     until interrupted with Ctrl-C.
-    With ``--download``: downloads the HopsFS log archives of a stopped
+    With `--download`: downloads the HopsFS log archives of a stopped
     or deleted deployment and prints the local paths.
 
+    \f
     Args:
         ctx: Click context.
         name: Deployment name.
-        component: Component to query (e.g. ``predictor``, ``transformer``).
+        component: Component to query (e.g. `predictor`, `transformer`).
         tail: Number of lines.
-        source: ``kubernetes`` or ``opensearch`` (deprecated).
+        source: `kubernetes` or `opensearch` (deprecated).
         since: ISO-8601 lower bound on log timestamp.
         until: ISO-8601 upper bound on log timestamp.
         follow: Stream new lines instead of returning a one-shot tail.
         interval: Seconds between polls when following.
         download: Download the HopsFS log archives instead of reading pods.
-        log_dir: With ``--download``, the directory to download into.
+        log_dir: With `--download`, the directory to download into.
     """
     deployment = _get_deployment(ctx, name)
 
@@ -705,11 +697,12 @@ def deployment_logs(
 def deployment_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     """Delete a deployment.
 
+    \f
     Args:
         ctx: Click context.
         name: Deployment name.
         yes: Skip confirmation when True.
-        force: Pass ``force=True`` to the SDK.
+        force: Pass `force=True` to the SDK.
     """
     deployment = _get_deployment(ctx, name)
     if not yes and not output.JSON_MODE:
@@ -730,6 +723,7 @@ def deployment_lineage(ctx: click.Context, name: str) -> None:
     A deployment serves a model, so its upstream lineage is that model plus
     the model's own feature view and training dataset provenance.
 
+    \f
     Args:
         ctx: Click context.
         name: Deployment name.

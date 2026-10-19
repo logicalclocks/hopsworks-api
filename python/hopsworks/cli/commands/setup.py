@@ -286,17 +286,20 @@ def setup_cmd(
     insecure: bool,
     no_scaffold: bool,
 ) -> None:
-    """Authenticate with Hopsworks and cache an API key in ``~/.hops.toml``.
+    """Authenticate and cache an API key.
+
+    Authenticate with Hopsworks and cache an API key in `~/.hops.toml`.
 
     On first run: opens a browser, lets the user pick a project and confirm
     the API key name, then fetches the generated key via long polling.
     On re-run: verifies the cached key still works and exits silently unless
-    ``--force`` is passed, which always starts a new browser flow.
+    `--force` is passed, which always starts a new browser flow.
 
+    \f
     Args:
         ctx: Click context; used to return non-zero on verification failure.
-        host_flag: Value of ``--host``; prompted when absent.
-        key_name_flag: Value of ``--key-name``; when absent the CLI suggests a name.
+        host_flag: Value of `--host`; prompted when absent.
+        key_name_flag: Value of `--key-name`; when absent the CLI suggests a name.
         force: When True, skip the cached-key short-circuit.
         no_browser: When True, print the URL instead of opening a browser.
         timeout: Seconds to wait for browser completion before erroring out.
@@ -595,6 +598,7 @@ def _scaffold_here(*, internal: bool, project: str | None, skip: bool) -> None:
         files = scaffold.build_files(internal=internal, project=project)
         result = scaffold.scaffold(root, files)
         changed = scaffold.ensure_permission(root / ".claude/settings.local.json")
+        docs_mcp_added = scaffold.ensure_docs_mcp(root / ".mcp.json")
     except (OSError, ValueError) as exc:
         output.warn("Could not write agent instruction files: %s", _reason(exc))
         return
@@ -610,6 +614,10 @@ def _scaffold_here(*, internal: bool, project: str | None, skip: bool) -> None:
     if changed:
         output.success(
             "✓ Allowed %s in .claude/settings.local.json", scaffold.HOPS_PERMISSION
+        )
+    if docs_mcp_added:
+        output.success(
+            "✓ Registered the %s MCP server in .mcp.json", scaffold.DOCS_MCP_NAME
         )
     if not internal:
         _suggest_skills_install(root)

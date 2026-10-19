@@ -333,7 +333,7 @@ import json
 import hopsworks
 
 # Columns below (state, age, …) are illustrative — swap for real ones from
-# `hops fg features <FG_NAME> --version <FG_VERSION>`.
+# `hops fg feature list <FG_NAME> --version <FG_VERSION>`.
 PROJECT_NAME = "<your_project>"        # don't hardcode; set to project.name after login
 FG_NAME, FG_VERSION = "customers", 1
 

@@ -47,12 +47,12 @@ hops project info                         # Current project details
 hops fg list                              # List all feature groups
 hops fg info <name> [--version N]         # Show details + schema
 hops fg preview <name> [--n 10]           # Preview data rows
-hops fg features <name>                   # List features with types
-hops fg stats <name> --compute            # Trigger statistics computation
+hops fg feature list <name>                   # List features with types
+hops fg stats compute <name>            # Trigger statistics computation
 hops fg search <name> --vector "0.1,..."  # KNN similarity search
-hops fg keywords <name>                   # List tags (aka keywords)
-hops fg add-keyword <name> <kw>           # Attach a keyword
-hops fg remove-keyword <name> <kw>        # Remove a keyword
+hops fg keyword list <name>                   # List keywords (plain labels)
+hops fg keyword add <name> <kw>           # Attach a keyword
+hops fg keyword remove <name> <kw>        # Remove a keyword
 hops fg delete <name> --version N --yes   # Delete
 ```
 
@@ -110,7 +110,7 @@ Join spec: `"<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>] [prefix]"`.
 hops fv list
 hops fv info <name> [--version N]
 hops fv create <name> --feature-group <fg> [--join <spec>] [--transform <fn:col>]
-hops fv get <name> --entry "id=42,region=eu"       # Online vector lookup
+hops fv lookup <name> --entry "id=42,region=eu"       # Online vector lookup
 hops fv read <name> [--n 100] [--output data.parquet]
 hops fv delete <name> --version N --yes
 ```
@@ -180,9 +180,9 @@ hops job run <name> [--wait] [--args "..."]
 hops job stop <name>
 hops job logs <name> [--execution ID]
 hops job history <name>
-hops job schedule <name> "0 0 * * * ?"              # Quartz 6-field cron
-hops job schedule-info <name>
-hops job unschedule <name>
+hops job schedule set <name> "0 0 * * * ?"              # Quartz 6-field cron
+hops job schedule info <name>
+hops job schedule delete <name>
 hops job delete <name> --yes
 ```
 
@@ -229,7 +229,7 @@ hops files list [path]
 hops files mkdir /Projects/<proj>/newdir
 hops files upload ./file.txt /Projects/<proj>/Resources/
 hops files download /Projects/<proj>/Resources/out.log --output ./
-hops files remove /Projects/<proj>/stale --yes
+hops files delete /Projects/<proj>/stale --yes
 
 # Share a dataset with another project (Data Owner role required in source project)
 hops files share Resources/my_dir --target other_project [--permission READ_ONLY|EDITABLE|EDITABLE_BY_OWNERS]
