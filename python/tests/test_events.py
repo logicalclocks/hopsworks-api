@@ -245,3 +245,32 @@ def test_a_training_dataset_names_its_feature_view_and_version(
     for line in (created, deleted):
         assert line["key"] == {"name": "churn", "version": 3}
         assert line["detail"] == {"fv_version": 2}
+
+
+def test_a_schedule_line_carries_what_the_server_stored(tmp_path, monkeypatch, mocker):
+    from hopsworks_common.core import job_api
+
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+    instance = mocker.Mock(_project_id=1)
+    mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+    instance._send_request.return_value = {
+        "id": 3,
+        "cronExpression": "0 0 * ? * * *",
+        "enabled": True,
+        "nextExecutionDateTime": 1761000000000,
+        "startDateTime": 1760900000000,
+    }
+
+    job_api.JobApi()._schedule_job("score", {"cronExpression": "0 0 * ? * * *"})
+    job_api.JobApi()._delete_schedule_job("score")
+
+    set_line, delete_line = _lines(target)
+    assert set_line["key"] == {"name": "score"}
+    assert set_line["detail"] == {
+        "cron": "0 0 * ? * * *",
+        "enabled": True,
+        "next": 1761000000000,
+    }
+    assert delete_line["op"] == "delete"
+    assert delete_line["detail"] == {"enabled": False}
