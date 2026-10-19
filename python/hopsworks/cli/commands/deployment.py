@@ -15,6 +15,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import lineage, output, session, versions
+from hopsworks.cli.commands.files import makedirs
 
 
 @click.group("deployment")
@@ -356,9 +357,8 @@ def deployment_create(
     if script_file and Path(script_file).is_file():
         dataset = project.get_dataset_api()
         dest_dir = f"Resources/deployments/{deploy_name}"
-        with contextlib.suppress(Exception):  # directory may already exist
-            dataset.mkdir(dest_dir)
         try:
+            makedirs(dataset, dest_dir)
             uploaded = dataset.upload(
                 local_path=script_file, upload_path=dest_dir, overwrite=True
             )

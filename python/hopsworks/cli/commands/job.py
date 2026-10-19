@@ -7,7 +7,6 @@ follows the same memoized-session pattern as the rest of the CLI.
 
 from __future__ import annotations
 
-import contextlib
 import os
 import shutil
 import tempfile
@@ -16,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import click
 from hopsworks.cli import output, session
 from hopsworks.cli.commands.alert import job_alert_group
+from hopsworks.cli.commands.files import makedirs
 
 
 if TYPE_CHECKING:
@@ -312,9 +312,8 @@ def job_deploy(
     if os.path.isfile(script):
         dataset = project.get_dataset_api()
         dest_dir = upload_dir or f"Resources/jobs/{name}"
-        with contextlib.suppress(Exception):  # directory may already exist
-            dataset.mkdir(dest_dir)
         try:
+            makedirs(dataset, dest_dir)
             uploaded = dataset.upload(
                 local_path=script, upload_path=dest_dir, overwrite=overwrite
             )

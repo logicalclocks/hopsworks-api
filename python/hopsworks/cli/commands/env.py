@@ -11,12 +11,12 @@ heads-up warning, since installs can take several minutes.
 
 from __future__ import annotations
 
-import contextlib
 import os
 from typing import Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks.cli.commands.files import makedirs
 
 
 @click.group("env")
@@ -190,9 +190,8 @@ def env_install(
     if os.path.isfile(requirements_file):
         dataset = project.get_dataset_api()
         dest_dir = upload_dir or f"Resources/environments/{env_name}"
-        with contextlib.suppress(Exception):  # directory may already exist
-            dataset.mkdir(dest_dir)
         try:
+            makedirs(dataset, dest_dir)
             uploaded = dataset.upload(
                 local_path=requirements_file, upload_path=dest_dir, overwrite=overwrite
             )

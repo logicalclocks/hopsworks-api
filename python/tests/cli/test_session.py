@@ -477,6 +477,9 @@ class _PushDataset:
         self.uploads: list[str] = []
         self.removed: list[str] = []
 
+    def exists(self, path: str) -> bool:
+        return True
+
     def mkdir(self, path: str) -> None:
         pass
 

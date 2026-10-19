@@ -283,11 +283,49 @@ def test_job_logs_stdout(mock_project):
 
 def test_files_mkdir(mock_project):
     api = mock.MagicMock()
-    api.mkdir.return_value = "/Projects/demo/newdir"
+    api.exists.side_effect = lambda path: path == "/Projects/demo"
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(cli, ["files", "mkdir", "/Projects/demo/newdir"])
     assert result.exit_code == 0, result.output
-    api.mkdir.assert_called_with("/Projects/demo/newdir")
+    api.mkdir.assert_called_once_with("/Projects/demo/newdir")
+
+
+def test_files_mkdir_creates_missing_parents_top_down(mock_project):
+    api = mock.MagicMock()
+    api.exists.side_effect = lambda path: path == "Resources"
+    mock_project.get_dataset_api.return_value = api
+    result = CliRunner().invoke(cli, ["files", "mkdir", "Resources/app/static"])
+    assert result.exit_code == 0, result.output
+    assert api.mkdir.call_args_list == [
+        mock.call("Resources/app"),
+        mock.call("Resources/app/static"),
+    ]
+
+
+def test_files_mkdir_on_an_existing_directory_succeeds(mock_project):
+    api = mock.MagicMock()
+    api.exists.return_value = True
+    mock_project.get_dataset_api.return_value = api
+    result = CliRunner().invoke(cli, ["files", "mkdir", "Resources/app"])
+    assert result.exit_code == 0, result.output
+    assert "already exists" in result.output
+    api.mkdir.assert_not_called()
+
+
+def test_files_upload_creates_the_remote_parents(mock_project, tmp_path):
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "index.html").write_text("<p>hi</p>")
+    api = mock.MagicMock()
+    api.exists.side_effect = lambda path: path == "Resources"
+    api.upload.return_value = "Resources/apps/site"
+    mock_project.get_dataset_api.return_value = api
+    result = CliRunner().invoke(
+        cli, ["files", "upload", str(site), "Resources/apps/site"]
+    )
+    assert result.exit_code == 0, result.output
+    api.mkdir.assert_called_once_with("Resources/apps")
+    assert api.upload.call_args.kwargs["upload_path"] == "Resources/apps"
 
 
 def test_files_upload_strips_matching_basename(mock_project, tmp_path):

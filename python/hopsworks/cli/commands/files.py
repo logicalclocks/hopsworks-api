@@ -65,11 +65,37 @@ def _entry_row(entry: Any) -> list[Any]:
     return [name, kind, size]
 
 
+def makedirs(dataset_api: Any, path: str) -> bool:
+    """Create `path` and its missing parents, like `mkdir -p`.
+
+    Hopsworks creates one level per request and refuses a missing parent
+    (HTTP 422), so the walk goes up to the first existing ancestor and
+    creates the rest top-down.
+
+    Args:
+        dataset_api: The project's `DatasetApi`.
+        path: HopsFS path, relative to the project or absolute.
+
+    Returns:
+        `True` if a directory was created, `False` if `path` already existed.
+    """
+    missing = []
+    current = path.rstrip("/")
+    while current not in ("", ".") and not dataset_api.exists(current):
+        missing.append(current)
+        current = current.rpartition("/")[0]
+    for directory in reversed(missing):
+        dataset_api.mkdir(directory)
+    return bool(missing)
+
+
 @files_group.command("mkdir")
 @click.argument("path")
 @click.pass_context
 def dataset_mkdir(ctx: click.Context, path: str) -> None:
-    """Create a directory in the project's HopsFS.
+    """Create a directory in HopsFS, with its missing parents.
+
+    An existing directory is not an error.
 
     \f
     Args:
@@ -78,12 +104,15 @@ def dataset_mkdir(ctx: click.Context, path: str) -> None:
     """
     project = session.get_project(ctx)
     try:
-        created = project.get_dataset_api().mkdir(path)
+        created = makedirs(project.get_dataset_api(), path)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Could not create directory '{path}': {exc}"
         ) from exc
-    output.success("✓ Created %s", created or path)
+    if created:
+        output.success("✓ Created %s", path)
+    else:
+        output.success("✓ %s already exists", path)
 
 
 @files_group.command("upload")
@@ -94,13 +123,14 @@ def dataset_mkdir(ctx: click.Context, path: str) -> None:
 def dataset_upload(
     ctx: click.Context, local_path: str, remote_path: str, overwrite: bool
 ) -> None:
-    """Upload a local file to HopsFS.
+    """Upload a local file or directory to HopsFS.
 
     `REMOTE_PATH` is the destination path (`cp`/`scp`-style), not the
     parent directory. When its basename matches the local file's basename
     the parent is used as the SDK's `upload_path`; otherwise the remote
     path is passed through unchanged and the SDK treats it as a directory
-    (file lands under `REMOTE_PATH/<local basename>`).
+    (file lands under `REMOTE_PATH/<local basename>`). Missing remote
+    parent directories are created.
 
     \f
     Args:
@@ -116,8 +146,10 @@ def dataset_upload(
         upload_path = os.path.dirname(remote_path) or "."
 
     project = session.get_project(ctx)
+    dataset_api = project.get_dataset_api()
     try:
-        uploaded = project.get_dataset_api().upload(
+        makedirs(dataset_api, upload_path)
+        uploaded = dataset_api.upload(
             local_path=local_path, upload_path=upload_path, overwrite=overwrite
         )
     except Exception as exc:  # noqa: BLE001

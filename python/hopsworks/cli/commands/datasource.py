@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 import click
 from click.core import ParameterSource
 from hopsworks.cli import output, session
+from hopsworks.cli.commands.files import makedirs
 
 
 if TYPE_CHECKING:
@@ -1581,9 +1582,7 @@ def _upload_wallet(ctx: click.Context, sc: Any, local_zip: str) -> tuple[str, st
     file_name = f"wallet-{uuid.uuid4().hex}.zip"
     dataset_api = project.get_dataset_api()
     try:
-        for directory in (os.path.dirname(target_dir), target_dir):
-            if not dataset_api.exists(directory):
-                dataset_api.mkdir(directory)
+        makedirs(dataset_api, target_dir)
         with tempfile.TemporaryDirectory() as tmp:
             staged = os.path.join(tmp, file_name)
             shutil.copyfile(local_zip, staged)

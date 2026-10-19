@@ -55,6 +55,7 @@ except ImportError:  # non-POSIX (Windows): raw stdin / --write is unavailable
 import click
 from hopsworks.cli import git_sync, output, terminal_api
 from hopsworks.cli import session as conn
+from hopsworks.cli.commands.files import makedirs
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 
@@ -772,10 +773,10 @@ def push(
     # simply means no git context travels with this push.
     git_ctx = git_sync.maybe_collect(dataset_api, _teleport_root().rsplit("/", 1)[0])
 
-    # mkdir is best-effort: an existing dir is fine, and a real problem will
-    # surface loudly on the upload below.
-    with contextlib.suppress(Exception):
-        dataset_api.mkdir(dest_dir)
+    try:
+        makedirs(dataset_api, dest_dir)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not create {dest_dir}: {exc}") from exc
     # Upload a snapshot copy, not the live file: the session may be the one the
     # user is in, still being appended to. The baton's transferred_lines must
     # count exactly the bytes that were shipped — counting the live file after
@@ -959,8 +960,10 @@ def new(
     dataset_api = project.get_dataset_api()
 
     dest_dir = f"{_teleport_root()}/{slug}"
-    with contextlib.suppress(Exception):
-        dataset_api.mkdir(dest_dir)
+    try:
+        makedirs(dataset_api, dest_dir)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not create {dest_dir}: {exc}") from exc
 
     ws_url = (_launch_pod(project) or {}).get("wsUrl")
 
