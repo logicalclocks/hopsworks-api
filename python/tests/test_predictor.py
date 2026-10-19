@@ -115,6 +115,23 @@ class TestPredictor:
         assert d["predictorEnvironment"] == {"name": "my-inference-pipeline"}
         assert d["environmentDTO"] == {"name": "my-inference-pipeline"}
 
+    def test_from_response_json_reports_the_default_predictor(
+        self, mocker, backend_fixtures
+    ):
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"]
+        )
+        item = json["items"][0]
+
+        item["predictor"] = (
+            "/Projects/p/Deployments/d/resources/predictor/default_predictor.py"
+        )
+        assert predictor.Predictor.from_response_json(json)[0].default_predictor
+
+        item["predictor"] = "/Projects/p/Resources/my_predictor.py"
+        assert not predictor.Predictor.from_response_json(json)[0].default_predictor
+
     def test_from_response_json_singleton(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
