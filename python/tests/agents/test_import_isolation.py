@@ -17,6 +17,8 @@ Run in a subprocess so an import in some other test cannot mask the result.
 import subprocess
 import sys
 
+import pytest
+
 
 def _modules_after_importing(package: str) -> set[str]:
     script = (
@@ -45,6 +47,9 @@ def test_serving_package_does_not_pull_in_eval_code():
 
 
 def test_importing_agentapp_does_not_pull_in_eval_code():
+    # AgentApp is the one thing here that needs the `agents` extra; the package
+    # itself imports without it, which is what the other two tests check.
+    pytest.importorskip("fastapi")
     # the realistic entry point: an agent constructs AgentApp, not the package
     script = (
         "from hopsworks_agents.protocol import AgentApp;"
