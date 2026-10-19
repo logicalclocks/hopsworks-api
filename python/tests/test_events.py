@@ -204,3 +204,18 @@ def test_an_online_insert_reports_the_rows_delivered(tmp_path, monkeypatch):
     progress = [line for line in _lines(target) if line["phase"] == "progress"]
     assert progress
     assert progress[0]["progress"] == {"done": 1, "unit": "rows", "total": 3}
+
+
+def test_an_insert_reports_its_row_count(tmp_path, monkeypatch):
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+    events._last_progress.clear()
+
+    with events.tracked("fg", "update", long=True, name="orders", version=1):
+        events.progress(0, 5, "rows")
+        events.note(rows=5)
+
+    lines = _lines(target)
+    assert [line["phase"] for line in lines] == ["started", "progress", "done"]
+    assert lines[1]["progress"] == {"done": 0, "unit": "rows", "total": 5}
+    assert lines[2]["detail"] == {"rows": 5}

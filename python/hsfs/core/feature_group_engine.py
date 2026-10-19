@@ -253,6 +253,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         transform: bool = True,
         n_processes: int | None = None,
     ):
+        # A Spark frame has no cheap length; its count is not computed for this.
+        rows = len(feature_dataframe) if hasattr(feature_dataframe, "__len__") else None
+        if rows is not None:
+            events.progress(0, rows, "rows")
+            events.note(rows=rows)
         dataframe_features = engine._get_instance()._parse_schema_feature_group(
             feature_dataframe,
             feature_group.time_travel_format,

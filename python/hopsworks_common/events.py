@@ -146,6 +146,13 @@ def progress(done: float, total: float | None = None, unit: str = "") -> None:
         change.progress(done, total, unit)
 
 
+def note(**detail: Any) -> None:
+    """Add to the `detail` of the innermost change `tracked` reports, if there is one."""
+    change = _current.get()
+    if change is not None:
+        change.detail.update(detail)
+
+
 @contextmanager
 def tracked(
     kind: str,
