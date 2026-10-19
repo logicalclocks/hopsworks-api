@@ -270,6 +270,8 @@ fv.get_feature_vector(entry={"user_id": 123}, request_parameters={"current_locat
 
 ### Create and Materialize Training Data
 
+Each `create_*` call registers a version, starts a Spark job (`<fv>_<version>_create_fv_td_<timestamp>`) and writes files: minutes per call. Use it only when the user asks for a stored, reusable dataset. An ML system and the builders split in memory (below).
+
 ```python
 # Full dataset
 version, job = fv.create_training_data(
@@ -314,7 +316,7 @@ X_train, X_val, X_test, y_train, y_val, y_test = fv.get_train_validation_test_sp
 
 ### In-Memory Training Data (No Materialization)
 
-For quick iteration, get training data directly as DataFrames without materializing to storage. These still create metadata for reproducibility but skip writing to storage.
+The default. Get training data directly as DataFrames, in seconds and with no job. Each call registers an in-memory training dataset version (metadata only): a model registered with `feature_view=` in the same process records it, and scoring reads it.
 
 ```python
 X, y = fv.training_data(start_time="2025-01-01", end_time="2025-04-01", dataframe_type="polars")
@@ -377,7 +379,9 @@ Feature value priority (highest to lowest):
 ## Batch Scoring (Offline)
 
 ```python
-fv.init_batch_scoring(training_dataset_version=1)   # optional — called automatically
+# Required when the view has model-dependent transformations (get_batch_data raises
+# "Training data version is required" otherwise): the version the model was trained on.
+fv.init_batch_scoring(training_dataset_version=model.training_dataset_version)
 
 batch_df = fv.get_batch_data(
     start_time="2025-03-01",

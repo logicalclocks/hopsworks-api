@@ -65,9 +65,10 @@ X_train, X_val, X_test, y_train, y_val, y_test = fv.train_validation_test_split(
 )
 td_version = fv.get_last_accessed_training_dataset()
 
-# B. Materialized + versioned (large data, or a reproducible pinned dataset).
-#    create_train_test_split returns (version, Job) and runs an ASYNC PySpark
-#    job. The version pins the feature-group commits and split seed, so every
+# B. Materialized + versioned, only when the user asks for a stored dataset:
+#    each create_* call starts a PySpark job (minutes). An ML system and the
+#    builders never call it. create_train_test_split returns (version, Job) and
+#    runs the job asynchronously. The version pins the feature-group commits and split seed, so every
 #    model trained on it sees identical rows. Block on the job, then read back
 #    BY VERSION (the dataset 404s until the job finishes).
 # td_version, td_job = fv.create_train_validation_test_split(

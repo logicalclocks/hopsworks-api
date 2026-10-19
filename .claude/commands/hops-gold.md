@@ -80,7 +80,7 @@ Unit-test the models on sample rows (DuckDB) and run the tests.
 
 ### backfill
 
-Deploy the mart's jobs (`hops job deploy <slug>-<mart>-<cadence> marts/<mart>/run_mart.py --env dbt-pipeline --args "--mart <mart> --cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`) and run each once without a window (`hops job run <job> --wait`), dimensions before facts.
+Run the backfill where you run when the silver tables hold under 500 MB in all (`Offline size` in `hops fg info <fg>`): `python marts/<mart>/run_mart.py --mart <mart> --cadence <cadence>` without a window, dimensions before facts (`uv pip install dbt-trino` first when `dbt --version` fails). Then deploy the mart's jobs for the schedule (`hops job deploy <slug>-<mart>-<cadence> marts/<mart>/run_mart.py --env dbt-pipeline --args "--mart <mart> --cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`). Over that size, or when the local run runs out of memory, run each job once instead (`hops job run <job> --wait`), dimensions before facts.
 Check each table: row count, no duplicate key at the grain, no null foreign key, and its parents (`hops fg lineage <name>`).
 Then the mart's verification (references/gold-marts.md, Verification): turn each `example_queries` question into SQL over the mart, run it (`hops trino query`), and compare the answer with the expected one in plain English; run each `reconcile` check against its reference.
 Record each check under the mart's `verification` in `system.yaml` as `{check, sql, expected, result, passed: true | false, at}`; ask the user when an expected answer is ambiguous or a mismatch may be a wrong expectation rather than a wrong mart.

@@ -16,7 +16,7 @@ runs out of memory.
 A table made to answer a question ("where does revenue come from?") has no
 target and no signal columns: its story is what the question should find (what
 grows over time, which category or country dominates, a seasonal peak). Use the
-rules below for the code (seeded, Polars, whole columns, no statistics jobs) and
+rules below for the code (seeded, Polars, whole columns, statistics off) and
 skip everything about targets, prevalence, `system.yaml`, the bundle and live
 mode: one generator `./data/<name>/generate.py` run once where the agent runs,
 one offline Delta feature group. `/hops` spawns **hops-data-builder** for it.
@@ -69,9 +69,10 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
   costs a Python call per row, about ten times slower than the whole column at a
   million rows. Names, cities and products come from a short list sampled with
   `rng.choice`.
-- **No statistics jobs.** Every feature group the generator writes is created
-  with `statistics_config=False`: from a Python job, Hopsworks computes
-  statistics in a PySpark job after every insert.
+- **Statistics off.** Every feature group the generator writes is created
+  with `statistics_config=False`: otherwise Hopsworks computes statistics in a
+  PySpark job after every insert. The job `<fg>_<version>_compute_stats` still
+  exists for every feature group; with statistics off it never runs.
 
 ## Sinks
 - **Batch:** one offline feature group per table (the entity table, and an event

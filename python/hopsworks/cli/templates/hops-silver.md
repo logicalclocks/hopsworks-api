@@ -15,7 +15,7 @@ Already known, no need to look again before the first question:
 | First word | Do |
 | --- | --- |
 | the slug of a layer above | work on that layer: carry out its pending change requests, then dispatch the rest of the arguments by this table (the Factory and `hops factory run analytics-silver` start the build this way) |
-| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **From Template > Analytics**, or `hops factory run analytics-silver --answers`, records a layer first, and stop |
+| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **From Template > Analytics**, or `hops factory run analytics-silver --answers`, records a layer first, and stop. In the answers each source names its feature group as `{"table": {"name": "<name>", "version": <n>}, "cadence": "daily"}`; `hops factory info analytics-silver` lists every answer key. A slug as the first argument resumes that layer; it never creates one |
 | `profile`, `design`, `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 | `apply` | apply the changes to `system.yaml` since the layer was built (below) |
 
@@ -79,7 +79,7 @@ Write unit tests in `tests/` (DuckDB over sample rows for the dbt SQL, pandas or
 
 ### backfill
 
-Deploy one job per cadence (`hops job deploy <slug>-silver-<cadence> run_silver.py --env dbt-pipeline --args "--cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`), run each once without a window, slowest cadence first (`hops job run <slug>-silver-<cadence> --wait`; before it is scheduled the run gets no window), and check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
+Run the backfill where you run (a Hopsable sandbox, a terminal) when the bronze sources hold under 500 MB in all (`Offline size` in `hops fg info <fg>`): `python run_silver.py --cadence <cadence>` without a window, slowest cadence first, writes in seconds where a job start alone takes minutes (`uv pip install dbt-trino` first when `dbt --version` fails). Then deploy one job per cadence, for the schedule (`hops job deploy <slug>-silver-<cadence> run_silver.py --env dbt-pipeline --args "--cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`). Over that size, or when the local run runs out of memory, run each job once instead (`hops job run <slug>-silver-<cadence> --wait`; before it is scheduled the run gets no window); a run started without `--wait` is awaited with `hops job wait`, never by polling `hops job history`. Check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
 Fix and rerun until the checks pass; record the counts in `outputs`.
 
 ### schedule

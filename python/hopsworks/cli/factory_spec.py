@@ -650,12 +650,16 @@ def _field_problems(field: dict, value: Any, label: str) -> list[str]:
     ):
         return [f"{label} must be some of {', '.join(options)}."]
     if kind == "feature_group" and not (isinstance(value, dict) and value.get("name")):
-        return [f"{label} must be a feature group."]
+        return [
+            f'{label} must be a feature group: {{"name": "<name>", "version": <n>}}.'
+        ]
     if kind == "feature_groups" and not (
         isinstance(value, list)
         and all(isinstance(v, dict) and v.get("name") for v in value)
     ):
-        return [f"{label} must be a list of feature groups."]
+        return [
+            f'{label} must be a list of feature groups: [{{"name": "<name>", "version": <n>}}].'
+        ]
     if kind == "repository":
         return repository_problems(value, label)
     if kind == "secrets":
@@ -669,10 +673,9 @@ def _field_problems(field: dict, value: Any, label: str) -> list[str]:
         for i, item in enumerate(value):
             item = item if isinstance(item, dict) else {}
             for sub in field.get("fields") or []:
+                key = sub.get("key") or sub["id"]
                 found += _field_problems(
-                    sub,
-                    item.get(sub.get("key") or sub["id"]),
-                    f"{label} {i + 1}: {sub['label']}",
+                    sub, item.get(key), f"{label} {i + 1}: {sub['label']} (`{key}`)"
                 )
         return found
     return []

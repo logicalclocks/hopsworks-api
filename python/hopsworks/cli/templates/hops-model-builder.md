@@ -30,23 +30,32 @@ sandbox may run a newer one, and an argument that works here can fail there. Pri
 1. **Show it first.** Write `./models/<name>/train.py` before anything runs. With no feature view
    yet (`hops fv info <view>` fails), create it first from the prompt's feature groups and label:
    `hops fv create <view> --feature-group <fg>:<v> --join ... --labels <label>` (**hops-fv**).
-2. **Split once, in memory.** `train.py` reads the split straight from the feature view through
-   the query service, once per run, and every candidate fits on those frames:
+2. **Split once, in memory, by entity.** A view often holds several rows per entity (a deal's
+   daily snapshots): a random row split puts the same entity in train and test and inflates the
+   score. `train.py` reads the view once with its keys, assigns each entity to a part by a stable
+   hash of its key, and every candidate fits on those frames:
 
    ```python
-   X_train, X_val, X_test, y_train, y_val, y_test = fv.train_validation_test_split(
-       validation_size=0.15, test_size=0.15, statistics_config=False
+   X, y = fv.training_data(primary_key=True, statistics_config=False)
+   bucket = X["<entity key>"].map(
+       lambda k: int(hashlib.sha256(str(k).encode()).hexdigest(), 16) % 100
    )
+   parts = {"train": bucket < 70, "validation": (bucket >= 70) & (bucket < 85), "test": bucket >= 85}
    ```
 
-   Each call registers a training dataset version, so never call it in a loop. Use a training
-   dataset the user named (`fv.get_train_validation_test_split(training_dataset_version=<v>)`)
-   only when they named one. Before fitting, drop from every `X` the feature view's primary key,
-   join keys and event time (`deal_id`, `snapshot_date`): identifiers and timestamps are no
-   features, and a datetime column fails in scikit-learn.
+   A random row split (`fv.train_validation_test_split(validation_size=0.15, test_size=0.15,
+   statistics_config=False)`) only when each entity has one row (`hops sql "SELECT count(*),
+   count(DISTINCT <key>) ..."` on the label group). Each read registers a training dataset
+   version, so never read in a loop. Use a training dataset the user named
+   (`fv.get_training_data(training_dataset_version=<v>, primary_key=True)`) only when they named
+   one. Before fitting, drop from every `X` the feature view's primary key, join keys and event
+   time (`deal_id`, `snapshot_date`): identifiers and timestamps are no features, and a datetime
+   column fails in scikit-learn.
 3. **Fit every candidate at once.** `candidates` lists what the user named (`logistic
    regression`, `random forest`, ...); with none, fit one model that fits `task` and the data's
-   size. Fit them in parallel in one process (`concurrent.futures.ProcessPoolExecutor`, one
+   size. A count without names ("try 3 models") is that many distinct families that fit `task`,
+   simplest first (for a classification: logistic regression, random forest, gradient boosting),
+   each named in its `description=`. Fit them in parallel in one process (`concurrent.futures.ProcessPoolExecutor`, one
    candidate each), score each with `metric` on validation and test, and register each as a new
    version of model `<name>`, in the process that split, with `feature_view=` (the model then
    records the split's training dataset version, which scoring reads; `hops model info` prints

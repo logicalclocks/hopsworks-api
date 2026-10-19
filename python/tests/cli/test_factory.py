@@ -145,8 +145,8 @@ def test_answers_are_checked_as_the_form_checks_them():
         "What should it answer? is required.",
         "Cadence must be one of daily, weekly.",
         "Weeks is out of range.",
-        "Tables 1: Table is required.",
-        "Tables 1: Refresh must be one of daily, weekly.",
+        "Tables 1: Table (`table`) is required.",
+        "Tables 1: Refresh (`cadence`) must be one of daily, weekly.",
     ]
 
 
