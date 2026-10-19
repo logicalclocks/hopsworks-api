@@ -31,8 +31,8 @@ Hopsworks installs a schematized tag `analytics_table`, archived, so every chang
 ```
 
 ```bash
-hops fg add-tag crm_customers analytics_table --value '{"layer": "bronze", "lifecycle": "dev"}'
-hops fg tags crm_customers
+hops fg tag add crm_customers analytics_table --value '{"layer": "bronze", "lifecycle": "dev"}'
+hops fg tag list crm_customers
 ```
 
 ```python
@@ -105,7 +105,7 @@ The job processes only the bronze rows whose arrival column falls in `[HOPS_STAR
   Without the variables (the build's first run, before the job is scheduled) the filter is left out and the whole bronze history is processed; after that, a backfill reprocesses it (`hops job run <job> --start-time 1970-01-01 --end-time <now> --wait` for each job).
 - The silver feature group's primary key is the business key; with `history: full` its `event_time` is the record's own time, and the merge is on both; with `history: latest` it has none, and the merge is on the key. Either way a replayed window is idempotent.
 
-Order: deploy the job, run it once without a window to backfill the whole bronze history, then schedule it (`hops job schedule <job> "<cron>"`) with a start time at the end of that backfill, so the first scheduled window starts where the backfill ended.
+Order: deploy the job, run it once without a window to backfill the whole bronze history, then schedule it (`hops job schedule set <job> "<cron>"`) with a start time at the end of that backfill, so the first scheduled window starts where the backfill ended.
 
 ## The layer's settings
 
@@ -118,14 +118,14 @@ The Factory form asks for these, with these defaults, and `system.yaml` records 
 | `schema_changes` | `fail` (default), `evolve` | The job compares each bronze table's schema with the one `system.yaml` recorded at design. `fail`: it stops before writing, naming the change, for an apply to redesign. `evolve`: a new nullable column is added to the silver table it belongs to (`fg.append_features`) and recorded; a removed or retyped column still fails. |
 | `late_data.lookback` | `0` (default), `1d`, `7d` | Each run also re-reads that much before its window: the read starts at `HOPS_START_TIME` minus the lookback. The upsert makes the overlap harmless. The schedule's window is never moved with offsets; the program derives the read window. |
 | `quality.max_reject_pct` | 0 to 100, default 5 | A run whose rejected share of rows exceeds it fails after writing the rejects table and before writing silver, so bad data never reaches silver silently. |
-| `quality.alert_on_failure` | `true` (default) | A Hopsworks alert on the job's failure: `hops alert job create <job> --receiver <receiver> --status failed --severity critical`. |
+| `quality.alert_on_failure` | `true` (default) | A Hopsworks alert on the job's failure: `hops job alert create <job> --receiver <receiver> --status failed --severity critical`. |
 | `freshness.max_age_hours` | per cadence: 2 h hourly, 26 h daily, 170 h weekly | A silver table not written for longer than its cadence's target is stale; the layer's status report flags it. |
 
 ## Lineage, partitioning, schedule and status
 
 - **Lineage.** Every silver feature group is created with `parents=[<bronze feature groups it reads>]`, and every rejects feature group with its silver table's sources, so Hopsworks' lineage shows bronze to silver (`hops fg lineage <silver>`).
 - **Partitioning.** Decided per silver table at design with **hops-partitioning**, from the bronze table's files on the terminal's mount (`/hopsfs/featurestore/<project>_featurestore.db/<fg>_<version>`): none for small tables, else by hour, day or week, and recorded in `system.yaml` `partitioning` with the evidence.
-- **Schedule.** Each job: `hops job schedule <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --catchup --max-catchup-runs <its max_catchup_runs>`, so windows missed while the scheduler was down are replayed, one execution each, instead of skipped.
+- **Schedule.** Each job: `hops job schedule set <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --catchup --max-catchup-runs <its max_catchup_runs>`, so windows missed while the scheduler was down are replayed, one execution each, instead of skipped.
 - **Status.** `hops factory system status <layer>` writes `status/report.html` in the layer's directory: the job's runs, and for every silver and rejects table its rows, last write against the freshness target, rejected share against the gate, and file layout (the hops-table-maintenance scanner), with Claude's summary. The layer's page shows it with **Status**.
 - **Delete.** `hops factory system delete <layer> --assets` deletes a layer with its jobs, tables and directory, then its Factory entry; without `--assets` only the entry. Part of a layer (a job, or a data mart in gold) is deleted by a change request (**Delete job**, **Delete data mart**, the factory's `changes`), which the build carries out with `hops factory system delete-assets`; in silver the job's cadence and its sources leave the spec with it. A layer never deletes what it reads: a source, or a table tagged as a lower layer (bronze, and silver from gold), stops the delete before anything is deleted.
 - **Changes.** A change to a built layer is requested in the Factory, or with `hops factory run <factory> <slug> --change <id> [--answers FILE]`, as one of its factory's `changes` (silver: **Add tables**, **Delete job**; gold: **Add data mart**, **Edit data mart**, **Delete data mart**, **Delete job**). It is recorded in `system.yaml` under `changes` with `status: pending`, and the build carries it out when it resumes. **Add tables** adds bronze sources (each with its cadence) and a description of the tables wanted, recorded under `additions`, which `/hops-silver <slug> apply` builds.

@@ -13,18 +13,33 @@ from typing import Any
 
 import click
 from hopsworks.cli import joinspec, lineage, output, session, versions
+from hopsworks.cli.commands.alert import fv_alert_group
 
 
 @click.group("fv")
 def fv_group() -> None:
-    """Feature view commands."""
+    """Feature views: features selected for models."""
+
+
+@fv_group.group("tag")
+def fv_tag_group() -> None:
+    """Tags (name/value pairs) on a feature view."""
+
+
+@fv_group.group("keyword")
+def fv_keyword_group() -> None:
+    """Keywords (plain labels) on a feature view."""
+
+
+fv_group.add_command(fv_alert_group)
 
 
 @fv_group.command("list")
 @click.pass_context
 def fv_list(ctx: click.Context) -> None:
-    """List every feature view in the active project's feature store.
+    """List feature views in the project's feature store.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -72,6 +87,7 @@ def _get_fv(
 def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
     """Show metadata for a single feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -144,6 +160,7 @@ def fv_lineage(ctx: click.Context, name: str, version: int | None) -> None:
     Upstream covers the parent feature groups.
     Downstream covers models generated from the feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -273,12 +290,13 @@ def fv_create(
 ) -> None:
     """Create a feature view from one or more feature groups.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
-        base_fg: Base feature group ``name[:version]``.
+        base_fg: Base feature group `name[:version]`.
         joins: Repeatable join specs.
-        transforms: Repeatable ``function_name:column`` specs.
+        transforms: Repeatable `function_name:column` specs.
         labels: Comma-separated label columns.
         version: Feature view version.
         description: Free-form description.
@@ -353,7 +371,7 @@ def fv_create(
     help="Feature whose value clients send with each request (repeatable).",
 )
 @click.option(
-    "--training-dataset-version",
+    "--td-version",
     "training_dataset_version",
     type=int,
     help="Training dataset whose statistics the transformations use.",
@@ -376,8 +394,9 @@ def fv_deploy(
     environment: str | None,
     script_file: str | None,
 ) -> None:
-    """Deploy a feature view as an endpoint returning transformed feature vectors.
+    """Deploy a feature view as a feature vector endpoint.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -387,7 +406,7 @@ def fv_deploy(
         passed_features: Features clients send with each request.
         training_dataset_version: Training dataset version to pin.
         environment: Inference environment name.
-        script_file: Custom ``DefaultPredict`` subclass script.
+        script_file: Custom `DefaultPredict` subclass script.
     """
     fv = _get_fv(ctx, name, version)
     try:
@@ -427,7 +446,7 @@ def fv_deploy(
         )
 
 
-@fv_group.command("get")
+@fv_group.command("lookup")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
 @click.option(
@@ -439,11 +458,12 @@ def fv_deploy(
 def fv_get(ctx: click.Context, name: str, version: int | None, entry: str) -> None:
     """Look up a single feature vector from the online store.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
         version: Feature view version.
-        entry: Comma-separated ``key=value`` pairs for the primary keys.
+        entry: Comma-separated `key=value` pairs for the primary keys.
     """
     fv = _get_fv(ctx, name, version)
 
@@ -463,7 +483,7 @@ def fv_get(ctx: click.Context, name: str, version: int | None, entry: str) -> No
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
 @click.option(
-    "--n", type=int, default=100, show_default=True, help="Max rows to fetch."
+    "--limit", "n", type=int, default=100, show_default=True, help="Max rows to fetch."
 )
 @click.option(
     "--output",
@@ -485,11 +505,12 @@ def fv_read(
 ) -> None:
     """Batch-read from the offline feature store.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
         version: Feature view version.
-        n: Max rows rendered when no ``--output`` file is given.
+        n: Max rows rendered when no `--output` file is given.
         output_file: Optional destination path (parquet/csv/json).
         start_time: ISO timestamp lower bound.
         end_time: ISO timestamp upper bound.
@@ -536,12 +557,13 @@ def fv_delete(
 ) -> None:
     """Delete a feature view and its training datasets.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
         version: Feature view version.
         yes: Skip confirmation when True.
-        force: Pass ``force=True`` to the SDK.
+        force: Pass `force=True` to the SDK.
     """
     fv = _get_fv(ctx, name, version, exact=True)
 
@@ -557,13 +579,14 @@ def fv_delete(
     output.success("✓ Deleted feature view %s", name)
 
 
-@fv_group.command("tags")
+@fv_tag_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
 @click.pass_context
 def fv_tags(ctx: click.Context, name: str, version: int | None) -> None:
     """Show all tags attached to a feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -577,7 +600,7 @@ def fv_tags(ctx: click.Context, name: str, version: int | None) -> None:
     output.render_tags(tags)
 
 
-@fv_group.command("add-tag")
+@fv_tag_group.command("add")
 @click.argument("name")
 @click.argument("tag")
 @click.option("--value", required=True, help="Tag value, JSON or a plain string.")
@@ -588,6 +611,7 @@ def fv_add_tag(
 ) -> None:
     """Attach a tag (name/value pair) to a feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -603,7 +627,7 @@ def fv_add_tag(
     output.success("✓ Added tag '%s' to %s", tag, name)
 
 
-@fv_group.command("remove-tag")
+@fv_tag_group.command("remove")
 @click.argument("name")
 @click.argument("tag")
 @click.option(
@@ -613,6 +637,7 @@ def fv_add_tag(
 def fv_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
     """Remove a tag from a feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -627,13 +652,14 @@ def fv_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) 
     output.success("✓ Removed tag '%s' from %s", tag, name)
 
 
-@fv_group.command("keywords")
+@fv_keyword_group.command("list")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
 @click.pass_context
 def fv_keywords(ctx: click.Context, name: str, version: int | None) -> None:
     """Show all keywords attached to a feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -654,7 +680,7 @@ def fv_keywords(ctx: click.Context, name: str, version: int | None) -> None:
     output.print_table(["KEYWORD", "ADDED"], rows)
 
 
-@fv_group.command("add-keyword")
+@fv_keyword_group.command("add")
 @click.argument("name")
 @click.argument("keyword")
 @click.option("--version", type=int, help="Feature view version.")
@@ -664,6 +690,7 @@ def fv_add_keyword(
 ) -> None:
     """Attach a keyword to a feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.
@@ -678,7 +705,7 @@ def fv_add_keyword(
     output.success("✓ Added keyword '%s' to %s", keyword, name)
 
 
-@fv_group.command("remove-keyword")
+@fv_keyword_group.command("remove")
 @click.argument("name")
 @click.argument("keyword")
 @click.option(
@@ -690,6 +717,7 @@ def fv_remove_keyword(
 ) -> None:
     """Remove a keyword from a feature view.
 
+    \f
     Args:
         ctx: Click context.
         name: Feature view name.

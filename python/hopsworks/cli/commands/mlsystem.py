@@ -124,15 +124,21 @@ def _when(value):
 
 @click.group("system")
 def system_group() -> None:
-    """The systems the project's factories built: list, register, status, remove and delete them."""
+    """Systems built by the project's factories.
+
+    The systems the project's factories built: list, register, status, remove and delete them.
+    """
 
 
 @system_group.command("list")
 @click.option("--factory", help="Only the systems this factory built.")
 @click.pass_context
 def system_list(ctx: click.Context, factory: str | None) -> None:
-    """List the project's systems, newest first, with the factory that built each and whether you can open its code.
+    """List the project's systems, newest first.
 
+    List the project's systems, newest first, with the factory that built each and whether you can open its code.
+
+    \f
     Args:
         ctx: Click context.
         factory: Only this factory's systems.
@@ -184,8 +190,11 @@ def system_list(ctx: click.Context, factory: str | None) -> None:
 def system_register(
     ctx: click.Context, path: Path, name: str | None, factory: str | None
 ) -> None:
-    """Register the system in PATH (default: the current directory), or refresh its entry.
+    """Register a system directory, or refresh its entry.
 
+    Register the system in PATH (default: the current directory), or refresh its entry.
+
+    \f
     Args:
         ctx: Click context.
         path: The system's directory, the one holding its system.yaml.
@@ -255,8 +264,11 @@ def _other_docs(entry: dict) -> dict[str, dict]:
 @click.argument("system")
 @click.pass_context
 def system_remove(ctx: click.Context, system: str) -> None:
-    """Remove SYSTEM (an id, name or slug) from the registry; its code is left in place.
+    """Remove a system from the registry; code stays.
 
+    Remove SYSTEM (an id, name or slug) from the registry; its code is left in place.
+
+    \f
     Args:
         ctx: Click context.
         system: The id, name or slug of the system.
@@ -299,7 +311,9 @@ def system_delete(
     path: Path | None,
     yes: bool,
 ) -> None:
-    """Delete SYSTEM (an id, name or slug): its registry entry, and with --assets what it created.
+    """Delete a system and, with --assets, what it built.
+
+    Delete SYSTEM (an id, name or slug): its registry entry, and with --assets what it created.
 
     An analytics layer's assets are its jobs and tables, never the tables it
     reads, and its directory. Any other system's assets are read from its
@@ -310,6 +324,7 @@ def system_delete(
     the system is still listed and the same command can be run again. Without
     --assets only the registry entry goes and the code is kept.
 
+    \f
     Args:
         ctx: Click context.
         system: The id, name or slug of the system.
@@ -437,7 +452,8 @@ def system_delete(
     help="The system's directory, when its code is not in this project's HopsFS.",
 )
 @click.option(
-    "--out",
+    "--output",
+    "out",
     type=click.Path(dir_okay=False, path_type=Path),
     help="Where to write the HTML report; default: status/report.html in the system directory.",
 )
@@ -451,7 +467,7 @@ def system_status(
     out: Path | None,
     no_summary: bool,
 ) -> None:
-    """Report the health of SYSTEM (an id, name or slug) as an HTML page.
+    """Report the health of a system as an HTML page.
 
     Reads the jobs, deployments and apps the system's system.yaml records: each
     job's runs in the last HOURS with the log tail of every failure, and each
@@ -461,6 +477,7 @@ def system_status(
     reads its jobs and tables instead (freshness, rejected rows, file layout).
     The Factory Status button runs this and shows the page.
 
+    \f
     Args:
         ctx: Click context.
         system: The id, name or slug of the system.
@@ -523,8 +540,11 @@ def _require_path(slug_or_dir: str) -> Path:
 @system_group.command("dir")
 @click.argument("slug")
 def system_dir(slug: str) -> None:
-    """Print the directory of the system SLUG under the current directory: ./SLUG, or an analytics layer's in its analytics repository.
+    """Print the local directory of a system.
 
+    Print the directory of the system SLUG under the current directory: ./SLUG, or an analytics layer's in its analytics repository.
+
+    \f
     Args:
         slug: The system.
     """
@@ -547,10 +567,13 @@ def system_dir(slug: str) -> None:
     help="The edited document; it is removed afterwards.",
 )
 def system_write_doc(slug_or_dir: str, expected: str, source: Path) -> None:
-    """Replace the system.yaml of SLUG_OR_DIR with the edited document in --from.
+    """Replace the system.yaml of a system.
+
+    Replace the system.yaml of SLUG_OR_DIR with the edited document in --from.
 
     Exits 3 when system.yaml changed since the edit read it, and 2 when the edit is not a valid system.yaml.
 
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
         expected: The sha256 of the system.yaml the edit started from.
@@ -573,14 +596,17 @@ def system_write_doc(slug_or_dir: str, expected: str, source: Path) -> None:
 
 @system_group.group("lease")
 def lease_group() -> None:
-    """The build lease of a system: which invocation is building it, until when."""
+    """Build lease of a system: who builds it, until when."""
 
 
-@lease_group.command("show")
+@lease_group.command("info")
 @click.argument("slug_or_dir")
 def lease_show(slug_or_dir: str) -> None:
-    """Print the build lease of SLUG_OR_DIR, if any; exits 1 when there is none.
+    """Show the build lease of a system.
 
+    Print the build lease of SLUG_OR_DIR, if any; exits 1 when there is none.
+
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
     """
@@ -622,8 +648,11 @@ _TOKEN = click.option(
 @_TOKEN
 @_TTL
 def lease_acquire(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
-    """Take the build lease of SLUG_OR_DIR and print its token; exits 4 while another invocation holds it.
+    """Take the build lease of a system and print its token.
 
+    Take the build lease of SLUG_OR_DIR and print its token; exits 4 while another invocation holds it.
+
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
         token: A token of a lease already held, to adopt.
@@ -643,8 +672,11 @@ def lease_acquire(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None
 @_TOKEN
 @_TTL
 def lease_renew(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
-    """Extend the build lease TOKEN holds; exits 4 when the lease is no longer TOKEN's.
+    """Extend a build lease.
 
+    Extend the build lease TOKEN holds; exits 4 when the lease is no longer TOKEN's.
+
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
         token: The lease's token.
@@ -662,8 +694,11 @@ def lease_renew(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
 @click.argument("slug_or_dir")
 @_TOKEN
 def lease_release(slug_or_dir: str, token: str | None) -> None:
-    """Give up the build lease TOKEN holds; a lease held with another token is left alone.
+    """Give up a build lease.
 
+    Give up the build lease TOKEN holds; a lease held with another token is left alone.
+
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
         token: The lease's token.
@@ -698,7 +733,9 @@ def system_delete_assets(
     tables: tuple[str, ...],
     path: Path | None,
 ) -> None:
-    """Delete some of what SYSTEM (an id, name or slug) built: the jobs, then the feature groups.
+    """Delete some of the jobs and tables a system built.
+
+    Delete some of what SYSTEM (an id, name or slug) built: the jobs, then the feature groups.
 
     A build runs this when a change removes part of a system; the system and
     its registry entry stay. Every feature group is checked before anything
@@ -706,6 +743,7 @@ def system_delete_assets(
     layer (any analytics table, for an ML system), stops the delete with
     nothing gone. What is already gone is skipped, so it can be run again.
 
+    \f
     Args:
         ctx: Click context.
         system: The id, name or slug of the system.

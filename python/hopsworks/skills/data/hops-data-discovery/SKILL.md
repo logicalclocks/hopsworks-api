@@ -18,7 +18,7 @@ Discovery enables **feature reuse**: a model that reuses an existing feature doe
 ```bash
 hops fg list                              # all feature groups in the project
 hops fg info <name> --version 1           # metadata (online flag, PK, event time)
-hops fg features <name> --version 1       # schema with PK / partition flags
+hops fg feature list <name> --version 1       # schema with PK / partition flags
 hops fg preview <name> --version 1 --n 10 # first rows (note: preview <name>, not <name> preview)
 hops fv list                              # feature views
 ```

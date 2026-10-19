@@ -8,9 +8,11 @@ from hopsworks.cli import config, output
 
 @click.command("logout")
 def logout_cmd() -> None:
-    """Remove the cached credentials so the next ``hops setup`` starts clean.
+    """Remove the cached credentials.
 
-    Clears the ``default`` profile (host, API key, project) from ``~/.hops.toml``.
+    Remove the cached credentials so the next `hops setup` starts clean.
+
+    Clears the `default` profile (host, API key, project) from `~/.hops.toml`.
     In internal mode (inside a Hopsworks pod) credentials come from the mounted
     JWT, not this file, so there is nothing to clear.
     """

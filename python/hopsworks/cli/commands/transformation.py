@@ -19,7 +19,7 @@ from hopsworks.cli import output, session
 
 @click.group("transformation")
 def transformation_group() -> None:
-    """Transformation function commands."""
+    """Transformation functions applied by feature views."""
 
 
 @transformation_group.command("list")
@@ -27,6 +27,7 @@ def transformation_group() -> None:
 def transformation_list(ctx: click.Context) -> None:
     """List every transformation function in the feature store.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -74,17 +75,18 @@ def transformation_create(
 ) -> None:
     """Register a new user-defined transformation.
 
-    Either ``--file`` or ``--code`` is required. The source is validated via
-    ``ast.parse`` before import so syntax errors surface with a clear message.
+    Either `--file` or `--code` is required. The source is validated via
+    `ast.parse` before import so syntax errors surface with a clear message.
     The decorated function is imported in-process and passed to
-    ``fs.create_transformation_function()``.
+    `fs.create_transformation_function()`.
 
-    Security: the source is executed in-process (``_load_udf``) — this is
+    Security: the source is executed in-process (`_load_udf`) — this is
     arbitrary code execution by design, as the same UDF runs server-side.
-    Treat ``--code``/``--file`` as trusted input; never assemble a
-    ``hops transformation create --code ...`` invocation from an untrusted
+    Treat `--code`/`--file` as trusted input; never assemble a
+    `hops transformation create --code ...` invocation from an untrusted
     source (an agent prompt, a CI variable, a web request).
 
+    \f
     Args:
         ctx: Click context.
         file_path: Python source path.

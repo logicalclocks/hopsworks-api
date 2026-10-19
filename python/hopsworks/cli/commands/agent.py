@@ -23,7 +23,7 @@ from hopsworks.cli import output, session
 
 @click.group("agent")
 def agent_group() -> None:
-    """Python agent deployment commands."""
+    """Agents: Python agents served as deployments."""
 
 
 @agent_group.command("list")
@@ -31,6 +31,7 @@ def agent_group() -> None:
 def agent_list(ctx: click.Context) -> None:
     """List every agent deployment in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -62,6 +63,7 @@ def agent_list(ctx: click.Context) -> None:
 def agent_info(ctx: click.Context, name: str) -> None:
     """Show details for a single agent.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
@@ -96,7 +98,8 @@ def agent_info(ctx: click.Context, name: str) -> None:
     help="Local requirements.txt to install into the agent environment.",
 )
 @click.option(
-    "--environment",
+    "--env",
+    "environment",
     help="Python environment name; defaults to the agent name.",
 )
 @click.option(
@@ -126,16 +129,17 @@ def agent_create(
 ) -> None:
     """Create (or update) an agent from a local script or package.
 
-    ``ENTRY`` is a ``.py`` file or a directory containing ``pyproject.toml``.
+    `ENTRY` is a `.py` file or a directory containing `pyproject.toml`.
     On re-runs, the latest code is uploaded and the deployment's predictor is
-    rewritten; the running state is left untouched (use ``start`` or invoke
-    ``restart`` via the SDK to roll a running agent onto new code).
+    rewritten; the running state is left untouched (use `start` or invoke
+    `restart` via the SDK to roll a running agent onto new code).
 
+    \f
     Args:
         ctx: Click context.
         entry: Local path to script or package.
-        name: Agent name; defaults to the basename of ``entry``.
-        requirements: Optional ``requirements.txt`` path.
+        name: Agent name; defaults to the basename of `entry`.
+        requirements: Optional `requirements.txt` path.
         environment: Python environment name.
         upload_dir: HopsFS upload directory.
         description: Description string.
@@ -161,24 +165,32 @@ def agent_create(
 @agent_group.command("start")
 @click.argument("name")
 @click.option(
-    "--wait",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the agent is RUNNING.",
+)
+@click.option(
+    "--timeout",
     type=int,
     default=600,
     show_default=True,
-    help="Seconds to wait for RUNNING.",
+    help="Seconds to wait.",
 )
 @click.pass_context
-def agent_start(ctx: click.Context, name: str, wait: int) -> None:
+def agent_start(ctx: click.Context, name: str, wait: bool, timeout: int) -> None:
     """Start an agent and optionally wait for the RUNNING state.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
-        wait: Seconds to wait for the agent to become RUNNING.
+        wait: Whether to wait for RUNNING.
+        timeout: Seconds to wait.
     """
     agent = _get_agent(ctx, name)
     try:
-        agent.start(await_running=wait)
+        agent.start(await_running=timeout if wait else 0)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Start failed: {exc}") from exc
     output.success("✓ Started agent %s", name)
@@ -187,24 +199,32 @@ def agent_start(ctx: click.Context, name: str, wait: int) -> None:
 @agent_group.command("stop")
 @click.argument("name")
 @click.option(
-    "--wait",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the agent is STOPPED.",
+)
+@click.option(
+    "--timeout",
     type=int,
     default=600,
     show_default=True,
-    help="Seconds to wait for STOPPED.",
+    help="Seconds to wait.",
 )
 @click.pass_context
-def agent_stop(ctx: click.Context, name: str, wait: int) -> None:
+def agent_stop(ctx: click.Context, name: str, wait: bool, timeout: int) -> None:
     """Stop a running agent.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
-        wait: Seconds to wait for the agent to stop.
+        wait: Whether to wait for STOPPED.
+        timeout: Seconds to wait.
     """
     agent = _get_agent(ctx, name)
     try:
-        agent.stop(await_stopped=wait)
+        agent.stop(await_stopped=timeout if wait else 0)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Stop failed: {exc}") from exc
     output.success("✓ Stopped agent %s", name)
@@ -228,6 +248,7 @@ def agent_query(
 ) -> None:
     """Send a request to a running agent.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
@@ -326,18 +347,19 @@ def agent_logs(
 ) -> None:
     """Read or follow logs from an agent component.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
-        component: Component to query (e.g. ``predictor``, ``transformer``).
+        component: Component to query (e.g. `predictor`, `transformer`).
         tail: Number of lines.
-        source: ``kubernetes`` or ``opensearch`` (deprecated).
+        source: `kubernetes` or `opensearch` (deprecated).
         since: ISO-8601 lower bound on log timestamp.
         until: ISO-8601 upper bound on log timestamp.
         follow: Stream new lines instead of returning a one-shot tail.
         interval: Seconds between polls when following.
         download: Download the HopsFS log archives instead of reading pods.
-        log_dir: With ``--download``, the directory to download into.
+        log_dir: With `--download`, the directory to download into.
     """
     agent = _get_agent(ctx, name)
 
@@ -403,11 +425,12 @@ def agent_logs(
 def agent_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     """Delete an agent deployment.
 
+    \f
     Args:
         ctx: Click context.
         name: Agent name.
         yes: Skip confirmation when True.
-        force: Pass ``force=True`` to the SDK (stops the agent first if running).
+        force: Pass `force=True` to the SDK (stops the agent first if running).
     """
     agent = _get_agent(ctx, name)
     if not yes and not output.JSON_MODE:

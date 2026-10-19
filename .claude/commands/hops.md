@@ -41,7 +41,7 @@ system's `requirements.status` is already `met`, reply with one line that `/hops
 ## Explore
 
 Read-only. Run what the user's words need: `hops fg list`, `hops fv list`, `hops datasource
-list`, `hops search <term>`, `hops fg info <name>`, `hops fg features <name>`,
+list`, `hops search <term>`, `hops fg info <name>`, `hops fg feature list <name>`,
 `hops fg preview <name> --n 10`, `hops sql "<query>"` with a `LIMIT`. Summarise in a few lines and
 offer the next step with `AskUserQuestion` (look deeper, a dashboard over it, an app over it, an ML
 system over it).
@@ -63,7 +63,7 @@ an external client do not, and list the programs under `./dashboards/` instead.
    or delete one. With none, go to create.
 2. **Create.** `hops fg list` and ask which feature groups to chart (multi-select; a group that is
    online only cannot be charted, since Superset reads the offline store). Read their columns with
-   `hops fg features <name>`, then ask which charts to keep from a few you propose by name: a
+   `hops fg feature list <name>`, then ask which charts to keep from a few you propose by name: a
    big-number total, a bar over the categorical column with the fewest distinct values, a
    histogram of a numeric column, a time series on the event time when there is one. Ask the title,
    proposing one from the table names.

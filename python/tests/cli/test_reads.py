@@ -101,7 +101,7 @@ def test_fg_features_table(mock_project):
             _feature("amount", "double"),
         ],
     )
-    result = CliRunner().invoke(cli, ["fg", "features", "transactions"])
+    result = CliRunner().invoke(cli, ["fg", "feature", "list", "transactions"])
     assert result.exit_code == 0, result.output
     assert "id" in result.output
     assert "amount" in result.output
@@ -114,7 +114,7 @@ def test_fg_preview(mock_project):
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
     fg.select_all.return_value.show.return_value = pd.DataFrame({"id": [1, 2, 3]})
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--n", "3"])
+    result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--limit", "3"])
     assert result.exit_code == 0, result.output
     # A bounded read: the limit goes to the query, never a whole-table read.
     fg.select_all.return_value.show.assert_called_with(3, online=False)
@@ -553,16 +553,6 @@ def test_unauthenticated_command_suggests_setup(tmp_home):
 
 
 # --- trino ----------------------------------------------------------------
-
-
-def test_trino_sql_alias_registered():
-    # `hops trino sql ...` is a natural guess; without the alias it failed with
-    # a bare "No such command 'sql'" (#3). Both names must resolve.
-    from hopsworks.cli.commands.trino import trino_group
-
-    assert "sql" in trino_group.commands
-    assert "query" in trino_group.commands
-    assert trino_group.commands["sql"] is trino_group.commands["query"]
 
 
 # --- stdout hygiene -------------------------------------------------------

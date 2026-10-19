@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks.cli.commands.alert import job_alert_group
 
 
 if TYPE_CHECKING:
@@ -61,7 +62,20 @@ def _ts_label(value: Any) -> str:
 
 @click.group("job")
 def job_group() -> None:
-    """Job commands."""
+    """Jobs: Python, Spark and Docker programs the cluster runs."""
+
+
+@job_group.group("schedule")
+def job_schedule_group() -> None:
+    """The cron schedule of a job."""
+
+
+@job_group.group("tag")
+def job_tag_group() -> None:
+    """Tags (name/value pairs) on a job."""
+
+
+job_group.add_command(job_alert_group)
 
 
 @job_group.command("list")
@@ -69,6 +83,7 @@ def job_group() -> None:
 def job_list(ctx: click.Context) -> None:
     """List every job defined in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -98,6 +113,7 @@ def job_list(ctx: click.Context) -> None:
 def job_info(ctx: click.Context, name: str) -> None:
     """Show the configuration of a single job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -184,12 +200,13 @@ def job_create(
     app_args: str | None,
     description: str | None,
 ) -> None:
-    """Create a new job from a ``type`` + ``--app-path``.
+    """Create a job from a program on HopsFS.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
-        job_type: One of ``PYTHON``/``PYSPARK``/``SPARK``/``DOCKER``.
+        job_type: One of `PYTHON`/`PYSPARK`/`SPARK`/`DOCKER`.
         app_path: HopsFS path to the script or JAR.
         environment: Python environment the job runs in; the type's default when omitted.
         app_args: Optional argument string passed to the job.
@@ -238,7 +255,10 @@ def job_create(
 )
 @click.option("--run", "do_run", is_flag=True, help="Run once after deploying.")
 @click.option(
-    "--wait", is_flag=True, help="With --run, block until the execution finishes."
+    "--wait/--no-wait",
+    default=False,
+    show_default=True,
+    help="With --run, wait until the execution finishes.",
 )
 @click.option(
     "--upload-dir",
@@ -265,12 +285,12 @@ def job_deploy(
     upload_dir: str | None,
     overwrite: bool,
 ) -> None:
-    """Deploy a job end to end: upload, set environment, schedule, run.
+    """Upload, configure, schedule and run a job in one step.
 
-    One-shot for what ``create`` + ``schedule`` + ``run`` do separately, plus
-    the environment selection that ``create`` cannot set. ``SCRIPT`` is either
-    a local file (uploaded to HopsFS) or an existing HopsFS path.
+    One-shot for what `create` + `schedule` + `run` do separately.
+    `SCRIPT` is either a local file (uploaded to HopsFS) or an existing HopsFS path.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name (created or updated).
@@ -280,7 +300,7 @@ def job_deploy(
         app_args: Argument string passed to the job.
         cron: Schedule; Quartz or a shorthand. No schedule if omitted.
         do_run: Run once after deploying.
-        wait: With ``do_run``, block until the execution terminates.
+        wait: With `do_run`, block until the execution terminates.
         upload_dir: HopsFS directory for a local script upload.
         overwrite: Overwrite an existing uploaded script.
     """
@@ -350,7 +370,12 @@ _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 @job_group.command("run")
 @click.argument("name")
 @click.option("--args", "app_args", help="Argument string passed to this execution.")
-@click.option("--wait", is_flag=True, help="Block until the execution terminates.")
+@click.option(
+    "--wait/--no-wait",
+    default=False,
+    show_default=True,
+    help="Wait until the execution finishes.",
+)
 @click.option(
     "--start-time",
     type=click.DateTime(formats=_DT_FORMATS),
@@ -372,20 +397,21 @@ def job_run(
     start_time: datetime | None,
     end_time: datetime | None,
 ) -> None:
-    """Start a new one-off execution of ``name``.
+    """Run a job once now.
 
-    ``--start-time`` / ``--end-time`` are passed straight through to the
-    SDK and surface inside the job as ``HOPS_START_TIME`` /
-    ``HOPS_END_TIME``. Useful when you want to nudge a single run to
+    `--start-time` / `--end-time` are passed straight through to the
+    SDK and surface inside the job as `HOPS_START_TIME` /
+    `HOPS_END_TIME`. Useful when you want to nudge a single run to
     consume a specific data window without creating a schedule.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
         app_args: Argument string passed to this execution.
         wait: Block until the execution terminates.
-        start_time: ISO timestamp for ``HOPS_START_TIME``.
-        end_time: ISO timestamp for ``HOPS_END_TIME``.
+        start_time: ISO timestamp for `HOPS_START_TIME`.
+        end_time: ISO timestamp for `HOPS_END_TIME`.
     """
     if end_time is not None and start_time is None:
         raise click.UsageError("--end-time requires --start-time.")
@@ -441,13 +467,16 @@ def job_backfill(
     app_args: str | None,
     wait: bool,
 ) -> None:
-    """Run ``name`` once over an explicit [start_time, end_time] window.
+    """Run a job once over a start/end time window.
 
-    Same SDK call as ``run`` (which sets ``HOPS_START_TIME`` /
-    ``HOPS_END_TIME`` env vars on the execution); the difference is that
+    Run `name` once over an explicit [start_time, end_time] window.
+
+    Same SDK call as `run` (which sets `HOPS_START_TIME` /
+    `HOPS_END_TIME` env vars on the execution); the difference is that
     both timestamps are required, signalling intent to backfill a fixed
     historical interval rather than a normal one-off run.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -484,8 +513,9 @@ def job_backfill(
 @click.argument("name")
 @click.pass_context
 def job_stop(ctx: click.Context, name: str) -> None:
-    """Stop the most recent execution of ``name``.
+    """Stop the latest execution of a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -548,18 +578,19 @@ def job_logs(
 ) -> None:
     """Read stdout/stderr logs for a job execution.
 
-    By default this downloads ``stdout.log`` / ``stderr.log`` into a
-    ``logs-job-<name>-exec-<id>_*`` directory in the working directory, or in
-    ``--dir``, and prints the paths. Pass ``--stdout`` to print the content to the terminal
+    By default this downloads `stdout.log` / `stderr.log` into a
+    `logs-job-<name>-exec-<id>_*` directory in the working directory, or in
+    `--dir`, and prints the paths. Pass `--stdout` to print the content to the terminal
     instead, leaving no files behind.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
         execution_id: Specific execution; latest if omitted.
         to_stdout: Print content to the terminal instead of downloading files.
         log_dir: Directory to download into instead of the working directory.
-        tail: With ``--stdout``, keep only the last N lines of each stream.
+        tail: With `--stdout`, keep only the last N lines of each stream.
     """
     executions = _executions(_get_job(ctx, name))
     if not executions:
@@ -609,8 +640,11 @@ def job_logs(
 @click.argument("name")
 @click.pass_context
 def job_history(ctx: click.Context, name: str) -> None:
-    """List past executions of a job (newest first), with how long each ran.
+    """List past executions of a job, newest first.
 
+    List past executions of a job (newest first), with how long each ran.
+
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -654,7 +688,7 @@ def _expand_cron_alias(cron: str) -> str:
     return _CRON_ALIASES.get(cron.strip().lower(), cron)
 
 
-@job_group.command("schedule")
+@job_schedule_group.command("set")
 @click.argument("name")
 @click.argument("cron")
 @click.option(
@@ -724,16 +758,17 @@ def job_schedule(
     max_active_runs: int,
     max_catchup_runs: int | None,
 ) -> None:
-    """Attach (or update) a Quartz cron schedule to ``name``.
+    """Set the cron schedule of a job.
 
     The cron interval is the firing cadence. The data window the job
     consumes per fire is the previous fire to this one; current servers
-    refuse a negative ``--start-offset-seconds`` and ignore
-    ``--end-offset-seconds``, so a program that needs another window derives
-    it from ``HOPS_END_TIME``. ``--catchup``
-    replays missed intervals after an outage; ``--max-catchup-runs``
+    refuse a negative `--start-offset-seconds` and ignore
+    `--end-offset-seconds`, so a program that needs another window derives
+    it from `HOPS_END_TIME`. `--catchup`
+    replays missed intervals after an outage; `--max-catchup-runs`
     caps how many missed intervals are replayed.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -741,8 +776,8 @@ def job_schedule(
             @midnight, @weekly, @monthly, @yearly).
         start_time: ISO timestamp for the first trigger.
         end_time: ISO timestamp for the last trigger.
-        start_offset_seconds: Per-fire offset for ``HOPS_START_TIME``.
-        end_offset_seconds: Per-fire offset for ``HOPS_END_TIME``.
+        start_offset_seconds: Per-fire offset for `HOPS_START_TIME`.
+        end_offset_seconds: Per-fire offset for `HOPS_END_TIME`.
         catchup: Replay missed fires on recovery.
         max_active_runs: Upper bound on concurrent executions.
         max_catchup_runs: Upper bound on missed intervals to replay during catchup.
@@ -767,12 +802,13 @@ def job_schedule(
         output.print_json(_schedule_to_dict(schedule))
 
 
-@job_group.command("schedule-info")
+@job_schedule_group.command("info")
 @click.argument("name")
 @click.pass_context
 def job_schedule_info(ctx: click.Context, name: str) -> None:
     """Print the currently attached schedule, if any.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -794,12 +830,13 @@ def job_schedule_info(ctx: click.Context, name: str) -> None:
     output.print_table(["FIELD", "VALUE"], rows)
 
 
-@job_group.command("unschedule")
+@job_schedule_group.command("delete")
 @click.argument("name")
 @click.pass_context
 def job_unschedule(ctx: click.Context, name: str) -> None:
     """Remove the schedule from a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -817,8 +854,9 @@ def job_unschedule(ctx: click.Context, name: str) -> None:
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
 @click.pass_context
 def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Delete a job definition (does not affect past execution logs).
+    """Delete a job definition; execution logs are kept.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -834,12 +872,13 @@ def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
     output.success("✓ Deleted job %s", name)
 
 
-@job_group.command("tags")
+@job_tag_group.command("list")
 @click.argument("name")
 @click.pass_context
 def job_tags(ctx: click.Context, name: str) -> None:
     """Show all tags attached to a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -852,7 +891,7 @@ def job_tags(ctx: click.Context, name: str) -> None:
     output.render_tags(tags)
 
 
-@job_group.command("add-tag")
+@job_tag_group.command("add")
 @click.argument("name")
 @click.argument("tag")
 @click.option("--value", required=True, help="Tag value, JSON or a plain string.")
@@ -860,6 +899,7 @@ def job_tags(ctx: click.Context, name: str) -> None:
 def job_add_tag(ctx: click.Context, name: str, tag: str, value: str) -> None:
     """Attach a tag (name/value pair) to a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -874,13 +914,14 @@ def job_add_tag(ctx: click.Context, name: str, tag: str, value: str) -> None:
     output.success("✓ Added tag '%s' to %s", tag, name)
 
 
-@job_group.command("remove-tag")
+@job_tag_group.command("remove")
 @click.argument("name")
 @click.argument("tag")
 @click.pass_context
 def job_remove_tag(ctx: click.Context, name: str, tag: str) -> None:
     """Remove a tag from a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -894,13 +935,14 @@ def job_remove_tag(ctx: click.Context, name: str, tag: str) -> None:
     output.success("✓ Removed tag '%s' from %s", tag, name)
 
 
-@job_group.command("describe")
+@job_group.command("update")
 @click.argument("name")
 @click.option("--description", required=True, help="New description of the job.")
 @click.pass_context
-def job_describe(ctx: click.Context, name: str, description: str) -> None:
-    """Set the description of a job.
+def job_update(ctx: click.Context, name: str, description: str) -> None:
+    """Update the description of a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.

@@ -8,7 +8,7 @@ The system lives in this directory; its `system.yaml` holds the requirements the
 ## How every factory build runs
 
 - **The build lease** is `.hops.lock` here (`owner`, `token`, `acquired`, `expires`, UTC). `hops factory run` took it and passed its token as `$HOPS_LEASE_TOKEN`; started any other way, take it with `hops factory system lease acquire {slug}`, which prints the token to pass as `--token` below.
-  Exit 4 means another invocation builds the system: print `hops factory system lease show {slug}` and stop.
+  Exit 4 means another invocation builds the system: print `hops factory system lease info {slug}` and stop.
   Renew it with `hops factory system lease renew {slug}` when each phase starts and at least hourly while you wait on a job; it lapses 4 hours after the last renewal and is then taken over.
   A renewal that exits 4 means the lease was lost: stop at once and write nothing more.
   Release it with `hops factory system lease release {slug}` when you finish, stop or fail.
