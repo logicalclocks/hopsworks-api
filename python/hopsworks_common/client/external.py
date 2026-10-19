@@ -26,17 +26,13 @@ from typing import TYPE_CHECKING
 import hopsworks_common.client
 import requests
 from hopsworks_apigen import also_available_as
-from hopsworks_common.client import auth, base, exceptions
+from hopsworks_common.client import auth, base, exceptions, session_cache
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.constants import CLIENT
 
 
 if TYPE_CHECKING:
     from urllib.parse import ParseResult
-
-
-with contextlib.suppress(ImportError):
-    from pyspark.sql import SparkSession
 
 
 _logger = logging.getLogger(__name__)
@@ -48,6 +44,10 @@ _logger = logging.getLogger(__name__)
     "hsml.client.external.Client",
 )
 class Client(base.Client):
+    # (host, port, api key) for the session cache; unset on a client built without __init__.
+    _session_material = None
+    _session_project = None
+
     def __init__(
         self,
         host,
@@ -80,6 +80,9 @@ class Client(base.Client):
 
         _logger.debug("Using api key to setup header authentification")
         self._auth = auth.ApiKeyAuth(api_key)
+        self._session_material = (host, port, api_key)
+        self._session_project = None
+        session_cache.bind_host(host, port)
 
         _logger.debug("Setting up requests session")
         self._session = requests.session()
@@ -109,13 +112,17 @@ class Client(base.Client):
     def _provide_project(self, project, project_id=None):
         self._project_name = project
         _logger.debug("Project name: %s", self._project_name)
+        self._bind_session(project)
 
         if project_id is None:
             project_id = self._get_project_info(project)["projectId"]
         self._project_id = str(project_id)
         _logger.debug("Setting Project ID: %s", self._project_id)
 
-        self._username = self._get_username()
+        self._username = session_cache.get("username")
+        if self._username is None:
+            self._username = self._get_username()
+            session_cache.put("username", self._username)
         _logger.debug("Username: %s", self._username)
 
         if self._engine == "python":
@@ -126,6 +133,8 @@ class Client(base.Client):
             # are needed when the application starts (before user code is run)
             # So in this case, we can't materialize the certificates on the fly.
             _logger.debug("Running in Spark environment, initializing Spark session")
+            from pyspark.sql import SparkSession
+
             _spark_session = SparkSession.builder.enableHiveSupport().getOrCreate()
 
             self._validate_spark_configuration(_spark_session)
@@ -142,6 +151,8 @@ class Client(base.Client):
             )
 
         elif self._engine == "spark-no-metastore":
+            from pyspark.sql import SparkSession
+
             _logger.debug(
                 "Running in Spark environment with no metastore, initializing Spark session"
             )
@@ -190,6 +201,8 @@ class Client(base.Client):
                     _spark_session._jsc.hadoopConfiguration().set(conf_key, conf_value)
 
         elif self._engine == "spark-delta":
+            from pyspark.sql import SparkSession
+
             _logger.debug(
                 "Running in Spark environment with no metastore and hopsfs, initializing Spark session"
             )
@@ -210,11 +223,59 @@ class Client(base.Client):
         hopsworks_common.client._get_connection()._provide_project()
 
     def _download_certs(self):
+        cached = session_cache.get("certs_folder")
+        if cached and self._use_certs_folder(cached):
+            return None
         res = self._materialize_certs()
         self._write_pem_file(res["caChain"], self._get_ca_chain_path())
         self._write_pem_file(res["clientCert"], self._get_client_cert_path())
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
+        if session_cache.owns(self._cert_folder):
+            session_cache.put(
+                "certs_folder",
+                self._cert_folder,
+                expires_at=_certificate_expiry(self._get_client_cert_path()),
+            )
         return res
+
+    def _bind_session(self, project):
+        if self._session_material is not None and project != self._session_project:
+            self._session_project = project
+            session_cache.bind(*self._session_material, project)
+
+    def _use_certs_folder(self, folder):
+        """Point this client at certificates an earlier process of the session wrote."""
+        names = (
+            "keyStore.jks",
+            "trustStore.jks",
+            "material_passwd",
+            "ca_chain.pem",
+            "client_cert.pem",
+            "client_key.pem",
+        )
+        if not all(os.path.isfile(os.path.join(folder, name)) for name in names):
+            return False
+        self._cert_folder = folder
+        self._trust_store_path = os.path.join(folder, "trustStore.jks")
+        self._key_store_path = os.path.join(folder, "keyStore.jks")
+        self._cert_key_path = self._get_material_passwd_path()
+        with open(self._cert_key_path) as f:
+            self._cert_key = f.read()
+        return True
+
+    def _refresh_session(self, path_params):
+        """Log in again after the session cache went stale, and return the call's path for the new project id."""
+        old_project_id = self._project_id
+        session_cache.invalidate()
+        self._cert_folder = None
+        self._provide_project(self._project_name)
+        if (
+            len(path_params) > 1
+            and path_params[0] == "project"
+            and str(path_params[1]) == old_project_id
+        ):
+            return ["project", self._project_id, *path_params[2:]]
+        return path_params
 
     def _get_certs_folder(self):
         """The folder holding this client's certificates, once materialized."""
@@ -234,6 +295,8 @@ class Client(base.Client):
     def _materialize_certs(self):
         # Custom cert_folder: use directly
         # Default folder: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}
+        if session_cache.active() and session_cache.get("certs_folder") is None:
+            return self._materialize_certs_in(session_cache.new_certs_folder())
         user_folder = self._user_certs_folder()
         own_folder = self._cert_folder
         if not (
@@ -271,6 +334,10 @@ class Client(base.Client):
                 f"Please specify a custom certificate folder: "
                 f"hopsworks.login(cert_folder='/home/$USER/hopsworks-certs', ...)"
             ) from e
+        return self._materialize_certs_in(self._cert_folder)
+
+    def _materialize_certs_in(self, folder):
+        self._cert_folder = folder
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
 
@@ -325,6 +392,10 @@ class Client(base.Client):
             _logger.debug("No certificates to clean up.")
             # On external Spark clients (Databricks, Spark Cluster),
             # certificates need to be provided before the Spark application starts.
+            return
+        if session_cache.owns(self._cert_folder):
+            # The session's certificates serve the next process too.
+            self._cert_folder = None
             return
 
         # Clean up certificate files in user-specific directory
@@ -422,7 +493,13 @@ class Client(base.Client):
             JSON response with project info
         """
         _logger.debug("Getting project info for project: %s", project_name)
-        return self._send_request("GET", ["project", "getProjectInfo", project_name])
+        info = session_cache.get(f"project_info:{project_name}")
+        if info is None:
+            info = self._send_request(
+                "GET", ["project", "getProjectInfo", project_name]
+            )
+            session_cache.put(f"project_info:{project_name}", info)
+        return info
 
     def _get_username(self) -> str:
         """Get the username of the logged in user.
@@ -473,3 +550,16 @@ class Client(base.Client):
     @property
     def project_name(self):
         return self._project_name
+
+
+def _certificate_expiry(path):
+    """When the client certificate stops being valid, in epoch seconds, or None when it cannot be read."""
+    try:
+        from cryptography import x509
+
+        with open(path, "rb") as f:
+            return x509.load_pem_x509_certificate(
+                f.read()
+            ).not_valid_after_utc.timestamp()
+    except (OSError, ValueError):
+        return None
