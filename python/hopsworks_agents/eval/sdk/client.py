@@ -317,9 +317,7 @@ def _run_review(self: Run, trial: Any, **kwargs: Any) -> None:
 
 def _run_changes(self: Run, **kwargs: Any) -> Any:
     """What this run changed against the run of its suite before it."""
-    return _client_of(self).runs.failure_history(
-        self.deployment_id, run=self, **kwargs
-    )
+    return _client_of(self).runs.failure_history(self.deployment_id, run=self, **kwargs)
 
 
 def _run_compare_to(self: Run, candidate: Any, **kwargs: Any) -> Any:

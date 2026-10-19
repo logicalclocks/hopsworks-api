@@ -261,9 +261,7 @@ class ToolOrderEvaluator:
         if not remaining:
             # An empty order is satisfied by any trace at all, so this passed
             # without looking.
-            return _ungradable(
-                self.name, self.type, "the task lists no tools to order"
-            )
+            return _ungradable(self.name, self.type, "the task lists no tools to order")
         for name in called:
             if remaining and name == remaining[0]:
                 remaining.pop(0)

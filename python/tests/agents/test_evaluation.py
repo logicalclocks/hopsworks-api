@@ -122,9 +122,9 @@ class TestRunVerifier:
         # a run this agent can check itself against, and "cannot check" must not
         # read as "checked".
         monkeypatch.setenv("DEPLOYMENT_ID", "12")
-        assert not RunVerifier(lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"}).verify(
-            EvalTrial(run_id="r")
-        )
+        assert not RunVerifier(
+            lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"}
+        ).verify(EvalTrial(run_id="r"))
 
     def test_rejects_a_run_that_is_over(self, monkeypatch):
         # Run ids are listed to every project member and stamped on trace
@@ -181,9 +181,7 @@ class TestRunVerifier:
         with pytest.raises(RuntimeError, match="neither token.jwt nor api.key"):
             _authorization()
 
-    def test_a_named_ca_bundle_is_trusted_for_the_lookup(
-        self, tmp_path, monkeypatch
-    ):
+    def test_a_named_ca_bundle_is_trusted_for_the_lookup(self, tmp_path, monkeypatch):
         # The internal endpoint is signed by the cluster's own CA, so the lookup
         # failed TLS verification -- after the credential was found -- and the
         # agent still answered 403 to every evaluation request.
@@ -194,17 +192,13 @@ class TestRunVerifier:
         monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(bundle))
         assert evaluation._ca_chain() == str(bundle)
 
-    def test_no_truststore_leaves_the_system_default_alone(
-        self, tmp_path, monkeypatch
-    ):
+    def test_no_truststore_leaves_the_system_default_alone(self, tmp_path, monkeypatch):
         from hopsworks_agents.protocol import evaluation
 
         monkeypatch.delenv("REQUESTS_CA_BUNDLE", raising=False)
         monkeypatch.delenv("SSL_CERT_FILE", raising=False)
         monkeypatch.delenv("MATERIAL_DIRECTORY", raising=False)
-        monkeypatch.setattr(
-            evaluation, "_CA_CHAIN_PATH", str(tmp_path / "missing.pem")
-        )
+        monkeypatch.setattr(evaluation, "_CA_CHAIN_PATH", str(tmp_path / "missing.pem"))
         assert evaluation._ca_chain() is None
         assert evaluation._tls_context() is None
 
@@ -298,14 +292,18 @@ class TestPerRequest:
 
     def test_a_verified_trial_is(self, no_env_eval_mode):
         app = build_app(eval_per_request=True)
-        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"})
+        app._eval_verifier = RunVerifier(
+            lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"}
+        )
         response = chat(TestClient(app), {"baggage": BAGGAGE})
         assert response.status_code == 200
         assert reply(response) == "tool=True run=run-1"
 
     def test_the_flag_does_not_leak_into_the_next_turn(self, no_env_eval_mode):
         app = build_app(eval_per_request=True)
-        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"})
+        app._eval_verifier = RunVerifier(
+            lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"}
+        )
         client = TestClient(app)
         chat(client, {"baggage": BAGGAGE})
         assert reply(chat(client)) == "tool=False run=None"
@@ -333,7 +331,9 @@ class TestPerRequest:
         # not declared: the agent never promised its tools check, so treating
         # the turn as an evaluation would run them for real while looking safe
         app = build_app()
-        app._eval_verifier = RunVerifier(lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"})
+        app._eval_verifier = RunVerifier(
+            lambda run_id: {"runId": run_id, "deploymentId": 7, "status": "RUNNING"}
+        )
         response = chat(TestClient(app), {"baggage": BAGGAGE})
         assert response.status_code == 200
         assert reply(response) == "tool=False run=None"

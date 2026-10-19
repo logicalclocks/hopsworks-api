@@ -239,9 +239,7 @@ class RunVerifier:
             # member and stamped on trace attributes, so without this anyone could
             # replay an old one and have a real customer turn skip the write tools
             # while reporting success.
-            log.warning(
-                "evaluation run %s is %s, not running", trial.run_id, status
-            )
+            log.warning("evaluation run %s is %s, not running", trial.run_id, status)
             return False
         deployment = os.environ.get("DEPLOYMENT_ID")
         target = run.get("deploymentId")

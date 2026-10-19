@@ -265,7 +265,9 @@ def memory_from_env(env: dict[str, str] | None = None):
     # with a vector index attached. Only a search the policy actually names can
     # promote long-term.
     requested = config.get("search")
-    wants_search = kwargs["long_term"] if requested is None else _wants_search(requested)
+    wants_search = (
+        kwargs["long_term"] if requested is None else _wants_search(requested)
+    )
     if wants_search:
         if requested is not None and not kwargs["long_term"]:
             # search reads the long-term store; asking for one without the other

@@ -899,6 +899,7 @@ def _first_user_turn(input_messages: str | None) -> str:
             return str(message.get("content") or "").strip()
     return ""
 
+
 class Jobs:
     """The per-deployment jobs: the evaluation job and the failure-analysis job."""
 

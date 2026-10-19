@@ -239,7 +239,9 @@ def trace_features(
         # hopsworks.turn.* is where the SDK reports it; the gen_ai keys are
         # what the same span carried before that move, so old traces still add
         # up.
-        turn_keys = conventions.TURN_INPUT_TOKEN_KEYS + conventions.TURN_OUTPUT_TOKEN_KEYS
+        turn_keys = (
+            conventions.TURN_INPUT_TOKEN_KEYS + conventions.TURN_OUTPUT_TOKEN_KEYS
+        )
         carrier = next(
             (
                 s

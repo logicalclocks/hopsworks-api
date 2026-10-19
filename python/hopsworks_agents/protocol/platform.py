@@ -75,7 +75,14 @@ class PlatformClient:
             try:
                 return self._request(
                     "POST",
-                    ["otel", "servings", self.deployment_id, "traces", trace_id, "feedback"],
+                    [
+                        "otel",
+                        "servings",
+                        self.deployment_id,
+                        "traces",
+                        trace_id,
+                        "feedback",
+                    ],
                     body,
                 )
             except AgentError as err:

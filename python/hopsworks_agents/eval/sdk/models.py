@@ -355,9 +355,7 @@ def verdict_of(trials: Sequence[Trial]) -> Verdict:
     """A task's outcome across its trials -- see :class:`RunDiff` for the rule."""
     if not trials:
         return "absent"
-    gradable = [
-        t for t in trials if t.status not in ("INFRA_ERROR", "EVALUATOR_ERROR")
-    ]
+    gradable = [t for t in trials if t.status not in ("INFRA_ERROR", "EVALUATOR_ERROR")]
     if not gradable:
         return "ungradable"
     return "passed" if all(t.status == "PASSED" for t in gradable) else "failed"

@@ -2969,7 +2969,9 @@ class TestRoutesStayInsideTheirDeployment:
 
     def test_one_agents_routes_cannot_read_anothers_memory(self, tmp_path):
         (app_a, memory_a), (app_b, _) = self._apps(tmp_path)
-        memory_a.begin_turn("shared-id", "t1", "user", "A's private message", subject="alice")
+        memory_a.begin_turn(
+            "shared-id", "t1", "user", "A's private message", subject="alice"
+        )
         memory_a.end_turn("shared-id", "t1")
         memory_a.set_state("user", "alice", "tone", "formal")
 
@@ -2980,11 +2982,15 @@ class TestRoutesStayInsideTheirDeployment:
         # and A still has everything, which is what makes this isolation
         # rather than an empty database
         a = TestClient(app_a)
-        assert len(a.get("/v1/conversations/shared-id/messages").json()["messages"]) == 1
+        assert (
+            len(a.get("/v1/conversations/shared-id/messages").json()["messages"]) == 1
+        )
 
     def test_one_agents_routes_cannot_erase_anothers_memory(self, tmp_path):
         (app_a, memory_a), (app_b, _) = self._apps(tmp_path)
-        memory_a.begin_turn("shared-id", "t1", "user", "A's private message", subject="alice")
+        memory_a.begin_turn(
+            "shared-id", "t1", "user", "A's private message", subject="alice"
+        )
         memory_a.end_turn("shared-id", "t1")
         memory_a.set_state("user", "alice", "tone", "formal")
 
@@ -3321,9 +3327,7 @@ class TestTheSummaryCanBeDropped:
 
         return app, memory
 
-    def test_a_steered_summary_can_be_removed_without_the_conversation(
-        self, tmp_path
-    ):
+    def test_a_steered_summary_can_be_removed_without_the_conversation(self, tmp_path):
         # The summary is written by a model from what a user typed and lands
         # in every later system prompt. Facts can be dropped one key at a
         # time; this is the same escape hatch for the summary, which before
@@ -3582,9 +3586,9 @@ class TestTurnSpan:
         # Whether Hopsworks vouches for the run id in the baggage. Only a run it
         # knows labels the trace, so the two cases are separate here.
         app._eval_verifier = RunVerifier(
-            lambda run_id: {"deploymentId": 7, "status": "RUNNING"}
-            if known_run
-            else None
+            lambda run_id: (
+                {"deploymentId": 7, "status": "RUNNING"} if known_run else None
+            )
         )
 
         @app.chat
@@ -3636,7 +3640,9 @@ class TestTurnSpan:
             def get_tracer(self, *args, **kwargs):
                 return trace_api.NoOpTracer()
 
-        monkeypatch.setenv(tracing.TRACES_ENDPOINT_ENV, "http://localhost:4318/v1/traces")
+        monkeypatch.setenv(
+            tracing.TRACES_ENDPOINT_ENV, "http://localhost:4318/v1/traces"
+        )
         monkeypatch.setattr(
             tracing, "install_baggage_propagation", lambda provider: True
         )
@@ -3895,7 +3901,9 @@ class TestTheRelayWaitsForALateTrace:
         def request(method, segments, body, **kwargs):
             attempts.append(segments[-2])
             if len(attempts) < 3:
-                raise AgentError("no such trace", code="platform_refused", status_code=404)
+                raise AgentError(
+                    "no such trace", code="platform_refused", status_code=404
+                )
             return {"feedbackId": "fb-1"}
 
         monkeypatch.setattr(platform, "_request", request)

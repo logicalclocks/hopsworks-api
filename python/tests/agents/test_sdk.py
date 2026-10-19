@@ -20,9 +20,7 @@ from hopsworks_agents.eval.sdk.models import Run, as_datetime
 
 
 class Reply:
-    def __init__(
-        self, body=None, status=200, lines=None, content=None, headers=None
-    ):
+    def __init__(self, body=None, status=200, lines=None, content=None, headers=None):
         self._body = body
         self._lines = lines
         self.status_code = status
@@ -424,9 +422,7 @@ class TestRuns:
         # conversations -- without changing what every fire does.
         evals, session = client(Reply([{"runId": "r"}]))
         since = datetime(2026, 10, 15, 14, tzinfo=timezone.utc)
-        evals.jobs.run_eval_job(
-            "nightly", since=since, sample=20, strategy="oldest"
-        )
+        evals.jobs.run_eval_job("nightly", since=since, sample=20, strategy="oldest")
         sent = session.sent[0][2]
         assert sent["from"] == int(since.timestamp() * 1000)
         assert sent["sample"] == 20 and sent["strategy"] == "oldest"
@@ -456,8 +452,16 @@ class TestRuns:
                     {"taskId": "fresh", "status": "FAILED"},
                 ]
             ),
-            Reply([{"taskId": "t1", "inputMessages": json.dumps(
-                [{"role": "user", "content": "Analyze TSLA."}])}]),
+            Reply(
+                [
+                    {
+                        "taskId": "t1",
+                        "inputMessages": json.dumps(
+                            [{"role": "user", "content": "Analyze TSLA."}]
+                        ),
+                    }
+                ]
+            ),
             Reply([]),
         )
 
@@ -493,14 +497,34 @@ class TestRuns:
                         "persistent": 1,
                         "passing": 9,
                         "tasks": [
-                            {"taskId": "fresh", "status": "new", "age": 1,
-                             "previousVerdict": "absent", "currentVerdict": "failed"},
-                            {"taskId": "broke", "status": "regression", "age": 1,
-                             "previousVerdict": "passed", "currentVerdict": "failed"},
-                            {"taskId": "stuck", "status": "persistent", "age": 7,
-                             "previousVerdict": "failed", "currentVerdict": "failed"},
-                            {"taskId": "mended", "status": "fixed", "age": 0,
-                             "previousVerdict": "failed", "currentVerdict": "passed"},
+                            {
+                                "taskId": "fresh",
+                                "status": "new",
+                                "age": 1,
+                                "previousVerdict": "absent",
+                                "currentVerdict": "failed",
+                            },
+                            {
+                                "taskId": "broke",
+                                "status": "regression",
+                                "age": 1,
+                                "previousVerdict": "passed",
+                                "currentVerdict": "failed",
+                            },
+                            {
+                                "taskId": "stuck",
+                                "status": "persistent",
+                                "age": 7,
+                                "previousVerdict": "failed",
+                                "currentVerdict": "failed",
+                            },
+                            {
+                                "taskId": "mended",
+                                "status": "fixed",
+                                "age": 0,
+                                "previousVerdict": "failed",
+                                "currentVerdict": "passed",
+                            },
                         ],
                     }
                 ]
@@ -546,7 +570,9 @@ class TestRuns:
         # Two suites share no tasks, so everything reads as added or removed:
         # the caller should not have to notice that from the numbers.
         evals, _ = client(
-            Reply({"runId": "a", "suiteId": "s1", "suiteVersion": 1, "status": "FAILED"}),
+            Reply(
+                {"runId": "a", "suiteId": "s1", "suiteVersion": 1, "status": "FAILED"}
+            ),
             Reply({"runId": "b", "suiteId": "s2", "suiteVersion": 1}),
             Reply([{"taskId": "t1", "status": "PASSED"}]),
             Reply([{"taskId": "t2", "status": "FAILED"}]),

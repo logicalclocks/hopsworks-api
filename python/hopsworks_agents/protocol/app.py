@@ -961,7 +961,9 @@ class AgentApp(FastAPI):
             dropped = await asyncio.to_thread(
                 self.memory.clear_summary, conversation_id
             )
-            return JSONResponse({"conversation_id": conversation_id, "dropped": dropped})
+            return JSONResponse(
+                {"conversation_id": conversation_id, "dropped": dropped}
+            )
 
         @self.get("/v1/subjects/{subject}/state")
         async def list_subject_state(subject: str) -> dict[str, Any]:
@@ -1147,9 +1149,13 @@ def _describe_parts(request: Any) -> str:
         counts[part.type] = counts.get(part.type, 0) + 1
     if not counts:
         return ""
-    return "[" + ", ".join(
-        kind if count == 1 else f"{count} {kind}s" for kind, count in counts.items()
-    ) + "]"
+    return (
+        "["
+        + ", ".join(
+            kind if count == 1 else f"{count} {kind}s" for kind, count in counts.items()
+        )
+        + "]"
+    )
 
 
 def contentful(response: ChatResponse) -> bool:
