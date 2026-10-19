@@ -51,6 +51,7 @@ class TestToDict:
             summarize_after_messages=6,
             keep_recent_messages=4,
             message_retention_days=30,
+            max_messages=20,
         )
         assert config.to_dict() == {
             "enabled": True,
@@ -60,6 +61,7 @@ class TestToDict:
             "summarize_after_messages": 6,
             "keep_recent_messages": 4,
             "message_retention_days": 30,
+            "max_messages": 20,
         }
 
     def test_a_bare_provider_name_is_enough(self):
@@ -110,6 +112,13 @@ class TestFromJson:
         assert config.long_term is True
         assert config.summarize_after_messages == 6
         assert config.summarize["provider"] == "openai"
+
+    def test_the_window_the_agent_is_handed_is_part_of_the_policy(self):
+        # the field the agent SDK reads as max_messages: without it on the policy a
+        # deployment cannot set the window at all, and the pod falls back to its default
+        config = DeploymentMemoryConfig(max_messages=6)
+        assert config.to_dict()["max_messages"] == 6
+        assert DeploymentMemoryConfig().to_dict().get("max_messages") is None
 
     def test_a_round_trip_keeps_the_policy(self):
         config = DeploymentMemoryConfig(

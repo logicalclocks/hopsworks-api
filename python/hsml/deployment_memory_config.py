@@ -71,6 +71,10 @@ class DeploymentMemoryConfig:
         keep_recent_messages: Messages left verbatim by a fold. Must be smaller than
             ``summarize_after_messages``.
         message_retention_days: Days a recorded conversation is kept. None keeps it.
+        max_messages: How many of a conversation's messages the agent is handed on a turn.
+            The window the model reads, not a retention rule: older messages stay recorded
+            and readable through the conversation routes.
+            None leaves the agent SDK's own default.
     """
 
     PROVIDER_HOPSWORKS = "hopsworks"
@@ -87,6 +91,7 @@ class DeploymentMemoryConfig:
         summarize_after_messages: int | None = None,
         keep_recent_messages: int | None = None,
         message_retention_days: int | None = None,
+        max_messages: int | None = None,
         **kwargs,
     ):
         self._enabled = enabled
@@ -96,6 +101,7 @@ class DeploymentMemoryConfig:
         self._summarize_after_messages = summarize_after_messages
         self._keep_recent_messages = keep_recent_messages
         self._message_retention_days = message_retention_days
+        self._max_messages = max_messages
 
     @public
     def describe(self):
@@ -196,6 +202,7 @@ class DeploymentMemoryConfig:
             "message_retention_days": util._extract_field_from_json(
                 config, "message_retention_days"
             ),
+            "max_messages": util._extract_field_from_json(config, "max_messages"),
         }
 
     def update_from_response_json(self, json_dict):
@@ -227,6 +234,8 @@ class DeploymentMemoryConfig:
             config["keep_recent_messages"] = self._keep_recent_messages
         if self._message_retention_days is not None:
             config["message_retention_days"] = self._message_retention_days
+        if self._max_messages is not None:
+            config["max_messages"] = self._max_messages
         return config
 
     @public
@@ -298,6 +307,16 @@ class DeploymentMemoryConfig:
     @message_retention_days.setter
     def message_retention_days(self, message_retention_days: int | None):
         self._message_retention_days = message_retention_days
+
+    @public
+    @property
+    def max_messages(self):
+        """How many of a conversation's messages the agent is handed on a turn."""
+        return self._max_messages
+
+    @max_messages.setter
+    def max_messages(self, max_messages: int | None):
+        self._max_messages = max_messages
 
     def __repr__(self):
         return f"DeploymentMemoryConfig({self.to_dict()!r})"

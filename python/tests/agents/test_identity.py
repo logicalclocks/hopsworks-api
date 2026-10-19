@@ -13,6 +13,7 @@ from hopsworks_agents.protocol.identity import (
     SUBJECTS_TABLE,
     ConversationSubjectIndex,
 )
+from hopsworks_agents.protocol.memory import ChatMemory
 from hopsworks_agents.protocol.models import ChatRequest
 
 
@@ -383,3 +384,87 @@ class TestEndToEnd:
 
         assert seen["recorded"] is True
         assert index.rows == [("conv-7", "cust-9", "app")]
+
+
+class TestTheConversationsOwnSubject:
+    """A turn with no asserted subject reads the person the store filed it under."""
+
+    class Store(ChatMemory):
+        """Only what a turn touches: the rest of the store is not what is under test."""
+
+        def __init__(self, subject=None):
+            self.subject = subject
+            self.asked = []
+
+        def conversation_subject(self, conversation_id):
+            self.asked.append(conversation_id)
+            return self.subject
+
+        def get(self, conversation_id, limit=None):
+            return []
+
+        def record_item(self, *args, **kwargs):
+            return None
+
+        def begin_turn(self, *args, **kwargs):
+            return None
+
+        def end_turn(self, *args, **kwargs):
+            return None
+
+        def clear(self, conversation_id):
+            return None
+
+    def _subject_seen(self, store, **request):
+        app = AgentApp(memory=store)
+        seen = {}
+
+        @app.chat
+        async def chat(request, ctx):  # noqa: ARG001
+            seen["subject"] = ctx.subject
+            seen["source"] = ctx.subject_source
+            seen["has_subject"] = ctx.has_subject
+            return "ok"
+
+        TestClient(app).post("/v1/chat", json=make_request(**request))
+        return seen
+
+    def test_a_rebound_conversation_keeps_its_person_on_the_next_turn(self):
+        # the client reloaded and asserts nothing; the agent identified this
+        # caller on an earlier turn, and that is whose facts the turn must read
+        store = self.Store("cust-1")
+
+        seen = self._subject_seen(store, conversation_id="conv-7")
+
+        assert seen == {
+            "subject": "cust-1",
+            "source": "conversation",
+            "has_subject": True,
+        }
+        assert store.asked == ["conv-7"]
+
+    def test_what_the_client_asserts_is_not_overridden(self):
+        store = self.Store("cust-1")
+
+        seen = self._subject_seen(store, conversation_id="conv-7", subject="asserted")
+
+        assert seen["subject"] == "asserted"
+        assert seen["source"] == "client"
+        # and the store was not even asked
+        assert store.asked == []
+
+    def test_an_unidentified_conversation_still_falls_back_to_itself(self):
+        seen = self._subject_seen(self.Store(None), conversation_id="conv-7")
+
+        assert seen["subject"] == "conv-7"
+        assert seen["source"] == "conversation"
+        assert seen["has_subject"] is False
+
+    def test_a_store_that_raises_does_not_break_the_turn(self):
+        class Broken(self.Store):
+            def conversation_subject(self, conversation_id):
+                raise RuntimeError("no")
+
+        seen = self._subject_seen(Broken("cust-1"), conversation_id="conv-7")
+
+        assert seen["subject"] == "conv-7"

@@ -493,6 +493,41 @@ class AgentApp(FastAPI):
         ctx._eval_labelled = True
         return None
 
+    async def _resolve_subject(self, ctx: HandlerContext) -> None:
+        """Fill in the person this conversation was bound to, when the client did not.
+
+        A turn carries whatever the client asserted, and a client that reloaded
+        has forgotten even that -- while an agent that identified the caller on
+        an earlier turn bound durable memory to a subject the client was never
+        told. Without this the next turn falls back to the conversation id, and
+        the facts the agent filed under the person it worked out are invisible
+        to every turn after the one that learned them.
+
+        The store is the only thing that can answer it, so this is one read
+        before the turn opens, and only for a turn that asserted no subject.
+        """
+        if self.memory is None or ctx.has_subject:
+            return
+        try:
+            subject = await asyncio.to_thread(
+                self.memory.conversation_subject, ctx.conversation_id
+            )
+        except Exception:  # noqa: BLE001 -- memory must never break a turn
+            import logging  # noqa: PLC0415 -- the module's one logger use
+
+            logging.getLogger(__name__).exception(
+                "Failed to read the conversation's subject"
+            )
+            return
+        # A store with no per-row subject answers None, and a conversation
+        # nobody identified answers with the fallback it was filed under.
+        if not subject or subject == ctx.conversation_id:
+            return
+        ctx.subject = subject
+        ctx.has_subject = True
+        # the server's own record: neither the client's assertion nor a fallback
+        ctx.subject_source = "conversation"
+
     async def _open_turn(self, ctx: HandlerContext) -> None:
         """Record the user message and open the turn, before the handler runs.
 
@@ -740,6 +775,7 @@ class AgentApp(FastAPI):
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
                 return _error_response(refused)
+            await self._resolve_subject(ctx)
             await self._open_turn(ctx)
             response: ChatResponse | None = None
             with (
@@ -774,6 +810,7 @@ class AgentApp(FastAPI):
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
                 return _error_response(refused)
+            await self._resolve_subject(ctx)
             await self._open_turn(ctx)
             return StreamingResponse(
                 self._stream_events(ctx, raw), media_type="text/event-stream"

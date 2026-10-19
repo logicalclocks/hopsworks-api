@@ -1220,6 +1220,7 @@ class FakeHopsworksClient:
         self._project_name = "p"
         self.replies = list(replies)
         self.sent = []
+        self.streamed = []
 
     def _send_request(
         self,
@@ -1234,6 +1235,7 @@ class FakeHopsworksClient:
         self.sent.append(
             (method, "/" + "/".join(str(p) for p in path_params), query_params, data)
         )
+        self.streamed.append(bool(stream))
         return self.replies.pop(0) if self.replies else {}
 
 
@@ -1275,9 +1277,14 @@ class TestConnectedClient:
         )
         assert got == b"\x89PNG..."
         assert fake.sent[0][3] == b"\x89PNG..."
+        # Streamed, which is the only way bytes come back undecoded: the client
+        # parses every other reply as JSON, so reading an attachment died on the
+        # picture's first byte with "Expecting value: line 1 column 1".
+        assert fake.streamed[0] is True
 
-        # and the ordinary JSON path still goes through as a JSON body
+        # and the ordinary JSON path still goes through as a JSON body, unstreamed
         assert http.request("GET", "/agent-evals/evaluators") == {"ok": True}
+        assert fake.streamed[1] is False
 
     def test_the_connected_transport_is_none_when_nothing_is_connected(
         self, monkeypatch

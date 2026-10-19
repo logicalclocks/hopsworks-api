@@ -174,6 +174,12 @@ class Transport:
             data=data,
             headers=headers,
             timeout=TIMEOUT_S,
+            # Bytes have to come back undecoded. Inside Hopsworks the session is
+            # the connected client, which parses every response as JSON before
+            # returning it -- so reading an attachment raised a JSON decode
+            # error on the picture's first byte. Streaming is how that client
+            # hands back a response nobody has parsed.
+            **({"stream": True} if raw else {}),
         )
         if response.status_code >= 400:
             raise _refusal(response)
@@ -322,7 +328,15 @@ class HopsworksClientSession:
         except RestAPIError as err:
             return _ClientResponse(err.response.status_code, _error_body(err))
         if stream:
-            return body  # the response itself, as the client returns it when streaming
+            # The client hands back the response itself when streaming, which is
+            # the only way to get bytes out of it undecoded -- it parses every
+            # other reply as JSON, so reading an attachment died on the
+            # picture's first byte. Wrapped so the caller sees one shape either
+            # way; a fake client in a test may hand back the bytes directly.
+            return _ClientResponse(
+                getattr(body, "status_code", 200),
+                getattr(body, "content", body),
+            )
         return _ClientResponse(200, body)
 
 
