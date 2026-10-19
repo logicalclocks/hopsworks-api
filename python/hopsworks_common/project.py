@@ -339,6 +339,7 @@ class Project:
 
         When NVIDIA Run:ai manages the cluster's GPUs, this reports the project's and its department's Run:ai quota and allocation, and how many GPUs are available within quota and over quota.
         Otherwise it reports the cluster's GPU inventory.
+        The call has no side effects: a project not bound to a Run:ai project yet, or a Run:ai control plane that cannot be reached, is reported in `warnings` (`RUN_AI_PROJECT_NOT_BOUND`, `RUN_AI_UNREACHABLE`) with no numbers rather than raised.
 
         Example:
             ```python

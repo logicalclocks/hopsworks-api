@@ -106,7 +106,7 @@ class GpuAvailability:
     @public
     @property
     def warnings(self) -> list[str]:
-        """Conditions that make the numbers incomplete, such as `RUN_AI_UNREACHABLE` or `RUN_AI_METRICS_MISSING`."""
+        """Conditions that make the numbers incomplete, such as `RUN_AI_UNREACHABLE`, `RUN_AI_PROJECT_NOT_BOUND` or `RUN_AI_METRICS_MISSING`."""
         return self._warnings
 
     def __repr__(self) -> str:
