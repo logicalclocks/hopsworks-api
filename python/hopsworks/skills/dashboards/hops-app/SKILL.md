@@ -277,11 +277,12 @@ if st.button("Score"):
 
 ### Hopsworks look & feel
 
-Apps render as a bare default Streamlit page unless you theme them. Drop in the
-Hopsworks palette so a shipped app reads as part of the platform — brand accents
-only, don't restyle every widget.
+Apps render as a bare default Streamlit page unless you theme them. Theme them
+with the Hopsworks tokens and follow the layout rules in
+[hops-design](../hops-design/SKILL.md): light, flat, the green accent only on the
+primary action and the selection.
 
-`.streamlit/config.toml` — **must sit in the same directory as the app script**,
+`.streamlit/config.toml` must sit in the same directory as the app script,
 not in `~/.streamlit/`. Streamlit reads config from the script's own directory
 (and CWD), so an app under `customer_spend_fti/app.py` needs
 `customer_spend_fti/.streamlit/config.toml`. Copy it per app directory.
@@ -297,32 +298,30 @@ runOnSave = false          # readiness probe, making the managed app flap
 gatherUsageStats = false
 
 [theme]
-primaryColor = "#1EB182"           # Hopsworks teal-green
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#1A1F2B"
-textColor = "#FAFAFA"
+base = "light"
+primaryColor = "#1EB182"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F7F7"
+textColor = "#252525"
 font = "sans serif"
 ```
 
-A brand header + accents, injected once at the top of the app:
+A plain title, and tabular numbers in metrics, injected once at the top of the app.
+No banner, gradient or emoji:
 ```python
 import streamlit as st
 
-st.set_page_config(page_title="My Hopsworks App", layout="wide")
+st.set_page_config(page_title="Customer spend", layout="wide")
 st.markdown(
     """
     <style>
-      .hw-band {background:linear-gradient(90deg,#0E1117,#1A1F2B);
-                border-left:6px solid #1EB182; padding:0.75rem 1rem;
-                border-radius:6px; margin-bottom:1rem;}
-      .hw-band h1 {color:#FAFAFA; margin:0; font-size:1.4rem;}
-      div[data-testid="stMetricValue"] {color:#1EB182;}
-      .stButton>button {background:#1EB182; color:#0E1117; border:none; font-weight:600;}
+      div[data-testid="stMetricValue"] {font-variant-numeric: tabular-nums;}
+      div[data-testid="stMetricLabel"] {color: #737373;}
     </style>
-    <div class="hw-band"><h1>⬡ My Hopsworks App</h1></div>
     """,
     unsafe_allow_html=True,
 )
+st.title("Customer spend")
 ```
 
 A full dashboard (statistics, monitoring history, data sample) is in
@@ -344,6 +343,9 @@ A full dashboard (statistics, monitoring history, data sample) is in
   mount. A framework that needs a build (React, Vue, Svelte) only for a
   git-backed app whose repository can hold the built assets. Streamlit when the
   description is a data view with no custom interaction.
+- **Look.** The skeleton's `app.css` carries the Hopsworks tokens; extend it,
+  following [hops-design](../hops-design/SKILL.md) (flat surfaces, records in
+  tables or lists, stats in one row, no shadows, light theme only).
 - **Nothing moves on interaction.** A list or panel that reloads (a filter, a
   selection) keeps its current content, dimmed with `aria-busy`, until the new
   content replaces it; placeholders only on the first load. The skeleton's

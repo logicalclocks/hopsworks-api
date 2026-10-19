@@ -39,6 +39,7 @@ into bucket folders:
 
 ## dashboards/ — apps and BI
 - [hops-app](dashboards/hops-app/SKILL.md) — Python app deployments (Streamlit + custom apps).
+- [hops-design](dashboards/hops-design/SKILL.md): the Hopsworks look and layout rules for apps, dashboards, tables and charts.
 - [hops-app-db](dashboards/hops-app-db/SKILL.md) — app / agent access to the project's online database (`db_access`) and, via Trino, the offline feature groups (Python, SQL, Node.js with `@hopsworks/app`).
 - [hops-superset](dashboards/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
 

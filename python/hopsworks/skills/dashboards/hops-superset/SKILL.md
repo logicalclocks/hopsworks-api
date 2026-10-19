@@ -248,6 +248,24 @@ Node types used in `position_json`:
 | `COLUMN` | Vertical column container | `width`, `background` |
 | `TABS` / `TAB` | Tabbed sections | `text` (on TAB) |
 
+### Look
+
+Follow [hops-design](../hops-design/SKILL.md): flat, light, the Hopsworks green
+for the primary series only.
+
+- One `HEADER` with the dashboard's name. A `MARKDOWN` cell only for a one-line
+  note the charts cannot show (a data caveat, a link); no intro text.
+- Key figures first, as one row of `big_number_total` charts with a short
+  `subheader`; then the charts that answer the dashboard's questions; tables last.
+- Title each chart with the question it answers. `show_legend` only when a chart has
+  more than one series.
+- Series colors in the dashboard's `json_metadata`: `label_colors` maps the primary
+  metric to `#1EB182` and comparison series to greys (`#A0A0A0`, `#CBCBCB`); a
+  threshold breach is the only red.
+- `css` on the dashboard (`create_dashboard(..., css=...)`) for anything the params
+  do not cover, kept short: `.dashboard-component { box-shadow: none; }` removes
+  the card shadows.
+
 ### Layout builder
 
 ```python
