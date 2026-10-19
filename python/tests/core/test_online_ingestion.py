@@ -208,7 +208,11 @@ class TestOnlineIngestion:
             if next(sleeps) > 10:
                 raise _StillWaiting
 
-        return mocker.patch("hsfs.core.online_ingestion.time.sleep", side_effect=sleep)
+        # Patch the module's own name for time: patching time.sleep would replace it for every thread in
+        # the process, and a thread that sleeps meanwhile (Spark's, in the full suite) uses up these calls.
+        mock_time = mocker.patch("hsfs.core.online_ingestion.time")
+        mock_time.sleep.side_effect = sleep
+        return mock_time.sleep
 
     def _wait(self, ingestion, options):
         """Return the warnings the wait emitted and whether it ended on its own."""
