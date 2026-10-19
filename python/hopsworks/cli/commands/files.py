@@ -31,38 +31,34 @@ def files_group() -> None:
 def dataset_list(ctx: click.Context, path: str) -> None:
     """List files under PATH.
 
-    An empty path lists the project root. The SDK returns string paths for the
-    root and Inode objects for nested directories; we normalize both shapes to
-    a simple NAME/KIND/SIZE table.
+    An empty path lists the project's datasets.
 
     \f
     Args:
         ctx: Click context.
         path: HopsFS path relative to the project root.
     """
+    from hopsworks_common.core import dataset, inode
+
     project = session.get_project(ctx)
     api = project.get_dataset_api()
+    root = not path.strip("/")
     try:
-        entries = api.list(path or "")
+        # `DatasetApi.list` returns bare paths; the listing carries kind and size.
+        _, entries = api._list_dataset_path(
+            "" if root else path, dataset.Dataset if root else inode.Inode
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list '{path}': {exc}") from exc
 
-    rows = [_entry_row(e) for e in entries or []]
+    if root:
+        rows = [[e.name, "dataset", "-"] for e in entries]
+    else:
+        rows = [
+            [e.name, "dir" if e.dir else "file", "-" if e.dir else e.size]
+            for e in entries
+        ]
     output.print_table(["NAME", "KIND", "SIZE"], rows)
-
-
-def _entry_row(entry: Any) -> list[Any]:
-    if isinstance(entry, str):
-        return [entry, "-", "-"]
-    name = getattr(entry, "name", None) or getattr(entry, "path", "?")
-    kind = (
-        "dir"
-        if getattr(entry, "dir", False)
-        or str(getattr(entry, "kind", "")).lower() == "dir"
-        else "file"
-    )
-    size = getattr(entry, "size", "-")
-    return [name, kind, size]
 
 
 def makedirs(dataset_api: Any, path: str) -> bool:

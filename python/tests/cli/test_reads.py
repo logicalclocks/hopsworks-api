@@ -487,24 +487,46 @@ def test_job_info_not_found(mock_project):
 # Group was renamed from ``dataset`` to ``files``.
 
 
-def test_files_list_strings(mock_project):
+def test_files_list_root_lists_datasets(mock_project):
+    from hopsworks_common.core import dataset
+
     api = mock.MagicMock()
-    api.list.return_value = ["Resources", "Jupyter"]
+    api._list_dataset_path.return_value = (
+        1,
+        [dataset.Dataset(1, "Resources", "DATASET", {"path": "/Projects/p/Resources"})],
+    )
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(cli, ["files", "list"])
     assert result.exit_code == 0, result.output
+    assert api._list_dataset_path.call_args.args == ("", dataset.Dataset)
     assert "Resources" in result.output
+    assert "dataset" in result.output
 
 
-def test_files_list_inodes(mock_project):
+def test_files_list_shows_kind_and_size(mock_project):
+    from hopsworks_common.core import inode
+
     api = mock.MagicMock()
-    inode = mock.MagicMock()
-    inode.name, inode.dir, inode.size = "train.parquet", False, 1024
-    api.list.return_value = [inode]
+    api._list_dataset_path.return_value = (
+        2,
+        [
+            inode.Inode({"name": "train.parquet", "dir": False, "size": 1024}),
+            inode.Inode({"name": "static", "dir": True, "size": 0}),
+        ],
+    )
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(cli, ["files", "list", "Resources"])
     assert result.exit_code == 0, result.output
-    assert "train.parquet" in result.output
+    assert api._list_dataset_path.call_args.args == ("Resources", inode.Inode)
+    lines = result.output.splitlines()
+    assert next(line for line in lines if "train.parquet" in line).split()[1:] == [
+        "file",
+        "1024",
+    ]
+    assert next(line for line in lines if "static" in line).split()[1:] == [
+        "dir",
+        "-",
+    ]
 
 
 # --- context ---------------------------------------------------------------
