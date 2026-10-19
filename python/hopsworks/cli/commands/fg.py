@@ -51,23 +51,34 @@ fg_group.add_command(fg_alert_group)
 
 
 @fg_group.command("list")
+@click.option(
+    "--type",
+    "fg_types",
+    multiple=True,
+    type=click.Choice(["cached", "stream", "external", "spine"]),
+    help="Only list feature groups of this type; repeat for several.",
+)
 @click.pass_context
-def fg_list(ctx: click.Context) -> None:
+def fg_list(ctx: click.Context, fg_types: tuple[str, ...]) -> None:
     """List feature groups in every accessible store.
 
     Includes feature groups in shared feature stores (as the UI does). The
     STORE column shows which feature store each one lives in. ACCESS is your
     own access state on an external feature group whose data source takes
     provided credentials, and `-` for every other feature group.
+    Every type is listed unless `--type` narrows it.
 
     \f
     Args:
         ctx: Click context.
+        fg_types: Types to keep; all when empty.
     """
     stores = session.get_accessible_feature_stores(ctx)
     rows = []
     for fs in stores:
         for fg in fs.get_feature_groups():
+            if fg_types and _fg_type_label(fg) not in fg_types:
+                continue
             rows.append(
                 [
                     getattr(fg, "id", "?"),

@@ -117,3 +117,17 @@ def test_delete_prompt_says_the_external_table_stays(mock_project):
         cli, ["fg", "delete", "sales", "--version", "1"], input="n\n"
     )
     assert "external table is left untouched" in result.output
+
+
+def test_list_shows_every_type_and_filters_by_type(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    cached = mock.MagicMock()
+    cached.name = "orders"
+    cached.stream = False
+    fs.get_feature_groups.return_value = [cached, _external_fg()]
+    result = CliRunner().invoke(cli, ["fg", "list"])
+    assert result.exit_code == 0, result.output
+    assert "orders" in result.output and "sales" in result.output
+    result = CliRunner().invoke(cli, ["fg", "list", "--type", "external"])
+    assert result.exit_code == 0, result.output
+    assert "sales" in result.output and "orders" not in result.output
