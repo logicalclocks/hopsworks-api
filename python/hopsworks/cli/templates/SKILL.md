@@ -93,6 +93,7 @@ hops fg create-external <name> --connector <ds> --database <db> --table <collect
 ```
 
 - `--online` enables the online store; rows then go in with `hops fg insert`, offline data stays in the source.
+- `hops fg list` shows every type in its TYPE column; `--type external` lists only external groups.
 - `hops fg info <name>` shows the connector, query or path, and the access state.
 - `hops fg test-access <name>` checks that the stored credentials can read the source.
 - `hops fg delete` on an external group removes its metadata only; the source table is untouched.
