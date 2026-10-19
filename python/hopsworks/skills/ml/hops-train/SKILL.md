@@ -61,7 +61,7 @@ fv = fs.get_feature_view(name="my_fv", version=1)  # no FV yet? create one first
 #    dataset version (metadata only): a model registered with feature_view=fv
 #    in the same process records it, and scoring reads it.
 X_train, X_val, X_test, y_train, y_val, y_test = fv.train_validation_test_split(
-    validation_size=0.15, test_size=0.15, seed=42, statistics_config=False
+    validation_size=0.15, test_size=0.15, statistics_config=False
 )
 td_version = fv.get_last_accessed_training_dataset()
 

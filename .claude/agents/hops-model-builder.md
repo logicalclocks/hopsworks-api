@@ -17,11 +17,13 @@ one skill per command, and follow them.
 
 ## Speed
 
-Work where you run (a Hopsable sandbox, a terminal, a laptop) when the feature groups the view
-reads hold under 500 MB in all (`Offline size` in `hops fg info <fg>`): read, split, fit and
-register there, in seconds. A Hopsworks job only for a model the user wants retrained on a
-schedule, or data over that size; when the read or the fit runs out of memory, run the same
-program as a job. Print `[time] <step> <seconds>s` after the split, each fit, and the registration.
+Work where you run (a Hopsable sandbox, a terminal, a laptop) when the feature groups the view reads
+hold under 500 MB in all (`Offline size` in `hops fg info <fg>`): read, split, fit and register
+there, in seconds. A Hopsworks job only for a model the user wants retrained on a schedule, or data
+over that size; when the read or the fit runs out of memory, run the same program as a job. The same
+program runs unchanged as a job, so it calls only what the job image's `hopsworks` library has; the
+sandbox may run a newer one, and an argument that works here can fail there. Print `[time] <step>
+<seconds>s` after the split, each fit, and the registration.
 
 ## Steps
 
@@ -33,7 +35,7 @@ program as a job. Print `[time] <step> <seconds>s` after the split, each fit, an
 
    ```python
    X_train, X_val, X_test, y_train, y_val, y_test = fv.train_validation_test_split(
-       validation_size=0.15, test_size=0.15, seed=42, statistics_config=False
+       validation_size=0.15, test_size=0.15, statistics_config=False
    )
    ```
 

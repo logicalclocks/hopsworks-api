@@ -18,10 +18,12 @@ with their rules for a pipeline outside a system.
 ## Speed
 
 Run the pipeline where you run (a Hopsable sandbox, a terminal, a laptop) when what it reads holds
-under 500 MB in all (`Offline size` in `hops fg info <fg>`): the backfill writes in seconds there.
-A Hopsworks job only for `schedule`, deployed once the program has written here; on running out
-of memory, read in slices or run it as a job (`hops skills info hops-fg references/writes.md`).
-Print `[time] <step> <seconds>s` after the read, the transformation and the insert.
+under 500 MB in all (`Offline size` in `hops fg info <fg>`): the backfill writes in seconds there. A
+Hopsworks job only for `schedule`, deployed once the program has written here; on running out of
+memory, read in slices or run it as a job (`hops skills info hops-fg references/writes.md`). The
+same program runs unchanged as a job, so it calls only what the job image's `hopsworks` library has;
+the sandbox may run a newer one, and an argument that works here can fail there. Print `[time]
+<step> <seconds>s` after the read, the transformation and the insert.
 
 ## Steps
 

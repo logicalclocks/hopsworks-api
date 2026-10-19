@@ -24,8 +24,12 @@ prints a row, the piece exists; return it in one line and stop. Your exit check 
 Score where you run (a Hopsable sandbox, a terminal, a laptop) when the feature groups the view
 reads hold under 500 MB in all (`Offline size` in `hops fg info <fg>`): the first scoring takes
 seconds there. A Hopsworks job only for `schedule`, deployed once the program has scored here; on
-running out of memory, run it as a job. Print `[time] <step> <seconds>s` after the read, the
-prediction and the insert.
+running out of memory, run it as a job. The same program runs unchanged as a job, so it calls only
+what the job image's `hopsworks` library has; the sandbox may run a newer one, and an argument that
+works here can fail there. Score with the scikit-learn and joblib the model was trained with: a
+pickled model loads only there. The sandbox pins the versions of the job images, so a model trained
+in the sandbox loads in a scoring job; a model trained anywhere else is scored where it was trained,
+or retrained here. Print `[time] <step> <seconds>s` after the read, the prediction and the insert.
 
 ## Steps
 

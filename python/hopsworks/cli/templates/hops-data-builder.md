@@ -30,7 +30,9 @@ part. The generator builds the frame and inserts it into that group with
 `fg.insert(df, wait=True)`. Run it where you run (a Hopsable sandbox, a terminal, a laptop):
 `python data/<name>/generate.py`, which writes `rows` in seconds; print `[time] generate
 <seconds>s` and `[time] insert <seconds>s`. A job only when the frame would not fit in memory
-(rows x columns x 8 bytes over 1 GB), or when the generation runs out of memory:
+(rows x columns x 8 bytes over 1 GB), or when the generation runs out of memory. The same program
+runs unchanged as a job, so it calls only what the job image's `hopsworks` library has; the
+sandbox may run a newer one, and an argument that works here can fail there:
 
 ```bash
 hops job deploy <name>-data data/<name>/generate.py --env python-feature-pipeline --run --wait --overwrite
