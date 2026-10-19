@@ -190,6 +190,43 @@ def test_job_run_with_wait(mock_project):
     )
 
 
+def _job_api(mock_project, execution):
+    api = mock.MagicMock()
+    api.get_job.return_value.run.return_value = execution
+    mock_project.get_job_api.return_value = api
+    return api.get_job.return_value
+
+
+def test_a_waited_run_says_it_finished_and_how(mock_project):
+    execution = mock.MagicMock(id=5, state="FINISHED", final_status="SUCCEEDED")
+    _job_api(mock_project, execution)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "job",
+            "backfill",
+            "etl",
+            "--start-time",
+            "2026-10-01",
+            "--end-time",
+            "2026-10-02",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (
+        "etl finished for 2026-10-01T00:00:00 to 2026-10-02T00:00:00: "
+        "execution #5 SUCCEEDED" in result.output
+    )
+
+
+def test_an_unwaited_run_says_it_only_started(mock_project):
+    execution = mock.MagicMock(id=6, state="INITIALIZING", final_status=None)
+    _job_api(mock_project, execution)
+    result = CliRunner().invoke(cli, ["job", "run", "etl", "--no-wait"])
+    assert result.exit_code == 0, result.output
+    assert "etl started: execution #6, INITIALIZING" in result.output
+
+
 def test_job_schedule(mock_project):
     api = mock.MagicMock()
     job = mock.MagicMock()

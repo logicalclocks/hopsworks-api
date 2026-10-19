@@ -357,10 +357,28 @@ def job_deploy(
             execution = job.run(args=app_args, await_termination=wait)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(f"Could not run job '{name}': {exc}") from exc
+        _report_run(name, execution, wait)
+
+
+def _report_run(name: str, execution: Any, waited: bool, window: str = "") -> None:
+    """Say whether the execution finished (after a wait) or only started."""
+    if execution is None:
+        output.warn(
+            "A materialization of %s is already running; nothing started.", name
+        )
+        return
+    ident = getattr(execution, "id", "?")
+    if waited:
+        final = getattr(execution, "final_status", None) or getattr(
+            execution, "state", "?"
+        )
+        output.success("✓ %s finished%s: execution #%s %s", name, window, ident, final)
+    else:
         output.success(
-            "✓ Started %s (execution #%s, state=%s)",
+            "✓ %s started%s: execution #%s, %s",
             name,
-            getattr(execution, "id", "?"),
+            window,
+            ident,
             getattr(execution, "state", "?"),
         )
 
@@ -427,12 +445,7 @@ def job_run(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not run job '{name}': {exc}") from exc
 
-    output.success(
-        "✓ Started job %s (execution #%s, state=%s)",
-        name,
-        getattr(execution, "id", "?"),
-        getattr(execution, "state", "?"),
-    )
+    _report_run(name, execution, wait)
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(execution))
 
@@ -499,12 +512,11 @@ def job_backfill(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not backfill job '{name}': {exc}") from exc
 
-    output.success(
-        "✓ Backfill of %s started (execution #%s, window %s → %s)",
+    _report_run(
         name,
-        getattr(execution, "id", "?"),
-        start_time.isoformat(),
-        end_time.isoformat(),
+        execution,
+        wait,
+        f" for {start_time.isoformat()} to {end_time.isoformat()}",
     )
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(execution))
