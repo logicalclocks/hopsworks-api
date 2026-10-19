@@ -101,12 +101,17 @@ independent.
 
 ### Data sources
 
-Show the feature groups listed above that fit the problem and ask, multi-select: use these
-(recommended when they fit), **add a new data source**, **upload files**, or **generate synthetic
-data** (when there is no data yet). Record one `requirements.data_sources+=` entry per source, as
+Show the feature groups listed above that fit the problem and ask, multi-select, with the four
+options that fit of: use these (recommended when they fit), **start from an existing feature view
+or model** (only when `hops fv list` or `hops model list` shows one that fits), **add a new data
+source**, **upload files**, or **generate synthetic data** (when there is no data yet). Record one `requirements.data_sources+=` entry per source, as
 `hops-reqs/references/data-sources.md` describes:
 
 - existing feature group: `{name, kind: feature_group, version, status: present}`;
+- an existing feature view or model (one `/hops` built on its own): not a data source. Name it in
+  the problem, `requirements.description+=' Starts from feature view <name>:<version>.'` (or
+  model), and record the feature groups it reads as sources; `/hops-build` records it in its
+  phase's block and skips that phase;
 - file: ask the path; upload it with `hops files upload <path> Resources/<slug>/data/`; record
   `{name, kind: file, location, status: present}`;
 - synthetic: ask the shape (batch tables or a stream of events) and the story in one sentence;

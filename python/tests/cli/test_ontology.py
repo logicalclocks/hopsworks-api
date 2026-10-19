@@ -110,6 +110,37 @@ def test_no_playbook_or_skill_uses_a_retired_flag():
     assert not used
 
 
+def test_every_flag_a_playbook_or_skill_passes_to_hops_exists():
+    root = _ONTOLOGY.parent
+    ctx = click.Context(cli)
+    every = _options(cli) | {"--help", "-h"}
+    # Text after `hops` up to the end of the command; quoted arguments are another program's.
+    segment = re.compile(r"\bhops ([^`|;#&\n]*)")
+    unknown = []
+    for folder in (root / "templates", root.parent / "skills"):
+        for path in folder.rglob("*.md"):
+            lines = path.read_text(encoding="utf-8").splitlines()
+            for number, line in enumerate(lines, 1):
+                for match in segment.finditer(re.sub(r"\"[^\"]*\"|'[^']*'", "", line)):
+                    words, cmd, i = match.group(1).split(), cli, 0
+                    while i < len(words) and isinstance(cmd, click.Group):
+                        found = cmd.get_command(ctx, words[i])
+                        if found is None:
+                            break
+                        cmd, i = found, i + 1
+                    if isinstance(cmd, click.Group):
+                        continue
+                    known = _options(cmd) | every
+                    unknown += [
+                        f"{path.relative_to(root.parent)}:{number}: {flag}"
+                        for flag in re.findall(
+                            r"(?<!\S)(--[a-z][a-z0-9-]*)", " ".join(words[i:])
+                        )
+                        if flag not in known
+                    ]
+    assert not unknown
+
+
 def test_every_wait_is_a_yes_no_switch():
     for path, cmd in _tree():
         for param in cmd.params:

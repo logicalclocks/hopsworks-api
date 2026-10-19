@@ -33,11 +33,12 @@ Already known, no need to look again:
 | none | Ask "What do you want to do?": **Explore data**, **Make a table and look at it**, **Build or resume an ML system**, **A dashboard or an app** (then ask which). Then continue with that choice below. |
 | `explore` | Explore (below). |
 | an instruction that asks for a table and a question about it, with no model | A table, then a look (below), whatever its first word. |
+| an instruction for one piece outside an ML system: features only, a model or candidate models on an existing feature view, scoring with an existing model | One piece (below), whatever its first word. |
 | `dashboard` | Dashboard (below), with the rest as the instruction. |
 | `app` | App (below), with the rest as the instruction. |
 | `status` | Status (below). |
 | `ml` | Run the interview: invoke the `hops-ml` command with the Skill tool, passing the rest as its arguments, and follow it. |
-| `reqs`, `data`, `features`, `train`, `infer`, `verify`, `stop`, `f`, `t`, `i` | Reply with one line: building and running phases is `/hops-build` (for example `/hops-build train`, `/hops-build verify`), and stop. |
+| `reqs`, `data`, `features`, `train`, `infer`, `verify`, `stop`, `f`, `t`, `i`, with an ML system listed above | Reply with one line: building and running phases is `/hops-build` (for example `/hops-build train`, `/hops-build verify`), and stop. Without a system, `features`, `train` and `infer` are One piece (below). |
 
 Choosing **Build or resume an ML system** from the menu runs the interview the same way. When the
 system's `requirements.status` is already `met`, reply with one line that `/hops-build` continues it.
@@ -46,9 +47,11 @@ system's `requirements.status` is already `met`, reply with one line that `/hops
 
 Read-only. Run what the user's words need: `hops fg list`, `hops fv list`, `hops datasource
 list`, `hops search <term>`, `hops fg info <name>`, `hops fg feature list <name>`,
-`hops fg preview <name> --limit 10`, `hops sql "<query>"` with a `LIMIT`. Summarise in a few lines and
-offer the next step with `AskUserQuestion` (look deeper, a dashboard over it, an app over it, an ML
-system over it).
+`hops fg preview <name> --limit 10`, `hops sql "<query>"` with a `LIMIT`. `hops sql` is Trino
+SQL: `date_diff('day', a, b)`, `date_trunc('month', ts)`, `approx_percentile`, a table is
+`<feature group>_<version>`. Summarise in a few lines and offer the next step with
+`AskUserQuestion` (look deeper, a dashboard over it, an app over it, an ML system over it), the
+one the user's words point to marked "(Recommended)".
 
 ## A table, then a look
 
@@ -72,9 +75,28 @@ for one by name.
    where: <Hopsworks terminal | external client>
    ```
 
-3. Answer the question from a few `hops sql "<query>"` calls over `<name>_1`, each with a
-   `GROUP BY` and a `LIMIT`: a short table or a few lines per breakdown the user asked for.
-4. Offer the next step with `AskUserQuestion`: look deeper, a dashboard over it, an app over it.
+3. Answer the question from a few `hops sql "<query>"` calls (Trino SQL, as in Explore) over
+   `<name>_1`, each with a `GROUP BY` and a `LIMIT`: a short table or a few lines per breakdown
+   the user asked for.
+4. Offer the next step with `AskUserQuestion`: look deeper (Recommended), a dashboard over it, an
+   app over it.
+
+## One piece
+
+One part of an ML system, built on its own: no interview, no `system.yaml`, no `/hops-build`.
+Each builder writes its code under `./<kind>/<name>/` and creates its first asset before the long
+part, so the user sees it start. Ask only what the instruction leaves open, in one
+`AskUserQuestion` call, then spawn the builder with the Agent tool and print what it returns.
+
+| The user wants | Builder | Prompt |
+| --- | --- | --- |
+| features into a feature group, on a schedule or once | **hops-features-builder** | `name`, `sources` (feature groups or a data source), `features` (name, meaning, type), `grain` (the key and the event time), `schedule` (a Quartz cron, or none) |
+| a model, or candidate models compared, on an existing feature view | **hops-model-builder** | `name`, `feature_view` (name:version), `label`, `task` (classification, regression), `candidates` (what the user named, or none), `metric` |
+| an existing model scoring a feature view, once or on a schedule | **hops-infer-builder** | `name`, `model` (name:version, or the best by a metric), `feature_view` (name:version), `schedule` |
+
+Every prompt ends with `where: <Hopsworks terminal | external client>`. Then offer the next step
+with `AskUserQuestion`: the next piece (features, then a model, then scoring), a dashboard or an
+app over the result, or the whole ML system (`/hops-ml`, which starts from these assets).
 
 ## Status
 

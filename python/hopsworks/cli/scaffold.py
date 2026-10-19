@@ -243,6 +243,9 @@ CLI_BUNDLE = {
     ".claude/agents/hops-dashboard-builder.md": "hops-dashboard-builder.md",
     ".claude/agents/hops-app-builder.md": "hops-app-builder.md",
     ".claude/agents/hops-data-builder.md": "hops-data-builder.md",
+    ".claude/agents/hops-features-builder.md": "hops-features-builder.md",
+    ".claude/agents/hops-model-builder.md": "hops-model-builder.md",
+    ".claude/agents/hops-infer-builder.md": "hops-infer-builder.md",
 }
 AGENTS_PATH = "AGENTS.md"
 HOPS_PERMISSION = "Bash(hops *)"

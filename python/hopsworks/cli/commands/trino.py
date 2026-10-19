@@ -218,6 +218,10 @@ def trino_query(
     Provide the SQL as a positional argument, or use `-f` to read from a
     file, or `-i` to read from stdin (useful in shell pipelines).
 
+    The dialect is Trino's: `date_diff('day', a, b)`, `date_trunc('month', ts)`,
+    `approx_percentile(x, 0.5)`. A feature group is the table `<name>_<version>` in
+    the feature store's schema, the default.
+
     \f
     Args:
         ctx: Click context.

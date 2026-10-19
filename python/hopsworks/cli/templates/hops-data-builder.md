@@ -22,11 +22,15 @@ columns, no Python loop over rows. The `story` decides which columns move togeth
 grows over time, one country that dominates), so the question has an answer worth showing.
 `rows` defaults to 10,000.
 
-Write the generator as `./data/<name>.py`: it builds the frame and inserts it into the feature
-group with `fg.insert(df, wait=True)`. Run it as a job, never on the laptop:
+**Show it first.** Write the generator as `./data/<name>/generate.py` before anything runs, then
+create the feature group with its schema (`hops fg create <name> --version 1 --primary-key ...
+--event-time ... --features ...`, one description per column), so both appear before the long
+part. The generator builds the frame and inserts it into that group with
+`fg.insert(df, wait=True)`. Run it as a job, never on the laptop:
 
 ```bash
-hops job deploy <name>-data data/<name>.py --env python-feature-pipeline --run --wait --overwrite
+hops job deploy <name>-data data/<name>/generate.py --env python-feature-pipeline \
+  --upload-dir Users/<user>/data/<name> --run --wait --overwrite
 hops job logs <name>-data --stdout
 ```
 
@@ -42,6 +46,6 @@ hops fg preview <name> --limit 5
 hops sql "SELECT count(*) FROM <name>_1"
 ```
 
-A failed job: `hops job logs <name>-data --stderr`, name the cause in one line, fix and rerun, at
+A failed job: `hops job logs <name>-data --stdout --tail 200`, name the cause in one line, fix and rerun, at
 most three attempts. Return a few lines: the feature group and version, its columns, the row
 count, and the job that wrote it.

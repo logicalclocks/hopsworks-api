@@ -16,8 +16,8 @@ target and no signal columns: its story is what the question should find (what
 grows over time, which category or country dominates, a seasonal peak). Use the
 rules below for the code (seeded, Polars, whole columns, no statistics jobs) and
 skip everything about targets, prevalence, `system.yaml`, the bundle and live
-mode: one generator `./data/<name>.py` run once as the job `<name>-data`, one
-offline Delta feature group. `/hops` spawns **hops-data-builder** for it.
+mode: one generator `./data/<name>/generate.py` run once as the job `<name>-data`,
+one offline Delta feature group. `/hops` spawns **hops-data-builder** for it.
 
 ## Contract
 - **Input:** the shape (batch tables or events), the entity and its
@@ -73,8 +73,8 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
 
 ## Sinks
 - **Batch:** one offline feature group per table (the entity table, and an event
-  history when the story has one), written directly by the Python client with no
-  job behind it, named as the real source would be, with
+  history when the story has one), written by the generator job through the
+  Python client, with no materialization job behind it, named as the real source would be, with
   `event_time` set and a description saying it is synthetic and which job wrote
   it. One run, `<slug>-data-backfill`, with `--mode backfill --from --to`.
 - **Events:** one **online-enabled** feature group (`online_enabled=True,
