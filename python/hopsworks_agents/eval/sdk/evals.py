@@ -242,6 +242,37 @@ class Suites:
             )
         )
 
+    def copy_tasks(
+        self,
+        suite: Suite | str,
+        from_version: int,
+        version: int | None = None,
+    ) -> dict[str, int]:
+        """Copy another version's tasks into this draft, provenance and all.
+
+        How a new version keeps the cases the last one had: :meth:`new_version` carries
+        the suite's settings and checks, and its tasks are joined anew, so without this
+        a version bump starts empty.
+
+        Copied by the server rather than re-imported, which is the difference that
+        matters for a task promoted from a customer conversation: an import re-authors
+        what it writes, so the copy would arrive with no source trace, no reviewer and
+        its redaction reset -- out of reach of the deletion path that goes looking for
+        it.
+
+        Returns ``{"imported": n, "skipped": m}``; a task the draft already has, by the
+        question it asks, is skipped rather than duplicated.
+        """
+        suite_id, version = _suite_ref(suite, version)
+        return (
+            self._http.post(
+                f"{EVALS}/suites/{suite_id}/tasks/copy",
+                version=version,
+                fromVersion=from_version,
+            )
+            or {}
+        )
+
     def import_tasks(
         self,
         suite: Suite | str,

@@ -231,6 +231,24 @@ class TestSuites:
         assert body["suiteId"] == "s" and body["executionMode"] == "sandboxed"
         assert body["evaluators"] == [{"type": "no_tool_error"}]
 
+    def test_copying_a_versions_tasks_names_both_versions(self):
+        """A new version's tasks come from the server's copy, not from a re-import.
+
+        The endpoint is the whole point: an import re-authors what it writes, so a
+        task promoted from a conversation would lose its source trace and its
+        reviewer and land unredacted in the draft.
+        """
+        evals, session = client(Reply({"imported": 3, "skipped": 1}))
+
+        result = evals.suites.copy_tasks("s", from_version=1, version=2)
+
+        assert result == {"imported": 3, "skipped": 1}
+        assert session.sent[0][:3] == (
+            "POST",
+            "/agent-evals/suites/s/tasks/copy",
+            {"version": 2, "fromVersion": 1},
+        )
+
     def test_import_accepts_questions_and_turns_them_into_messages(self):
         evals, session = client(Reply({"imported": 2, "skipped": 0}))
         result = evals.suites.import_tasks(
