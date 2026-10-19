@@ -895,6 +895,37 @@ class TestPassPolicyAndReview:
         )
         assert result.trials[0].status is TrialStatus.AWAITING_REVIEW
 
+    def test_a_check_that_could_not_run_is_not_answered_by_the_others(self):
+        """A judge with no key used to leave the run, and the rest reported a pass.
+
+        That is a suite of `llm_judge` + `no_tool_error` -- the shape the
+        standing regression suite ships with -- grading nothing about
+        correctness and calling a wrong answer PASSED, with nothing on the row
+        saying the judgement never happened. EVALUATOR_ERROR is the harness
+        failing, which keeps the trial out of every pass denominator.
+        """
+        from hopsworks_agents.eval.evaluator_spec import evaluators_from_spec
+
+        # No judge_completer and no key: exactly what a project without one has.
+        evaluators = evaluators_from_spec(
+            [
+                {"type": "llm_judge", "name": "matches_correction"},
+                {"type": "no_tool_error", "name": "no_tool_errored"},
+            ]
+        )
+
+        result = go(FakeClient(answer="not the answer"), evaluators=evaluators)
+
+        trial = result.trials[0]
+        assert trial.status is TrialStatus.EVALUATOR_ERROR, (
+            f"a trial whose judge never ran reported {trial.status}"
+        )
+        assert trial.error_type == "EVALUATOR_SKIPPED"
+        assert "judge" in (trial.error_message or "")
+        # And the check is on the row, so a reader can see which one was skipped.
+        skipped = [r for r in trial.evaluator_results if r.assertions.get("skipped")]
+        assert [r.evaluator_name for r in skipped] == ["matches_correction"]
+
     def test_the_deferred_result_is_kept_so_a_reviewer_can_see_the_prompt(self):
         from hopsworks_agents.eval.evaluators import HumanReviewEvaluator
 

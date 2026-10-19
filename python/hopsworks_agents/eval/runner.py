@@ -21,7 +21,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Protocol
 
-from .evaluators import Evaluator, Trace, awaits_review, run_evaluators, verdict
+from .evaluators import (
+    Evaluator,
+    Trace,
+    awaits_review,
+    run_evaluators,
+    verdict,
+    was_skipped,
+)
 from .models import (
     ExecutionMode,
     Suite,
@@ -451,6 +458,22 @@ def _run_trial(
 
     trial.evaluator_results = run_evaluators(evaluators, task, trial, trace)
     outcome = verdict(trial.evaluator_results, suite.pass_policy, suite.pass_threshold)
+
+    if was_skipped(trial.evaluator_results):
+        # A check the suite asked for could not run -- a judge with no key, most
+        # often. The remaining checks are not the answer: a suite whose only
+        # correctness check was that judge would report a pass for a wrong
+        # answer. EVALUATOR_ERROR is the harness failing, which keeps the trial
+        # out of every pass denominator instead of inflating it.
+        trial.status = TrialStatus.EVALUATOR_ERROR
+        trial.error_type = "EVALUATOR_SKIPPED"
+        trial.error_message = "; ".join(
+            str(r.reason or "")
+            for r in trial.evaluator_results
+            if r.assertions.get("skipped")
+        )
+        trial.completed_at = datetime.now(tz=timezone.utc)
+        return trial
 
     if awaits_review(trial.evaluator_results):
         # A task that asked for human judgement has not been judged by the other

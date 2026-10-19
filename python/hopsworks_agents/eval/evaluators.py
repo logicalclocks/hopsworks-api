@@ -494,6 +494,43 @@ class HumanReviewEvaluator:
 
 
 AWAITING_REVIEW = "awaiting_review"
+#: A check the suite asked for that could not be built -- a judge with no key,
+#: most often. Marked on an ungradable result so the trial can say the
+#: judgement never happened, rather than reporting the checks that did run as
+#: the whole answer.
+SKIPPED = "skipped"
+
+
+class SkippedEvaluator:
+    """A check the suite asked for that could not be built, as a result.
+
+    The alternative was leaving it out of the run, and that is the failure this
+    exists to prevent: a suite of `llm_judge` and `no_tool_error` with no judge
+    key graded nothing about correctness, passed on the tool check alone, and
+    reported SUCCEEDED / PASSED with no sign that the judgement never happened.
+    A green pass rate for an unjudged run is worse than a red one.
+
+    So the check stays in the list and reports ungradable with `skipped`, which
+    the runner reads to mark the trial EVALUATOR_ERROR -- the harness failing,
+    out of every pass denominator, and visible as a reason on the row.
+    """
+
+    needs_trace = False
+
+    def __init__(self, name: str, kind: str, reason: str):
+        self.name = name
+        self.type = kind
+        self.reason = reason
+
+    def grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
+        result = _ungradable(self.name, self.type, self.reason)
+        result.assertions = {SKIPPED: True, "reason": self.reason}
+        return result
+
+
+def was_skipped(results: Sequence[EvaluatorResult]) -> bool:
+    """Whether a check the suite asked for could not run at all."""
+    return any(r.assertions.get(SKIPPED) for r in results)
 
 
 def awaits_review(results: Sequence[EvaluatorResult]) -> bool:
@@ -689,7 +726,14 @@ class ToolRetryEvaluator:
             )
             counts[key] = counts.get(key, 0) + 1
 
-        repeats = {name: count - 1 for (name, _), count in counts.items() if count > 1}
+        # The worst group per tool, not the last one seen: keyed by the tool
+        # alone, a later `lookup(id=2)` called twice replaced an earlier
+        # `lookup(id=1)` called six times, and five retries passed a budget of
+        # one.
+        repeats: dict[str, int] = {}
+        for (tool_name, _), count in counts.items():
+            if count > 1:
+                repeats[tool_name] = max(repeats.get(tool_name, 0), count - 1)
         worst = max(repeats.values(), default=0)
         passed = worst <= self.max_retries
         basis = (

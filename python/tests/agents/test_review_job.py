@@ -407,6 +407,35 @@ class TestReviewing:
         assert "I have a discount code" in prompts[0]
         assert "get_cart_total" in prompts[0] and "44.10" in prompts[0]
 
+    def test_the_budget_finishes_the_millisecond_it_cut_into(self):
+        """The cursor is a time, and the next window excludes it.
+
+        So a cut between two rows written in the same millisecond dropped the
+        rest of them for ever -- and that is ordinary traffic, not a busy
+        cluster: the detectors file their findings under the trace's own
+        timestamp, so one trace with three findings is three rows sharing one.
+        """
+        same_time = "2026-09-10T08:00:00Z"
+        session = FakeSession(
+            [feedback(i, created=same_time) for i in range(3)],
+            details={f"trace-{i}": detail() for i in range(3)},
+        )
+
+        rows, processed = rj.review_feedback(
+            session,
+            FakeClient({f"trace-{i}": {} for i in range(3)}),
+            "http://h/otel",
+            run_row(nTrials=2),
+            SETTINGS,
+            good_reply,
+        )
+
+        # A budget of two, three rows sharing a timestamp: the third is reviewed
+        # rather than skipped for ever.
+        assert [r["feedback_id"] for r in rows] == ["fb-0", "fb-1", "fb-2"]
+        # And nothing is left over, so the window closes as a whole.
+        assert processed is None
+
     def test_the_agents_code_is_shown_for_the_tools_the_trace_called(self):
         from hopsworks_agents.eval.agent_source import SourceBundle
 
@@ -633,6 +662,49 @@ class TestOneExecution:
         assert set(store.group.frames[0]["cluster_id"]) == {
             clusters["cluster_id"].iloc[0]
         }
+
+    def test_a_window_nothing_could_be_analysed_in_fails(self, monkeypatch):
+        """Every model call failing is not a reviewed window.
+
+        An expired key, an exhausted quota, a provider outage: each verdict
+        becomes an ungradable row saying so, and reporting SUCCEEDED over them
+        moved the watermark to the end of the window -- so the feedback nobody
+        managed to analyse was never offered to another run. The rows are still
+        written, because they are the diagnosis.
+        """
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+
+        def outage(_prompt):
+            raise RuntimeError("HTTP 429: rate limit exceeded")
+
+        monkeypatch.setattr(rj, "completer_for", lambda config, key: outage)
+        session = FakeSession(
+            [feedback(0)],
+            details={"trace-0": detail()},
+            run=run_row(),
+            job={"config": {"provider": "anthropic", "model": "m"}},
+        )
+        store = FakeFeatureStore()
+
+        assert (
+            rj._execute(
+                "run-1",
+                session,
+                "http://h/agent-evals",
+                self.Project(store),
+                "http://h",
+            )
+            is False
+        )
+
+        params = session.puts[-1][1]
+        assert params["status"] == "FAILED"
+        assert "could be analysed" in params["errorMessage"]
+        assert "429" in params["errorMessage"]
+        assert "processedThrough" not in params
+        # written anyway: the row says what the provider answered
+        assert len(store.group.frames) == 1
+        assert list(store.group.frames[0]["ungradable"]) == [True]
 
     def test_a_review_with_no_model_fails_rather_than_passing_the_window(
         self, monkeypatch

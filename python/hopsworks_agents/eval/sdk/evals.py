@@ -815,10 +815,28 @@ class Runs:
                 if run.suite_id:
                     asked.update(self._questions(run))
 
+        # A new version of a suite copies its tasks, and a copy is a new row with
+        # a new id -- so comparing on ids alone made every carried-over case
+        # `added` and lost every regression at a version bump. The question a
+        # task asks is what identifies the case; it is already how the backend
+        # deduplicates an import. Falls back to the id when the questions were
+        # not read, where the two runs are of one version and ids line up.
+        before_key = _case_keys(by_task_before, asked)
+        after_key = _case_keys(by_task_after, asked)
+        cases: dict[str, str] = {}
+        for task_id, key in (*after_key.items(), *before_key.items()):
+            # the candidate's ids win, so a difference names the task a reader
+            # can open in the run they are looking at
+            cases.setdefault(key, task_id)
+
+        graded_before = {before_key[t]: ts for t, ts in by_task_before.items()}
+        graded_after = {after_key[t]: ts for t, ts in by_task_after.items()}
+
         diffs = []
-        for task_id in sorted({*by_task_before, *by_task_after}):
-            verdict_before = verdict_of(by_task_before.get(task_id, []))
-            verdict_after = verdict_of(by_task_after.get(task_id, []))
+        for key in sorted({*graded_before, *graded_after}):
+            verdict_before = verdict_of(graded_before.get(key, []))
+            verdict_after = verdict_of(graded_after.get(key, []))
+            task_id = cases.get(key, key)
             diffs.append(
                 TaskDiff(
                     task_id=task_id,
@@ -889,7 +907,10 @@ class Runs:
         }
         if evaluator:
             body["evaluatorName"] = evaluator
-        self._http.post(f"{EVALS}/runs/{run_id}/trials/{trial_id}/review", body)
+        # The trial id is `run/task/version/index` -- four segments, not one, so
+        # it travels as a parameter. Interpolated into the path it did not match
+        # the route at all and every review 404'd.
+        self._http.post(f"{EVALS}/runs/{run_id}/trials/review", body, trialId=trial_id)
 
     def agent_status(self, run: Run) -> str:
         """The run's deployment status when it is not serving, else ``""``.
@@ -957,6 +978,20 @@ class Runs:
                     )
                 )
             time.sleep(poll_s)
+
+
+def _case_keys(
+    by_task: dict[str, list[Trial]], asked: dict[str, str]
+) -> dict[str, str]:
+    """What identifies each task as a *case*, across versions of its suite.
+
+    The question it asks, when that was read; its id otherwise. Two versions of
+    one suite hold two rows for the same case -- copying mints a new id -- so an
+    id is the identity of a row and the question is the identity of the case.
+    """
+    return {
+        task_id: (asked.get(task_id) or "").strip() or task_id for task_id in by_task
+    }
 
 
 def _by_task(trials: Sequence[Trial]) -> dict[str, list[Trial]]:

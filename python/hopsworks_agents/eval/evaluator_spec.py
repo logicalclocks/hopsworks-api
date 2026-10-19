@@ -36,6 +36,7 @@ from .evaluators import (
     JsonSchemaEvaluator,
     NoToolErrorEvaluator,
     RegexEvaluator,
+    SkippedEvaluator,
     SqlStateEvaluator,
     ToolArgumentEvaluator,
     ToolCallEvaluator,
@@ -183,20 +184,28 @@ def _one(
                 completer = completer_for(config, api_key)
             else:
                 log.warning(
-                    "no key for judge %r (%s provider); looked in %s. It is "
-                    "skipped, and a task graded only by it reports nothing",
+                    "no key for judge %r (%s provider); looked in %s. The check "
+                    "is reported as skipped and its trials are not graded",
                     name,
                     config.provider,
                     api_key_source(config),
                 )
-                return None
+                return SkippedEvaluator(
+                    name,
+                    kind,
+                    f"no API key for the {config.provider} judge; looked in "
+                    f"{api_key_source(config)}",
+                )
 
         if completer is None:
-            # Not an error: a project without a judge key still runs its
-            # deterministic evaluators, and the trial reports what was skipped
-            # rather than pretending the judgement happened.
-            log.info("no judge configured; skipping %s evaluator %r", kind, name)
-            return None
+            # Kept in the list rather than dropped. A judge that silently left
+            # the run took the only check that graded correctness with it, and
+            # the remaining checks reported a pass -- which reads as "the agent
+            # answered correctly" and means "nobody asked".
+            log.info("no judge configured; %s evaluator %r is skipped", kind, name)
+            return SkippedEvaluator(
+                name, kind, "no judge model is configured for this deployment"
+            )
 
         model = config.model or DEFAULT_MODEL
         if kind == "llm_judge":

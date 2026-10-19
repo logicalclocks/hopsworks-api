@@ -305,6 +305,20 @@ def review_feedback(
         return [], None
     chosen = pending[:budget]
     if len(chosen) < len(pending):
+        # Finish the millisecond the cut landed in. The cursor the next run
+        # starts from is a time and the next window excludes it, so a cut
+        # between two rows written in the same millisecond dropped the rest of
+        # them for ever -- and that is not rare traffic: the detectors file
+        # their findings under the trace's own timestamp, so one trace with
+        # three findings is three rows sharing one. Reviewing a few past the
+        # budget is the smaller cost, and it is bounded by the group.
+        edge = _ms(chosen[-1].get("createdAt"))
+        while (
+            len(chosen) < len(pending)
+            and _ms(pending[len(chosen)].get("createdAt")) == edge
+        ):
+            chosen.append(pending[len(chosen)])
+    if len(chosen) < len(pending):
         log.warning(
             "%d verdicts in the window, reviewing the oldest %d; the rest wait for the next run",
             len(pending),
@@ -534,6 +548,20 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
         feature_store = project.get_feature_store()
         write_triage(feature_store, rows)
         write_clusters(feature_store, changed)
+        if rows and all(row.get("ungradable") for row in rows):
+            # Every model call failed -- an expired key, an exhausted quota, a
+            # provider outage. Reported SUCCEEDED this moved the watermark to
+            # the end of the window, so the feedback nobody managed to analyse
+            # was never offered to another run. The rows are written either way:
+            # they say what the provider answered, which is the diagnosis.
+            reasons = {str(row.get("error") or "").strip() for row in rows}
+            report(
+                "FAILED",
+                "nothing in this window could be analysed ("
+                + "; ".join(sorted(r for r in reasons if r)[:3])
+                + f"); {len(rows)} verdicts are waiting for the next run",
+            )
+            return False
         report("SUCCEEDED", processed_through=processed_through)
         return True
     except Exception as err:  # noqa: BLE001 -- the row must say what happened

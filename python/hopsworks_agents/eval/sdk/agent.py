@@ -486,8 +486,11 @@ class Agent:
     ) -> None:
         """What you think of a proposal: ``accepted``, ``edited`` or ``rejected``. This is calibration data."""
         triage_id = triage.triage_id if isinstance(triage, Triage) else triage
+        # `feedback/run`, so the same rule as a trial id: a parameter, because
+        # the route takes one segment and this is two.
         self._http.put(
-            f"{self._otel}/feedback/triage/{triage_id}/decision",
+            f"{self._otel}/feedback/triage/decision",
+            triageId=triage_id,
             decision=decision,
             category=category,
         )

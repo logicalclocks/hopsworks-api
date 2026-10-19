@@ -119,13 +119,22 @@ class TestBuildingFromSpec:
         )
         assert [g.type for g in evaluators] == ["llm_judge"]
 
-    def test_judge_evaluators_are_skipped_when_no_judge_is_configured(self):
-        # not an error: the deterministic checks in the same suite still run,
-        # and pretending a judgement happened would be worse than skipping it
+    def test_a_judge_with_no_model_stays_in_the_list_as_a_skipped_check(self):
+        """Dropped, it took the only check that graded correctness with it.
+
+        The deterministic checks in the same suite still run -- but their
+        verdict is not the suite's answer, and a run that reported one was a
+        green pass rate for an answer nobody judged.
+        """
         evaluators = evaluators_from_spec(
             [{"type": "llm_judge"}, {"type": "regex", "pattern": "a"}]
         )
-        assert [g.type for g in evaluators] == ["regex"]
+
+        assert [g.type for g in evaluators] == ["llm_judge", "regex"]
+        skipped = evaluators[0].grade(None, None, None)
+        assert skipped.ungradable is True
+        assert skipped.assertions["skipped"] is True
+        assert "judge" in skipped.reason
 
     def test_pairwise_can_be_named(self):
         evaluators = evaluators_from_spec(

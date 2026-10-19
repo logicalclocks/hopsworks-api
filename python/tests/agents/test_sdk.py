@@ -1076,10 +1076,12 @@ class TestTracing:
             and not triage.decided
         )
         deployment.decide_triage(triage, "accepted")
+        # The id is `feedback/run`, so it travels as a parameter: in the path it
+        # was two segments where the route declares one, and the decision 404'd.
         assert session.sent[1] == (
             "PUT",
-            "/otel/servings/7/feedback/triage/f%2Frun/decision".replace("%2F", "/"),
-            {"decision": "accepted"},
+            "/otel/servings/7/feedback/triage/decision",
+            {"triageId": "f/run", "decision": "accepted"},
             None,
         )
         assert deployment.calibration().acceptance_rate == 0.75
@@ -1604,3 +1606,90 @@ class TestModels:
     def test_unknown_fields_stay_reachable_in_raw(self):
         suite = Suite.from_api({"suiteId": "s", "somethingNew": 1})
         assert suite.raw["somethingNew"] == 1
+
+
+class TestCompositeIdsDoNotGoInPaths:
+    """A generated id with slashes in it is a parameter, not a path segment.
+
+    Trial ids are `run/task/version/index` and triage ids are `feedback/run`.
+    Interpolated into a single-segment route they matched nothing, so every
+    human review and every judge calibration answered 404 -- the two paths a
+    reviewer's verdict travels.
+    """
+
+    def test_a_trial_review_sends_the_trial_id_as_a_parameter(self):
+        from hopsworks_agents.eval.models import derive_trial_id
+
+        evals, session = client(Reply(None))
+        trial_id = derive_trial_id("run-1", "task-1", 1, 0)
+        assert trial_id.count("/") == 3, "the id shape this case is about changed"
+
+        evals.runs.review_trial(
+            "run-1", trial_id, passed=True, reason="read it, it is fine"
+        )
+
+        method, path, params, body = session.sent[0]
+        assert (method, path) == ("POST", "/agent-evals/runs/run-1/trials/review")
+        assert params == {"trialId": trial_id}
+        assert body["passed"] is True
+
+
+class TestComparingAcrossSuiteVersions:
+    """A new version copies its tasks, and a copy is a new row with a new id.
+
+    Comparing on ids alone, every carried-over case read as `added` at a version
+    bump and every regression, fix and persistent failure was lost -- which is
+    the moment a comparison matters most, because the version was published to
+    change something.
+    """
+
+    def test_the_same_question_is_the_same_case_in_a_later_version(self):
+        evals, session = client(
+            Reply(
+                {
+                    "runId": "v1",
+                    "suiteId": "s",
+                    "suiteVersion": 1,
+                    "status": "SUCCEEDED",
+                }
+            ),
+            Reply(
+                {
+                    "runId": "v2",
+                    "suiteId": "s",
+                    "suiteVersion": 2,
+                    "status": "SUCCEEDED",
+                }
+            ),
+            Reply([{"taskId": "old-id", "status": "PASSED"}]),
+            Reply([{"taskId": "copied-id", "status": "FAILED"}]),
+            # each version's tasks: the same question under two row ids
+            Reply(
+                [
+                    {
+                        "taskId": "old-id",
+                        "inputMessages": json.dumps(
+                            [{"role": "user", "content": "Where is order 4182?"}]
+                        ),
+                    }
+                ]
+            ),
+            Reply(
+                [
+                    {
+                        "taskId": "copied-id",
+                        "inputMessages": json.dumps(
+                            [{"role": "user", "content": "Where is order 4182?"}]
+                        ),
+                    }
+                ]
+            ),
+        )
+
+        diff = evals.runs.compare("v1", "v2")
+
+        assert [t.task_id for t in diff.regressed] == ["copied-id"], (
+            f"the copied case was not matched to the one it came from: {diff.tasks}"
+        )
+        assert not diff.added and not diff.removed, f"{diff}"
+        assert diff.regressed[0].question == "Where is order 4182?"

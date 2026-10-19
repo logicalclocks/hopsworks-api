@@ -231,6 +231,25 @@ class TestToolRetries:
         assert result.passed is False
         assert "arguments not traced" in result.assertions["matched_on"]
 
+    def test_a_later_group_cannot_hide_an_earlier_loop(self):
+        """The worst argument group per tool, not the last one counted.
+
+        Keyed by the tool alone, two calls to `lookup(id=2)` replaced six to
+        `lookup(id=1)`: five retries then reported as one and passed a budget of
+        one, which is the loop this check exists to catch.
+        """
+        evaluator = ToolRetryEvaluator(max_retries=1)
+        calls = [
+            call("lookup", span_id=f"a{i}", arguments='{"id": "1"}') for i in range(6)
+        ] + [call("lookup", span_id=f"b{i}", arguments='{"id": "2"}') for i in range(2)]
+
+        result = evaluator.grade(task(), trial(), trace(*calls))
+
+        assert result.passed is False, (
+            f"five retries passed a budget of one: {result.assertions}"
+        )
+        assert result.assertions["retries"] == {"lookup": 5}
+
     def test_a_budget_of_one_tolerates_a_single_retry(self):
         evaluator = ToolRetryEvaluator(max_retries=1)
         result = evaluator.grade(

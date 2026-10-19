@@ -396,15 +396,19 @@ class TestSpecIntegration:
                 [entry(provider="mystery")], judge_completer=lambda _p: ""
             )
 
-    def test_a_judge_whose_variable_is_unset_is_skipped_not_failed(self, monkeypatch):
-        # a project without a key still runs its deterministic checks, and the
-        # trial reports what was skipped rather than pretending it was judged
+    def test_a_judge_whose_variable_is_unset_reports_itself_skipped(self, monkeypatch):
+        # A project without a key still runs its deterministic checks, and the
+        # trial says this one never ran -- which is what keeps it out of every
+        # pass denominator instead of letting the others answer for it.
         monkeypatch.delenv("NOPE", raising=False)
         evaluators = evaluators_from_spec(
             [entry(provider="openai", model="gpt-4o", api_key_env="NOPE")],
             judge_completer=lambda _p: "{}",
         )
-        assert evaluators == []
+        assert len(evaluators) == 1
+        result = evaluators[0].grade(None, None, None)
+        assert result.assertions["skipped"] is True
+        assert "NOPE" in result.reason
 
     def test_a_judge_naming_a_set_variable_gets_its_own_provider(self, monkeypatch):
         # a suite can mix a cheap judge for canaries with an expensive one for a
