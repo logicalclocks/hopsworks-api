@@ -2773,6 +2773,21 @@ class TestDeltaEngine:
         write_mock.assert_called_once()
         assert write_mock.call_args.kwargs.get("operation") == "insert"
 
+    def test_generate_merge_query_escapes_quotes_in_partition_values(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.primary_key = ["id"]
+        fg.partition_key = ["region"]
+        fg.event_time = None
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act
+        q = engine._generate_merge_query("s", "u", {"region": ["o'x"]})
+
+        # Assert
+        assert q.endswith("s.region IN ('o''x')")
+
 
 class TestDeltaEngineConnectMode:
     """Tests for DeltaEngine initialization in Spark Connect mode."""

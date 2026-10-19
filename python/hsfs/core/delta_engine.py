@@ -1704,7 +1704,9 @@ class DeltaEngine:
         # only a subset of partitions are being updated.
         if partition_values:
             for col, vals in partition_values.items():
-                vals_sql = ", ".join(f"'{v}'" for v in vals)
+                vals_sql = ", ".join(
+                    "'" + str(v).replace("'", "''") + "'" for v in vals
+                )
                 merge_query_str += f" AND {source_alias}.{col} IN ({vals_sql})"
 
         _logger.debug(f"Merge query: {merge_query_str}")
