@@ -49,7 +49,7 @@ into bucket folders:
 - [hops-job](platform/hops-job/SKILL.md) — jobs and Airflow DAGs.
 - [hops-environments](platform/hops-environments/SKILL.md) — clone a Python env, install custom libs.
 - [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
-- [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, and feature store/dataset sharing.
+- [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, per-namespace compute cost, and feature store/dataset sharing.
 - [hops-kubectl-debug](platform/hops-kubectl-debug/SKILL.md) — diagnose failed workloads from namespace-scoped pod state, events, and logs.
 - [hops-factory](platform/hops-factory/SKILL.md) — software factories: definitions, cloning, import and export.
 
