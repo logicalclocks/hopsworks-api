@@ -3890,6 +3890,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.StorageConnector.REDSHIFT,
                 sc.StorageConnector.BIGQUERY,
                 sc.StorageConnector.MONGODB,
+                sc.StorageConnector.HOPSWORKS,
             ]
         ) or supported_sql_connector
 
@@ -3913,7 +3914,7 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
                 "Supported connector types: CRM, GOOGLE_SHEETS, REST, SNOWFLAKE, REDSHIFT, "
-                "BIGQUERY, MONGODB, and SQL connectors with database_type MYSQL, POSTGRESQL, "
+                "BIGQUERY, MONGODB, HOPSWORKS, and SQL connectors with database_type MYSQL, POSTGRESQL, "
                 "ORACLE, CLICKHOUSE, TERADATA, or SQLSERVER."
             )
 

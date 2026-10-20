@@ -25,6 +25,7 @@ from hsfs.storage_connector import (
     BigQueryConnector,
     CRMAndAnalyticsConnector,
     CRMSource,
+    HopsworksConnector,
     RedshiftConnector,
     RestConnector,
     SnowflakeConnector,
@@ -62,6 +63,11 @@ class TestFeatureGroupEngine:
             ),
             (
                 BigQueryConnector(id=1, name="bigquery", featurestore_id=1),
+                True,
+                True,
+            ),
+            (
+                HopsworksConnector(id=1, name="hopsworks", featurestore_id=1),
                 True,
                 True,
             ),

@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, CRM, REST APIs).
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs).
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -128,6 +128,7 @@ hops datasource create mongodb <name> --connection-string mongodb+srv://cluster.
 hops datasource create kafka <name> --bootstrap-servers broker:9092 --security-protocol PLAINTEXT --external
 hops datasource create opensearch <name> --host H --port 9200 --user U --password - < pw.txt
 hops datasource create elasticsearch <name> --host H --user U --password - < pw.txt   # port 9200, https; --auth-type API_KEY --api-key - < key.txt for an API key
+hops datasource create hopsworks <name> --host H --project REMOTE_PROJECT --api-key - < key.txt   # a project on another Hopsworks cluster; port 443; the API key needs the PROJECT and FEATURESTORE scopes there; --no-tls-verify for a self-signed certificate
 hops datasource create google-sheets <name> --spreadsheet-id ID --key-path /Projects/<project>/Resources/key.json
 hops datasource create rest <name> --base-url https://api.example.com --auth-type API_KEY --api-key - < api_key.txt
 hops datasource create crm <name> --crm-type HUBSPOT --api-key - < api_key.txt
@@ -409,6 +410,25 @@ Filters on the feature group are pushed down as an Elasticsearch bool query.
 `ds.storage_connector.read("events")` and external feature group reads on the Spark engine need the `elasticsearch-spark-40_2.13` jar on the Spark classpath, and array fields listed in the `es.read.field.as.array.include` argument.
 On Spark, `verify=False` accepts only a single self-signed certificate; a cluster whose certificate chains to a private CA needs a truststore.
 `ds.storage_connector.connector_options()` returns keyword arguments for the official `elasticsearch` client, which is not a Hopsworks dependency.
+
+## Mount a feature group from another Hopsworks cluster
+
+A `hopsworks` data source reads a project on another Hopsworks cluster.
+Its databases are the feature stores the remote project can read, its own `<project>_featurestore` and the ones shared with it, and its tables are their feature groups, named `<name>_<version>`.
+External feature groups are read through the remote cluster's Hopsworks Query Service, and DLTHub ingestion copies one into a local feature group.
+
+```python
+ds = fs.get_data_source("my_remote_cluster")
+table = [t for t in ds.get_tables("sales_featurestore") if t.table == "transactions_1"][0]
+ext_fg = fs.create_external_feature_group(
+    name="remote_transactions", version=1, data_source=table, primary_key=["id"]
+)
+ext_fg.save()
+df = ext_fg.read()   # Python engine: via the remote Hopsworks Query Service
+```
+
+The remote cluster must have its Hopsworks Query Service reachable from this one, through its `feature_query` load balancer.
+There is no SQL query and no Trino catalog for this data source type.
 
 ## Next Steps
 
