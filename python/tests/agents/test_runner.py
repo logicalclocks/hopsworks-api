@@ -476,6 +476,51 @@ class TestGuardrails:
         assert metrics["over_refusal_rate"] == 1.0
 
 
+class TestWhatCountsAsAMissingTrace:
+    """A trial that never waited for a trace has not lost one.
+
+    More than half the trials missing a trace fails the run, which is right
+    when the observability pipeline is broken. But a trial that returns before
+    the trace is awaited -- blocked by a guardrail, an agent error, a timeout,
+    an infrastructure failure -- never asked for one. Counting those failed the
+    runs where nothing was missing, and since the gate reads the newest
+    SUCCEEDED run, a regressed deployment kept showing an older green one.
+    """
+
+    def test_a_safety_suite_that_blocks_everything_succeeds(self):
+        # every attack correctly refused: every trial passed, and the run used
+        # to come back FAILED for traces nobody waited for
+        result = go(
+            FakeClient(blocked=True),
+            suite(blocks_are_success=True, execution_mode=ExecutionMode.SANDBOXED),
+        )
+
+        assert [t.status for t in result.trials] == [TrialStatus.PASSED]
+        assert all(t.trace_status is TraceStatus.NOT_FETCHED for t in result.trials)
+        assert result.status == "SUCCEEDED"
+        assert result.error_message == ""
+
+    def test_the_metric_is_over_the_trials_that_waited(self):
+        result = go(
+            FakeClient(blocked=True),
+            suite(blocks_are_success=True, execution_mode=ExecutionMode.SANDBOXED),
+        )
+        metrics = {
+            m["metric_name"]: m["metric_value"]
+            for m in run_metrics("r", "s", 7, result.trials)
+        }
+        # no trial waited for a trace, so none is missing one
+        assert metrics["trace_missing_rate"] == 0.0
+
+    def test_a_genuinely_missing_trace_still_fails_the_run(self):
+        result = go(FakeClient(trace=None), evaluators=[ToolCallEvaluator()])
+
+        assert all(t.trace_status is TraceStatus.MISSING for t in result.trials)
+        assert result.status == "FAILED"
+        # and says so on the row, rather than sending someone to the pod log
+        assert "never got one" in result.error_message
+
+
 class TestTraceReadiness:
     def test_final_answer_evaluators_still_run_without_a_trace(self):
         result = go(FakeClient(trace=None), evaluators=[ExactMatchEvaluator()])
@@ -925,6 +970,50 @@ class TestPassPolicyAndReview:
         # And the check is on the row, so a reader can see which one was skipped.
         skipped = [r for r in trial.evaluator_results if r.assertions.get("skipped")]
         assert [r.evaluator_name for r in skipped] == ["matches_correction"]
+
+    def test_a_judge_that_errors_is_not_answered_by_the_others_either(self):
+        """A key that expires mid-run is the same hole as a key that is absent.
+
+        SkippedEvaluator covers the judge that could not be built. A judge that
+        was built and then failed -- an expired key, an exhausted quota, a
+        wrong model name, a provider outage -- returned an ungradable result,
+        which `verdict` drops, so the deterministic checks decided the trial
+        and a wrong answer came back PASSED in a run reported SUCCEEDED with
+        pass_rate 1.0.
+        """
+        from hopsworks_agents.eval.judges import LlmJudgeEvaluator
+
+        def dead_key(prompt):
+            raise RuntimeError("401 invalid x-api-key")
+
+        # the judge plus one deterministic check that needs no trace: exactly
+        # the shape that used to pass a wrong answer on the second check alone
+        judge = LlmJudgeEvaluator(dead_key, name="is_it_right")
+        result = go(
+            FakeClient(answer="not the answer"),
+            suite(tasks=[task(expectations={"is_it_right": "a correct answer"})]),
+            evaluators=[judge, ExactMatchEvaluator()],
+        )
+
+        trial = result.trials[0]
+        assert trial.status is TrialStatus.EVALUATOR_ERROR, (
+            f"a trial whose judge errored reported {trial.status}"
+        )
+        assert "401" in (trial.error_message or "")
+
+    def test_a_judge_reply_nobody_can_parse_is_treated_the_same(self):
+        from hopsworks_agents.eval.judges import LlmJudgeEvaluator
+
+        judge = LlmJudgeEvaluator(
+            lambda prompt: "I think it is fine!", name="is_it_right"
+        )
+        result = go(
+            FakeClient(answer="not the answer"),
+            suite(tasks=[task(expectations={"is_it_right": "a correct answer"})]),
+            evaluators=[judge, ExactMatchEvaluator()],
+        )
+
+        assert result.trials[0].status is TrialStatus.EVALUATOR_ERROR
 
     def test_the_deferred_result_is_kept_so_a_reviewer_can_see_the_prompt(self):
         from hopsworks_agents.eval.evaluators import HumanReviewEvaluator

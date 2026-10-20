@@ -286,7 +286,7 @@ def export_feature_groups(
     feature_store=None,
     *,
     url: str | None = None,
-    storage: str | None = EXPORT_STORAGE_ONLINE,
+    storage: str | None = EXPORT_STORAGE_OFFLINE,
     since: int | None = None,
     version: int = 1,
     include=None,
@@ -302,8 +302,17 @@ def export_feature_groups(
         import hopsworks
         from hopsworks_agents.protocol.memory import export_feature_groups
 
-        export_feature_groups()                      # online only
-        export_feature_groups(storage="offline")     # backfill Delta
+        export_feature_groups()                    # fill the offline store
+        export_feature_groups(storage="online")    # rebuild a dropped table
+
+    Offline, like the method it calls. The online tables are the agent's live
+    memory: it reads ordered ranges out of them, closes turns with predicate
+    updates and erases rows outright. An export writes rows it read earlier
+    back over that as an asynchronous upsert, so a conversation cleared since
+    the read returns, a turn that has closed reverts to open -- where ``get``
+    hides it and the reaper later calls it abandoned -- and a session loses
+    its message count and summary progress. Online is for rebuilding a table
+    that was dropped, which is a thing someone decides to do.
     """
     if feature_store is None:
         import hopsworks

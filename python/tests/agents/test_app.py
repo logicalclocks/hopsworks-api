@@ -2968,6 +2968,49 @@ class TestRetrievalAndReconciliation:
         # neither is dropped or sorted to the bottom for lacking a usable date
         assert [r["item_id"] for r in memory._rerank(rows, k=2)] == [1, 2]
 
+    def test_an_hsfs_distance_is_turned_into_a_similarity(self):
+        """The index reports a distance; everything above it ranks on similarity.
+
+        hsfs returns ``1 / _score - 1`` over OpenSearch's knn score, which is a
+        cosine distance: lower is nearer. `_rerank` and every caller sort on
+        `score` descending, so passed through unconverted the least similar row
+        came back first from every search and every `search` tool call. The
+        in-memory store returns a similarity, which is why the tests agreed
+        with the code and both were wrong.
+        """
+        from hopsworks_agents.protocol.vectorstore import HopsworksVectorStore
+
+        store = HopsworksVectorStore("dep-1", 3)
+        fg = object()
+        store._fg = fg
+        store._connect = lambda: fg  # type: ignore[method-assign]
+        store._features = ["item_id", "content", "embedding"]
+        # nearest first in the index's own terms: distance 0.1 is the best row
+        store._find_neighbors = lambda *a, **k: [  # type: ignore[method-assign]
+            (0.1, [1, "the nearest", None]),
+            (0.9, [2, "further away", None]),
+            (1.6, [3, "barely related", None]),
+        ]
+
+        hits = store.search([0.0, 0.0, 1.0], k=3)
+
+        assert [h["item_id"] for h in hits] == [1, 2, 3]
+        # and ranking on the score the way every caller does keeps that order
+        assert sorted(hits, key=lambda h: h["score"], reverse=True) == hits
+        assert hits[0]["score"] == pytest.approx(0.9)
+        assert hits[-1]["score"] == pytest.approx(-0.6)
+
+    def test_rerank_puts_the_nearest_hsfs_row_first(self, tmp_path):
+        """The same rows, through the ranking the memory actually uses."""
+        from hopsworks_agents.protocol.memory import _utcnow
+
+        memory = self._store(tmp_path, recency_half_life_days=30.0)
+        now = _utcnow().isoformat()
+        # as HopsworksVectorStore now hands them over: similarities
+        near = {"item_id": 1, "score": 1.0 - 0.1, "created_at": now}
+        far = {"item_id": 2, "score": 1.0 - 1.6, "created_at": now}
+        assert [r["item_id"] for r in memory._rerank([far, near], k=2)] == [1, 2]
+
     def test_search_over_fetches_so_reranking_can_change_the_answer(self, tmp_path):
         from hopsworks_agents.protocol.vectorstore import InMemoryVectorStore
 
@@ -3470,6 +3513,32 @@ class TestFeatureGroupExport:
         # online is already live — the agent wrote it. Offline is what is missing.
         assert kwargs["storage"] == "offline"
         assert kwargs["write_options"] == {"mode": "append"}
+
+    def test_the_entry_point_exports_offline_like_the_method(self):
+        """The module-level function defaulted to online, over the live store.
+
+        The online tables are the agent's memory as it runs: it reads ordered
+        ranges from them, closes turns with predicate updates and erases rows.
+        Writing rows read earlier back over that as an asynchronous upsert
+        returns a conversation someone cleared, reopens a turn that has closed
+        -- which `get` then hides and the reaper later calls abandoned -- and
+        loses a session's message count. Online is for rebuilding a dropped
+        table, which is a decision rather than a default.
+        """
+        import inspect
+
+        from hopsworks_agents.protocol.memory import (
+            EXPORT_STORAGE_OFFLINE,
+            ManagedMemoryService,
+            export_feature_groups,
+        )
+
+        entry = inspect.signature(export_feature_groups).parameters["storage"]
+        method = inspect.signature(
+            ManagedMemoryService.export_feature_groups
+        ).parameters["storage"]
+        assert entry.default == EXPORT_STORAGE_OFFLINE
+        assert entry.default == method.default
 
     def test_looks_up_the_feature_group_by_its_own_name(self, tmp_path):
         memory = self._store(tmp_path)

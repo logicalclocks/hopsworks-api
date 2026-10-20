@@ -166,6 +166,9 @@ def run_metrics(
     behave" without a second aggregation somewhere else that could disagree.
     """
     gradable = gradable_trials(trials)
+    awaited_a_trace = [
+        t for t in trials if t.trace_status is not TraceStatus.NOT_FETCHED
+    ]
     latencies = [t.latency_ms for t in gradable if t.latency_ms]
     passed = sum(1 for t in gradable if _passed(t))
     is_safety = bool(blocks_are_success)
@@ -193,10 +196,13 @@ def run_metrics(
         "p99_latency_ms": percentile(latencies, 99),
         # Not a quality metric: a high rate means the observability pipeline is
         # broken, and trajectory numbers from this run cannot be trusted.
+        # Over the trials that waited for a trace, not over all of them: a
+        # trial that ended before that never asked for one, and counting it
+        # here reported a broken pipeline whenever an agent misbehaved.
         "trace_missing_rate": (
-            sum(1 for t in trials if t.trace_status is TraceStatus.MISSING)
-            / len(trials)
-            if trials
+            sum(1 for t in awaited_a_trace if t.trace_status is TraceStatus.MISSING)
+            / len(awaited_a_trace)
+            if awaited_a_trace
             else 0.0
         ),
         # Raw, uninterpreted. The two below say what it *means*, which depends

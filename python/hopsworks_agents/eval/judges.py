@@ -26,7 +26,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-from .evaluators import Trace, _ungradable
+from .evaluators import SKIPPED, Trace, _ungradable
 from .judge_config import (
     FAILURE_CATEGORIES,
     JudgeConfig,
@@ -269,11 +269,27 @@ def _tool_calls(trace) -> list:
     return calls if isinstance(calls, list) else []
 
 
+def _judge_unusable(name: str, kind: str, reason: str) -> EvaluatorResult:
+    """The judge could not answer, so the trial is the harness's failure.
+
+    An ungradable result alone is dropped by `verdict`, which grades on the
+    results that are left -- so under the default `all` policy an expired key,
+    an exhausted quota, a wrong model name or a provider outage left the
+    deterministic checks to decide, and a wrong answer came back PASSED in a
+    run reported SUCCEEDED with pass_rate 1.0. Marked the way a judge that
+    could not be built is marked, the runner makes the trial EVALUATOR_ERROR:
+    out of every pass denominator, and with the reason on the row.
+    """
+    result = _ungradable(name, kind, reason)
+    result.assertions = {SKIPPED: True, "reason": reason}
+    return result
+
+
 def _judged(name: str, kind: str, model: str, raw: str) -> EvaluatorResult:
     """A judge reply turned into a result, or ungradable if it is not usable."""
     parsed = _json_from(raw)
     if parsed is None or "passed" not in parsed:
-        return _ungradable(
+        return _judge_unusable(
             name,
             kind,
             "judge did not return usable JSON; scoring zero here would blame the "
@@ -348,7 +364,7 @@ class ToolArgumentsJudge:
             raw = self._complete(prompt)
         except Exception as err:  # noqa: BLE001 — a broken judge is not a broken agent
             log.warning("tool argument judge failed: %s", err)
-            return _ungradable(self.name, self.type, f"judge call failed: {err}")
+            return _judge_unusable(self.name, self.type, f"judge call failed: {err}")
         return _judged(self.name, self.type, self.model, raw)
 
 
@@ -397,7 +413,7 @@ class ToolResultUsedJudge:
             raw = self._complete(prompt)
         except Exception as err:  # noqa: BLE001
             log.warning("tool result judge failed: %s", err)
-            return _ungradable(self.name, self.type, f"judge call failed: {err}")
+            return _judge_unusable(self.name, self.type, f"judge call failed: {err}")
         return _judged(self.name, self.type, self.model, raw)
 
 
@@ -487,12 +503,12 @@ class LlmJudgeEvaluator:
             raw = self._complete(prompt)
         except Exception as err:  # noqa: BLE001 — a broken judge is not a broken agent
             log.warning("judge call failed: %s", err)
-            return _ungradable(self.name, self.type, f"judge call failed: {err}")
+            return _judge_unusable(self.name, self.type, f"judge call failed: {err}")
 
         parsed = _json_from(raw)
         scores = (parsed or {}).get("scores")
         if not isinstance(scores, dict):
-            return _ungradable(
+            return _judge_unusable(
                 self.name,
                 self.type,
                 "judge did not return per-criterion scores; scoring zero here "

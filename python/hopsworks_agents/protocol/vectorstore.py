@@ -75,6 +75,10 @@ class VectorStore(ABC):
     ) -> list[dict]:
         """Nearest rows, each with a ``score``.
 
+        ``score`` is a similarity: higher is nearer, and callers rank on it
+        descending. An implementation whose index reports a distance converts
+        it, because the two read the same and sort opposite ways.
+
         ``subject`` is load-bearing rather than an optimization: filtering on it
         is what gives per-user isolation, so a user only ever searches their own
         past. Callers must pass it whenever one exists.
@@ -374,7 +378,13 @@ class HopsworksVectorStore(VectorStore):
         for score, values in results or []:
             row = dict(zip(self._features, values, strict=False))
             row.pop("embedding", None)
-            row["score"] = score
+            # hsfs hands back a cosine distance -- `1 / _score - 1` over
+            # OpenSearch's knn score -- where lower is nearer. Every caller
+            # ranks on `score` descending, so passed through unconverted it
+            # put the least similar row first in every search and every
+            # `search` tool call. The in-memory store returns a similarity,
+            # which is why no test saw it.
+            row["score"] = 1.0 - score
             # Whatever the index matched on, a row is this caller's only if the
             # value is the one they asked for. Rows that are not never leave
             # this method, and nothing outside the pod sees them.

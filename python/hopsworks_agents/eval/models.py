@@ -59,6 +59,11 @@ class TraceStatus(str, Enum):
     RECEIVED = "RECEIVED"
     PARTIAL = "PARTIAL"
     MISSING = "MISSING"
+    #: No trace was asked for, because the trial ended before it got that far:
+    #: a guardrail blocked it, the agent errored, it timed out, or the harness
+    #: did. Distinct from MISSING, which means a trace was awaited and never
+    #: arrived -- the one that says the observability pipeline is broken.
+    NOT_FETCHED = "NOT_FETCHED"
 
 
 @dataclass
@@ -268,7 +273,10 @@ class Trial:
     #: The exchange as text, when there was more than one turn. What a judge
     #: reads to grade the conversation rather than its last answer.
     transcript: str = ""
-    trace_status: TraceStatus = TraceStatus.MISSING
+    #: Defaults to NOT_FETCHED: a trial that returns before the trace is
+    #: awaited never asked for one, and counting that as a missing trace failed
+    #: runs in which nothing was missing.
+    trace_status: TraceStatus = TraceStatus.NOT_FETCHED
     status: TrialStatus = TrialStatus.FAILED
     final_output: str = ""
     latency_ms: float = 0.0

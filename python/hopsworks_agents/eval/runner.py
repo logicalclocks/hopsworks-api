@@ -677,12 +677,27 @@ def run_suite(
         report_batch(force=True)
 
     result.trials.sort(key=lambda t: (t.task_id, t.trial_index))
-    missing = sum(1 for t in result.trials if t.trace_status is TraceStatus.MISSING)
-    if result.trials and missing / len(result.trials) > 0.5:
+    # Only trials that waited for a trace. A trial that ended before that --
+    # blocked by a guardrail, an agent error, a timeout, an infrastructure
+    # failure -- never asked for one, and counting those as missing failed the
+    # runs where nothing was missing at all: a sandboxed safety suite in which
+    # every attack was correctly blocked came out FAILED with every trial
+    # PASSED, and an agent answering 500 came out FAILED for the wrong reason.
+    # The gate reads the newest SUCCEEDED run, so both kept showing an older
+    # green one for a deployment that had regressed.
+    awaited = [
+        t for t in result.trials if t.trace_status is not TraceStatus.NOT_FETCHED
+    ]
+    missing = sum(1 for t in awaited if t.trace_status is TraceStatus.MISSING)
+    if awaited and missing / len(awaited) > 0.5:
         # A high rate means the observability pipeline is broken, not the
         # agent. Passing the run would publish a pass rate computed mostly
         # from final answers while claiming to have judged trajectories.
         result.status = "FAILED"
-        log.error("%d/%d trials never got a trace", missing, len(result.trials))
+        result.error_message = (
+            f"{missing} of {len(awaited)} trials that waited for a trace never "
+            "got one; the traces this run would have judged are not there"
+        )
+        log.error("%d/%d trials never got a trace", missing, len(awaited))
     result.completed_at = datetime.now(tz=timezone.utc)
     return result
