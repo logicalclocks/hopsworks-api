@@ -39,7 +39,13 @@ from hopsworks_common.constants import CLIENT
 # PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
 # entry points (the ``hops`` CLI, dependent libraries' import-time checks)
 # that don't need the full feature-store / model-registry surface area.
-from hopsworks_common.core import env_var_api, project_api, secret_api, users_api
+from hopsworks_common.core import (
+    costs_api,
+    env_var_api,
+    project_api,
+    secret_api,
+    users_api,
+)
 from hopsworks_common.decorators import NoHopsworksConnectionError
 from requests.exceptions import SSLError
 
@@ -57,6 +63,7 @@ _secrets_api = None
 _env_vars_api = None
 _project_api = None
 _users_api = None
+_costs_api = None
 
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
@@ -505,6 +512,7 @@ def logout():
     global _secrets_api
     global _env_vars_api
     global _users_api
+    global _costs_api
 
     if _is_connection_active():
         _hw_connection._close()
@@ -514,6 +522,7 @@ def logout():
     _secrets_api = None
     _env_vars_api = None
     _users_api = None
+    _costs_api = None
     _hw_connection = _make_connection
 
 
@@ -549,10 +558,12 @@ def _initialize_module_apis():
     global _secrets_api
     global _env_vars_api
     global _users_api
+    global _costs_api
     _project_api = project_api.ProjectApi()
     _secrets_api = secret_api.SecretsApi()
     _env_vars_api = env_var_api.EnvVarsApi()
     _users_api = users_api.UsersApi()
+    _costs_api = costs_api.CostsApi()
 
 
 @public
@@ -647,6 +658,31 @@ def get_users_api() -> users_api.UsersApi:
     if not _is_connection_active():
         raise NoHopsworksConnectionError
     return _users_api
+
+
+@public
+def get_costs_api() -> costs_api.CostsApi:
+    """Get the api for the Kubernetes cost of each namespace.
+
+    Its cluster-wide methods need the `HOPS_ADMIN` platform role; [`get_project_costs`][hopsworks_common.core.costs_api.CostsApi.get_project_costs] needs only the data owner role in the project.
+
+    Example:
+        ```python
+        import hopsworks
+
+        hopsworks.login()
+        costs = hopsworks.get_costs_api().get_namespace_costs("week")
+
+        print(costs.to_pandas())
+        ```
+
+    Returns:
+        The Costs API handle.
+    """
+    global _costs_api
+    if not _is_connection_active():
+        raise NoHopsworksConnectionError
+    return _costs_api
 
 
 @public
