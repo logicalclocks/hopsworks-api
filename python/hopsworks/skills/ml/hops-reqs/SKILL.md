@@ -67,8 +67,15 @@ path runs only against `system.target.stage: development`.
 | app | main agent | infer | `app` |
 | verify | main agent | any | `verify` only |
 
-A phase is satisfied when its status is `met`, `skipped` or `accepted`. Each
-phase writes only its block, records `started` and `finished`, and ends with a
+A phase is satisfied when its status is `met`, `skipped` or `accepted` and every
+asset its block records still exists in the project.
+`hops factory system plan <slug>` checks the assets and names the next phase;
+`--sync` marks a satisfied phase with an asset gone `stale` and writes
+`system.progress`. "Blocked by" is what a phase reads, not an order: a phase
+whose inputs exist starts without the earlier ones (a model or feature view the
+user brought is recorded in the block that would have made it, which is then
+`skipped` with a `reason`), and `--goal <phase>` plans only what it needs.
+Each phase writes only its block, records `started` and `finished`, and ends with a
 commit. The status vocabulary, the transitions to `stale`, the full schema and
 the progress rules are in [references/system-yaml.md](references/system-yaml.md);
 [references/example-system.yaml](references/example-system.yaml) is a complete
@@ -108,11 +115,12 @@ requirements back and ask to proceed; write `status: met` on yes.
 ## The system template
 
 `python references/new_system.py <dir>/<slug>` copies
-[references/system_template/](references/system_template/) into the system:
+[references/system_template/](references/system_template/) into the system, and
+`--phase features|train|infer` adds that phase's stubs when the phase starts:
 `status.py` (the progress table, runnable from any terminal), `bundle.py` (the
 run bundle), the self-contained entrypoints under `src/<slug_pkg>/` (feature,
 training with its three modes, the frozen `evaluate.py` harness, `charts.py` for the
-model's performance charts in `images/`, batch
+model's performance charts in `images/` (in the **hops-design** look), batch
 inference, and `predictor.py` for a realtime deployment), `tests/` (the `system.yaml` validator, the unit tests, the
 integration conftest, the parity test, `run_integration.py`) and
 `benchmarks/benchmark_inference.py`.
@@ -120,6 +128,7 @@ integration conftest, the parity test, `run_integration.py`) and
 - Run bundles and `result.json`: [references/bundle.md](references/bundle.md).
 - Tests and benchmarks: [references/tests.md](references/tests.md).
 - The GitHub repository, commits, the pull request and its review: [references/repo.md](references/repo.md).
+- `/hops-build`'s parts, each read at the step its command names: [references/build-reqs.md](references/build-reqs.md) (the repository and `reqs`), [references/build-edits.md](references/build-edits.md) (edits from the Hopsworks UI), [references/build-phases.md](references/build-phases.md) (`data` to `app`).
 
 Logs never go into a system's directory, which is a git work tree.
 Jobs and deployments log to stdout and stderr, archived in the project's `Logs` dataset; a program the user runs in the terminal as part of the factory logs to `${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>/`.
@@ -182,4 +191,4 @@ marks the owning phase `stale`; nothing is silently repaired.
 ## Next Steps
 - Data: **hops-data-sources**, **hops-synthetic-data**. Features: **hops-features**, **hops-fg**.
 - Training: **hops-eda**, **hops-fv**, **hops-train**. Inference: **hops-batch-inference**, **hops-online-inference**.
-- Jobs and schedules: **hops-job**. Environments: **hops-environments**. Consumers: **hops-superset**, **hops-app**.
+- Jobs and schedules: **hops-job**. Environments: **hops-environments**. Consumers: **hops-superset**, **hops-app**, both in the **hops-design** look.

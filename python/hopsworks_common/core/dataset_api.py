@@ -27,10 +27,9 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, Literal
 
 from hopsworks_apigen import also_available_as, public
-from hopsworks_common import client, tag, usage, util
+from hopsworks_common import client, events, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode, users_api, variable_api
-from tqdm.auto import tqdm
 
 
 if TYPE_CHECKING:
@@ -148,10 +147,13 @@ class DatasetApi:
         ):
             pbar = None
             try:
+                from tqdm.auto import tqdm
+
                 pbar = tqdm(
                     total=file_size,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
                     desc="Downloading",
+                    disable=util._progress_disabled(),
                 )
             except Exception:
                 self._log.exception("Failed to initialize progress bar.")
@@ -228,70 +230,73 @@ class DatasetApi:
 
         destination_path = upload_path + "/" + file_name
 
-        if self.exists(destination_path):
-            if overwrite:
-                if "datasetType" in self._get(destination_path):
-                    raise DatasetException(
-                        "overwrite=True not supported on a top-level dataset"
-                    )
-                # Before the removal, never after: see _assert_upload_allowed.
-                self._assert_upload_allowed(destination_path)
-                self.remove(destination_path)
-            else:
-                raise DatasetException(
-                    f"{destination_path} already exists, set overwrite=True to overwrite it"
-                )
-
-        if os.path.isdir(local_path):
-            self.mkdir(destination_path)
-
-        if os.path.isdir(local_path):
-            with ThreadPoolExecutor(simultaneous_uploads) as executor:
-                # if path is a dir, upload files and folders iteratively
-                for root, dirs, files in os.walk(local_path):
-                    # os.walk(local_model_path), where local_model_path is expected to be an absolute path
-                    # - root is the absolute path of the directory being walked
-                    # - dirs is the list of directory names present in the root dir
-                    # - files is the list of file names present in the root dir
-                    # we need to replace the local path prefix with the hdfs path prefix (i.e., /srv/hops/....../root with /Projects/.../)
-                    remote_base_path = root.replace(
-                        local_path, destination_path
-                    ).replace(os.sep, "/")
-                    for d_name in dirs:
-                        self.mkdir(remote_base_path + "/" + d_name)
-
-                    # uploading files in the same folder is done concurrently
-                    futures = [
-                        executor.submit(
-                            self._upload_file,
-                            f_name,
-                            root + os.sep + f_name,
-                            remote_base_path,
-                            chunk_size,
-                            simultaneous_chunks,
-                            max_chunk_retries,
-                            chunk_retry_interval,
+        with events.tracked(
+            "file", "create", long=True, path=destination_path
+        ) as change:
+            if self.exists(destination_path):
+                if overwrite:
+                    if "datasetType" in self._get(destination_path):
+                        raise DatasetException(
+                            "overwrite=True not supported on a top-level dataset"
                         )
-                        for f_name in files
-                    ]
+                    # Before the removal, never after: see _assert_upload_allowed.
+                    self._assert_upload_allowed(destination_path)
+                    self.remove(destination_path)
+                else:
+                    raise DatasetException(
+                        f"{destination_path} already exists, set overwrite=True to overwrite it"
+                    )
 
-                    # wait for all upload tasks to complete
-                    _, _ = wait(futures)
-                    try:
-                        _ = [future.result() for future in futures]
-                    except Exception as e:
-                        raise e
-        else:
-            self._upload_file(
-                file_name,
-                local_path,
-                upload_path,
-                chunk_size,
-                simultaneous_chunks,
-                max_chunk_retries,
-                chunk_retry_interval,
-            )
+            if os.path.isdir(local_path):
+                self.mkdir(destination_path)
 
+            if os.path.isdir(local_path):
+                with ThreadPoolExecutor(simultaneous_uploads) as executor:
+                    # if path is a dir, upload files and folders iteratively
+                    for root, dirs, files in os.walk(local_path):
+                        # os.walk(local_model_path), where local_model_path is expected to be an absolute path
+                        # - root is the absolute path of the directory being walked
+                        # - dirs is the list of directory names present in the root dir
+                        # - files is the list of file names present in the root dir
+                        # we need to replace the local path prefix with the hdfs path prefix (i.e., /srv/hops/....../root with /Projects/.../)
+                        remote_base_path = root.replace(
+                            local_path, destination_path
+                        ).replace(os.sep, "/")
+                        for d_name in dirs:
+                            self.mkdir(remote_base_path + "/" + d_name)
+
+                        # uploading files in the same folder is done concurrently
+                        futures = [
+                            executor.submit(
+                                self._upload_file,
+                                f_name,
+                                root + os.sep + f_name,
+                                remote_base_path,
+                                chunk_size,
+                                simultaneous_chunks,
+                                max_chunk_retries,
+                                chunk_retry_interval,
+                            )
+                            for f_name in files
+                        ]
+
+                        # wait for all upload tasks to complete
+                        _, _ = wait(futures)
+                        try:
+                            _ = [future.result() for future in futures]
+                        except Exception as e:
+                            raise e
+            else:
+                self._upload_file(
+                    file_name,
+                    local_path,
+                    upload_path,
+                    chunk_size,
+                    simultaneous_chunks,
+                    max_chunk_retries,
+                    chunk_retry_interval,
+                    change,
+                )
         return upload_path + "/" + os.path.basename(local_path)
 
     def _upload_file(
@@ -303,6 +308,7 @@ class DatasetApi:
         simultaneous_chunks,
         max_chunk_retries,
         chunk_retry_interval,
+        change=None,
     ):
         file_size = os.path.getsize(local_path)
 
@@ -316,10 +322,13 @@ class DatasetApi:
         with open(local_path, "rb") as f:
             pbar = None
             try:
+                from tqdm.auto import tqdm
+
                 pbar = tqdm(
                     total=file_size,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
                     desc=f"Uploading {local_path}",
+                    disable=util._progress_disabled(),
                 )
             except Exception:
                 self._log.exception("Failed to initialize progress bar.")
@@ -366,6 +375,12 @@ class DatasetApi:
                         if pbar:
                             pbar.close()
                         raise
+                    if change is not None:
+                        change.progress(
+                            min((chunk_number - 1) * chunk_size, file_size),
+                            file_size,
+                            "bytes",
+                        )
 
             if pbar is not None:
                 pbar.close()
@@ -571,7 +586,8 @@ class DatasetApi:
         """
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
-        return _client._send_request("DELETE", path_params)
+        with events.tracked("file", "delete", path=path):
+            return _client._send_request("DELETE", path_params)
 
     @public
     def rm(self, remote_path: str):
@@ -737,9 +753,10 @@ class DatasetApi:
             "type": "DATASET",
         }
         headers = {"content-type": "application/json"}
-        return _client._send_request(
-            "POST", path_params, headers=headers, query_params=query_params
-        )["attributes"]["path"]
+        with events.tracked("file", "create", path=path):
+            return _client._send_request(
+                "POST", path_params, headers=headers, query_params=query_params
+            )["attributes"]["path"]
 
     @public
     @usage._method_logger
@@ -783,7 +800,8 @@ class DatasetApi:
             "action": "copy",
             "destination_path": destination_path,
         }
-        _client._send_request("POST", path_params, query_params=query_params)
+        with events.tracked("file", "create", path=destination_path):
+            _client._send_request("POST", path_params, query_params=query_params)
 
     @public
     @usage._method_logger
@@ -827,7 +845,9 @@ class DatasetApi:
             "action": "move",
             "destination_path": destination_path,
         }
-        _client._send_request("POST", path_params, query_params=query_params)
+        with events.tracked("file", "create", path=destination_path):
+            _client._send_request("POST", path_params, query_params=query_params)
+        events.emit("file", "delete", "done", path=source_path)
 
     @public
     @usage._method_logger
@@ -965,7 +985,7 @@ class DatasetApi:
         """Read the content of a file.
 
         Parameters:
-            path: The path to the file to read.
+            path: The path to the file to read, absolute or relative to the project.
             dataset_type:
                 The type of dataset, can be `DATASET` or `HIVEDB`; defaults to `DATASET`.
                 `HIVEDB` type is used to read files from Apache Hive.
@@ -981,7 +1001,7 @@ class DatasetApi:
             "dataset",
             "download",
             "with_auth",
-            path[1:],
+            path.lstrip("/"),
         ]
 
         query_params = {

@@ -15,8 +15,9 @@ from hopsworks.cli.commands import skills as skills_cmd
 
 @click.command("init", hidden=True, params=list(skills_cmd.skills_install.params))
 def init_cmd(agents: tuple[str, ...], target_dir: str, force: bool) -> None:
-    """Run ``hops skills install`` under its old name, with a warning.
+    """Run `hops skills install` under its old name, with a warning.
 
+    \f
     Args:
         agents: Agents to materialize for.
         target_dir: Repository root to write into.

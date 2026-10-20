@@ -23,12 +23,13 @@ Without a slug and with no `system.yaml` here, reply that the Factory's **From T
 
 Load **hops-analytics** first: its `SKILL.md` (the tag, lineage, the schedule, incremental processing) and `references/gold-marts.md` (the requirement questions, Kimball modeling, the standards, the jobs) are what this builder runs on.
 Load **hops-dbt** for the dbt project and its runner, **hops-job** before deploying a job, **hops-fg** before creating a feature group, and **hops-trino-sql** for the queries.
-Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
+Read a skill with `hops skills info <name>`, one skill per command, and a file it names with `hops skills info <name> references/<file>`.
 
 **Where it runs.** The Factory starts Claude Code in the layer's directory, `<slug>/`, so it reads the layer's `AGENTS.md`; every `<slug>/<path>` here is `<path>` in the current directory.
 
 ## Rules
 
+- **The project is the truth.** Before you resume, run `hops factory system plan <slug>`: a table or job it lists as missing was deleted after the phase that recorded it was `done`, so set that phase back to `pending` and resume from it. A phase is never redone for a table or job that exists and is current.
 - **Change requests.** The Factory and `hops factory run <factory> <slug> --change <id>` record a change to the system as a `changes` entry with `status: pending`, holding its `label`, `answers` and `instructions`. Before anything else, carry out each pending one, oldest first: follow its `instructions` with its `answers`, then set its `status: done` and `finished` (UTC), or `status: failed` with a `reason` you also report, and commit `[<slug>] <label>`. Delete a job or a feature group only with `hops factory system delete-assets <slug> --job <name> --table <name>:<version>`, before removing it from `system.yaml`: it refuses what the system reads, what another system names, and anything neither in this `system.yaml` nor carrying the slug.
 - **A cloned factory's additions.** `system.yaml`'s `factory` block names the factory that created the system. When it has `instructions`, a project factory cloned from a built-in one added them: follow them as well as this command, and treat `requirements.extra` as further requirements the user gave.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end, and each mart's `status` (`draft`, `building`, `built`, `failed`) and phases (`status`, `started`, `finished`, UTC from `date -u`) as they run, and `progress.now` to one line naming the mart and what you are doing. The Factory reads it every few seconds.
@@ -80,7 +81,7 @@ Unit-test the models on sample rows (DuckDB) and run the tests.
 
 ### backfill
 
-Deploy the mart's jobs (`hops job deploy <slug>-<mart>-<cadence> marts/<mart>/run_mart.py --env dbt-pipeline --args "--mart <mart> --cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`) and run each once without a window (`hops job run <job> --wait`), dimensions before facts.
+Run the backfill where you run when the silver tables hold under 500 MB in all (`Offline size` in `hops fg info <fg>`): `python marts/<mart>/run_mart.py --mart <mart> --cadence <cadence>` without a window, dimensions before facts (`uv pip install dbt-trino` first when `dbt --version` fails). Then deploy the mart's jobs for the schedule (`hops job deploy <slug>-<mart>-<cadence> marts/<mart>/run_mart.py --env dbt-pipeline --args "--mart <mart> --cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`). Over that size, or when the local run runs out of memory, run each job once instead (`hops job run <job> --wait`), dimensions before facts.
 Check each table: row count, no duplicate key at the grain, no null foreign key, and its parents (`hops fg lineage <name>`).
 Then the mart's verification (references/gold-marts.md, Verification): turn each `example_queries` question into SQL over the mart, run it (`hops trino query`), and compare the answer with the expected one in plain English; run each `reconcile` check against its reference.
 Record each check under the mart's `verification` in `system.yaml` as `{check, sql, expected, result, passed: true | false, at}`; ask the user when an expected answer is ambiguous or a mismatch may be a wrong expectation rather than a wrong mart.
@@ -88,8 +89,9 @@ Fix and rerun until the checks pass; record the counts and the reconciliation in
 
 ### schedule
 
-Schedule each job with catch-up (`hops job schedule <job> "<cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <48 hourly, 14 daily, 4 weekly>`) and, with a receiver configured (`hops alert receiver list`), a failure alert (`hops alert job create <job> --receiver <receiver> --status failed --severity critical`).
+Schedule each job with catch-up (`hops job schedule set <job> "<cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <48 hourly, 14 daily, 4 weekly>`) and, with a receiver configured (`hops alert receiver list`), a failure alert (`hops job alert create <job> --receiver <receiver> --status failed --severity critical`).
 Tag every gold feature group `analytics_table` with `{"layer": "gold", "lifecycle": "<layer.lifecycle>"}`.
+When the cluster has no `analytics_table` tag schema (HTTP 404, error 370000), leave the tables untagged, record it in `decisions`, and say once that an admin installs it (hops-analytics, The analytics_table tag).
 Apply `access` and `share`: share the feature groups with the projects named (`hops files share` of the feature store dataset, or ask how when the requirement names rows or columns rather than projects).
 
 ### verify

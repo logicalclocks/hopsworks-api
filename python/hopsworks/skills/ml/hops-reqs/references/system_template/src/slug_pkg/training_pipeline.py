@@ -6,8 +6,14 @@ Three modes, one registration rule each:
   with evaluate.py, register the next version of `<ident>_research`, always.
 - `accept`: train on train plus validation, score the test part once, register a
   version of `<ident>_model` only when the target holds.
-- `retrain`: the scheduled job; build a new training dataset version with the
-  recorded split policy, run the short checks, then behave as `accept`.
+- `retrain`: the scheduled job; read the recorded split policy over the data now
+  (a new training dataset version for a harness frozen as one), run the short
+  checks, then behave as `accept`.
+
+A run reads its parts in memory with the harness's `end_time` and stops when they
+differ from the rows it froze; outside a job it runs where the agent runs:
+
+    python src/<slug_pkg>/training_pipeline.py --mode research --bundle <local bundle.tar.gz>
 
     hops job deploy <slug>-train training_pipeline.py --env <training.environment> \
         --args "--mode research --bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz \
@@ -202,7 +208,7 @@ def short_checks(parts: dict, system: dict, leakage: list[str]) -> list[str]:
 
 
 def _new_training_dataset(fv: Any, system: dict, evaluate: Any) -> int:
-    """Create a training dataset version with the recorded split policy over the data now."""
+    """A new training dataset version with the recorded split policy, for a harness frozen as one."""
     split = system["training"]["split"]
     if split["kind"] == "temporal":
         bounds = evaluate.split_boundaries(
@@ -237,18 +243,23 @@ def _register(
     x_example: Any,
     metrics: dict,
     description: str,
-    td_version: int,
+    td_version: int | None,
     charts: Any,
     task: str,
     y_eval: Any,
     y_scored: Any,
+    run: dict | None = None,
 ) -> int:
+    import json
     import tempfile
 
     import joblib
 
     model_dir = Path(tempfile.mkdtemp(prefix="model-"))
     joblib.dump(model, model_dir / "model.pkl")
+    if run is not None:
+        # The run's record for `hops model runs` (hops-train, "Runs and sweeps").
+        (model_dir / "run.json").write_text(json.dumps(run), encoding="utf-8")
     (model_dir / "features.txt").write_text("\n".join(x_example.columns), encoding="utf-8")
     # Uploaded with the model, under images/, so the registry shows them with it.
     charts.save_charts(model_dir, task, model, list(x_example.columns), y_eval, y_scored)
@@ -258,6 +269,7 @@ def _register(
         description=description,
         input_example=x_example.head(1),
         feature_view=fv,
+        # None names the training dataset the in-memory read just registered.
         training_dataset_version=td_version,
     )
     registered.save(str(model_dir))
@@ -266,6 +278,7 @@ def _register(
 
 def main(argv: list[str] | None = None) -> int:
     """Run one training job in the given mode and write its result.json."""
+    started = datetime.now(UTC)
     parser = argparse.ArgumentParser(description="Train, score and register one model.")
     parser.add_argument("--mode", choices=MODES, required=True)
     parser.add_argument("--bundle", required=True)
@@ -298,14 +311,19 @@ def main(argv: list[str] | None = None) -> int:
         training["feature_view"]["name"], version=training["feature_view"]["version"]
     )
     leakage = list(training.get("leakage") or [])
-    td_version = training["harness"]["training_dataset_version"]
-    if args.mode == "retrain":
+    td_version = training["harness"].get("training_dataset_version")
+    refrozen = None
+    if args.mode == "retrain" and td_version is not None:
         td_version = _new_training_dataset(fv, system, evaluate)
         training = {
             **training,
             "harness": {**training["harness"], "training_dataset_version": td_version},
         }
-    parts = evaluate.read_parts(fv, training, system["requirements"])
+        parts = evaluate.read_parts(fv, training, system["requirements"])
+    elif args.mode == "retrain":
+        refrozen, parts = evaluate.freeze(fv, training, system["requirements"])
+    else:
+        parts = evaluate.read_parts(fv, training, system["requirements"])
     if args.mode == "retrain":
         problems = short_checks(parts, system, leakage)
         if problems:
@@ -344,6 +362,8 @@ def main(argv: list[str] | None = None) -> int:
         "training_dataset_version": td_version,
         "registered": False,
     }
+    if refrozen:
+        result["harness"] = refrozen
     if should_register(args.mode, met):
         name = model_name(args.mode, system)
         version = _register(
@@ -359,6 +379,24 @@ def main(argv: list[str] | None = None) -> int:
             system["requirements"]["problem"]["task"],
             y_eval,
             y_scored,
+            run={
+                "experiment": name,
+                "run_id": manifest["run_id"],
+                # Runs scored on one frozen split are one sweep.
+                "sweep_id": f"td{td_version}",
+                "candidate": args.description or args.mode,
+                "params": {
+                    "mode": args.mode,
+                    "commit": manifest["commit"],
+                    "features": len(features),
+                },
+                "metric": system["requirements"]["targets"]["metric"],
+                "metric_goal": system["requirements"]["targets"].get("direction", "max"),
+                "status": "finished",
+                "started": started.isoformat(),
+                "finished": datetime.now(UTC).isoformat(),
+                "training_dataset_version": td_version,
+            },
         )
         result.update(registered=True, model={"name": name, "version": version})
     result["finished"] = datetime.now(UTC).isoformat()

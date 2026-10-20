@@ -15,7 +15,7 @@ from hopsworks.cli import output, session
 
 @click.group("superset")
 def superset_group() -> None:
-    """Superset commands (datasets, charts, dashboards)."""
+    """Superset datasets, charts and dashboards."""
 
 
 # region Datasets ----------------------------------------------------------
@@ -23,7 +23,7 @@ def superset_group() -> None:
 
 @superset_group.group("dataset")
 def superset_dataset_group() -> None:
-    """Superset dataset subcommands."""
+    """Superset datasets."""
 
 
 @superset_dataset_group.command("list")
@@ -31,6 +31,7 @@ def superset_dataset_group() -> None:
 def superset_dataset_list(ctx: click.Context) -> None:
     """List every Superset dataset visible to the current user.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -44,6 +45,7 @@ def superset_dataset_list(ctx: click.Context) -> None:
 def superset_dataset_info(ctx: click.Context, dataset_id: int) -> None:
     """Show details for a Superset dataset.
 
+    \f
     Args:
         ctx: Click context.
         dataset_id: Superset dataset ID.
@@ -80,6 +82,7 @@ def superset_dataset_create(
 ) -> None:
     """Create a Superset dataset.
 
+    \f
     Args:
         ctx: Click context.
         database_id: Superset database ID.
@@ -97,8 +100,12 @@ def superset_dataset_create(
             description=description,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Create dataset failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create Superset dataset '{table_name}': {exc}"
+        ) from exc
     output.success("✓ Created Superset dataset (id=%s)", _id(result))
+    if output.JSON_MODE:
+        output.print_json(result)
 
 
 @superset_dataset_group.command("delete")
@@ -108,6 +115,7 @@ def superset_dataset_create(
 def superset_dataset_delete(ctx: click.Context, dataset_id: int, yes: bool) -> None:
     """Delete a Superset dataset.
 
+    \f
     Args:
         ctx: Click context.
         dataset_id: Superset dataset ID.
@@ -118,7 +126,9 @@ def superset_dataset_delete(ctx: click.Context, dataset_id: int, yes: bool) -> N
     try:
         _api(ctx).delete_dataset(dataset_id)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete Superset dataset {dataset_id}: {exc}"
+        ) from exc
     output.success("✓ Deleted Superset dataset %s", dataset_id)
 
 
@@ -127,7 +137,7 @@ def superset_dataset_delete(ctx: click.Context, dataset_id: int, yes: bool) -> N
 
 @superset_group.group("chart")
 def superset_chart_group() -> None:
-    """Superset chart (slice) subcommands."""
+    """Superset charts."""
 
 
 @superset_chart_group.command("list")
@@ -135,6 +145,7 @@ def superset_chart_group() -> None:
 def superset_chart_list(ctx: click.Context) -> None:
     """List every Superset chart visible to the current user.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -148,6 +159,7 @@ def superset_chart_list(ctx: click.Context) -> None:
 def superset_chart_info(ctx: click.Context, chart_id: int) -> None:
     """Show details for a Superset chart.
 
+    \f
     Args:
         ctx: Click context.
         chart_id: Superset chart ID.
@@ -180,6 +192,7 @@ def superset_chart_create(
 ) -> None:
     """Create a Superset chart (slice).
 
+    \f
     Args:
         ctx: Click context.
         slice_name: Slice name.
@@ -197,8 +210,12 @@ def superset_chart_create(
             description=description,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Create chart failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create Superset chart '{slice_name}': {exc}"
+        ) from exc
     output.success("✓ Created Superset chart (id=%s)", _id(result))
+    if output.JSON_MODE:
+        output.print_json(result)
 
 
 @superset_chart_group.command("delete")
@@ -208,6 +225,7 @@ def superset_chart_create(
 def superset_chart_delete(ctx: click.Context, chart_id: int, yes: bool) -> None:
     """Delete a Superset chart.
 
+    \f
     Args:
         ctx: Click context.
         chart_id: Superset chart ID.
@@ -218,7 +236,9 @@ def superset_chart_delete(ctx: click.Context, chart_id: int, yes: bool) -> None:
     try:
         _api(ctx).delete_chart(chart_id)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete Superset chart {chart_id}: {exc}"
+        ) from exc
     output.success("✓ Deleted Superset chart %s", chart_id)
 
 
@@ -227,7 +247,7 @@ def superset_chart_delete(ctx: click.Context, chart_id: int, yes: bool) -> None:
 
 @superset_group.group("dashboard")
 def superset_dashboard_group() -> None:
-    """Superset dashboard subcommands."""
+    """Superset dashboards."""
 
 
 @superset_dashboard_group.command("list")
@@ -235,6 +255,7 @@ def superset_dashboard_group() -> None:
 def superset_dashboard_list(ctx: click.Context) -> None:
     """List every Superset dashboard visible to the current user.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -248,6 +269,7 @@ def superset_dashboard_list(ctx: click.Context) -> None:
 def superset_dashboard_info(ctx: click.Context, dashboard_id: int) -> None:
     """Show details for a Superset dashboard.
 
+    \f
     Args:
         ctx: Click context.
         dashboard_id: Superset dashboard ID.
@@ -265,6 +287,7 @@ def superset_dashboard_create(
 ) -> None:
     """Create a Superset dashboard.
 
+    \f
     Args:
         ctx: Click context.
         title: Dashboard title.
@@ -276,8 +299,12 @@ def superset_dashboard_create(
             dashboard_title=title, published=published, slug=slug
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Create dashboard failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not create Superset dashboard '{title}': {exc}"
+        ) from exc
     output.success("✓ Created Superset dashboard %s (id=%s)", title, _id(result))
+    if output.JSON_MODE:
+        output.print_json(result)
 
 
 @superset_dashboard_group.command("delete")
@@ -287,6 +314,7 @@ def superset_dashboard_create(
 def superset_dashboard_delete(ctx: click.Context, dashboard_id: int, yes: bool) -> None:
     """Delete a Superset dashboard.
 
+    \f
     Args:
         ctx: Click context.
         dashboard_id: Superset dashboard ID.
@@ -297,7 +325,9 @@ def superset_dashboard_delete(ctx: click.Context, dashboard_id: int, yes: bool) 
     try:
         _api(ctx).delete_dashboard(dashboard_id)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete Superset dashboard {dashboard_id}: {exc}"
+        ) from exc
     output.success("✓ Deleted Superset dashboard %s", dashboard_id)
 
 
@@ -305,17 +335,7 @@ def superset_dashboard_delete(ctx: click.Context, dashboard_id: int, yes: bool) 
 
 
 def _api(ctx: click.Context) -> Any:
-    project = session.get_project(ctx)
-    from hopsworks_common import client
-
-    # The SDK reaches Superset over in-cluster service DNS, so from outside it
-    # fails on the first request with a traceback; say so before trying.
-    if client._is_external():
-        raise click.ClickException(
-            "Superset is reachable only inside the cluster: run this in a "
-            "Hopsworks terminal, or as a Hopsworks job from an external client."
-        )
-    return project.get_superset_api()
+    return session.get_project(ctx).get_superset_api()
 
 
 def _items(payload: Any) -> list[dict[str, Any]]:

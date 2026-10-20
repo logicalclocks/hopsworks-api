@@ -15,6 +15,26 @@
 #
 
 import importlib.util
+import sys
+import types
+
+
+def lazy_module(name: str) -> types.ModuleType:
+    """The module `name`, run on its first attribute access instead of now.
+
+    For a heavy optional dependency referenced by modules on the import spine: importing
+    hsfs ran great_expectations' module init (scipy and altair), well over a second, on
+    every `hops` command that touches the feature store.
+    """
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.find_spec(name)
+    loader = importlib.util.LazyLoader(spec.loader)
+    spec.loader = loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
 
 
 # Avro

@@ -136,15 +136,16 @@ def main(argv: list[str] | None = None) -> int:
     fv = fs.get_feature_view(
         training["feature_view"]["name"], version=training["feature_view"]["version"]
     )
-    fv.init_batch_scoring(training_dataset_version=training["harness"]["training_dataset_version"])
-    batch = fv.get_batch_data(start_time=begin, end_time=finish, primary_key=True)
-
-    entity = system["requirements"]["problem"]["entity"]
-    key_columns = [c for c in batch.columns if c == entity or c.endswith("_" + entity)]
     model_spec = training["model"]
     model = project.get_model_registry().get_model(
         model_spec["name"], version=model_spec["version"]
     )
+    # The transformation statistics of the training data this model was fit on.
+    fv.init_batch_scoring(training_dataset_version=model.training_dataset_version)
+    batch = fv.get_batch_data(start_time=begin, end_time=finish, primary_key=True)
+
+    entity = system["requirements"]["problem"]["entity"]
+    key_columns = [c for c in batch.columns if c == entity or c.endswith("_" + entity)]
     predict = evaluate.load_predictor(model.download())
     scores = predict(batch.drop(columns=key_columns))
 

@@ -9,34 +9,44 @@ You build what the `/hops` menu decided. The prompt gives `action`, `name`, `des
 `change`, `source` and `where`. Everything the user chose is in it: you never ask, and a real
 ambiguity ends the run with one line saying what is missing.
 
-Load **hops-app** (`.claude/skills/hops-app/` in the repository, else `~/.claude/skills/hops-app/`):
-its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skeleton/`.
+Load **hops-app** and the parts of it you follow, and **hops-design** for the UI:
+
+```bash
+hops skills info hops-app                                # its "Fix loop"; the path at the top
+hops skills info hops-app references/hops-app-built.md   # what to build and how to deploy it
+hops skills info hops-app references/data.md             # how the app reads Hopsworks
+hops skills info hops-app references/look.md             # the theme and the layout check
+hops skills info hops-design
+```
+
+The skeleton is `references/app_skeleton/` next to the SKILL.md whose path the first command
+prints.
+
+**Already made?** For a create, run `hops app list` first: when it lists `<name>` as `RUNNING`, the piece exists; return that in one line and stop. Your exit check at the end is `hops app info <name>` showing `State` `RUNNING`.
 
 ## Actions
 
 - **create:** write the app from the skeleton: a FastAPI backend with `/health` and a JSON API under
   `/api`, a static ES-module UI with relative URLs and no CDN, and the description as the module
-  docstring of `app.py`. Source at `Users/<user>/apps/<name>/` (`~/apps/<name>/` in a terminal;
-  `./apps/<name>/` from an external client, uploaded with `hops files upload` after
-  `hops files mkdir Users/<user>/apps`), or the git repository when `source: git`. Environment by
-  the reuse rule: `python-agent-pipeline` has FastAPI and uvicorn; otherwise a clone
-  `<name>-app-env` from `app-requirements.txt`. Then:
+  docstring of `app.py`, in `./apps/<name>/` (`~/apps/<name>/` in a terminal), or the git
+  repository when `source: git`. `python-agent-pipeline` has FastAPI and uvicorn; a library it
+  lacks goes into `app-requirements.txt`. Then deploy, the only deploy step:
 
   ```bash
-  hops app create <name> --path /Projects/<project>/Users/<user>/apps/<name>/app.py \
-    --app-kind custom --entrypoint-command "python app.py" --app-port 8080 \
-    --readiness-probe-path /health --environment <env> --start
-  hops app url <name>
+  hops app deploy <name> apps/<name> --check <one api route the description implies>
   ```
 
-  `serving=yes` means the readiness probe on `/health` passed. `hops app info <name>` must show
-  `Routing: root`: in the compatibility prefix mode the proxy forwards
+  It uploads the directory to `Users/<user>/apps/<name>/`, runs the app in a clone
+  `<name>-app-env` when `app-requirements.txt` exists, creates or redeploys the app, and returns
+  once the new execution serves `/health`, the URL on the last line. A non-zero exit names the
+  next step. `hops app info <name>` must show `Routing: root`: in the compatibility prefix mode the proxy forwards
   `/hopsworks-api/pythonapp/<project>/<name>/...` unchanged, so an app written for `/` answers 404
   to every browser request while `/health` and a port-forward still pass. In a Hopsworks terminal,
   smoke-test the pod through `kubectl port-forward`: the page and one call of each API route the
   description implies (the proxy URL needs a browser session).
 - **edit:** change the source as `change` says, update the docstring so the next edit starts from
-  what the app now is, upload or push, `hops app redeploy <name>`, and rerun the smoke tests.
+  what the app now is, `hops app deploy <name> apps/<name>` (push, for git), and rerun the smoke
+  tests.
 - **delete:** `hops app delete <name> --yes`, remove the source directory, and the environment
   clone when one was created for this app.
 
@@ -51,20 +61,25 @@ deployment.
 ## Look
 
 The UI is what the user sees of the whole system, so it has to look finished. Start from the
-skeleton's `static/app.css` and keep its tokens and components (the header band, cards, stat
-tiles, tables with score bars, badges, loading and empty states); add to it rather than
+skeleton's `static/app.css` and keep its tokens and components (the header band, the stats row,
+charts, tables with score bars, status dots, loading and empty states); add to it rather than
 restyling. Every view shows a loading state, an empty state and an error in words, numbers are
 formatted (percentages, thousands separators, dates), and the layout works from a phone width up.
 Nothing moves when the user interacts: a list or panel that reloads keeps its current content,
 dimmed with `aria-busy`, until the new content replaces it (placeholders only on the first load),
 and the page reserves the scrollbar gutter, so a filter or a selection never makes the layout jump.
-No CDN and no build step: fonts are the system stack, charts are inline SVG or CSS.
+No CDN and no build step: fonts are the system stack, and every chart is Chart.js with the
+skeleton's `static/chart-theme.js`, never hand-drawn SVG. Follow **hops-design**: a white page,
+sections grouped by spacing and hairlines with no box per section, stats that fit their cell.
+Look at the page at about 600px and 900px wide once it first shows all its sections, and again
+before each deploy (a screenshot tool when one is available); fix what spills, clips or leaves
+a gap. That pass also checks the JavaScript: it loads the page and reports script errors, so
+there is no separate syntax check (a Hopsable sandbox has no Node.js).
 
 ## Fix loop
 
-On a failed start, a stop in serving, or a failed smoke test: `hops app logs <name>`, name the cause
-in one line, change the source, upload, then `hops app redeploy <name>` for a running app or
-`hops app start <name>` for one that failed, and smoke-test again. A missing library is a pin in
+On a failed deploy, a stop in serving, or a failed smoke test: `hops app logs <name>`, name the
+cause in one line, change the source, `hops app deploy <name> apps/<name>`, and smoke-test again. A missing library is a pin in
 the clone, never a workaround in the code; running out of memory raises `--memory` once. At most
 five attempts, then stop with the last lines of the logs and what was tried.
 

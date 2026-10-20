@@ -34,12 +34,12 @@ produce the Section-1 profile (dtypes, semantic types, null %, unique counts,
 numeric stats, datetime ranges, missing-data summary) as text on stdout.
 ```bash
 # Polars (in-memory): args <fv_name> [version] [start_time] [end_time]
-python3 ~/.claude/skills/hops-eda/scripts/fv-eda.py <fv_name> 1 > eda.md
+python3 <hops-eda>/scripts/fv-eda.py <fv_name> 1 > eda.md
 
 # PySpark (large data): same args, builds a Spark session
-python3 ~/.claude/skills/hops-eda/scripts/fv-eda-pyspark.py <fv_name> 1 > eda.md
+python3 <hops-eda>/scripts/fv-eda-pyspark.py <fv_name> 1 > eda.md
 ```
-`start_time`/`end_time` require an `event_time` on the underlying FG.
+`start_time`/`end_time` require an `event_time` on the underlying FG. `<hops-eda>` is the directory of the path `hops skills info hops-eda` prints.
 
 ## Ask the user (only when state is ambiguous)
 - Prediction problem type (classification / regression / forecasting).
@@ -69,3 +69,4 @@ template's `training_pipeline.short_checks` implements them.
 ## Next Steps
 - Select features and build the view: **hops-fv**. Then train: **hops-train**.
 - Inspect raw data first: **hops-data-discovery**, **hops-trino-sql**.
+- Charts of the profile (distributions, correlations, label balance): **hops-design**.

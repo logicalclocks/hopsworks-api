@@ -459,7 +459,7 @@ def test_setup_failure_prints_one_line_naming_the_host(tmp_home):
 
     assert result.exit_code != 0
     assert (
-        "Failed to connect to https://c.app.hopsworks.ai: connection refused"
+        "Could not connect to https://c.app.hopsworks.ai: connection refused"
         in result.output
     )
 

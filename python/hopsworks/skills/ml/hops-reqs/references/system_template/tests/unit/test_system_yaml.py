@@ -34,6 +34,7 @@ SYSTEM_STATUS = {"draft", "building", "verified", "deployed"}
 TASKS_BUILT = {"classification", "regression", "forecasting"}
 TASKS_CAPTURED = {"ranking", "anomaly", "rag", "agentic", "detection"}
 SYSTEM_TYPES = {"batch", "realtime", "agent"}
+CONSUMERS = {"ui", "api", "both"}
 SOURCE_KINDS = {"feature_group", "datasource", "file", "url", "synthetic"}
 SOURCE_STATUS = {
     "present",
@@ -57,13 +58,18 @@ SECRET_VALUES = re.compile(
 )
 
 
+def _one_of(value: object, allowed: set) -> bool:
+    # A list or mapping where a word belongs is a wrong value, not a crash of the check.
+    return isinstance(value, str) and value in allowed
+
+
 def _is_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _check_status(problems: list[str], where: str, block: dict, allowed: set) -> None:
     status = block.get("status")
-    if status not in allowed:
+    if not _one_of(status, allowed):
         problems.append(f"{where}.status is {status!r}; expected one of {sorted(allowed)}")
 
 
@@ -99,13 +105,13 @@ def _check_requirements(problems: list[str], req: dict) -> None:
     draft = req.get("status") == "pending"
     problem = req.get("problem") or {}
     task = problem.get("task")
-    if not (draft and task is None) and task not in TASKS_BUILT | TASKS_CAPTURED:
+    if not (draft and task is None) and not _one_of(task, TASKS_BUILT | TASKS_CAPTURED):
         problems.append(f"requirements.problem.task {task!r} is not a known task")
     if problem.get("generalises_to") not in (None, "new_periods", "new_entities"):
         problems.append("requirements.problem.generalises_to must be new_periods or new_entities")
 
     system_type = req.get("system_type")
-    if not (draft and system_type is None) and system_type not in SYSTEM_TYPES:
+    if not (draft and system_type is None) and not _one_of(system_type, SYSTEM_TYPES):
         problems.append(
             f"requirements.system_type {system_type!r} is not one of {sorted(SYSTEM_TYPES)}"
         )
@@ -113,7 +119,7 @@ def _check_requirements(problems: list[str], req: dict) -> None:
     if sla or not draft:
         if len(sla) != 1:
             problems.append(f"requirements.sla must hold exactly one block, found {sorted(sla)}")
-        elif system_type in SYSTEM_TYPES and system_type not in sla:
+        elif _one_of(system_type, SYSTEM_TYPES) and system_type not in sla:
             problems.append(
                 f"requirements.sla holds {sorted(sla)} but system_type is {system_type}"
             )
@@ -122,11 +128,11 @@ def _check_requirements(problems: list[str], req: dict) -> None:
         where = f"requirements.data_sources[{i}]"
         if not source.get("name"):
             problems.append(f"{where} has no name")
-        if source.get("kind") not in SOURCE_KINDS:
+        if not _one_of(source.get("kind"), SOURCE_KINDS):
             problems.append(
                 f"{where}.kind {source.get('kind')!r} is not one route of {sorted(SOURCE_KINDS)}"
             )
-        if source.get("status") not in SOURCE_STATUS:
+        if not _one_of(source.get("status"), SOURCE_STATUS):
             problems.append(
                 f"{where}.status {source.get('status')!r} is not one of {sorted(SOURCE_STATUS)}"
             )
@@ -137,6 +143,10 @@ def _check_requirements(problems: list[str], req: dict) -> None:
             "events",
         ):
             problems.append(f"{where} is synthetic and needs shape batch or events")
+
+    consumers = req.get("consumers")
+    if consumers is not None and not _one_of(consumers, CONSUMERS):
+        problems.append(f"requirements.consumers {consumers!r} is not one of {sorted(CONSUMERS)}")
 
     targets = req.get("targets") or {}
     if targets:
@@ -150,7 +160,7 @@ def _check_requirements(problems: list[str], req: dict) -> None:
     operations = req.get("operations") or {}
     for name in ("features", "training", "inference"):
         run = (operations.get(name) or {}).get("run")
-        if run is not None and run not in RUN_MODES:
+        if run is not None and not _one_of(run, RUN_MODES):
             problems.append(f"requirements.operations.{name}.run must be scheduled or continuous")
 
     for i, feature in enumerate(req.get("features") or []):
@@ -172,9 +182,9 @@ def _check_training(problems: list[str], training: dict) -> None:
         if not isinstance(row.get("n"), int) or not isinstance(row.get("attempt"), int):
             problems.append(f"{where} needs integer n and attempt")
         state = row.get("state")
-        if state not in ROW_STATES:
+        if not _one_of(state, ROW_STATES):
             problems.append(f"{where}.state {state!r} is not one of {sorted(ROW_STATES)}")
-        if state == "finished" and row.get("status") not in RUN_VERDICTS:
+        if state == "finished" and not _one_of(row.get("status"), RUN_VERDICTS):
             problems.append(f"{where} finished without a keep, discard or crash verdict")
         if state == "finished" and row.get("status") in ("keep", "discard"):
             model = row.get("model") or {}
@@ -338,7 +348,7 @@ def validate(doc: object) -> list[str]:
             problems.append(f"system.{key} is missing")
     if (system.get("target") or {}).get("stage", "development") != "development":
         problems.append("system.target.stage must be development; v1 builds nothing else")
-    if system.get("status") not in SYSTEM_STATUS:
+    if not _one_of(system.get("status"), SYSTEM_STATUS):
         problems.append(
             f"system.status {system.get('status')!r} is not one of {sorted(SYSTEM_STATUS)}"
         )
@@ -364,7 +374,7 @@ def validate(doc: object) -> list[str]:
     for i, pipeline in enumerate((doc.get("features") or {}).get("pipelines") or []):
         where = f"features.pipelines[{i}]"
         _check_status(problems, where, pipeline, PHASE_STATUS["features"])
-        if pipeline.get("run") not in RUN_MODES:
+        if not _one_of(pipeline.get("run"), RUN_MODES):
             problems.append(f"{where}.run must be scheduled or continuous")
         last = (pipeline.get("tests") or {}).get("last_run")
         if last:
@@ -389,7 +399,7 @@ def validate(doc: object) -> list[str]:
         missing = [k for k in ("phase", "by", "what", "why") if not decision.get(k)]
         if missing:
             problems.append(f"{where} is missing {', '.join(missing)}")
-        if decision.get("by") not in DECIDERS:
+        if not _one_of(decision.get("by"), DECIDERS):
             problems.append(f"{where}.by must be user or claude")
 
     _check_names(problems, doc)

@@ -292,7 +292,7 @@ def run_batch(system: dict, params: dict, run_id: str) -> dict:
     predict = evaluate.load_predictor(model.download())
 
     started = time.monotonic()
-    fv.init_batch_scoring(training_dataset_version=training["harness"]["training_dataset_version"])
+    fv.init_batch_scoring(training_dataset_version=model.training_dataset_version)
     batch = fv.get_batch_data(start_time=params["start"], end_time=params["end"])
     scores = predict(batch)
     import pandas as pd

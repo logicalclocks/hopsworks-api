@@ -1262,6 +1262,36 @@ class TestFeatureView:
         td = get_training_data.call_args.kwargs["training_dataset_obj"]
         assert [(t.name, t.value) for t in td._tags] == [("team", "fraud")]
 
+    @pytest.mark.parametrize(
+        ("method", "sizes"),
+        [
+            ("train_test_split", {"test_size": 0.2}),
+            ("train_validation_test_split", {"validation_size": 0.2, "test_size": 0.2}),
+        ],
+    )
+    def test_in_memory_split_passes_its_seed(self, mocker, method, sizes):
+        # The engine's random split shuffles with the training dataset's seed.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+        get_training_data = mocker.patch.object(
+            fv._feature_view_engine,
+            "_get_training_data",
+            side_effect=lambda self, read_options, training_dataset_obj, **kwargs: (
+                training_dataset_obj,
+                "df",
+            ),
+        )
+        mocker.patch.object(fv, "update_last_accessed_training_dataset")
+
+        getattr(fv, method)(seed=42, **sizes)
+        assert get_training_data.call_args.kwargs["training_dataset_obj"].seed == 42
+
+        getattr(fv, method)(**sizes)
+        assert get_training_data.call_args.kwargs["training_dataset_obj"].seed is None
+
     def test_train_validation_test_split_passes_normalized_tags(self, mocker):
         # Arrange
         from hopsworks_common.tag import Tag

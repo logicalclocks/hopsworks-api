@@ -15,11 +15,15 @@
 #
 from __future__ import annotations
 
-from typing import TypeVar
+import sys
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import hopsworks_common.connection
 from hsfs.client import exceptions
-from hsfs.engine import spark, spark_no_metastore
+
+
+if TYPE_CHECKING:
+    from hsfs.engine import spark, spark_no_metastore
 
 
 _engine = None
@@ -35,13 +39,19 @@ def _init(engine_type: str) -> None:
         else:
             _stop()
     if not _engine:
+        # The Spark engines load on first use: importing them pulls pandas and the
+        # feature view and training dataset modules into every Python client.
         if engine_type == "spark":
+            from hsfs.engine import spark
+
             _engine = spark.Engine()
         elif engine_type == "hive":
             raise ValueError(
                 "Hive engine is not supported in hopsworks client version >= 4.0."
             )
         elif engine_type == "spark-no-metastore" or engine_type == "spark-delta":
+            from hsfs.engine import spark_no_metastore
+
             _engine = spark_no_metastore.Engine()
         elif engine_type in python_types:
             try:
@@ -72,6 +82,12 @@ def _set_instance(
     global _engine
     hopsworks_common.connection._hsfs_engine_type = engine_type
     _engine = engine
+
+
+def _is_spark(instance: Any) -> bool:
+    """Whether `instance` is a Spark engine; a Python client never loads the Spark engine to say no."""
+    spark_module = sys.modules.get("hsfs.engine.spark")
+    return spark_module is not None and isinstance(instance, spark_module.Engine)
 
 
 def _get_type() -> str:

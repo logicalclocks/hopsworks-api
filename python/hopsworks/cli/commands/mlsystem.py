@@ -64,7 +64,7 @@ def code_location(path: Path, project: str | None = None) -> str:
             )
             if not name:
                 raise click.ClickException(
-                    "cannot tell which project this HopsFS mount belongs to"
+                    "Cannot tell which project this HopsFS mount belongs to"
                 )
             return f"/Projects/{name}/{relative.as_posix()}"
     origin = subprocess.run(
@@ -81,7 +81,11 @@ def code_location(path: Path, project: str | None = None) -> str:
 
 
 def register(
-    ctx: click.Context, path: Path, name: str | None = None, factory: str | None = None
+    ctx: click.Context,
+    path: Path,
+    name: str | None = None,
+    factory: str | None = None,
+    location: str | None = None,
 ) -> dict:
     """Register the system at `path`, built by `factory`, with the project's registry; returns the stored entry.
 
@@ -93,6 +97,8 @@ def register(
         path: The system's directory.
         name: Its display name.
         factory: The factory that built it.
+        location: The HopsFS folder holding a copy of its code, for a directory that is
+            neither on the HopsFS mount nor in a Git repository with an origin.
 
     Returns:
         The registry entry.
@@ -106,8 +112,12 @@ def register(
         factory is not None and recorded.get("name") not in (None, factory)
     ):
         recorded = {}
+    if location is not None and not location.startswith(f"/Projects/{project.name}/"):
+        raise click.UsageError(
+            f"--location must be a folder of this project: /Projects/{project.name}/..."
+        )
     return ml_system_api._register(
-        code_location(path, getattr(project, "name", None)),
+        location or code_location(path, getattr(project, "name", None)),
         name,
         factory or recorded.get("name"),
         factory_version=recorded.get("version"),
@@ -124,15 +134,21 @@ def _when(value):
 
 @click.group("system")
 def system_group() -> None:
-    """The systems the project's factories built: list, register, status, remove and delete them."""
+    """Systems built by the project's factories.
+
+    The systems the project's factories built: list, register, status, remove and delete them.
+    """
 
 
 @system_group.command("list")
 @click.option("--factory", help="Only the systems this factory built.")
 @click.pass_context
 def system_list(ctx: click.Context, factory: str | None) -> None:
-    """List the project's systems, newest first, with the factory that built each and whether you can open its code.
+    """List the project's systems, newest first.
 
+    List the project's systems, newest first, with the factory that built each and whether you can open its code.
+
+    \f
     Args:
         ctx: Click context.
         factory: Only this factory's systems.
@@ -180,19 +196,34 @@ def system_list(ctx: click.Context, factory: str | None) -> None:
     "--factory",
     help="The factory that built it (hops factory list); a new entry defaults to ml-batch.",
 )
+@click.option(
+    "--location",
+    help=(
+        "HopsFS folder with a copy of the code (/Projects/<project>/...), for a directory "
+        "outside the HopsFS mount with no Git origin."
+    ),
+)
 @click.pass_context
 def system_register(
-    ctx: click.Context, path: Path, name: str | None, factory: str | None
+    ctx: click.Context,
+    path: Path,
+    name: str | None,
+    factory: str | None,
+    location: str | None,
 ) -> None:
-    """Register the system in PATH (default: the current directory), or refresh its entry.
+    """Register a system directory, or refresh its entry.
 
+    Register the system in PATH (default: the current directory), or refresh its entry.
+
+    \f
     Args:
         ctx: Click context.
         path: The system's directory, the one holding its system.yaml.
         name: Display name.
         factory: The factory that built it.
+        location: HopsFS folder with a copy of the code.
     """
-    entry = register(ctx, path, name, factory)
+    entry = register(ctx, path, name, factory, location)
     output.success(f"Registered {entry.get('name')} at {entry.get('pathToCode')}")
 
 
@@ -214,7 +245,7 @@ def _find(system: str) -> dict:
         )
     ]
     if not matches:
-        raise click.ClickException(f"no system {system!r} in this project")
+        raise click.ClickException(f"No system {system!r} in this project")
     if len(matches) > 1:
         raise click.ClickException(
             f"{len(matches)} systems are named {system!r}; use its id"
@@ -255,8 +286,11 @@ def _other_docs(entry: dict) -> dict[str, dict]:
 @click.argument("system")
 @click.pass_context
 def system_remove(ctx: click.Context, system: str) -> None:
-    """Remove SYSTEM (an id, name or slug) from the registry; its code is left in place.
+    """Remove a system from the registry; code stays.
 
+    Remove SYSTEM (an id, name or slug) from the registry; its code is left in place.
+
+    \f
     Args:
         ctx: Click context.
         system: The id, name or slug of the system.
@@ -299,7 +333,9 @@ def system_delete(
     path: Path | None,
     yes: bool,
 ) -> None:
-    """Delete SYSTEM (an id, name or slug): its registry entry, and with --assets what it created.
+    """Delete a system and, with --assets, what it built.
+
+    Delete SYSTEM (an id, name or slug): its registry entry, and with --assets what it created.
 
     An analytics layer's assets are its jobs and tables, never the tables it
     reads, and its directory. Any other system's assets are read from its
@@ -310,6 +346,7 @@ def system_delete(
     the system is still listed and the same command can be run again. Without
     --assets only the registry entry goes and the code is kept.
 
+    \f
     Args:
         ctx: Click context.
         system: The id, name or slug of the system.
@@ -342,12 +379,12 @@ def system_delete(
             output.info(f"{directory} is gone, so its assets were deleted before it")
         elif spec is None or not spec.is_file():
             raise click.ClickException(
-                f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
+                f"Cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
             )
         elif "layer" in (doc := yaml.safe_load(spec.read_text(encoding="utf-8")) or {}):
             if repo:
                 raise click.ClickException(
-                    "an analytics layer shares its repository with the other layers; delete it without --repo"
+                    "An analytics layer shares its repository with the other layers; delete it without --repo"
                 )
             steps = [
                 (
@@ -412,7 +449,7 @@ def system_delete(
         )
     if failed:
         raise click.ClickException(
-            f"stopped at {failed}; {entry.get('name')} is still registered, so run the same delete again once that is fixed"
+            f"Stopped at {failed}; {entry.get('name')} is still registered, so run the same delete again once that is fixed"
         )
     kept = (
         ""
@@ -437,7 +474,8 @@ def system_delete(
     help="The system's directory, when its code is not in this project's HopsFS.",
 )
 @click.option(
-    "--out",
+    "--output",
+    "out",
     type=click.Path(dir_okay=False, path_type=Path),
     help="Where to write the HTML report; default: status/report.html in the system directory.",
 )
@@ -451,7 +489,7 @@ def system_status(
     out: Path | None,
     no_summary: bool,
 ) -> None:
-    """Report the health of SYSTEM (an id, name or slug) as an HTML page.
+    """Report the health of a system as an HTML page.
 
     Reads the jobs, deployments and apps the system's system.yaml records: each
     job's runs in the last HOURS with the log tail of every failure, and each
@@ -461,6 +499,7 @@ def system_status(
     reads its jobs and tables instead (freshness, rejected rows, file layout).
     The Factory Status button runs this and shows the page.
 
+    \f
     Args:
         ctx: Click context.
         system: The id, name or slug of the system.
@@ -479,7 +518,7 @@ def system_status(
     spec = directory / "system.yaml" if directory else None
     if spec is None or not spec.is_file():
         raise click.ClickException(
-            f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
+            f"Cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
         )
     doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
     if "layer" in doc:
@@ -501,6 +540,82 @@ def system_status(
     )
 
 
+@system_group.command("plan")
+@click.argument("slug_or_dir")
+@click.option("--goal", help="Plan only what this phase needs, and the phase itself.")
+@click.option(
+    "--sync",
+    is_flag=True,
+    help="Write the computed state into system.yaml: stale and system.progress (needs the build lease when one is held).",
+)
+@click.pass_context
+def system_plan(
+    ctx: click.Context, slug_or_dir: str, goal: str | None, sync: bool
+) -> None:
+    """Show each phase's state and the next phase to work on.
+
+    Prints what SLUG_OR_DIR's project already has of each phase, and the phase to work on next.
+    A phase is done when its status says so and every asset its block in
+    system.yaml records still exists in the project; the first phase that names
+    an asset makes it, a later one needs it. Each phase is done, build (what it
+    makes is missing, or it has not finished), blocked (what it needs is
+    missing), todo (a decision or check), failed, skipped or unknown. Exits 0;
+    `next` is empty when nothing is left.
+
+    \f
+    Args:
+        ctx: Click context.
+        slug_or_dir: The system's slug or directory.
+        goal: The phase to plan for.
+        sync: Write the computed state back.
+    """
+    from hopsworks.cli import plan, system_doc
+
+    directory = _require_path(slug_or_dir)
+    doc, _sha = system_doc.read(directory)
+    checker = plan.Project(session.get_project(ctx))
+    try:
+        result = plan.compute(doc, checker.exists, goal)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--goal") from exc
+    result["errors"] = {str(r): e for r, e in checker.errors.items()}
+    if sync:
+        plan.sync(directory, result)
+    if output.JSON_MODE:
+        output.print_json(result)
+        return
+    output.print_table(
+        ["PHASE", "STATE", "DETAIL"],
+        [[p["phase"], p["state"], _plan_detail(p)] for p in result["phases"]],
+    )
+    for gone in result["outputs_missing"]:
+        output.warn(f"missing: {gone}")
+    for ref, error in result["errors"].items():
+        output.warn(f"could not check {ref}: {error}")
+    click.echo(f"next: {result['next'] or 'nothing'}")
+
+
+def _plan_detail(p: dict) -> str:
+    if p["state"] == "blocked":
+        return f"needs {', '.join(p['missing'])}" + (
+            f" (from {', '.join(p['by'])})" if p.get("by") else ""
+        )
+    if p["state"] == "build":
+        if not p["missing"]:
+            return "not finished" + (
+                f"; has {', '.join(p['makes'])}" if p["makes"] else ""
+            )
+        reused = len(p["makes"]) - len(p["missing"])
+        return f"make {', '.join(p['missing'])}" + (
+            f"; reuse {reused}" if reused else ""
+        )
+    if p["state"] == "unknown":
+        return f"could not check {', '.join(p['unknown'])}"
+    if p["state"] in ("done", "failed") and p["makes"]:
+        return f"has {', '.join(p['makes'])}"
+    return f"status {p['status'] or 'none'}"
+
+
 def _system_path(slug_or_dir: str) -> Path | None:
     """The directory of a system: SLUG_OR_DIR itself, ./SLUG, the current directory when it is SLUG, or an analytics layer's in its analytics repository."""
     from hopsworks.cli.commands import analytics
@@ -516,15 +631,18 @@ def _system_path(slug_or_dir: str) -> Path | None:
 def _require_path(slug_or_dir: str) -> Path:
     found = _system_path(slug_or_dir)
     if found is None:
-        raise click.ClickException(f"no system {slug_or_dir!r} under {Path.cwd()}")
+        raise click.ClickException(f"No system {slug_or_dir!r} under {Path.cwd()}")
     return found
 
 
 @system_group.command("dir")
 @click.argument("slug")
 def system_dir(slug: str) -> None:
-    """Print the directory of the system SLUG under the current directory: ./SLUG, or an analytics layer's in its analytics repository.
+    """Print the local directory of a system.
 
+    Print the directory of the system SLUG under the current directory: ./SLUG, or an analytics layer's in its analytics repository.
+
+    \f
     Args:
         slug: The system.
     """
@@ -547,10 +665,13 @@ def system_dir(slug: str) -> None:
     help="The edited document; it is removed afterwards.",
 )
 def system_write_doc(slug_or_dir: str, expected: str, source: Path) -> None:
-    """Replace the system.yaml of SLUG_OR_DIR with the edited document in --from.
+    """Replace the system.yaml of a system.
+
+    Replace the system.yaml of SLUG_OR_DIR with the edited document in --from.
 
     Exits 3 when system.yaml changed since the edit read it, and 2 when the edit is not a valid system.yaml.
 
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
         expected: The sha256 of the system.yaml the edit started from.
@@ -573,14 +694,17 @@ def system_write_doc(slug_or_dir: str, expected: str, source: Path) -> None:
 
 @system_group.group("lease")
 def lease_group() -> None:
-    """The build lease of a system: which invocation is building it, until when."""
+    """Build lease of a system: who builds it, until when."""
 
 
-@lease_group.command("show")
+@lease_group.command("info")
 @click.argument("slug_or_dir")
 def lease_show(slug_or_dir: str) -> None:
-    """Print the build lease of SLUG_OR_DIR, if any; exits 1 when there is none.
+    """Show the build lease of a system.
 
+    Print the build lease of SLUG_OR_DIR, if any; exits 1 when there is none.
+
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
     """
@@ -588,7 +712,7 @@ def lease_show(slug_or_dir: str) -> None:
 
     held = system_doc.lease(_require_path(slug_or_dir))
     if held is None:
-        raise click.ClickException("no build lease")
+        raise click.ClickException("No build lease")
     held = {**held, "expired": system_doc.expired(held)}
     if output.JSON_MODE:
         output.print_json(held)
@@ -622,8 +746,11 @@ _TOKEN = click.option(
 @_TOKEN
 @_TTL
 def lease_acquire(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
-    """Take the build lease of SLUG_OR_DIR and print its token; exits 4 while another invocation holds it.
+    """Take the build lease of a system and print its token.
 
+    Take the build lease of SLUG_OR_DIR and print its token; exits 4 while another invocation holds it.
+
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
         token: A token of a lease already held, to adopt.
@@ -643,8 +770,11 @@ def lease_acquire(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None
 @_TOKEN
 @_TTL
 def lease_renew(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
-    """Extend the build lease TOKEN holds; exits 4 when the lease is no longer TOKEN's.
+    """Extend a build lease.
 
+    Extend the build lease TOKEN holds; exits 4 when the lease is no longer TOKEN's.
+
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
         token: The lease's token.
@@ -662,8 +792,11 @@ def lease_renew(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
 @click.argument("slug_or_dir")
 @_TOKEN
 def lease_release(slug_or_dir: str, token: str | None) -> None:
-    """Give up the build lease TOKEN holds; a lease held with another token is left alone.
+    """Give up a build lease.
 
+    Give up the build lease TOKEN holds; a lease held with another token is left alone.
+
+    \f
     Args:
         slug_or_dir: The system's slug or directory.
         token: The lease's token.
@@ -698,7 +831,9 @@ def system_delete_assets(
     tables: tuple[str, ...],
     path: Path | None,
 ) -> None:
-    """Delete some of what SYSTEM (an id, name or slug) built: the jobs, then the feature groups.
+    """Delete some of the jobs and tables a system built.
+
+    Delete some of what SYSTEM (an id, name or slug) built: the jobs, then the feature groups.
 
     A build runs this when a change removes part of a system; the system and
     its registry entry stay. Every feature group is checked before anything
@@ -706,6 +841,7 @@ def system_delete_assets(
     layer (any analytics table, for an ML system), stops the delete with
     nothing gone. What is already gone is skipped, so it can be run again.
 
+    \f
     Args:
         ctx: Click context.
         system: The id, name or slug of the system.
@@ -726,7 +862,7 @@ def system_delete_assets(
     spec = directory / "system.yaml" if directory else None
     if spec is None or not spec.is_file():
         raise click.ClickException(
-            f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
+            f"Cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
         )
     doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
     requested = [

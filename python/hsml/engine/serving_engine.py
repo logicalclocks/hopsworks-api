@@ -26,7 +26,7 @@ import time
 import uuid
 import warnings
 
-from hopsworks_common import client
+from hopsworks_common import client, events
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.client.istio.utils.infer_type import InferInput
 from hopsworks_common.constants import (
@@ -236,6 +236,14 @@ class ServingEngine:
             )
         return None
 
+    @events.tracking(
+        "deployment",
+        "update",
+        long=True,
+        key=lambda self, deployment_instance, *a, **k: {
+            "name": deployment_instance.name
+        },
+    )
     def _start(self, deployment_instance, await_status: int) -> bool:
         started = time.monotonic()
         (done, state) = self._check_status(
@@ -297,6 +305,14 @@ class ServingEngine:
             else:
                 print("Start making predictions by using `.predict()`")
 
+    @events.tracking(
+        "deployment",
+        "update",
+        long=True,
+        key=lambda self, deployment_instance, *a, **k: {
+            "name": deployment_instance.name
+        },
+    )
     def _stop(self, deployment_instance, await_status: int) -> bool:
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_STOPPED
@@ -681,6 +697,13 @@ class ServingEngine:
             for p in archive_paths
         ]
 
+    @events.tracking(
+        "deployment",
+        "create",
+        key=lambda self, deployment_instance, *a, **k: {
+            "name": deployment_instance.name
+        },
+    )
     def _create(self, deployment_instance):
         try:
             self._put_and_check(deployment_instance)
@@ -818,6 +841,13 @@ class ServingEngine:
 
         raise ValueError("Unknown deployment status: " + state.status)
 
+    @events.tracking(
+        "deployment",
+        "update",
+        key=lambda self, deployment_instance, *a, **k: {
+            "name": deployment_instance.name
+        },
+    )
     def _save(self, deployment_instance, await_update: int, new_version: bool = False):
         # Local paths on script_file / config_file are auto-uploaded under
         # /Projects/<p>/Deployments/<name>/resources/ and rewritten to
@@ -1024,6 +1054,13 @@ class ServingEngine:
             )
             setattr(obj, field, resolved)
 
+    @events.tracking(
+        "deployment",
+        "delete",
+        key=lambda self, deployment_instance, *a, **k: {
+            "name": deployment_instance.name
+        },
+    )
     def _delete(self, deployment_instance, force=False):
         state = deployment_instance.get_state()
         if state is None:

@@ -124,6 +124,15 @@ def test_unauthorized_points_at_the_cached_key(tmp_home):
     assert "hops setup --force" in result.output
 
 
+def test_missing_tag_schema_says_nothing_was_tagged():
+    body = {"errorCode": 370000, "usrMsg": "schema: analytics_table is not defined"}
+
+    text = _explain_rest_error(_rest_error(404, body, reason="Not Found"))
+
+    assert "(HTTP 404, error 370000): schema: analytics_table is not defined. " in text
+    assert "only a Hopsworks admin can define one; nothing was tagged" in text
+
+
 def test_non_json_error_body_falls_back_to_the_http_reason():
     text = _explain_rest_error(
         _rest_error(502, "<html>bad gateway</html>", reason="Bad Gateway")

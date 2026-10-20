@@ -12,16 +12,15 @@ what the dashboard is: the title line, the feature groups and the charts.
     python dashboards/customers-overview.py --delete   # remove what this program created
     python dashboards/customers-overview.py --list     # every dashboard in the project, as JSON
 
-Superset is reachable only inside the cluster, so the program runs in a
-Hopsworks terminal, or from an external client as a Hopsworks job:
-
-    hops job deploy customers-overview-dashboard dashboards/customers-overview.py \
-        --env python-feature-pipeline --upload-dir Users/<user>/dashboards --overwrite --run --wait
-    hops job logs customers-overview-dashboard --stdout
+It runs where you run, a Hopsworks terminal or an external client (a Hopsable
+sandbox, a laptop): the SDK reaches Superset through the Hopsworks proxy.
 
 Every step is idempotent, so a re-run updates the charts and the layout instead
-of duplicating them. `--delete` removes the dashboard, its charts, and the
-datasets it created that no other chart still uses, and nothing else.
+of duplicating them. Each dashboard has its own datasets, named after SLUG, so two
+dashboards over one feature group never share or delete each other's. After a build,
+every chart's query runs once; a chart that errors or returns no rows fails the run.
+`--delete` removes the dashboard, its charts, and its datasets that no other chart
+still uses, and nothing else.
 """
 
 from __future__ import annotations
@@ -29,8 +28,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from urllib.parse import urlparse
 
+SLUG = "customers-overview"
 TITLE = "Customers Overview"
 FEATURE_GROUPS = [{"name": "customers", "version": 1, "format": "delta"}]
 
@@ -109,18 +110,23 @@ def find_trino_db_id(api) -> int:
     raise RuntimeError("No Trino database connection found in Superset")
 
 
-def dataset_name(fg: dict) -> str:
-    """The Superset dataset name for a feature group version."""
+def table_name(fg: dict) -> str:
+    """The Trino table of a feature group version."""
     return f"{fg['name']}_{fg['version']}"
 
 
+def dataset_name(fg: dict) -> str:
+    """This dashboard's Superset dataset over a feature group version."""
+    return f"{SLUG}__{table_name(fg)}"
+
+
 def ensure_dataset(api, database_id: int, schema: str, fg: dict) -> int:
-    """Reuse the dataset for this feature group version, or create it as a virtual dataset."""
+    """Reuse this dashboard's dataset for the feature group version, or create it as a virtual dataset."""
     name = dataset_name(fg)
     for ds in list_all(api, "dataset"):
         if ds.get("table_name") == name and ds.get("schema") == schema:
             return ds["id"]
-    sql = f"SELECT * FROM {fg.get('format', 'delta')}.{schema}.{name}"
+    sql = f"SELECT * FROM {fg.get('format', 'delta')}.{schema}.{table_name(fg)}"
     return api.create_dataset(database_id=database_id, table_name=name, schema=schema, sql=sql)[
         "id"
     ]
@@ -237,6 +243,55 @@ def ensure_dashboard(api, existing: int | None, chart_ids: list[int]) -> int:
     return dashboard_id
 
 
+def chart_query(params: dict) -> dict:
+    """The query a chart's params ask Superset for, in the shape of /api/v1/chart/data."""
+    metrics, columns, filters, where = [], [], [], []
+
+    def add(target: list, value) -> None:
+        for item in value if isinstance(value, list) else [value]:
+            if item and item not in target:
+                target.append(item)
+
+    for key in ("metric", "metrics", "size"):
+        add(metrics, params.get(key))
+    for key in ("x_axis", "y_axis"):
+        value = params.get(key)
+        add(metrics if isinstance(value, dict) else columns, value)
+    for key in ("column", "groupby", "groupbyRows", "groupbyColumns", "entity", "all_columns"):
+        add(columns, params.get(key))
+    for f in params.get("adhoc_filters") or []:
+        if f.get("expressionType") == "SQL":
+            where.append(f"({f['sqlExpression']})")
+        else:
+            filters.append({"col": f["subject"], "op": f["operator"], "val": f.get("comparator")})
+    query = {"metrics": metrics, "columns": columns, "filters": filters, "row_limit": 1}
+    if where:
+        query["extras"] = {"where": " AND ".join(where)}
+    return query
+
+
+def check_charts(api, chart_ids: list[int], datasets: dict[str, int]) -> list[str]:
+    """Run every chart's query once; return a line per chart that errors or returns no rows."""
+    problems = []
+    for chart, chart_id in zip(CHARTS, chart_ids, strict=True):
+        payload = {
+            "datasource": {"id": datasets[chart["dataset"]], "type": "table"},
+            "queries": [chart_query(chart["params"])],
+            "result_format": "json",
+            "result_type": "full",
+        }
+        try:
+            result = api._request("POST", "/api/v1/chart/data", json_data=payload)["result"][0]
+        except Exception as exc:  # noqa: BLE001 - every failing chart is reported, then the run fails
+            problems.append(f"{chart['slice_name']} (chart {chart_id}): {exc}")
+            continue
+        if result.get("error"):
+            problems.append(f"{chart['slice_name']} (chart {chart_id}): {result['error']}")
+        elif not result.get("rowcount") and not result.get("data"):
+            problems.append(f"{chart['slice_name']} (chart {chart_id}): the query returns no rows")
+    return problems
+
+
 def build(api, project_name: str) -> int:
     """Create or update the datasets, charts and dashboard; return the dashboard id."""
     schema = f"{project_name.lower()}_featurestore"
@@ -247,7 +302,13 @@ def build(api, project_name: str) -> int:
     for chart_id in owned_charts(api, existing):
         api.delete_chart(chart_id)
     chart_ids = [create_chart(api, chart, datasets[chart["dataset"]]) for chart in CHARTS]
-    return ensure_dashboard(api, existing, chart_ids)
+    dashboard_id = ensure_dashboard(api, existing, chart_ids)
+    started = time.monotonic()
+    problems = check_charts(api, chart_ids, datasets)
+    print(f"[time] chart check {time.monotonic() - started:.1f}s", flush=True)
+    if problems:
+        raise SystemExit("charts that do not render:\n  " + "\n  ".join(problems))
+    return dashboard_id
 
 
 def delete(api, project_name: str) -> dict[str, list]:
@@ -295,7 +356,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.delete:
         print(json.dumps(delete(api, project.name)))
         return 0
+    started = time.monotonic()
     dashboard_id = build(api, project.name)
+    print(f"[time] build {time.monotonic() - started:.1f}s", flush=True)
     host = urlparse(project.get_url())
     print(
         f"{host.scheme}://{host.netloc}/hopsworks-api/superset/superset/dashboard/{dashboard_id}/"

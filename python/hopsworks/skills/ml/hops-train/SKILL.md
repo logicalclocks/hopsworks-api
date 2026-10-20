@@ -29,10 +29,15 @@ specific algorithm or threshold blindly.
 
 **CLI vs SDK for this task:** training itself is SDK-only — write a `train.py`
 that uses the `hopsworks` Python SDK (the `hops` CLI has no `train`). The CLI
-does the surrounding steps: `hops fv list` / `hops td compute <fv> <v>` before,
+does the surrounding steps: `hops fv list` / `hops td compute <fv> --fv-version <v>` before,
 and running the script as a job after:
 `hops job deploy train train.py --env pandas-training-pipeline --run --wait --overwrite`
 (NAME then SCRIPT are positional; `--overwrite` replaces the uploaded script on re-run).
+
+**The environment by framework:** scikit-learn, XGBoost and CatBoost train in
+`pandas-training-pipeline`; PyTorch in `torch-training-pipeline`; TensorFlow in
+`tensorflow-training-pipeline`; Ray in `ray-training-pipeline`. A library none of them has goes
+into a clone (**hops-environments**), never `pip install` inside the job.
 
 ## 1. Load training data from the feature view
 
@@ -51,31 +56,39 @@ fv = fs.get_feature_view(name="my_fv", version=1)  # no FV yet? create one first
 # Two split methods. They are NOT interchangeable; pick by data size and
 # whether you need a reproducible, stored dataset.
 
-# A. In-memory (default for small/static data). Returns the four frames
-#    directly: no Spark, no stored version. Train right away.
-X_train, X_test, y_train, y_test = fv.train_test_split(test_size=0.2)
+# A. In-memory (default for small/static data). Returns the six frames
+#    directly, no Spark and no files, and registers an in-memory training
+#    dataset version (metadata only): a model registered with feature_view=fv
+#    in the same process records it, and scoring reads it.
+X_train, X_val, X_test, y_train, y_val, y_test = fv.train_validation_test_split(
+    validation_size=0.15, test_size=0.15, statistics_config=False
+)
+td_version = fv.get_last_accessed_training_dataset()
 
-# B. Materialized + versioned (large data, or a reproducible pinned dataset).
-#    create_train_test_split returns (version, Job) and runs an ASYNC PySpark
-#    job. The version pins the feature-group commits and split seed, so every
+# B. Materialized + versioned, only when the user asks for a stored dataset:
+#    each create_* call starts a PySpark job (minutes). An ML system and the
+#    builders never call it. create_train_test_split returns (version, Job) and
+#    runs the job asynchronously. The version pins the feature-group commits and split seed, so every
 #    model trained on it sees identical rows. Block on the job, then read back
 #    BY VERSION (the dataset 404s until the job finishes).
-# td_version, td_job = fv.create_train_test_split(
-#     test_size=0.2, write_options={"wait_for_job": True}
+# td_version, td_job = fv.create_train_validation_test_split(
+#     validation_size=0.15, test_size=0.15, write_options={"wait_for_job": True}
 # )
-# X_train, X_test, y_train, y_test = fv.get_train_test_split(training_dataset_version=td_version)
+# X_train, X_val, X_test, y_train, y_val, y_test = fv.get_train_validation_test_split(
+#     training_dataset_version=td_version
+# )
 ```
 
-> `train_test_split()` returns `(X_train, X_test, y_train, y_test)`, not a version. `create_train_test_split()` returns `(version, Job)`. Unpacking one as the other (`td_version, _ = fv.train_test_split(...)`) raises `ValueError: too many values to unpack`, and passing the `(version, Job)` tuple to `get_train_test_split` URL-encodes it into the path and 404s. For a static dataset, prefer the in-memory `train_test_split()`.
+> The in-memory splits return frames, not a version: `train_validation_test_split()` six, `train_test_split()` four (`X_train, X_test, y_train, y_test`); `fv.get_last_accessed_training_dataset()` gives the version they registered. `create_*_split()` returns `(version, Job)`. Unpacking one as the other (`td_version, _ = fv.train_test_split(...)`) raises `ValueError: too many values to unpack`, and passing the `(version, Job)` tuple to `get_train_test_split` URL-encodes it into the path and 404s. Each in-memory call registers a new version, so split once per program. For a static dataset, prefer the in-memory split.
 
 Hints:
 - `get_train_test_split` only works on a dataset created BY a split call. A plain
   dataset from `hops td compute <fv>` is read with
   `fv.get_training_data(training_dataset_version=N)` — calling `get_train_test_split`
   on it raises `Use feature_view.get_training_data instead`.
-- `hops td compute <fv> <fv_version>` takes the FEATURE-VIEW version as a required
-  positional; the training-dataset version it creates auto-increments — read it
-  back from `hops td list <fv>` rather than hardcoding `1`.
+- `hops td compute <fv> --fv-version <n>` names the feature view version; the
+  training dataset version it creates auto-increments, so read it back from
+  `hops td list <fv>` rather than hardcoding `1`.
 - `get_train_test_split` returns `(X_train, X_test, y_train, y_test)`; `y` is
   empty when the FV declares no label.
 - Model-dependent transformations (MDTs) declared on the FV are applied
@@ -115,7 +128,10 @@ model.fit(X_train, y_train)
 
 Compute the metrics that fit the task (R²/MAE for regression, precision/recall/
 AUC for classification, …) and save plots as PNGs alongside the model so they
-land in the registry.
+land in the registry, in the **hops-design** look: the accent for the model's
+series, greys for references and baselines, no top or right spine, a light grid,
+axis labels with units. An ML system's `charts.py` (**hops-reqs** template) draws
+them that way.
 
 Evaluation (metrics on the test set) is distinct from **model validation**:
 checking the model on slices of the data at risk of bias before it ships. Use
@@ -137,7 +153,7 @@ import os, joblib
 
 model_dir = "my_model_dir"
 os.makedirs(model_dir, exist_ok=True)
-joblib.dump(model, f"{model_dir}/model.pkl")
+joblib.dump(model, f"{model_dir}/model.joblib")   # at the root of the dir passed to save(), never a subdirectory
 # Save anything the predictor needs at serving time next to the model, e.g.
 # the input feature order: json.dump(list(X_train.columns), open(f"{model_dir}/feature_names.json", "w"))
 
@@ -164,7 +180,7 @@ hw_model = mr.python.create_model(
     description="What this model predicts",
     input_example=X_train.head(1),
     feature_view=fv,                       # provenance link FV -> model
-    training_dataset_version=td_version,    # the split materialized in step 1
+    training_dataset_version=td_version,    # the version the split in step 1 registered
 )
 hw_model.save(model_dir)                    # uploads the whole dir (model + plots)
 ```
@@ -189,6 +205,70 @@ Hints:
 - Metrics, plots, and validation results saved with the model form its **model
   card**: the handoff doc the I side reads to deploy. Aim to capture intended
   use, performance, and bias-test outcomes, not just raw metrics.
+
+## Runs and sweeps
+
+A sweep (several candidates, or one candidate's settings) is one experiment: the model name. Each
+run is a version of that model; there is no other store. `hops model runs <name>` lists them, best
+first, with `--sweep <id>` and `--json`.
+
+- **One split per sweep.** Read the feature view once and take the version that read registered,
+  `td_version = fv.get_last_accessed_training_dataset()`, right after it. Every run fits on those
+  frames and passes `training_dataset_version=td_version` with `feature_view=fv`. Without the
+  argument a model records the view's last read, so runs registered after several reads all name
+  the last one.
+- **The sweep is one tracked change**, so a watcher (the Hopsable Experiments preview) opens when
+  it starts and sees it end:
+
+  ```python
+  from hopsworks_common import events
+
+  sweep_id = f"{name}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}"
+  with events.tracked("experiment", "create", long=True, name=name) as sweep:
+      sweep.detail.update(sweep_id=sweep_id, candidates=len(candidates), metric=metric, metric_goal=goal)
+      ...  # the one split, then every fit and registration
+  ```
+- **Each run registers** its metrics (`val_<metric>`, `test_<metric>`), a one-line `description=`
+  (candidate and its main params), and a `run.json` written into the model directory before
+  `save()`. `params` is flat, one scalar per key (they become table columns); times are ISO 8601
+  in UTC:
+
+  ```python
+  run = {
+      "experiment": name, "run_id": f"{sweep_id}-{i}", "sweep_id": sweep_id,
+      "candidate": candidate, "params": params, "metric": "val_macro_f1", "metric_goal": "max",
+      "status": "finished", "started": started.isoformat(), "finished": finished.isoformat(),
+      "seed": SEED, "training_dataset_version": td_version,
+  }
+  (Path(model_dir) / "run.json").write_text(json.dumps(run))
+  ```
+
+  A failed fit registers nothing; the final table names it with its error.
+- **Classification metrics** also carry the majority-class baseline and the scores that see
+  through imbalance, on validation and test:
+
+  ```python
+  from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+
+  majority = y_train.mode()[0]
+  for part, X_, y_ in (("val", X_val, y_val), ("test", X_test, y_test)):
+      pred = model.predict(X_)
+      metrics[f"{part}_accuracy"] = accuracy_score(y_, pred)
+      metrics[f"{part}_macro_f1"] = f1_score(y_, pred, average="macro")
+      metrics[f"{part}_balanced_accuracy"] = balanced_accuracy_score(y_, pred)
+      metrics[f"{part}_baseline_accuracy"] = float((y_ == majority).mean())
+  ```
+
+  A multiclass label whose largest class holds over 40% of the rows selects on `val_macro_f1`;
+  otherwise on the metric asked for.
+- **Done** when `hops td list <view>` shows one new training dataset version for the sweep,
+  `hops model runs <name> --sweep <id>` shows one row per finished candidate, each with that
+  version under TD.
+- **Report** the `hops model runs` table. When the best run's accuracy is within 2 points of the
+  baseline, say so plainly, naming the class: "No better than always guessing `delivered`: these
+  features carry no signal for `status`." Then the next step: class weights, another target, or
+  more or real data. Name the runs as `hops model runs <name>` and the model's page in Hopsworks;
+  never point to an "Experiments" view the reader may not have.
 
 ## 5. Run it as a job
 
@@ -223,7 +303,7 @@ Three parts: train, validation (selection) and test (acceptance), the last two
   part; record the label cutoff.
 - Transformation statistics are fitted on the train part only, which is how
   Hopsworks computes them for a training dataset with splits.
-- The template's `evaluate.split_boundaries` computes the time boundaries for
+- Inside an ML system, the hops-reqs template's `evaluate.split_boundaries` computes the time boundaries for
   `fv.create_train_validation_test_split(train_start=..., ..., test_end=...)`;
   `evaluate.grouped_part` assigns an entity to a part by a stable hash.
 - Selection reads validation only; the test part is scored once per candidate

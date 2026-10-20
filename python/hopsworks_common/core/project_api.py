@@ -20,6 +20,7 @@ import json
 
 from hopsworks_apigen import also_available_as
 from hopsworks_common import client, project
+from hopsworks_common.client import session_cache
 from hopsworks_common.client.exceptions import RestAPIError
 
 
@@ -111,7 +112,12 @@ class ProjectApi:
             "getProjectInfo",
             name,
         ]
-        project_json = _client._send_request("GET", path_params)
+        if _client._is_external():
+            _client._bind_session(name)
+        project_json = session_cache.get(f"project_info:{name}")
+        if project_json is None:
+            project_json = _client._send_request("GET", path_params)
+            session_cache.put(f"project_info:{name}", project_json)
         return project.Project.from_response_json(project_json)
 
     def _create_project(

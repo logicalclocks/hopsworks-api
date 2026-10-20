@@ -7,7 +7,6 @@ follows the same memoized-session pattern as the rest of the CLI.
 
 from __future__ import annotations
 
-import contextlib
 import os
 import shutil
 import tempfile
@@ -15,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks.cli.commands.alert import job_alert_group
+from hopsworks.cli.commands.files import makedirs
 
 
 if TYPE_CHECKING:
@@ -61,7 +62,20 @@ def _ts_label(value: Any) -> str:
 
 @click.group("job")
 def job_group() -> None:
-    """Job commands."""
+    """Jobs: Python, Spark and Docker programs the cluster runs."""
+
+
+@job_group.group("schedule")
+def job_schedule_group() -> None:
+    """The cron schedule of a job."""
+
+
+@job_group.group("tag")
+def job_tag_group() -> None:
+    """Tags (name/value pairs) on a job."""
+
+
+job_group.add_command(job_alert_group)
 
 
 @job_group.command("list")
@@ -69,6 +83,7 @@ def job_group() -> None:
 def job_list(ctx: click.Context) -> None:
     """List every job defined in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -98,6 +113,7 @@ def job_list(ctx: click.Context) -> None:
 def job_info(ctx: click.Context, name: str) -> None:
     """Show the configuration of a single job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -106,7 +122,7 @@ def job_info(ctx: click.Context, name: str) -> None:
     try:
         job = project.get_job_api().get_job(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Job '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find job '{name}': {exc}") from exc
     if job is None:
         raise click.ClickException(f"Job '{name}' not found.")
 
@@ -172,7 +188,11 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
     "environment",
     help="Python environment name (sets environmentName; otherwise the type default).",
 )
-@click.option("--args", "app_args", help="Arguments passed to the program.")
+@click.option(
+    "--args",
+    "app_args",
+    help='Arguments passed to the program, split as shell words: quote a value that holds spaces ("2026-10-16 00:00:00").',
+)
 @click.option("--description", help="Free-form description of the job.")
 @click.pass_context
 def job_create(
@@ -184,12 +204,13 @@ def job_create(
     app_args: str | None,
     description: str | None,
 ) -> None:
-    """Create a new job from a ``type`` + ``--app-path``.
+    """Create a job from a program on HopsFS.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
-        job_type: One of ``PYTHON``/``PYSPARK``/``SPARK``/``DOCKER``.
+        job_type: One of `PYTHON`/`PYSPARK`/`SPARK`/`DOCKER`.
         app_path: HopsFS path to the script or JAR.
         environment: Python environment the job runs in; the type's default when omitted.
         app_args: Optional argument string passed to the job.
@@ -231,14 +252,21 @@ def job_create(
     "environment",
     help="Python environment name (sets environmentName; otherwise the type default).",
 )
-@click.option("--args", "app_args", help="Arguments passed to the program.")
+@click.option(
+    "--args",
+    "app_args",
+    help='Arguments passed to the program, split as shell words: quote a value that holds spaces ("2026-10-16 00:00:00").',
+)
 @click.option(
     "--cron",
     help="Schedule (Quartz cron or @hourly/@daily/@weekly/@monthly shorthand).",
 )
 @click.option("--run", "do_run", is_flag=True, help="Run once after deploying.")
 @click.option(
-    "--wait", is_flag=True, help="With --run, block until the execution finishes."
+    "--wait/--no-wait",
+    default=False,
+    show_default=True,
+    help="With --run, wait until the execution finishes.",
 )
 @click.option(
     "--upload-dir",
@@ -265,12 +293,12 @@ def job_deploy(
     upload_dir: str | None,
     overwrite: bool,
 ) -> None:
-    """Deploy a job end to end: upload, set environment, schedule, run.
+    """Upload, configure, schedule and run a job in one step.
 
-    One-shot for what ``create`` + ``schedule`` + ``run`` do separately, plus
-    the environment selection that ``create`` cannot set. ``SCRIPT`` is either
-    a local file (uploaded to HopsFS) or an existing HopsFS path.
+    One-shot for what `create` + `schedule` + `run` do separately.
+    `SCRIPT` is either a local file (uploaded to HopsFS) or an existing HopsFS path.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name (created or updated).
@@ -280,7 +308,7 @@ def job_deploy(
         app_args: Argument string passed to the job.
         cron: Schedule; Quartz or a shorthand. No schedule if omitted.
         do_run: Run once after deploying.
-        wait: With ``do_run``, block until the execution terminates.
+        wait: With `do_run`, block until the execution terminates.
         upload_dir: HopsFS directory for a local script upload.
         overwrite: Overwrite an existing uploaded script.
     """
@@ -292,9 +320,8 @@ def job_deploy(
     if os.path.isfile(script):
         dataset = project.get_dataset_api()
         dest_dir = upload_dir or f"Resources/jobs/{name}"
-        with contextlib.suppress(Exception):  # directory may already exist
-            dataset.mkdir(dest_dir)
         try:
+            makedirs(dataset, dest_dir)
             uploaded = dataset.upload(
                 local_path=script, upload_path=dest_dir, overwrite=overwrite
             )
@@ -327,19 +354,106 @@ def job_deploy(
         try:
             job.schedule(cron_expression=cron_expr)
         except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Schedule failed: {exc}") from exc
+            raise click.ClickException(
+                f"Could not schedule job '{name}': {exc}"
+            ) from exc
         output.success("✓ Scheduled %s (%s)", name, cron_expr)
 
     # 5. Run.
     if do_run:
-        try:
-            execution = job.run(args=app_args, await_termination=wait)
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(f"Run failed: {exc}") from exc
+        _run(job, name, wait, "run", args=app_args)
+
+
+LOG_TAIL = 50
+
+
+def _run(
+    job: Any, name: str, wait: bool, verb: str, window: str = "", **run_args: Any
+) -> Any:
+    """Run `job` once, report it, and on a failed wait print its log tails and exit non-zero."""
+    try:
+        execution = job.run(await_termination=False, **run_args)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not {verb} job '{name}': {exc}") from exc
+    if wait and execution is not None:
+        execution = _await(job, name, execution, None, window)
+    _report_run(name, execution, wait, window)
+    return execution
+
+
+def _await(
+    job: Any, name: str, execution: Any, timeout: int | None, window: str = ""
+) -> Any:
+    """The execution once it ends; a failure prints its log tails and exits 1."""
+    from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
+        JobExecutionException,
+    )
+
+    try:
+        execution.await_termination(timeout)
+    except JobExecutionException:
+        _failed(job, name, _refreshed(job, execution), window)
+    final = _refreshed(job, execution)
+    if final.success is False:
+        _failed(job, name, final, window)
+    if final.success is None:
+        raise click.ClickException(
+            f"{name}{window}: execution #{final.id} still {final.state} after {timeout}s."
+        )
+    return final
+
+
+def _failed(job: Any, name: str, execution: Any, window: str = "") -> None:
+    """Print the last lines of a failed execution's stdout and stderr, then exit 1."""
+    ident = getattr(execution, "id", "?")
+    status = getattr(execution, "final_status", None) or getattr(
+        execution, "state", "?"
+    )
+    tmp = tempfile.mkdtemp(prefix="hops-joblogs-")
+    try:
+        stdout_path, stderr_path = execution.download_logs(path=tmp)
+        for stream, path in (("stdout", stdout_path), ("stderr", stderr_path)):
+            text = _read_log(path, LOG_TAIL)
+            if text.strip():
+                click.echo(f"=== {stream}, last {LOG_TAIL} lines ===", err=True)
+                click.echo(text.rstrip("\n"), err=True)
+    except Exception as exc:  # noqa: BLE001 - the failure is reported either way
+        click.echo(f"(logs not readable: {exc})", err=True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    raise click.ClickException(
+        f"{name}{window}: execution #{ident} {status}. "
+        f"Full logs: hops job logs {name} --execution {ident} --stdout"
+    )
+
+
+def _refreshed(job: Any, execution: Any) -> Any:
+    """The execution as the backend has it now."""
+    ident = getattr(execution, "id", None)
+    return next(
+        (e for e in _executions(job) if getattr(e, "id", None) == ident), execution
+    )
+
+
+def _report_run(name: str, execution: Any, waited: bool, window: str = "") -> None:
+    """Say whether the execution finished (after a wait) or only started."""
+    if execution is None:
+        output.warn(
+            "A materialization of %s is already running; nothing started.", name
+        )
+        return
+    ident = getattr(execution, "id", "?")
+    if waited:
+        final = getattr(execution, "final_status", None) or getattr(
+            execution, "state", "?"
+        )
+        output.success("✓ %s finished%s: execution #%s %s", name, window, ident, final)
+    else:
         output.success(
-            "✓ Started %s (execution #%s, state=%s)",
+            "✓ %s started%s: execution #%s, %s",
             name,
-            getattr(execution, "id", "?"),
+            window,
+            ident,
             getattr(execution, "state", "?"),
         )
 
@@ -349,8 +463,17 @@ _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
 
 @job_group.command("run")
 @click.argument("name")
-@click.option("--args", "app_args", help="Argument string passed to this execution.")
-@click.option("--wait", is_flag=True, help="Block until the execution terminates.")
+@click.option(
+    "--args",
+    "app_args",
+    help='Argument string passed to this execution, split as shell words: quote a value that holds spaces ("2026-10-16 00:00:00").',
+)
+@click.option(
+    "--wait/--no-wait",
+    default=False,
+    show_default=True,
+    help="Wait until the execution finishes.",
+)
 @click.option(
     "--start-time",
     type=click.DateTime(formats=_DT_FORMATS),
@@ -372,39 +495,27 @@ def job_run(
     start_time: datetime | None,
     end_time: datetime | None,
 ) -> None:
-    """Start a new one-off execution of ``name``.
+    """Run a job once now.
 
-    ``--start-time`` / ``--end-time`` are passed straight through to the
-    SDK and surface inside the job as ``HOPS_START_TIME`` /
-    ``HOPS_END_TIME``. Useful when you want to nudge a single run to
+    `--start-time` / `--end-time` are passed straight through to the
+    SDK and surface inside the job as `HOPS_START_TIME` /
+    `HOPS_END_TIME`. Useful when you want to nudge a single run to
     consume a specific data window without creating a schedule.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
         app_args: Argument string passed to this execution.
         wait: Block until the execution terminates.
-        start_time: ISO timestamp for ``HOPS_START_TIME``.
-        end_time: ISO timestamp for ``HOPS_END_TIME``.
+        start_time: ISO timestamp for `HOPS_START_TIME`.
+        end_time: ISO timestamp for `HOPS_END_TIME`.
     """
     if end_time is not None and start_time is None:
         raise click.UsageError("--end-time requires --start-time.")
     job = _get_job(ctx, name)
-    try:
-        execution = job.run(
-            args=app_args,
-            await_termination=wait,
-            start_time=start_time,
-            end_time=end_time,
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Run failed: {exc}") from exc
-
-    output.success(
-        "✓ Started job %s (execution #%s, state=%s)",
-        name,
-        getattr(execution, "id", "?"),
-        getattr(execution, "state", "?"),
+    execution = _run(
+        job, name, wait, "run", args=app_args, start_time=start_time, end_time=end_time
     )
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(execution))
@@ -424,7 +535,11 @@ def job_run(
     required=True,
     help="ISO timestamp for the end of the backfill window (HOPS_END_TIME).",
 )
-@click.option("--args", "app_args", help="Argument string passed to this execution.")
+@click.option(
+    "--args",
+    "app_args",
+    help='Argument string passed to this execution, split as shell words: quote a value that holds spaces ("2026-10-16 00:00:00").',
+)
 @click.option(
     "--wait/--no-wait",
     "wait",
@@ -441,13 +556,16 @@ def job_backfill(
     app_args: str | None,
     wait: bool,
 ) -> None:
-    """Run ``name`` once over an explicit [start_time, end_time] window.
+    """Run a job once over a start/end time window.
 
-    Same SDK call as ``run`` (which sets ``HOPS_START_TIME`` /
-    ``HOPS_END_TIME`` env vars on the execution); the difference is that
+    Run `name` once over an explicit [start_time, end_time] window.
+
+    Same SDK call as `run` (which sets `HOPS_START_TIME` /
+    `HOPS_END_TIME` env vars on the execution); the difference is that
     both timestamps are required, signalling intent to backfill a fixed
     historical interval rather than a normal one-off run.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -459,33 +577,72 @@ def job_backfill(
     if end_time <= start_time:
         raise click.UsageError("--end-time must be strictly after --start-time.")
     job = _get_job(ctx, name)
-    try:
-        execution = job.run(
-            args=app_args,
-            await_termination=wait,
-            start_time=start_time,
-            end_time=end_time,
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Backfill failed: {exc}") from exc
-
-    output.success(
-        "✓ Backfill of %s started (execution #%s, window %s → %s)",
+    execution = _run(
+        job,
         name,
-        getattr(execution, "id", "?"),
-        start_time.isoformat(),
-        end_time.isoformat(),
+        wait,
+        "backfill",
+        f" for {start_time.isoformat()} to {end_time.isoformat()}",
+        args=app_args,
+        start_time=start_time,
+        end_time=end_time,
     )
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(execution))
+
+
+@job_group.command("wait")
+@click.argument("name")
+@click.option(
+    "--execution",
+    "execution_id",
+    type=int,
+    help="Specific execution ID; defaults to the most recent.",
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=None,
+    help="Seconds to wait before giving up; unbounded by default.",
+)
+@click.pass_context
+def job_wait(
+    ctx: click.Context, name: str, execution_id: int | None, timeout: int | None
+) -> None:
+    """Wait for an execution to end.
+
+    A failed execution prints the last lines of its logs and exits 1.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: Job name.
+        execution_id: Specific execution; latest if omitted.
+        timeout: Seconds to wait; unbounded when omitted.
+    """
+    job = _get_job(ctx, name)
+    executions = _executions(job)
+    if not executions:
+        raise click.ClickException(f"No executions for job '{name}'.")
+    target = executions[0]
+    if execution_id is not None:
+        matches = [e for e in executions if getattr(e, "id", None) == execution_id]
+        if not matches:
+            raise click.ClickException(f"Execution #{execution_id} not found.")
+        target = matches[0]
+    final = _await(job, name, target, timeout)
+    _report_run(name, final, True)
+    if output.JSON_MODE:
+        output.print_json(_execution_to_dict(final))
 
 
 @job_group.command("stop")
 @click.argument("name")
 @click.pass_context
 def job_stop(ctx: click.Context, name: str) -> None:
-    """Stop the most recent execution of ``name``.
+    """Stop the latest execution of a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -497,7 +654,7 @@ def job_stop(ctx: click.Context, name: str) -> None:
     try:
         latest.stop()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Stop failed: {exc}") from exc
+        raise click.ClickException(f"Could not stop job '{name}': {exc}") from exc
     output.success("✓ Stopped execution %s of %s", getattr(latest, "id", "?"), name)
 
 
@@ -548,18 +705,19 @@ def job_logs(
 ) -> None:
     """Read stdout/stderr logs for a job execution.
 
-    By default this downloads ``stdout.log`` / ``stderr.log`` into a
-    ``logs-job-<name>-exec-<id>_*`` directory in the working directory, or in
-    ``--dir``, and prints the paths. Pass ``--stdout`` to print the content to the terminal
+    By default this downloads `stdout.log` / `stderr.log` into a
+    `logs-job-<name>-exec-<id>_*` directory in the working directory, or in
+    `--dir`, and prints the paths. Pass `--stdout` to print the content to the terminal
     instead, leaving no files behind.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
         execution_id: Specific execution; latest if omitted.
         to_stdout: Print content to the terminal instead of downloading files.
         log_dir: Directory to download into instead of the working directory.
-        tail: With ``--stdout``, keep only the last N lines of each stream.
+        tail: With `--stdout`, keep only the last N lines of each stream.
     """
     executions = _executions(_get_job(ctx, name))
     if not executions:
@@ -609,8 +767,11 @@ def job_logs(
 @click.argument("name")
 @click.pass_context
 def job_history(ctx: click.Context, name: str) -> None:
-    """List past executions of a job (newest first), with how long each ran.
+    """List past executions of a job, newest first.
 
+    List past executions of a job (newest first), with how long each ran.
+
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -654,7 +815,7 @@ def _expand_cron_alias(cron: str) -> str:
     return _CRON_ALIASES.get(cron.strip().lower(), cron)
 
 
-@job_group.command("schedule")
+@job_schedule_group.command("set")
 @click.argument("name")
 @click.argument("cron")
 @click.option(
@@ -724,16 +885,17 @@ def job_schedule(
     max_active_runs: int,
     max_catchup_runs: int | None,
 ) -> None:
-    """Attach (or update) a Quartz cron schedule to ``name``.
+    """Set the cron schedule of a job.
 
     The cron interval is the firing cadence. The data window the job
     consumes per fire is the previous fire to this one; current servers
-    refuse a negative ``--start-offset-seconds`` and ignore
-    ``--end-offset-seconds``, so a program that needs another window derives
-    it from ``HOPS_END_TIME``. ``--catchup``
-    replays missed intervals after an outage; ``--max-catchup-runs``
+    refuse a negative `--start-offset-seconds` and ignore
+    `--end-offset-seconds`, so a program that needs another window derives
+    it from `HOPS_END_TIME`. `--catchup`
+    replays missed intervals after an outage; `--max-catchup-runs`
     caps how many missed intervals are replayed.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -741,8 +903,8 @@ def job_schedule(
             @midnight, @weekly, @monthly, @yearly).
         start_time: ISO timestamp for the first trigger.
         end_time: ISO timestamp for the last trigger.
-        start_offset_seconds: Per-fire offset for ``HOPS_START_TIME``.
-        end_offset_seconds: Per-fire offset for ``HOPS_END_TIME``.
+        start_offset_seconds: Per-fire offset for `HOPS_START_TIME`.
+        end_offset_seconds: Per-fire offset for `HOPS_END_TIME`.
         catchup: Replay missed fires on recovery.
         max_active_runs: Upper bound on concurrent executions.
         max_catchup_runs: Upper bound on missed intervals to replay during catchup.
@@ -761,18 +923,19 @@ def job_schedule(
             max_catchup_runs=max_catchup_runs,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Schedule failed: {exc}") from exc
+        raise click.ClickException(f"Could not schedule job '{name}': {exc}") from exc
     output.success("✓ Scheduled %s (%s)", name, cron)
     if output.JSON_MODE:
         output.print_json(_schedule_to_dict(schedule))
 
 
-@job_group.command("schedule-info")
+@job_schedule_group.command("info")
 @click.argument("name")
 @click.pass_context
 def job_schedule_info(ctx: click.Context, name: str) -> None:
     """Print the currently attached schedule, if any.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -794,12 +957,13 @@ def job_schedule_info(ctx: click.Context, name: str) -> None:
     output.print_table(["FIELD", "VALUE"], rows)
 
 
-@job_group.command("unschedule")
+@job_schedule_group.command("delete")
 @click.argument("name")
 @click.pass_context
 def job_unschedule(ctx: click.Context, name: str) -> None:
     """Remove the schedule from a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -808,7 +972,9 @@ def job_unschedule(ctx: click.Context, name: str) -> None:
     try:
         job.unschedule()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Unschedule failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not delete the schedule of job '{name}': {exc}"
+        ) from exc
     output.success("✓ Removed schedule from %s", name)
 
 
@@ -817,8 +983,9 @@ def job_unschedule(ctx: click.Context, name: str) -> None:
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
 @click.pass_context
 def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Delete a job definition (does not affect past execution logs).
+    """Delete a job definition; execution logs are kept.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -830,16 +997,17 @@ def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
     try:
         job.delete()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete job '{name}': {exc}") from exc
     output.success("✓ Deleted job %s", name)
 
 
-@job_group.command("tags")
+@job_tag_group.command("list")
 @click.argument("name")
 @click.pass_context
 def job_tags(ctx: click.Context, name: str) -> None:
     """Show all tags attached to a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -852,7 +1020,7 @@ def job_tags(ctx: click.Context, name: str) -> None:
     output.render_tags(tags)
 
 
-@job_group.command("add-tag")
+@job_tag_group.command("add")
 @click.argument("name")
 @click.argument("tag")
 @click.option("--value", required=True, help="Tag value, JSON or a plain string.")
@@ -860,6 +1028,7 @@ def job_tags(ctx: click.Context, name: str) -> None:
 def job_add_tag(ctx: click.Context, name: str, tag: str, value: str) -> None:
     """Attach a tag (name/value pair) to a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -874,13 +1043,14 @@ def job_add_tag(ctx: click.Context, name: str, tag: str, value: str) -> None:
     output.success("✓ Added tag '%s' to %s", tag, name)
 
 
-@job_group.command("remove-tag")
+@job_tag_group.command("remove")
 @click.argument("name")
 @click.argument("tag")
 @click.pass_context
 def job_remove_tag(ctx: click.Context, name: str, tag: str) -> None:
     """Remove a tag from a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -894,13 +1064,14 @@ def job_remove_tag(ctx: click.Context, name: str, tag: str) -> None:
     output.success("✓ Removed tag '%s' from %s", tag, name)
 
 
-@job_group.command("describe")
+@job_group.command("update")
 @click.argument("name")
 @click.option("--description", required=True, help="New description of the job.")
 @click.pass_context
-def job_describe(ctx: click.Context, name: str, description: str) -> None:
-    """Set the description of a job.
+def job_update(ctx: click.Context, name: str, description: str) -> None:
+    """Update the description of a job.
 
+    \f
     Args:
         ctx: Click context.
         name: Job name.
@@ -931,7 +1102,7 @@ def _get_job(ctx: click.Context, name: str) -> Any:
     try:
         job = project.get_job_api().get_job(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Job '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find job '{name}': {exc}") from exc
     if job is None:
         raise click.ClickException(f"Job '{name}' not found.")
     return job

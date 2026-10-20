@@ -7,7 +7,19 @@ description: Generate seeded synthetic data into feature groups with Polars, as 
 
 Generate data that has a known story, so a pipeline or an ML system can be built
 and trained before a real source is connected. The generator is a program of
-the system, seeded and run as a Hopsworks job, never on the laptop.
+the system, seeded, run where the agent runs when its frame fits in memory (rows x columns x
+8 bytes under 1 GB), and as a Hopsworks job for live mode, a larger history, or a run that
+runs out of memory.
+
+## A table for a question, with no model
+
+A table made to answer a question ("where does revenue come from?") has no
+target and no signal columns: its story is what the question should find (what
+grows over time, which category or country dominates, a seasonal peak). Use the
+rules below for the code (seeded, Polars, whole columns, statistics off) and
+skip everything about targets, prevalence, `system.yaml`, the bundle and live
+mode: one generator `./data/<name>/generate.py` run once where the agent runs,
+one offline Delta feature group. `/hops` spawns **hops-data-builder** for it.
 
 ## Contract
 - **Input:** the shape (batch tables or events), the entity and its
@@ -21,8 +33,8 @@ the system, seeded and run as a Hopsworks job, never on the laptop.
 
 ## Smoke-test (cheap pre/post-flight)
 ```bash
-hops fg preview usage_events --n 5          # rows landed (offline)
-hops fg preview usage_events --n 5 --online # the stream is fresh (online)
+hops fg preview usage_events --limit 5          # rows landed (offline)
+hops fg preview usage_events --limit 5 --online # the stream is fresh (online)
 hops job history <slug>-events              # the live writer has a RUNNING execution
 ```
 
@@ -41,10 +53,10 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
   dependency plus noise; the target's positive rate follows
   `requirements.targets.prevalence`. No column is a function of the target the
   real world would not have at prediction time.
-- **Polars, in a Python job in `python-feature-pipeline`.** The columns and the
+- **Polars, and as a job in `python-feature-pipeline`.** The columns and the
   relational steps that shape the story (joins between entities and events,
-  window aggregates) are Polars; the base ships it, so the generator runs there
-  and no environment is cloned. Never a Spark job: Polars generates the small
+  window aggregates) are Polars; the job base ships it, so a generator run as a
+  job needs no cloned environment. Never a Spark job: Polars generates the small
   tier's history in seconds.
 - **Whole columns, never rows.** Draw each random column in one call on a
   seeded `numpy.random.default_rng` (`choice`, `normal`, `gamma`, `poisson`,
@@ -57,14 +69,15 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
   costs a Python call per row, about ten times slower than the whole column at a
   million rows. Names, cities and products come from a short list sampled with
   `rng.choice`.
-- **No statistics jobs.** Every feature group the generator writes is created
-  with `statistics_config=False`: from a Python job, Hopsworks computes
-  statistics in a PySpark job after every insert.
+- **Statistics off.** Every feature group the generator writes is created
+  with `statistics_config=False`: otherwise Hopsworks computes statistics in a
+  PySpark job after every insert. The job `<fg>_<version>_compute_stats` still
+  exists for every feature group; with statistics off it never runs.
 
 ## Sinks
 - **Batch:** one offline feature group per table (the entity table, and an event
-  history when the story has one), written directly by the Python client with no
-  job behind it, named as the real source would be, with
+  history when the story has one), written by the generator job through the
+  Python client, with no materialization job behind it, named as the real source would be, with
   `event_time` set and a description saying it is synthetic and which job wrote
   it. One run, `<slug>-data-backfill`, with `--mode backfill --from --to`.
 - **Events:** one **online-enabled** feature group (`online_enabled=True,

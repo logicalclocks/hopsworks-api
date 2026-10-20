@@ -278,6 +278,11 @@ unfixable = []
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
+[tool.ruff.lint.per-file-ignores]
+# Click reads the \f (cut help here) and \b (no rewrap) control characters
+# from command docstrings, so they cannot be raw strings.
+"**/hopsworks/cli/**" = ["D301"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

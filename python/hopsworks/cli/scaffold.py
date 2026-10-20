@@ -242,9 +242,17 @@ CLI_BUNDLE = {
     ".claude/agents/hops-infer-agent.md": "hops-infer-agent.md",
     ".claude/agents/hops-dashboard-builder.md": "hops-dashboard-builder.md",
     ".claude/agents/hops-app-builder.md": "hops-app-builder.md",
+    ".claude/agents/hops-data-builder.md": "hops-data-builder.md",
+    ".claude/agents/hops-features-builder.md": "hops-features-builder.md",
+    ".claude/agents/hops-model-builder.md": "hops-model-builder.md",
+    ".claude/agents/hops-infer-builder.md": "hops-infer-builder.md",
+    ".claude/agents/hops-deploy-builder.md": "hops-deploy-builder.md",
 }
 AGENTS_PATH = "AGENTS.md"
 HOPS_PERMISSION = "Bash(hops *)"
+DOCS_URL = "https://docs.hopsworks.ai"
+DOCS_MCP_NAME = "hopsworks-docs"
+DOCS_MCP_URL = "https://mcp.hopsworks.ai/mcp"
 
 
 def build_files(*, internal: bool, project: str | None) -> dict[str, str]:
@@ -305,22 +313,54 @@ def ensure_permission(settings_path: Path) -> bool:
     Raises:
         ValueError: The file exists but is not a JSON object.
     """
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict = {}
-    if settings_path.exists():
-        try:
-            data = json.loads(settings_path.read_text(encoding="utf-8") or "{}")
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Could not parse {settings_path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError(f"{settings_path} must be a JSON object.")
-
+    data = _read_json_object(settings_path)
     allow_list = data.setdefault("permissions", {}).setdefault("allow", [])
     if HOPS_PERMISSION in allow_list:
         return False
     allow_list.append(HOPS_PERMISSION)
-    settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    _write_json(settings_path, data)
     return True
+
+
+def ensure_docs_mcp(mcp_path: Path) -> bool:
+    """Register the Hopsworks docs MCP server in a project ``.mcp.json`` if missing.
+
+    Other servers are preserved, and an entry the user already has under the same name is left as is.
+    Merged rather than owned, like the settings file.
+
+    Args:
+        mcp_path: Absolute path to the project's ``.mcp.json``.
+
+    Returns:
+        True when the file was modified.
+
+    Raises:
+        ValueError: The file exists but is not a JSON object.
+    """
+    data = _read_json_object(mcp_path)
+    servers = data.setdefault("mcpServers", {})
+    if DOCS_MCP_NAME in servers:
+        return False
+    servers[DOCS_MCP_NAME] = {"type": "http", "url": DOCS_MCP_URL}
+    _write_json(mcp_path, data)
+    return True
+
+
+def _read_json_object(path: Path) -> dict:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data: dict = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8") or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Could not parse {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must be a JSON object.")
+    return data
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 # endregion

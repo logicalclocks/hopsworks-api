@@ -21,7 +21,7 @@ Verify state with the `hops` CLI (cheap pre/post-flight):
 hops fv list                                    # list feature views (id, name, version, labels)
 hops fv info <name> --version 1                 # metadata + schema; flags the label column
 hops td list <fv-name> --version 1              # training-dataset versions
-hops fv get <name> --version 1 --entry "pk=val" # one online feature vector, no Python
+hops fv lookup <name> --version 1 --entry "pk=val" # one online feature vector, no Python
 ```
 
 Non-interactive delete needs flags: `hops fv delete <name> --version 1 --yes --force`.
@@ -37,7 +37,7 @@ fails):
 hops transformation create --file transformations.py            # register udfs first
 hops fv create <name> --feature-group <derived_fg>:1 \
   --transform <fn>:<col> --labels <label>                       # --join "<fg> LEFT <on>" repeatable
-hops td compute <fv> <fv_version> --split "train:0.8,test:0.2"  # positional = FEATURE-VIEW version
+hops td compute <fv> --fv-version <n> --split "train:0.8,test:0.2"  # 3-way: "train:0.7,validation:0.15,test:0.15"
 hops td list <fv>                                               # TD version auto-increments; read it back here
 ```
 
@@ -118,7 +118,7 @@ Never put the label in a training dataset's `extra_filter`. The filter is stored
 
 Never build an intermediate feature group of pre-joined features and labels, or of snapshots derived from other feature groups, to get point-in-time correctness: the view's join already produces it correctly and the extra group hides the lineage.
 
-Joins: `join_type` is `"left"` (default), `"inner"`, `"right"`, `"full"`, `"cross"`, or `"left_semi_join"`; `left_on`/`right_on` join on differently named keys; `prefix` avoids column-name clashes.
+Joins: `join_type` is `"left"` (default), `"inner"`, `"right"`, `"full"`, `"cross"`, or `"left_semi_join"`; `left_on`/`right_on` join on differently named keys; `prefix` avoids column-name clashes. Join a labels group `"left"`: batch scoring reads the same view without the label, and an inner join keeps only the entities that already have one, so it scores none of the open ones.
 
 ```python
 query = fg1.select_all().join(fg2.select_all(), on=["shared_key"], join_type="left")
@@ -173,7 +173,7 @@ Feature groups with an `embedding_index` (vector embeddings) **can** be included
 - Use `find_neighbors()` on the feature view to perform similarity search, which then automatically retrieves the full feature vector for each neighbor
 
 ```python
-# embedding_fg was created with embedding_index=EmbeddingIndex(...) (see hops-fg)
+# embedding_fg was created with embedding_index=EmbeddingIndex(...) (hops-fg references/embeddings.md)
 fv = fs.create_feature_view(
     name="recommendation_fv",
     query=embedding_fg.select_all().join(profile_fg.select_all(), on=["user_id"]),
@@ -270,6 +270,8 @@ fv.get_feature_vector(entry={"user_id": 123}, request_parameters={"current_locat
 
 ### Create and Materialize Training Data
 
+Each `create_*` call registers a version, starts a Spark job (`<fv>_<version>_create_fv_td_<timestamp>`) and writes files: minutes per call. Use it only when the user asks for a stored, reusable dataset. An ML system and the builders split in memory (below).
+
 ```python
 # Full dataset
 version, job = fv.create_training_data(
@@ -314,7 +316,7 @@ X_train, X_val, X_test, y_train, y_val, y_test = fv.get_train_validation_test_sp
 
 ### In-Memory Training Data (No Materialization)
 
-For quick iteration, get training data directly as DataFrames without materializing to storage. These still create metadata for reproducibility but skip writing to storage.
+The default. Get training data directly as DataFrames, in seconds and with no job. Each call registers an in-memory training dataset version (metadata only): a model registered with `feature_view=` in the same process records it, and scoring reads it.
 
 ```python
 X, y = fv.training_data(start_time="2025-01-01", end_time="2025-04-01", dataframe_type="polars")
@@ -377,7 +379,9 @@ Feature value priority (highest to lowest):
 ## Batch Scoring (Offline)
 
 ```python
-fv.init_batch_scoring(training_dataset_version=1)   # optional — called automatically
+# Required when the view has model-dependent transformations (get_batch_data raises
+# "Training data version is required" otherwise): the version the model was trained on.
+fv.init_batch_scoring(training_dataset_version=model.training_dataset_version)
 
 batch_df = fv.get_batch_data(
     start_time="2025-03-01",

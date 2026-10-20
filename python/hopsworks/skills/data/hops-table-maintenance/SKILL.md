@@ -40,10 +40,11 @@ Resolve the table format first: `_delta_log/` means Delta, `metadata/` with
 `time_travel_format` says the same thing through the API.
 
 Run the bundled scanner (install its deps once with
-`uv pip install deltalake duckdb pyarrow`; add `pyiceberg` for Iceberg tables):
+`uv pip install deltalake duckdb pyarrow`; add `pyiceberg` for Iceberg tables;
+`<hops-table-maintenance>` is the directory of the path `hops skills info hops-table-maintenance` prints):
 
 ```bash
-python3 ~/.claude/skills/hops-table-maintenance/scripts/lakehouse_doctor.py analyze \
+python3 <hops-table-maintenance>/scripts/lakehouse_doctor.py analyze \
   /hopsfs/featurestore/<project>_featurestore.db/<fg>_<version> \
   --output /tmp/evidence_<fg>.json
 ```
@@ -59,7 +60,7 @@ clustering or partition key; without access patterns you will produce
 plausible but harmful recommendations (partitioning by a high-cardinality id
 is the classic one). Gather it from:
 - The project's feature views: their join keys and filters are declared
-  workload. `hops fv list` and `hops fv get <name>` show them.
+  workload. `hops fv list` and `hops fv lookup <name>` show them.
 - The feature group's `event_time` column: time filters dominate training
   data reads, so it is the default sort/cluster candidate.
 - The user: AskUserQuestion for the columns their queries filter and join on,
@@ -76,7 +77,7 @@ tests whether a proposed clustering column would actually prune.
 ## Phase 2: plan
 
 ```bash
-python3 ~/.claude/skills/hops-table-maintenance/scripts/lakehouse_doctor.py plan \
+python3 <hops-table-maintenance>/scripts/lakehouse_doctor.py plan \
   /tmp/evidence_<fg>.json --filter-columns event_time,merchant_id
 ```
 
@@ -126,7 +127,7 @@ otherwise.
 
 ## Phase 4: execute through the Hopsworks API
 
-The supported path is [`FeatureGroup.optimize()`](../../ml/hops-fg/SKILL.md):
+The supported path is [`FeatureGroup.optimize()`](../../ml/hops-fg/references/table-layout.md):
 it validates the format, follows the feature group's stored layout
 (clustering, sort order, z-order columns), and defaults to the safe rewrite
 (incremental `OPTIMIZE` on Delta; Iceberg `rewriteDataFiles` with
