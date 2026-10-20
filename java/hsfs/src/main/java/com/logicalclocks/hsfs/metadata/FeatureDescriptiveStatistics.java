@@ -138,6 +138,10 @@ public class FeatureDescriptiveStatistics extends RestDto<FeatureDescriptiveStat
     if (statsJson.has("unique_values")) {
       extendedStatistics.put("unique_values", statsJson.getJSONArray("unique_values"));
     }
+    if (statsJson.has("mergeable")) {
+      // the state a later profile is merged into this one with (incremental statistics)
+      extendedStatistics.put("mergeable", statsJson.getJSONObject("mergeable"));
+    }
     if (extendedStatistics.length() > 0) {
       fds.setExtendedStatistics(extendedStatistics.toString());
     }
