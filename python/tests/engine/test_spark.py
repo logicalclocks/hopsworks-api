@@ -4899,9 +4899,9 @@ class TestSpark:
         mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
         mock_dataset_api.return_value.read_content.return_value.content = b""
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mock_open_file = mocker.patch("builtins.open", mocker.mock_open())
 
         spark_engine = spark.Engine()
+        mock_open_file = mocker.patch("builtins.open", mocker.mock_open())
 
         # Act
         path = spark_engine._add_file(file="test_file", distribute=False)
