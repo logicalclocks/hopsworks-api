@@ -185,7 +185,11 @@ def completer_from(settings: dict[str, Any]) -> tuple[Callable[[str], str] | Non
             "an OpenAI-compatible provider needs a base URL; set one on the job",
         )
     key = api_key_for(config)
-    if not key:
+    # A custom provider is somebody's own endpoint -- a vLLM, an internal
+    # gateway, a model server on the cluster -- and those commonly want no
+    # credential at all. Demanding one made them unusable: there is no secret to
+    # put in the variable, and the job refused to run without it.
+    if not key and config.provider != "custom":
         return (
             None,
             f"no API key: set {api_key_source(config)} on the job's environment",

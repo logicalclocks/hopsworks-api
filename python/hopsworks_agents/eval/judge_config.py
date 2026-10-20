@@ -591,7 +591,12 @@ def resolve_headers(
 def _client_options(
     api_key: str, base_url: str, headers: dict[str, str]
 ) -> dict[str, Any]:
-    options: dict[str, Any] = {"api_key": api_key}
+    # The client insists on a key even where the server wants none -- an internal
+    # model server, a gateway on a private network -- so a placeholder stands in
+    # for one. It is never sent anywhere that asked for a real credential:
+    # reaching here without a key is only possible for a provider whose endpoint
+    # is the caller's own.
+    options: dict[str, Any] = {"api_key": api_key or "not-required"}
     if base_url:
         options["base_url"] = base_url
     if headers:
