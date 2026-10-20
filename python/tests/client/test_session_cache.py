@@ -147,3 +147,21 @@ def test_importing_the_cli_loads_no_heavy_dependency():
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
     assert out.stdout.strip() == "[]"
+
+
+def test_reading_feature_groups_loads_no_validation_or_spark_engine():
+    # `hops fg list` sets the expectation suite of every feature group it reads, mostly
+    # None: Great Expectations (scipy, altair) and the Spark engine load only when a
+    # suite is validated or Spark runs.
+    code = (
+        "import sys, hsfs.feature_store, hsfs.feature_group as fg; "
+        "group = object.__new__(fg.FeatureGroup); "
+        "group._id, group._feature_store_id = 1, 1; "
+        "group.expectation_suite = None; "
+        "print(sorted(m for m in sys.modules if m.split('.')[0] == 'scipy' "
+        "or m.startswith('great_expectations.') or m == 'hsfs.engine.spark'))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "[]"
