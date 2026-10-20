@@ -151,7 +151,7 @@ hops datasource create sql oracle_sales --database-type ORACLE --credentials-mod
 hops datasource credentials set oracle_sales --user SCOTT --password - < pw.txt     # validates, then saves to your account
 HOPSWORKS_DS_CREDENTIALS_WALLET_PASSWORD=... hops datasource credentials set oracle_sales --user SCOTT --password - --wallet ./Wallet_db.zip < pw.txt   # only one secret per call can come from stdin
 hops datasource credentials set oracle_sales --password - < new_pw.txt            # rotate the password; the bound username and wallet stay
-hops datasource credentials show oracle_sales                                       # status and the names of your secret and env var, never values
+hops datasource credentials info oracle_sales                                       # status and the names of your secret and env var, never values
 hops datasource list                                                                 # CREDENTIALS column: shared, provided: yours set, provided: missing
 hops fg list                                                                         # ACCESS column per mounted table: ok, no_credentials, invalid_credentials, no_access, error
 hops fg test-access sales_external                                                   # re-check your access to one mounted table now

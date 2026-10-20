@@ -550,7 +550,7 @@ def _files(system: _System) -> dict:
             ["hops", "files", "upload", str(path), location], check=False
         )
         if done.returncode != 0:
-            raise click.ClickException(f"uploading {path} failed")
+            raise click.ClickException(f"Could not upload {path}")
     return {"name": name, "kind": "file", "location": location, "status": "present"}
 
 

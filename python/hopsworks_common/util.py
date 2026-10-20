@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import concurrent.futures
 import contextlib
 import inspect
@@ -62,6 +61,7 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 
 
 if TYPE_CHECKING:
+    import asyncio
     from collections.abc import Callable
 
     import pandas as pd
@@ -242,6 +242,13 @@ def _check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]
         # plain fg.read() in a scheduled job blew up where it passed interactively.
         r"^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$": "ISO",
     }
+    # ISO-8601 with a UTC offset, as datetime.isoformat() writes an aware value
+    # (``2026-10-01T00:00:00+00:00``). Matched before normalizing, which drops the
+    # sign of a negative offset.
+    if re.match(
+        r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}:\d{2}$", input_date
+    ):
+        return input_date, "ISO_OFFSET"
     normalized_date = (
         input_date.replace("/", "")
         .replace("-", "")
@@ -269,7 +276,9 @@ def _check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]
 def _get_timestamp_from_date_string(input_date: str) -> int:
     norm_input_date, date_format = _check_timestamp_format_from_date_string(input_date)
     try:
-        if date_format != "ISO":
+        if date_format == "ISO_OFFSET":
+            date_time = datetime.fromisoformat(input_date)
+        elif date_format != "ISO":
             date_time = datetime.strptime(norm_input_date, date_format)
         else:
             date_time = datetime.fromisoformat(input_date[:-1])
@@ -438,8 +447,15 @@ def _loading_animation(message: str, stop_event: threading.Event) -> None:
         time.sleep(0.5)
 
 
+def _progress_disabled() -> bool:
+    """Whether progress bars and animations are off: TQDM_DISABLE, read at each call (the hops CLI sets it off a terminal)."""
+    return os.environ.get("TQDM_DISABLE", "").lower() in ("1", "true")
+
+
 @also_available_as("hopsworks.util._run_with_loading_animation")
 def _run_with_loading_animation(message: str, func: Callable, *args, **kwargs) -> Any:
+    if _progress_disabled():
+        return func(*args, **kwargs)
     stop_event = threading.Event()
     t = threading.Thread(
         target=_loading_animation,
@@ -1068,6 +1084,8 @@ class AsyncTaskThread(threading.Thread):
             *thread_args: Arguments to be passed to the thread.
             **thread_kwargs: Key word arguments to be passed to the thread.
         """
+        import asyncio
+
         super().__init__(*thread_args, **thread_kwargs)
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
@@ -1094,6 +1112,8 @@ class AsyncTaskThread(threading.Thread):
         Each task becomes its own coroutine, so independent submissions run
         concurrently and one caller's round trip no longer holds up the next.
         """
+        import asyncio
+
         return asyncio.run_coroutine_threadsafe(self._run_task(task), self._event_loop)
 
     async def _run_task(self, task: AsyncTask) -> Any:
@@ -1155,6 +1175,8 @@ class AsyncTaskThread(threading.Thread):
         pending. Cancelling and awaiting here is what makes a shutdown after a
         timed-out read leave nothing behind.
         """
+        import asyncio
+
         running = asyncio.current_task()
         pending = [task for task in asyncio.all_tasks() if task is not running]
         for task in pending:
@@ -1188,6 +1210,8 @@ class AsyncTaskThread(threading.Thread):
         The loop is never closed from here. `run()` closes it in a `finally`, and
         closing a loop that is still running raises `RuntimeError`.
         """
+        import asyncio
+
         # Let run() finish starting, and give up rather than act on a loop that
         # is still starting. Stopping the loop under `run_until_complete`, or
         # cancelling the task it waits on, raises out of run(): the thread dies
@@ -1260,6 +1284,8 @@ class AsyncTaskThread(threading.Thread):
 
     def run(self):
         """Own the event loop the submitted tasks run on."""
+        import asyncio
+
         asyncio.set_event_loop(self._event_loop)
         try:
             self._pool_slots = asyncio.Semaphore(self._max_concurrent_tasks)

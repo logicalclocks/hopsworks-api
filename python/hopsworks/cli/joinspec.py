@@ -6,12 +6,13 @@ existing scripts and docs keep working.
 
 Grammar:
 
-    <fg>[:<version>]  <TYPE>  <on>[=<right_on>]  [prefix]
+    <fg>[:<version>]  <TYPE>  <on>[=<right_on>][,<on>[=<right_on>]...]  [prefix]
 
 Where ``TYPE`` is one of ``INNER | LEFT | RIGHT | FULL`` (case-insensitive),
-``on`` is the left-side join column, ``right_on`` (optional) is the right-side
+``on`` is a left-side join column, ``right_on`` (optional) is the right-side
 column when it differs, and ``prefix`` is an optional column-name prefix for
-the joined features.
+the joined features. A composite key lists its columns comma-separated, e.g.
+``deal_id,snapshot_date``.
 """
 
 from __future__ import annotations
@@ -28,8 +29,7 @@ _SPEC_REGEX = re.compile(
     \s+
     (?P<type>INNER|LEFT|RIGHT|FULL)        # join type
     \s+
-    (?P<on>[A-Za-z_][A-Za-z0-9_]*)         # left column
-    (?:=(?P<right_on>[A-Za-z_][A-Za-z0-9_]*))?  # optional right column
+    (?P<key>[A-Za-z_][A-Za-z0-9_]*(?:=[A-Za-z_][A-Za-z0-9_]*)?(?:,[A-Za-z_][A-Za-z0-9_]*(?:=[A-Za-z_][A-Za-z0-9_]*)?)*)  # on[=right_on], comma-separated
     (?:\s+(?P<prefix>\S+))?                # optional prefix
     \s*$
     """,
@@ -46,11 +46,17 @@ class JoinSpec:
     """
 
     fg_name: str
-    on: str
-    right_on: str | None = None
+    on: list[str]
+    right_on: list[str] | None = None
     version: int | None = None
     join_type: str = "INNER"
     prefix: str | None = None
+
+    def join_kwargs(self) -> dict[str, list[str] | None]:
+        """The key arguments of ``Query.join()``: ``on``, or ``left_on`` and ``right_on``."""
+        if self.right_on is None:
+            return {"on": self.on, "left_on": None, "right_on": None}
+        return {"on": None, "left_on": self.on, "right_on": self.right_on}
 
 
 class JoinSpecError(ValueError):
@@ -73,12 +79,15 @@ def parse(spec: str) -> JoinSpec:
     if not match:
         raise JoinSpecError(
             f"Invalid join spec '{spec}'. "
-            'Expected: "<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>] [prefix]"'
+            'Expected: "<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>][,...] [prefix]"'
         )
+    pairs = [part.partition("=") for part in match.group("key").split(",")]
     return JoinSpec(
         fg_name=match.group("fg"),
-        on=match.group("on"),
-        right_on=match.group("right_on"),
+        on=[left for left, _, _ in pairs],
+        right_on=[right or left for left, _, right in pairs]
+        if any(sep for _, sep, _ in pairs)
+        else None,
         version=int(match.group("version")) if match.group("version") else None,
         join_type=match.group("type").upper(),
         prefix=match.group("prefix"),

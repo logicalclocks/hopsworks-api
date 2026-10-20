@@ -46,13 +46,13 @@ hops project info                         # Current project details
 ```bash
 hops fg list                              # List all feature groups
 hops fg info <name> [--version N]         # Show details + schema
-hops fg preview <name> [--n 10]           # Preview data rows
-hops fg features <name>                   # List features with types
-hops fg stats <name> --compute            # Trigger statistics computation
+hops fg preview <name> [--limit 10]           # Preview data rows
+hops fg feature list <name>                   # List features with types
+hops fg stats compute <name>            # Trigger statistics computation
 hops fg search <name> --vector "0.1,..."  # KNN similarity search
-hops fg keywords <name>                   # List tags (aka keywords)
-hops fg add-keyword <name> <kw>           # Attach a keyword
-hops fg remove-keyword <name> <kw>        # Remove a keyword
+hops fg keyword list <name>                   # List keywords (plain labels)
+hops fg keyword add <name> <kw>           # Attach a keyword
+hops fg keyword remove <name> <kw>        # Remove a keyword
 hops fg delete <name> --version N --yes   # Delete
 ```
 
@@ -109,20 +109,21 @@ Join spec: `"<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>] [prefix]"`.
 ```bash
 hops fv list
 hops fv info <name> [--version N]
+hops fv preview <name> [--limit 10] [--td-version N]   # First rows, keys and event time, untransformed
 hops fv create <name> --feature-group <fg> [--join <spec>] [--transform <fn:col>]
-hops fv get <name> --entry "id=42,region=eu"       # Online vector lookup
-hops fv read <name> [--n 100] [--output data.parquet]
+hops fv lookup <name> --entry "id=42,region=eu"       # Online vector lookup
+hops fv read <name> [--limit 100] [--output data.parquet]
 hops fv delete <name> --version N --yes
 ```
 
 ## Training Datasets
 
 ```bash
-hops td list <fv> <fv-version>
-hops td compute <fv> <fv-version>                   # Materialize
-hops td compute <fv> <fv-version> --split "train:0.8,test:0.2"
-hops td read <fv> <fv-version> --td-version N [--split train] [--output train.parquet]
-hops td delete <fv> <fv-version> [--td-version N] --yes
+hops td list <fv> [--fv-version N]
+hops td compute <fv> [--fv-version N]                   # Materialize
+hops td compute <fv> [--fv-version N] --split "train:0.8,test:0.2"
+hops td read <fv> [--fv-version N] --td-version N [--split train] [--output train.parquet]
+hops td delete <fv> [--fv-version N] [--td-version N] --yes
 ```
 
 ## Transformations
@@ -158,7 +159,7 @@ Register flags:
 hops deployment list
 hops deployment info <name>
 hops deployment create <model> [--version N] [--script predict.py]
-hops deployment start <name> [--wait 600]
+hops deployment start <name> [--no-wait] [--timeout 600]
 hops deployment stop <name>
 hops deployment predict <name> --data '{"instances": [[1,2,3]]}'
 hops deployment logs <name> [--component predictor] [--tail 50]
@@ -180,9 +181,9 @@ hops job run <name> [--wait] [--args "..."]
 hops job stop <name>
 hops job logs <name> [--execution ID]
 hops job history <name>
-hops job schedule <name> "0 0 * * * ?"              # Quartz 6-field cron
-hops job schedule-info <name>
-hops job unschedule <name>
+hops job schedule set <name> "0 0 * * * ?"              # Quartz 6-field cron
+hops job schedule info <name>
+hops job schedule delete <name>
 hops job delete <name> --yes
 ```
 
@@ -229,7 +230,7 @@ hops files list [path]
 hops files mkdir /Projects/<proj>/newdir
 hops files upload ./file.txt /Projects/<proj>/Resources/
 hops files download /Projects/<proj>/Resources/out.log --output ./
-hops files remove /Projects/<proj>/stale --yes
+hops files delete /Projects/<proj>/stale --yes
 
 # Share a dataset with another project (Data Owner role required in source project)
 hops files share Resources/my_dir --target other_project [--permission READ_ONLY|EDITABLE|EDITABLE_BY_OWNERS]

@@ -18,7 +18,7 @@ import sys
 import tarfile
 import textwrap
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -94,6 +94,19 @@ AGENTS = {
     # Spawned from /hops, which runs on Haiku: inheriting would build on Haiku too.
     "hops-dashboard-builder": "opus",
     "hops-app-builder": "opus",
+    "hops-data-builder": "opus",
+    "hops-features-builder": "opus",
+    "hops-model-builder": "opus",
+    "hops-infer-builder": "opus",
+    "hops-deploy-builder": "opus",
+}
+# Spawned by /hops for one piece built outside an ML system; /hops-build builds its own.
+ONE_PIECE = {
+    "hops-data-builder",
+    "hops-features-builder",
+    "hops-model-builder",
+    "hops-infer-builder",
+    "hops-deploy-builder",
 }
 
 
@@ -139,6 +152,9 @@ def test_the_menu_runs_on_haiku_and_hands_every_build_to_a_stronger_agent():
     for section in ("## Explore", "## Status", "## Dashboard", "## App"):
         assert section in text
     assert "hops-dashboard-builder" in text and "hops-app-builder" in text
+    assert "## Pieces" in text
+    for agent in ONE_PIECE:
+        assert agent in text
     assert "`/hops-ml`" in text
     # The menu carries no build instructions of its own.
     for build_step in ("hops app create", "dashboard_program.py", "system_template"):
@@ -184,8 +200,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
     for slug in labels:
         assert f"`{slug}`" in text
     assert "--example <example>" in text
-    build = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
-    assert "`app.wanted` is recorded, never ask" in build
+    assert "`app.wanted` is recorded, never ask" in _build_text()
 
 
 def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
@@ -241,24 +256,40 @@ def test_every_example_creates_a_valid_system(tmp_path, example):
     assert doc["app"]["wanted"] is True
 
 
+def _build_text() -> str:
+    """/hops-build: its command and the parts it reads from hops-reqs/references."""
+    parts = sorted(REQS.glob("build-*.md"))
+    return "\n".join(
+        p.read_text(encoding="utf-8") for p in [TEMPLATES / "hops-build.md", *parts]
+    )
+
+
+def test_the_build_names_each_part_where_it_is_read():
+    core = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
+    parts = sorted(p.name for p in REQS.glob("build-*.md"))
+    assert parts == ["build-edits.md", "build-phases.md", "build-reqs.md"]
+    for part in parts:
+        assert f"read `hops skills info hops-reqs references/{part}`" in core, part
+
+
 def test_the_builder_runs_on_the_session_model():
     front = _front("hops-build.md")
-    text = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
+    text = _build_text()
     assert "model" not in front
     assert "argument-hint" in front
     for phase in (
-        "### reqs",
-        "### data",
-        "### features",
-        "### train",
-        "### infer",
-        "### app",
+        "## reqs",
+        "## data",
+        "## features",
+        "## train",
+        "## infer",
+        "## app",
         "### verify",
         "### stop",
         "### Finishing",
     ):
         assert phase in text
-    for agent in AGENTS:
+    for agent in set(AGENTS) - ONE_PIECE:
         assert agent in text
     assert "!`hops fg list" in text and "*/system.yaml 2>/dev/null" in text
 
@@ -674,6 +705,25 @@ def test_set_records_interview_answers_and_refuses_an_invalid_one(tmp_path):
     assert "system_type" in refused.stderr
     assert (target / "system.yaml").read_text(encoding="utf-8") == written
     assert not list(target.glob(".system.yaml.*"))
+    listed = _set(target, "requirements.consumers=[dashboard]")
+    assert listed.returncode == 1
+    assert "requirements.consumers" in listed.stderr
+
+
+def test_a_new_system_is_a_git_repository_unless_it_is_inside_one(tmp_path):
+    new_system = _load(REQS / "new_system.py")
+    alone = new_system.create(tmp_path / "churn")
+    branch = subprocess.run(
+        ["git", "-C", str(alone), "symbolic-ref", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert branch.stdout.strip() == "main"
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    nested = new_system.create(repo / "churn")
+    assert not (nested / ".git").exists()
 
 
 # endregion
@@ -807,7 +857,36 @@ def _new_system(tmp_path: Path) -> Path:
     (target / "system.yaml").write_text(
         EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8"
     )
+    for phase in new_system.PHASES:
+        new_system.add_phase(target, phase)
     return target
+
+
+def test_each_phase_brings_its_own_stubs(tmp_path):
+    new_system = _load(REQS / "new_system.py")
+    target = new_system.create(tmp_path / "telco-churn")
+    package = target / "src" / "telco_churn"
+    assert (package / "__init__.py").is_file() and (target / "status.py").is_file()
+    assert not (package / "feature_pipeline.py").exists()
+    assert not (target / "benchmarks").exists()
+    with pytest.raises(SystemExit, match="no system.yaml"):
+        new_system.add_phase(target, "train")
+
+    (target / "system.yaml").write_text("schema_version: 1\n", encoding="utf-8")
+    created = new_system.add_phase(target, "train")
+    assert sorted(p.name for p in created) == [
+        "charts.py",
+        "evaluate.py",
+        "test_training.py",
+        "training_pipeline.py",
+    ]
+    assert (
+        "slug_pkg" not in (target / "tests" / "unit" / "test_training.py").read_text()
+    )
+    (package / "evaluate.py").write_text("# the phase's work\n", encoding="utf-8")
+    assert new_system.add_phase(target, "train") == []
+    assert (package / "evaluate.py").read_text() == "# the phase's work\n"
+    assert not (package / "predictor.py").exists()
 
 
 def test_new_system_names_the_package_after_the_slug(tmp_path):
@@ -1340,12 +1419,21 @@ class FakeSuperset:
         self.next_id = 100
         self.databases = [{"id": 3, "database_name": "Trino"}]
         self.datasets, self.charts, self.dashboards = {}, {}, {}
+        # What /api/v1/chart/data answers per dataset id: rows by default.
+        self.chart_data = {}
+        self.queries = []
 
     def _id(self) -> int:
         self.next_id += 1
         return self.next_id
 
-    def _request(self, method, path):
+    def _request(self, method, path, json_data=None):
+        if path == "/api/v1/chart/data":
+            self.queries.append(json_data)
+            answer = self.chart_data.get(json_data["datasource"]["id"], {"rowcount": 1})
+            if isinstance(answer, Exception):
+                raise answer
+            return {"result": [answer]}
         resource, page = re.match(r"/api/v1/(\w+)/\?q=\(page:(\d+)", path).groups()
         store = {
             "dataset": self.datasets,
@@ -1431,6 +1519,37 @@ def test_the_dashboard_program_creates_then_updates_in_place():
         assert sum(layout[c]["meta"]["width"] for c in layout[row]["children"]) <= 12
 
 
+def test_two_dashboards_over_one_feature_group_keep_their_own_datasets():
+    first, second, api = _dashboard_program(), _dashboard_program(), FakeSuperset()
+    second.SLUG, second.TITLE = "customers-churn", "Customers Churn"
+    first.build(api, "p")
+    second.build(api, "p")
+    names = sorted(d["table_name"] for d in api.datasets.values())
+    assert names == ["customers-churn__customers_1", "customers-overview__customers_1"]
+    second.delete(api, "p")
+    assert [d["table_name"] for d in api.datasets.values()] == [
+        "customers-overview__customers_1"
+    ]
+    assert len(api.charts) == len(first.CHARTS)
+
+
+def test_a_chart_that_does_not_render_fails_the_build():
+    program, api = _dashboard_program(), FakeSuperset()
+    program.build(api, "p")
+    assert len(api.queries) == len(program.CHARTS)
+    bar = next(q for q in api.queries if q["queries"][0]["columns"] == ["plan"])
+    assert bar["queries"][0]["metrics"][0]["sqlExpression"] == "COUNT(*)"
+    dataset = next(iter(api.datasets))
+    api.chart_data[dataset] = {"rowcount": 0, "data": []}
+    with pytest.raises(SystemExit, match="Total Customers .*returns no rows"):
+        program.build(api, "p")
+    api.chart_data[dataset] = RuntimeError("Column 'plan' does not exist")
+    with pytest.raises(
+        SystemExit, match="Customers by Plan .*Column 'plan' does not exist"
+    ):
+        program.build(api, "p")
+
+
 def test_an_edit_that_drops_a_chart_leaves_no_trace_of_it():
     program, api = _dashboard_program(), FakeSuperset()
     program.build(api, "p")
@@ -1499,6 +1618,11 @@ def test_the_app_skeleton_serves_health_the_page_and_its_assets():
     assert page.status_code == 200 and "static/app.js" in page.text
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/static/app.css").status_code == 200
+    assert client.get("/static/chart-theme.js").status_code == 200
+    chart = client.get("/static/vendor/chart.umd.min.js")
+    # Vendored, so the app runs without the network; the MIT header stays with it.
+    assert chart.status_code == 200 and "Released under the MIT License" in chart.text
+    assert (APP / "static" / "vendor" / "chart.js.LICENSE.md").is_file()
 
 
 def test_the_app_skeleton_uses_only_relative_urls():
@@ -1861,3 +1985,203 @@ def test_the_template_metrics_handle_ties_and_probabilities():
     assert evaluate.roc_auc([1, 0, 1, 0], [0.9, 0.5, 0.1, 0.3]) == 0.5
     assert evaluate.accuracy([0, 1], [0.1, 0.9]) == 1.0
     assert evaluate.accuracy(["a", "b"], ["a", "c"]) == 0.5
+
+
+class FakeFeatureView:
+    """A feature view over one frame that, like the query service, returns rows in a new order per read.
+
+    Like the backend, each split or `training_data` call registers a training dataset version
+    holding its time bounds, and a read by version reruns the query with those bounds.
+    """
+
+    def __init__(self, rows):
+        self.rows, self.reads, self.versions = rows, 0, {}
+
+    def _register(self, bounds):
+        version = len(self.versions) + 1
+        self.versions[version] = bounds
+        self.last = version
+        return version
+
+    def get_last_accessed_training_dataset(self):
+        return self.last
+
+    def _shuffled(self, frame):
+        self.reads += 1
+        return frame.sample(frac=1, random_state=self.reads).reset_index(drop=True)
+
+    def _xy(self, frame, primary_key):
+        frame = self._shuffled(frame)
+        x = frame.drop(columns=["won"] + ([] if primary_key else ["deal_id"]))
+        return x, frame[["won"]]
+
+    def _until(self, end_time, primary_key):
+        frame = self.rows if end_time is None else self.rows[self.rows.ts <= end_time]
+        return self._xy(frame, primary_key)
+
+    def _parts(self, bounds):
+        parts = []
+        for part in ("train", "validation", "test"):
+            start, end = bounds[f"{part}_start"], bounds[f"{part}_end"]
+            parts.append(
+                self._xy(
+                    self.rows[(self.rows.ts >= start) & (self.rows.ts < end)], False
+                )
+            )
+        (x_tr, y_tr), (x_va, y_va), (x_te, y_te) = parts
+        return x_tr, x_va, x_te, y_tr, y_va, y_te
+
+    def training_data(self, end_time=None, primary_key=False, statistics_config=None):
+        self._register({"end_time": end_time})
+        return self._until(end_time, primary_key)
+
+    def get_training_data(self, training_dataset_version, primary_key=False):
+        return self._until(
+            self.versions[training_dataset_version]["end_time"], primary_key
+        )
+
+    def train_validation_test_split(self, statistics_config=None, **bounds):
+        self._register(bounds)
+        return self._parts(bounds)
+
+    def get_train_validation_test_split(self, training_dataset_version):
+        if training_dataset_version in self.versions:
+            return self._parts(self.versions[training_dataset_version])
+        self.materialized = training_dataset_version
+        x, y = self._xy(self.rows, False)
+        return x, x, x, y, y, y
+
+
+def _deals(days=60):
+    import pandas as pd
+
+    start = datetime(2026, 8, 1)
+    return pd.DataFrame(
+        {
+            "deal_id": [i % 40 for i in range(days * 10)],
+            "ts": [start + timedelta(hours=i * 2.4) for i in range(days * 10)],
+            "amount": [float(i % 17) for i in range(days * 10)],
+            "won": [i % 3 == 0 for i in range(days * 10)],
+        }
+    )
+
+
+def _harness_case(kind):
+    split = {"kind": kind, "validation_fraction": 0.15, "test_fraction": 0.15}
+    if kind == "temporal":
+        split["start"] = "2026-08-01T00:00:00"
+    return (
+        {"split": split, "harness": {"evaluate": "src/x/evaluate.py", "commit": "abc"}},
+        {"problem": {"entity": "deal_id", "label_maturity": "7 days"}},
+    )
+
+
+@needs_cluster_python
+@pytest.mark.parametrize("kind", ["random", "grouped", "temporal"])
+def test_a_frozen_in_memory_split_reads_the_same_rows_after_appends(kind):
+    evaluate = _load(TEMPLATE / "src" / "slug_pkg" / "evaluate.py", "template_harness")
+    import pandas as pd
+
+    rows = _deals()
+    fv = FakeFeatureView(rows)
+    training, requirements = _harness_case(kind)
+    record, parts = evaluate.freeze(fv, training, requirements, datetime(2026, 9, 20))
+    training["harness"].update(record)
+    assert all(record["parts"][p]["rows"] for p in evaluate.PARTS)
+
+    later = rows.assign(ts=rows.ts + timedelta(days=120))
+    fv.rows = pd.concat([rows, later], ignore_index=True)
+    again = evaluate.read_parts(fv, training, requirements)
+    assert {p: evaluate.fingerprint(*again[p]) for p in again} == record["parts"]
+    evaluate.read_parts(fv, training, requirements)
+    assert list(fv.versions) == [record["in_memory_version"]] == [1]
+    assert all("deal_id" not in x.columns for x, _ in parts.values())
+
+
+@needs_cluster_python
+def test_a_row_changed_inside_the_frozen_split_stops_the_run():
+    evaluate = _load(
+        TEMPLATE / "src" / "slug_pkg" / "evaluate.py", "template_harness_drift"
+    )
+    rows = _deals()
+    fv = FakeFeatureView(rows)
+    training, requirements = _harness_case("random")
+    record, _ = evaluate.freeze(fv, training, requirements, datetime(2026, 9, 20))
+    training["harness"].update(record)
+
+    changed = rows.copy()
+    changed.loc[3, "amount"] = 999.0
+    fv.rows = changed
+    with pytest.raises(
+        SystemExit,
+        match=r"data changed inside the frozen split \(\w+: \d+ rows recorded, \d+ now\): refreeze, which starts a new round",
+    ):
+        evaluate.read_parts(fv, training, requirements)
+    assert evaluate.read_parts(fv, training, requirements, check=False)
+
+
+@needs_cluster_python
+def test_a_harness_frozen_as_a_training_dataset_still_reads_it():
+    evaluate = _load(
+        TEMPLATE / "src" / "slug_pkg" / "evaluate.py", "template_harness_td"
+    )
+    fv = FakeFeatureView(_deals())
+    training, requirements = _harness_case("random")
+    training["harness"]["training_dataset_version"] = 3
+    parts = evaluate.read_parts(fv, training, requirements)
+    assert fv.materialized == 3 and set(parts) == set(evaluate.PARTS)
+
+
+def test_the_app_skeleton_aggregates_in_the_query_engine(monkeypatch):
+    pytest.importorskip("fastapi")
+    from starlette.testclient import TestClient
+
+    app = _load(APP / "app.py", "app_skeleton_charts")
+    app._cache.clear()
+    executed = []
+
+    class _Cursor:
+        def execute(self, sql, params):
+            executed.append((sql, params))
+
+        def fetchall(self):
+            if "date_trunc" in executed[-1][0]:
+                return [("2026-10-01", 0.25), ("2026-10-02", 0.5)]
+            return [("high", 3), ("low", 7)]
+
+    monkeypatch.setattr(app, "_connection", lambda: SimpleNamespace(cursor=_Cursor))
+    client = TestClient(app.app)
+    assert client.get("/api/trend").json() == [
+        {"day": "2026-10-01", "score": 0.25},
+        {"day": "2026-10-02", "score": 0.5},
+    ]
+    sql, params = executed[0]
+    assert "GROUP BY 1" in sql and params == (app.TREND_DAYS,)
+    # Every band is listed, an empty one with zero customers.
+    assert client.get("/api/bands").json() == [
+        {"band": "high", "customers": 3},
+        {"band": "mid", "customers": 0},
+        {"band": "low", "customers": 7},
+    ]
+    sql, params = executed[1]
+    assert "ROW_NUMBER() OVER (PARTITION BY customer_id" in sql and params == (0.6, 0.3)
+
+
+def test_every_piece_has_an_exit_check_the_cli_can_run():
+    import click
+    from hopsworks.cli.main import cli
+
+    text = (TEMPLATES / "hops.md").read_text(encoding="utf-8")
+    table = text.split("## Pieces", 1)[1].split("\n1. ", 1)[0]
+    rows = [r for r in table.splitlines() if r.startswith("| ") and "---" not in r][1:]
+    assert len(rows) >= 7
+    ctx = click.Context(cli)
+    for row in rows:
+        check = row.split(" | ")[3]
+        for command in re.findall(r"`hops ([a-z ]+)", check):
+            cmd = cli
+            for word in command.split():
+                if not isinstance(cmd, click.Group):
+                    break
+                cmd = cmd.get_command(ctx, word) or cmd
+            assert not isinstance(cmd, click.Group), (row, command)

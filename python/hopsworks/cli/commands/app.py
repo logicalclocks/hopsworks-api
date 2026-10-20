@@ -1,6 +1,6 @@
 """``hops app`` — Python app lifecycle.
 
-Wraps the SDK's ``project.get_app_api()``: list, info, create, start, redeploy,
+Wraps the SDK's ``project.get_app_api()``: list, info, create, deploy, start, redeploy,
 stop, delete, plus a convenience ``url`` that prints the public serving URL.
 App scripts can either live in HopsFS or in a Git repository. File-backed
 Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
@@ -29,7 +29,7 @@ from hopsworks.cli import output, session
 
 @click.group("app")
 def app_group() -> None:
-    """Python app commands."""
+    """Apps: Python web apps served by the cluster."""
 
 
 @app_group.command("list")
@@ -37,6 +37,7 @@ def app_group() -> None:
 def app_list(ctx: click.Context) -> None:
     """List every app in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -66,6 +67,7 @@ def app_list(ctx: click.Context) -> None:
 def app_info(ctx: click.Context, name: str) -> None:
     """Show details for a single app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -119,6 +121,7 @@ def app_url(ctx: click.Context, name: str) -> None:
     Exits non-zero with a clear message when the app is not serving yet,
     so this composes cleanly in shell pipelines.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -155,10 +158,11 @@ def app_logs(ctx: click.Context, name: str, stream: str) -> None:
     case where you most want logs, so this points at the live logs in the
     Hopsworks UI instead of failing with an opaque error.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
-        stream: Which stream(s) to print: ``stdout``, ``stderr``, or ``both``.
+        stream: Which stream(s) to print: `stdout`, `stderr`, or `both`.
     """
     a = _get_app(ctx, name)
 
@@ -341,7 +345,8 @@ def _report_running(name: str, a: Any) -> None:
     help="Optional app description.",
 )
 @click.option(
-    "--environment",
+    "--env",
+    "environment",
     default="python-app-pipeline",
     show_default=True,
     help="Python environment name backing the app.",
@@ -385,6 +390,7 @@ def app_create(
     Monitoring is enabled by default in the backend. Route filters are optional
     and narrow the traffic counted by Envoy.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -417,31 +423,29 @@ def app_create(
     if app_kind != "CUSTOM":
         label = app_kind.capitalize() if app_kind != "NODEJS" else "Node.js"
         if entrypoint_command:
-            raise click.ClickException(
-                f"{label} apps do not accept --entrypoint-command."
-            )
+            raise click.UsageError(f"{label} apps do not accept --entrypoint-command.")
         if git_repo_app:
             if not git_provider:
-                raise click.ClickException(
+                raise click.UsageError(
                     f"{label} Git repository apps require --git-provider."
                 )
             if not entrypoint_script:
-                raise click.ClickException(
+                raise click.UsageError(
                     f"{label} Git repository apps require --entrypoint-script."
                 )
         elif not app_path:
-            raise click.ClickException(f"{label} apps require --path.")
+            raise click.UsageError(f"{label} apps require --path.")
         elif entrypoint_script:
-            raise click.ClickException(
+            raise click.UsageError(
                 "--entrypoint-script is only supported for Git repository apps."
             )
     else:
         if not entrypoint_command:
-            raise click.ClickException("Custom apps require --entrypoint-command.")
+            raise click.UsageError("Custom apps require --entrypoint-command.")
         if git_repo_app and not git_provider:
-            raise click.ClickException("Git repository apps require --git-provider.")
+            raise click.UsageError("Git repository apps require --git-provider.")
         if entrypoint_script:
-            raise click.ClickException(
+            raise click.UsageError(
                 "--entrypoint-script is only supported for Git repository apps of the other kinds."
             )
 
@@ -481,7 +485,7 @@ def app_create(
         idle_cooldown_seconds is not None or cold_start_timeout_seconds is not None
     )
     if idle_scale_to_zero is False and has_idle_timeouts:
-        raise click.ClickException(
+        raise click.UsageError(
             "--idle-cooldown-seconds and --cold-start-timeout-seconds cannot go with --no-idle-scale-to-zero."
         )
     if idle_scale_to_zero is not None:
@@ -504,45 +508,390 @@ def app_create(
 @app_group.command("start")
 @click.argument("name")
 @click.option(
-    "--no-wait",
-    is_flag=True,
-    help="Return immediately after submission; do not wait for serving.",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the app is serving.",
 )
 @click.pass_context
-def app_start(ctx: click.Context, name: str, no_wait: bool) -> None:
+def app_start(ctx: click.Context, name: str, wait: bool) -> None:
     """Start an app.
 
-    Blocks until the app is ``serving`` unless ``--no-wait`` is set.
+    Blocks until the app is `serving` unless `--no-wait` is set.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
-        no_wait: Skip the wait-for-serving loop.
+        wait: Whether to wait until the app is serving.
     """
     a = _get_app(ctx, name)
-    _start(a, await_serving=not no_wait)
+    _start(a, await_serving=wait)
 
 
 @app_group.command("redeploy")
 @click.argument("name")
 @click.option(
-    "--no-wait",
-    is_flag=True,
-    help="Return immediately after submission; do not wait for serving.",
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Wait until the app is serving.",
 )
 @click.pass_context
-def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
+def app_redeploy(ctx: click.Context, name: str, wait: bool) -> None:
     """Redeploy a running app.
 
-    Blocks until the app is ``serving`` unless ``--no-wait`` is set.
+    Blocks until the app is `serving` unless `--no-wait` is set.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
-        no_wait: Skip the wait-for-serving loop.
+        wait: Whether to wait until the app is serving.
     """
     a = _get_app(ctx, name)
-    _redeploy(a, await_serving=not no_wait)
+    _redeploy(a, await_serving=wait)
+
+
+_DEPLOY_BASE_ENV = "python-agent-pipeline"
+_DEPLOY_REQUIREMENTS = "app-requirements.txt"
+_DEPLOY_PORT = 8080
+_POLL_SECONDS = 3.0
+
+
+@app_group.command("deploy")
+@click.argument("name")
+@click.argument(
+    "local_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True)
+)
+@click.option(
+    "--env",
+    "environment",
+    default=None,
+    help=(
+        f"Python environment of the app. Default: <name>-app-env cloned from "
+        f"{_DEPLOY_BASE_ENV} when LOCAL_DIR has {_DEPLOY_REQUIREMENTS}, "
+        f"else {_DEPLOY_BASE_ENV}."
+    ),
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=600,
+    show_default=True,
+    help="Seconds to wait for the app to serve the new files.",
+)
+@click.option(
+    "--check",
+    "check_path",
+    default=None,
+    help="A route to fetch through the Hopsworks proxy once the app serves (api/top); a non-2xx answer fails the deploy.",
+)
+@click.option(
+    "--description",
+    default=None,
+    help="App description, set when the app is created; an existing app keeps its own.",
+)
+@click.pass_context
+def app_deploy(
+    ctx: click.Context,
+    name: str,
+    local_dir: str,
+    environment: str | None,
+    timeout: int,
+    check_path: str | None,
+    description: str | None,
+) -> None:
+    """Create or update an app from a local directory.
+
+    Uploads LOCAL_DIR to `Users/<user>/apps/<name>/` (overwriting, skipping
+    dotfiles and `__pycache__`), prepares the environment, creates the app
+    (`app.py` as a custom app on port 8080, readiness on `/health`) or
+    redeploys it, and waits until the new execution serves. Prints the URL
+    on the last line; with `--json`, the app and every file's sha256.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: App name.
+        local_dir: Directory holding `app.py`.
+        environment: Python environment; derived from LOCAL_DIR when None.
+        timeout: Seconds to wait for serving.
+        check_path: A route to fetch through the proxy after serving.
+        description: App description for a new app.
+    """
+    import hashlib
+    import os
+    from pathlib import Path
+
+    import hopsworks
+    from hopsworks.cli.commands.files import makedirs
+
+    if not os.path.isfile(os.path.join(local_dir, "app.py")):
+        raise click.UsageError(f"{local_dir} has no app.py.")
+    files = _deploy_files(local_dir)
+    project = session.get_project(ctx)
+    try:
+        username = hopsworks.get_users_api()._get_current_user().username
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not resolve your username: {exc}") from exc
+    remote_dir = f"Users/{username}/apps/{name}"
+    app_path = f"/Projects/{project.name}/{remote_dir}/app.py"
+    has_requirements = _DEPLOY_REQUIREMENTS in files
+    env_name = environment or (
+        f"{name}-app-env" if has_requirements else _DEPLOY_BASE_ENV
+    )
+
+    apps = project.get_app_api()
+    try:
+        existing = apps.get_app(name)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not find app '{name}': {exc}") from exc
+    if existing is not None:
+        # The SDK cannot change an app's file or environment, so a mismatch
+        # would keep serving something else than what was uploaded.
+        if not (getattr(existing, "app_path", None) or "").endswith(
+            f"{remote_dir}/app.py"
+        ):
+            raise click.ClickException(
+                f"App '{name}' runs {existing.app_path}, not {app_path}. "
+                f"Pick another name, or `hops app delete {name} --yes --force` first."
+            )
+        if getattr(existing, "environment_name", None) != env_name:
+            raise click.ClickException(
+                f"App '{name}' runs in environment '{existing.environment_name}', "
+                f"not '{env_name}'. Pass --env {existing.environment_name}, or "
+                f"`hops app delete {name} --yes --force` first."
+            )
+
+    dataset_api = project.get_dataset_api()
+    requirements_remote = f"{remote_dir}/{_DEPLOY_REQUIREMENTS}"
+    try:
+        requirements_changed = has_requirements and _remote_text(
+            dataset_api, requirements_remote
+        ) != _local_text(os.path.join(local_dir, _DEPLOY_REQUIREMENTS))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not read {requirements_remote}: {exc}"
+        ) from exc
+
+    try:
+        for relative in sorted({os.path.dirname(f) for f in files}):
+            makedirs(dataset_api, f"{remote_dir}/{relative}".rstrip("/"))
+        for relative in files:
+            parent = f"{remote_dir}/{os.path.dirname(relative)}".rstrip("/")
+            dataset_api.upload(
+                local_path=os.path.join(local_dir, relative),
+                upload_path=parent,
+                overwrite=True,
+            )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not upload app '{name}' to {remote_dir}: {exc}"
+        ) from exc
+    output.success("✓ Uploaded %d files to %s", len(files), remote_dir)
+
+    if environment is None and has_requirements:
+        _deploy_environment(
+            project.get_environment_api(),
+            env_name,
+            f"/Projects/{project.name}/{requirements_remote}",
+            requirements_changed,
+        )
+
+    if (
+        existing is not None
+        and description
+        and description != getattr(existing, "description", None)
+    ):
+        output.warn(
+            "App %s keeps its description; --description applies when the app is created.",
+            name,
+        )
+    previous = None
+    try:
+        if existing is None:
+            a = apps.create_app(
+                **_accepted_kwargs(
+                    apps.create_app,
+                    {
+                        "name": name,
+                        "app_kind": "CUSTOM",
+                        "app_path": app_path,
+                        "entrypoint_command": "python app.py",
+                        "app_port": _DEPLOY_PORT,
+                        "readiness_probe_path": "/health",
+                        "environment": env_name,
+                        **({"description": description} if description else {}),
+                    },
+                )
+            )
+            output.success("✓ Created app %s", name)
+            a.run(await_serving=False)
+        elif _app_is_running(existing):
+            previous = getattr(existing, "execution_id", None)
+            existing.redeploy(await_serving=False)
+        else:
+            previous = getattr(existing, "execution_id", None)
+            existing.run(await_serving=False)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not start app '{name}': {exc}") from exc
+
+    a = _await_new_execution(apps, name, previous, timeout)
+    url = getattr(a, "app_url", None)
+    output.success("✓ App %s serves the new files", name)
+    if check_path is not None:
+        _check_route(project, name, url, check_path)
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                "name": name,
+                "url": url,
+                "state": getattr(a, "state", None),
+                "environment": env_name,
+                "source": remote_dir,
+                "files": [
+                    {
+                        "path": relative,
+                        "sha256": hashlib.sha256(
+                            Path(local_dir, relative).read_bytes()
+                        ).hexdigest(),
+                    }
+                    for relative in files
+                ],
+            }
+        )
+    else:
+        click.echo(url)
+
+
+def _check_route(project: Any, name: str, url: str | None, path: str) -> None:
+    """GET `path` of the deployed app through the proxy, as a browser would.
+
+    The proxy wants a session, not an API key: an app proxy token minted with the
+    key stands in for it, as the Hopsworks UI and Hopsable's previews do.
+    """
+    import requests
+    from hopsworks_common import client
+
+    if not url:
+        raise click.ClickException(f"Could not check app '{name}': it has no URL.")
+    _client = client._get_instance()
+    try:
+        token = _client._send_request(
+            "POST", ["project", project.id, "apps", name, "proxy-token"]
+        )["token"]
+        answer = requests.get(
+            url.rstrip("/") + "/" + path.lstrip("/"),
+            cookies={"proxy_session": token},
+            verify=_client._verify,
+            timeout=60,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not check app '{name}' at {path}: {exc}"
+        ) from exc
+    if not answer.ok:
+        raise click.ClickException(
+            f"Could not check app '{name}': {path} answered {answer.status_code}: "
+            f"{answer.text[:300]}. Read `hops app logs {name}`."
+        )
+    output.success("✓ %s answered %s", path, answer.status_code)
+
+
+def _deploy_files(local_dir: str) -> list[str]:
+    """Files of `local_dir`, relative and sorted, without dotfiles and `__pycache__`."""
+    import os
+
+    found = []
+    for root, dirs, names in os.walk(local_dir):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__"]
+        for file_name in names:
+            if not file_name.startswith("."):
+                found.append(
+                    os.path.relpath(os.path.join(root, file_name), local_dir).replace(
+                        os.sep, "/"
+                    )
+                )
+    return sorted(found)
+
+
+def _local_text(path: str) -> str:
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _remote_text(dataset_api: Any, path: str) -> str | None:
+    """The text of a HopsFS file, or None when it does not exist."""
+    if not dataset_api.exists(path):
+        return None
+    content = dataset_api.read_content(path)
+    return content.content.decode("utf-8") if content is not None else None
+
+
+def _deploy_environment(
+    env_api: Any, env_name: str, requirements: str, requirements_changed: bool
+) -> None:
+    """Clone `env_name` from the base environment once; install on a new clone or new requirements."""
+    try:
+        env = env_api.get_environment(env_name)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not find environment '{env_name}': {exc}"
+        ) from exc
+    if env is None:
+        output.info(
+            "Cloning %s to %s; this takes a few minutes.", _DEPLOY_BASE_ENV, env_name
+        )
+        try:
+            env = env_api.create_environment(
+                env_name, base_environment_name=_DEPLOY_BASE_ENV, await_creation=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not clone environment '{_DEPLOY_BASE_ENV}' to '{env_name}': {exc}"
+            ) from exc
+    elif not requirements_changed:
+        output.info("Environment %s is up to date.", env_name)
+        return
+    output.info("Installing %s into %s.", _DEPLOY_REQUIREMENTS, env_name)
+    try:
+        env.install_requirements(requirements, await_installation=True)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not install into environment '{env_name}': {exc}"
+        ) from exc
+    output.success("✓ Environment %s ready", env_name)
+
+
+def _await_new_execution(
+    apps: Any, name: str, previous: int | None, timeout: int
+) -> Any:
+    """Poll until an execution other than `previous` serves, so the old pod never counts."""
+    import time
+
+    from hopsworks_common.app import _FAILED_STATES
+
+    deadline = time.monotonic() + timeout
+    state = None
+    while True:
+        a = apps.get_app(name)
+        state = getattr(a, "state", None)
+        execution = getattr(a, "execution_id", None)
+        if execution is not None and execution != previous:
+            if getattr(a, "serving", False):
+                return a
+            if state in _FAILED_STATES:
+                raise click.ClickException(
+                    f"Could not deploy app '{name}': it stopped in state {state}. "
+                    f"Read `hops app logs {name}`."
+                )
+        if time.monotonic() >= deadline:
+            raise click.ClickException(
+                f"Could not deploy app '{name}': not serving after {timeout} s "
+                f"(state {state}). Read `hops app logs {name}`, or raise --timeout."
+            )
+        time.sleep(_POLL_SECONDS)
 
 
 @app_group.command("stop")
@@ -551,6 +900,7 @@ def app_redeploy(ctx: click.Context, name: str, no_wait: bool) -> None:
 def app_stop(ctx: click.Context, name: str) -> None:
     """Stop a running app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -559,7 +909,7 @@ def app_stop(ctx: click.Context, name: str) -> None:
     try:
         a.stop()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Stop failed: {exc}") from exc
+        raise click.ClickException(f"Could not stop app '{name}': {exc}") from exc
     output.success("✓ Stopped app %s", name)
 
 
@@ -573,6 +923,7 @@ def app_stop(ctx: click.Context, name: str) -> None:
 def app_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     """Delete an app.
 
+    \f
     Args:
         ctx: Click context.
         name: App name.
@@ -590,7 +941,7 @@ def app_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
     try:
         a.delete()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete app '{name}': {exc}") from exc
     output.success("✓ Deleted app %s", name)
 
 
@@ -629,7 +980,7 @@ def _get_app(ctx: click.Context, name: str) -> Any:
     try:
         a = apps.get_app(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"App '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find app '{name}': {exc}") from exc
     if a is None:
         raise click.ClickException(f"App '{name}' not found.")
     return a
@@ -639,7 +990,9 @@ def _start(a: Any, await_serving: bool = True) -> None:
     try:
         a.run(await_serving=await_serving)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Start failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not start app '{getattr(a, 'name', '?')}': {exc}"
+        ) from exc
     url = getattr(a, "app_url", None)
     state = getattr(a, "state", "-")
     serving = getattr(a, "serving", False)
@@ -657,7 +1010,9 @@ def _redeploy(a: Any, await_serving: bool = True) -> None:
     try:
         a.redeploy(await_serving=await_serving)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Redeploy failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not redeploy app '{getattr(a, 'name', '?')}': {exc}"
+        ) from exc
     url = getattr(a, "app_url", None)
     state = getattr(a, "state", "-")
     serving = getattr(a, "serving", False)

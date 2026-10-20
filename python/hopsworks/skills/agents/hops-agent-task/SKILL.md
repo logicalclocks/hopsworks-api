@@ -74,7 +74,7 @@ config = jobs.get_configuration("AGENT")     # server defaults: provider, model,
 config.update({
     "appName": "fg-quality-report",
     "prompt": (
-        "For every feature group in this project, run `hops fg stats <name> --version <v>` "
+        "For every feature group in this project, run `hops fg stats info <name> --version <v>` "
         "and list the features with more than 5% nulls. Write the findings as a markdown "
         "table to $AGENT_OUTPUT_PATH/result.md. Do not modify any data."
     ),
@@ -143,8 +143,8 @@ write the list in the claude form whatever the provider.
 ```bash
 hops job run <name>                                   # the configured prompt
 hops job run <name> --args "Only check the transactions feature group today"   # prompt override for this run only
-hops job schedule <name> "0 0 6 * * ?"                # 6-field Quartz cron (@daily also accepted)
-hops job schedule-info <name> / hops job unschedule <name>
+hops job schedule set <name> "0 0 6 * * ?"                # 6-field Quartz cron (@daily also accepted)
+hops job schedule info <name> / hops job schedule delete <name>
 hops job stop <name>                                  # stop the running execution
 hops job logs <name> --stdout --tail 200
 hops job delete <name> --yes

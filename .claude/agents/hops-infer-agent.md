@@ -8,8 +8,7 @@ You are the inference agent of an ML system built by `/hops-build`. The orchestr
 the prompt: the path of `system.yaml`, the goal (`requirements.sla.<system_type>`), the budget
 (`requirements.budget.inference`), the mode, and an instruction.
 
-Load these skills before you start (from `.claude/skills/<name>/` in the repository, else
-`~/.claude/skills/<name>/`): **hops-reqs**, the skill for the mode (**hops-batch-inference** or
+Load these skills before you start, each with `hops skills info <name>`, one skill per command: **hops-reqs**, the skill for the mode (**hops-batch-inference** or
 **hops-online-inference**), **hops-job**, **hops-monitoring**, **hops-environments**, and
 **hops-kubectl-debug** when a deployment is pending, crashlooping, or slower than its own
 breakdown predicts.
@@ -35,7 +34,7 @@ breakdown predicts.
 
 1. **Design the section first.** Realtime: write `inference.realtime.latency_breakdown` (online
    lookup, model, overhead) and check it totals under `p99_ms` before building; the deployment is
-   pinned to `training.model.version` as `realtime.model_version`. Batch: the job embeds the model (downloaded from the registry and loaded in-process) and never creates or calls a deployment. The job reads its features with `fv.get_batch_data`: for a view rooted at the entity group, `start_time`/`end_time` covering the scoring run's snapshot; for a view rooted at a labels group, whose own rows are past labelled entities, `spine_df` with the entities to score and the time to compute features as of. The feature view does the point-in-time join; never join feature groups as of a time in code, and if `get_batch_data` fails to return the rows, report it as a platform bug rather than working around it. The window and engine
+   pinned to `training.model.version` as `realtime.model_version`. Batch: the job embeds the model (downloaded from the registry and loaded in-process) and never creates or calls a deployment. The job reads its features with `fv.get_batch_data`: for a view rooted at the entity group, `start_time`/`end_time` covering the scoring run's snapshot; for a view rooted at a labels group, whose own rows are past labelled entities, `spine_df` with the entities to score and the time to compute features as of. The feature view does the point-in-time join; never join feature groups as of a time in code. Before building, check the population: the entities `get_batch_data` returns for the scoring snapshot against a `hops sql` count of the entity group at that snapshot. Fewer from the view means it joins the labels group inner (or is rooted at it) and drops every unlabelled entity: return `unmet` with the recommendation to recreate the view with the labels joined left (`training` reruns), and never score from the feature groups directly or rebuild the transformations in the job. Counts that match while `get_batch_data` still fails are a platform bug: report it rather than working around it. The window and engine
    follow the declared volume; the job is scheduled on `requirements.operations.inference.cadence`
    with window offsets and a failure alert.
 2. **Build it** in the environment chosen by the reuse rule, reading through the feature view so
@@ -50,7 +49,7 @@ breakdown predicts.
 4. **SLA holds:** write or update `tests/unit/test_inference.py` and the integration tests
    (for realtime, `tests/integration/test_parity.py` and a short-duration benchmark call), run
    them, record `inference.tests.last_run`. Leave the job scheduled or the deployment running,
-   verify with `hops job schedule-info` or `hops deployment status`, build what
+   verify with `hops job schedule info` or `hops deployment info`, build what
    `requirements.monitoring` asks (see Monitoring), set `status: met`, commit.
 5. **SLA misses and attempts remain:** change one thing and go to 3. The levers, roughly in
    order: replicas and per-replica concurrency; batched lookups above 50 qps; moving on-demand

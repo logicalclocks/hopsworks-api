@@ -15,7 +15,7 @@ Already known, no need to look again before the first question:
 | First word | Do |
 | --- | --- |
 | the slug of a layer above | work on that layer: carry out its pending change requests, then dispatch the rest of the arguments by this table (the Factory and `hops factory run analytics-silver` start the build this way) |
-| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **From Template > Analytics**, or `hops factory run analytics-silver --answers`, records a layer first, and stop |
+| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **From Template > Analytics**, or `hops factory run analytics-silver --answers`, records a layer first, and stop. In the answers each source names its feature group as `{"table": {"name": "<name>", "version": <n>}, "cadence": "daily"}`; `hops factory info analytics-silver` lists every answer key. A slug as the first argument resumes that layer; it never creates one |
 | `profile`, `design`, `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 | `apply` | apply the changes to `system.yaml` since the layer was built (below) |
 
@@ -23,12 +23,13 @@ When every phase is `done` and the spec differs from `outputs.applied_spec`, a b
 
 Load **hops-analytics** first: its `SKILL.md` (the tag, the tasks, the settings, the engine, incremental processing, lineage, partitioning, schedule, the phases) and `references/silver-tasks.md` are what this builder runs on, and **hops-partitioning** for the design.
 Load **hops-dbt** for a `dbt_trino` engine and **hops-spark** for `pyspark`, and **hops-job** and **hops-fg** before deploying the job or creating a feature group.
-Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
+Read a skill with `hops skills info <name>`, one skill per command, and a file it names with `hops skills info <name> references/<file>`.
 
 **Where it runs.** The Factory starts Claude Code in the layer's directory, `<slug>/`, so it reads the layer's `AGENTS.md`; every `<slug>/<path>` here is `<path>` in the current directory.
 
 ## Rules
 
+- **The project is the truth.** Before you resume, run `hops factory system plan <slug>`: a table or job it lists as missing was deleted after the phase that recorded it was `done`, so set that phase back to `pending` and resume from it. A phase is never redone for a table or job that exists and is current.
 - **Change requests.** The Factory and `hops factory run <factory> <slug> --change <id>` record a change to the system as a `changes` entry with `status: pending`, holding its `label`, `answers` and `instructions`. Before anything else, carry out each pending one, oldest first: follow its `instructions` with its `answers`, then set its `status: done` and `finished` (UTC), or `status: failed` with a `reason` you also report, and commit `[<slug>] <label>`. Delete a job or a feature group only with `hops factory system delete-assets <slug> --job <name> --table <name>:<version>`, before removing it from `system.yaml`: it refuses what the system reads, what another system names, and anything neither in this `system.yaml` nor carrying the slug.
 - **A cloned factory's additions.** `system.yaml`'s `factory` block names the factory that created the system. When it has `instructions`, a project factory cloned from a built-in one added them: follow them as well as this command, and treat `requirements.extra` as further requirements the user gave.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end; set each phase's `status`, `started` and `finished` (UTC, from `date -u`) as it runs, and `progress.now` to one line on what you are doing. The Factory reads it every few seconds.
@@ -79,14 +80,15 @@ Write unit tests in `tests/` (DuckDB over sample rows for the dbt SQL, pandas or
 
 ### backfill
 
-Deploy one job per cadence (`hops job deploy <slug>-silver-<cadence> run_silver.py --env dbt-pipeline --args "--cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`), run each once without a window, slowest cadence first (`hops job run <slug>-silver-<cadence> --wait`; before it is scheduled the run gets no window), and check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
+Run the backfill where you run (a Hopsable sandbox, a terminal) when the bronze sources hold under 500 MB in all (`Offline size` in `hops fg info <fg>`): `python run_silver.py --cadence <cadence>` without a window, slowest cadence first, writes in seconds where a job start alone takes minutes (`uv pip install dbt-trino` first when `dbt --version` fails). Then deploy one job per cadence, for the schedule (`hops job deploy <slug>-silver-<cadence> run_silver.py --env dbt-pipeline --args "--cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`). Over that size, or when the local run runs out of memory, run each job once instead (`hops job run <slug>-silver-<cadence> --wait`; before it is scheduled the run gets no window); a run started without `--wait` is awaited with `hops job wait`, never by polling `hops job history`. Check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
 Fix and rerun until the checks pass; record the counts in `outputs`.
 
 ### schedule
 
-Schedule each job with catch-up (`hops job schedule <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <its max_catchup_runs>`), so the windows continue from the backfill and missed ones are replayed.
-With `quality.alert_on_failure`, create a failure alert on each job (`hops alert job create <slug>-silver-<cadence> --receiver <receiver> --status failed --severity critical`; `hops alert receiver list` for the receiver, asking which one when there are several, and recording it).
-Tag every silver and rejects feature group `analytics_table` with `{"layer": "silver", "lifecycle": "<layer.lifecycle>"}` (`hops fg add-tag <name> analytics_table --value '...'`).
+Schedule each job with catch-up (`hops job schedule set <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <its max_catchup_runs>`), so the windows continue from the backfill and missed ones are replayed.
+With `quality.alert_on_failure`, create a failure alert on each job (`hops job alert create <slug>-silver-<cadence> --receiver <receiver> --status failed --severity critical`; `hops alert receiver list` for the receiver, asking which one when there are several, and recording it).
+Tag every silver and rejects feature group `analytics_table` with `{"layer": "silver", "lifecycle": "<layer.lifecycle>"}` (`hops fg tag add <name> analytics_table --value '...'`).
+When the cluster has no `analytics_table` tag schema (HTTP 404, error 370000), leave the tables untagged, record it in `decisions`, and say once that an admin installs it (hops-analytics, The analytics_table tag).
 
 ### verify
 

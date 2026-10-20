@@ -6,8 +6,14 @@ Three modes, one registration rule each:
   with evaluate.py, register the next version of `<ident>_research`, always.
 - `accept`: train on train plus validation, score the test part once, register a
   version of `<ident>_model` only when the target holds.
-- `retrain`: the scheduled job; build a new training dataset version with the
-  recorded split policy, run the short checks, then behave as `accept`.
+- `retrain`: the scheduled job; read the recorded split policy over the data now
+  (a new training dataset version for a harness frozen as one), run the short
+  checks, then behave as `accept`.
+
+A run reads its parts in memory with the harness's `end_time` and stops when they
+differ from the rows it froze; outside a job it runs where the agent runs:
+
+    python src/<slug_pkg>/training_pipeline.py --mode research --bundle <local bundle.tar.gz>
 
     hops job deploy <slug>-train training_pipeline.py --env <training.environment> \
         --args "--mode research --bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz \
@@ -202,7 +208,7 @@ def short_checks(parts: dict, system: dict, leakage: list[str]) -> list[str]:
 
 
 def _new_training_dataset(fv: Any, system: dict, evaluate: Any) -> int:
-    """Create a training dataset version with the recorded split policy over the data now."""
+    """A new training dataset version with the recorded split policy, for a harness frozen as one."""
     split = system["training"]["split"]
     if split["kind"] == "temporal":
         bounds = evaluate.split_boundaries(
@@ -237,7 +243,7 @@ def _register(
     x_example: Any,
     metrics: dict,
     description: str,
-    td_version: int,
+    td_version: int | None,
     charts: Any,
     task: str,
     y_eval: Any,
@@ -258,6 +264,7 @@ def _register(
         description=description,
         input_example=x_example.head(1),
         feature_view=fv,
+        # None names the training dataset the in-memory read just registered.
         training_dataset_version=td_version,
     )
     registered.save(str(model_dir))
@@ -298,14 +305,19 @@ def main(argv: list[str] | None = None) -> int:
         training["feature_view"]["name"], version=training["feature_view"]["version"]
     )
     leakage = list(training.get("leakage") or [])
-    td_version = training["harness"]["training_dataset_version"]
-    if args.mode == "retrain":
+    td_version = training["harness"].get("training_dataset_version")
+    refrozen = None
+    if args.mode == "retrain" and td_version is not None:
         td_version = _new_training_dataset(fv, system, evaluate)
         training = {
             **training,
             "harness": {**training["harness"], "training_dataset_version": td_version},
         }
-    parts = evaluate.read_parts(fv, training, system["requirements"])
+        parts = evaluate.read_parts(fv, training, system["requirements"])
+    elif args.mode == "retrain":
+        refrozen, parts = evaluate.freeze(fv, training, system["requirements"])
+    else:
+        parts = evaluate.read_parts(fv, training, system["requirements"])
     if args.mode == "retrain":
         problems = short_checks(parts, system, leakage)
         if problems:
@@ -344,6 +356,8 @@ def main(argv: list[str] | None = None) -> int:
         "training_dataset_version": td_version,
         "registered": False,
     }
+    if refrozen:
+        result["harness"] = refrozen
     if should_register(args.mode, met):
         name = model_name(args.mode, system)
         version = _register(

@@ -11,6 +11,8 @@ Already known, no need to look again before the first question:
 - Feature groups: !`hops fg list 2>&1 | head -40`
 - Python environments: !`hops env list 2>&1 | head -20`
 
+An existing feature group needs no bronze layer: a silver layer reads it as it is (hops-analytics, An existing table as bronze).
+
 ## Dispatch
 
 | First word | Do |
@@ -20,12 +22,13 @@ Already known, no need to look again before the first question:
 | `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 
 Load **hops-analytics** first (the `analytics_table` tag and the layers built on bronze), and **hops-job** and **hops-fg** before deploying a job or checking a feature group.
-Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
+Read a skill with `hops skills info <name>`, one skill per command, and a file it names with `hops skills info <name> references/<file>`.
 
 **Where it runs.** The Factory starts Claude Code in the layer's directory, `<slug>/`, so it reads the layer's `AGENTS.md`; every `<slug>/<path>` here is `<path>` in the current directory.
 
 ## Rules
 
+- **The project is the truth.** Before you resume, run `hops factory system plan <slug>`: a table or job it lists as missing was deleted after the phase that recorded it was `done`, so set that phase back to `pending` and resume from it. A phase is never redone for a table or job that exists and is current.
 - **Change requests.** A `changes` entry with `status: pending` in `system.yaml` is a change the Factory recorded: before anything else, carry out each, oldest first, following its `instructions` with its `answers`, then set its `status: done` and `finished` (UTC), or `status: failed` with a `reason`, and commit `[<slug>] <label>`. Delete a job or a feature group only with `hops factory system delete-assets <slug> --job <name> --table <name>:<version>`, before removing it from `system.yaml`: it refuses what the system reads, what another system names, and anything neither in this `system.yaml` nor carrying the slug.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end; set each phase's `status`, `started` and `finished` (UTC, from `date -u`) as it runs, and `progress.now` to one line on what you are doing. The Factory reads it every few seconds.
 - **The generator is given.** `generator.program` was copied from the hops-analytics references and its tests are in `tests/`. Run it as it is; change it only to fix a failure, recording the fix and why in `decisions`.
@@ -55,14 +58,14 @@ Create the GitHub repository, as the rules say, and commit.
 Deploy the backfill job and run it once, waiting for it: `hops job deploy <slug>-backfill <generator.program> --env <generator.environment> --args "<generator.backfill.args>" --run --wait`.
 It creates the feature groups in `tables` (offline, Delta), writes the history up to the last midnight (UTC), adds each feature's description and tags each `analytics_table` `{"layer": "bronze", "lifecycle": "<layer.lifecycle>"}`.
 A scheduled run appends `-start_time <fire instant>` to the program's arguments, which the program accepts and ignores (**hops-job**, Windows and backfill).
-When it fails, read its log (`hops job logs <slug>-backfill --stdout --tail 200`, and `--stderr`), fix the cause, and run it again; a rerun rewrites the same rows.
-Check each table: its rows against `tables[].rows` (`hops trino query --catalog delta --schema <project>_featurestore "SELECT count(*) FROM <table>_1"`, the project name lowercased), that it is offline and Delta (`hops fg info <name>`), and its tag (`hops fg tags <name>`).
+When it fails, read its log (`hops job logs <slug>-backfill --stdout --tail 200`, which prints stdout and stderr), fix the cause, and run it again; a rerun rewrites the same rows.
+Check each table: its rows against `tables[].rows` (`hops trino query --catalog delta --schema <project>_featurestore "SELECT count(*) FROM <table>_1"`, the project name lowercased), that it is offline and Delta (`hops fg info <name>`), and its tag (`hops fg tag list <name>`; the job's log says `not tagged` when the cluster has no `analytics_table` tag schema: record that in `decisions` and say once that an admin installs it).
 Record each in `outputs.tables` (`name`, `version`, `cadence`, `primary_key`, `event_time`, `rows`), the job in `outputs.jobs` (`{name, environment, tables}`, no cadence), and the backfill's end in `decisions`.
 
 ### schedule
 
 For each cadence in `schedule.cadences`, deploy its job: `hops job deploy <slug>-<cadence> <generator.program> --env <generator.environment> --args "<its args>"`.
-Schedule it from the backfill's end, with catch-up, so the windows continue from the history: `hops job schedule <slug>-<cadence> "<its cron>" --start-time <the backfill's end> --catchup --max-catchup-runs <its max_catchup_runs>`.
+Schedule it from the backfill's end, with catch-up, so the windows continue from the history: `hops job schedule set <slug>-<cadence> "<its cron>" --start-time <the backfill's end> --catchup --max-catchup-runs <its max_catchup_runs>`.
 The hourly job's catch-up then writes today's hours so far, one run each; the daily job first runs at the next midnight.
 Record each in `outputs.jobs` (`{name, cadence, cron, environment, tables}`).
 

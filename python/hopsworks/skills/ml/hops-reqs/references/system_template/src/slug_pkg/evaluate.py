@@ -7,6 +7,10 @@ verify) on one part:
     python evaluate.py --bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz \
         --model <name>:<version> --split validation
 
+and, once, to freeze the split: `--freeze system.yaml` reads the parts in memory and prints the
+`training.harness` fields to record with set.py (`end_time`, the training dataset version
+the read registered as `in_memory_version`, each part's rows and fingerprint).
+
 Frozen once `training.harness.commit` is recorded: the training loop never edits
 this file, so every run is scored on the same rows with the same metric. Adapt
 `load_predictor` to the model format before the harness is frozen.
@@ -189,8 +193,134 @@ def grouped_part(entity: Any, validation_fraction: float, test_fraction: float) 
     return "train"
 
 
-def read_parts(fv: Any, training: dict, requirements: dict) -> dict[str, tuple]:
-    """Read (X, y) for every part from the frozen training dataset version.
+def fingerprint(x: Any, y: Any) -> dict:
+    """The rows of a part and a hash of their sorted content, whatever order they were read in."""
+    import pandas as pd
+
+    frame = pd.concat([x.reset_index(drop=True), pd.DataFrame(y).reset_index(drop=True)], axis=1)
+    hashes = np.sort(_row_hashes(frame))
+    return {"rows": len(frame), "fingerprint": hashlib.sha256(hashes.tobytes()).hexdigest()[:16]}
+
+
+def _row_hashes(frame: Any) -> np.ndarray:
+    import pandas as pd
+
+    try:
+        return pd.util.hash_pandas_object(frame, index=False).to_numpy()
+    except TypeError:  # list or dict cells, such as embeddings
+        return pd.util.hash_pandas_object(frame.astype(str), index=False).to_numpy()
+
+
+def _in_memory_parts(
+    fv: Any,
+    split: dict,
+    requirements: dict,
+    end_time: datetime | None,
+    version: int | None = None,
+) -> dict[str, tuple]:
+    """Read every part straight from the feature view, with nothing after `end_time`.
+
+    A temporal split takes its boundaries from `end_time`; a random split assigns each row
+    by its content hash and a grouped split each entity by its key, so the parts never
+    depend on the order the query service returns rows in. Without `version` the read
+    registers a training dataset version; with it, it reads that version again, whose query
+    keeps the frozen time bounds, and registers nothing.
+    """
+    grouped = split["kind"] == "grouped"
+    if version is not None:
+        if split["kind"] == "temporal":
+            x_tr, x_va, x_te, y_tr, y_va, y_te = fv.get_train_validation_test_split(
+                training_dataset_version=version
+            )
+            return {"train": (x_tr, y_tr), "validation": (x_va, y_va), "test": (x_te, y_te)}
+        x, y = fv.get_training_data(training_dataset_version=version, primary_key=grouped)
+        return _assigned_parts(x, y, split, requirements)
+    if split["kind"] == "temporal":
+        bounds = split_boundaries(
+            datetime.fromisoformat(str(split["start"])),
+            end_time,
+            split["validation_fraction"],
+            split["test_fraction"],
+            parse_period(requirements["problem"]["label_maturity"]),
+        )
+        bounds.pop("label_cutoff")
+        x_tr, x_va, x_te, y_tr, y_va, y_te = fv.train_validation_test_split(
+            **bounds, statistics_config=False
+        )
+        return {"train": (x_tr, y_tr), "validation": (x_va, y_va), "test": (x_te, y_te)}
+    x, y = fv.training_data(end_time=end_time, primary_key=grouped, statistics_config=False)
+    return _assigned_parts(x, y, split, requirements)
+
+
+def _assigned_parts(x: Any, y: Any, split: dict, requirements: dict) -> dict[str, tuple]:
+    """Split one read into the parts, by entity for a grouped split, else by row content."""
+    grouped = split["kind"] == "grouped"
+    x, y = x.reset_index(drop=True), y.reset_index(drop=True)
+    if grouped:
+        entity = requirements["problem"]["entity"]
+        key_column = next(c for c in x.columns if c == entity or c.endswith("_" + entity))
+        keys = x[key_column]
+        x = x.drop(columns=[key_column])
+    else:
+        import pandas as pd
+
+        keys = pd.Series(_row_hashes(pd.concat([x, pd.DataFrame(y)], axis=1)))
+    parts = keys.map(
+        lambda k: grouped_part(k, split["validation_fraction"], split["test_fraction"])
+    )
+    return {p: (x[parts == p], y[parts == p]) for p in PARTS}
+
+
+def freeze(
+    fv: Any, training: dict, requirements: dict, end_time: datetime | None = None
+) -> tuple[dict, dict[str, tuple]]:
+    """The harness record of the split now, and its parts.
+
+    The record holds `end_time`, the training dataset version the read registered, which
+    every later read gets again instead of registering one each, and each part's rows and
+    fingerprint.
+    """
+    end_time = end_time or datetime.now(UTC).replace(tzinfo=None, microsecond=0)
+    parts = _in_memory_parts(fv, training["split"], requirements, end_time)
+    record = {
+        "end_time": end_time.isoformat(),
+        "in_memory_version": fv.get_last_accessed_training_dataset(),
+        "parts": {name: fingerprint(*part) for name, part in parts.items()},
+    }
+    return record, parts
+
+
+def read_parts(fv: Any, training: dict, requirements: dict, check: bool = True) -> dict[str, tuple]:
+    """Read (X, y) for every part as the harness froze it.
+
+    A harness with `end_time` reads in memory and, with `check`, stops when a part's rows or
+    content differ from what was frozen: runs are only comparable on the same rows. A harness
+    with `training_dataset_version` reads that materialized version.
+    """
+    harness = training["harness"]
+    if "training_dataset_version" in harness:
+        return _materialized_parts(fv, training, requirements)
+    end_time = harness.get("end_time")
+    parts = _in_memory_parts(
+        fv,
+        training["split"],
+        requirements,
+        datetime.fromisoformat(str(end_time)) if end_time else None,
+        harness.get("in_memory_version"),
+    )
+    if check:
+        for name, (x, y) in parts.items():
+            recorded, now = harness["parts"][name], fingerprint(x, y)
+            if recorded != now:
+                raise SystemExit(
+                    f"data changed inside the frozen split ({name}: {recorded['rows']} rows "
+                    f"recorded, {now['rows']} now): refreeze, which starts a new round"
+                )
+    return parts
+
+
+def _materialized_parts(fv: Any, training: dict, requirements: dict) -> dict[str, tuple]:
+    """(X, y) for every part from a training dataset version frozen before in-memory harnesses.
 
     A temporal or random split was materialized as three parts by the feature
     view; a grouped split is one training dataset partitioned here by entity.
@@ -358,17 +488,22 @@ def load_predictor(model_dir: str) -> Any:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Score one registry model on one part and write the metrics."""
+    """Score one registry model on one part and write the metrics, or freeze the split."""
     parser = argparse.ArgumentParser(description="Score a registry model on one part.")
-    parser.add_argument("--bundle", required=True)
-    parser.add_argument("--model", required=True, help="<name>:<version>")
-    parser.add_argument("--split", choices=["validation", "test"], required=True)
+    parser.add_argument("--freeze", metavar="SYSTEM_YAML", help="print the harness record")
+    parser.add_argument("--bundle")
+    parser.add_argument("--model", help="<name>:<version>")
+    parser.add_argument("--split", choices=["validation", "test"])
     # A scheduled run appends -start_time <fire instant> (and may append -end_time):
     # the instant the schedule fired, which ends the window rather than starting it.
     # They are accepted and ignored; a scheduled run's window is HOPS_START_TIME/HOPS_END_TIME.
     parser.add_argument("-start_time", dest="_fired_at", help=argparse.SUPPRESS)
     parser.add_argument("-end_time", dest="_fired_end", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.freeze:
+        return _print_freeze(Path(args.freeze))
+    if not (args.bundle and args.model and args.split):
+        parser.error("--bundle, --model and --split are required unless --freeze")
 
     _, manifest, system = _load_bundle(args.bundle)
     import hopsworks
@@ -406,6 +541,28 @@ def main(argv: list[str] | None = None) -> int:
         },
     )
     print(metrics)
+    return 0
+
+
+def _print_freeze(path: Path) -> int:
+    """Read the parts of the recorded split now and print set.py arguments for the harness."""
+    import json
+
+    import hopsworks
+    import yaml
+
+    system = yaml.safe_load(path.read_text(encoding="utf-8"))
+    training = system["training"]
+    fv_spec = training["feature_view"]
+    fv = (
+        hopsworks.login()
+        .get_feature_store()
+        .get_feature_view(fv_spec["name"], version=fv_spec["version"])
+    )
+    record, _ = freeze(fv, training, system["requirements"])
+    print(f"training.harness.end_time={record['end_time']}")
+    print(f"training.harness.in_memory_version={record['in_memory_version']}")
+    print(f"training.harness.parts={json.dumps(record['parts'])}")
     return 0
 
 

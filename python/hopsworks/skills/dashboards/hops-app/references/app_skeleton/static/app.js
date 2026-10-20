@@ -1,5 +1,8 @@
 // No build step and no CDN: the app runs air-gapped. Every URL is relative so
-// the Hopsworks proxy mount works without the app knowing its prefix.
+// the Hopsworks proxy mount works without the app knowing its prefix. Charts are
+// Chart.js (static/vendor/), styled once by static/chart-theme.js.
+
+const { Chart, hopsChart } = window;
 
 async function getJSON(path) {
   const response = await fetch(path, { headers: { Accept: "application/json" } });
@@ -11,6 +14,15 @@ async function getJSON(path) {
 }
 
 const percent = (value) => `${(value * 100).toFixed(1)}%`;
+
+// A stat shows its figure on one line; the title keeps it whole when it is cut.
+function setStat(id, text) {
+  const node = document.getElementById(id);
+  node.textContent = text;
+  node.title = text;
+}
+const count = new Intl.NumberFormat();
+const day = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -54,13 +66,14 @@ async function loadTop() {
         const tr = el("tr");
         const risk = el("td");
         risk.append(scoreBar(c.score));
-        tr.append(el("td", "num", String(c.customer_id)), risk);
+        tr.append(el("td", "id", String(c.customer_id)), risk);
         return tr;
       }),
     );
     const mean = top.reduce((sum, c) => sum + c.score, 0) / top.length;
-    document.querySelector("#avg").textContent = percent(mean);
-    document.querySelector("#max").textContent = percent(top[0].score);
+
+    setStat("avg", percent(mean));
+    setStat("max", percent(top[0].score));
   } catch (error) {
     body.replaceChildren(message("error", `Could not load: ${error.message}`));
   } finally {
@@ -82,7 +95,7 @@ document.querySelector("#lookup").addEventListener("submit", async (event) => {
     const line = el("p");
     line.append(
       el("strong", "", `Customer ${String(c.customer_id)} `),
-      el("span", c.score >= 0.6 ? "badge high" : "badge", percent(c.score)),
+      el("span", c.score >= 0.6 ? "status high" : "status", percent(c.score)),
       el("span", "muted", ` as of ${when}`),
     );
     result.replaceChildren(line);
@@ -93,4 +106,70 @@ document.querySelector("#lookup").addEventListener("submit", async (event) => {
   }
 });
 
+// One chart per canvas, created on the first load and updated in place after.
+const charts = {};
+
+function chartMessage(canvas, className, text) {
+  const box = canvas.parentElement;
+  box.querySelector(".empty, .error")?.remove();
+  if (text) box.append(el("div", className, text));
+}
+
+function draw(id, config) {
+  const canvas = document.getElementById(id);
+  const empty = !config.data.labels.length;
+  chartMessage(canvas, "empty", empty ? "No predictions yet." : "");
+  if (charts[id]) {
+    charts[id].data = config.data;
+    charts[id].update();
+  } else {
+    charts[id] = new Chart(canvas, config);
+  }
+}
+
+async function loadCharts() {
+  try {
+    const [trend, bands] = await Promise.all([getJSON("api/trend"), getJSON("api/bands")]);
+    draw("trend", {
+      type: "line",
+      data: {
+        labels: trend.map((d) => day.format(new Date(d.day))),
+        datasets: [{ label: "Average risk", data: trend.map((d) => d.score * 100), fill: true }],
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: "Average risk (%)" } },
+        },
+        plugins: { tooltip: { callbacks: { label: (c) => `${c.parsed.y.toFixed(1)}%` } } },
+      },
+    });
+    draw("bands", {
+      type: "bar",
+      data: {
+        labels: bands.map((b) => b.band),
+        datasets: [
+          {
+            label: "Customers",
+            data: bands.map((b) => b.customers),
+            // The band that needs action in the accent, the others for context.
+            backgroundColor: bands.map((b) =>
+              b.band === "high" ? hopsChart.accent : hopsChart.context[0],
+            ),
+          },
+        ],
+      },
+      options: {
+        scales: { y: { beginAtZero: true, title: { display: true, text: "Customers" } } },
+      },
+    });
+    const scored = bands.reduce((sum, b) => sum + b.customers, 0);
+    setStat("scored", count.format(scored));
+  } catch (error) {
+    for (const id of ["trend", "bands"]) {
+      chartMessage(document.getElementById(id), "error", `Could not load: ${error.message}`);
+    }
+  }
+}
+
 loadTop();
+loadCharts();

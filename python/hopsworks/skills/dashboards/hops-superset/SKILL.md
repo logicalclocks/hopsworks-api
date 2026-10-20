@@ -229,176 +229,13 @@ A dashboard needs (a) a `position_json` layout **and** (b) an explicit
 chart→dashboard link via `update_chart(dashboards=[id])`. The layout alone
 does not populate the chart's "Dashboards" tab in the UI.
 
-### Layout primer
-
-Superset uses a 12-column grid. Row heights are in ~25px units. Every node
-has `id`, `type`, `children`, `parents`, and `meta`. Widths must sum to 12
-within each row.
-
-Node types used in `position_json`:
-
-| Type | Purpose | `meta` fields |
-|---|---|---|
-| `ROOT` | Always present, single child `GRID_ID` | — |
-| `GRID` | The 12-col grid, children are rows | — |
-| `HEADER` | Dashboard title header | `text` |
-| `ROW` | Horizontal row, children sum to 12 cols | `background` |
-| `CHART` | A chart cell | `width`, `height`, `chartId`, `sliceName` |
-| `MARKDOWN` | Static markdown cell | `width`, `height`, `code` |
-| `COLUMN` | Vertical column container | `width`, `background` |
-| `TABS` / `TAB` | Tabbed sections | `text` (on TAB) |
-
-### Layout builder
-
-```python
-import json
-
-def build_position_json(chart_ids, chart_slices, title):
-    layout = {
-        "DASHBOARD_VERSION_KEY": "v2",
-        "ROOT_ID": {"type": "ROOT", "id": "ROOT_ID", "children": ["GRID_ID"]},
-        "GRID_ID": {
-            "type": "GRID", "id": "GRID_ID",
-            "children": [],                # filled below
-            "parents": ["ROOT_ID"],
-        },
-        "HEADER_ID": {"id": "HEADER_ID", "type": "HEADER", "meta": {"text": title}},
-    }
-
-    def chart(key, width, height):
-        nid = f"CHART-{key}"
-        layout[nid] = {
-            "type": "CHART", "id": nid, "children": [],
-            "parents": ["ROOT_ID", "GRID_ID"],
-            "meta": {"width": width, "height": height,
-                     "chartId": chart_ids[key], "sliceName": chart_slices[key]},
-        }
-        return nid
-
-    def row(row_id, children):
-        layout[row_id] = {
-            "type": "ROW", "id": row_id, "children": children,
-            "parents": ["ROOT_ID", "GRID_ID"],
-            "meta": {"background": "BACKGROUND_TRANSPARENT"},
-        }
-        for c in children:
-            layout[c]["parents"] = ["ROOT_ID", "GRID_ID", row_id]
-        layout["GRID_ID"]["children"].append(row_id)
-
-    row("ROW-1", [chart("a", 6, 50), chart("b", 6, 50)])    # two half-width charts
-    row("ROW-2", [chart("c", 12, 50)])                      # one full-width chart
-    return json.dumps(layout)
-```
-
-### Create / update idempotently
-
-```python
-def ensure_dashboard(api, title, chart_ids, chart_slices):
-    position_json = build_position_json(chart_ids, chart_slices, title)
-
-    dashboard_id = next(
-        (d["id"] for d in list_all(api, "dashboard")
-         if d.get("dashboard_title") == title),
-        None,
-    )
-
-    if dashboard_id is None:
-        dashboard_id = api.create_dashboard(
-            dashboard_title=title, published=True, position_json=position_json,
-        )["id"]
-    else:
-        api.update_dashboard(
-            dashboard_id, dashboard_title=title, published=True,
-            position_json=position_json,
-        )
-
-    # Persist the chart -> dashboard relation explicitly.
-    for cid in chart_ids.values():
-        api.update_chart(cid, dashboards=[dashboard_id])
-
-    return dashboard_id
-```
-
-Dashboard URL:
-```
-https://<hopsworks-host>/hopsworks-api/superset/superset/dashboard/<id>/
-```
+Layout primer, the look, a layout builder and an idempotent create or update: `hops skills info hops-superset references/layout.md`.
 
 ---
 
 ## 6. End-to-end pattern
 
-```python
-import json
-import hopsworks
-
-# Columns below (state, age, …) are illustrative — swap for real ones from
-# `hops fg features <FG_NAME> --version <FG_VERSION>`.
-PROJECT_NAME = "<your_project>"        # don't hardcode; set to project.name after login
-FG_NAME, FG_VERSION = "customers", 1
-
-COUNT_METRIC = {
-    "expressionType": "SQL", "sqlExpression": "COUNT(*)",
-    "label": "count", "optionName": "metric_count", "hasCustomLabel": True,
-}
-
-
-def main():
-    project = hopsworks.login()
-    api = project.get_superset_api()
-
-    trino_db_id = find_trino_db_id(api)
-    schema = f"{PROJECT_NAME}_featurestore"
-    sql = f"SELECT * FROM delta.{schema}.{FG_NAME}_{FG_VERSION}"
-
-    dataset_id = ensure_dataset(
-        api, database_id=trino_db_id, schema=schema, name=FG_NAME, sql=sql,
-    )
-
-    chart_ids = {
-        "total": replace_chart(
-            api, slice_name="Total Customers",
-            viz_type="big_number_total", datasource_id=dataset_id,
-            params=json.dumps({
-                "viz_type": "big_number_total", "metric": COUNT_METRIC,
-                "adhoc_filters": [], "y_axis_format": "SMART_NUMBER",
-            }),
-        ),
-        "by_state": replace_chart(
-            api, slice_name="Top States",
-            viz_type="echarts_timeseries_bar", datasource_id=dataset_id,
-            params=json.dumps({
-                "viz_type": "echarts_timeseries_bar",
-                "x_axis": "state", "x_axis_force_categorical": True,
-                "metrics": [COUNT_METRIC], "groupby": [], "adhoc_filters": [],
-                "row_limit": 20, "orientation": "vertical", "order_desc": True,
-                "timeseries_limit_metric": COUNT_METRIC,
-                "x_axis_sort": "count", "x_axis_sort_asc": False,
-                "y_axis_format": "SMART_NUMBER",
-            }),
-        ),
-        "age_hist": replace_chart(
-            api, slice_name="Age Distribution",
-            viz_type="histogram_v2", datasource_id=dataset_id,
-            params=json.dumps({
-                "viz_type": "histogram_v2", "column": "age",
-                "groupby": [], "adhoc_filters": [], "row_limit": 50000,
-                "bins": 20, "x_axis_title": "Age", "y_axis_title": "Customers",
-            }),
-        ),
-    }
-
-    chart_slices = {"total": "Total Customers", "by_state": "Top States",
-                    "age_hist": "Age Distribution"}
-    dashboard_id = ensure_dashboard(
-        api, "Customers Overview", chart_ids, chart_slices,
-    )
-    print(f"Dashboard id: {dashboard_id}")
-
-
-if __name__ == "__main__":
-    main()
-```
+A whole pattern, from a feature group to a dataset, charts and a dashboard: `hops skills info hops-superset references/end-to-end.md`.
 
 ---
 
@@ -414,12 +251,15 @@ last line printing the dashboard URL.
   is `~/dashboards/<slug>.py` in a Hopsworks terminal (the FUSE mount) and
   `./dashboards/<slug>.py` from an external client, mirrored with
   `hops files upload` and `hops files download` so both places hold the same programs.
-- **Where they run:** the SDK reaches Superset only inside the cluster
-  (`get_superset_api()` refuses an external client, and so does `hops superset`).
-  In a terminal, run the program directly. From an external client, run it as a
-  Hopsworks job, which also uploads it to `Users/<user>/dashboards/`; `--list`
-  run the same way stands in for `hops superset dashboard list`.
-- **A re-run is an update.** Datasets are reused by name, the charts the
+- **Where they run:** where you run, a Hopsworks terminal or an external client:
+  `get_superset_api()` and `hops superset` reach Superset through the Hopsworks
+  proxy. Go through the SDK or the CLI, never raw requests: Superset's writes need
+  the headers the SDK sets.
+- **Each dashboard has its own datasets**, named `<SLUG>__<feature group>_<version>`,
+  so two dashboards over one feature group never share or delete each other's.
+- **Every chart is checked.** After a build the program runs each chart's query once
+  (`/api/v1/chart/data`) and exits non-zero naming the charts that error or return no rows.
+- **A re-run is an update.** The dashboard's datasets are reused by name, the charts the
   dashboard had are replaced (so a chart dropped from `CHARTS` goes too), and the
   dashboard keeps its id, URL and title.
 - **`--delete` removes only what the program made:** the dashboard, its
@@ -432,10 +272,6 @@ last line printing the dashboard URL.
 python ~/dashboards/customers-overview.py            # create or update, prints the URL
 python ~/dashboards/customers-overview.py --delete   # after confirming the exact title
 hops superset dashboard list                         # confirm
-# from an external client: the same program as a job
-hops job deploy customers-overview-dashboard dashboards/customers-overview.py \
-  --env python-feature-pipeline --upload-dir Users/<user>/dashboards --overwrite --run --wait
-hops job logs customers-overview-dashboard --stdout                 # the URL, or the --list JSON
 ```
 
 A chart Superset rejects (a legacy viz type, `Empty query?`, an unknown field)
@@ -444,19 +280,18 @@ a chart that still fails is dropped from `CHARTS` with a line saying why.
 
 ## 8. Debugging cheatsheet
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `Item with key "X" is not registered` | Legacy viz_type removed | Swap to modern key from §3 |
-| `Empty query?` (histogram) | Used `all_columns_x` | Use `column` (single string) |
-| `Empty query?` (bar) | Used `groupby` instead of `x_axis` | Set `x_axis`, optionally add `x_axis_force_categorical: true` |
-| `Dataset ... already exists` | Non-idempotent create | Use `ensure_dataset` (list-then-create) |
-| `400 {"message":{"description":["Unknown field."]}}` | SDK signature includes `description` but Superset REST rejects it | Drop `description` from `create_dataset`/`create_chart`/`create_dashboard` calls |
-| Chart renders but absent from dashboard | Only `position_json` was set | Also call `update_chart(cid, dashboards=[dashboard_id])` |
-| Trino query "Schema not found" | Missing catalog prefix | Use `SELECT * FROM delta.<project>_featurestore.<fg>_<version>` (`hudi.` / `iceberg.` for those formats) |
-| Trino query "Table not found" | Missing `_<version>` suffix | FG tables are always suffixed with version (`customers_1`, not `customers`) |
-| Bars come out unsorted | `x_axis_sort` doesn't match a metric label | Make `x_axis_sort` equal to the metric's `label` field |
-| Time-series bar shows one bar | X axis is a string but `x_axis_force_categorical` missing | Add `x_axis_force_categorical: true` |
-| Auth error from `api._request` | Session expired across long runs | Re-fetch `project.get_superset_api()` |
+Symptoms and fixes: `hops skills info hops-superset references/debugging.md`.
+
+## References
+
+Read the one a step needs, with `hops skills info hops-superset references/<file>`:
+
+- [references/dashboard_program.py](references/dashboard_program.py): the skeleton every dashboard program starts from.
+- [references/chart_params.md](references/chart_params.md): the `params` of each viz type, and the metric and filter blocks.
+- [references/viz_types.md](references/viz_types.md): the `viz_type` keys the server accepts.
+- [references/layout.md](references/layout.md): `position_json`, the look, a layout builder, create or update in place.
+- [references/end-to-end.md](references/end-to-end.md): a feature group to a dataset, charts and a dashboard.
+- [references/debugging.md](references/debugging.md): symptoms and fixes.
 
 ---
 

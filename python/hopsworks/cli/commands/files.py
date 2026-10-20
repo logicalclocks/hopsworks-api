@@ -19,64 +19,96 @@ from hopsworks.cli import output, session
 
 @click.group("files")
 def files_group() -> None:
-    """File-system commands on HopsFS (list, mkdir, upload, download, share, remove)."""
+    """Files and datasets on HopsFS.
+
+    File-system commands on HopsFS (list, mkdir, upload, download, share, remove).
+    """
 
 
 @files_group.command("list")
 @click.argument("path", required=False, default="")
 @click.pass_context
 def dataset_list(ctx: click.Context, path: str) -> None:
-    """List files under ``path`` in the project's HopsFS.
+    """List files under PATH.
 
-    An empty path lists the project root. The SDK returns string paths for the
-    root and Inode objects for nested directories; we normalize both shapes to
-    a simple NAME/KIND/SIZE table.
+    An empty path lists the project's datasets.
 
+    \f
     Args:
         ctx: Click context.
         path: HopsFS path relative to the project root.
     """
+    from hopsworks_common.core import dataset, inode
+
     project = session.get_project(ctx)
     api = project.get_dataset_api()
+    root = not path.strip("/")
     try:
-        entries = api.list(path or "")
+        # `DatasetApi.list` returns bare paths; the listing carries kind and size.
+        _, entries = api._list_dataset_path(
+            "" if root else path, dataset.Dataset if root else inode.Inode
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list '{path}': {exc}") from exc
 
-    rows = [_entry_row(e) for e in entries or []]
+    if root:
+        rows = [[e.name, "dataset", "-"] for e in entries]
+    else:
+        rows = [
+            [e.name, "dir" if e.dir else "file", "-" if e.dir else e.size]
+            for e in entries
+        ]
     output.print_table(["NAME", "KIND", "SIZE"], rows)
 
 
-def _entry_row(entry: Any) -> list[Any]:
-    if isinstance(entry, str):
-        return [entry, "-", "-"]
-    name = getattr(entry, "name", None) or getattr(entry, "path", "?")
-    kind = (
-        "dir"
-        if getattr(entry, "dir", False)
-        or str(getattr(entry, "kind", "")).lower() == "dir"
-        else "file"
-    )
-    size = getattr(entry, "size", "-")
-    return [name, kind, size]
+def makedirs(dataset_api: Any, path: str) -> bool:
+    """Create `path` and its missing parents, like `mkdir -p`.
+
+    Hopsworks creates one level per request and refuses a missing parent
+    (HTTP 422), so the walk goes up to the first existing ancestor and
+    creates the rest top-down.
+
+    Args:
+        dataset_api: The project's `DatasetApi`.
+        path: HopsFS path, relative to the project or absolute.
+
+    Returns:
+        `True` if a directory was created, `False` if `path` already existed.
+    """
+    missing = []
+    current = path.rstrip("/")
+    while current not in ("", ".") and not dataset_api.exists(current):
+        missing.append(current)
+        current = current.rpartition("/")[0]
+    for directory in reversed(missing):
+        dataset_api.mkdir(directory)
+    return bool(missing)
 
 
 @files_group.command("mkdir")
 @click.argument("path")
 @click.pass_context
 def dataset_mkdir(ctx: click.Context, path: str) -> None:
-    """Create a directory in the project's HopsFS.
+    """Create a directory in HopsFS, with its missing parents.
 
+    An existing directory is not an error.
+
+    \f
     Args:
         ctx: Click context.
         path: HopsFS path to create.
     """
     project = session.get_project(ctx)
     try:
-        created = project.get_dataset_api().mkdir(path)
+        created = makedirs(project.get_dataset_api(), path)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"mkdir failed: {exc}") from exc
-    output.success("✓ Created %s", created or path)
+        raise click.ClickException(
+            f"Could not create directory '{path}': {exc}"
+        ) from exc
+    if created:
+        output.success("✓ Created %s", path)
+    else:
+        output.success("✓ %s already exists", path)
 
 
 @files_group.command("upload")
@@ -87,14 +119,16 @@ def dataset_mkdir(ctx: click.Context, path: str) -> None:
 def dataset_upload(
     ctx: click.Context, local_path: str, remote_path: str, overwrite: bool
 ) -> None:
-    """Upload a local file to HopsFS.
+    """Upload a local file or directory to HopsFS.
 
-    ``REMOTE_PATH`` is the destination path (``cp``/``scp``-style), not the
+    `REMOTE_PATH` is the destination path (`cp`/`scp`-style), not the
     parent directory. When its basename matches the local file's basename
-    the parent is used as the SDK's ``upload_path``; otherwise the remote
+    the parent is used as the SDK's `upload_path`; otherwise the remote
     path is passed through unchanged and the SDK treats it as a directory
-    (file lands under ``REMOTE_PATH/<local basename>``).
+    (file lands under `REMOTE_PATH/<local basename>`). Missing remote
+    parent directories are created.
 
+    \f
     Args:
         ctx: Click context.
         local_path: Local source file.
@@ -103,17 +137,20 @@ def dataset_upload(
     """
     import os
 
+    remote_path = remote_path.rstrip("/") or remote_path
     upload_path = remote_path
     if os.path.basename(remote_path) == os.path.basename(local_path):
         upload_path = os.path.dirname(remote_path) or "."
 
     project = session.get_project(ctx)
+    dataset_api = project.get_dataset_api()
     try:
-        uploaded = project.get_dataset_api().upload(
+        makedirs(dataset_api, upload_path)
+        uploaded = dataset_api.upload(
             local_path=local_path, upload_path=upload_path, overwrite=overwrite
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Upload failed: {exc}") from exc
+        raise click.ClickException(f"Could not upload '{local_path}': {exc}") from exc
     output.success("✓ Uploaded to %s", uploaded or remote_path)
 
 
@@ -132,6 +169,7 @@ def dataset_download(
 ) -> None:
     """Download a file from HopsFS to the local filesystem.
 
+    \f
     Args:
         ctx: Click context.
         remote_path: HopsFS source path.
@@ -144,7 +182,9 @@ def dataset_download(
             path=remote_path, local_path=local_path, overwrite=overwrite
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Download failed: {exc}") from exc
+        raise click.ClickException(
+            f"Could not download '{remote_path}': {exc}"
+        ) from exc
     output.success("✓ Downloaded to %s", path)
 
 
@@ -172,11 +212,12 @@ def dataset_share(
     Requires the **Data Owner** role in the active (source) project; the
     backend rejects the share otherwise.
 
+    \f
     Args:
         ctx: Click context.
-        path: HopsFS path of the dataset to share (e.g. ``Resources/my_dir``).
+        path: HopsFS path of the dataset to share (e.g. `Resources/my_dir`).
         target_project: Name of the project to share with.
-        permission: One of ``READ_ONLY``, ``EDITABLE``, ``EDITABLE_BY_OWNERS``.
+        permission: One of `READ_ONLY`, `EDITABLE`, `EDITABLE_BY_OWNERS`.
     """
     project = session.get_project(ctx)
     try:
@@ -186,7 +227,7 @@ def dataset_share(
     except PermissionError as exc:
         raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Share failed: {exc}") from exc
+        raise click.ClickException(f"Could not share '{path}': {exc}") from exc
     output.success(
         "✓ Shared %s with project '%s' (%s)", path, target_project, permission
     )
@@ -202,10 +243,11 @@ def dataset_share(
 )
 @click.pass_context
 def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
-    """Revoke a previously-granted dataset share with another project.
+    """Revoke a dataset share with another project.
 
     Requires the **Data Owner** role in the active (source) project.
 
+    \f
     Args:
         ctx: Click context.
         path: HopsFS path of the dataset.
@@ -217,17 +259,18 @@ def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
     except PermissionError as exc:
         raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Unshare failed: {exc}") from exc
+        raise click.ClickException(f"Could not unshare '{path}': {exc}") from exc
     output.success("✓ Unshared %s from project '%s'", path, target_project)
 
 
-@files_group.command("remove")
+@files_group.command("delete")
 @click.argument("path")
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
 @click.pass_context
 def dataset_remove(ctx: click.Context, path: str, yes: bool) -> None:
     """Remove a file or directory from HopsFS.
 
+    \f
     Args:
         ctx: Click context.
         path: HopsFS path.
@@ -239,5 +282,5 @@ def dataset_remove(ctx: click.Context, path: str, yes: bool) -> None:
     try:
         project.get_dataset_api().remove(path)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Remove failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete '{path}': {exc}") from exc
     output.success("✓ Removed %s", path)

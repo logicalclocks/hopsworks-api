@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
   <title>Card fraud console</title>
   <script>
     // Relative URLs resolve against the proxy mount only with a trailing slash.
@@ -13,9 +14,6 @@
 </head>
 <body>
   <header class="band">
-    <div class="mark" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3Zm0 5a2 2 0 0 1 2 2v2h1v5H9v-5h1V9a2 2 0 0 1 2-2Zm0 1.3a.7.7 0 0 0-.7.7v2h1.4V9a.7.7 0 0 0-.7-.7Z"/></svg>
-    </div>
     <div class="title">
       <h1>Card fraud console</h1>
       <div class="sub">Live card windows from Spark Structured Streaming, scored against dbt spending baselines</div>
@@ -28,12 +26,12 @@
   </header>
 
   <main>
-    <section class="tiles" aria-label="Now">
-      <div class="card stat"><div class="label">Cards in a window</div><div class="value" id="cards">–</div><div class="hint" id="baseline"></div></div>
-      <div class="card stat flag"><div class="label">Over the threshold</div><div class="value danger" id="flagged">–</div><div class="hint" id="flagged-pct"></div></div>
-      <div class="card stat"><div class="label">Authorisations in windows</div><div class="value" id="auths">–</div><div class="hint" id="window"></div></div>
-      <div class="card stat"><div class="label">Online read</div><div class="value" id="read">–</div><div class="hint">windows + baselines</div></div>
-      <div class="card stat"><div class="label">Scoring</div><div class="value" id="scoring">–</div><div class="hint" id="model"></div></div>
+    <section class="stats" aria-label="Now">
+      <div class="stat"><div class="label">Cards in a window</div><div class="value" id="cards">–</div><div class="hint" id="baseline"></div></div>
+      <div class="stat flag"><div class="label">Over the threshold</div><div class="value danger" id="flagged">–</div><div class="hint" id="flagged-pct"></div></div>
+      <div class="stat"><div class="label">Authorisations in windows</div><div class="value" id="auths">–</div><div class="hint" id="window"></div></div>
+      <div class="stat"><div class="label">Online read</div><div class="value" id="read">–</div><div class="hint">windows + baselines</div></div>
+      <div class="stat"><div class="label">Scoring</div><div class="value" id="scoring">–</div><div class="hint" id="model"></div></div>
     </section>
 
     <section class="card dist">

@@ -35,7 +35,7 @@ _FETCH_BATCH = 1_000
 
 @click.group("trino")
 def trino_group() -> None:
-    """Trino commands (query, catalogs, schemas, tables)."""
+    """Trino: SQL over the feature store and data sources."""
 
 
 def _api(ctx: click.Context) -> Any:
@@ -64,7 +64,7 @@ def _connect(ctx: click.Context, catalog: str | None, schema: str | None) -> Any
     try:
         return api.connect(catalog=cat, schema=sch, verify=verify)
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
-        raise click.ClickException(f"Trino connect failed: {exc}") from exc
+        raise click.ClickException(f"Could not connect to Trino: {exc}") from exc
 
 
 def _column_names(cursor: Any) -> list[str]:
@@ -132,7 +132,10 @@ def _execute(
     conn = _connect(ctx, catalog, schema)
     try:
         cur = conn.cursor()
-        cur.execute(sql)
+        try:
+            cur.execute(sql)
+        except Exception as exc:  # noqa: BLE001 - the driver raises a mix of types
+            raise click.ClickException(f"Could not run the query: {exc}") from exc
         if cur.description is None:
             # Statement that returned no rowset (e.g. CREATE/INSERT). Most users
             # don't run these from the CLI, but report the rowcount if the
@@ -144,7 +147,12 @@ def _execute(
                 output.print_json({"affected_rows": affected})
             return
         headers = _column_names(cur)
-        rows = list(_iter_rows(cur, limit))
+        try:
+            rows = list(_iter_rows(cur, limit))
+        except Exception as exc:  # noqa: BLE001 - rows stream, so a failure can come late
+            raise click.ClickException(
+                f"Could not read the query's rows: {exc}"
+            ) from exc
         _render_rows(headers, rows)
         if limit and len(rows) >= limit and not output.JSON_MODE:
             output.warn(
@@ -207,9 +215,14 @@ def trino_query(
 ) -> None:
     """Run an ad-hoc SQL query.
 
-    Provide the SQL as a positional argument, or use ``-f`` to read from a
-    file, or ``-i`` to read from stdin (useful in shell pipelines).
+    Provide the SQL as a positional argument, or use `-f` to read from a
+    file, or `-i` to read from stdin (useful in shell pipelines).
 
+    The dialect is Trino's: `date_diff('day', a, b)`, `date_trunc('month', ts)`,
+    `approx_percentile(x, 0.5)`. A feature group is the table `<name>_<version>` in
+    the feature store's schema, the default.
+
+    \f
     Args:
         ctx: Click context.
         sql: SQL string passed positionally.
@@ -233,12 +246,6 @@ def trino_query(
     _execute(ctx, sql, catalog, schema, limit)
 
 
-# ``hops trino sql ...`` is a natural guess (the skill calls it "Trino SQL",
-# and the top-level alias is ``hops sql``). Without this it failed with a bare
-# "No such command 'sql'". Register the same command under both names.
-trino_group.add_command(trino_query, name="sql")
-
-
 # region: discovery shortcuts ---------------------------------------------
 
 
@@ -247,6 +254,7 @@ trino_group.add_command(trino_query, name="sql")
 def trino_catalogs(ctx: click.Context) -> None:
     """List Trino catalogs visible to the current user.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -259,6 +267,7 @@ def trino_catalogs(ctx: click.Context) -> None:
 def trino_schemas(ctx: click.Context, catalog: str) -> None:
     """List schemas in CATALOG.
 
+    \f
     Args:
         ctx: Click context.
         catalog: Trino catalog name.
@@ -270,13 +279,16 @@ def trino_schemas(ctx: click.Context, catalog: str) -> None:
 @click.argument("target")
 @click.pass_context
 def trino_tables(ctx: click.Context, target: str) -> None:
-    """List tables in TARGET (``<catalog>.<schema>`` or just ``<schema>``).
+    """List tables in a schema.
+
+    List tables in TARGET (`<catalog>.<schema>` or just `<schema>`).
 
     When TARGET has no dot the active project's default catalog is assumed.
 
+    \f
     Args:
         ctx: Click context.
-        target: ``<catalog>.<schema>`` or just ``<schema>``.
+        target: `<catalog>.<schema>` or just `<schema>`.
     """
     if "." in target:
         cat, sch = target.split(".", 1)
@@ -287,17 +299,20 @@ def trino_tables(ctx: click.Context, target: str) -> None:
     _execute(ctx, sql, catalog=None, schema=None, limit=0)
 
 
-@trino_group.command("describe")
+@trino_group.command("columns")
 @click.argument("table_ref")
 @click.pass_context
 def trino_describe(ctx: click.Context, table_ref: str) -> None:
-    """Describe TABLE_REF (``<catalog>.<schema>.<table>`` or ``<schema>.<table>``).
+    """Describe a table.
+
+    Describe TABLE_REF (`<catalog>.<schema>.<table>` or `<schema>.<table>`).
 
     Output is one row per column with name, type, extra-info, and comment.
 
+    \f
     Args:
         ctx: Click context.
-        table_ref: ``<catalog>.<schema>.<table>`` or ``<schema>.<table>``.
+        table_ref: `<catalog>.<schema>.<table>` or `<schema>.<table>`.
     """
     parts = table_ref.split(".")
     if len(parts) not in (2, 3):
@@ -315,6 +330,7 @@ def trino_describe(ctx: click.Context, table_ref: str) -> None:
 def trino_info(ctx: click.Context) -> None:
     """Show the host/port/user the CLI would connect with.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -324,7 +340,7 @@ def trino_info(ctx: click.Context) -> None:
         port = api.get_port()
         user, _ = api.get_basic_auth()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Trino info failed: {exc}") from exc
+        raise click.ClickException(f"Could not read Trino server info: {exc}") from exc
     payload = {"host": host, "port": port, "user": user}
     if output.JSON_MODE:
         output.print_json(payload)

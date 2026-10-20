@@ -331,6 +331,15 @@ class Engine:
                 dataframe_type,
             )
         else:
+            from hsfs.core import arrow_flight_client
+
+            query_service = arrow_flight_client._get_instance()
+            if query_service.enabled_on_cluster and query_service.disabled_reason:
+                raise FeatureStoreException(
+                    "Hopsworks Query Service client failed to initialise for this session: "
+                    f"{query_service.disabled_reason}. Call `fs._reset_hopsworks_feature_query_service_client()` on the feature store "
+                    "to retry."
+                )
             raise ValueError(
                 "Reading data with Hive is not supported when using hopsworks client version >= 4.0"
             )
@@ -1662,6 +1671,11 @@ class Engine:
         # generator avoids touching the process-global random module; seed=None
         # falls back to entropy seeding, preserving the previous behaviour.
         random.Random(training_dataset_obj.seed).shuffle(groups)
+        if training_dataset_obj.seed is not None:
+            # A query returns its rows in no fixed order, so a seeded split deals the
+            # shuffled groups out in the order of each row's content hash: the same rows
+            # get the same split whatever order they were read in.
+            groups = self._by_row_hash(df, groups)
         if HAS_POLARS and (
             isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
@@ -1677,6 +1691,25 @@ class Engine:
                 split_df = df[df[split_column] == i].drop(split_column, axis=1)
             result_dfs[split.name] = split_df
         return result_dfs
+
+    @staticmethod
+    def _by_row_hash(df: pd.DataFrame | pl.DataFrame, groups: list[int]) -> list[int]:
+        """`groups` reordered so the i-th smallest row hash gets `groups[i]`."""
+        if HAS_POLARS and isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame)):
+            hashes = df.hash_rows(seed=0).to_list()
+        else:
+            try:
+                hashes = pd.util.hash_pandas_object(df, index=False).tolist()
+            except TypeError:  # list or dict cells, such as embeddings
+                hashes = pd.util.hash_pandas_object(
+                    df.astype(str), index=False
+                ).tolist()
+        dealt = [0] * len(groups)
+        for group, row in zip(
+            groups, sorted(range(len(hashes)), key=hashes.__getitem__), strict=True
+        ):
+            dealt[row] = group
+        return dealt
 
     def _time_series_split(
         self,

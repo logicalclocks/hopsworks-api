@@ -24,8 +24,8 @@ pipeline must log its inputs and outputs first (see Inference feature logging).
 ## Smoke-test (cheap pre/post-flight)
 ```bash
 hops fg list                       # confirm the FG exists
-hops fg stats <name> --version 1   # latest descriptive statistics (no Python)
-hops fg stats <name> --compute     # recompute on current data
+hops fg stats info <name> --version 1   # latest descriptive statistics (no Python)
+hops fg stats compute <name>     # recompute on current data
 ```
 
 ## Cluster & client requirements (check these first — both bite)
@@ -182,7 +182,7 @@ fv.log(logging_data=vector, predictions=pred)   # also: untransformed_features, 
 ```
 
 ## Toolset
-- **CLI:** `hops fg stats <name> [--compute]`, `hops fg info <name>` (statistics only; monitoring/validation/alerts are SDK).
+- **CLI:** `hops fg stats compute <name> [--compute]`, `hops fg info <name>` (statistics only; monitoring/validation/alerts are SDK).
 - **SDK:** `StatisticsConfig`, `fg/fv.create_feature_monitoring()`, `fg.save_expectation_suite()`, `fg.get_validation_history()`, `fg/fv.create_alert()`, `fv.log()`.
 - **Source:** `python/hsfs/feature_group.py`, `feature_view.py`, `core/feature_monitoring_config.py`, `expectation_suite.py`, `ge_expectation.py`.
 
@@ -191,3 +191,4 @@ fv.log(logging_data=vector, predictions=pred)   # also: untransformed_features, 
 - [hops-fv](../hops-fv/SKILL.md) — enable `logging_enabled`; serving-time monitoring.
 - [hops-online-inference](../hops-online-inference/SKILL.md) — log feature vectors from a deployment.
 - [hops-superset](../../dashboards/hops-superset/SKILL.md) — chart the statistics / monitoring history.
+- [hops-design](../../dashboards/hops-design/SKILL.md): the look of every chart of statistics, drift or monitoring history.

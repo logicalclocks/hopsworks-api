@@ -15,8 +15,8 @@ Each layer is its own Factory entry and directory; an analytics pipeline's layer
 
 - **Input:** one or more bronze feature groups, the silver tasks to perform, and the engine (dbt on Trino by default, PySpark when a task needs it).
 - **Output:** silver feature groups tagged `analytics_table` `{"layer": "silver"}`, written by one scheduled Hopsworks job that processes only the bronze rows that arrived since its last run, and `system.yaml` describing what runs.
-- **Pre-condition:** the project has bronze feature groups with raw data.
-  Without them there is nothing to build a silver or gold layer from: say that bronze tables with raw data are needed first (ingest them with a DLTHub data source, **hops-data-sources**, and tick "Tag as a bronze table", or build the example bronze layer of generated data).
+- **Pre-condition:** the project has feature groups with raw data, tagged bronze or not (An existing table as bronze, below).
+  Without them there is nothing to build a silver or gold layer from: say that tables with raw data are needed first (ingest them with a DLTHub data source, **hops-data-sources**, and tick "Tag as a bronze table", or build the example bronze layer of generated data).
 
 ## The analytics_table tag
 
@@ -31,8 +31,8 @@ Hopsworks installs a schematized tag `analytics_table`, archived, so every chang
 ```
 
 ```bash
-hops fg add-tag crm_customers analytics_table --value '{"layer": "bronze", "lifecycle": "dev"}'
-hops fg tags crm_customers
+hops fg tag add crm_customers analytics_table --value '{"layer": "bronze", "lifecycle": "dev"}'
+hops fg tag list crm_customers
 ```
 
 ```python
@@ -41,6 +41,19 @@ fg.add_tag("analytics_table", {"layer": "silver", "lifecycle": "dev"})
 
 A table's layer never changes; its lifecycle moves from `dev` to `staging` to `prod` as it is promoted, and the history records when.
 A cluster installed before the tag existed gets it from a platform admin: `POST /hopsworks-api/api/tags?name=analytics_table&archive=true` with the schema above as the body.
+Without it, tagging fails with HTTP 404, error 370000, and nothing is tagged: build the layer untagged, record that in `decisions`, and tell the user once that an admin installs the schema.
+A layer never deletes its sources, tagged or not; the tag adds the Factory's listing, and guards a lower layer's tables that a layer does not list as sources.
+
+### An existing table as bronze
+
+Any feature group with raw data is a bronze source as it is: ingested by a data source, written by a job, or uploaded. Never copy it into a new table to make it bronze.
+The Factory's **Bronze tables** picker lists only tables tagged `layer: bronze`; `hops factory run analytics-silver --answers <file>` takes any feature group by name, untagged included:
+
+```json
+{"slug": "deals-silver", "sources": [{"name": "hubspot_deals", "version": 1, "cadence": "daily"}]}
+```
+
+Tag the table bronze only when the user confirms that table by name (`AskUserQuestion`: "Tag `hubspot_deals` v1 as a bronze table?"), since the tag is visible to everyone in the project and is kept in its history; then the Factory lists it too.
 
 ## Silver is in third normal form
 
@@ -105,7 +118,7 @@ The job processes only the bronze rows whose arrival column falls in `[HOPS_STAR
   Without the variables (the build's first run, before the job is scheduled) the filter is left out and the whole bronze history is processed; after that, a backfill reprocesses it (`hops job run <job> --start-time 1970-01-01 --end-time <now> --wait` for each job).
 - The silver feature group's primary key is the business key; with `history: full` its `event_time` is the record's own time, and the merge is on both; with `history: latest` it has none, and the merge is on the key. Either way a replayed window is idempotent.
 
-Order: deploy the job, run it once without a window to backfill the whole bronze history, then schedule it (`hops job schedule <job> "<cron>"`) with a start time at the end of that backfill, so the first scheduled window starts where the backfill ended.
+Order: deploy the job, run it once without a window to backfill the whole bronze history, then schedule it (`hops job schedule set <job> "<cron>"`) with a start time at the end of that backfill, so the first scheduled window starts where the backfill ended.
 
 ## The layer's settings
 
@@ -118,15 +131,15 @@ The Factory form asks for these, with these defaults, and `system.yaml` records 
 | `schema_changes` | `fail` (default), `evolve` | The job compares each bronze table's schema with the one `system.yaml` recorded at design. `fail`: it stops before writing, naming the change, for an apply to redesign. `evolve`: a new nullable column is added to the silver table it belongs to (`fg.append_features`) and recorded; a removed or retyped column still fails. |
 | `late_data.lookback` | `0` (default), `1d`, `7d` | Each run also re-reads that much before its window: the read starts at `HOPS_START_TIME` minus the lookback. The upsert makes the overlap harmless. The schedule's window is never moved with offsets; the program derives the read window. |
 | `quality.max_reject_pct` | 0 to 100, default 5 | A run whose rejected share of rows exceeds it fails after writing the rejects table and before writing silver, so bad data never reaches silver silently. |
-| `quality.alert_on_failure` | `true` (default) | A Hopsworks alert on the job's failure: `hops alert job create <job> --receiver <receiver> --status failed --severity critical`. |
+| `quality.alert_on_failure` | `true` (default) | A Hopsworks alert on the job's failure: `hops job alert create <job> --receiver <receiver> --status failed --severity critical`. |
 | `freshness.max_age_hours` | per cadence: 2 h hourly, 26 h daily, 170 h weekly | A silver table not written for longer than its cadence's target is stale; the layer's status report flags it. |
 
 ## Lineage, partitioning, schedule and status
 
 - **Lineage.** Every silver feature group is created with `parents=[<bronze feature groups it reads>]`, and every rejects feature group with its silver table's sources, so Hopsworks' lineage shows bronze to silver (`hops fg lineage <silver>`).
 - **Partitioning.** Decided per silver table at design with **hops-partitioning**, from the bronze table's files on the terminal's mount (`/hopsfs/featurestore/<project>_featurestore.db/<fg>_<version>`): none for small tables, else by hour, day or week, and recorded in `system.yaml` `partitioning` with the evidence.
-- **Schedule.** Each job: `hops job schedule <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --catchup --max-catchup-runs <its max_catchup_runs>`, so windows missed while the scheduler was down are replayed, one execution each, instead of skipped.
-- **Status.** `hops factory system status <layer>` writes `status/report.html` in the layer's directory: the job's runs, and for every silver and rejects table its rows, last write against the freshness target, rejected share against the gate, and file layout (the hops-table-maintenance scanner), with Claude's summary. The layer's page shows it with **Status**.
+- **Schedule.** Each job: `hops job schedule set <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --catchup --max-catchup-runs <its max_catchup_runs>`, so windows missed while the scheduler was down are replayed, one execution each, instead of skipped.
+- **Status.** `hops factory system status <layer>` writes `status/report.html` in the layer's directory: the job's runs, and for every silver and rejects table its rows, last write against the freshness target, rejected share against the gate, and file layout (the hops-table-maintenance scanner), with Claude's summary. The layer's page shows it with **Status**. `hops factory system plan <layer>` lists the tables and jobs the layer recorded that are gone, which sends their phase back to `pending`.
 - **Delete.** `hops factory system delete <layer> --assets` deletes a layer with its jobs, tables and directory, then its Factory entry; without `--assets` only the entry. Part of a layer (a job, or a data mart in gold) is deleted by a change request (**Delete job**, **Delete data mart**, the factory's `changes`), which the build carries out with `hops factory system delete-assets`; in silver the job's cadence and its sources leave the spec with it. A layer never deletes what it reads: a source, or a table tagged as a lower layer (bronze, and silver from gold), stops the delete before anything is deleted.
 - **Changes.** A change to a built layer is requested in the Factory, or with `hops factory run <factory> <slug> --change <id> [--answers FILE]`, as one of its factory's `changes` (silver: **Add tables**, **Delete job**; gold: **Add data mart**, **Edit data mart**, **Delete data mart**, **Delete job**). It is recorded in `system.yaml` under `changes` with `status: pending`, and the build carries it out when it resumes. **Add tables** adds bronze sources (each with its cadence) and a description of the tables wanted, recorded under `additions`, which `/hops-silver <slug> apply` builds.
 - **Backfill.** `hops job run <job> --start-time 1970-01-01 --end-time <now> --wait` for each job, slowest cadence first, reprocesses every bronze row; once the job is scheduled, a plain `hops job run` gets the last cron interval as its window instead. The layer's page has **Backfill**, which runs exactly that.
@@ -182,7 +195,7 @@ Deleting a bronze layer deletes its jobs and the bronze tables it wrote, which n
 ## Rules
 
 - Silver tables are materialized feature groups, never views or external feature groups over bronze.
-- Every silver and gold feature group is created with `statistics_config=False`: from a Python job, Hopsworks otherwise starts a Spark statistics job (`<fg>_<version>_compute_stats`) after every insert; the layer's checks and status report measure what it needs.
+- Every silver and gold feature group is created with `statistics_config=False`: from a Python job, Hopsworks otherwise starts a Spark statistics job (`<fg>_<version>_compute_stats`, which exists for every feature group and never runs with statistics off) after every insert; the layer's checks and status report measure what it needs.
 - Silver tables are in third normal form; no star schema, wide table or aggregate in silver.
 - A silver table never takes the name of an existing feature group, bronze above all: `get_or_create_feature_group` would return that group and the job would write into it. Prefix the names with the domain or the layer (`shop_orders`) when they would collide, and check `hops fg list` at design.
 - Bronze is never modified: no updates, deletes or masking in place; the silver layer reads it.
@@ -194,3 +207,4 @@ Deleting a bronze layer deletes its jobs and the bronze tables it wrote, which n
 ## Next Steps
 
 - Bronze ingestion: **hops-data-sources**. dbt and its runner: **hops-dbt**. PySpark: **hops-spark**. Job schedules and windows: **hops-job**. Feature groups: **hops-fg**.
+- Charts and dashboards over the marts: **hops-superset**, in the **hops-design** look.

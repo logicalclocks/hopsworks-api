@@ -14,11 +14,12 @@ from typing import Any
 
 import click
 from hopsworks.cli import lineage, output, session, versions
+from hopsworks.cli.commands.job import _ts_label
 
 
 @click.group("model")
 def model_group() -> None:
-    """Model registry commands."""
+    """Models in the model registry."""
 
 
 @model_group.command("list")
@@ -26,6 +27,7 @@ def model_group() -> None:
 def model_list(ctx: click.Context) -> None:
     """List every model registered in the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -52,6 +54,7 @@ def model_list(ctx: click.Context) -> None:
 def model_info(ctx: click.Context, name: str, version: int | None) -> None:
     """Show details for a single model version.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -62,7 +65,7 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
     try:
         model = versions.model(mr, name, version)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Model '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find model '{name}': {exc}") from exc
 
     if model is None:
         raise click.ClickException(f"Model '{name}' not found.")
@@ -75,12 +78,23 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
         ["Name", getattr(model, "name", "?")],
         ["Version", getattr(model, "version", "?")],
         ["Framework", getattr(model, "framework", "-")],
-        ["Created", getattr(model, "created", "-")],
-        ["Metrics", _short_metrics(getattr(model, "training_metrics", {}) or {})],
+        ["Created", _ts_label(getattr(model, "created", None))],
+        ["Feature view", _feature_view_label(model)],
+        ["Training dataset", getattr(model, "training_dataset_version", None) or "-"],
+        ["Metrics", _short_metrics(getattr(model, "training_metrics", {}) or {}, None)],
         ["Description", output.first_line(getattr(model, "description", ""))],
         ["Tags", output.format_mapping(output.read_tags(model))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+def _feature_view_label(model: Any) -> str:
+    """The feature view the model was trained on, `name vN`, from its provenance; `-` without one."""
+    try:
+        view = model.get_feature_view(init=False)
+    except Exception:  # noqa: BLE001 - provenance is optional; a model may have none
+        return "-"
+    return f"{view.name} v{view.version}" if view is not None else "-"
 
 
 def _list_models(project: Any) -> list[dict[str, Any]]:
@@ -103,10 +117,10 @@ def _list_models(project: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _short_metrics(metrics: dict[str, Any]) -> str:
+def _short_metrics(metrics: dict[str, Any], limit: int | None = 3) -> str:
     if not metrics:
         return "-"
-    parts = [f"{k}={v}" for k, v in list(metrics.items())[:3]]
+    parts = [f"{k}={v}" for k, v in list(metrics.items())[:limit]]
     return ", ".join(parts)
 
 
@@ -116,6 +130,8 @@ def _model_to_dict(model: Any) -> dict[str, Any]:
         "version": getattr(model, "version", None),
         "framework": getattr(model, "framework", None),
         "created": getattr(model, "created", None),
+        "feature_view": _feature_view_label(model),
+        "training_dataset_version": getattr(model, "training_dataset_version", None),
         "metrics": dict(getattr(model, "training_metrics", {}) or {}),
         "description": getattr(model, "description", None),
         "tags": output.read_tags(model),
@@ -181,14 +197,15 @@ def model_register(
     input_example_path: str | None,
     version: int | None,
 ) -> None:
-    """Upload a trained model artifact to the Hopsworks model registry.
+    """Upload a trained model to the model registry.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
         path: Local path to the model artifact (file or directory).
-        framework: ML framework category (``sklearn``/``tensorflow``/``torch``/``python``/``llm``).
-        metrics_spec: Metrics as ``key=value`` pairs.
+        framework: ML framework category (`sklearn`/`tensorflow`/`torch`/`python`/`llm`).
+        metrics_spec: Metrics as `key=value` pairs.
         description: Description string.
         feature_view: Feature view the model was trained on.
         td_version: Training dataset version used for training.
@@ -219,7 +236,7 @@ def model_register(
             fv_obj = versions.feature_view(fs, feature_view, None)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
-                f"Feature view '{feature_view}' not found: {exc}"
+                f"Could not find feature view '{feature_view}': {exc}"
             ) from exc
         if fv_obj is None:
             raise click.ClickException(f"Feature view '{feature_view}' not found.")
@@ -236,7 +253,7 @@ def model_register(
         )
         model.save(path)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Model register failed: {exc}") from exc
+        raise click.ClickException(f"Could not register model '{name}': {exc}") from exc
 
     output.success(
         "✓ Registered model %s v%s",
@@ -260,6 +277,7 @@ def model_download(
 ) -> None:
     """Download a model artifact from the registry.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -270,7 +288,7 @@ def model_download(
     try:
         path = model.download(local_path=output_dir)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Download failed: {exc}") from exc
+        raise click.ClickException(f"Could not download model '{name}': {exc}") from exc
     output.success("✓ Downloaded model %s to %s", name, path)
 
 
@@ -282,6 +300,7 @@ def model_download(
 def model_delete(ctx: click.Context, name: str, version: int, yes: bool) -> None:
     """Delete a single model version.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -294,7 +313,7 @@ def model_delete(ctx: click.Context, name: str, version: int, yes: bool) -> None
     try:
         model.delete()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Delete failed: {exc}") from exc
+        raise click.ClickException(f"Could not delete model '{name}': {exc}") from exc
     output.success("✓ Deleted model %s v%s", name, version)
 
 
@@ -308,6 +327,7 @@ def model_lineage(ctx: click.Context, name: str, version: int | None) -> None:
     Upstream covers the feature view and training dataset the model was
     trained from.
 
+    \f
     Args:
         ctx: Click context.
         name: Model name.
@@ -341,7 +361,7 @@ def _get_model(ctx: click.Context, name: str, version: int | None) -> Any:
     except click.ClickException:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Model '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not find model '{name}': {exc}") from exc
 
 
 def _parse_metrics(spec: str | None) -> dict[str, float]:

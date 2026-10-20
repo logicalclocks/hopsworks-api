@@ -50,15 +50,26 @@ with exactly two options:
 - **Build an example ML system**: then ask which, with the three options of *Example systems*
   below, and follow that section instead of the rest of the interview.
 
-Then create the system, with a slug of two or three words from the problem:
+Then create the system, with a slug of two or three words from the problem, and its task:
+`classification` when it predicts a yes or no or a category (churn, fraud, a segment),
+`regression` when it predicts a number for an entity (spend, a price), `forecasting` when it
+predicts a number for coming periods (demand next week). A problem that fits none of these is
+`ranking`, `anomaly`, `detection`, `rag` or `agentic`; when it is unclear, ask with the three
+first as options before creating it. `set.py` rejects any other value.
 
 ```bash
-python <skills>/hops-reqs/references/new_system.py <slug>      # <skills>: .claude/skills, else ~/.claude/skills
+python <hops-reqs>/references/new_system.py <slug>      # <hops-reqs>: the directory of the path `hops skills info hops-reqs` prints
 python <slug>/set.py 'schema_version=1' 'system.name=<short title>' 'system.slug=<slug>' \
   'system.target={cluster: <Host>, project: <Project>, stage: development}' 'system.version=0.1.0' 'system.status=draft' \
-  'requirements.status=pending' 'requirements.description=<the problem in the user words>'
-hops factory system register <slug> --name '<short title>'   # lists it in the project's ML systems
+  'requirements.status=pending' 'requirements.description=<the problem in the user words>' \
+  'requirements.problem.task=<task>'
 ```
+
+`new_system.py` makes `<slug>/` a git repository on `main`, unless it is already inside one.
+
+In a Hopsworks terminal (`$HOPSFS_USER_HOME_DIR` set), also list it in the project's ML systems:
+`hops factory system register <slug> --name '<short title>'`. Elsewhere the code has no home yet
+(no HopsFS mount, no repository until *Where the code goes*), so `/hops-build` registers it.
 
 **2. What type of system?** Recommend from the problem: **batch** when predictions are used on a
 schedule (lists, reports, dashboards); **real-time** when each prediction answers a request as it
@@ -75,14 +86,16 @@ independent.
 - **Data.** See *Data sources* below.
 - **How are the predictions used?** A dashboard (recommended for a list people read), an app, or
   neither (another system reads the prediction feature group); ask the user to describe how they
-  are consumed. Record `requirements.consumers` and
+  are consumed. Record `requirements.consumers`, one word: `ui` for a dashboard or an app, `api`
+  when another system reads them, `both` when both do. Record also
   `app={wanted: true|false, kind: dashboard|query_ui, description: <their words>, status: pending}`.
 
 ### Real-time
 
 - **Data.** See *Data sources* below.
 - **An app to try the deployment?** Yes (recommended) or no. Record
-  `app={wanted: <yes|no>, kind: query_ui, status: pending}`.
+  `app={wanted: <yes|no>, kind: query_ui, status: pending}` and `requirements.consumers=api`:
+  other systems call the deployment, and the app only tries it.
 - **Latency:** p99 under 50 ms, 100 ms (recommended), 500 ms, or the user's own. **Throughput:**
   10, 100 (recommended) or 1000 requests per second, or the user's own. Record
   `requirements.sla.realtime={p99_ms: <n>, throughput_qps: <n>}`.
@@ -91,7 +104,7 @@ independent.
 
 - **Data.** See *Data sources* below; documents or files for retrieval count as a source.
 - **An app to try the agent?** Yes (recommended) or no. Record
-  `app={wanted: <yes|no>, kind: chat, status: pending}`.
+  `app={wanted: <yes|no>, kind: chat, status: pending}` and `requirements.consumers=api`.
 - **Which LLM?** Run `hops deployment list` and offer any LLM deployment it shows first, then a
   provider endpoint (OpenAI, Anthropic, or another OpenAI-compatible URL) whose key is stored as a
   project secret: ask the secret's name, never the key. Record
@@ -101,12 +114,17 @@ independent.
 
 ### Data sources
 
-Show the feature groups listed above that fit the problem and ask, multi-select: use these
-(recommended when they fit), **add a new data source**, **upload files**, or **generate synthetic
-data** (when there is no data yet). Record one `requirements.data_sources+=` entry per source, as
+Show the feature groups listed above that fit the problem and ask, multi-select, with the four
+options that fit of: use these (recommended when they fit), **start from an existing feature view
+or model** (only when `hops fv list` or `hops model list` shows one that fits), **add a new data
+source**, **upload files**, or **generate synthetic data** (when there is no data yet). Record one `requirements.data_sources+=` entry per source, as
 `hops-reqs/references/data-sources.md` describes:
 
 - existing feature group: `{name, kind: feature_group, version, status: present}`;
+- an existing feature view or model (one `/hops` built on its own): not a data source. Name it in
+  the problem, `requirements.description+=' Starts from feature view <name>:<version>.'` (or
+  model), and record the feature groups it reads as sources; `/hops-build` records it in its
+  phase's block and skips that phase;
 - file: ask the path; upload it with `hops files upload <path> Resources/<slug>/data/`; record
   `{name, kind: file, location, status: present}`;
 - synthetic: ask the shape (batch tables or a stream of events) and the story in one sentence;
@@ -147,10 +165,11 @@ as the option's description. Create it with the
 example's own slug, which writes its whole `system.yaml`, then record the target:
 
 ```bash
-python <skills>/hops-reqs/references/new_system.py <example> --example <example>
+python <hops-reqs>/references/new_system.py <example> --example <example>
 python <example>/set.py 'system.target={cluster: <Host>, project: <Project>, stage: development}'
-hops factory system register <example>
 ```
+
+Register it as above: `hops factory system register <example>` in a Hopsworks terminal only.
 
 The agentic example still needs its LLM: ask the *Which LLM?* question of the Agentic branch, and
 nothing else. Then ask *Where the code goes* and *Finish*.

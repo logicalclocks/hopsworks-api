@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import alert, client, tag, usage, util
+from hopsworks_common import alert, client, events, tag, usage, util
 from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import alerts_api, execution_api, job_api
 from hopsworks_common.engine import execution_engine
@@ -177,6 +177,9 @@ class Job:
 
     @public
     @usage._method_logger
+    @events.tracking(
+        "execution", "create", long=True, key=lambda self, *a, **k: {"name": self.name}
+    )
     def run(
         self,
         args: str | None = None,

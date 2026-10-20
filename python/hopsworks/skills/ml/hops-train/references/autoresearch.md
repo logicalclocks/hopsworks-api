@@ -8,8 +8,7 @@ To change how the loop searches, copy this file into the system directory, edit
 it, and name the copy in `training.autoresearch`:
 
 ```bash
-cp .claude/skills/hops-train/references/autoresearch.md <slug>/autoresearch.md           # external repository
-cp /opt/hops/agent-skills/hops-train/references/autoresearch.md <slug>/autoresearch.md   # Hopsworks terminal
+hops skills info hops-train references/autoresearch.md > <slug>/autoresearch.md
 ```
 
 A copy changes how the loop searches, never what it may touch: the rules under
@@ -19,15 +18,16 @@ the commits.
 ## In scope
 
 - **The editable file:** `src/<slug_pkg>/training_pipeline.py`. Only this file changes between runs.
-- **Read-only:** the feature pipelines, the feature view and the training
-  dataset version in `training.harness`, `src/<slug_pkg>/evaluate.py`, the
+- **Read-only:** the feature pipelines, the feature view and the frozen split in
+  `training.harness` (its `end_time`, `in_memory_version` and parts, or a
+  materialized training dataset version frozen before), `src/<slug_pkg>/evaluate.py`, the
   training environment in `training.environment`, `requirements`, and
   `system.yaml` outside `training.runs`.
 - **The goal:** `requirements.targets.metric` in `requirements.targets.direction`
   against `requirements.targets.target`, scored by `evaluate.py` on the
   **validation** part. The test part is never looked at inside the loop.
 - **The budget:** `requirements.budget.training`: `max_runs` and `wall_clock`
-  for the round, `per_run` for each training job.
+  for the round, `per_run` for each training run.
 - **The log:** the model registry (`<ident>_research`, one version per run)
   mirrored as the rows of `training.runs`.
 
@@ -54,18 +54,26 @@ Until the target is met on validation or the budget is spent:
 4. **Commit before running:** `[<slug>] train run <n>: <what changed>`. Build
    and upload the bundle for run id `train-<n>-<attempt>`, and write the row
    with `state: submitted`, the commit and the bundle.
-5. **Run it:**
+5. **Run it** where you run when the feature view's feature groups hold under
+   500 MB of offline files (`Offline size` in `hops fg info`), in seconds and
+   with the same bundle and `result.json` as a job:
 
    ```bash
-   hops job deploy <slug>-train src/<slug_pkg>/training_pipeline.py --env <training.environment.name> \
-     --args "--mode research --bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz --description 'run <n>, <commit>: <what changed>'" \
-     --run --overwrite
+   python src/<slug_pkg>/training_pipeline.py --mode research \
+     --bundle runs/<run_id>/bundle.tar.gz --description 'run <n>, <commit>: <what changed>'
    ```
 
-   Record the execution id (`state: running`) and poll `hops job history <slug>-train`,
-   one line per poll with the elapsed time against `per_run`, updating
-   `system.progress.now`. At twice `per_run`, `hops job stop <slug>-train`: the run is a crash.
-6. **Read the result.** Download `result.json`, check its run id and commit
+   Over that size, or after running out of memory, run it as the job, with
+   `--bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz`:
+   `hops job deploy <slug>-train src/<slug_pkg>/training_pipeline.py --env <training.environment.name> --args "..." --run --wait --overwrite`,
+   recording the execution id (`state: running`); `--wait` returns when it ends and prints the
+   log tail when it fails, so never poll. Either way, the program's own alarm stops it at
+   1.5 times `per_run`: the run is a crash. A run that exits with "data changed inside the
+   frozen split" is no crash: rows inside the frozen window changed. Refreeze
+   (`python src/<slug_pkg>/evaluate.py --freeze system.yaml`, recorded with `set.py` and committed
+   as `[<slug>] train: refreeze`), which starts a new round: the baseline first, compared only
+   with runs after the refreeze.
+6. **Read the result.** Read `result.json` (`Resources/<slug>/runs/<run_id>/`), check its run id and commit
    against the row, and read the metrics from
    `hops model info <ident>_research --version <v>` with the version the result
    names (never `n`, which is not a registry version). Complete the row.
