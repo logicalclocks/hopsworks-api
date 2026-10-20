@@ -16,11 +16,13 @@
 
 import contextlib
 import os
+import shutil
 import stat
 import sys
 import tempfile
 
 import pytest
+from hopsworks_common import constants
 from hopsworks_common.client.external import Client
 from hopsworks_common.constants import CLIENT
 
@@ -938,6 +940,47 @@ class TestExternalClient:
                 for f in files:
                     assert os.path.exists(f), f"{username}'s file should exist: {f}"
 
+    def test_temp_dir_is_tmp_on_posix_whatever_tmpdir(self, mocker):
+        mocker.patch.object(constants.os, "name", "posix")
+        mocker.patch.object(
+            constants.tempfile, "gettempdir", return_value="/var/folders/other"
+        )
+
+        assert constants._temp_dir() == "/tmp"
+
+    def test_temp_dir_is_system_temp_on_windows(self, mocker):
+        mocker.patch.object(constants.os, "name", "nt")
+        mocker.patch.object(
+            constants.tempfile,
+            "gettempdir",
+            return_value=r"C:\Users\u\AppData\Local\Temp",
+        )
+
+        assert constants._temp_dir() == r"C:\Users\u\AppData\Local\Temp"
+
+    def test_cert_folder_default_exists(self):
+        assert os.path.isdir(CLIENT.CERT_FOLDER_DEFAULT)
+
+    def test_materialize_certs_under_real_default_folder(self, mocker):
+        """The default hierarchy is created under the real default folder, which exists on every OS."""
+        client = self._create_client(CLIENT.CERT_FOLDER_DEFAULT, mocker)
+        client._host = f"hworks-3521-{os.getpid()}.test"
+        host_dir = os.path.join(CLIENT.CERT_FOLDER_DEFAULT, client._host)
+        mocker.patch.object(
+            client,
+            "_get_credentials",
+            return_value={"kStore": "dGVzdA==", "tStore": "dGVzdA==", "password": "pw"},
+        )
+        try:
+            client._materialize_certs()
+
+            assert client._cert_folder == os.path.join(
+                host_dir, "test_project", "testuser"
+            )
+            assert os.path.isfile(client._get_material_passwd_path())
+        finally:
+            shutil.rmtree(host_dir, ignore_errors=True)
+
 
 class TestCertFolderParameter:
     """Tests for the cert_folder parameter in hopsworks.login()."""
@@ -1024,6 +1067,7 @@ class TestCertFolderParameter:
         """Test that Connection has the correct default cert_folder."""
         from hopsworks_common import connection
 
-        assert connection.CERT_FOLDER_DEFAULT == "/tmp"
+        expected = tempfile.gettempdir() if IS_WINDOWS else "/tmp"
+        assert expected == connection.CERT_FOLDER_DEFAULT
         # Verify connection module's alias points to the same constant
         assert CLIENT.CERT_FOLDER_DEFAULT == connection.CERT_FOLDER_DEFAULT
