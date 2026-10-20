@@ -27,7 +27,9 @@ switch it to `<v>` in place (step 4), never accept it as it is.
      with that version's statistics.
    - Every feature group the view reads is online: `hops fv lineage <view>` lists them as
      `parent_feature_group`, and `hops fg info <fg>` shows `Online yes` for each. An offline one
-     needs a features piece; say so, never make a new version yourself.
+     stops the run with one line naming the command that turns it online in place and copies its
+     rows, `hops fg update <fg> --version <v> --online`: the user's group changes only when they
+     agree, so the caller asks. Never set `online_enabled` on the object or make a new version.
 2. **The entity to check with.** `known_entity` from the prompt, or one key read from the online
    store: `hops fg preview <the view's parent feature group> --online --limit 1` prints a row with
    its primary key. Never a guessed or made-up key.

@@ -47,6 +47,10 @@ Before creating a feature group, clarify these decisions with the user:
    - **Offline only** (`online_enabled=False`, `stream=False`): writes directly to Delta Lake. Best for batch training data, historical analytics, large-volume cold storage.
    - **Online + offline** (`online_enabled=True`, `stream=True`): writes go to Kafka → RonDB (online), then a Spark materialization job copies to Delta (offline). Required for low-latency serving, real-time feature lookups, and feature views with `get_feature_vector()`.
    - Default to offline unless the user needs online serving.
+   - An existing offline group that must serve goes online in place with
+     `hops fg update <name> --version <v> --online`: Hopsworks enables it on a managed or external
+     group and the command copies the offline rows; a stream group refuses, and gets a new
+     version with `--online`. Never set `online_enabled` on a feature group object.
 
 2. **Does this FG derive from other FGs?** If so, pass `parents=[fg1, fg2, ...]` at creation time. This sets up explicit provenance/lineage tracking in the Hopsworks UI. Always pass the actual FeatureGroup objects, not names.
 

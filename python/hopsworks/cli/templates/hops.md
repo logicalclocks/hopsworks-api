@@ -91,6 +91,10 @@ is the whole dispatch:
 Ask only what the request leaves open, in one `AskUserQuestion` call. Every prompt ends with
 `where: <Hopsworks terminal | external client>`.
 
+When **hops-deploy-builder** stops on an offline feature group, ask once whether to turn it
+online ("Copies its rows to the online store; the group stays as it is otherwise",
+recommended), run the `hops fg update ... --online` it named, then spawn it again.
+
 For a model, read the label from the data rather than asking: the column the request names or
 implies, or the one outcome-like column of the view (`hops fv info`, `hops fg preview`). Say the
 choice in one line ("Predicting `status`, the order outcome") and go on. "Train X", "show me

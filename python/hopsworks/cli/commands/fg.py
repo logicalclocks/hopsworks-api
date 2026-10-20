@@ -1018,6 +1018,90 @@ def fg_append_features(
     output.success("✓ Appended %d feature(s) to %s", len(features), name)
 
 
+@fg_group.command("update")
+@click.argument("name")
+@click.option(
+    "--version", type=int, help="Feature group version; required when multiple exist."
+)
+@click.option(
+    "--online",
+    is_flag=True,
+    help="Enable the online feature store on this version and copy its offline rows there.",
+)
+@click.option(
+    "--no-backfill",
+    is_flag=True,
+    help="With --online: leave the online store empty; later inserts fill it.",
+)
+@click.pass_context
+def fg_update(
+    ctx: click.Context, name: str, version: int | None, online: bool, no_backfill: bool
+) -> None:
+    """Change an existing feature group in place.
+
+    `--online` turns on online storage for this version, as Hopsworks allows for a
+    managed or external feature group, then copies the offline rows into it, so a
+    feature view reading it serves them at once.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        version: Specific version.
+        online: Enable online storage.
+        no_backfill: Skip copying the offline rows.
+    """
+    import time
+
+    if not online:
+        raise click.UsageError("Nothing to update: pass --online.")
+    fg = _get_fg(ctx, name, version, exact=True)
+    label = f"'{name}' v{getattr(fg, 'version', '?')}"
+    if getattr(fg, "_stream", False):
+        # The backend refuses it (STREAM_FEATURE_GROUP_ONLINE_DISABLE_ENABLE).
+        raise click.ClickException(
+            f"Could not enable online storage on feature group {label}: Hopsworks enables it in "
+            "place only on a managed or external feature group, and this one is a stream "
+            "feature group. Create the next version with --online "
+            f"(`hops fg create {name} --version <n> --online ...`) and insert its rows there."
+        )
+    if getattr(fg, "online_enabled", False):
+        output.info(f"Feature group {label} is already online.")
+    else:
+        try:
+            fg._feature_group_engine._feature_group_api._update_metadata(
+                fg, fg, "enableOnline", True
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not enable online storage on feature group {label}: {exc}"
+            ) from exc
+        output.success(f"✓ Online storage enabled on feature group {label}")
+    if no_backfill:
+        return
+    started = time.time()
+    try:
+        rows = fg.read()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not read the offline rows of feature group {label}: {exc}"
+        ) from exc
+    if len(rows) == 0:
+        output.info("No offline rows to copy.")
+        return
+    try:
+        fg.insert(
+            rows, storage="online", write_options={"wait_for_online_ingestion": True}
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not copy the offline rows of feature group {label} online: {exc}"
+        ) from exc
+    output.success(
+        f"✓ Copied {len(rows)} offline rows online in {time.time() - started:.1f}s"
+    )
+
+
 @fg_group.command("delete")
 @click.argument("name")
 @click.option(
