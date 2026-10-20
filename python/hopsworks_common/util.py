@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import concurrent.futures
 import contextlib
 import inspect
@@ -62,6 +61,7 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 
 
 if TYPE_CHECKING:
+    import asyncio
     from collections.abc import Callable
 
     import pandas as pd
@@ -1068,6 +1068,8 @@ class AsyncTaskThread(threading.Thread):
             *thread_args: Arguments to be passed to the thread.
             **thread_kwargs: Key word arguments to be passed to the thread.
         """
+        import asyncio
+
         super().__init__(*thread_args, **thread_kwargs)
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
@@ -1094,6 +1096,8 @@ class AsyncTaskThread(threading.Thread):
         Each task becomes its own coroutine, so independent submissions run
         concurrently and one caller's round trip no longer holds up the next.
         """
+        import asyncio
+
         return asyncio.run_coroutine_threadsafe(self._run_task(task), self._event_loop)
 
     async def _run_task(self, task: AsyncTask) -> Any:
@@ -1155,6 +1159,8 @@ class AsyncTaskThread(threading.Thread):
         pending. Cancelling and awaiting here is what makes a shutdown after a
         timed-out read leave nothing behind.
         """
+        import asyncio
+
         running = asyncio.current_task()
         pending = [task for task in asyncio.all_tasks() if task is not running]
         for task in pending:
@@ -1188,6 +1194,8 @@ class AsyncTaskThread(threading.Thread):
         The loop is never closed from here. `run()` closes it in a `finally`, and
         closing a loop that is still running raises `RuntimeError`.
         """
+        import asyncio
+
         # Let run() finish starting, and give up rather than act on a loop that
         # is still starting. Stopping the loop under `run_until_complete`, or
         # cancelling the task it waits on, raises out of run(): the thread dies
@@ -1260,6 +1268,8 @@ class AsyncTaskThread(threading.Thread):
 
     def run(self):
         """Own the event loop the submitted tasks run on."""
+        import asyncio
+
         asyncio.set_event_loop(self._event_loop)
         try:
             self._pool_slots = asyncio.Semaphore(self._max_concurrent_tasks)
