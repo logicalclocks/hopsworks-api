@@ -984,6 +984,128 @@ class TestGraph:
         assert to_graph_spec(None) is None
 
 
+class TestOpenAIAgentsGraph:
+    """The graph an OpenAI Agents agent declares, read off the agent object.
+
+    The SDK has no graph to ask for: ``draw_graph`` reads the handoffs, tools
+    and servers hanging off the agent, and so does this. Duck-typed here rather
+    than built with the real SDK, which is not a dependency of the protocol.
+    """
+
+    @staticmethod
+    def _named(name, **attrs):
+        obj = type("Named", (), {})()
+        obj.name = name
+        for key, value in attrs.items():
+            setattr(obj, key, value)
+        return obj
+
+    def _triage(self):
+        # triage hands off to two specialists; one of them can hand back
+        search = self._named("search_docs")
+        refund = self._named("issue_refund")
+        books = self._named("books-mcp")
+        triage = self._named("triage", tools=[], mcp_servers=[], handoffs=[])
+        support = self._named(
+            "support", tools=[search], mcp_servers=[books], handoffs=[triage]
+        )
+        billing = self._named("billing", tools=[refund], mcp_servers=[], handoffs=[])
+        triage.handoffs = [support, billing]
+        return triage
+
+    def test_the_whole_tree_is_walked_from_the_agent_it_is_given(self):
+        from hopsworks_agents.protocol.graph import to_graph_spec
+
+        spec = to_graph_spec(self._triage())
+        kinds = {n["id"]: n.get("kind") for n in spec["nodes"]}
+        assert kinds == {
+            "__start__": None,
+            "triage": "agent",
+            "support": "agent",
+            "billing": "agent",
+            "tool:search_docs": "tool",
+            "tool:issue_refund": "tool",
+            "mcp:books-mcp": "mcp",
+            "__end__": None,
+        }
+        edges = {(e["source"], e["target"]): e.get("kind") for e in spec["edges"]}
+        assert edges[("__start__", "triage")] is None
+        assert edges[("triage", "support")] is None
+        assert edges[("support", "tool:search_docs")] == "tool"
+        assert edges[("support", "mcp:books-mcp")] == "mcp"
+        # billing transfers nowhere, so a run can finish there
+        assert ("billing", "__end__") in edges
+        assert ("support", "__end__") not in edges
+
+    def test_agents_that_hand_off_to_each_other_terminate(self):
+        """Two agents naming each other is a cycle, and walking it must stop."""
+        from hopsworks_agents.protocol.graph import to_graph_spec
+
+        spec = to_graph_spec(self._triage())
+        # support hands back to triage: the edge is drawn, the node is not
+        # duplicated, and nothing recursed for ever to get here
+        assert [n["id"] for n in spec["nodes"]].count("triage") == 1
+        assert ("support", "triage") in {
+            (e["source"], e["target"]) for e in spec["edges"]
+        }
+
+    def test_one_tool_two_agents_is_one_node(self):
+        """A shared tool reads as shared, which is the point of drawing it."""
+        from hopsworks_agents.protocol.graph import to_graph_spec
+
+        shared = self._named("lookup")
+        second = self._named("second", tools=[shared], handoffs=[])
+        first = self._named("first", tools=[shared], handoffs=[second])
+
+        spec = to_graph_spec(first)
+        assert [n["id"] for n in spec["nodes"]].count("tool:lookup") == 1
+        callers = {e["source"] for e in spec["edges"] if e["target"] == "tool:lookup"}
+        assert callers == {"first", "second"}
+
+    def test_a_handoff_object_names_an_agent_it_cannot_walk_into(self):
+        """The SDK allows a Handoff in place of the agent; it carries no tools."""
+        from hopsworks_agents.protocol.graph import to_graph_spec
+
+        handoff = type("Handoff", (), {})()
+        handoff.agent_name = "escalation"
+        root = self._named("front", tools=[], handoffs=[handoff])
+
+        spec = to_graph_spec(root)
+        assert {"id": "escalation", "label": "escalation", "kind": "agent"} in spec[
+            "nodes"
+        ]
+        assert ("front", "escalation") in {
+            (e["source"], e["target"]) for e in spec["edges"]
+        }
+
+    def test_a_lone_agent_is_still_a_graph(self):
+        from hopsworks_agents.protocol.graph import to_graph_spec
+
+        spec = to_graph_spec(self._named("solo", tools=[], handoffs=[]))
+        assert [n["id"] for n in spec["nodes"]] == ["__start__", "solo", "__end__"]
+
+    def test_something_with_a_name_and_nothing_else_is_not_an_agent(self):
+        """A name alone is every object; without the structure there is no graph."""
+        from hopsworks_agents.protocol.graph import to_graph_spec
+
+        assert to_graph_spec(self._named("just-a-name")) is None
+
+    def test_it_is_served_like_any_other_graph(self):
+        from hopsworks_agents.protocol import AgentApp
+
+        app = AgentApp(graph=self._triage())
+
+        @app.chat
+        async def chat(request):
+            return "ok"
+
+        client = TestClient(app)
+        manifest = client.get("/.well-known/hopsworks-agent.json").json()
+        assert manifest["capabilities"]["graph"] is True
+        graph = client.get("/v1/graph").json()
+        assert "triage" in {n["id"] for n in graph["nodes"]}
+
+
 class TestStreamLlamaindexHelper:
     def _handler(self):
         # duck-typed llama-index workflow events

@@ -1,9 +1,13 @@
 """Extract an agent's structure graph for the chat panel's Graph tab.
 
 LangChain/LangGraph compiled graphs expose ``.get_graph()`` returning a
-drawable graph with ``.nodes`` and ``.edges``; LlamaIndex workflows and plain
-dicts are accepted too. The result is a framework-neutral ``{nodes, edges}``
-spec the panel renders with reactflow.
+drawable graph with ``.nodes`` and ``.edges``; LlamaIndex workflows, OpenAI
+Agents agents and plain dicts are accepted too. The result is a
+framework-neutral ``{nodes, edges}`` spec the panel renders with reactflow.
+
+Every graph here is the structure the agent declares, not the path a turn
+took: it says what the agent can do, and is the same for every request. What
+actually ran is in the trace.
 """
 
 from __future__ import annotations
@@ -19,9 +23,10 @@ def to_graph_spec(graph: Any) -> dict[str, Any] | None:
     """Normalise a framework graph to ``{"nodes": [...], "edges": [...]}``.
 
     Accepts a compiled LangGraph/LangChain runnable (``.get_graph()`` is
-    called), an already-drawable graph (``.nodes`` / ``.edges``), or a plain
-    ``{"nodes", "edges"}`` dict. Returns None (best-effort) when the shape is
-    unrecognised — the Graph capability is simply not advertised.
+    called), an already-drawable graph (``.nodes`` / ``.edges``), an OpenAI
+    Agents agent, or a plain ``{"nodes", "edges"}`` dict. Returns None
+    (best-effort) when the shape is unrecognised — the Graph capability is
+    simply not advertised.
     """
     if graph is None:
         return None
@@ -40,8 +45,10 @@ def to_graph_spec(graph: Any) -> dict[str, Any] | None:
     nodes_attr = getattr(drawable, "nodes", None)
     edges_attr = getattr(drawable, "edges", None)
     if nodes_attr is None or edges_attr is None:
-        # a LlamaIndex Workflow has no get_graph(); derive it from @step methods
-        return _llamaindex_workflow_spec(graph)
+        # Frameworks that draw nothing for themselves. A LlamaIndex Workflow
+        # declares its flow as @step methods; an OpenAI Agents agent hangs it
+        # off the agent object as handoffs, tools and servers.
+        return _llamaindex_workflow_spec(graph) or _agent_structure_spec(graph)
 
     try:
         node_items = nodes_attr.values() if isinstance(nodes_attr, dict) else nodes_attr
@@ -143,3 +150,87 @@ def _llamaindex_workflow_spec(workflow: Any) -> dict[str, Any] | None:
                 edges.append(edge)
 
     return {"nodes": nodes, "edges": edges}
+
+
+def _looks_like_an_agent(obj: Any) -> bool:
+    """Whether this object declares its structure the way an OpenAI Agents agent does."""
+    if not isinstance(getattr(obj, "name", None), str):
+        return False
+    return any(
+        isinstance(getattr(obj, attr, None), list)
+        for attr in ("handoffs", "tools", "mcp_servers")
+    )
+
+
+def _agent_structure_spec(agent: Any) -> dict[str, Any] | None:
+    """Derive the graph an OpenAI Agents agent declares on itself.
+
+    The SDK keeps no graph object. The structure hangs off the agent: the
+    agents it can hand off to, the tools it can call, the MCP servers it can
+    reach. Handoffs are followed, so a triage agent brings the whole tree it
+    fronts and every agent in that tree brings its own tools and servers. A
+    tool of the same name reached from two agents is one node with two edges,
+    which is what makes a shared tool read as shared.
+
+    The same reading ``agents.extensions.visualization.draw_graph`` does. What
+    the node is stays on the spec as ``kind`` rather than being baked into a
+    colour here, so the panel decides how an agent differs from a tool; the
+    frameworks that draw a graph of uniform steps carry no kind at all.
+    """
+    if not _looks_like_an_agent(agent):
+        return None
+
+    start, end = "__start__", "__end__"
+    nodes: dict[str, dict[str, Any]] = {start: {"id": start, "label": start}}
+    edges: list[dict[str, Any]] = []
+
+    def add(node_id: str, label: str, kind: str | None = None) -> None:
+        node: dict[str, Any] = {"id": node_id, "label": label}
+        if kind:
+            node["kind"] = kind
+        nodes.setdefault(node_id, node)
+
+    def attached(owner: str, items: Any, kind: str) -> None:
+        for item in items or []:
+            label = getattr(item, "name", None) or str(item)
+            node_id = f"{kind}:{label}"
+            add(node_id, str(label), kind)
+            edges.append({"source": owner, "target": node_id, "kind": kind})
+
+    def walk(current: Any) -> None:
+        name = getattr(current, "name", None)
+        # Already walked, so its tools and handoffs are in: two agents that can
+        # hand off to each other would otherwise recurse for ever. The edge to
+        # it is the caller's to add, and still gets added.
+        if not isinstance(name, str) or name in nodes:
+            return
+        add(name, name, "agent")
+        attached(name, getattr(current, "tools", None), "tool")
+        attached(name, getattr(current, "mcp_servers", None), "mcp")
+
+        handoffs = getattr(current, "handoffs", None) or []
+        for handoff in handoffs:
+            # An entry is either the agent itself or a Handoff naming one. A
+            # Handoff carries no tools, so that agent is as far as this goes.
+            target = getattr(handoff, "name", None)
+            if isinstance(target, str):
+                walk(handoff)
+            else:
+                target = getattr(handoff, "agent_name", None)
+                if not isinstance(target, str):
+                    continue
+                add(target, target, "agent")
+            edges.append({"source": name, "target": target})
+
+        if not handoffs:
+            # Nothing to transfer to, so this is where a run can finish.
+            edges.append({"source": name, "target": end})
+
+    walk(agent)
+    root = getattr(agent, "name", None)
+    if root not in nodes:
+        return None
+    edges.insert(0, {"source": start, "target": root})
+    if any(edge["target"] == end for edge in edges):
+        add(end, end)
+    return {"nodes": list(nodes.values()), "edges": edges}
