@@ -454,7 +454,7 @@ class Query:
                     "Pandas types casting only supported for feature_group.read()/query.select_all()"
                 )
 
-        return engine._get_instance()._sql(
+        result = engine._get_instance()._sql(
             sql_query,
             self._feature_store_name,
             online_conn,
@@ -462,6 +462,18 @@ class Query:
             read_options,
             schema,
         )
+        return self._apply_limit(result)
+
+    def _apply_limit(self, result):
+        # The query service stops at the limit itself; Spark, and the Python engine when it falls back from the
+        # query service, run the backend's SQL, which carries no limit.
+        if not self._limit or result is None:
+            return result
+        if type(result).__module__.startswith("pyspark"):
+            return result.limit(self._limit)
+        if hasattr(result, "head"):
+            return result.head(self._limit)
+        return result[: self._limit]
 
     @public
     @contextlib.contextmanager

@@ -16,6 +16,7 @@
 import logging
 import warnings
 
+import pandas as pd
 import pytest
 from hsfs import feature, feature_group
 from hsfs.client.exceptions import FeatureStoreException
@@ -874,6 +875,40 @@ class TestQuery:
 
         # The query sent to the backend should have _limit == 7 during _prep_read
         assert captured_limit[0] == 7
+
+
+class TestQueryReadLimit:
+    def _read(self, mocker, result, limit):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_engine = mocker.MagicMock()
+        mock_engine._sql.return_value = result
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.on_demand_feature_groups = []
+        mock_fs_query.hudi_cached_feature_groups = []
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+        query = TestQuery.fg1.select_all()
+        if limit is not None:
+            query = query.limit(limit)
+        return query.read()
+
+    def test_an_engine_that_ignores_the_limit_is_cut_down(self, mocker):
+        result = self._read(mocker, pd.DataFrame({"id": range(100)}), 10)
+        assert len(result) == 10
+
+    def test_lists_are_cut_down_too(self, mocker):
+        assert self._read(mocker, [[i] for i in range(100)], 5) == [
+            [i] for i in range(5)
+        ]
+
+    def test_without_a_limit_the_result_is_untouched(self, mocker):
+        result = self._read(mocker, pd.DataFrame({"id": range(100)}), None)
+        assert len(result) == 100
 
 
 class TestQueryRead:
