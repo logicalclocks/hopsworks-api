@@ -217,7 +217,7 @@ class Client(base.Client):
 
     def _get_certs_folder(self):
         # Custom cert_folder: use directly
-        # Default /tmp: use hierarchical structure for multi-user support
+        # Default folder: use hierarchical structure for multi-user support
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
             return os.path.join(
                 self._cert_folder_base, self._host, self._project_name, self._username
@@ -226,7 +226,7 @@ class Client(base.Client):
 
     def _materialize_certs(self):
         # Custom cert_folder: use directly
-        # Default /tmp: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}
+        # Default folder: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}
         self._cert_folder = self._get_certs_folder()
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
@@ -355,7 +355,7 @@ class Client(base.Client):
     def _makedirs_with_sticky_bit(self) -> None:
         """Create cert directories with appropriate permissions.
 
-        For default /tmp: Creates hierarchical structure with sticky bit (1777)
+        For the default folder (`/tmp`, or the temp directory on Windows): Creates hierarchical structure with sticky bit (1777)
         on shared directories for multi-user support, and 0700 on user directory.
 
         For custom cert_folder: Creates the directory with 0700 permissions.
