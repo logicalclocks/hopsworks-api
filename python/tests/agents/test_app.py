@@ -3977,6 +3977,66 @@ class TestTurnSpan:
         turn = [s for s in exporter.get_finished_spans() if s.name != "call"][-1]
         assert turn.attributes["hopsworks.turn.llm_spans"] is True
 
+    def test_a_model_call_on_an_agent_span_counts_as_one(self):
+        # The Claude Agent SDK reports a model call on an AGENT span carrying the
+        # model and its usage, and the sidecar reads those as model calls. Seen
+        # here as "no model call", the turn's own figure is counted on top of the
+        # span's and the turn is charged twice: 100/40 became 200/80.
+        pytest.importorskip("opentelemetry.sdk")
+        from hopsworks_agents.protocol.autoevents import install_llm_span_detection
+
+        app, exporter = self._traced_app()
+        install_llm_span_detection(app.tracer_provider)
+
+        @app.chat
+        async def chat(request):
+            tracer = app.tracer_provider.get_tracer("a claude agent")
+            with tracer.start_as_current_span(
+                "call",
+                attributes={
+                    "openinference.span.kind": "AGENT",
+                    "gen_ai.request.model": "claude-sonnet-5",
+                    "gen_ai.usage.input_tokens": 100,
+                    "gen_ai.usage.output_tokens": 40,
+                },
+            ):
+                pass
+            return AgentResponse.text(
+                text="answered", usage={"input_tokens": 100, "output_tokens": 40}
+            )
+
+        TestClient(app).post("/v1/chat", json=make_request("hi"))
+        turn = [s for s in exporter.get_finished_spans() if s.name != "call"][-1]
+        assert turn.attributes["hopsworks.turn.llm_spans"] is True
+
+    def test_an_agent_span_with_no_usage_is_not_a_model_call(self):
+        # The turn's own span is an AGENT span too, and naming a model does not
+        # make it a call: counting it would hide the fallback the turn figure is.
+        pytest.importorskip("opentelemetry.sdk")
+        from hopsworks_agents.protocol.autoevents import install_llm_span_detection
+
+        app, exporter = self._traced_app()
+        install_llm_span_detection(app.tracer_provider)
+
+        @app.chat
+        async def chat(request):
+            tracer = app.tracer_provider.get_tracer("a framework")
+            with tracer.start_as_current_span(
+                "step",
+                attributes={
+                    "openinference.span.kind": "AGENT",
+                    "gen_ai.request.model": "claude-sonnet-5",
+                },
+            ):
+                pass
+            return AgentResponse.text(
+                text="answered", usage={"input_tokens": 11, "output_tokens": 7}
+            )
+
+        TestClient(app).post("/v1/chat", json=make_request("hi"))
+        turn = [s for s in exporter.get_finished_spans() if s.name != "step"][-1]
+        assert turn.attributes["hopsworks.turn.llm_spans"] is False
+
     def test_failed_turn_is_an_error_span(self):
         app, exporter = self._traced_app()
 

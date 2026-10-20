@@ -46,14 +46,47 @@ def _tool_name(span: Any, kind: str) -> str:
     return attrs.get("tool.name") or getattr(span, "name", None) or kind.lower()
 
 
+#: What a model call is called, and what it reports, in the conventions in use.
+#: The same keys the sidecar classifies on: the two have to agree about what a
+#: model call is, or a turn whose call one of them counted and the other did not
+#: reports its usage twice -- once from the span, once from the turn's own
+#: fallback figure.
+_MODEL_KEYS = ("gen_ai.request.model", "llm.model_name", "gen_ai.response.model")
+_USAGE_KEYS = (
+    "gen_ai.usage.input_tokens",
+    "gen_ai.usage.prompt_tokens",
+    "llm.token_count.prompt",
+    "llm.token_count.input",
+    "gen_ai.usage.output_tokens",
+    "gen_ai.usage.completion_tokens",
+    "llm.token_count.completion",
+    "llm.token_count.output",
+)
+
+
+def _reports_usage(attrs: dict) -> bool:
+    for key in _USAGE_KEYS:
+        value = attrs.get(key)
+        if isinstance(value, (int, float)) and value > 0:
+            return True
+        if isinstance(value, str) and value.strip().isdigit() and int(value) > 0:
+            return True
+    return False
+
+
 def _is_llm_span(span: Any) -> bool:
-    """Whether this span is a model call, by either convention in use."""
+    """Whether this span is a model call, by any convention in use."""
     attrs = getattr(span, "attributes", None) or {}
     kind = attrs.get(_SPAN_KIND_ATTR)
     if isinstance(kind, str) and kind.upper() == "LLM":
         return True
     operation = attrs.get("gen_ai.operation.name")
-    return isinstance(operation, str) and operation.lower() == "chat"
+    if isinstance(operation, str) and operation.lower() == "chat":
+        return True
+    # A span that names a model and reports what the call cost is a model call
+    # whatever kind it declares: the Claude Agent SDK reports its calls on AGENT
+    # spans. The sidecar reads those as model calls, so this must too.
+    return bool(any(attrs.get(key) for key in _MODEL_KEYS)) and _reports_usage(attrs)
 
 
 def install_llm_span_detection(tracer_provider: Any) -> bool:
