@@ -37,6 +37,7 @@ sandbox may run a newer one, and an argument that works here can fail there. Pri
 
    ```python
    X, y = fv.training_data(primary_key=True, statistics_config=False)
+   td_version = fv.get_last_accessed_training_dataset()  # the one version every run records
    bucket = X["<entity key>"].map(
        lambda k: int(hashlib.sha256(str(k).encode()).hexdigest(), 16) % 100
    )
@@ -46,7 +47,7 @@ sandbox may run a newer one, and an argument that works here can fail there. Pri
    A random row split (`fv.train_validation_test_split(validation_size=0.15, test_size=0.15,
    statistics_config=False)`) only when each entity has one row (`hops sql "SELECT count(*),
    count(DISTINCT <key>) ..."` on the label group). Each read registers a training dataset
-   version, so never read in a loop. Use a training dataset the user named
+   version, so the sweep reads once: never per candidate, never in a loop. Use a training dataset the user named
    (`fv.get_training_data(training_dataset_version=<v>, primary_key=True)`) only when they named
    one. Before fitting, drop from every `X` the feature view's primary key, join keys and event
    time (`deal_id`, `snapshot_date`): identifiers and timestamps are no features, and a datetime
@@ -56,12 +57,11 @@ sandbox may run a newer one, and an argument that works here can fail there. Pri
    size. A count without names ("try 3 models") is that many distinct families that fit `task`,
    simplest first (for a classification: logistic regression, random forest, gradient boosting),
    each named in its `description=`. Fit them in parallel in one process (`concurrent.futures.ProcessPoolExecutor`, one
-   candidate each), score each with `metric` on validation and test, and register each as a new
-   version of model `<name>`, in the process that split, with `feature_view=` (the model then
-   records the split's training dataset version, which scoring reads; `hops model info` prints
-   the view and `Training dataset`),
-   `metrics=` (`val_<metric>` and `test_<metric>`), a `description=` naming the candidate, and the
-   charts hops-train saves. As a job, the same program in one run, so every candidate fits on
+   candidate each), score each with `metric` on validation and test, and register each as a run:
+   a new version of model `<name>`, in the process that split, as "Runs and sweeps" in
+   **hops-train** says (`feature_view=fv`, `training_dataset_version=td_version`, the metrics with
+   the classification baseline, a `description=` naming the candidate, `run.json`, and the charts
+   hops-train saves). One sweep id for the run of `train.py`. As a job, the same program in one run, so every candidate fits on
    the one split it registers: `hops job run <name>-train --wait`.
 4. **The model file.** `model.joblib` sits at the root of the directory passed to `save()`, never
    in a subdirectory: `download()` returns that directory as it was. It is one scikit-learn
@@ -69,14 +69,18 @@ sandbox may run a newer one, and an argument that works here can fail there. Pri
    so `joblib.load(Path(model_dir) / "model.joblib").predict_proba(df)` takes the feature view's
    batch frame as it comes. The `description=` says so. A framework without a scikit-learn
    wrapper saves its own native file and the description names the file and how to load it.
-5. **Pick the best** by `metric` on validation: the version
-   `mr.get_best_model("<name>", metric="val_<metric>", direction="max")` returns (`"min"` for an
-   error metric). No tag: a model tag needs a tag schema the cluster may not have.
+5. **Pick the best** with `hops model runs <name> --sweep <id>`: it ranks by the metric each
+   `run.json` names (`val_macro_f1` for an imbalanced multiclass label). No tag: a model tag
+   needs a tag schema the cluster may not have. The run is done when that command lists one row
+   per fitted candidate, all with the same training dataset version, and `hops td list <view>`
+   shows one new version for the sweep.
 
 A failed fit: read its traceback (in a job, `hops job wait` prints the log tail), name the cause
 in one line, fix and rerun that candidate, at most three attempts each.
 
 ## Return
 
-A table: candidate, model version, the validation and test `metric`, the best one marked, and
-the line to load it (`mr.get_model("<name>", version=<v>)`).
+The `hops model runs <name> --sweep <id>` table, the best marked; for a classification the
+baseline beside it, and the plain sentence of "Runs and sweeps" when the best is within 2 points of
+it; any candidate that failed, with its error; and the line to load the best
+(`mr.get_model("<name>", version=<v>)`).

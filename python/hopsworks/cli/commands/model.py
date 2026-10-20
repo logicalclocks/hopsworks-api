@@ -88,6 +88,125 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
     output.print_table(["FIELD", "VALUE"], rows)
 
 
+@model_group.command("runs")
+@click.argument("name")
+@click.option("--sweep", help="Only the runs of this sweep id.")
+@click.option(
+    "--sort",
+    help="Metric to rank by; defaults to the metric each run.json names.",
+)
+@click.pass_context
+def model_runs(
+    ctx: click.Context, name: str, sweep: str | None, sort: str | None
+) -> None:
+    """List the runs of model NAME, its versions, best first.
+
+    Each version is one run. Its run.json (written next to the model files at
+    registration) gives the run and sweep ids, the candidate and its params; a
+    version without one shows its metrics and description only.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: Model name, the experiment.
+        sweep: Only this sweep's runs.
+        sort: Metric to rank by.
+    """
+    project = session.get_project(ctx)
+    try:
+        models = project.get_model_registry().get_models(name) or []
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not find model '{name}': {exc}") from exc
+    runs = _runs(project, models)
+    if sweep:
+        runs = [r for r in runs if r.get("sweep_id") == sweep]
+    metric = sort or next((r["metric"] for r in runs if r.get("metric")), None)
+    lower = bool(sort is None and runs and runs[0].get("metric_goal") == "min")
+    ranked = [
+        r for r in runs if metric and isinstance(r["metrics"].get(metric), (int, float))
+    ]
+    ranked.sort(key=lambda r: r["metrics"][metric], reverse=not lower)
+    if ranked:
+        ranked[0]["best"] = True
+    runs = ranked + [r for r in runs if r not in ranked]
+    if output.JSON_MODE:
+        output.print_json(runs)
+        return
+    if not runs:
+        output.info(
+            f"No runs of '{name}'" + (f" in sweep {sweep}" if sweep else "") + "."
+        )
+        return
+    output.print_table(
+        [
+            "VERSION",
+            "RUN",
+            "SWEEP",
+            "CANDIDATE",
+            "PARAMS",
+            metric or "METRICS",
+            "BASELINE",
+            "TD",
+            "CREATED",
+        ],
+        [
+            [
+                f"{r['version']}{' *' if r.get('best') else ''}",
+                r.get("run_id") or "-",
+                r.get("sweep_id") or "-",
+                r.get("candidate") or output.first_line(r.get("description") or "-"),
+                output.format_mapping(r.get("params") or {}) or "-",
+                r["metrics"].get(metric, "-")
+                if metric
+                else _short_metrics(r["metrics"]),
+                _baseline(r),
+                r.get("training_dataset_version") or "-",
+                _ts_label(r.get("created")),
+            ]
+            for r in runs
+        ],
+    )
+    if ranked:
+        output.info(f"* best by {metric}")
+
+
+def _runs(project: Any, models: list[Any]) -> list[dict[str, Any]]:
+    """One record per model version: its registry fields merged with its run.json."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    dataset_api = project.get_dataset_api()
+
+    def record(model: Any) -> dict[str, Any]:
+        run: dict[str, Any] = {}
+        try:
+            # save() puts the model directory's files under Files/.
+            response = dataset_api.read_content(f"{model.version_path}/Files/run.json")
+            if response is not None:
+                run = json.loads(response.content)
+        except Exception:  # noqa: BLE001 - a version registered without run.json
+            run = {}
+        return {
+            **run,
+            "version": model.version,
+            "metrics": dict(getattr(model, "training_metrics", None) or {}),
+            "description": getattr(model, "description", None),
+            "training_dataset_version": getattr(model, "training_dataset_version", None)
+            or run.get("training_dataset_version"),
+            "created": getattr(model, "created", None),
+            "best": False,
+        }
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        return list(pool.map(record, models))
+
+
+def _baseline(run: dict[str, Any]) -> Any:
+    metrics = run["metrics"]
+    return metrics.get(
+        "test_baseline_accuracy", metrics.get("val_baseline_accuracy", "-")
+    )
+
+
 def _feature_view_label(model: Any) -> str:
     """The feature view the model was trained on, `name vN`, from its provenance; `-` without one."""
     try:

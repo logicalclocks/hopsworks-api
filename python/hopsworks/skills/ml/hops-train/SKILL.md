@@ -206,6 +206,70 @@ Hints:
   card**: the handoff doc the I side reads to deploy. Aim to capture intended
   use, performance, and bias-test outcomes, not just raw metrics.
 
+## Runs and sweeps
+
+A sweep (several candidates, or one candidate's settings) is one experiment: the model name. Each
+run is a version of that model; there is no other store. `hops model runs <name>` lists them, best
+first, with `--sweep <id>` and `--json`.
+
+- **One split per sweep.** Read the feature view once and take the version that read registered,
+  `td_version = fv.get_last_accessed_training_dataset()`, right after it. Every run fits on those
+  frames and passes `training_dataset_version=td_version` with `feature_view=fv`. Without the
+  argument a model records the view's last read, so runs registered after several reads all name
+  the last one.
+- **The sweep is one tracked change**, so a watcher (the Hopsable Experiments preview) opens when
+  it starts and sees it end:
+
+  ```python
+  from hopsworks_common import events
+
+  sweep_id = f"{name}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}"
+  with events.tracked("experiment", "create", long=True, name=name) as sweep:
+      sweep.detail.update(sweep_id=sweep_id, candidates=len(candidates), metric=metric, metric_goal=goal)
+      ...  # the one split, then every fit and registration
+  ```
+- **Each run registers** its metrics (`val_<metric>`, `test_<metric>`), a one-line `description=`
+  (candidate and its main params), and a `run.json` written into the model directory before
+  `save()`. `params` is flat, one scalar per key (they become table columns); times are ISO 8601
+  in UTC:
+
+  ```python
+  run = {
+      "experiment": name, "run_id": f"{sweep_id}-{i}", "sweep_id": sweep_id,
+      "candidate": candidate, "params": params, "metric": "val_macro_f1", "metric_goal": "max",
+      "status": "finished", "started": started.isoformat(), "finished": finished.isoformat(),
+      "seed": SEED, "training_dataset_version": td_version,
+  }
+  (Path(model_dir) / "run.json").write_text(json.dumps(run))
+  ```
+
+  A failed fit registers nothing; the final table names it with its error.
+- **Classification metrics** also carry the majority-class baseline and the scores that see
+  through imbalance, on validation and test:
+
+  ```python
+  from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+
+  majority = y_train.mode()[0]
+  for part, X_, y_ in (("val", X_val, y_val), ("test", X_test, y_test)):
+      pred = model.predict(X_)
+      metrics[f"{part}_accuracy"] = accuracy_score(y_, pred)
+      metrics[f"{part}_macro_f1"] = f1_score(y_, pred, average="macro")
+      metrics[f"{part}_balanced_accuracy"] = balanced_accuracy_score(y_, pred)
+      metrics[f"{part}_baseline_accuracy"] = float((y_ == majority).mean())
+  ```
+
+  A multiclass label whose largest class holds over 40% of the rows selects on `val_macro_f1`;
+  otherwise on the metric asked for.
+- **Done** when `hops td list <view>` shows one new training dataset version for the sweep,
+  `hops model runs <name> --sweep <id>` shows one row per finished candidate, each with that
+  version under TD.
+- **Report** the `hops model runs` table. When the best run's accuracy is within 2 points of the
+  baseline, say so plainly, naming the class: "No better than always guessing `delivered`: these
+  features carry no signal for `status`." Then the next step: class weights, another target, or
+  more or real data. Name the runs as `hops model runs <name>` and the model's page in Hopsworks;
+  never point to an "Experiments" view the reader may not have.
+
 ## 5. Run it as a job
 
 ```bash

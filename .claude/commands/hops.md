@@ -91,6 +91,12 @@ is the whole dispatch:
 Ask only what the request leaves open, in one `AskUserQuestion` call. Every prompt ends with
 `where: <Hopsworks terminal | external client>`.
 
+For a model, read the label from the data rather than asking: the column the request names or
+implies, or the one outcome-like column of the view (`hops fv info`, `hops fg preview`). Say the
+choice in one line ("Predicting `status`, the order outcome") and go on. "Train X", "show me
+experiments" or "compare models" without names is `candidates: 3`. Ask only when two or more
+columns fit the request equally.
+
 | Builder | Prompt |
 | --- | --- |
 | hops-data-builder | `name`, `rows` (10000 unless the user said), `columns` (name and type, one per line), `story` (what the question should find), `source` (`synthetic` or a data source) |

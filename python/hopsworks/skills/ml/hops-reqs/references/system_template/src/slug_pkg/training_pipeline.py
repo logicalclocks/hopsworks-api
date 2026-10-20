@@ -248,13 +248,18 @@ def _register(
     task: str,
     y_eval: Any,
     y_scored: Any,
+    run: dict | None = None,
 ) -> int:
+    import json
     import tempfile
 
     import joblib
 
     model_dir = Path(tempfile.mkdtemp(prefix="model-"))
     joblib.dump(model, model_dir / "model.pkl")
+    if run is not None:
+        # The run's record for `hops model runs` (hops-train, "Runs and sweeps").
+        (model_dir / "run.json").write_text(json.dumps(run), encoding="utf-8")
     (model_dir / "features.txt").write_text("\n".join(x_example.columns), encoding="utf-8")
     # Uploaded with the model, under images/, so the registry shows them with it.
     charts.save_charts(model_dir, task, model, list(x_example.columns), y_eval, y_scored)
@@ -273,6 +278,7 @@ def _register(
 
 def main(argv: list[str] | None = None) -> int:
     """Run one training job in the given mode and write its result.json."""
+    started = datetime.now(UTC)
     parser = argparse.ArgumentParser(description="Train, score and register one model.")
     parser.add_argument("--mode", choices=MODES, required=True)
     parser.add_argument("--bundle", required=True)
@@ -373,6 +379,24 @@ def main(argv: list[str] | None = None) -> int:
             system["requirements"]["problem"]["task"],
             y_eval,
             y_scored,
+            run={
+                "experiment": name,
+                "run_id": manifest["run_id"],
+                # Runs scored on one frozen split are one sweep.
+                "sweep_id": f"td{td_version}",
+                "candidate": args.description or args.mode,
+                "params": {
+                    "mode": args.mode,
+                    "commit": manifest["commit"],
+                    "features": len(features),
+                },
+                "metric": system["requirements"]["targets"]["metric"],
+                "metric_goal": system["requirements"]["targets"].get("direction", "max"),
+                "status": "finished",
+                "started": started.isoformat(),
+                "finished": datetime.now(UTC).isoformat(),
+                "training_dataset_version": td_version,
+            },
         )
         result.update(registered=True, model={"name": name, "version": version})
     result["finished"] = datetime.now(UTC).isoformat()
