@@ -661,6 +661,9 @@ class App:
         self._public_access = updated._public_access
         self._public_token = updated._public_token
         self._db_access = updated._db_access
+        self._managed_db = updated._managed_db
+        self._table_prefix = updated._table_prefix
+        self._table_count = updated._table_count
         self._idle_scale_to_zero = updated._idle_scale_to_zero
         self._idle_cooldown_seconds = updated._idle_cooldown_seconds
         self._cold_start_timeout_seconds = updated._cold_start_timeout_seconds

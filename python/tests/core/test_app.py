@@ -537,3 +537,41 @@ class TestAppTables:
         table = app.get_table("app_reviews__notes")
         assert table["columns"][0]["default_value"] is None
         assert table["columns"][0]["primary"] is True
+
+    def test_get_tables_delegates(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        get_tables = mocker.patch.object(
+            AppApi, "_get_tables", return_value=[{"name": "app_reviews__notes"}]
+        )
+        assert app.get_tables() == [{"name": "app_reviews__notes"}]
+        get_tables.assert_called_once_with("reviews")
+
+    def test_preview_table_delegates_with_limit(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        preview = mocker.patch.object(
+            AppApi, "_preview_table", return_value={"columns": ["id"], "rows": [["1"]]}
+        )
+        assert app.preview_table("app_reviews__notes", limit=5)["rows"] == [["1"]]
+        preview.assert_called_once_with("reviews", "app_reviews__notes", 5)
+
+    def test_refresh_copies_table_metadata(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        assert app.table_count == 0
+        mocker.patch.object(
+            AppApi,
+            "get_app",
+            return_value=App.from_response_json(
+                {
+                    "jobId": 7,
+                    "name": "reviews",
+                    "state": "RUNNING",
+                    "managedDb": True,
+                    "tablePrefix": "app_reviews__",
+                    "tableCount": 1,
+                }
+            ),
+        )
+        app._refresh()
+        assert app.table_count == 1
+        assert app.managed_db is True
+        assert app.table_prefix == "app_reviews__"

@@ -113,8 +113,10 @@ NOTES = app.register_table("notes")          # -> "app_reviews__notes"; a no-op 
 ```
 
 - Table names are `<app.table_prefix><name>`, the prefix being
-  `app_<app name, lowercased, other characters as _>__`, in lowercase `a-z`,
-  `0-9` and `_`, at most 64 characters. `register_table` adds the prefix when it
+  `app_<app name, lowercased, other characters as _>__` (an app name longer than
+  24 characters is cut and ends in a hash, so read `app.table_prefix` or use the
+  name `register_table` returns), in lowercase `a-z`, `0-9` and `_`, at most 64
+  characters. `register_table` adds the prefix when it
   is missing. A name that already exists as another table (a feature group
   table, say) or belongs to another app is refused.
 - `CREATE TABLE` on an unregistered name fails with MySQL error 1142
@@ -193,18 +195,18 @@ Plain PyMySQL:
 ```python
 from db import connect
 
-app.register_table("notes")   # app as above; registers app_reviews__notes, a no-op once registered
+NOTES = app.register_table("notes")   # app as above; the full name, a no-op once registered
 with connect() as conn, conn.cursor() as cur:
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS app_reviews__notes (
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS {NOTES} (
           id         BIGINT AUTO_INCREMENT PRIMARY KEY,
           user_email VARCHAR(255) NOT NULL,
           note       TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=NDBCLUSTER DEFAULT CHARSET=utf8mb4
     """)
-    cur.execute("INSERT INTO app_reviews__notes (user_email, note) VALUES (%s, %s)", (email, note))
-    cur.execute("SELECT * FROM app_reviews__notes ORDER BY created_at DESC LIMIT 20")
+    cur.execute(f"INSERT INTO {NOTES} (user_email, note) VALUES (%s, %s)", (email, note))
+    cur.execute(f"SELECT * FROM {NOTES} ORDER BY created_at DESC LIMIT 20")
     rows = cur.fetchall()
 ```
 
