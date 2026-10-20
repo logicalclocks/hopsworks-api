@@ -31,6 +31,8 @@ import time
 from abc import ABC, abstractmethod
 from datetime import timedelta
 
+from hopsworks_apigen import public
+
 
 log = logging.getLogger(__name__)
 
@@ -61,10 +63,12 @@ class VectorStore(ABC):
     """Where embedded memories live and are searched."""
 
     @abstractmethod
+    @public
     def ingest(self, rows: list[dict]) -> None:
         """Add embedded rows. Not guaranteed to be searchable immediately."""
 
     @abstractmethod
+    @public
     def search(
         self,
         vector: list[float],
@@ -85,6 +89,7 @@ class VectorStore(ABC):
         """
 
     @abstractmethod
+    @public
     def purge(
         self, *, conversation_id: str | None = None, subject: str | None = None
     ) -> int:
@@ -97,6 +102,7 @@ class VectorStore(ABC):
         return of ``0`` therefore means "nothing matched", never "it failed".
         """
 
+    @public
     def healthcheck(self) -> bool:
         return True
 
@@ -531,6 +537,7 @@ def _widened(k: int) -> int:
     return max(min(max(k * 10, 100), 1000), k)
 
 
+@public
 def vector_store_for(embedder, deployment_id: str | None = None, **kwargs):
     """A :class:`HopsworksVectorStore` sized to an embedder.
 

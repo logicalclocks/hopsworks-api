@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_apigen import public
+
 from ._transport import AgentServingError, Transport
 from .models import (
     Check,
@@ -46,6 +48,7 @@ EVALS = "/agent-evals"
 log = logging.getLogger(__name__)
 
 
+@public
 def epoch_ms(value: Any) -> int | None:
     """A datetime, or epoch milliseconds already, as epoch milliseconds."""
     if value is None:
@@ -55,6 +58,7 @@ def epoch_ms(value: Any) -> int | None:
     return int(value)
 
 
+@public
 def check(type: str, name: str | None = None, **config: Any) -> dict[str, Any]:  # noqa: A002
     """One check as a suite stores it: its type, the name results report under, its settings.
 
@@ -120,11 +124,13 @@ class Suites:
         self._client = client
         self._http: Transport = client.http
 
+    @public
     def list(self) -> list[Suite]:
         return self._client._bind_all(
             Suite.list_from_api(self._http.get(f"{EVALS}/suites"))
         )
 
+    @public
     def get(self, suite_id: str, version: int | None = None) -> Suite:
         return self._client._bind(
             Suite.from_api(
@@ -132,11 +138,13 @@ class Suites:
             )
         )
 
+    @public
     def find(self, name: str) -> Suite | None:
         """The newest version of the suite with this name, or none."""
         matches = [s for s in self.list() if s.name == name]
         return max(matches, key=lambda s: s.version) if matches else None
 
+    @public
     def create(
         self,
         name: str,
@@ -177,6 +185,7 @@ class Suites:
             Suite.from_api(self._http.post(f"{EVALS}/suites", body))
         )
 
+    @public
     def new_version(self, suite: Suite | str, version: int | None = None) -> Suite:
         """A new draft version of a suite, carrying its settings and checks; tasks are joined anew."""
         current = suite if isinstance(suite, Suite) else self.get(suite, version)
@@ -198,6 +207,7 @@ class Suites:
             Suite.from_api(self._http.post(f"{EVALS}/suites", body))
         )
 
+    @public
     def update(
         self, suite: Suite | str, version: int | None = None, **changes: Any
     ) -> Suite:
@@ -225,6 +235,7 @@ class Suites:
             )
         )
 
+    @public
     def set_checks(
         self,
         suite: Suite | str,
@@ -240,6 +251,7 @@ class Suites:
         )
         return Check.list_from_api(rows)
 
+    @public
     def publish(self, suite: Suite | str, version: int | None = None) -> Suite:
         """Freeze it, which is what lets a run say exactly what it executed."""
         suite_id, version = _suite_ref(suite, version)
@@ -249,6 +261,7 @@ class Suites:
             )
         )
 
+    @public
     def delete(
         self, suite: Suite | str, version: int | None = None, force: bool = False
     ) -> None:
@@ -259,6 +272,7 @@ class Suites:
             force="true" if force else None,
         )
 
+    @public
     def tasks(self, suite: Suite | str, version: int | None = None) -> list[Task]:
         suite_id, version = _suite_ref(suite, version)
         return self._client._bind_all(
@@ -267,6 +281,7 @@ class Suites:
             )
         )
 
+    @public
     def copy_tasks(
         self,
         suite: Suite | str,
@@ -298,6 +313,7 @@ class Suites:
             or {}
         )
 
+    @public
     def import_tasks(
         self,
         suite: Suite | str,
@@ -328,6 +344,7 @@ class Tasks:
         self._client = client
         self._http = client.http
 
+    @public
     def list(
         self, *, unassigned: bool = False, pending_redaction: bool = False
     ) -> list[Task]:
@@ -342,11 +359,13 @@ class Tasks:
             )
         )
 
+    @public
     def get(self, task_id: str) -> Task:
         return self._client._bind(
             Task.from_api(self._http.get(f"{EVALS}/tasks/{task_id}"))
         )
 
+    @public
     def create(
         self,
         question: str | Sequence[str] | Sequence[dict[str, Any]],
@@ -365,6 +384,7 @@ class Tasks:
             Task.from_api(self._http.post(f"{EVALS}/tasks", body))
         )
 
+    @public
     def update(
         self,
         task: Task | str,
@@ -398,6 +418,7 @@ class Tasks:
             Task.from_api(self._http.put(f"{EVALS}/tasks/{_task_id(task)}", body))
         )
 
+    @public
     def attach(
         self,
         task: Task | str,
@@ -430,6 +451,7 @@ class Tasks:
             headers={"Content-Type": "application/octet-stream"},
         )
 
+    @public
     def attachment(self, task: Task | str, name: str) -> bytes:
         """One attachment's bytes."""
         return self._http.request(
@@ -438,10 +460,12 @@ class Tasks:
             raw=True,
         )
 
+    @public
     def remove_attachment(self, task: Task | str, name: str) -> None:
         """Remove an attachment from a task in a draft suite."""
         self._http.delete(f"{EVALS}/tasks/{_task_id(task)}/attachments/{name}")
 
+    @public
     def add_to_suite(
         self,
         task: Task | str,
@@ -462,14 +486,17 @@ class Tasks:
             )
         )
 
+    @public
     def remove_from_suite(self, task: Task | str) -> Task:
         return self._client._bind(
             Task.from_api(self._http.delete(f"{EVALS}/tasks/{_task_id(task)}/suite"))
         )
 
+    @public
     def delete(self, task: Task | str) -> None:
         self._http.delete(f"{EVALS}/tasks/{_task_id(task)}")
 
+    @public
     def promote(
         self,
         deployment_id: int,
@@ -497,6 +524,7 @@ class Tasks:
             )
         )
 
+    @public
     def confirm_redaction(
         self,
         task: Task | str,
@@ -520,6 +548,7 @@ class Tasks:
             )
         )
 
+    @public
     def forget_trace(self, deployment_id: int, trace_id: str) -> dict[str, int]:
         """Erase everything derived from a trace, for a deletion request.
 
@@ -540,6 +569,7 @@ class Tasks:
             or {}
         )
 
+    @public
     def add_to_regressions(
         self, task: Task | str, *, input_messages: str | None = None
     ) -> Task:
@@ -559,12 +589,15 @@ class Evaluators:
         self._client = client
         self._http = client.http
 
+    @public
     def list(self) -> list[EvaluatorTemplate]:
         return EvaluatorTemplate.list_from_api(self._http.get(f"{EVALS}/evaluators"))
 
+    @public
     def find(self, name: str) -> EvaluatorTemplate | None:
         return next((e for e in self.list() if e.name == name), None)
 
+    @public
     def save(
         self,
         name: str,
@@ -587,6 +620,7 @@ class Evaluators:
             body["tags"] = json.dumps([str(t) for t in tags])
         return EvaluatorTemplate.from_api(self._http.post(f"{EVALS}/evaluators", body))
 
+    @public
     def update(
         self,
         template: EvaluatorTemplate | str,
@@ -632,6 +666,7 @@ class Evaluators:
             raise AgentServingError(f"no saved evaluator {template_id}")
         return found
 
+    @public
     def delete(self, template: EvaluatorTemplate | str) -> None:
         template_id = (
             template.template_id
@@ -640,6 +675,7 @@ class Evaluators:
         )
         self._http.delete(f"{EVALS}/evaluators/{template_id}")
 
+    @public
     def install_defaults(self, overwrite: bool = False) -> list[str]:
         """The built-in judges (hallucination, frustration, toxicity, ...) into this library."""
         from ..judge_config import default_templates
@@ -657,6 +693,7 @@ class Evaluators:
             written.append(template["name"])
         return written
 
+    @public
     def judge_models(self, provider: str, secret: str | None = None) -> list[str]:
         """The models a provider currently offers, asked of the provider with the project's key."""
         return list(
@@ -670,6 +707,7 @@ class Runs:
         self._client = client
         self._http = client.http
 
+    @public
     def list(self, deployment_id: int | None = None) -> list[Run]:
         return self._client._bind_all(
             Run.list_from_api(
@@ -677,11 +715,13 @@ class Runs:
             )
         )
 
+    @public
     def get(self, run_id: str) -> Run:
         return self._client._bind(
             Run.from_api(self._http.get(f"{EVALS}/runs/{run_id}"))
         )
 
+    @public
     def start(
         self,
         suite: Suite | str,
@@ -706,6 +746,7 @@ class Runs:
             )
         )
 
+    @public
     def sample(
         self,
         deployment_id: int,
@@ -745,6 +786,7 @@ class Runs:
             )
         )
 
+    @public
     def sample_watermark(self, deployment_id: int) -> int | None:
         """Where the next sample would start, as epoch milliseconds."""
         body = (
@@ -753,16 +795,19 @@ class Runs:
         )
         return body.get("from")
 
+    @public
     def start_recorded(self, run: Run | str) -> Run:
         run_id = run.run_id if isinstance(run, Run) else run
         return self._client._bind(
             Run.from_api(self._http.post(f"{EVALS}/runs/{run_id}/start"))
         )
 
+    @public
     def trials(self, run: Run | str) -> list[Trial]:
         run_id = run.run_id if isinstance(run, Run) else run
         return Trial.list_from_api(self._http.get(f"{EVALS}/runs/{run_id}/trials"))
 
+    @public
     def results(
         self, run: Run | str, trial: Trial | str | None = None
     ) -> list[EvaluatorResult]:
@@ -772,6 +817,7 @@ class Runs:
             self._http.get(f"{EVALS}/runs/{run_id}/evaluator-results", trialId=trial_id)
         )
 
+    @public
     def failure_history(
         self,
         deployment_id: int,
@@ -807,6 +853,7 @@ class Runs:
             )
         )
 
+    @public
     def compare(
         self,
         baseline: Run | str,
@@ -903,10 +950,12 @@ class Runs:
                 asked[task.task_id] = question
         return asked
 
+    @public
     def metrics(self, run: Run | str) -> list[RunMetric]:
         run_id = run.run_id if isinstance(run, Run) else run
         return RunMetric.list_from_api(self._http.get(f"{EVALS}/runs/{run_id}/metrics"))
 
+    @public
     def trend(self, deployment_id: int, limit: int = 20) -> list[RunMetric]:
         """Run-scope metrics across a deployment's recent runs."""
         return RunMetric.list_from_api(
@@ -915,6 +964,7 @@ class Runs:
             )
         )
 
+    @public
     def review_trial(
         self,
         run: Run | str,
@@ -948,6 +998,7 @@ class Runs:
         # the route at all and every review 404'd.
         self._http.post(f"{EVALS}/runs/{run_id}/trials/review", body, trialId=trial_id)
 
+    @public
     def agent_status(self, run: Run) -> str:
         """The run's deployment status when it is not serving, else ``""``.
 
@@ -969,6 +1020,7 @@ class Runs:
         status = str(serving.get("status") or "")
         return "" if status in ("Running", "Idle") else status
 
+    @public
     def wait(
         self, run: Run | str, *, timeout_s: float = 1800, poll_s: float = 5
     ) -> Run:
@@ -1066,17 +1118,20 @@ class Jobs:
 
     # ── evaluation job ─────────────────────────────────────────────────────
 
+    @public
     def eval_job(self, deployment_id: int) -> EvalJob:
         """The deployment's evaluation job, or what creating one would look like (``exists`` says which)."""
         return EvalJob.from_api(
             self._http.get(f"{EVALS}/runner-job", deploymentId=deployment_id)
         )
 
+    @public
     def eval_jobs(self, deployment_id: int) -> list[EvalJob]:
         return EvalJob.list_from_api(
             self._http.get(f"{EVALS}/eval-jobs", deploymentId=deployment_id)
         )
 
+    @public
     def ensure_eval_job(
         self,
         deployment_id: int,
@@ -1148,6 +1203,7 @@ class Jobs:
             )
         )
 
+    @public
     def update_eval_job(
         self,
         name: str,
@@ -1198,9 +1254,11 @@ class Jobs:
                 body[key] = value
         return EvalJob.from_api(self._http.put(f"{EVALS}/eval-jobs/{name}", body))
 
+    @public
     def delete_eval_job(self, name: str) -> None:
         self._http.delete(f"{EVALS}/eval-jobs/{name}")
 
+    @public
     def run_eval_job(
         self,
         name: str,
@@ -1230,6 +1288,7 @@ class Jobs:
 
     # ── failure analysis job ───────────────────────────────────────────────
 
+    @public
     def review_jobs(self, deployment_id: int) -> list[ReviewJob]:
         return self._client._bind_all(
             ReviewJob.list_from_api(
@@ -1237,15 +1296,18 @@ class Jobs:
             )
         )
 
+    @public
     def review_job(self, deployment_id: int) -> ReviewJob | None:
         jobs = self.review_jobs(deployment_id)
         return jobs[0] if jobs else None
 
+    @public
     def review_job_defaults(self, deployment_id: int) -> ReviewJob:
         return ReviewJob.from_api(
             self._http.get(f"{EVALS}/review-jobs/defaults", deploymentId=deployment_id)
         )
 
+    @public
     def ensure_review_job(self, deployment_id: int, **settings: Any) -> ReviewJob:
         """Create the deployment's failure-analysis job unless it exists.
 
@@ -1264,6 +1326,7 @@ class Jobs:
             )
         )
 
+    @public
     def update_review_job(self, job: ReviewJob | str, **settings: Any) -> ReviewJob:
         name = job.name if isinstance(job, ReviewJob) else job
         return self._client._bind(
@@ -1272,10 +1335,12 @@ class Jobs:
             )
         )
 
+    @public
     def delete_review_job(self, job: ReviewJob | str) -> None:
         name = job.name if isinstance(job, ReviewJob) else job
         self._http.delete(f"{EVALS}/review-jobs/{name}")
 
+    @public
     def analyse(
         self,
         job: ReviewJob | str,
@@ -1298,12 +1363,14 @@ class Jobs:
 
     # ── regressions ────────────────────────────────────────────────────────
 
+    @public
     def regressions(self, deployment_id: int) -> RegressionSuite:
         """The deployment's standing regression suite, whether or not it exists yet."""
         return RegressionSuite.from_api(
             self._http.get(f"{EVALS}/regressions", deploymentId=deployment_id)
         )
 
+    @public
     def run_regressions(self, deployment_id: int) -> Run:
         """Publish the draft regressions, if any, and run them against the deployment."""
         return self._client._bind(

@@ -32,6 +32,8 @@ import json
 import os
 from typing import Any
 
+from hopsworks_apigen import public
+
 from .models import AgentError
 
 
@@ -62,6 +64,7 @@ class PlatformClient:
     #: then, which is "not yet", not "no".
     TRACE_WAIT_S = (0.5, 1.0, 2.0, 4.0)
 
+    @public
     def post_feedback(self, trace_id: str, body: dict[str, Any]) -> dict[str, Any]:
         """Record a verdict on one of this deployment's traces; the platform's row comes back.
 
@@ -91,6 +94,7 @@ class PlatformClient:
                 time.sleep(delay)
         raise AssertionError("unreachable")  # pragma: no cover
 
+    @public
     def latest_trace_id(self, conversation_id: str) -> str | None:
         """The newest trace of a conversation, as the platform recorded it."""
         rows = self._request(

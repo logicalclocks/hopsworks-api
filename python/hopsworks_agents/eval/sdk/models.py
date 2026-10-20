@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from hopsworks_apigen import public
 from typing_extensions import Self
 
 
@@ -26,10 +27,12 @@ T = TypeVar("T", bound="ApiModel")
 _CAMEL = re.compile(r"_([a-z])")
 
 
+@public
 def to_camel(name: str) -> str:
     return _CAMEL.sub(lambda m: m.group(1).upper(), name)
 
 
+@public
 def as_datetime(value: Any) -> datetime | None:
     """A timestamp as the API sends it -- ISO text or epoch milliseconds -- as a datetime, UTC."""
     if value in (None, ""):
@@ -44,6 +47,7 @@ def as_datetime(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+@public
 def as_json(value: Any, default: Any) -> Any:
     """A JSON-as-text column parsed, or the default when empty or malformed."""
     if value in (None, ""):
@@ -61,6 +65,7 @@ class ApiModel:
     raw: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @classmethod
+    @public
     def from_api(cls, data: dict[str, Any] | None) -> Self:
         data = data or {}
         values: dict[str, Any] = {}
@@ -77,6 +82,7 @@ class ApiModel:
         return model
 
     @classmethod
+    @public
     def list_from_api(cls, data: Any) -> list[Self]:
         items = data.get("items") if isinstance(data, dict) else data
         return [cls.from_api(item) for item in (items or [])]
@@ -357,6 +363,7 @@ class RunDiff:
         return ", ".join(parts)
 
 
+@public
 def verdict_of(trials: Sequence[Trial]) -> Verdict:
     """A task's outcome across its trials -- see :class:`RunDiff` for the rule."""
     if not trials:
@@ -367,6 +374,7 @@ def verdict_of(trials: Sequence[Trial]) -> Verdict:
     return "passed" if all(t.status == "PASSED" for t in gradable) else "failed"
 
 
+@public
 def change_of(before: Verdict, after: Verdict) -> Change:
     """What a pair of verdicts means, as one word."""
     if before == "absent":
@@ -744,6 +752,7 @@ class Trace(ApiModel):
             self.spans[0] if self.spans else None,
         )
 
+    @public
     def attributes_of(self, span_id: str) -> dict[str, str]:
         return {
             a.get("attrKey", ""): a.get("attrValue", "")
@@ -850,6 +859,7 @@ class FeedbackSummary(ApiModel):
     windows: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
+    @public
     def from_api(cls, data: dict[str, Any] | None) -> FeedbackSummary:
         data = dict(data or {})
         # "from" and "to" are keywords; the model names them with a unit

@@ -51,6 +51,8 @@ import logging
 import os
 from typing import Any
 
+from hopsworks_apigen import public
+
 
 log = logging.getLogger(__name__)
 
@@ -190,6 +192,7 @@ def _search(spec: Any) -> dict[str, Any]:
         return {}
 
 
+@public
 def policy(env: dict[str, str] | None = None) -> dict[str, Any] | None:
     """The deployment's memory policy as a dict, or None when there is none.
 
@@ -223,6 +226,7 @@ def policy(env: dict[str, str] | None = None) -> dict[str, Any] | None:
     return parsed
 
 
+@public
 def memory_from_env(env: dict[str, str] | None = None):
     """The memory store this deployment configures, or None when it configures none.
 

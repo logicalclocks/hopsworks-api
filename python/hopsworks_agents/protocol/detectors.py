@@ -32,6 +32,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from hopsworks_apigen import public
+
 
 # Compiled once: Pattern.compile is expensive and these are immutable.
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -118,6 +120,7 @@ def _overlaps(start: int, end: int, taken: list[tuple[int, int]]) -> bool:
     return any(start < t_end and end > t_start for t_start, t_end in taken)
 
 
+@public
 def detect(text: str) -> list[Finding]:
     """Every PII/secret shape found in ``text``, ordered by position.
 
@@ -161,6 +164,7 @@ def detect(text: str) -> list[Finding]:
     return sorted(findings, key=lambda f: f.start)
 
 
+@public
 def redact(text: str, findings: list[Finding] | None = None) -> str:
     """Replace findings with typed placeholders.
 
@@ -178,6 +182,7 @@ def redact(text: str, findings: list[Finding] | None = None) -> str:
     return result
 
 
+@public
 def scan(*texts: str | None) -> list[Finding]:
     """Findings across several strings, for callers holding a whole transcript.
 

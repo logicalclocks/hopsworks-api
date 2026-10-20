@@ -22,6 +22,8 @@ import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_apigen import public
+
 from .api import hopsworks_session
 from .evaluator_spec import SpecError, evaluators_for_suite
 from .judges import LlmJudgeEvaluator
@@ -532,6 +534,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
         return False
 
 
+@public
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     # Repeatable: one evaluation job runs everything it is configured to run --

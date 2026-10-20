@@ -29,6 +29,8 @@ import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_apigen import public
+
 from .conventions import BAGGAGE_PREFIXES
 
 
@@ -69,6 +71,7 @@ KNOWN_FRAMEWORKS = (
 )
 
 
+@public
 def resolve_framework(framework: str | None) -> str:
     """Explicit argument wins; else the platform-injected AGENT_FRAMEWORK.
 
@@ -87,6 +90,7 @@ def resolve_framework(framework: str | None) -> str:
     return value
 
 
+@public
 def setup_tracing(framework: str, enabled: bool | None = None) -> Any | None:
     """Build a TracerProvider exporting to the deployment's OTLP sidecar and.
 
@@ -173,6 +177,7 @@ def setup_tracing(framework: str, enabled: bool | None = None) -> Any | None:
     return provider
 
 
+@public
 def install_baggage_propagation(tracer_provider: Any) -> bool:
     """Copy allowlisted baggage entries onto every span as attributes.
 
@@ -225,6 +230,7 @@ def install_baggage_propagation(tracer_provider: Any) -> bool:
         return False
 
 
+@public
 def extract_context(headers: Mapping[str, str] | None) -> Any | None:
     """W3C ``traceparent`` + ``baggage`` from request headers as an OTel.
 
@@ -262,6 +268,7 @@ def _without_eval_baggage(context: Any) -> Any:
 
 
 @contextmanager
+@public
 def turn_span(
     tracer_provider: Any,
     *,

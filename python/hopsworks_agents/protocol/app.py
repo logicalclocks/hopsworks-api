@@ -26,6 +26,7 @@ from typing import Any
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from hopsworks_apigen import public
 
 from . import conventions
 from .context import HandlerContext
@@ -236,6 +237,7 @@ class AgentApp(FastAPI):
 
     # ── handler decorators ────────────────────────────────────────────────
 
+    @public
     def chat(self, handler: ChatHandler) -> ChatHandler:
         """Register the chat handler.
 
@@ -246,6 +248,7 @@ class AgentApp(FastAPI):
         self._chat_handler = handler
         return handler
 
+    @public
     def stream(self, handler: StreamHandler) -> StreamHandler:
         """Register a streaming handler: an async generator yielding text.
 
@@ -259,6 +262,7 @@ class AgentApp(FastAPI):
         self._stream_handler = handler
         return handler
 
+    @public
     def memory_tools(self, framework: str | None = None, include=None) -> list[Any]:
         """Framework-native ``remember`` / ``recall`` / ``forget`` / ``search`` tools.
 
@@ -277,6 +281,7 @@ class AgentApp(FastAPI):
 
         return _memory_tools(framework or self.framework, include=include)
 
+    @public
     def identity_tools(self, framework: str | None = None) -> list[Any]:
         """Framework-native ``identify`` tool, for agents that ask who they are with.
 
@@ -1204,6 +1209,7 @@ def _describe_parts(request: Any) -> str:
     )
 
 
+@public
 def contentful(response: ChatResponse) -> bool:
     # any non-text part counts as content; text parts count when non-empty
     return any(part.type != "text" or part.text for part in response.message.content)

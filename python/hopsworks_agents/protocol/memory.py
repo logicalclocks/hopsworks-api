@@ -40,6 +40,8 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
+from hopsworks_apigen import public
+
 
 log = logging.getLogger(__name__)
 
@@ -171,6 +173,7 @@ def _already_exists(err: Exception) -> bool:
     return any(marker in text for marker in _EXISTS_MARKERS)
 
 
+@public
 def new_turn_id() -> str:
     return f"turn_{uuid.uuid4().hex}"
 
@@ -181,6 +184,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+@public
 def deployment_mysql_url() -> str:
     """Build the SQLAlchemy URL of the project MySQL from the env vars the.
 
@@ -282,6 +286,7 @@ def _url_from_connector(connector) -> str:
     return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
 
 
+@public
 def export_feature_groups(
     feature_store=None,
     *,
@@ -359,10 +364,12 @@ class ChatMemory(ABC):
     """
 
     @abstractmethod
+    @public
     def get(self, conversation_id: str) -> list[Turn]:
         """Messages of closed turns, in chronological order."""
 
     @abstractmethod
+    @public
     def begin_turn(
         self,
         conversation_id: str,
@@ -379,6 +386,7 @@ class ChatMemory(ABC):
         """
 
     @abstractmethod
+    @public
     def record_item(
         self,
         conversation_id: str,
@@ -394,15 +402,18 @@ class ChatMemory(ABC):
         """Add a row to an open turn (the reply, a tool call, an event)."""
 
     @abstractmethod
+    @public
     def end_turn(
         self, conversation_id: str, turn_id: str, *, status: str = TURN_CLOSED
     ) -> None:
         """Close a turn (``closed``) or mark it failed (``abandoned``)."""
 
     @abstractmethod
+    @public
     def clear(self, conversation_id: str) -> None:
         """Drop a conversation."""
 
+    @public
     def list_conversations(
         self, *, subject: str | None = None, limit: int = 50
     ) -> list[dict]:
@@ -415,6 +426,7 @@ class ChatMemory(ABC):
         """
         return []
 
+    @public
     def conversation_subject(self, conversation_id: str) -> str | None:
         """Who this conversation's durable memory is keyed by, per the server.
 
@@ -430,6 +442,7 @@ class ChatMemory(ABC):
         """
         return None
 
+    @public
     def rebind_turn_subject(
         self, conversation_id: str, turn_id: str, subject: str
     ) -> None:
@@ -448,6 +461,7 @@ class ChatMemory(ABC):
         """
         return
 
+    @public
     def append(self, conversation_id: str, role: str, content: str) -> None:
         """Record one standalone message, e.g. to seed a conversation.
 
@@ -458,6 +472,7 @@ class ChatMemory(ABC):
         self.begin_turn(conversation_id, turn_id, role, content)
         self.end_turn(conversation_id, turn_id)
 
+    @public
     def healthcheck(self) -> bool:
         """Whether the store is currently usable.
 
@@ -467,12 +482,14 @@ class ChatMemory(ABC):
         """
         return True
 
-    def maybe_reap(self) -> None:  # noqa: B027 -- a no-op default, not a hook every store must fill
+    @public  # noqa: B027 -- a no-op default, not a hook every store must fill
+    def maybe_reap(self) -> None:
         """Sweep turns that were never closed. No-op for stores whose open.
 
         turns cannot outlive the process.
         """
 
+    @public
     def transcript(
         self, conversation_id: str, *, include_events: bool = False
     ) -> list[dict]:
@@ -488,6 +505,7 @@ class ChatMemory(ABC):
             dict(turn, memory_type=ITEM_MESSAGE) for turn in self.get(conversation_id)
         ]
 
+    @public
     def summarized_through(self, conversation_id: str) -> int:
         """Highest item id represented by the summary rather than by.
 
@@ -499,10 +517,12 @@ class ChatMemory(ABC):
 
     # ── short-term memory: summarization ─────────────────────────────────
 
+    @public
     def get_summary(self, conversation_id: str) -> str | None:
         """The rolling summary of folded-away turns, or None."""
         return None
 
+    @public
     def clear_summary(self, conversation_id: str) -> bool:  # noqa: ARG002
         """Drop the rolling summary, keeping the conversation.
 
@@ -518,6 +538,7 @@ class ChatMemory(ABC):
         """
         return False
 
+    @public
     async def maybe_summarize(self, conversation_id: str) -> bool:
         """Fold old turns into the summary if enough have accumulated.
 
@@ -529,7 +550,8 @@ class ChatMemory(ABC):
 
     # ── semantic memory: scoped durable state ────────────────────────────
 
-    def set_state(  # noqa: B027 -- a no-op default, not a hook every store must fill
+    @public  # noqa: B027 -- a no-op default, not a hook every store must fill
+    def set_state(
         self,
         scope: str,
         owner: str,
@@ -541,9 +563,11 @@ class ChatMemory(ABC):
     ) -> None:
         """Upsert one scoped durable value."""
 
+    @public
     def get_state(self, scope: str, owner: str, key: str) -> str | None:
         return None
 
+    @public
     def list_state(
         self,
         scope: str,
@@ -554,15 +578,18 @@ class ChatMemory(ABC):
     ) -> list[dict]:
         return []
 
+    @public
     def delete_state(self, scope: str, owner: str, key: str | None = None) -> int:
         return 0
 
+    @public
     def state_block(self, subject: str, conversation_id: str) -> str:
         """Scoped state rendered for ``ctx.system_context()``."""
         return ""
 
     # ── episodic memory: search over past turns ──────────────────────────
 
+    @public
     def search(
         self,
         query: str,
@@ -574,10 +601,12 @@ class ChatMemory(ABC):
         """Older messages relevant to ``query``, most relevant first."""
         return []
 
+    @public
     async def ingest_turn(self, conversation_id: str, turn_id: str) -> int:
         """Embed a completed turn into the vector store. Returns rows sent."""
         return 0
 
+    @public
     def purge_vectors(
         self, *, conversation_id: str | None = None, subject: str | None = None
     ) -> int:
@@ -1447,6 +1476,7 @@ class ManagedMemoryService(ChatMemory):
             frame[column] = ""
         return frame
 
+    @public
     def export_feature_groups(
         self,
         feature_store=None,
@@ -1553,6 +1583,7 @@ class ManagedMemoryService(ChatMemory):
             exported[table.name] = len(rows)
         return exported
 
+    @public
     def healthcheck(self) -> bool:
         # ready once the engine + tables are established and reachable; this is
         # also where a deployment's DDL runs, off the request path
@@ -1680,6 +1711,7 @@ class ManagedMemoryService(ChatMemory):
                 if turn_id in self._pending:
                     self._pending[turn_id].append({"role": role, "content": content})
 
+    @public
     def conversation_subject(self, conversation_id: str) -> str | None:
         """The subject most recently stamped on this conversation's messages.
 
@@ -1708,6 +1740,7 @@ class ManagedMemoryService(ChatMemory):
             return None
         return row[0] if row and row[0] else None
 
+    @public
     def list_conversations(
         self, *, subject: str | None = None, limit: int = 50
     ) -> list[dict]:
@@ -1792,6 +1825,7 @@ class ManagedMemoryService(ChatMemory):
             for r in rows
         ]
 
+    @public
     def rebind_turn_subject(
         self, conversation_id: str, turn_id: str, subject: str
     ) -> None:
@@ -1912,6 +1946,7 @@ class ManagedMemoryService(ChatMemory):
             except Exception:  # noqa: BLE001
                 log.exception("Could not update session message count")
 
+    @public
     def reap_open_turns(self, older_than_seconds: int | None = None) -> int:
         """Mark long-open turns as abandoned.
 
@@ -1945,6 +1980,7 @@ class ManagedMemoryService(ChatMemory):
             log.warning("Marked %d stale open turn row(s) as abandoned", count)
         return count
 
+    @public
     def maybe_reap(self) -> None:
         """Throttled ``reap_open_turns`` + prune for the post-response slot."""
         now = time.monotonic()
@@ -1960,6 +1996,7 @@ class ManagedMemoryService(ChatMemory):
         if due_prune:
             self.prune_expired()
 
+    @public
     def prune_expired(self, limit: int = 500) -> int:
         """Delete rows past ``expires_at``, a bounded batch at a time.
 
@@ -1994,6 +2031,7 @@ class ManagedMemoryService(ChatMemory):
         log.info("Pruned %d expired memory row(s)", len(ids))
         return len(ids)
 
+    @public
     def transcript(
         self, conversation_id: str, *, include_events: bool = False
     ) -> list[dict]:
@@ -2027,11 +2065,13 @@ class ManagedMemoryService(ChatMemory):
             for r in rows
         ]
 
+    @public
     def summarized_through(self, conversation_id: str) -> int:
         return self._fold_state(conversation_id)[1] if self._ensure_engine() else 0
 
     # ── short-term memory: summarization ─────────────────────────────────
 
+    @public
     def get_summary(self, conversation_id: str) -> str | None:
         if self._summarize is None or not self._ensure_engine():
             return None
@@ -2050,6 +2090,7 @@ class ManagedMemoryService(ChatMemory):
             return None
         return row.summary if row is not None else None
 
+    @public
     def clear_summary(self, conversation_id: str) -> bool:
         """Drop this conversation's summary and let the next fold rebuild it.
 
@@ -2173,6 +2214,7 @@ class ManagedMemoryService(ChatMemory):
 
     # ── semantic memory: scoped durable state ────────────────────────────
 
+    @public
     def set_state(
         self,
         scope: str,
@@ -2278,10 +2320,12 @@ class ManagedMemoryService(ChatMemory):
         except Exception:  # noqa: BLE001
             log.exception("State eviction failed")
 
+    @public
     def get_state(self, scope: str, owner: str, key: str) -> str | None:
         rows = self.list_state(scope, owner, key=key)
         return rows[0]["value"] if rows else None
 
+    @public
     def list_state(
         self,
         scope: str,
@@ -2331,6 +2375,7 @@ class ManagedMemoryService(ChatMemory):
             for r in rows
         ]
 
+    @public
     def delete_state(self, scope: str, owner: str, key: str | None = None) -> int:
         """Forget one value, or every value for an owner. Returns rows removed.
 
@@ -2362,6 +2407,7 @@ class ManagedMemoryService(ChatMemory):
                 f"{scope}:{owner} state could not be deleted: {err}"
             ) from err
 
+    @public
     def state_block(self, subject: str, conversation_id: str) -> str:
         """The state part of ``ctx.system_context()``.
 
@@ -2404,6 +2450,7 @@ class ManagedMemoryService(ChatMemory):
 
     # ── episodic memory: search over past turns ──────────────────────────
 
+    @public
     def search(
         self,
         query: str,
@@ -2535,6 +2582,7 @@ class ManagedMemoryService(ChatMemory):
             for r in rows
         ]
 
+    @public
     async def ingest_turn(self, conversation_id: str, turn_id: str) -> int:
         """Embed a completed turn's messages into the vector store.
 
@@ -2608,6 +2656,7 @@ class ManagedMemoryService(ChatMemory):
             return 0
         return len(payload)
 
+    @public
     def purge_vectors(
         self, *, conversation_id: str | None = None, subject: str | None = None
     ) -> int:
@@ -2639,6 +2688,7 @@ class ManagedMemoryService(ChatMemory):
             log.exception("Vector purge failed — deleted content may remain searchable")
             raise VectorPurgeError(str(err)) from err
 
+    @public
     async def maybe_summarize(self, conversation_id: str) -> bool:
         """Fold old turns into the rolling summary.
 

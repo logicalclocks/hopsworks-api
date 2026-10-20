@@ -24,6 +24,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from hopsworks_apigen import public
+
 from .memory import FEATURE_GROUP_VERSION
 
 
@@ -73,6 +75,7 @@ class ConversationSubjectIndex:
         self._retry_after = 0.0
         self._backoff = 1.0
 
+    @public
     def record(self, conversation_id: str, subject: str, source: str) -> bool:
         """Attribute a conversation to a subject. Returns whether a row landed.
 

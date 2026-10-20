@@ -42,6 +42,8 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote
 
+from hopsworks_apigen import public
+
 from . import conventions
 
 
@@ -80,6 +82,7 @@ _current: contextvars.ContextVar[EvalTrial | None] = contextvars.ContextVar(
 )
 
 
+@public
 def env_eval_mode() -> bool:
     """The whole-deployment switch, ``EVAL_MODE``."""
     return os.environ.get(conventions.EVAL_MODE_ENV, "").strip().lower() in (
@@ -89,6 +92,7 @@ def env_eval_mode() -> bool:
     )
 
 
+@public
 def current_trial() -> EvalTrial | None:
     """The verified trial this turn belongs to, or None.
 
@@ -98,6 +102,7 @@ def current_trial() -> EvalTrial | None:
     return _current.get()
 
 
+@public
 def in_evaluation() -> bool:
     """Whether the code asking should skip its production side effects.
 
@@ -110,6 +115,7 @@ def in_evaluation() -> bool:
 
 
 @contextmanager
+@public
 def active(trial: EvalTrial | None) -> Iterator[None]:
     """Make ``trial`` the current one for the duration of a turn.
 
@@ -140,6 +146,7 @@ _FIELDS = {
 }
 
 
+@public
 def parse_baggage(headers: Mapping[str, str] | None) -> EvalTrial | None:
     """The eval ids in a request's W3C ``baggage``, or None without a run id.
 
@@ -231,6 +238,7 @@ class RunVerifier:
         self._lock = threading.Lock()
         self._now = now
 
+    @public
     def verify(self, trial: EvalTrial) -> bool:
         now = self._now()
         with self._lock:

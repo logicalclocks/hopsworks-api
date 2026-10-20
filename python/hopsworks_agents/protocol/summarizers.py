@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 import os
 
+from hopsworks_apigen import public
+
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +95,7 @@ def _key_resolver(api_key: str | None, env_var: str, api_key_secret: str | None)
     return resolve
 
 
+@public
 def anthropic_summarizer(
     model: str = DEFAULT_MODEL,
     *,
@@ -156,6 +159,7 @@ def anthropic_summarizer(
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 
 
+@public
 def openai_summarizer(
     model: str = OPENAI_DEFAULT_MODEL,
     *,
@@ -257,6 +261,7 @@ def _resolve_hopsworks_deployment(deployment) -> tuple[str, str, str | bool]:
     return base_url, gateway._auth._token, gateway._verify
 
 
+@public
 def hopsworks_summarizer(
     deployment,
     model: str | None = None,
@@ -327,6 +332,7 @@ def hopsworks_summarizer(
     return summarize
 
 
+@public
 def sentence_transformer_embedder(
     model_name: str = "all-MiniLM-L6-v2", *, normalize: bool = True, **load_kwargs
 ):

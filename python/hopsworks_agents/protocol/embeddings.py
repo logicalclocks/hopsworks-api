@@ -21,6 +21,8 @@ import re
 import tempfile
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_apigen import public
+
 
 if TYPE_CHECKING:  # pragma: no cover
     from sentence_transformers import SentenceTransformer
@@ -30,6 +32,7 @@ log = logging.getLogger(__name__)
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
 
 
+@public
 def registry_name(model_name: str) -> str:
     """The model registry name for a hub model name."""
     return re.sub(r"[^A-Za-z0-9_]", "_", model_name)
@@ -51,6 +54,7 @@ def _latest(registry, name: str, version: int | None):
     return max(models, key=lambda m: m.version) if models else None
 
 
+@public
 def register_sentence_transformer(
     model_name: str = DEFAULT_MODEL,
     *,
@@ -97,6 +101,7 @@ def register_sentence_transformer(
     return saved
 
 
+@public
 def load_sentence_transformer(
     model_name: str = DEFAULT_MODEL,
     *,

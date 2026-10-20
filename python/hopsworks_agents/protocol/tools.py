@@ -20,6 +20,8 @@ import logging
 import re
 from typing import get_type_hints
 
+from hopsworks_apigen import public
+
 from .memory import WRITABLE_SCOPES
 
 
@@ -139,6 +141,7 @@ def _check_scope(scope: str) -> str | None:
     return None
 
 
+@public
 def remember(key: str, value: str, scope: str = "user") -> str:
     """Store a durable fact so it is available in later conversations.
 
@@ -189,6 +192,7 @@ def remember(key: str, value: str, scope: str = "user") -> str:
     return stored
 
 
+@public
 def recall(key: str, scope: str = "user") -> str:
     """Look up a fact stored earlier with ``remember``.
 
@@ -208,6 +212,7 @@ def recall(key: str, scope: str = "user") -> str:
     return value
 
 
+@public
 def forget(key: str, scope: str = "user") -> str:
     """Delete a fact stored earlier, e.g. when the user says it is wrong.
 
@@ -228,6 +233,7 @@ def forget(key: str, scope: str = "user") -> str:
     return f"Forgot {key!r}."
 
 
+@public
 def search(query: str) -> str:
     """Search earlier conversations for anything relevant to a topic.
 
@@ -259,6 +265,7 @@ def search(query: str) -> str:
 MEMORY_TOOLS = (remember, recall, forget, search)
 
 
+@public
 def identify(subject: str) -> str:
     """Record who you are talking to, once they have identified themselves.
 
@@ -366,6 +373,7 @@ def _as_claude_agent_tool(fn, sdk_tool):
     return sdk_tool(fn.__name__, _description(fn), _claude_input_schema(fn))(invoke)
 
 
+@public
 def memory_tools(framework: str = "plain", include=None):
     """The memory tools wrapped in a framework's tool type.
 
@@ -390,6 +398,7 @@ def memory_tools(framework: str = "plain", include=None):
     return _wrap(_select(include), framework, "memory_tools")
 
 
+@public
 def identity_tools(framework: str = "plain"):
     """``identify`` wrapped in a framework's tool type.
 

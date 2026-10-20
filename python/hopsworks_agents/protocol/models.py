@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any, Literal
 
+from hopsworks_apigen import public
 from pydantic import BaseModel, Field
 
 
@@ -17,14 +18,17 @@ PROTOCOL = "hopsworks-agent"
 PROTOCOL_VERSION = "1.4"
 
 
+@public
 def new_conversation_id() -> str:
     return f"conv_{uuid.uuid4().hex}"
 
 
+@public
 def new_message_id() -> str:
     return f"msg_{uuid.uuid4().hex}"
 
 
+@public
 def new_response_id() -> str:
     return f"response_{uuid.uuid4().hex}"
 
@@ -99,6 +103,7 @@ class ChatRequest(BaseModel):
     def audio_clips(self) -> list[AudioContent]:
         return [p for p in self.message.content if p.type == "audio"]
 
+    @public
     def to_framework_messages(self) -> list[dict[str, str]]:
         """The new message in the `{"role", "content"}` dict shape that.
 
@@ -144,6 +149,7 @@ class AgentResponse:
     """Ergonomic constructors for ChatResponse."""
 
     @staticmethod
+    @public
     def text(
         text: str,
         conversation_id: str | None = None,
@@ -160,6 +166,7 @@ class AgentResponse:
         )
 
     @staticmethod
+    @public
     def parts(
         *parts: TextContent | ImageContent | FileContent | AudioContent,
         conversation_id: str | None = None,
@@ -202,6 +209,7 @@ class AgentError(Exception):
         self.status_code = status_code
         self.retryable = retryable
 
+    @public
     def detail(self) -> dict[str, Any]:
         return {
             "code": self.code,

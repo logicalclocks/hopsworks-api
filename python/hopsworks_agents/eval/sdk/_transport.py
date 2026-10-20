@@ -17,6 +17,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from hopsworks_apigen import public
+
 from ..api import EvalApiError, _StaticAuth, hopsworks_session
 
 
@@ -144,6 +146,7 @@ class Transport:
             if verify is not True:
                 self._session.verify = verify
 
+    @public
     def request(
         self,
         method: str,
@@ -189,6 +192,7 @@ class Transport:
             return None
         return response.json()
 
+    @public
     def get(self, path: str, **params: Any) -> Any:
         return self.request("GET", path, params=params or None)
 
@@ -212,6 +216,7 @@ class Transport:
             )
         return str(istio._base_url).rstrip("/")
 
+    @public
     def agent_request(
         self,
         method: str,
@@ -267,16 +272,20 @@ class Transport:
             return None
         return response.json()
 
+    @public
     def post(self, path: str, json: Any = None, **params: Any) -> Any:
         return self.request("POST", path, params=params or None, json=json)
 
+    @public
     def put(self, path: str, json: Any = None, **params: Any) -> Any:
         return self.request("PUT", path, params=params or None, json=json)
 
+    @public
     def delete(self, path: str, **params: Any) -> Any:
         return self.request("DELETE", path, params=params or None)
 
 
+@public
 def host_from_env() -> str:
     host = os.environ.get("HOPSWORKS_HOST") or os.environ.get("REST_ENDPOINT")
     if not host:
@@ -299,6 +308,7 @@ class HopsworksClientSession:
     def __init__(self, client: Any):
         self._client = client
 
+    @public
     def request(
         self,
         method: str,
@@ -381,6 +391,7 @@ def _error_body(err: Any) -> dict[str, Any]:
         return {"errorMsg": str(err)}
 
 
+@public
 def connected_transport() -> Transport | None:
     """A transport over the connected hopsworks client, or None when nothing is connected."""
     try:

@@ -22,6 +22,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from hopsworks_apigen import public
+
 from .features import select_ready_traces, trace_features
 
 
@@ -196,6 +198,7 @@ def featurize(
     return len(rows)
 
 
+@public
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deployment-id", type=int, required=True)

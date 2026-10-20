@@ -15,10 +15,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from hopsworks_apigen import public
+
 
 log = logging.getLogger(__name__)
 
 
+@public
 def to_graph_spec(graph: Any) -> dict[str, Any] | None:
     """Normalise a framework graph to ``{"nodes": [...], "edges": [...]}``.
 

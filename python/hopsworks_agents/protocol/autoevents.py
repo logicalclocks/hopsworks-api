@@ -18,6 +18,8 @@ import contextvars
 import logging
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_apigen import public
+
 
 if TYPE_CHECKING:
     from .context import HandlerContext
@@ -89,6 +91,7 @@ def _is_llm_span(span: Any) -> bool:
     return bool(any(attrs.get(key) for key in _MODEL_KEYS)) and _reports_usage(attrs)
 
 
+@public
 def install_llm_span_detection(tracer_provider: Any) -> bool:
     """Record, per turn, whether any model call was traced.
 
@@ -132,6 +135,7 @@ def install_llm_span_detection(tracer_provider: Any) -> bool:
         return False
 
 
+@public
 def install_auto_tool_events(tracer_provider: Any) -> bool:
     """Register the span processor on the given provider. Returns True when.
 

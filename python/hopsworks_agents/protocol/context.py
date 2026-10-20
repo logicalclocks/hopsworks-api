@@ -18,6 +18,8 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_apigen import public
+
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -126,6 +128,7 @@ class HandlerContext:
             return None
         return self.memory.get_summary(self.conversation_id)
 
+    @public
     def state(self, scope: str = "user") -> dict[str, str]:
         """Scoped durable state as a plain ``{key: value}`` dict.
 
@@ -139,6 +142,7 @@ class HandlerContext:
             row["key"]: row["value"] for row in self.memory.list_state(scope, owner)
         }
 
+    @public
     def recall(self, key: str, *, scope: str = "user") -> str | None:
         """One durable fact, read under the owner its scope is keyed by.
 
@@ -163,6 +167,7 @@ class HandlerContext:
             return None
         return self.memory.get_state(scope, self._state_owner(scope), key)
 
+    @public
     def remember(
         self,
         key: str,
@@ -231,6 +236,7 @@ class HandlerContext:
         )
         return True
 
+    @public
     def forget(self, key: str | None = None, *, scope: str = "user") -> int:
         """Erase one durable fact, or every fact in a scope when ``key`` is omitted.
 
@@ -269,6 +275,7 @@ class HandlerContext:
             }
         )
 
+    @public
     def rebind_subject(self, subject: str) -> None:
         """Bind durable memory to the end user this turn just identified.
 
@@ -307,6 +314,7 @@ class HandlerContext:
         # the memory rows cannot end up disagreeing about who this is.
         self.record_subject(subject, source="app")
 
+    @public
     def record_subject(self, subject: str, source: str = "app") -> bool:
         """Say who this conversation is with, without changing what it can read.
 
@@ -330,6 +338,7 @@ class HandlerContext:
             return ""
         return self.subject
 
+    @public
     def system_context(
         self,
         header: str = "Context from earlier:",
@@ -367,22 +376,26 @@ class HandlerContext:
     # do, every other conversation in this replica waits -- and so do /health
     # and /ready. These are the same reads, awaited.
 
+    @public
     async def ahistory(self) -> list[Turn]:
         """:attr:`history`, read in a worker thread."""
         if self.memory is None:
             return []
         return await asyncio.to_thread(self.memory.get, self.conversation_id)
 
+    @public
     async def asummary(self) -> str | None:
         """:attr:`summary`, read in a worker thread."""
         if self.memory is None:
             return None
         return await asyncio.to_thread(self.memory.get_summary, self.conversation_id)
 
+    @public
     async def arecall(self, key: str, *, scope: str = "user") -> str | None:
         """:meth:`recall`, read in a worker thread."""
         return await asyncio.to_thread(lambda: self.recall(key, scope=scope))
 
+    @public
     async def aremember(
         self,
         key: str,
@@ -396,10 +409,12 @@ class HandlerContext:
             lambda: self.remember(key, value, scope=scope, source_ref=source_ref)
         )
 
+    @public
     async def aforget(self, key: str | None = None, *, scope: str = "user") -> int:
         """:meth:`forget`, run in a worker thread."""
         return await asyncio.to_thread(lambda: self.forget(key, scope=scope))
 
+    @public
     async def asystem_context(
         self,
         header: str = "Context from earlier:",
@@ -408,6 +423,7 @@ class HandlerContext:
         """:meth:`system_context`, assembled in a worker thread."""
         return await asyncio.to_thread(self.system_context, header, state_header)
 
+    @public
     async def emit_event(
         self,
         name: str,
@@ -449,6 +465,7 @@ class HandlerContext:
             payload["data"] = data
         self._dispatch(payload)
 
+    @public
     async def stream_langchain(
         self, events: AsyncIterator[dict[str, Any]]
     ) -> AsyncIterator[str]:
@@ -502,6 +519,7 @@ class HandlerContext:
                     event_id=event.get("run_id"),
                 )
 
+    @public
     async def stream_llamaindex(self, handler: Any) -> AsyncIterator[str]:
         """Pipe a LlamaIndex workflow agent run through, yielding assistant.
 

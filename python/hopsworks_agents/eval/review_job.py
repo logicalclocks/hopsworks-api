@@ -22,6 +22,8 @@ import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_apigen import public
+
 from .agent_source import (
     DEFAULT_SOURCE_CHARS,
     CodeLocation,
@@ -592,6 +594,7 @@ def _dataset_api(project: Any) -> Any:
         return None
 
 
+@public
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", required=True, action="append", dest="run_ids")

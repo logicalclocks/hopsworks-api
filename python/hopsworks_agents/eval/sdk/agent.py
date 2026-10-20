@@ -47,6 +47,7 @@ DEFAULT_CHAT_PATH = "/v1/chat"
 DEFAULT_STREAM_PATH = "/v1/chat/stream"
 
 
+@public
 def is_agent(serving: dict[str, Any]) -> bool:
     """Whether a serving row is an agent: a Python server with no model artifact behind it."""
     return str(serving.get("modelServer") or "").upper() == "PYTHON" and not (
@@ -307,6 +308,7 @@ class Agent:
         return self.deployment.get_logs(component=component, tail=tail)
 
     # ── traces ─────────────────────────────────────────────────────────────
+    @public
     def traces(
         self,
         *,
@@ -330,10 +332,12 @@ class Agent:
             self._http.get(f"{self._otel}/traces", **params)
         )
 
+    @public
     def trace(self, trace_id: str) -> Trace:
         """A whole trace: spans, attributes, events and totals."""
         return Trace.from_api(self._http.get(f"{self._otel}/traces/{trace_id}"))
 
+    @public
     def session(self, session_id: str, *, limit: int = -1) -> list[TraceSummary]:
         """Every trace of a conversation, oldest first."""
         rows = TraceSummary.list_from_api(
@@ -341,6 +345,7 @@ class Agent:
         )
         return sorted(rows, key=lambda t: t.start_time_ns)
 
+    @public
     def conversation(self, session_id: str) -> list[dict[str, str]]:
         """The conversation as the user had it: one user and one assistant message per turn."""
         turns: list[dict[str, str]] = []
@@ -374,6 +379,7 @@ class Agent:
 
     # ── feedback ───────────────────────────────────────────────────────────
 
+    @public
     def feedback(
         self,
         *,
@@ -401,6 +407,7 @@ class Agent:
             )
         )
 
+    @public
     def all_feedback(self, **filters: Any) -> list[Feedback]:
         """Every matching feedback row, walking the pages."""
         rows: list[Feedback] = []
@@ -413,11 +420,13 @@ class Agent:
             if not page.items or offset >= page.count:
                 return rows
 
+    @public
     def trace_feedback(self, trace_id: str) -> list[Feedback]:
         return Feedback.list_from_api(
             self._http.get(f"{self._otel}/traces/{trace_id}/feedback")
         )
 
+    @public
     def give_feedback(
         self,
         trace_id: str,
@@ -450,6 +459,7 @@ class Agent:
             )
         )
 
+    @public
     def retract_feedback(self, trace_id: str, *, reviewer: str | None = None) -> None:
         """Take back your own verdict on a trace, or an end user's.
 
@@ -459,6 +469,7 @@ class Agent:
         """
         self._http.delete(f"{self._otel}/traces/{trace_id}/feedback", reviewer=reviewer)
 
+    @public
     def feedback_summary(
         self,
         *,
@@ -477,11 +488,13 @@ class Agent:
             )
         )
 
+    @public
     def reviewers(self) -> list[str]:
         return list(self._http.get(f"{self._otel}/feedback/reviewers") or [])
 
     # ── analysis ───────────────────────────────────────────────────────────
 
+    @public
     def triage(self, feedback: Sequence[Feedback | str]) -> list[Triage]:
         """The analysis model's latest proposal about each of these feedback rows."""
         ids = [f.feedback_id if isinstance(f, Feedback) else f for f in feedback]
@@ -490,6 +503,7 @@ class Agent:
         rows = self._http.get(f"{self._otel}/feedback/triage", feedbackId=ids)
         return Triage.list_from_api(rows)
 
+    @public
     def decide_triage(
         self, triage: Triage | str, decision: str, *, category: str | None = None
     ) -> None:
@@ -504,38 +518,46 @@ class Agent:
             category=category,
         )
 
+    @public
     def calibration(self) -> Calibration:
         return Calibration.from_api(
             self._http.get(f"{self._otel}/feedback/triage/calibration")
         )
 
+    @public
     def clusters(self, status: str | None = "open") -> list[Cluster]:
         """Failure clusters, most worth a reviewer's time first. ``status=None`` for all."""
         return Cluster.list_from_api(
             self._http.get(f"{self._otel}/feedback/clusters", status=status)
         )
 
+    @public
     def cluster_members(self, cluster: Cluster | str) -> list[Triage]:
         cluster_id = cluster.cluster_id if isinstance(cluster, Cluster) else cluster
         return Triage.list_from_api(
             self._http.get(f"{self._otel}/feedback/clusters/{cluster_id}/members")
         )
 
+    @public
     def rename_cluster(self, cluster: Cluster | str, label: str) -> None:
         self._decide_cluster(cluster, label=label)
 
+    @public
     def dismiss_cluster(self, cluster: Cluster | str, reason: str) -> None:
         """``working_as_intended``, ``duplicate_of``, ``cannot_reproduce`` or ``out_of_scope``."""
         self._decide_cluster(cluster, status="dismissed", dismissReason=reason)
 
+    @public
     def reopen_cluster(self, cluster: Cluster | str) -> None:
         self._decide_cluster(cluster, status="open")
 
+    @public
     def mark_cluster_promoted(self, cluster: Cluster | str, task: Task | str) -> None:
         """Record the task a cluster became; every member's feedback is marked covered."""
         task_id = getattr(task, "task_id", task)
         self._decide_cluster(cluster, status="promoted", promotedTaskId=task_id)
 
+    @public
     def promote_cluster(
         self, cluster: Cluster, *, expectations: dict[str, str] | None = None
     ) -> Task:
@@ -590,6 +612,7 @@ class Agent:
 
     # ── metrics ────────────────────────────────────────────────────────────
 
+    @public
     def trace_metrics(
         self, *, since: Any = None, until: Any = None
     ) -> list[TraceMetric]:
@@ -600,6 +623,7 @@ class Agent:
             )
         )
 
+    @public
     def llm_metrics(self, *, since: Any = None, until: Any = None) -> list[LlmMetric]:
         return LlmMetric.list_from_api(
             self._http.get(
@@ -608,6 +632,7 @@ class Agent:
             )
         )
 
+    @public
     def tool_metrics(self, *, since: Any = None, until: Any = None) -> list[ToolMetric]:
         return ToolMetric.list_from_api(
             self._http.get(
@@ -616,29 +641,35 @@ class Agent:
             )
         )
 
+    @public
     def tracing_ready(self) -> bool:
         body = self._http.get("/otel/ready") or {}
         return bool(body.get("ready", body) if isinstance(body, dict) else body)
 
     # ── evaluation, from this deployment's side ────────────────────────────
 
+    @public
     def runs(self) -> list[Run]:
         return self._client.runs.list(self.id)
 
+    @public
     def run(self, suite: Any, *, version: int | None = None, n_trials: int = 1) -> Run:
         return self._client.runs.start(
             suite, self.id, version=version, n_trials=n_trials
         )
 
+    @public
     def sample(self, **kwargs: Any) -> Run:
         return self._client.runs.sample(self.id, **kwargs)
 
+    @public
     def gates(self) -> GateResult:
         """Whether this deployment's evaluation evidence clears the bar for promotion."""
         return GateResult.from_api(
             self._http.get("/agent-evals/gates", deploymentId=self.id)
         )
 
+    @public
     def canary(self) -> list[Run]:
         """Start the project's canary suites against this deployment."""
         return self._client._bind_all(
@@ -647,19 +678,24 @@ class Agent:
             )
         )
 
+    @public
     def eval_job(self) -> EvalJob:
         return self._client.jobs.eval_job(self.id)
 
+    @public
     def review_job(self) -> ReviewJob | None:
         return self._client.jobs.review_job(self.id)
 
+    @public
     def regressions(self) -> RegressionSuite:
         return self._client.jobs.regressions(self.id)
 
+    @public
     def failure_history(self, **kwargs: Any) -> Any:
         """Which of each suite's failures are new, which are regressions, and how old the rest are."""
         return self._client.runs.failure_history(self.id, **kwargs)
 
+    @public
     def analyse(self, **kwargs: Any) -> Run:
         """Run the failure analysis now; the job is created with defaults if the deployment has none."""
         job = self.review_job() or self._client.jobs.ensure_review_job(self.id)
@@ -725,6 +761,7 @@ class ChatStream:
             if frame.type == "delta" and frame.text:
                 yield frame.text
 
+    @public
     def events(self) -> Iterator[StreamFrame]:
         """Every frame in order: deltas, tool events and the completed reply."""
         yield from self._frames
