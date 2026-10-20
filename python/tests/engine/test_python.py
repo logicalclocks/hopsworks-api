@@ -16,6 +16,7 @@
 import decimal
 import json
 import logging
+import os
 from datetime import date, datetime, timedelta, timezone
 
 import hopsworks_common
@@ -3665,6 +3666,26 @@ class TestPython:
 
         # Assert
         assert result == file
+
+    def test_add_file_downloads_to_temp_dir(self, mocker):
+        # Arrange
+        python_engine = python.Engine()
+        python_engine._dataset_api = mocker.MagicMock()
+        python_engine._dataset_api.read_content.return_value.content = b"store"
+        name = f"hworks_3521_{os.getpid()}.jks"
+        local_file = os.path.join(constants._temp_dir(), name)
+
+        # Act
+        try:
+            result = python_engine._add_file(file=f"file:///Projects/p/{name}")
+
+            # Assert
+            assert result == local_file
+            with open(local_file, "rb") as f:
+                assert f.read() == b"store"
+        finally:
+            if os.path.exists(local_file):
+                os.remove(local_file)
 
     def test_get_unique_values(self):
         # Arrange
