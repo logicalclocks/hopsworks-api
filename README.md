@@ -120,6 +120,7 @@
 | python/hopsworks/git\_provider/\_\_init\_\_.py                                   |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/git\_remote/\_\_init\_\_.py                                     |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/git\_repo/\_\_init\_\_.py                                       |        2 |        2 |      0% |       5-6 |
+| python/hopsworks/gpu\_availability/\_\_init\_\_.py                               |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/job/\_\_init\_\_.py                                             |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/job\_schedule/\_\_init\_\_.py                                   |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/kafka\_schema/\_\_init\_\_.py                                   |        2 |        2 |      0% |       5-6 |
@@ -206,6 +207,7 @@
 | python/hopsworks\_common/core/git\_op\_execution\_api.py                         |        9 |        4 |     56% |     24-36 |
 | python/hopsworks\_common/core/git\_provider\_api.py                              |       45 |       31 |     31% |31-34, 39-44, 49-67, 70-81, 88-96 |
 | python/hopsworks\_common/core/git\_remote\_api.py                                |       35 |       25 |     29% |25, 28-43, 46-61, 64-88, 91-113 |
+| python/hopsworks\_common/core/gpu\_api.py                                        |        8 |        0 |    100% |           |
 | python/hopsworks\_common/core/hosts\_api.py                                      |       10 |        3 |     70% |     28-32 |
 | python/hopsworks\_common/core/ingestion\_job.py                                  |       19 |        0 |    100% |           |
 | python/hopsworks\_common/core/ingestion\_job\_conf.py                            |       39 |       14 |     64% |33-36, 40, 44, 48, 52, 56, 60, 64, 68, 71, 74 |
@@ -250,12 +252,13 @@
 | python/hopsworks\_common/git\_provider.py                                        |       40 |       15 |     62% |42-45, 50-53, 59, 65, 71, 81, 84, 87, 90 |
 | python/hopsworks\_common/git\_remote.py                                          |       37 |       15 |     59% |40-43, 47-52, 58, 64, 74, 77, 80, 83 |
 | python/hopsworks\_common/git\_repo.py                                            |      129 |       50 |     61% |52-68, 72-77, 83, 89, 95, 101, 107, 113, 119, 125, 137, 150, 164-167, 179, 192, 205, 220, 234, 248, 262, 277, 292, 321, 336, 348, 351, 354, 357 |
+| python/hopsworks\_common/gpu\_availability.py                                    |       51 |        1 |     98% |       113 |
 | python/hopsworks\_common/job.py                                                  |      228 |       49 |     79% |83-90, 115, 138, 158, 164, 267, 322-326, 346-350, 362, 379, 392, 398-415, 426, 499-515, 521-522, 567, 583, 616, 619-622, 718, 721, 724, 729-731 |
 | python/hopsworks\_common/job\_schedule.py                                        |       90 |       10 |     89% |112, 115, 118, 154, 160, 166, 176, 182, 188, 194 |
 | python/hopsworks\_common/kafka\_schema.py                                        |       51 |       22 |     57% |36-41, 45-50, 53-55, 61, 67, 73, 79, 92, 95, 98, 101 |
 | python/hopsworks\_common/kafka\_topic.py                                         |      106 |       17 |     84% |70, 97-99, 118-120, 130, 136, 146, 152, 162, 168, 183, 186, 198, 201 |
 | python/hopsworks\_common/library.py                                              |       19 |        0 |    100% |           |
-| python/hopsworks\_common/project.py                                              |      169 |       42 |     75% |108, 114, 120, 126, 132, 138, 249-252, 261-264, 273, 291, 296, 305, 314, 323, 332, 436, 445-447, 470-472, 481-483, 495, 507, 537, 580, 585, 588, 591-593, 598-599 |
+| python/hopsworks\_common/project.py                                              |      172 |       41 |     76% |110, 122, 128, 134, 140, 251-254, 263-266, 275, 293, 298, 307, 316, 325, 334, 464, 473-475, 498-500, 509-511, 523, 535, 565, 608, 613, 616, 619-621, 626-627 |
 | python/hopsworks\_common/project\_member.py                                      |       67 |        9 |     87% |55, 76, 82, 88, 100, 166, 169, 175, 178 |
 | python/hopsworks\_common/search\_results.py                                      |      299 |       41 |     86% |61, 110, 116, 122, 156-172, 199, 253-262, 448, 454, 460, 466, 496, 508, 514, 532, 538, 544, 550, 589 |
 | python/hopsworks\_common/secret.py                                               |       61 |       11 |     82% |61, 80, 86, 92, 98, 110, 113, 116, 119-121 |
@@ -518,7 +521,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **55202** | **13392** | **76%** |           |
+| **TOTAL**                                                                        | **55266** | **13394** | **76%** |           |
 
 
 ## Setup coverage badge
