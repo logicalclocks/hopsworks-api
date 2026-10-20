@@ -18,6 +18,7 @@ import os
 
 import pytest
 import requests
+from hopsworks_common import constants
 from hsfs.client.base import Client
 from hsfs.client.exceptions import RestAPIError
 
@@ -128,3 +129,17 @@ class TestBaseClient:
         client.TOKEN_EXPIRED_RETRY_INTERVAL = 0  # Disable wait for tests
 
         return client
+
+    def test_write_pem_writes_to_temp_dir(self, mocker):
+        mocker.patch.object(Client, "_load_jks", return_value=([], []))
+        mocker.patch.object(Client, "_write_ca_chain")
+        mocker.patch.object(Client, "_write_client_cert")
+        mocker.patch.object(Client, "_write_client_key")
+
+        paths = Client()._write_pem("ks", "pw", "ts", "pw", "kafka_sc_1")
+
+        assert paths == tuple(
+            os.path.join(constants._temp_dir(), f"kafka_sc_1_{name}.pem")
+            for name in ("ca_chain", "client_cert", "client_key")
+        )
+        assert all(os.path.isdir(os.path.dirname(path)) for path in paths)
