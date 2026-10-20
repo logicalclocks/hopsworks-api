@@ -139,10 +139,16 @@ class EvaluatorTemplate(ApiModel):
     template_id: str = ""
     name: str = ""
     description: str = ""
+    tags: str = "[]"
     spec: str = "[]"
     created_by: str | None = None
     created_at: str | None = None
     used_in: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def tag_list(self) -> list[str]:
+        """The tags as a list; the API carries them as a JSON array string, like a suite's."""
+        return [str(t) for t in as_json(self.tags, [])]
 
     @property
     def checks(self) -> list[dict[str, Any]]:

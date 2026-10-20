@@ -566,19 +566,26 @@ class Evaluators:
         return next((e for e in self.list() if e.name == name), None)
 
     def save(
-        self, name: str, checks: Sequence[dict[str, Any]], description: str = ""
+        self,
+        name: str,
+        checks: Sequence[dict[str, Any]],
+        description: str = "",
+        tags: Sequence[str] | None = None,
     ) -> EvaluatorTemplate:
-        """Save a named set of checks for reuse. A suite copies them in and never points back."""
-        return EvaluatorTemplate.from_api(
-            self._http.post(
-                f"{EVALS}/evaluators",
-                {
-                    "name": name,
-                    "description": description,
-                    "spec": _spec(checks),
-                },
-            )
-        )
+        """Save a named set of checks for reuse. A suite copies them in and never points back.
+
+        ``tags`` is how an entry is found once the library is longer than a
+        screen -- the agent it was written for, say -- and travels as a suite's
+        tags do.
+        """
+        body: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "spec": _spec(checks),
+        }
+        if tags is not None:
+            body["tags"] = json.dumps([str(t) for t in tags])
+        return EvaluatorTemplate.from_api(self._http.post(f"{EVALS}/evaluators", body))
 
     def update(
         self,
@@ -587,8 +594,9 @@ class Evaluators:
         name: str | None = None,
         checks: Sequence[dict[str, Any]] | None = None,
         description: str | None = None,
+        tags: Sequence[str] | None = None,
     ) -> EvaluatorTemplate:
-        """Change a saved evaluator: its name, its checks, or what it is for.
+        """Change a saved evaluator: its name, its checks, its tags, or what it is for.
 
         An edit, not another entry. :meth:`save` always creates one, so from
         Python the only way to correct a library evaluator was to add a second
@@ -608,6 +616,9 @@ class Evaluators:
             "templateId": current.template_id,
             "name": current.name if name is None else name,
             "description": current.description if description is None else description,
+            "tags": current.tags
+            if tags is None
+            else json.dumps([str(t) for t in tags]),
             "spec": current.spec if checks is None else _spec(checks),
         }
         return EvaluatorTemplate.from_api(self._http.post(f"{EVALS}/evaluators", body))

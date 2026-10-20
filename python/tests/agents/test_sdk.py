@@ -413,13 +413,48 @@ class TestEvaluators:
         assert saved.template_id == "e"
         assert evals.evaluators.find("quality").checks == [{"type": "x"}]
 
+    def test_tags_travel_as_a_json_array_and_read_back_as_a_list(self):
+        # The same shape a suite's tags take, so the two are filtered alike.
+        evals, session = client(
+            Reply(
+                {
+                    "templateId": "e",
+                    "name": "quality",
+                    "spec": "[]",
+                    "tags": '["musiccustomersupport", "safety"]',
+                }
+            ),
+            Reply(
+                {
+                    "templateId": "e",
+                    "name": "quality",
+                    "spec": "[]",
+                    "tags": '["safety"]',
+                }
+            ),
+        )
+        saved = evals.evaluators.save(
+            "quality", [check("llm_judge")], tags=["musiccustomersupport", "safety"]
+        )
+        assert json.loads(session.sent[0][3]["tags"]) == [
+            "musiccustomersupport",
+            "safety",
+        ]
+        assert saved.tag_list == ["musiccustomersupport", "safety"]
+
+        # An edit keeps the tags it was not asked to change, and replaces them when asked.
+        evals.evaluators.update(saved, tags=["safety"])
+        assert json.loads(session.sent[1][3]["tags"]) == ["safety"]
+
     def test_a_checks_settings_reach_a_saved_evaluator(self):
         # check() writes a check the way a suite stores it, with the settings
         # in a `config` string; a saved evaluator's spec carries them beside
         # the type, and the server reads them there. Sent as the suite's shape
         # a regex was saved with no pattern the server could see, and every
         # monitor built on it was refused.
-        evals, session = client(Reply({"templateId": "e", "name": "kind", "spec": "[]"}))
+        evals, session = client(
+            Reply({"templateId": "e", "name": "kind", "spec": "[]"})
+        )
 
         evals.evaluators.save(
             "kind", [check("regex", "answers in kind", pattern="^ok")]
@@ -430,7 +465,9 @@ class TestEvaluators:
         ]
 
     def test_a_spec_already_written_that_way_is_left_alone(self):
-        evals, session = client(Reply({"templateId": "e", "name": "kind", "spec": "[]"}))
+        evals, session = client(
+            Reply({"templateId": "e", "name": "kind", "spec": "[]"})
+        )
 
         evals.evaluators.save("kind", [{"type": "regex", "pattern": "^ok"}])
 
