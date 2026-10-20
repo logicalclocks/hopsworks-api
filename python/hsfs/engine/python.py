@@ -1879,7 +1879,7 @@ class Engine:
         if not file.startswith("file://"):
             file = "hdfs://" + file
 
-        local_file = os.path.join("/tmp", os.path.basename(file))
+        local_file = os.path.join(constants._temp_dir(), os.path.basename(file))
         if not os.path.exists(local_file):
             content_stream = self._dataset_api.read_content(
                 file, util._get_dataset_type(file)
