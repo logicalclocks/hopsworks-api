@@ -255,7 +255,7 @@ def login(
         trust_store_path: Path on the file system containing the Hopsworks certificates.
         cert_folder:
             The directory to store downloaded certificates.
-            Defaults to the system temp directory.
+            Defaults to `/tmp` on Linux and macOS, and to the user's temp directory (`%TEMP%`) on Windows.
         engine:
             Specifies the engine to use.
             The default value is `None`, which automatically selects the engine based on the environment:
