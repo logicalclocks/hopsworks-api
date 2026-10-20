@@ -14,6 +14,17 @@
 #   limitations under the License.
 #
 
+import os
+import tempfile
+
+
+def _temp_dir() -> str:
+    """Return the directory for client temp files: `/tmp` on POSIX, the system temp directory on Windows.
+
+    POSIX keeps `/tmp` rather than following `TMPDIR`, since the shared certificate folder hierarchy relies on it.
+    """
+    return tempfile.gettempdir() if os.name == "nt" else "/tmp"
+
 
 class Default:
     """An object of this class is used in place of optional arguments in cases when passing `None` should result in an exception or other behaviour.
@@ -155,7 +166,7 @@ class MODEL_REGISTRY:
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
     MODELS_DATASET = "Models"
     MODEL_FILES_DIR_NAME = "Files"
-    MODEL_CACHE_DIR_DEFAULT = "/tmp/hopsworks/models"
+    MODEL_CACHE_DIR_DEFAULT = os.path.join(_temp_dir(), "hopsworks", "models")
 
 
 class MODEL_SERVING:
@@ -312,6 +323,10 @@ class FEATURE_LOGGING:
     PREFIX_PREDICTIONS = "predicted_"
     EMPTY_REQUEST_PARAMETER_COLUMN_VALUE = "{}"
 
+    # Model identity column of logging feature groups created before FSTORE-1871
+    # combined them and split the column into model_name and model_version.
+    LEGACY_MODEL_COLUMN_NAME = "hsml_model"
+
     LOGGING_METADATA_COLUMNS = [
         LOG_ID_COLUMN_NAME,
         TRAINING_DATASET_VERSION_COLUMN_NAME,
@@ -335,7 +350,7 @@ class SCALING_CONFIG:
 class CLIENT:
     """Constants for Hopsworks client configuration."""
 
-    CERT_FOLDER_DEFAULT = "/tmp"
+    CERT_FOLDER_DEFAULT = _temp_dir()
 
 
 class TRANSFORMATIONS:

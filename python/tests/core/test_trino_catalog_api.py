@@ -99,6 +99,23 @@ class TestTrinoCatalogApi:
         assert body["dataSourceName"] == "snow"
         assert body["featurestoreId"] == 67
 
+    def test_create_sends_the_scope_only_when_given(self, mocker):
+        # Absent, the backend picks: PROJECT, or PRIVATE for a data source whose credentials each
+        # member provides.
+        client = _patch_client(mocker, {})
+
+        TrinoCatalogApi().create_catalog(
+            "_meb10000__ora",
+            "oracle",
+            {},
+            data_source_name="ora",
+            featurestore_id=67,
+            scope="PRIVATE",
+        )
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert body["scope"] == "PRIVATE"
+
     def test_create_refuses_a_half_specified_data_source(self, mocker):
         # One without the other cannot be resolved server-side; failing here beats an opaque
         # backend error after the request is already sent.

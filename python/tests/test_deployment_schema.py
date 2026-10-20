@@ -954,6 +954,148 @@ class TestRequestParameterTypes:
         ]
 
 
+class TestCompiledChecks:
+    """The compiled checks must say exactly what the interpreted chain said.
+
+    The reason strings are part of the contract: they reach the caller in the
+    structured 400 the pod answers and in `DeploymentSchemaError`.
+    """
+
+    @pytest.mark.parametrize(
+        "type_, value, reason",
+        [
+            # integers
+            ("int", 1, None),
+            ("int", True, "must be an integer (int)"),
+            ("int", 1.0, "must be an integer (int)"),
+            ("smallint", "1", "must be an integer (smallint)"),
+            ("bigint", 1, None),
+            ("bigint", "12", None),
+            ("bigint", "x", "must be an integer or a decimal string (bigint)"),
+            ("bigint", True, "must be an integer (bigint)"),
+            # floats
+            ("double", 1.5, None),
+            ("double", 2, None),
+            ("double", True, "must be a number (double)"),
+            ("double", float("nan"), "must be a finite number"),
+            ("double", float("inf"), "must be a finite number"),
+            ("double", float("-inf"), "must be a finite number"),
+            ("double", 1e308, None),
+            ("float", "1.5", "must be a number (float)"),
+            ("decimal(10,2)", 1.5, None),
+            ("decimal(10,2)", "1.50", None),
+            ("decimal(10,2)", True, "must be a number (decimal)"),
+            ("decimal(10,2)", "x", "must be a number or a decimal string (decimal)"),
+            # strings and booleans
+            ("string", "a", None),
+            ("string", 1, "must be a string"),
+            ("varchar(10)", "a", None),
+            ("boolean", True, None),
+            ("boolean", 1, "must be a boolean"),
+            # temporal and binary
+            ("timestamp", 1700000000000, None),
+            ("timestamp", "2026-09-13T10:00:00Z", None),
+            (
+                "timestamp",
+                "nope",
+                "must be an RFC 3339 string or epoch milliseconds (timestamp)",
+            ),
+            ("date", "2026-09-13", None),
+            ("date", 20000, None),
+            (
+                "date",
+                "13-09-2026",
+                "must be a YYYY-MM-DD string or days since epoch (date)",
+            ),
+            ("binary", "aGk=", None),
+            ("binary", "!!", "must be a base64 string (binary)"),
+            # complex
+            ("array<int>", [1, 2], None),
+            ("array<int>", [1, None], None),
+            ("array<int>", 1, "must be an array (array<int>)"),
+            ("array<int>", [1, "x"], "element 1 must be an integer (int)"),
+            ("map<string,int>", {"a": 1}, None),
+            ("map<string,int>", {"a": "x"}, "value of 'a' must be an integer (int)"),
+            ("map<string,int>", [], "must be an object (map<string,int>)"),
+            ("struct<a:int,b:string>", {"a": 1, "b": "x"}, None),
+            ("struct<a:int,b:string>", {"a": 1}, "is missing field 'b'"),
+            (
+                "struct<a:int,b:string>",
+                {"a": 1, "b": "x", "c": 2},
+                "has unknown fields ['c']",
+            ),
+            (
+                "struct<a:int,b:string>",
+                {"a": "x", "b": "y"},
+                "field 'a' must be an integer (int)",
+            ),
+            ("struct<a:int,b:string>", 1, "must be an object (struct<a:int,b:string>)"),
+            # unknown and unresolved types accept anything
+            (None, object(), None),
+            ("unresolved", object(), None),
+        ],
+    )
+    def test_reason_for(self, type_, value, reason):
+        assert ds._check_value(type_, value) == reason
+
+    def test_an_int_subclass_is_still_an_integer(self):
+        class Counter(int):
+            pass
+
+        assert ds._check_value("int", Counter(3)) is None
+
+    def test_a_str_subclass_is_still_a_string(self):
+        class Name(str):
+            pass
+
+        assert ds._check_value("string", Name("a")) is None
+
+    def test_a_numpy_float_keeps_its_finite_check(self):
+        numpy = pytest.importorskip("numpy")
+
+        assert ds._check_value("double", numpy.float64(1.5)) is None
+        assert (
+            ds._check_value("double", numpy.float64("nan")) == "must be a finite number"
+        )
+
+    def test_a_changed_field_type_gets_the_check_for_its_new_type(self):
+        """The checks are cached on the type string, so nothing has to be invalidated."""
+        field = SchemaField("v", "int", True)
+        schema = DeploymentSchema(passed_features=[field])
+        assert schema.validate_instances([{"v": "x"}])[0]["reason"] == (
+            "must be an integer (int)"
+        )
+
+        field.type = "string"
+        assert schema.validate_instances([{"v": "x"}]) == []
+
+
+class TestEncodeDoesNotCopyWhatItCannotChange:
+    def test_a_json_native_row_is_returned_as_it_is(self):
+        rows = [{"a": 1, "b": "x", "c": None, "d": 1.5, "e": True}]
+
+        encoded = ds._encode_instances(rows)
+
+        assert encoded[0] is rows[0]
+
+    def test_a_row_that_needs_encoding_is_copied_not_mutated(self):
+        rows = [{"when": datetime.datetime(2026, 9, 13, tzinfo=datetime.timezone.utc)}]
+        original = dict(rows[0])
+
+        encoded = ds._encode_instances(rows)
+
+        assert encoded[0] == {"when": "2026-09-13T00:00:00Z"}
+        assert rows[0] == original, "the caller's row must not be touched"
+
+    def test_a_nested_list_is_returned_as_it_is_when_native(self):
+        value = [1, 2, None, 3]
+
+        assert ds._encode_value(value) is value
+
+    def test_a_tuple_is_still_converted_to_a_list(self):
+        assert ds._encode_value((1, 2)) == [1, 2]
+
+
 class TestTensors:
     """The v2 tensors of the gRPC protocol give back what was put in."""
 

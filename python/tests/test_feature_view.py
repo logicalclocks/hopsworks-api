@@ -19,12 +19,14 @@ import json
 import typing
 import warnings
 
+import pandas as pd
 import pytest
 from hopsworks_common import version
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature, feature_group, feature_view, training_dataset_feature
 from hsfs.builtin_transformations import one_hot_encoder
 from hsfs.constructor import query
+from hsfs.core.feature_logging import FeatureLogging
 from hsfs.feature_store import FeatureStore
 from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
@@ -591,6 +593,40 @@ class TestFeatureView:
 
         assert get_vector.call_args.kwargs["n_processes"] == 2
 
+    def test_the_async_single_call_initialises_the_rest_client_it_asks_for(
+        self, mocker
+    ):
+        """As the blocking call does: asking for REST first must not set up SQL alone."""
+        import asyncio
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        fv._vector_server._serving_initialized = False
+        fv._vector_db_client = None
+        init_serving = mocker.patch.object(fv, "init_serving")
+
+        async def answered(**_kwargs):
+            return [1]
+
+        mocker.patch.object(
+            fv._vector_server, "_get_feature_vector_async", side_effect=answered
+        )
+
+        asyncio.run(
+            fv.get_feature_vector_async(
+                entry={"primary_key": 1}, force_rest_client=True
+            )
+        )
+
+        assert init_serving.call_args.kwargs["init_rest_client"] is True
+
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine._get_type")
@@ -666,6 +702,97 @@ class TestFeatureView:
 
         # Assert
         assert fv.logging_enabled is True
+
+    def _logging_feature_view(self, mocker, legacy):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            labels=["label"],
+        )
+        fv.logging_enabled = True
+        mocker.patch.object(
+            feature_view.FeatureView,
+            "_label_column_names",
+            new_callable=mocker.PropertyMock,
+            return_value={"label"},
+        )
+        transformed_fg = mocker.MagicMock() if legacy else None
+        mocker.patch.object(
+            feature_view.FeatureView,
+            "feature_logging",
+            new_callable=mocker.PropertyMock,
+            return_value=FeatureLogging(1, transformed_fg, mocker.MagicMock()),
+        )
+        return fv
+
+    def test_log_positional_predictions_reroute_on_legacy(self, mocker):
+        # Arrange
+        fv = self._logging_feature_view(mocker, legacy=True)
+        features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
+        predictions_df = pd.DataFrame({"label": ["a", "b"]})
+
+        # Act: pre-4.6 call style log(features, predictions) on a legacy feature view.
+        fv.log(features_df, predictions_df)
+
+        # Assert: arguments are re-bound to the old positional order.
+        call_kwargs = fv._feature_view_engine._log_features.call_args[1]
+        assert call_kwargs["logs"] is None
+        assert call_kwargs["untransformed_features"] is features_df
+        assert call_kwargs["predictions"] is predictions_df
+        assert call_kwargs["transformed_features"] is None
+
+    def test_log_positional_predictions_reroute_on_legacy_three_args(self, mocker):
+        # Arrange
+        fv = self._logging_feature_view(mocker, legacy=True)
+        features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
+        predictions_df = pd.DataFrame({"label": ["a", "b"]})
+        transformed_df = pd.DataFrame({"fg1_feature": [0.5, 0.6]})
+
+        # Act: pre-4.6 call style log(features, predictions, transformed_features).
+        fv.log(features_df, predictions_df, transformed_df)
+
+        # Assert
+        call_kwargs = fv._feature_view_engine._log_features.call_args[1]
+        assert call_kwargs["logs"] is None
+        assert call_kwargs["untransformed_features"] is features_df
+        assert call_kwargs["predictions"] is predictions_df
+        assert call_kwargs["transformed_features"] is transformed_df
+
+    def test_log_positional_predictions_warns_on_combined(self, mocker):
+        # Arrange
+        fv = self._logging_feature_view(mocker, legacy=False)
+        features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
+        predictions_df = pd.DataFrame({"label": ["a", "b"]})
+
+        # Act: same call style on a combined feature group warns but is not re-routed.
+        with pytest.warns(UserWarning, match="label schema"):
+            fv.log(features_df, predictions_df)
+
+        # Assert
+        call_kwargs = fv._feature_view_engine._log_features.call_args[1]
+        assert call_kwargs["logs"] is features_df
+        assert call_kwargs["untransformed_features"] is predictions_df
+        assert call_kwargs["predictions"] is None
+
+    def test_log_new_style_not_rerouted_on_legacy(self, mocker):
+        # Arrange
+        fv = self._logging_feature_view(mocker, legacy=True)
+        features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
+        untransformed_df = pd.DataFrame({"fg1_feature": [0.3, 0.4]})
+
+        # Act: second argument does not match the label schema, so nothing is re-bound.
+        fv.log(features_df, untransformed_df)
+
+        # Assert
+        call_kwargs = fv._feature_view_engine._log_features.call_args[1]
+        assert call_kwargs["logs"] is features_df
+        assert call_kwargs["untransformed_features"] is untransformed_df
+        assert call_kwargs["predictions"] is None
 
     def test_label_column_name(self, mocker):
         # Arrange
@@ -1037,6 +1164,26 @@ class TestFeatureView:
 
         # Assert
         assert root_feature_group_event_time == "event_time"
+
+    def test_event_time_valid_features_adds_unselected_root_event_time(self, mocker):
+        # The left FG's event time can be named as a monitoring basis even
+        # when the view does not select it, matching what event_time=None resolves to.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select(["fg1_feature"]).join(fg2.select(["fg2_feature"])),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        selected = {"fg1_feature": "float", "fg2_feature": "float"}
+
+        valid = fv._event_time_valid_features(selected)
+
+        assert valid["event_time"] == "timestamp"
+        assert set(selected) < set(valid)
+        assert "event_time" not in selected  # the selectable map is left untouched
 
     def test_delete_feature_view_force(self, mocker, backend_fixtures):
         # Arrange

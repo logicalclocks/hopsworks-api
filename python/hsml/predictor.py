@@ -288,12 +288,12 @@ class Predictor(DeployableComponent):
     def _get_effective_knative_mode(cls, knative_mode, model_server):
         """Resolve the effective Knative mode used for client-side scaling defaults.
 
-        An explicit `knative_mode` value always wins.
-        Otherwise, every model server defaults to Knative mode except vLLM, which defaults to Standard.
+        An explicit `knative_mode` value always wins. Otherwise every model server defaults to Standard mode,
+        which KEDA scales (with scale-to-zero when idle) wherever KEDA is installed; Knative is the opt-in.
         """
         if knative_mode is not None:
             return knative_mode
-        return model_server != PREDICTOR.MODEL_SERVER_VLLM
+        return False
 
     @classmethod
     def _validate_resources(cls, resources, serving_tool, effective_knative_mode=True):
@@ -680,7 +680,7 @@ class Predictor(DeployableComponent):
     @public
     @property
     def version(self):
-        """Version of the predictor."""
+        """Number of the active configuration version of the deployment."""
         return self._version
 
     @public
@@ -764,10 +764,8 @@ class Predictor(DeployableComponent):
     @public
     @property
     def artifact_path(self):
-        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip."""
-        # TODO: Deprecated
-        artifact_name = f"{self._model_name}_{str(self._model_version)}_{str(self._artifact_version)}.zip"
-        return f"{self._model_path}/{str(self._model_version)}/Artifacts/{str(self._artifact_version)}/{artifact_name}"
+        """Path of the artifact files deployed by the predictor, the same as `artifact_files_path`."""
+        return self.artifact_files_path
 
     @public
     @property
@@ -945,13 +943,18 @@ class Predictor(DeployableComponent):
         """
         if self._schema is not None or self._schema_loaded:
             return self._schema
-        self._schema_loaded = True
         schema_id = self.schema_id
         if schema_id is None:
+            self._schema_loaded = True
             return None
         from hsml.engine import serving_engine
 
-        self._schema = serving_engine.ServingEngine()._read_schema(self, schema_id)
+        schema = serving_engine.ServingEngine()._read_schema(self, schema_id)
+        # Marked loaded only once the read has answered. A download that failed
+        # used to leave the object permanently schema-less, because the flag was
+        # set before the call it guards.
+        self._schema = schema
+        self._schema_loaded = True
         return self._schema
 
     @schema.setter

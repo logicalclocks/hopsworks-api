@@ -26,6 +26,7 @@ FIXTURES_DIR = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = [
     "alert_receiver",
     "alert_route",
+    "cost",
     "execution",
     "expectation_suite",
     "external_feature_group",
@@ -67,6 +68,7 @@ FIXTURES = [
     "storage_connector",
     "tag",
     "training_dataset",
+    "deployment_version",
     "training_dataset_feature",
     "training_dataset_split",
     "transformation_function",

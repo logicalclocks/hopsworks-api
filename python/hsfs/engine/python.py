@@ -58,7 +58,10 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hopsworks_common.core.type_systems import _create_extended_type
+from hopsworks_common.core.type_systems import (
+    _convert_offline_type_to_pyarrow_type,
+    _create_extended_type,
+)
 from hopsworks_common.decorators import _uses_great_expectations, _uses_polars
 from hopsworks_common.util import _generate_fully_qualified_feature_name
 from hsfs import (
@@ -95,7 +98,7 @@ from hsfs.core.constants import (
     HAS_PYARROW,
     HAS_SQLALCHEMY,
 )
-from hsfs.core.feature_logging import LoggingMetaData
+from hsfs.core.feature_logging import FeatureLogging, LoggingMetaData
 from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
@@ -334,6 +337,166 @@ class Engine:
         if schema:
             result_df = Engine._cast_columns(result_df, schema)
         return self._return_dataframe_type(result_df, dataframe_type)
+
+    def _stream_batches(
+        self,
+        sql_query: str | FsQuery,
+        connector: sc.JdbcConnector | None,
+        read_options: dict[str, Any] | None,
+        online: bool,
+        batch_size: int,
+        arrow_flight_config: dict[str, Any] | None = None,
+        schema: list[feature.Feature] | None = None,
+    ) -> Iterator[pa.RecordBatch]:
+        """The record batches of a read, without materialising the whole result.
+
+        Online reads go through a server-side cursor and fetch `batch_size` rows
+        at a time, so the client holds a batch rather than the result. Wrapping
+        an already buffered result in chunks would not: the buffering is what
+        costs the memory. Offline reads take the Arrow Flight stream as the
+        server produces it.
+
+        The cursor and its connection are released when the caller stops,
+        whether it ran out of batches, left early or raised.
+
+        Every batch of an online read is built against one schema, taken from
+        the query's own feature types. Letting each batch describe itself from
+        the values it happens to hold makes the batches of one read disagree: a
+        nullable column is `null` in an all-null batch and `string` in the next,
+        and a decimal's precision and scale follow whichever values arrived, so
+        putting the batches back together fails.
+        """
+        if not online:
+            if not isinstance(sql_query, FsQuery):
+                raise ValueError(
+                    "Streaming an offline read needs the Hopsworks Query Service."
+                )
+            from hsfs.core import arrow_flight_client
+
+            yield from arrow_flight_client._get_instance()._stream_query(
+                sql_query, arrow_flight_config or {}
+            )
+            return
+
+        if self._mysql_online_fs_engine is None:
+            self._mysql_online_fs_engine = util_sql._create_mysql_engine(
+                connector,
+                (
+                    client._is_external()
+                    if not read_options or "external" not in read_options
+                    else read_options["external"]
+                ),
+            )
+        statement = sql.text(sql_query) if isinstance(sql_query, str) else sql_query
+        # stream_results asks the driver for a server-side cursor; without it
+        # the whole result is already in the client before the first partition.
+        with self._mysql_online_fs_engine.connect().execution_options(
+            stream_results=True, max_row_buffer=batch_size
+        ) as connection:
+            result = connection.execute(statement)
+            names = list(result.keys())
+            declared = Engine._declared_arrow_types(schema)
+            batch_schema = None
+            # fetchmany rather than partitions(): partitions() is only in
+            # SQLAlchemy from 1.4.24 and this client supports 1.x from earlier
+            # than that, while fetchmany streams the same way on both.
+            while True:
+                rows = result.fetchmany(batch_size)
+                if not rows:
+                    break
+                columns = list(zip(*rows, strict=True))
+                arrays = [
+                    Engine._online_array(list(column), declared.get(name))
+                    for column, name in zip(columns, names, strict=True)
+                ]
+                if batch_schema is None:
+                    # Declared where the query says so, and settled here for
+                    # anything it does not describe, so that the stream has one
+                    # schema either way.
+                    batch_schema = pa.schema(
+                        [
+                            pa.field(name, array.type)
+                            for name, array in zip(names, arrays, strict=True)
+                        ]
+                    )
+                else:
+                    arrays = [
+                        Engine._as_batch_field(array, field)
+                        for array, field in zip(arrays, batch_schema, strict=True)
+                    ]
+                yield pa.RecordBatch.from_arrays(arrays, schema=batch_schema)
+
+    @staticmethod
+    def _as_batch_field(array: pa.Array, field: pa.Field) -> pa.Array:
+        """One column of a later batch, as the schema of the read describes it.
+
+        A column the query does not describe is settled by the first batch, and
+        a first batch that was entirely null settles it as null, because nothing
+        else can be read from it. A later batch with real values cannot be cast
+        to that, so the caller is told which column it was and what to do about
+        it rather than being handed an Arrow cast error it never asked for.
+        Passing the query's features, as `read_batches` does, describes the
+        column before any row is read and this cannot arise.
+        """
+        if array.type == field.type:
+            return array
+        try:
+            return array.cast(field.type)
+        except pa.ArrowInvalid as error:
+            raise FeatureStoreException(
+                f"Column {field.name!r} arrived as {array.type} after the read "
+                f"settled on {field.type}, so the batches of this read cannot "
+                "share one schema. That column has no declared type: pass the "
+                "query's features so that it is known before the first row."
+            ) from error
+
+    @staticmethod
+    def _online_array(values: list[Any], declared: pa.DataType | None) -> pa.Array:
+        """One column of an online batch, built against its declared type."""
+        if declared is not None and pa.types.is_boolean(declared):
+            # The online store keeps a boolean as TINYINT, so it arrives as 0 or 1.
+            return pa.array(values).cast(pa.bool_())
+        return pa.array(values, type=declared)
+
+    @staticmethod
+    def _declared_arrow_types(
+        schema: list[feature.Feature] | None,
+    ) -> dict[str, pa.DataType]:
+        """The Arrow type each column of an online read arrives as, where it is known.
+
+        Building every batch against a declared type is what makes an all-null
+        batch describe its column the same way a full one does, and keeps a
+        decimal's precision and scale from following the values that happened to
+        arrive. A feature whose type has no Arrow equivalent is left out, and the
+        first batch settles that column for the rest of the read.
+
+        The online store keeps arrays, maps and structs serialised in VARBINARY,
+        so those columns are declared binary, which is what the rows hold.
+        A name two features share with different types is left out too, since
+        the column it names cannot be told apart.
+        """
+        declared = {}
+        ambiguous = set()
+        for feat in schema or []:
+            offline_type = (feat.type or "").strip().lower()
+            if offline_type.startswith(("array<", "map<", "struct<")):
+                arrow_type = pa.binary()
+            else:
+                try:
+                    arrow_type = _convert_offline_type_to_pyarrow_type(feat.type)
+                except Exception:  # noqa: BLE001 - an unmappable type is settled by the first batch
+                    _logger.debug(
+                        "No Arrow type for feature %s (%s); its batches follow the first",
+                        feat.name,
+                        feat.type,
+                    )
+                    continue
+            if declared.get(feat.name, arrow_type) != arrow_type:
+                ambiguous.add(feat.name)
+            declared[feat.name] = arrow_type
+        for name in ambiguous:
+            del declared[name]
+        return declared
 
     def _jdbc(
         self,
@@ -1716,7 +1879,7 @@ class Engine:
         if not file.startswith("file://"):
             file = "hdfs://" + file
 
-        local_file = os.path.join("/tmp", os.path.basename(file))
+        local_file = os.path.join(constants._temp_dir(), os.path.basename(file))
         if not os.path.exists(local_file):
             content_stream = self._dataset_api.read_content(
                 file, util._get_dataset_type(file)
@@ -1966,23 +2129,6 @@ class Engine:
             debug_kafka=offline_write_options.get("debug_kafka", False),
         )
 
-    @staticmethod
-    def _wait_for_online_ingestion(
-        feature_group: FeatureGroup | ExternalFeatureGroup,
-        offline_write_options: dict[str, Any],
-        storage: str | None = None,
-    ) -> None:
-        # An offline-only write creates no online ingestion to wait for, so waiting would
-        # block on whichever ingestion happened to run before it.
-        if storage == kafka_engine._STORAGE_OFFLINE:
-            return
-        if feature_group.online_enabled and offline_write_options.get(
-            "wait_for_online_ingestion", False
-        ):
-            feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=offline_write_options.get("online_ingestion_options", {})
-            )
-
     def _write_dataframe_kafka(
         self,
         feature_group: FeatureGroup | ExternalFeatureGroup,
@@ -2074,7 +2220,9 @@ class Engine:
             del producer
             progress_bar.close()
 
-        self._wait_for_online_ingestion(feature_group, offline_write_options, storage)
+        kafka_engine._wait_for_online_ingestion(
+            feature_group, headers, offline_write_options
+        )
 
     def _delete_dataframe_kafka(
         self,
@@ -2145,7 +2293,9 @@ class Engine:
 
         # wait for online ingestion so callers that set wait_for_online_ingestion do not
         # return before OnlineFS has applied the deletes (matches the insert path).
-        self._wait_for_online_ingestion(feature_group, offline_write_options)
+        kafka_engine._wait_for_online_ingestion(
+            feature_group, headers, offline_write_options
+        )
 
     def _run_materialization_job(
         self,
@@ -2203,21 +2353,7 @@ class Engine:
                 ),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
-            offline_backfill_every_hr = offline_write_options.pop(
-                "offline_backfill_every_hr", None
-            )
-            if offline_backfill_every_hr:
-                if isinstance(offline_backfill_every_hr, str):
-                    cron_expression = offline_backfill_every_hr
-                elif isinstance(offline_backfill_every_hr, int):
-                    cron_expression = f"{now.second} {now.minute} {now.hour}/{offline_backfill_every_hr} ? * * *"
-                feature_group.materialization_job.schedule(
-                    cron_expression=cron_expression,
-                    # added 2 seconds after the current time to avoid retriggering the job directly
-                    start_time=now + timedelta(seconds=2),
-                )
-            else:
-                _logger.info("Materialisation job was not scheduled.")
+            self._schedule_materialization(feature_group, offline_write_options, now)
 
         elif self._start_offline_materialization(offline_write_options):
             if not offline_write_options.get(
@@ -2238,7 +2374,39 @@ class Engine:
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
 
+        if "offline_backfill_every_hr" in offline_write_options:
+            # Set only by the insert that creates the group. The branch above attaches it
+            # only when the topic did not exist yet, but a new group's topic already exists.
+            self._schedule_materialization(
+                feature_group, offline_write_options, datetime.now(timezone.utc)
+            )
+
         return feature_group.materialization_job
+
+    @staticmethod
+    def _schedule_materialization(
+        feature_group: FeatureGroup,
+        offline_write_options: dict[str, Any],
+        now: datetime,
+    ) -> None:
+        offline_backfill_every_hr = offline_write_options.pop(
+            "offline_backfill_every_hr", None
+        )
+        if not offline_backfill_every_hr:
+            _logger.info("Materialisation job was not scheduled.")
+            return
+        if isinstance(offline_backfill_every_hr, str):
+            cron_expression = offline_backfill_every_hr
+        else:
+            # The scheduler accepts only 0 in the seconds field. Quartz reads `h/n` as
+            # "from hour h", so start at h mod n to fire every n hours all day long.
+            every = offline_backfill_every_hr
+            cron_expression = f"0 {now.minute} {now.hour % every}/{every} ? * * *"
+        feature_group.materialization_job.schedule(
+            cron_expression=cron_expression,
+            # added 2 seconds after the current time to avoid retriggering the job directly
+            start_time=now + timedelta(seconds=2),
+        )
 
     @staticmethod
     def _cast_columns(
@@ -2364,14 +2532,17 @@ class Engine:
                 for _ in range(size)
             ],
             model_col_name: [model_name for _ in range(size)],
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME: [
-                str(model_version) for _ in range(size)
-            ],
             time_col_name: pd.Series([now for _ in range(size)]),
             constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME: [
                 str(uuid.uuid4()) for _ in range(size)
             ],
         }
+        # Legacy (pre-FSTORE-1871) logging feature groups carry the version inside the
+        # hsml_model value and have no model_version column to receive it.
+        if model_col_name != constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME:
+            metadata[constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME] = [
+                str(model_version) for _ in range(size)
+            ]
 
         if not batch:
             for k, v in metadata.items():
@@ -2572,16 +2743,20 @@ class Engine:
                         # Higher precedence is given if the user explicitly passed the logging component.
                         logging_df[col] = df[col]
 
-        # Rename prediction columns
+        # Rename prediction columns to the name they take in the logging feature group
+        # (predicted_<label>, or the bare label name for legacy pre-FSTORE-1871 feature groups).
         _, predictions_feature_names, _ = predictions
         if predictions_feature_names:
-            for feature_name in predictions_feature_names:
-                logging_df = logging_df.rename(
-                    columns={
-                        feature_name: constants.FEATURE_LOGGING.PREFIX_PREDICTIONS
-                        + feature_name
-                    }
-                )
+            prediction_column_names = FeatureLogging._prediction_column_names(
+                predictions_feature_names, logging_feature_group_feature_names
+            )
+            logging_df = logging_df.rename(
+                columns={
+                    feature_name: target_name
+                    for feature_name, target_name in prediction_column_names.items()
+                    if target_name != feature_name
+                }
+            )
 
         # Creating a json column for request parameters
         request_parameter_data, request_parameter_columns, _ = request_parameters
@@ -2817,6 +2992,11 @@ class Engine:
             A list of dictionaries with all the logging components
         """
         _, label_columns, _ = predictions
+        # Name each label column takes in the logging feature group (predicted_<label>, or the bare
+        # label name for legacy pre-FSTORE-1871 feature groups).
+        prediction_column_names = FeatureLogging._prediction_column_names(
+            label_columns or [], logging_feature_group_feature_names
+        )
         # If any of the logging components is a dataframe, we use the _get_feature_logging_df function to get a dataframe and then _convert it to a list of dictionaries.
         if any(
             (HAS_PANDAS and isinstance(data, pd.DataFrame))
@@ -2881,7 +3061,9 @@ class Engine:
             if not data:
                 if log_component_name == constants.FEATURE_LOGGING.PREDICTIONS:
                     feature_names = [
-                        constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + name
+                        prediction_column_names.get(
+                            name, constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + name
+                        )
                         for name in feature_names
                     ]
                 all_missing_columns.update(set(feature_names))
@@ -2911,7 +3093,7 @@ class Engine:
                             else {
                                 col
                                 if col not in label_columns
-                                else constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + col
+                                else prediction_column_names[col]
                                 for col in row
                             }
                         )
@@ -2977,10 +3159,9 @@ class Engine:
         if predictions_feature_names:
             for log_vector in log_vectors:
                 for feature_name in predictions_feature_names:
-                    if feature_name in log_vector:
-                        log_vector[
-                            constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + feature_name
-                        ] = log_vector.pop(feature_name)
+                    target_name = prediction_column_names[feature_name]
+                    if feature_name in log_vector and target_name != feature_name:
+                        log_vector[target_name] = log_vector.pop(feature_name)
 
         # Create a json column for request parameters
         request_parameter_data, request_parameter_names, _ = request_parameters

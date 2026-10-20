@@ -29,6 +29,7 @@ def entity(hsfs_utils, monkeypatch):
     entity._id = 7
     entity._online_topic_name = "topic"
     entity.primary_key = []
+    entity.time_travel_format = "DELTA"
     entity.prepare_spark_location.return_value = "hdfs:///fg"
     fs = MagicMock()
     fs.get_feature_group.return_value = entity
@@ -45,18 +46,23 @@ def entity(hsfs_utils, monkeypatch):
     return entity
 
 
-@pytest.mark.parametrize("job_conf", [{}, {"write_options": None}])
-def test_a_job_without_write_options_upserts(hsfs_utils, entity, job_conf):
+def _spark(empty):
     spark = MagicMock()
     spark.read.json.return_value.toJSON.return_value.first.return_value = None
     frame = MagicMock()
     frame.filter.return_value = frame
     frame.limit.return_value = frame
-    frame.count.return_value = 0
+    frame.count.return_value = 0 if empty else 1
     frame.groupBy.return_value.agg.return_value.collect.return_value = []
     reader = spark.read.format.return_value.options.return_value
     reader.option.return_value = reader
     reader.load.return_value = frame
+    return spark
+
+
+@pytest.mark.parametrize("job_conf", [{}, {"write_options": None}])
+def test_a_job_without_write_options_upserts(hsfs_utils, entity, job_conf):
+    spark = _spark(empty=False)
 
     hsfs_utils.offline_fg_materialization(
         spark, {"feature_store": "fs", "name": "fg", "version": 1, **job_conf}, None
@@ -64,3 +70,53 @@ def test_a_job_without_write_options_upserts(hsfs_utils, entity, job_conf):
 
     assert entity.insert.call_args.kwargs["operation"] == "upsert"
     assert entity.insert.call_args.kwargs["write_options"] == {}
+
+
+@pytest.mark.parametrize("operation", ["upsert", "insert"])
+def test_a_range_with_nothing_for_the_offline_table_commits_nothing(
+    hsfs_utils, entity, operation, monkeypatch
+):
+    spark = _spark(empty=True)
+    checked = []
+    monkeypatch.setattr(
+        hsfs_utils, "_path_exists", lambda _, path: checked.append(path) or True
+    )
+
+    hsfs_utils.offline_fg_materialization(
+        spark,
+        {
+            "feature_store": "fs",
+            "name": "fg",
+            "version": 1,
+            "write_options": {"operation": operation},
+        },
+        None,
+    )
+
+    assert checked == ["hdfs:///fg/_delta_log"]
+    entity.insert.assert_not_called()
+    spark.createDataFrame.return_value.coalesce.return_value.write.mode.return_value.json.assert_any_call(
+        "hdfs:///fg/kafka_offsets"
+    )
+
+
+@pytest.mark.parametrize("time_travel_format", ["DELTA", "HUDI"])
+def test_an_empty_range_still_inserts_while_the_table_does_not_exist(
+    hsfs_utils, entity, time_travel_format, monkeypatch
+):
+    entity.time_travel_format = time_travel_format
+    spark = _spark(empty=True)
+    monkeypatch.setattr(hsfs_utils, "_path_exists", lambda *_: False)
+
+    hsfs_utils.offline_fg_materialization(
+        spark,
+        {
+            "feature_store": "fs",
+            "name": "fg",
+            "version": 1,
+            "write_options": {"operation": "insert"},
+        },
+        None,
+    )
+
+    entity.insert.assert_called_once()

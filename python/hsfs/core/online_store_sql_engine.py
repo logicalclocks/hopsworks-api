@@ -55,6 +55,21 @@ if HAS_AIOMYSQL and HAS_SQLALCHEMY:
 _logger = logging.getLogger(__name__)
 
 
+def _is_connection_error(error: BaseException) -> bool:
+    """Whether a failed read means its pooled connection is gone.
+
+    aiomysql raises the pymysql errors, and `InterfaceError` and
+    `OperationalError` are the two that cover a connection closed by the server,
+    a dropped socket and a failed reconnect. Named by string so this stays
+    usable when the driver is absent, and so a driver that wraps them in its own
+    class is still recognised.
+    """
+    for klass in type(error).__mro__:
+        if klass.__name__ in ("InterfaceError", "OperationalError"):
+            return True
+    return False
+
+
 # Longest an explicit close waits for a loop to release its pool's connections.
 _POOL_CLOSE_SECONDS = 10.0
 
@@ -373,20 +388,34 @@ class OnlineStoreSqlClient:
             self._loop_connection_pools = weakref.WeakKeyDictionary()
         if not self._async_task_thread:
             # Create the async event thread if it is not already running and start it.
+            statements = len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
             self._async_task_thread = AsyncTaskThread(
                 connection_pool_initializer=self._get_connection_pool,
                 connection_test=self._test_connection,
-                connection_pool_params=(
-                    len(self._prepared_statements[self.SINGLE_VECTOR_KEY]),
-                ),
+                connection_pool_params=(statements,),
+                # One in-flight read per pooled connection: queueing more only
+                # moves the wait from the loop to the pool. It is the pool's own
+                # size, not the number of prepared statements, because a caller
+                # that asked for a larger pool asked to read more at once. Those
+                # coincide only when the pool is left at its default, and a view
+                # over one feature group would otherwise read one at a time no
+                # matter what the connection options said.
+                max_concurrent_tasks=self._connection_pool_size(statements),
+                is_connection_error=_is_connection_error,
             )
             self._async_task_thread.start()
+
+    def _connection_pool_size(self, default_size: int) -> int:
+        """How many connections the pool will hold, which is how many reads can run."""
+        options = self._connection_options or {}
+        return max(int(options.get("maxsize", default_size) or default_size), 1)
 
     def _get_single_feature_vector(
         self,
         entry: dict[str, Any],
         logging_data: bool = False,
         feature_vector_with_inference_helpers: bool = False,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine.
 
@@ -399,6 +428,7 @@ class OnlineStoreSqlClient:
             entry: Primary key values used to look up the feature vector.
             logging_data: Whether to include inference helper columns for logging.
             feature_vector_with_inference_helpers: Whether to include inference helper columns with regular features.
+            timeout: Seconds to wait for the read, covering the wait for a free connection as well as the query.
 
         Returns:
             A dictionary mapping feature names to their values.
@@ -412,6 +442,7 @@ class OnlineStoreSqlClient:
         return self._single_vector_result(
             entry,
             self.parametrised_prepared_statements[key],
+            timeout=timeout,
         )
 
     async def _get_single_feature_vector_async(
@@ -441,6 +472,7 @@ class OnlineStoreSqlClient:
         entries: list[dict[str, Any]],
         logging_data: bool = False,
         feature_vector_with_inference_helpers: bool = False,
+        timeout: float | None = None,
     ) -> list[dict[str, Any]]:
         """Retrieve batch vector with parallel queries using aiomysql engine.
 
@@ -453,6 +485,7 @@ class OnlineStoreSqlClient:
             entries: List of primary key value dicts used to look up each feature vector.
             logging_data: Whether to include inference helper columns for logging.
             feature_vector_with_inference_helpers: Whether to include inference helper columns with regular features.
+            timeout: Seconds to wait for the read, covering the wait for a free connection as well as the queries.
 
         Returns:
             A list of dictionaries, each mapping feature names to their values.
@@ -466,6 +499,7 @@ class OnlineStoreSqlClient:
         return self._batch_vector_results(
             entries,
             self.parametrised_prepared_statements[key],
+            timeout=timeout,
         )
 
     async def _get_batch_feature_vectors_async(
@@ -577,7 +611,10 @@ class OnlineStoreSqlClient:
         return serving_vector
 
     def _single_vector_result(
-        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
+        self,
+        entry: dict[str, Any],
+        prepared_statement_objects: dict[int, sql.text],
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
         serving_vector, bind_entries, prepared = self._single_statements(
@@ -588,7 +625,11 @@ class OnlineStoreSqlClient:
                 task_function=self._execute_prep_statements,
                 task_args=(prepared, bind_entries),
                 requires_connection_pool=True,
-            )
+                # A feature read is a SELECT, so repeating it after a dead
+                # pooled connection returns the same rows.
+                retry_on_connection_error=True,
+            ),
+            timeout=timeout,
         )
         return self._stitch_single_result(serving_vector, results_dict)
 
@@ -730,6 +771,7 @@ class OnlineStoreSqlClient:
         self,
         entries: list[dict[str, Any]],
         prepared_statement_objects: dict[int, sql.text],
+        timeout: float | None = None,
     ):
         """Execute prepared statements in parallel using aiomysql engine."""
         batch_results, entry_values, prepared = self._batch_statements(
@@ -740,7 +782,9 @@ class OnlineStoreSqlClient:
                 task_function=self._execute_prep_statements,
                 task_args=(prepared, entry_values),
                 requires_connection_pool=True,
-            )
+                retry_on_connection_error=True,
+            ),
+            timeout=timeout,
         )
         return self._stitch_batch_results(
             entries, batch_results, prepared, parallel_results
@@ -1038,16 +1082,16 @@ class OnlineStoreSqlClient:
                 if key not in entries:
                     prepared_statements.pop(key)
 
+        tasks = [
+            asyncio.create_task(
+                self._query_async_sql(
+                    prepared_statements[key], entries[key], connection_pool
+                ),
+                name="query_prep_statement_key" + str(key),
+            )
+            for key in prepared_statements
+        ]
         try:
-            tasks = [
-                asyncio.create_task(
-                    self._query_async_sql(
-                        prepared_statements[key], entries[key], connection_pool
-                    ),
-                    name="query_prep_statement_key" + str(key),
-                )
-                for key in prepared_statements
-            ]
             # Run the queries in parallel using asyncio.gather
             results = await asyncio.wait_for(
                 asyncio.gather(*tasks),
@@ -1055,14 +1099,19 @@ class OnlineStoreSqlClient:
                 if self.connection_options
                 else 120,
             )
-        except asyncio.CancelledError as e:
-            if _logger.isEnabledFor(logging.ERROR):
-                _logger.error(f"Failed executing prepared statements: {e}")
-            raise e
-        except asyncio.TimeoutError as e:
-            if _logger.isEnabledFor(logging.ERROR):
+        except BaseException as e:
+            if isinstance(e, asyncio.TimeoutError):
                 _logger.error(f"Query timed out: {e}")
-            raise e
+            elif isinstance(e, asyncio.CancelledError):
+                _logger.error(f"Failed executing prepared statements: {e}")
+            # gather does not cancel the other queries when one fails, and each
+            # holds a pooled connection. Settle them before the failure reaches
+            # a retry, which would otherwise queue behind them for the same
+            # connections.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
         # Create a dict of results with the prepared statement index as key
         results_dict = {}

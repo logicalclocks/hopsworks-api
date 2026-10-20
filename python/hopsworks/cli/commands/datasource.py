@@ -12,8 +12,12 @@ methods where available.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import sys
+import tempfile
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -48,10 +52,21 @@ def connector_list(ctx: click.Context) -> None:
                 c.get("id", "?"),
                 c.get("name", "?"),
                 c.get("storageConnectorType", c.get("connectorType", "?")),
+                _credentials_label(c),
                 output.first_line(c.get("description"), empty=""),
             ]
         )
-    output.print_table(["ID", "NAME", "TYPE", "DESCRIPTION"], rows)
+    output.print_table(["ID", "NAME", "TYPE", "CREDENTIALS", "DESCRIPTION"], rows)
+
+
+def _credentials_label(connector: dict[str, Any]) -> str:
+    if connector.get("credentialsMode", "SHARED") != "PROVIDED":
+        return "shared"
+    status = (connector.get("userCredentials") or {}).get("status")
+    return {
+        "VALID": "provided: yours set",
+        "INCOMPLETE": "provided: incomplete",
+    }.get(status, "provided: missing")
 
 
 @datasource_group.command("info")
@@ -120,11 +135,14 @@ def _connector_to_dict(sc: Any) -> dict[str, Any]:
 # Every secret option also reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` from the
 # environment, scoped to the connector type so a variable exported for one
 # connector cannot ride along on another.
-# It also accepts ``-`` to read one line from stdin.
+# It also accepts ``-`` to read one line from stdin, and ``account:NAME`` to
+# read the user's account variable NAME, so a credential saved there (as the
+# Factory's forms do) reaches the data source without passing through a shell.
 # When required and stdin is a terminal, it asks for the value without echo.
 
 _SECRET_ENV_PREFIX = "HOPSWORKS_DS_"
 _STDIN_SECRET_KEY = "hops.datasource.secret_from_stdin"
+_ACCOUNT_SECRET_PREFIX = "account:"
 
 
 def _dest(flag: str) -> str:
@@ -147,6 +165,8 @@ def _read_secret(
     agent gets an error instead of a hang.
     """
     flag = param.opts[0]
+    if value and value.startswith(_ACCOUNT_SECRET_PREFIX):
+        return _account_secret(ctx, param, value[len(_ACCOUNT_SECRET_PREFIX) :])
     if value == "-":
         taken = ctx.meta.get(_STDIN_SECRET_KEY)
         if taken:
@@ -166,6 +186,19 @@ def _read_secret(
     return value
 
 
+def _account_secret(ctx: click.Context, param: click.Parameter, name: str) -> str:
+    """The value of the user's account variable `name`, for a secret option."""
+    from hopsworks_common.core import env_var_api
+
+    session.get_project(ctx)
+    var = env_var_api.EnvVarsApi().get_env_var(name)
+    if var is None or not var.value:
+        raise click.BadParameter(
+            f"your account has no variable {name}", ctx=ctx, param=param
+        )
+    return var.value
+
+
 def _interactive() -> bool:
     return sys.stdin.isatty()
 
@@ -178,7 +211,7 @@ def _secret_option(
     def callback(ctx: click.Context, param: click.Parameter, value: str | None):
         return _read_secret(ctx, param, value, required)
 
-    text = f"{help} Pass - to read it from stdin."
+    text = f"{help} Pass - to read it from stdin, or account:NAME to read your account variable NAME."
     if required:
         # Click cannot flag a callback-enforced secret as required, so say it here.
         text += "  [required]"
@@ -455,7 +488,17 @@ def _check_gcs(v: dict[str, Any]) -> str | None:
     return _needs(v, "--algorithm", "--encryption-key", "--encryption-key-hash")
 
 
+_SQL_CREDENTIAL_FLAGS = ("--user", "--password", "--wallet-path", "--wallet-password")
+
+
 def _check_sql(v: dict[str, Any]) -> str | None:
+    if v["credentials_mode"] == "PROVIDED":
+        if v["database_type"] != "ORACLE":
+            return "--credentials-mode PROVIDED is supported for --database-type ORACLE only."
+        return _refuses(v, "--credentials-mode PROVIDED", *_SQL_CREDENTIAL_FLAGS)
+    problem = _needs(v, "--credentials-mode SHARED", "--user")
+    if problem:
+        return problem
     if v["database_type"] == "ORACLE":
         return _one_of(v, "--database-type ORACLE", "--host", "--wallet-path")
     context = f"--database-type {v['database_type']}"
@@ -561,6 +604,26 @@ def _check_crm(v: dict[str, Any]) -> str | None:
 
 def _check_mongodb(v: dict[str, Any]) -> str | None:
     return _needs(v, "--password", "--user") if _given(v, "--password") else None
+
+
+def _check_elasticsearch(v: dict[str, Any]) -> str | None:
+    auth = (v.get(_dest("--auth-type")) or "").upper()
+    if not auth:
+        if _given(v, "--user"):
+            auth = "BASIC"
+        elif _given(v, "--api-key"):
+            auth = "API_KEY"
+        else:
+            auth = "NONE"
+    if auth == "BASIC":
+        return _needs(v, "basic authentication", "--user", "--password") or _refuses(
+            v, "basic authentication", "--api-key"
+        )
+    if auth == "API_KEY":
+        return _needs(v, "--auth-type API_KEY", "--api-key") or _refuses(
+            v, "--auth-type API_KEY", "--user", "--password"
+        )
+    return _refuses(v, "--auth-type NONE", "--user", "--password", "--api-key")
 
 
 def _check_bigquery(v: dict[str, Any]) -> str | None:
@@ -816,6 +879,69 @@ _SPECS: dict[str, _Spec] = {
             _ARGS,
         ),
     ),
+    "elasticsearch": _Spec(
+        "featurestoreElasticsearchConnectorDTO",
+        "ELASTICSEARCH",
+        "Register an Elasticsearch connector.",
+        (
+            _Opt(
+                "--host",
+                "host",
+                "Elasticsearch host, without scheme or port.",
+                required=True,
+            ),
+            _Opt("--port", "port", "HTTP port; 9200 when unset.", kind="int"),
+            _Opt(
+                "--scheme",
+                "scheme",
+                "http or https; https when unset.",
+                choices=("http", "https"),
+            ),
+            _Opt(
+                "--auth-type",
+                "authType",
+                "NONE, BASIC or API_KEY; when unset, BASIC with --user, API_KEY with only --api-key, else NONE.",
+                choices=("NONE", "BASIC", "API_KEY"),
+            ),
+            _Opt("--user", "username", "User name for BASIC authentication."),
+            _Opt(
+                "--password",
+                "password",
+                "Password for BASIC authentication.",
+                secret=True,
+            ),
+            _Opt(
+                "--api-key",
+                "apiKey",
+                "Encoded API key for API_KEY authentication.",
+                secret=True,
+            ),
+            _Opt(
+                "--default-index",
+                "defaultIndex",
+                "Index, alias, data stream or pattern read when none is given.",
+            ),
+            _Opt(
+                "--truststore-path",
+                "trustStorePath",
+                "JKS truststore with the cluster's CA, as a full HopsFS path.",
+            ),
+            _Opt(
+                "--truststore-password",
+                "trustStorePassword",
+                "Truststore password.",
+                secret=True,
+            ),
+            _Opt(
+                "--tls-verify/--no-tls-verify",
+                "verify",
+                "Verify the server certificate and hostname; verified when unset.",
+                kind="bool",
+            ),
+            _ARGS,
+        ),
+        check=_check_elasticsearch,
+    ),
     "sql": _Spec(
         "featurestoreSqlConnectorDTO",
         "SQL",
@@ -829,9 +955,19 @@ _SPECS: dict[str, _Spec] = {
                 choices=("MYSQL", "POSTGRESQL", "ORACLE", "CLICKHOUSE", "TERADATA"),
             ),
             _Opt(
+                "--credentials-mode",
+                "credentialsMode",
+                "SHARED stores one set of credentials on the data source for every member; "
+                "PROVIDED (ORACLE only) stores none, and each member adds their own with "
+                "`hops datasource credentials set`.",
+                choices=("SHARED", "PROVIDED"),
+                default="SHARED",
+            ),
+            _Opt(
                 "--host",
                 "host",
-                "Database host. Required, except for ORACLE with --wallet-path.",
+                "Database host. Required, except for ORACLE with --wallet-path or "
+                "--credentials-mode PROVIDED.",
             ),
             _Opt(
                 "--port",
@@ -846,7 +982,7 @@ _SPECS: dict[str, _Spec] = {
                 "Database name; the service name, SID or TNS alias for ORACLE.",
                 required=True,
             ),
-            _Opt("--user", "user", "Database user.", required=True),
+            _Opt("--user", "user", "Database user. Required with SHARED credentials."),
             _Opt("--password", "password", "Database password.", secret=True),
             _Opt(
                 "--wallet-path",
@@ -1210,7 +1346,7 @@ def _option(opt: _Opt, connector: str) -> Callable[[Any], Any]:
     if opt.kind == "args":
         return click.option(opt.flag, multiple=True, **kwargs)
     if opt.choices:
-        kwargs["type"] = click.Choice(opt.choices)
+        kwargs["type"] = click.Choice(opt.choices, case_sensitive=False)
     elif opt.kind == "int":
         kwargs["type"] = int
     # Click 8.3 and later read an explicit ``default=None`` as "None is a valid
@@ -1225,7 +1361,11 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     """Build the ``create <name>`` command for one connector type."""
 
     def run(
-        ctx: click.Context, connector_name: str, description: str, **values: Any
+        ctx: click.Context,
+        connector_name: str,
+        description: str,
+        test: bool,
+        **values: Any,
     ) -> None:
         problem = spec.check(values) if spec.check else None
         if problem:
@@ -1255,7 +1395,10 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
             if opt.kind == "args":
                 value = _parse_arguments(opt.flag, value)
             _set_path(body, opt.json, value)
-        _create_connector(ctx, body)
+        if test:
+            _test_connector(ctx, body)
+        else:
+            _create_connector(ctx, body)
 
     # Click renders a command's docstring as its help, so the docstring is the
     # summary alone; the options carry their own help and the parameters are
@@ -1263,6 +1406,11 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     run.__doc__ = spec.summary
     cmd = click.pass_context(run)
     cmd = click.option("--description", default="", help="Free-form description.")(cmd)
+    cmd = click.option(
+        "--test",
+        is_flag=True,
+        help="Only test the connection; create nothing. Exits 1 when it fails.",
+    )(cmd)
     for opt in reversed(spec.opts):
         cmd = _option(opt, name)(cmd)
     cmd = click.argument("connector_name", metavar="NAME")(cmd)
@@ -1271,6 +1419,321 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
 
 for _name, _spec in _SPECS.items():
     connector_create.add_command(_build_create_command(_name, _spec))
+
+# endregion
+
+
+# region Member credentials
+#
+# A data source created with ``--credentials-mode PROVIDED`` stores no credentials.
+# Each member stores their own in their account and binds them to the data source,
+# so every command here acts on the caller's binding only.
+
+
+@datasource_group.group("credentials")
+def connector_credentials() -> None:
+    """Your own credentials for a data source with provided credentials."""
+
+
+_CREDENTIAL_PAIRS = (
+    ("--user", "--user-env-var"),
+    ("--password", "--password-secret"),
+    ("--wallet-password", "--wallet-password-secret"),
+)
+
+
+def _credential_options(command: Callable[..., Any]) -> Callable[..., Any]:
+    """The options ``set`` and ``validate`` share: each credential by value or by account entry name."""
+    options = (
+        click.option(
+            "--user", help="Database username; saved as an env var in your account."
+        ),
+        click.option(
+            "--user-env-var",
+            help="Name of an env var in your account holding the username, or to save it under. "
+            "Default: the one already bound when --user is not given, else "
+            "DS_<NAME>_<feature store id>_USER.",
+        ),
+        _secret_option(
+            "credentials",
+            "--password",
+            "Database password; saved as a secret in your account.",
+        ),
+        click.option(
+            "--password-secret",
+            help="Name of a secret in your account holding the password, or to save it under. "
+            "Default: the one already bound when --password is not given, else "
+            "ds_<name>_<feature store id>_password.",
+        ),
+        click.option(
+            "--wallet",
+            type=click.Path(exists=True, dir_okay=False),
+            help="Local Oracle wallet zip; uploaded as a new .datasources/<name>/wallet-<id>.zip "
+            "in your home directory in the project, so the wallet you already use stays "
+            "untouched until the new one is saved. Without it, the wallet already bound is "
+            "kept.",
+        ),
+        _secret_option(
+            "credentials",
+            "--wallet-password",
+            "Wallet password; saved as a secret in your account.",
+        ),
+        click.option(
+            "--wallet-password-secret",
+            help="Name of a secret in your account holding the wallet password, or to save it "
+            "under. Default: the one already bound when --wallet-password is not given, else "
+            "ds_<name>_<feature store id>_wallet_password.",
+        ),
+    )
+    for option in reversed(options):
+        command = option(command)
+    return command
+
+
+def _credential_arguments(
+    ctx: click.Context, sc: Any, values: dict[str, Any]
+) -> dict[str, Any]:
+    """Turn the options into ``set_credentials`` keyword arguments, prompting for a missing password.
+
+    An option not given keeps what is already bound, which ``set_credentials`` fills in.
+    """
+    for value_flag, name_flag in _CREDENTIAL_PAIRS:
+        if _given(values, value_flag) and _given(values, name_flag):
+            raise click.UsageError(
+                f"{value_flag} and {name_flag} are alternatives; pass one.", ctx
+            )
+    bound = getattr(sc, "user_credentials", None) or {}
+    if not _given(values, "--password") and not _given(values, "--password-secret"):
+        if _interactive():
+            values["password"] = click.prompt("password", hide_input=True)
+        elif not bound.get("password_secret_name"):
+            raise click.UsageError(
+                "Pass --password (- reads it from stdin), --password-secret, or export "
+                f"${_env('credentials', '--password')}.",
+                ctx,
+            )
+    if (
+        not _given(values, "--wallet")
+        and not bound.get("wallet_path")
+        and (
+            _given(values, "--wallet-password")
+            or _given(values, "--wallet-password-secret")
+        )
+    ):
+        raise click.UsageError(
+            "A wallet password needs --wallet, or a wallet already bound.", ctx
+        )
+    return {
+        key: values.get(key) or None
+        for key in (
+            "user",
+            "password",
+            "wallet_password",
+            "user_env_var",
+            "password_secret",
+            "wallet_password_secret",
+        )
+    }
+
+
+def _provided_connector(ctx: click.Context, name: str) -> Any:
+    fs = session.get_feature_store(ctx)
+    try:
+        ds = fs.get_data_source(name)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
+    sc = getattr(ds, "storage_connector", ds)
+    if not hasattr(sc, "set_credentials"):
+        raise click.ClickException(
+            f"Data source '{name}' does not take member credentials."
+        )
+    if getattr(sc, "credentials_mode", None) == "SHARED":
+        raise click.ClickException(
+            f"Data source '{name}' has shared credentials; its owner sets them on the "
+            "data source itself."
+        )
+    return sc
+
+
+def _upload_wallet(ctx: click.Context, sc: Any, local_zip: str) -> tuple[str, str]:
+    """Stage the wallet under a new name in the caller's own home, where the backend accepts it.
+
+    Returns:
+        The HopsFS path to bind and the project-relative path to remove it by.
+    """
+    import hopsworks
+
+    project = session.get_project(ctx)
+    try:
+        username = hopsworks.get_users_api()._get_current_user().username
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not resolve your username: {exc}") from exc
+    target_dir = f"Users/{username}/.datasources/{sc._env_name().lower()}"
+    file_name = f"wallet-{uuid.uuid4().hex}.zip"
+    dataset_api = project.get_dataset_api()
+    try:
+        for directory in (os.path.dirname(target_dir), target_dir):
+            if not dataset_api.exists(directory):
+                dataset_api.mkdir(directory)
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = os.path.join(tmp, file_name)
+            shutil.copyfile(local_zip, staged)
+            dataset_api.upload(staged, target_dir)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Wallet upload failed: {exc}") from exc
+    relative = f"{target_dir}/{file_name}"
+    output.info("Uploaded wallet to %s", relative)
+    return f"/Projects/{project.name}/{relative}", relative
+
+
+def _discard_wallet(ctx: click.Context, relative: str | None) -> None:
+    if not relative:
+        return
+    try:
+        session.get_project(ctx).get_dataset_api().remove(relative)
+    except Exception as exc:  # noqa: BLE001
+        output.warn("Could not remove the uploaded wallet %s: %s", relative, exc)
+
+
+def _validate(sc: Any, name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """The backend's verdict on the credentials, as a click error when they are rejected."""
+    try:
+        result = sc._validate_credentials(**args)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Validation failed: {exc}") from exc
+    if not result.get("valid"):
+        code = result.get("errorCode")
+        detail = result.get("message") or "the data source rejected the credentials"
+        raise click.ClickException(
+            f"Data source '{name}' rejected the credentials"
+            + (f" ({code})" if code else "")
+            + f": {detail}"
+        )
+    return result
+
+
+def _binding_rows(binding: dict[str, Any]) -> list[list[Any]]:
+    return [
+        ["Status", binding.get("status", "?")],
+        ["Username env var", binding.get("username_env_var") or "-"],
+        ["Password secret", binding.get("password_secret_name") or "-"],
+        ["Wallet path", binding.get("wallet_path") or "-"],
+        ["Wallet password secret", binding.get("wallet_password_secret_name") or "-"],
+        ["Validated at", output.format_ts(binding.get("validated_at"))],
+    ]
+
+
+# D417 asks for an Args entry for **values, which docsig (ignore_kwargs) refuses.
+@connector_credentials.command("set")
+@click.argument("name")
+@_credential_options
+@click.pass_context
+def credentials_set(ctx: click.Context, name: str, **values: Any) -> None:  # noqa: D417
+    """Save your credentials for a data source to your account, once the data source accepts them.
+
+    Nothing is saved when the data source rejects them.
+    An option not given keeps what is already bound, so `--password` alone rotates the password and keeps the username and wallet.
+    Each credential option is given by value or by account entry name.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+    """
+    sc = _provided_connector(ctx, name)
+    args = _credential_arguments(ctx, sc, values)
+    staged = None
+    if values.get("wallet"):
+        args["wallet_path"], staged = _upload_wallet(ctx, sc, values["wallet"])
+    # Once saved, the backend owns the staged wallet and removes the one it replaced.
+    try:
+        binding = sc.set_credentials(**args)
+    except Exception as exc:  # noqa: BLE001
+        _discard_wallet(ctx, staged)
+        raise click.ClickException(f"Could not save the credentials: {exc}") from exc
+    except BaseException:
+        _discard_wallet(ctx, staged)
+        raise
+    output.success("✓ Saved your credentials for %s", name)
+    if output.JSON_MODE:
+        output.print_json(binding)
+    else:
+        output.print_table(["FIELD", "VALUE"], _binding_rows(binding))
+
+
+@connector_credentials.command("validate")
+@click.argument("name")
+@_credential_options
+@click.pass_context
+def credentials_validate(ctx: click.Context, name: str, **values: Any) -> None:  # noqa: D417
+    """Test your credentials against a data source without saving them.
+
+    A wallet is uploaded under a new name for the test, which reads it from HopsFS,
+    and removed again afterwards.
+    Each credential option is given by value or by account entry name.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+    """
+    sc = _provided_connector(ctx, name)
+    args = _credential_arguments(ctx, sc, values)
+    staged = None
+    if values.get("wallet"):
+        args["wallet_path"], staged = _upload_wallet(ctx, sc, values["wallet"])
+    try:
+        result = _validate(sc, name, args)
+    finally:
+        _discard_wallet(ctx, staged)
+    if output.JSON_MODE:
+        output.print_json(result)
+        return
+    output.success("✓ Data source %s accepted the credentials", name)
+
+
+@connector_credentials.command("show")
+@click.argument("name")
+@click.pass_context
+def credentials_show(ctx: click.Context, name: str) -> None:
+    """Show your binding for a data source: status and account entry names, never values.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+    """
+    sc = _provided_connector(ctx, name)
+    try:
+        binding = sc.get_credentials()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read your credentials: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json(binding)
+        return
+    output.print_table(["FIELD", "VALUE"], _binding_rows(binding))
+
+
+@connector_credentials.command("delete")
+@click.argument("name")
+@click.option("--yes", is_flag=True, help="Skip confirmation.")
+@click.pass_context
+def credentials_delete(ctx: click.Context, name: str, yes: bool) -> None:
+    """Remove your binding for a data source, its wallet file and its default-named account entries.
+
+    The default env var and secrets (DS_<NAME>_<feature store id>_USER, ds_<name>_<feature store id>_password and ds_<name>_<feature store id>_wallet_password) are deleted from your account; ones you named yourself stay.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        yes: Skip confirmation when True.
+    """
+    sc = _provided_connector(ctx, name)
+    if not yes and not output.JSON_MODE:
+        click.confirm(f"Remove your credentials for '{name}'?", abort=True)
+    try:
+        sc.delete_credentials()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove the credentials: {exc}") from exc
+    output.success("✓ Removed your credentials for %s", name)
+
 
 # endregion
 
@@ -1441,6 +1904,33 @@ def connector_infer_metadata(
         click.echo(f"Suggested event time: {inferred.suggested_event_time}")
     if inferred.suggested_description:
         click.echo(f"Suggested description: {inferred.suggested_description}")
+
+
+def _test_connector(ctx: click.Context, body: dict[str, Any]) -> None:
+    fs = session.get_feature_store(ctx)
+    from hopsworks_common.core import rest
+
+    try:
+        result = rest._send_request(
+            "POST",
+            rest._project_path(
+                "featurestores",
+                getattr(fs, "id", None),
+                "storageconnectors",
+                "testConnection",
+            ),
+            json_body=body,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Connection test failed: {exc}") from exc
+    result = result if isinstance(result, dict) else {}
+    message = (result.get("connectionOutput") or "").strip()
+    # The checkers report success as exit code 0, or 200 for HTTP sources.
+    if result.get("statusCode") not in (0, 200):
+        raise click.ClickException(f"Connection test failed: {message or 'no output'}")
+    output.success(
+        "✓ Connection to %s works%s", body["name"], f": {message}" if message else ""
+    )
 
 
 def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:

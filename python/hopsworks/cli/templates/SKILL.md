@@ -39,6 +39,14 @@ Inside a Hopsworks terminal pod, authentication is automatic via JWT.
 hops project list                         # List projects
 hops project use <name>                   # Switch active project
 hops project info                         # Current project details
+hops project costs --window month         # Kubernetes cost of the project (data owners); --project NAME, --json
+```
+
+## Platform administration
+
+```bash
+hops admin costs --window week            # Cost of every namespace (HOPS_ADMIN, API key with the ADMIN scope)
+hops admin costs --by department          # The same, one row per department
 ```
 
 ## Feature Groups
@@ -80,13 +88,24 @@ Flags:
 
 ### External Feature Groups
 
+An external feature group reads from a data source in place; Hopsworks stores only its metadata.
+Give one source spec:
+
 ```bash
-hops fg create-external <name> \
-  --connector <connector-name> \
-  --query "SELECT ... FROM ..." \
-  --primary-key <cols> \
-  [--event-time <col>] [--description <text>]
+# SQL / warehouse sources (Snowflake, BigQuery, Redshift, JDBC, ...)
+hops fg create-external <name> --connector <ds> --query "SELECT ... FROM ..." --primary-key <cols>
+# Object storage (S3, ADLS, GCS): a file or a prefix
+hops fg create-external <name> --connector <ds> --path sales/ --data-format parquet --primary-key <cols>
+# MongoDB collection
+hops fg create-external <name> --connector <ds> --database <db> --table <collection> --primary-key <cols>
 ```
+
+- Outside Spark, give the schema with `--features "id:bigint,city:string,..."`.
+- `--online` enables the online store; rows then go in with `hops fg insert`, offline data stays in the source.
+- `hops fg list` shows every type in its TYPE column (`managed`, `stream`, `external`, `spine`); `--type external` lists only external groups.
+- `hops fg info <name>` shows the connector, query or path, and the access state.
+- `hops fg test-access <name>` checks that the stored credentials can read the source.
+- `hops fg delete` on an external group removes its metadata only; the source table is untouched.
 
 ### Insert
 
@@ -185,7 +204,7 @@ hops deployment delete <name> --yes
 ```bash
 hops job list
 hops job info <name>
-hops job create <name> --type python --app-path Resources/jobs/x.py
+hops job create <name> --type python --app-path Resources/jobs/x.py [--env <environment>]
 hops job run <name> [--wait] [--args "..."]
 hops job stop <name>
 hops job logs <name> [--execution ID]

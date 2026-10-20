@@ -298,7 +298,8 @@ class ModelServing:
         Parameters:
             model: Model to be deployed.
             name: Name of the predictor.
-            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
+            artifact_version: (**Deprecated**) Ignored.
+                Deployments are versioned as a whole, see [`Deployment.save`][hsml.deployment.Deployment.save].
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS. The script must implement a `Predictor` class with a `predict(self, inputs)` method that takes the model inputs and returns the model predictions. The script is passed to the model deployment and can be accessed via the `SCRIPT_FILE_PATH` environment variable from within the predictor script.
             config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
@@ -336,8 +337,9 @@ class ModelServing:
             passed_features: Feature view features whose values clients send with each request; see [`Model.deploy`][hsml.model.Model.deploy].
             default_predictor: Whether the library's default predictor serves the model; see [`Model.deploy`][hsml.model.Model.deploy].
             knative_mode: Whether to deploy in KServe Knative mode.
-                `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.
-                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
 
         Returns:
             The predictor metadata object.
@@ -575,8 +577,9 @@ class ModelServing:
             git_auto_redeploy: Roll the endpoint to the branch HEAD whenever a new commit is pushed.
                 Only valid together with `git_url`.
             knative_mode: Whether to deploy in KServe Knative mode.
-                `None` (default) lets the backend decide: every deployment defaults to Knative mode unless it is a vLLM deployment; on an update, `None` keeps the deployment's current mode.
-                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
 
         Returns:
             The predictor metadata object.
@@ -682,8 +685,9 @@ class ModelServing:
                 Only valid together with `git_url`.
                 The running agent keeps serving until the new version is ready.
             knative_mode: Whether to deploy in KServe Knative mode.
-                `None` (default) lets the backend decide: every deployment defaults to Knative mode unless it is a vLLM deployment; on an update, `None` keeps the deployment's current mode.
-                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
 
         Returns:
             The deployment metadata object.

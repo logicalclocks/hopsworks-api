@@ -1,7 +1,7 @@
 [project]
 name = "hopsworks"
 dynamic = ["version"]
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.15"
 readme = "README.md"
 description = "Hopsworks Python SDK to interact with Hopsworks Platform, Feature Store, Model Registry and Model Serving"
 keywords = [
@@ -32,12 +32,14 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Intended Audience :: Developers",
 ]
 
 dependencies = [
     "pyhumps==1.6.1",
     "requests",
+    "urllib3>=1.26,<3",
     "furl",
     "boto3",
     "pandas[mysql]<2.4.0",
@@ -49,14 +51,15 @@ dependencies = [
     "tzlocal",
     "fsspec<2025.12.0",
     "retrying",
-    "hopsworks_aiomysql[sa]==0.2.3",
-    "opensearch-py>=1.1.0,<=2.8.0",
+    "hopsworks_aiomysql[sa]==0.2.4",
+    "opensearch-py>=1.1.0,<4",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
     "protobuf>=4.25.4,<7.0.0",       # widened to <7 so KServe 0.19 (protobuf>=6.33.5,<7) can coexist
     "packaging",                     # ^21.0
     "hopsworks-apigen>=1.0.4,<2.0.0",
     "click>=8.1",
+    "pyyaml",                        # hops factory run and the ML system template read and write system.yaml
     "tomli>=2.0; python_version < '3.11'",
     "tomli-w>=1.0",
     "build",
@@ -69,19 +72,19 @@ hopsworks = "hopsworks.cli.main:main"
 
 [project.optional-dependencies]
 python = [
-    "pyarrow>=17.0",
-    "confluent-kafka<=2.11.1",
-    "fastavro>=1.4.11,<=1.12.0",
+    "pyarrow>=17.0,<26",
+    "confluent-kafka<=2.15.1",
+    "fastavro>=1.4.11,<=1.12.1",
     "tqdm",
     "hops-deltalake==1.4.0-post121; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
-    "pyiceberg>=0.11.0,<0.12.0",
+    "pyiceberg>=0.11.0,<0.13.0",
     "httpx<=0.28.1",
 ]
 sqlalchemy-1 = [
     "pandas<2.2.0; python_version < '3.13'",
     "sqlalchemy<2.0.0",
 ]
-great-expectations = ["great_expectations>=0.18.12,<=1.17.1"]
+great-expectations = ["great_expectations>=0.18.12,<=1.24.0"]
 dev-no-opt = [
     "hopsworks[python,trino,terminal]",
     "pytest==7.4.4",
@@ -110,10 +113,15 @@ dev-pandas1 = [
     "sqlalchemy<=1.4.48",
     "delta-spark==4.3.1",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
+dev = [
+    "hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]",
+    # The app skeleton shipped under hopsworks/skills is exercised by the unit
+    # tests; FastAPI is a dependency of the app, not of this package.
+    "fastapi",
+]
 polars = [
     "polars>=0.20.31,<=1.40.1",
-    "pyarrow>=17.0",
+    "pyarrow>=17.0,<26",
 ]
 mcp = [
     "fastmcp>=2.10.5,<=2.13.3",
@@ -165,7 +173,23 @@ include = [
 # Skill playbooks are data, not importable code: the folder names carry hyphens
 # and the tree has no __init__.py, so packages.find excludes it above and the
 # files ride along as package data instead.
-"hopsworks" = ["skills/**/*.md", "skills/**/*.py"]
+"hopsworks" = [
+    "skills/**/*.md",
+    "skills/**/*.py",
+    "skills/**/*.toml",
+    "skills/**/*.yaml",
+    "skills/**/*.yml",
+    "skills/**/*.sql",
+    "skills/**/*.txt",
+    "skills/**/*.html",
+    "skills/**/*.js",
+    "skills/**/*.json",
+    "skills/**/*.css",
+    "skills/**/*.svg",
+    "skills/**/*.png",
+    "skills/**/*.ttf",
+    "skills/**/gitignore",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks_common.version.__version__" }
@@ -206,9 +230,11 @@ exclude = [
     "site-packages",
     "venv",
     "java",
-    "hopsworks/skills",              # Copy-paste examples shipped to users, not SDK code
+    "**/hopsworks/skills",           # Copy-paste examples shipped to users, not SDK code
     "transformation_test_helper.py", # File excluded from ruff formatting to maintain formatting required for tests
 ]
+# CI passes the changed files by name, and ruff lints a named file even when excluded unless this is set.
+force-exclude = true
 
 # Same as Black.
 line-length = 88

@@ -187,7 +187,7 @@ class Model:
         """Download the model files.
 
         If local_path is not provided, the model is downloaded to a cache directory
-        under `/tmp/hopsworks/models/{project_name}/{model_name}/{version}/{id}/` and
+        under `/tmp/hopsworks/models/{project_name}/{model_name}/{version}/{id}/` (under `%TEMP%` on Windows) and
         reused across subsequent downloads, including across processes.
         Cached models persist beyond program exit.
         The cache path includes the backend model `id`, so a model version that is
@@ -429,8 +429,9 @@ class Model:
         Parameters:
             name: Name of the deployment.
             description: Description of the deployment.
-            artifact_version: **Deprecated**. Version number of the model artifact to deploy, `CREATE` to create a new model artifact
-                or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
+            artifact_version: **Deprecated**.
+                Ignored.
+                Deployments are versioned as a whole, see [`Deployment.save`][hsml.deployment.Deployment.save].
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS.
             config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
@@ -471,8 +472,10 @@ class Model:
             feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig].
                 Fields left unset keep the platform defaults.
             knative_mode: Whether to deploy in KServe Knative mode.
-                `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.
-                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode, which KEDA scales (with scale-to-zero when idle) wherever KEDA is installed; on an update, `None` keeps the deployment's current mode.
+                Standard mode keeps at least one instance while active and autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum; the vLLM engine metrics are available under KEDA).
+                A predictor without a transformer may also scale on `concurrency` or `rps` (measured by the KEDA HTTP add-on, not for vLLM) and scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed), and with a transformer, or without KEDA, the minimum is 1.
+                A fixed replica count without autoscaler runs when `min_instances == max_instances` (the default for LLM deployments).
 
         Returns:
             The deployment metadata object of a new or existing deployment.

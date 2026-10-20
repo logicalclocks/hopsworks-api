@@ -747,10 +747,24 @@ def _writer_main(options: _FileLogOptions, stdin=None, stdout=None) -> None:
         report()
     writer._rotate()
     if uploader is not None:
-        uploader.stopping.set()
-        uploader._drain(time.monotonic() + options.shutdown_seconds)
+        _stop_uploader(uploader, time.monotonic() + options.shutdown_seconds)
     report()
     writer._close()
+
+
+def _stop_uploader(uploader: _Uploader, deadline: float) -> bool:
+    """Let the upload thread finish what it started, then upload whatever is left by the deadline.
+
+    An upload in flight removes its segment before it counts it, so a drain that only looks at the directory can find nothing ready while the thread is still between the two, and the last status then misses that chunk.
+    Waiting for the thread closes that gap.
+
+    Returns:
+        `True` when nothing is left to upload.
+    """
+    uploader.stopping.set()
+    uploader.wake.set()
+    uploader.join(max(0.0, deadline - time.monotonic()))
+    return uploader._drain(deadline)
 
 
 class _FileLogTransport:

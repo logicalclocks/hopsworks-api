@@ -36,6 +36,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, exceptions
+from hopsworks_common.constants import _temp_dir
 from hopsworks_common.decorators import _connected
 
 
@@ -393,13 +394,13 @@ class Client:
         ks_keys, ks_certs = self._load_jks(keystore_path, keystore_pw)
         _, ts_certs = self._load_jks(truststore_path, truststore_pw)
 
-        ca_chain_path = os.path.join("/tmp", f"{prefix}_ca_chain.pem")
+        ca_chain_path = os.path.join(_temp_dir(), f"{prefix}_ca_chain.pem")
         self._write_ca_chain(ks_certs, ts_certs, ca_chain_path)
 
-        client_cert_path = os.path.join("/tmp", f"{prefix}_client_cert.pem")
+        client_cert_path = os.path.join(_temp_dir(), f"{prefix}_client_cert.pem")
         self._write_client_cert(ks_keys, client_cert_path)
 
-        client_key_path = os.path.join("/tmp", f"{prefix}_client_key.pem")
+        client_key_path = os.path.join(_temp_dir(), f"{prefix}_client_key.pem")
         self._write_client_key(ks_keys, client_key_path)
 
         return ca_chain_path, client_cert_path, client_key_path
@@ -410,7 +411,7 @@ class Client:
 
         The PEM paths are derived from the project and connector id only, so every connector object for the same Kafka connector in a process writes the same files.
         Truncating one in place made a concurrent confluent_kafka Producer fail with "no certificate or crl found".
-        The file is created with mode 0600 whatever the umask, since one of them is an unencrypted private key under /tmp.
+        The file is created with mode 0600 whatever the umask, since one of them is an unencrypted private key in the shared temp directory.
         A file that already holds `content` is left alone: the stores rarely change, and Windows refuses to replace a file another handle has open.
         """
         with contextlib.suppress(OSError), open(path) as f:

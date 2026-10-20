@@ -20,7 +20,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.client.exceptions import (
+    ModelServingException,
+    RestAPIError,
+)
 from hsml.client.istio.utils.infer_type import InferInput
 from hsml.constants import INFERENCE_ENDPOINTS as IE
 from hsml.core.serving_api import ServingApi
@@ -417,3 +420,170 @@ class TestServingApi:
         assert args[0] == "GET"
         assert args[1] == ["project", 1, "serving", "vllmImageTags"]
         assert response == _VLLM_IMAGE_TAGS_RESPONSE
+
+
+class TestGrpcChannelLockIsPerDeployment:
+    def test_a_slow_first_channel_does_not_hold_up_another_deployment(self, mocker):
+        import threading
+
+        from hsml.core import serving_api as serving_api_module
+
+        api = serving_api_module.ServingApi()
+        slow_started = threading.Event()
+        release = threading.Event()
+
+        def create(deployment):
+            if deployment.name == "slow":
+                slow_started.set()
+                release.wait(5)
+            return f"channel-{deployment.name}"
+
+        mocker.patch.object(api, "_create_grpc_channel", side_effect=create)
+
+        def deployment(name):
+            d = mocker.Mock()
+            d.name = name
+            d._grpc_channel = None
+            d._grpc_channel_lock = threading.Lock()
+            return d
+
+        slow, fast = deployment("slow"), deployment("fast")
+        worker = threading.Thread(target=api._grpc_channel, args=(slow,))
+        worker.start()
+        try:
+            assert slow_started.wait(5)
+            # Returns while the slow deployment is still creating its channel.
+            assert api._grpc_channel(fast) == "channel-fast"
+        finally:
+            release.set()
+            worker.join(5)
+        assert slow._grpc_channel == "channel-slow"
+
+
+def _versionable_deployment(mocker, deployment_id=5):
+    deployment = mocker.Mock()
+    deployment.id = deployment_id
+    deployment.json.return_value = "{}"
+    deployment.update_from_response_json.side_effect = lambda _json: deployment
+    return deployment
+
+
+class TestVersioning:
+    @staticmethod
+    def _error(mocker, status, body=None):
+        response = mocker.MagicMock()
+        response.status_code = status
+        response.json.return_value = body or {}
+        return RestAPIError("", response)
+
+    def test_supports_versions_asks_for_one_version(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"count": 1, "items": []})
+
+        assert api._supports_versions(_versionable_deployment(mocker)) is True
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[1] == ["project", 1, "serving", 5, "versions"]
+        assert kwargs["query_params"] == {"offset": 0, "limit": 1}
+
+    def test_backend_without_versions_endpoint_is_unsupported(self, mocker):
+        api = ServingApi()
+        _patch_client(mocker, self._error(mocker, 404))
+
+        assert api._supports_versions(_versionable_deployment(mocker)) is False
+
+    def test_deleted_deployment_is_raised_not_unsupported(self, mocker):
+        api = ServingApi()
+        _patch_client(mocker, self._error(mocker, 404, {"errorCode": 240000}))
+
+        with pytest.raises(RestAPIError):
+            api._supports_versions(_versionable_deployment(mocker))
+
+    def test_other_errors_are_raised(self, mocker):
+        api = ServingApi()
+        _patch_client(mocker, self._error(mocker, 500))
+
+        with pytest.raises(RestAPIError):
+            api._supports_versions(_versionable_deployment(mocker))
+
+    def test_put_in_place_sends_no_query_params(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {})
+        deployment = _versionable_deployment(mocker)
+
+        api._put(deployment)
+
+        _, kwargs = hopsworks_client._send_request.call_args
+        assert kwargs["query_params"] is None
+
+    def test_put_new_version_sends_the_flag(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {})
+        deployment = _versionable_deployment(mocker)
+
+        api._put(deployment, new_version=True)
+
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[0] == "PUT"
+        assert args[1] == ["project", 1, "serving"]
+        assert kwargs["query_params"] == {"newVersion": "true"}
+
+    def test_get_versions_pages_through_the_list(self, mocker):
+        api = ServingApi()
+        first = {
+            "count": 101,
+            "items": [{"version": 101 - i, "active": i == 0} for i in range(100)],
+        }
+        second = {"count": 101, "items": [{"version": 1, "active": False}]}
+        hopsworks_client = _patch_client(mocker, first)
+        hopsworks_client._send_request.side_effect = [first, second]
+        deployment = _versionable_deployment(mocker)
+
+        versions = api._get_versions(deployment)
+
+        assert [v.version for v in versions][:2] == [101, 100]
+        assert len(versions) == 101
+        assert versions[0].active is True
+        calls = hopsworks_client._send_request.call_args_list
+        assert calls[0].args[1] == ["project", 1, "serving", 5, "versions"]
+        assert calls[0].kwargs["query_params"] == {"offset": 0, "limit": 100}
+        assert calls[1].kwargs["query_params"] == {"offset": 100, "limit": 100}
+
+    def test_get_versions_dedupes_and_follows_count(self, mocker):
+        api = ServingApi()
+        first = {"count": 3, "items": [{"version": 3}, {"version": 2}]}
+        second = {"count": 3, "items": [{"version": 2}, {"version": 1}]}
+        hopsworks_client = _patch_client(mocker, first)
+        hopsworks_client._send_request.side_effect = [first, second]
+
+        versions = api._get_versions(_versionable_deployment(mocker))
+
+        assert [v.version for v in versions] == [3, 2, 1]
+
+    def test_get_versions_of_an_unsaved_deployment_is_refused(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {})
+
+        with pytest.raises(ModelServingException, match="not been saved"):
+            api._get_versions(_versionable_deployment(mocker, deployment_id=None))
+        hopsworks_client._send_request.assert_not_called()
+
+    def test_get_versions_on_an_old_backend_raises_a_clear_error(self, mocker):
+        api = ServingApi()
+        _patch_client(mocker, self._error(mocker, 404))
+
+        with pytest.raises(ModelServingException, match="newer Hopsworks"):
+            api._get_versions(_versionable_deployment(mocker))
+
+    def test_rollback_posts_the_version_and_applies_the_response(self, mocker):
+        api = ServingApi()
+        response = {"id": 5, "version": 2}
+        hopsworks_client = _patch_client(mocker, response)
+        deployment = _versionable_deployment(mocker)
+
+        api._rollback(deployment, 2)
+
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[0] == "POST"
+        assert args[1] == ["project", 1, "serving", 5, "rollback"]
+        assert json.loads(kwargs["data"]) == {"version": 2}
+        deployment.update_from_response_json.assert_called_once_with(response)

@@ -173,6 +173,8 @@ class OnlineIngestion:
         Parameters:
             options: Options for waiting.
                 - "timeout" (int): Maximum time to wait in seconds (default: 60).
+                  Set to `0` to wait until every entry is ingested.
+                  An ingestion without an entry count cannot tell when that is, so with `0` its wait does not end on its own; it warns when it starts.
                 - "period" (int): Polling period in seconds (default: 1).
 
         Raises:
@@ -181,8 +183,16 @@ class OnlineIngestion:
         if options is None:
             options = {}
 
+        timeout = options.get("timeout", 60)
+        if timeout == 0 and self.num_entries is None:
+            warnings.warn(
+                f"Online ingestion {self.id} has no entry count, so its completion cannot be detected; "
+                "with a timeout of 0 this wait does not end on its own.",
+                stacklevel=1,
+            )
+
         # Set timeout time
-        timeout_delta = timedelta(seconds=options.get("timeout", 60))
+        timeout_delta = timedelta(seconds=timeout)
         timeout_time = datetime.now() + timeout_delta
 
         with tqdm(
@@ -204,7 +214,7 @@ class OnlineIngestion:
                 progress_bar.refresh()
 
                 # Check if the online ingestion is complete
-                if self.num_entries and rows_processed >= self.num_entries:
+                if self.num_entries is not None and rows_processed >= self.num_entries:
                     break
 
                 # Check if the timeout has been reached (if timeout is 0 we will wait indefinitely)

@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import lineage, output, session
+from hopsworks.cli import lineage, output, session, versions
 
 
 @click.group("deployment")
@@ -254,6 +255,10 @@ def _deployment_to_dict(d: Any) -> dict[str, Any]:
 
 # region Write commands
 
+# The backend's default limits for a predictor instance.
+DEFAULT_CORES = 1.0
+DEFAULT_MEMORY_MB = 1024
+
 
 @deployment_group.command("create")
 @click.argument("model_name")
@@ -297,6 +302,17 @@ def _deployment_to_dict(d: Any) -> dict[str, Any]:
     is_flag=True,
     help="Never use the library's default predictor.",
 )
+@click.option(
+    "--cores",
+    type=click.FloatRange(min=0, min_open=True),
+    help="CPU cores each instance may use; half of them are requested. "
+    f"Default {DEFAULT_CORES:g}.",
+)
+@click.option(
+    "--memory",
+    type=click.IntRange(min=1),
+    help=f"Memory in MB each instance may use, all of it requested. Default {DEFAULT_MEMORY_MB}.",
+)
 @click.pass_context
 def deployment_create(
     ctx: click.Context,
@@ -310,6 +326,8 @@ def deployment_create(
     description: str,
     passed_features: tuple[str, ...],
     no_default_predictor: bool,
+    cores: float | None,
+    memory: int | None,
 ) -> None:
     """Deploy a model from the registry.
 
@@ -330,15 +348,13 @@ def deployment_create(
         description: Deployment description.
         passed_features: Features clients send with each request.
         no_default_predictor: Disable the default predictor.
+        cores: CPU cores per instance; None keeps the backend's default resources.
+        memory: Memory per instance in MB; None keeps the backend's default resources.
     """
     project = session.get_project(ctx)
     mr = project.get_model_registry()
     try:
-        if version is not None:
-            model = mr.get_model(model_name, version=version)
-        else:
-            models = mr.get_models(model_name)
-            model = models[-1] if models else None
+        model = versions.model(mr, model_name, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Model '{model_name}' not found: {exc}") from exc
     if model is None:
@@ -375,6 +391,7 @@ def deployment_create(
             passed_features=list(passed_features) or None,
             default_predictor=False if no_default_predictor else None,
             knative_mode=knative_mode,
+            resources=_resources(cores, memory),
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Deployment creation failed: {exc}") from exc
@@ -386,6 +403,24 @@ def deployment_create(
         getattr(deployment, "name", name or model_name),
     )
     _report_schema(deployment)
+
+
+def _resources(cores: float | None, memory: int | None) -> Any:
+    """One instance with `cores` and `memory` as its limits, or None for the backend's defaults.
+
+    Requests follow the defaults' shape: half the cores, all the memory.
+    """
+    if cores is None and memory is None:
+        return None
+    from hsml.resources import PredictorResources, Resources
+
+    cores = DEFAULT_CORES if cores is None else cores
+    memory = DEFAULT_MEMORY_MB if memory is None else memory
+    return PredictorResources(
+        num_instances=1,
+        requests=Resources(cores=cores / 2, memory=memory, gpus=0),
+        limits=Resources(cores=cores, memory=memory, gpus=0),
+    )
 
 
 def _report_schema(deployment: Any) -> None:
@@ -493,7 +528,9 @@ def deployment_predict(
     """
     if not data and not file_path:
         raise click.UsageError("Provide --data or --file.")
-    payload_str = Path(file_path).read_text() if file_path else (data or "")
+    payload_str = (
+        Path(file_path).read_text(encoding="utf-8") if file_path else (data or "")
+    )
     try:
         payload = json.loads(payload_str)
     except json.JSONDecodeError as exc:
@@ -556,6 +593,15 @@ def deployment_predict(
         "stopped or deleted. Cannot be combined with --follow or --source."
     ),
 )
+@click.option(
+    "--dir",
+    "log_dir",
+    type=click.Path(file_okay=False),
+    help="With --download, the directory to download into, created if missing; "
+    "the working directory by default. Keep logs out of a git work tree, such "
+    "as an ML system's directory: in the factory, "
+    "${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>.",
+)
 @click.pass_context
 def deployment_logs(
     ctx: click.Context,
@@ -568,6 +614,7 @@ def deployment_logs(
     follow: bool,
     interval: float,
     download: bool,
+    log_dir: str | None,
 ) -> None:
     """Read or follow logs from a deployment component.
 
@@ -588,6 +635,7 @@ def deployment_logs(
         follow: Stream new lines instead of returning a one-shot tail.
         interval: Seconds between polls when following.
         download: Download the HopsFS log archives instead of reading pods.
+        log_dir: With ``--download``, the directory to download into.
     """
     deployment = _get_deployment(ctx, name)
 
@@ -600,7 +648,11 @@ def deployment_logs(
                 "--download cannot be combined with --follow or --source."
             )
         try:
-            local_paths = deployment.download_logs()
+            path = None
+            if log_dir is not None:
+                path = os.path.expanduser(log_dir)
+                os.makedirs(path, exist_ok=True)
+            local_paths = deployment.download_logs(path=path)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(f"Log download failed: {exc}") from exc
         if output.JSON_MODE:

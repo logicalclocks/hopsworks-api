@@ -27,6 +27,7 @@ from hopsworks_common.core import (
     dataset_api,
     environment_api,
     git_api,
+    gpu_api,
     job_api,
     kafka_api,
     opensearch_api,
@@ -39,6 +40,7 @@ from hopsworks_common.core import (
 
 
 if TYPE_CHECKING:
+    from hopsworks_common import gpu_availability
     from hsfs.feature_store import FeatureStore
     from hsml.model_registry import ModelRegistry
     from hsml.model_serving import ModelServing
@@ -73,6 +75,8 @@ class Project:
         datasets=None,
         creation_status=None,
         namespace=None,
+        department_id=None,
+        department_name=None,
         **kwargs,
     ):
         self._id = project_id
@@ -93,6 +97,7 @@ class Project:
         self._project_members_api = project_members_api.ProjectMembersApi()
         self._search_api = search_api.SearchApi()
         self._project_namespace = namespace
+        self._department = department_name
         self._trino_api = None
         self._trino_catalog_api = None
         self._superset_api = None
@@ -139,6 +144,16 @@ class Project:
     def project_namespace(self):
         """Kubernetes namespace used by project."""
         return self._project_namespace
+
+    @public
+    @property
+    def department(self) -> str | None:
+        """Name of the department the project belongs to.
+
+        Administrators group projects into departments; a project created without one is in the default department.
+        `None` from a Hopsworks version that predates departments.
+        """
+        return self._department
 
     @public
     @property
@@ -317,6 +332,32 @@ class Project:
             The Alerts Api handle.
         """
         return self._alerts_api
+
+    @public
+    def get_gpu_availability(self) -> gpu_availability.GpuAvailability:
+        """Get the GPUs this project can use.
+
+        When NVIDIA Run:ai manages the cluster's GPUs, this reports the project's and its department's Run:ai quota and allocation, and how many GPUs are available within quota and over quota.
+        Otherwise it reports the cluster's GPU inventory.
+        The call has no side effects: a project not bound to a Run:ai project yet, or a Run:ai control plane that cannot be reached, is reported in `warnings` (`RUN_AI_PROJECT_NOT_BOUND`, `RUN_AI_UNREACHABLE`) with no numbers rather than raised.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            gpus = project.get_gpu_availability()
+            print(gpus.available_non_preemptible, gpus.available_preemptible)
+            ```
+
+        Returns:
+            The project's GPU availability.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return gpu_api.GpuApi()._get_gpu_availability(self.id)
 
     @public
     def get_members_api(self) -> project_members_api.ProjectMembersApi:
