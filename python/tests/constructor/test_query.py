@@ -698,6 +698,7 @@ class TestQuery:
         mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
@@ -718,12 +719,61 @@ class TestQuery:
         mock_fs_query._register_delta_tables.assert_called()
         mock_fs_query._register_hudi_tables.assert_called()
 
+    def test_prep_read_source_pushdown(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.MagicMock()
+        mock_engine._is_flyingduck_query_supported.return_value = False
+        mock_engine._is_source_pushdown_supported.return_value = True
+        mock_engine._register_pushdown_query.return_value = "SELECT * FROM pushed_down"
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = "SELECT * FROM SALES_DB.PUBLIC.FG0 AS fg0"
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+
+        sql_query, _ = TestQuery.fg1.select_all()._prep_read(
+            online=False, read_options={}
+        )
+
+        assert sql_query == "SELECT * FROM pushed_down"
+        mock_engine._register_pushdown_query.assert_called_once_with(mock_fs_query)
+        mock_fs_query._register_external.assert_not_called()
+        mock_fs_query._register_hudi_tables.assert_not_called()
+
+    def test_prep_read_source_pushdown_unsupported_engine(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_engine = mocker.MagicMock()
+        mock_engine._is_flyingduck_query_supported.return_value = False
+        mock_engine._is_source_pushdown_supported.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = "SELECT * FROM SALES_DB.PUBLIC.FG0 AS fg0"
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.pit_query = None
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+
+        sql_query, _ = TestQuery.fg1.select_all()._prep_read(
+            online=False, read_options={}
+        )
+
+        assert sql_query == "SELECT * FROM test"
+        mock_engine._register_pushdown_query.assert_not_called()
+        mock_fs_query._register_external.assert_called()
+
     def test_prep_hudi_delta_fg_join(self, mocker):
         engine = spark.Engine()
         mocker.patch("hsfs.engine._get_instance", return_value=engine)
         mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
@@ -779,6 +829,7 @@ class TestQuery:
         mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
@@ -802,6 +853,7 @@ class TestQuery:
         mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
 
         mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
         mock_fs_query.query = "SELECT * FROM test"
         mock_fs_query.on_demand_feature_groups = []
         mock_fs_query.hudi_cached_feature_groups = []
