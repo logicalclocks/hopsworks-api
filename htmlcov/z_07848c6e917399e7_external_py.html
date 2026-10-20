@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_07848c6e917399e7_hopsworks_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-20 07:52 +0000
+            created at 2026-10-20 09:59 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -299,7 +299,7 @@
     <p class="pln"><span class="n"><a id="t217" href="#t217">217</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t218" href="#t218">218</a></span><span class="t">    <span class="key">def</span> <span class="nam">_get_certs_folder</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t219" href="#t219">219</a></span><span class="t">        <span class="com"># Custom cert_folder: use directly</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t220" href="#t220">220</a></span><span class="t">        <span class="com"># Default /tmp: use hierarchical structure for multi-user support</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t220" href="#t220">220</a></span><span class="t">        <span class="com"># Default folder: use hierarchical structure for multi-user support</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t221" href="#t221">221</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_cert_folder_base</span> <span class="op">==</span> <span class="nam">CLIENT</span><span class="op">.</span><span class="nam">CERT_FOLDER_DEFAULT</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t222" href="#t222">222</a></span><span class="t">            <span class="key">return</span> <span class="nam">os</span><span class="op">.</span><span class="nam">path</span><span class="op">.</span><span class="nam">join</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t223" href="#t223">223</a></span><span class="t">                <span class="nam">self</span><span class="op">.</span><span class="nam">_cert_folder_base</span><span class="op">,</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_host</span><span class="op">,</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_project_name</span><span class="op">,</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_username</span>&nbsp;</span><span class="r"></span></p>
@@ -308,7 +308,7 @@
     <p class="pln"><span class="n"><a id="t226" href="#t226">226</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t227" href="#t227">227</a></span><span class="t">    <span class="key">def</span> <span class="nam">_materialize_certs</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t228" href="#t228">228</a></span><span class="t">        <span class="com"># Custom cert_folder: use directly</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t229" href="#t229">229</a></span><span class="t">        <span class="com"># Default /tmp: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t229" href="#t229">229</a></span><span class="t">        <span class="com"># Default folder: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t230" href="#t230">230</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_cert_folder</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_get_certs_folder</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t231" href="#t231">231</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_trust_store_path</span> <span class="op">=</span> <span class="nam">os</span><span class="op">.</span><span class="nam">path</span><span class="op">.</span><span class="nam">join</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">_cert_folder</span><span class="op">,</span> <span class="str">&quot;trustStore.jks&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t232" href="#t232">232</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_key_store_path</span> <span class="op">=</span> <span class="nam">os</span><span class="op">.</span><span class="nam">path</span><span class="op">.</span><span class="nam">join</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">_cert_folder</span><span class="op">,</span> <span class="str">&quot;keyStore.jks&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -437,7 +437,7 @@
     <p class="run"><span class="n"><a id="t355" href="#t355">355</a></span><span class="t">    <span class="key">def</span> <span class="nam">_makedirs_with_sticky_bit</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t356" href="#t356">356</a></span><span class="t">        <span class="str">&quot;&quot;&quot;Create cert directories with appropriate permissions.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t357" href="#t357">357</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t358" href="#t358">358</a></span><span class="t"><span class="str">        For default /tmp: Creates hierarchical structure with sticky bit (1777)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t358" href="#t358">358</a></span><span class="t"><span class="str">        For the default folder (`/tmp`, or the temp directory on Windows): Creates hierarchical structure with sticky bit (1777)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t359" href="#t359">359</a></span><span class="t"><span class="str">        on shared directories for multi-user support, and 0700 on user directory.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t360" href="#t360">360</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t361" href="#t361">361</a></span><span class="t"><span class="str">        For custom cert_folder: Creates the directory with 0700 permissions.</span>&nbsp;</span><span class="r"></span></p>
@@ -532,7 +532,7 @@
             <a class="nav" href="z_07848c6e917399e7_hopsworks_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.16.2">coverage.py v7.16.2</a>,
-            created at 2026-10-20 07:52 +0000
+            created at 2026-10-20 09:59 +0000
         </p>
     </div>
 </footer>
