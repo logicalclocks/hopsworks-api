@@ -88,6 +88,9 @@ class App:
         public_access=None,
         public_token=None,
         db_access=None,
+        managed_db=None,
+        table_prefix=None,
+        table_count=None,
         idle_scale_to_zero=None,
         idle_cooldown_seconds=None,
         cold_start_timeout_seconds=None,
@@ -128,6 +131,9 @@ class App:
         self._public_token = public_token
         # Backend default is True; None only happens for responses from older servers.
         self._db_access = True if db_access is None else bool(db_access)
+        self._managed_db = bool(managed_db)
+        self._table_prefix = table_prefix
+        self._table_count = table_count or 0
         self._idle_scale_to_zero = bool(idle_scale_to_zero)
         self._idle_cooldown_seconds = idle_cooldown_seconds
         self._cold_start_timeout_seconds = cold_start_timeout_seconds
@@ -394,6 +400,28 @@ class App:
 
     @public
     @property
+    def managed_db(self) -> bool:
+        """Whether the app owns a registered set of tables in the project's online database.
+
+        Such an app connects as its own database user, which can read the project database but can only create and write tables registered with `register_table`.
+        Apps created before table registration existed connect as the user who started them and have no registered tables.
+        """
+        return self._managed_db
+
+    @public
+    @property
+    def table_prefix(self) -> str | None:
+        """The prefix every table of the app must start with, for example `app_reviews__`; `None` when `managed_db` is False."""
+        return self._table_prefix
+
+    @public
+    @property
+    def table_count(self) -> int:
+        """How many tables the app has registered."""
+        return self._table_count
+
+    @public
+    @property
     def idle_scale_to_zero(self) -> bool:
         """Whether the app scales to zero when idle.
 
@@ -438,6 +466,65 @@ class App:
             + "/__public?t="
             + urllib.parse.quote(token, safe="")
         )
+
+    @public
+    @usage._method_logger
+    def register_table(self, name: str) -> str:
+        """Register a table so the app can create it in the project's online database.
+
+        Call it before `CREATE TABLE`: the app's database user is granted the registered table only, and the table is dropped when the app is deleted.
+        Registering a table the app already owns does nothing, so it is safe on every start.
+
+        Parameters:
+            name: The table name, with or without the app's `table_prefix`; the prefix is added when missing.
+
+        Returns:
+            The full table name to use in SQL.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the name is not lowercase `a-z`, `0-9` and `_`, is longer than 64 characters with the prefix, already exists as another table, or belongs to another app, or if the app does not register tables (`managed_db` is False).
+        """
+        table_name = (
+            name
+            if self._table_prefix is None or name.startswith(self._table_prefix)
+            else self._table_prefix + name
+        )
+        registered = self._app_api._register_table(self._name, table_name)
+        return registered["name"]
+
+    @public
+    @usage._method_logger
+    def get_tables(self) -> list[dict]:
+        """List the tables the app registered.
+
+        Returns:
+            One dict per table with `name`, `registered`, `created` (False until the app runs its `CREATE TABLE`) and `rows` (an estimate).
+        """
+        return self._app_api._get_tables(self._name)
+
+    @public
+    @usage._method_logger
+    def get_table(self, name: str) -> dict:
+        """Get a registered table with its columns.
+
+        Returns:
+            The table dict of `get_tables` plus `columns`, each with `name`, `type`, `nullable`, `primary` and `default_value`.
+        """
+        return humps.decamelize(self._app_api._get_table(self._name, name))
+
+    @public
+    @usage._method_logger
+    def preview_table(self, name: str, limit: int = 20) -> dict:
+        """Read the first rows of a registered table.
+
+        Parameters:
+            name: The full table name.
+            limit: How many rows, at most 100.
+
+        Returns:
+            A dict with `columns`, the column names, and `rows`, a list of rows whose values are strings or `None`.
+        """
+        return self._app_api._preview_table(self._name, name, limit)
 
     @public
     @usage._method_logger

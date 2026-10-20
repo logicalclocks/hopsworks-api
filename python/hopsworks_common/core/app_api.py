@@ -425,6 +425,38 @@ class AppApi:
             "POST", path_params, headers=headers, data=json.dumps({"enabled": enabled})
         )
 
+    def _tables_path(self, app_name: str, *rest: str) -> list:
+        _client = client._get_instance()
+        return ["project", _client._project_id, "apps", app_name, "tables", *rest]
+
+    def _get_tables(self, app_name: str) -> list[dict]:
+        """List the tables the app registered."""
+        return client._get_instance()._send_request("GET", self._tables_path(app_name))
+
+    def _register_table(self, app_name: str, table_name: str) -> dict:
+        """Register a table for the app to create; idempotent for a table it already owns."""
+        headers = {"content-type": "application/json"}
+        return client._get_instance()._send_request(
+            "POST",
+            self._tables_path(app_name),
+            headers=headers,
+            data=json.dumps({"name": table_name}),
+        )
+
+    def _get_table(self, app_name: str, table_name: str) -> dict:
+        """Get one registered table with its columns."""
+        return client._get_instance()._send_request(
+            "GET", self._tables_path(app_name, table_name)
+        )
+
+    def _preview_table(self, app_name: str, table_name: str, limit: int) -> dict:
+        """Get up to `limit` rows of a registered table."""
+        return client._get_instance()._send_request(
+            "GET",
+            self._tables_path(app_name, table_name, "preview"),
+            query_params={"limit": limit},
+        )
+
     def _get_log(self, app_name: str, execution_id: int, log_type: str) -> dict:
         """Get stdout or stderr log metadata for an app execution."""
         _client = client._get_instance()
