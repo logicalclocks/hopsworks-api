@@ -1,0 +1,108 @@
+# Filled in by k8s/run.sh with envsubst.
+# One run: a master Job and its Service, and a worker Job with one pod per user.
+# Code and settings come from the ConfigMap locust-files, the API key from the Secret locust-api-key.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${NAME}-master
+  namespace: ${NAMESPACE}
+  labels: {app: locust-benchmark}
+spec:
+  selector: {job-name: ${NAME}-master}
+  ports: [{name: locust, port: 5557, targetPort: 5557}]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${NAME}-master
+  namespace: ${NAMESPACE}
+  labels: {app: locust-benchmark}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels: {app: locust-benchmark, role: master}
+    spec:
+      restartPolicy: Never
+      imagePullSecrets: ${PULL_SECRETS}
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - ${NODE_MATCH}
+      containers:
+      - name: master
+        image: ${IMAGE}
+        imagePullPolicy: IfNotPresent
+        workingDir: /work
+        command: [sh, -c]
+        # Keeps running after the test so run.sh can copy the report out.
+        args:
+        - >-
+          locust --config locust.conf --master
+          --expect-workers ${USERS} --users ${USERS} --run-time ${DURATION}s
+          --html /results/report.html;
+          echo REPORT_READY exit=$?; sleep 1800
+        env:
+        - {name: HOME, value: /tmp}
+        - {name: USER, value: locust}
+        - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+        - {name: HOPSWORKS_API_KEY_FILE, value: /secrets/api_key}
+        resources:
+          requests: {cpu: "${MASTER_CPU}", memory: ${MEMORY_REQUEST}}
+          limits: {cpu: "1", memory: ${MEMORY_LIMIT}}
+        volumeMounts:
+        - {name: files, mountPath: /work, readOnly: true}
+        - {name: api-key, mountPath: /secrets, readOnly: true}
+        - {name: results, mountPath: /results}
+      volumes:
+      - {name: files, configMap: {name: locust-files}}
+      - {name: api-key, secret: {secretName: locust-api-key}}
+      - {name: results, emptyDir: {}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${NAME}-worker
+  namespace: ${NAMESPACE}
+  labels: {app: locust-benchmark}
+spec:
+  backoffLimit: 0
+  parallelism: ${USERS}
+  completions: ${USERS}
+  template:
+    metadata:
+      labels: {app: locust-benchmark, role: worker}
+    spec:
+      restartPolicy: Never
+      imagePullSecrets: ${PULL_SECRETS}
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - ${NODE_MATCH}
+      containers:
+      - name: worker
+        image: ${IMAGE}
+        imagePullPolicy: IfNotPresent
+        workingDir: /work
+        command: [locust]
+        args: [--config, locust.conf, --worker, --master-host, "${NAME}-master"]
+        env:
+        - {name: HOME, value: /tmp}
+        - {name: USER, value: locust}
+        - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
+        - {name: HOPSWORKS_API_KEY_FILE, value: /secrets/api_key}
+        resources:
+          requests: {cpu: "${WORKER_CPU}", memory: ${MEMORY_REQUEST}}
+          limits: {cpu: "${WORKER_CPU}", memory: ${MEMORY_LIMIT}}
+        volumeMounts:
+        - {name: files, mountPath: /work, readOnly: true}
+        - {name: api-key, mountPath: /secrets, readOnly: true}
+      volumes:
+      - {name: files, configMap: {name: locust-files}}
+      - {name: api-key, secret: {secretName: locust-api-key}}

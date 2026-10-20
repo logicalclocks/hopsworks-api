@@ -1,0 +1,6 @@
+{
+    "host": "<hopsworks-host>",
+    "port": 443,
+    "project": "<project>",
+    "verify_certs": true
+}
