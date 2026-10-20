@@ -18,15 +18,24 @@ a schedule or a model: the question is answered from this one table.
 
 ## Generated rows (`source: synthetic`)
 
-Load **hops-synthetic-data** with `hops skills info hops-synthetic-data` and follow its rules for the code: seeded, Polars, whole
-columns, no Python loop over rows. The `story` decides which columns move together (revenue that
+Read `hops skills info hops-synthetic-data references/table.md`, the part of **hops-synthetic-data**
+a table needs, and follow its code rules: seeded, Polars, whole columns, no Python loop over rows. The `story` decides which columns move together (revenue that
 grows over time, one country that dominates), so the question has an answer worth showing.
 `rows` defaults to 10,000.
 
 **Show it first.** Write the generator as `./data/<name>/generate.py` before anything runs, then
-create the feature group with its schema (`hops fg create <name> --version 1 --primary-key ...
---event-time ... --features ... --no-statistics`, one description per column), so both appear before the long
-part. The generator builds the frame and inserts it into that group with
+create the feature group with its schema, one description per column, so both appear before the
+long part. The CLI does this; never the SDK's `get_or_create_feature_group` for it:
+
+```bash
+hops fg create orders --version 1 --primary-key order_id --event-time order_ts --no-statistics \
+  --description "90 days of synthetic orders: revenue grows 2% a week, Germany is 40% of it" \
+  --features "order_id:bigint:Order id,order_ts:timestamp:When the order was placed,country:string:Shipping country,category:string:Product category,revenue:double:Order value in EUR"
+```
+
+`--features` is `name:type:description` per column, comma-separated, Hive types (`bigint` for a
+Polars `Int64`, `double`, `string`, `timestamp`, `date`, `boolean`); a description holds no comma.
+`hops fg create --help` lists the rest. The generator builds the frame and inserts it into that group with
 `fg.insert(df, wait=True)`. Run it where you run (a Hopsable sandbox, a terminal, a laptop):
 `python data/<name>/generate.py`, which writes `rows` in seconds; print `[time] generate
 <seconds>s` and `[time] insert <seconds>s`. A job only when the frame would not fit in memory

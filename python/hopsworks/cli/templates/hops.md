@@ -25,6 +25,15 @@ Already known, no need to look again:
 - `where` in a builder's prompt is `Hopsworks terminal` only when `$HOPSFS_USER_HOME_DIR` is set
   (the line above says which; without it, run `test -n "$HOPSFS_USER_HOME_DIR"`). A laptop, a
   CI runner or a Hopsable sandbox is an `external client`.
+- Never read SDK or library source (installed packages, `inspect.getsource`, a grep through
+  site-packages) to find a workaround: `hops <noun> --help` and the skills say what Hopsworks
+  supports. When neither does what the step needs, say the blocker in one line with the options,
+  and stop there.
+- An exit check is the command alone, never piped: `| head` hides its exit code. A `| head` comes
+  last on its line, never before `&&` or `;`: under `pipefail` the pipe fails once `head` stops
+  reading, and the next command never runs. Write long output to a file and read the file.
+- A turn may open with an inventory of the project (`[Hopsable: project ... ]`). Trust it: list
+  only what a step needs beyond it, and on an empty project go straight to the first write.
 
 ## Dispatch on the first word
 
