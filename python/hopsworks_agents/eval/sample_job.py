@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -504,7 +505,14 @@ def run_sample(
     # window leaves the end where it was asked to stop.
     processed_through = None
     if strategy != "random" and available > len(sampled) and sampled:
-        processed_through = max(summary_ms(summary) or 0 for summary in sampled)
+        # Past the newest one graded, not at it. The backend stores this as the
+        # next window's start and filters on `start_time_ns > fromMs * 1e6`,
+        # and `report` truncates the float to an int -- so a conversation whose
+        # start carried a fraction of a millisecond fell inside the next window
+        # again and was graded a second time, as a second trial row, counted
+        # twice.
+        newest = max(summary_ms(summary) or 0 for summary in sampled)
+        processed_through = math.floor(newest) + 1
     # Every trace in the window unreadable is not a quiet night, it is a broken read. Reported
     # SUCCEEDED it moved the watermark over all of them, so the traffic nobody graded was never
     # offered again -- the one case where "no trials" must not be taken for "no traffic".

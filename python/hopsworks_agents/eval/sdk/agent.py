@@ -7,7 +7,6 @@ agent handle. The handle is fetched through :meth:`AgentServing.get_agent`.
 
 from __future__ import annotations
 
-import contextlib
 import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -111,6 +110,9 @@ class Agent:
         """Re-read the deployment from the serving API."""
         self._serving = {}
         self._deployment = None
+        # The manifest too: a restarted deployment may declare different
+        # routes, and this is the call someone makes when they expect it to.
+        self._endpoints = None
         _ = self.serving
         return self
 
@@ -225,11 +227,18 @@ class Agent:
         """The agent's route for ``name``, from its manifest; the protocol's default without one."""
         if self._endpoints is None:
             # not a protocol agent, or the manifest is not served: the
-            # protocol's default routes are the best guess there is
-            with contextlib.suppress(AgentServingError):
+            # protocol's default routes are the best guess there is.
+            #
+            # A failure here leaves it None rather than caching {}. A first
+            # chat() against an agent that is still starting answers 503, and
+            # cached that way an agent with custom routes sent every later call
+            # on this object to /v1/chat, which 404s for it, for the lifetime
+            # of the object.
+            try:
                 self.manifest()
-            self._endpoints = dict(self._endpoints or {})
-        return str(self._endpoints.get(name) or default)
+            except AgentServingError:
+                return default
+        return str((self._endpoints or {}).get(name) or default)
 
     def _agent_get(self, path: str) -> Any:
         return self._http.agent_request("GET", self._segments(path))

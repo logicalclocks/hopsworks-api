@@ -147,25 +147,39 @@ def parse_baggage(headers: Mapping[str, str] | None) -> EvalTrial | None:
     deployment with tracing off — the runner refuses those anyway, but the
     SDK must not fail a customer's request over a header it did not ask for.
     A malformed header is treated as absent for the same reason.
+
+    Read the way the propagator reads it, because the two have to agree: keys
+    are percent-decoded and the last value for a key wins. Decoding only
+    values, and taking the first of several headers, meant
+    ``run_id=LIVE,hopsworks%2Eeval%2Erun_id=OTHER`` verified as LIVE while the
+    spans were stamped OTHER -- so a caller who knows one live run could label
+    a turn as a trial of another.
     """
     if not headers:
         return None
-    raw = next(
-        (value for key, value in headers.items() if str(key).lower() == "baggage"),
-        None,
+    getlist = getattr(headers, "getlist", None)
+    raws = (
+        [v for v in getlist("baggage") if v]
+        if callable(getlist)
+        else [
+            value
+            for key, value in headers.items()
+            if str(key).lower() == "baggage" and value
+        ]
     )
-    if not raw:
+    if not raws:
         return None
     found: dict[str, Any] = {}
-    for member in str(raw).split(","):
-        entry = member.split(";", 1)[0].strip()  # drop properties
-        if "=" not in entry:
-            continue
-        key, value = entry.split("=", 1)
-        field = _FIELDS.get(key.strip())
-        if field is None:
-            continue
-        found[field] = unquote(value.strip())
+    for raw in raws:
+        for member in str(raw).split(","):
+            entry = member.split(";", 1)[0].strip()  # drop properties
+            if "=" not in entry:
+                continue
+            key, value = entry.split("=", 1)
+            field = _FIELDS.get(unquote(key.strip()))
+            if field is None:
+                continue
+            found[field] = unquote(value.strip())
     if not found.get("run_id"):
         return None
     if "trial_index" in found:
@@ -283,6 +297,12 @@ def _lookup_run(run_id: str) -> dict[str, Any] | None:
             return client._send_request(
                 "GET",
                 ["project", client._project_id, "agent-evals", "runs", run_id],
+                # Bounded like the urllib path below. Without it a stalled
+                # connection blocks for ever, and this is awaited in the
+                # default executor before every turn that carries a run id --
+                # the same threads every sync handler and every memory
+                # to_thread call share.
+                timeout=10,
             )
         except RestAPIError as err:
             if getattr(getattr(err, "response", None), "status_code", None) == 404:

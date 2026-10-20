@@ -1169,12 +1169,12 @@ class ManagedMemoryService(ChatMemory):
                             raise
                         log.debug("Memory tables already created concurrently")
                     if not self._check_schema_version(engine, meta, table_name):
-                        return False
+                        return self._setup_refused(engine, "schema version")
                 # The messages and facts tables are the feature groups' own,
                 # created by Hopsworks without the id sequence or the indexes
                 # the agent reads through. Adopt them before serving.
                 if not self._adopt_feature_group_tables(engine, (table, state)):
-                    return False
+                    return self._setup_refused(engine, "table adoption")
                 self._engine = engine
                 self._deployment = deployment
                 self._table = table
@@ -1202,6 +1202,29 @@ class ManagedMemoryService(ChatMemory):
                     self._init_backoff,
                 )
                 return False
+
+    def _setup_refused(self, engine, what: str) -> bool:
+        """Give up on this attempt the way a failed one does.
+
+        These two returned False without disposing the engine or setting the
+        backoff, so every later get, begin_turn, record_item, transcript and
+        /ready probe rebuilt the whole thing: a new engine and pool, the
+        create_all inspection, the SHOW INDEX and the ALTERs that had just
+        failed. Twenty calls made twenty engines, none of them released.
+        """
+        try:
+            engine.dispose()
+        except Exception:  # noqa: BLE001 — disposing a broken engine is best effort
+            log.debug("Could not dispose the engine after a refused setup")
+        self._init_failed_until = time.monotonic() + self._init_backoff
+        self._init_backoff = min(self._init_backoff * 2, 60.0)
+        log.warning(
+            "ManagedMemoryService refused by %s; retrying in %.0fs, running "
+            "without persistent memory until then",
+            what,
+            self._init_backoff,
+        )
+        return False
 
     def _check_schema_version(self, engine, meta, table_name: str) -> bool:
         """Record our schema version, or refuse to run against a newer one.
@@ -1368,26 +1391,6 @@ class ManagedMemoryService(ChatMemory):
         with self._lock:
             self._cache.pop(conversation_id, None)
 
-    # ── feature-store registration (optional) ────────────────────────────
-
-    #: SQLAlchemy column type -> Hopsworks feature type, for the types this
-    #: module actually declares. Deliberately not a guess-anything mapping: a
-    #: type that turns up here unmapped is a schema change someone forgot to
-    #: think about, and should fail rather than be silently called a string.
-    #: Keyed on the SQLAlchemy type class name, which is what the column
-    #: objects carry ("String", not "VARCHAR"); the SQL spellings are here too
-    #: so a reflected table maps as readily as a declared one.
-    _FEATURE_TYPES = {
-        "INTEGER": "int",
-        "SMALLINTEGER": "int",
-        "SMALLINT": "int",
-        "STRING": "string",
-        "VARCHAR": "string",
-        "TEXT": "string",
-        "DATETIME": "timestamp",
-        "TIMESTAMP": "timestamp",
-    }
-
     # ── feature-store export (optional) ──────────────────────────────────
 
     #: What each exported table is keyed on, and which column carries its
@@ -1399,26 +1402,6 @@ class ManagedMemoryService(ChatMemory):
     #: to be entirely NULL in a batch infers as dtype 'null' and is rejected,
     #: and an inferred string lands as varchar(100) online — which would
     #: silently truncate message content to 100 characters.
-
-    def _features_for(self, table):
-        from hsfs.feature import Feature
-
-        features = []
-        for column in table.columns:
-            name = type(column.type).__name__.upper()
-            if name == "STRING":
-                length = getattr(column.type, "length", None) or 255
-                offline, online = "string", f"varchar({length})"
-            else:
-                mapped = self._FEATURE_TYPES.get(name)
-                if mapped is None:
-                    raise RuntimeError(
-                        f"No feature type for column {column.name!r} ({name}) "
-                        f"of {table.name}. Add it to _FEATURE_TYPES."
-                    )
-                offline, online = mapped
-            features.append(Feature(column.name, type=offline, online_type=online))
-        return features
 
     _EXPORT_SHAPE = {
         "items": (("deployment_id", "id"), "created_at"),
@@ -2563,12 +2546,18 @@ class ManagedMemoryService(ChatMemory):
         """
         if self._vector_store is None or self._embedder is None:
             return 0
-        if not self._ensure_engine():
-            return 0
-        t = self._table
-        try:
+
+        def _read_turn():
+            # Off the loop with the rest of it. This connect, SELECT and
+            # fetchall ran inline, so every completed turn blocked all other
+            # streams and /health for one round trip -- or for ever against a
+            # hung database, since pymysql sets no read timeout. Semantic
+            # search is on by default, so that was every turn.
+            if not self._ensure_engine():
+                return None
+            t = self._table
             with self._engine.connect() as conn:
-                rows = conn.execute(
+                return conn.execute(
                     self._mine(t.select(), t)
                     .where(t.c.conversation_id == conversation_id)
                     .where(t.c.turn_id == turn_id)
@@ -2576,6 +2565,9 @@ class ManagedMemoryService(ChatMemory):
                     .where(t.c.status == TURN_CLOSED)
                     .order_by(t.c.seq)
                 ).fetchall()
+
+        try:
+            rows = await asyncio.to_thread(_read_turn)
         except Exception:  # noqa: BLE001
             log.exception("Could not read turn %s for ingest", turn_id)
             return 0

@@ -602,6 +602,18 @@ def run_suite(
             "these tasks have several user turns but are typed single_turn: "
             f"{sorted(t.task_id for t in scripted)}"
         )
+    # A published task whose content file has gone: the backend nulls its
+    # messages and marks it, and with no turns to send `response` stayed None
+    # and _classify raised on it. The trial was recorded INFRA_ERROR, which is
+    # outside the pass rate, so a suite quietly graded fewer tasks than it
+    # claims to hold. Refused by name instead, because a suite that cannot run
+    # what it says it runs has no result worth publishing.
+    empty = [t for t in suite.tasks if not t.turns()]
+    if empty:
+        raise SuiteRefused(
+            "these tasks have no content to send; their files are missing: "
+            f"{sorted(t.task_id for t in empty)}"
+        )
 
     result = RunResult(
         run_id=run_id, suite_id=suite.suite_id, deployment_id=deployment_id

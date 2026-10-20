@@ -47,8 +47,10 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("AWS_ACCESS_KEY", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("GITHUB_TOKEN", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}\b")),
     ("SLACK_TOKEN", re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}\b")),
-    ("OPENAI_KEY", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),
+    # Anthropic first: its keys are sk-ant-..., which the OpenAI pattern also
+    # matches, and the first pattern to match is the label the finding carries.
     ("ANTHROPIC_KEY", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}\b")),
+    ("OPENAI_KEY", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),
     (
         "JWT",
         re.compile(

@@ -13,6 +13,7 @@ would have to invent values for. Register them with
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
@@ -352,7 +353,12 @@ def _as_claude_agent_tool(fn, sdk_tool):
                 values[name] = args[name]
             elif param.default is inspect.Signature.empty:
                 raise ValueError(f"Missing required argument {name!r}.")
-        result = fn(**values)
+        # Off the loop: every one of these is a database call, and `search`
+        # adds an embedding and a vector query on top. Called inline, one tool
+        # call stalled every other conversation and /health -- which is the
+        # thing the rest of the app is written to avoid. to_thread copies the
+        # context, so `current_context` is still visible in there.
+        result = await asyncio.to_thread(fn, **values)
         return {"content": [{"type": "text", "text": str(result)}]}
 
     invoke.__name__ = fn.__name__

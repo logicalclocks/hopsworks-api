@@ -483,7 +483,18 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
             # the window closes where the budget ran out, so the next run picks up the rest
             params["processedThrough"] = str(int(processed_through))
         try:
-            session.put(f"{base}/runs/{run_id}/status", params=params, timeout=30)
+            answer = session.put(
+                f"{base}/runs/{run_id}/status", params=params, timeout=30
+            )
+            # As in run_job: unchecked, a refusal of the request that closes
+            # the run leaves the row RUNNING with nothing saying why.
+            if answer.status_code >= 400:
+                log.error(
+                    "reporting status %s was refused: %s %s",
+                    status,
+                    answer.status_code,
+                    (answer.text or "")[:300],
+                )
         except Exception:  # noqa: BLE001 -- never mask the real failure
             log.exception("could not report status %s", status)
 

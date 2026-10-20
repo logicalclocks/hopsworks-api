@@ -15,6 +15,7 @@ and what the trial's status becomes.
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timedelta, timezone
 
 from hopsworks_agents.eval.evaluators import EvaluatorResult
@@ -669,7 +670,11 @@ class TestTheWindowIsTheServersJob:
         assert len(result.trials) == 2
         assert result.available == 5
         graded = sorted(s["startTimeNs"] / 1e6 for s in summaries[:2])
-        assert result.processed_through_ms == graded[-1]
+        # Past the newest graded, not at it: the backend opens the next window
+        # at this value and filters start_time_ns strictly greater, and report
+        # truncates it to an int -- so at the value itself a conversation whose
+        # start carried a fraction of a millisecond was graded twice.
+        assert result.processed_through_ms == math.floor(graded[-1]) + 1
 
     def test_a_random_sample_with_no_ceiling_grades_the_window(self):
         # Zero means "no ceiling" everywhere else here, and oldest_first reads it

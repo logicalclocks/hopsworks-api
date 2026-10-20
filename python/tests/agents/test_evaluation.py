@@ -44,6 +44,27 @@ class TestParseBaggage:
         # unparsable index is dropped rather than failing the request
         assert trial.trial_index is None
 
+    def test_a_percent_encoded_key_is_the_same_key(self):
+        """The propagator decodes keys, so this has to as well.
+
+        It did not, and took the first of several headers besides. The spans
+        are stamped by the propagator, so
+        `run_id=LIVE,hopsworks%2Eeval%2Erun_id=OTHER` was verified as LIVE and
+        recorded as OTHER -- a way to label a turn as a trial of a run it has
+        nothing to do with, knowing only one live run of the deployment.
+        """
+        raw = "hopsworks.eval.run_id=LIVE,hopsworks%2Eeval%2Erun_id=OTHER"
+        # last one wins, as it does in the propagator
+        assert parse_baggage({"baggage": raw}).run_id == "OTHER"
+
+    def test_every_baggage_header_is_read(self):
+        class Headers(dict):
+            def getlist(self, name):
+                return [v for k, v in self.items() if k.lower() == name]
+
+        headers = Headers({"baggage": "hopsworks.eval.run_id=first"})
+        assert parse_baggage(headers).run_id == "first"
+
     def test_no_run_id_is_not_a_trial(self):
         assert parse_baggage({"baggage": "hopsworks.eval.suite_id=s1"}) is None
         assert parse_baggage({"baggage": ""}) is None

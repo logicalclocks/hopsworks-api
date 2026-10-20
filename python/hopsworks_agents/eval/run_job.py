@@ -398,7 +398,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
         # the next one continues from there rather than from the end this one was
         # asked for -- what makes a ceiling defer work instead of skipping it.
         try:
-            session.put(
+            answer = session.put(
                 f"{base}/runs/{run_id}/status",
                 params={
                     "status": status,
@@ -411,6 +411,16 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
                 },
                 timeout=30,
             )
+            # The request that closes the run. Unchecked, a 4xx or 5xx here
+            # left the row RUNNING for ever -- the state this report exists to
+            # prevent -- with nothing anywhere saying the close was refused.
+            if answer.status_code >= 400:
+                log.error(
+                    "reporting status %s was refused: %s %s",
+                    status,
+                    answer.status_code,
+                    _short(answer.text),
+                )
         except Exception:  # noqa: BLE001 — never mask the real failure
             log.exception("could not report status %s", status)
 

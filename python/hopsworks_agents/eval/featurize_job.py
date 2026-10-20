@@ -81,6 +81,30 @@ def _already_featurized(
     }
 
 
+def _featurized_partial(
+    feature_store: Any, deployment_id: int, online: bool
+) -> set[str]:
+    """Traces already written while still partial.
+
+    A partial row is deliberately not counted as done: the root span may yet
+    arrive, and the trace is worth redoing when it does. But a sidecar drop is
+    permanent, so a trace whose root never arrives is partial on every run and
+    was appended again each time, duplicating rows in the offline table. Such a
+    trace is redone only once it turns up ready.
+    """
+    try:
+        rows = _read(feature_store, FEATURES_FG, online)
+    except Exception:  # noqa: BLE001 — first run, before the FG has any rows
+        return set()
+    return {
+        str(r.get("trace_id"))
+        for r in rows
+        if r.get("deployment_id") == deployment_id
+        and r.get("trace_id")
+        and r.get("trace_status") == "PARTIAL"
+    }
+
+
 def featurize(
     feature_store: Any,
     deployment_id: int,
@@ -119,8 +143,12 @@ def featurize(
     if not completeness.ready and not completeness.partial:
         return 0
 
+    # A partial trace already written is left alone until it is ready: a root
+    # span that never arrives is a permanent sidecar drop, so redoing it while
+    # it is still partial appended the same row again on every run.
+    redo_when_ready = _featurized_partial(feature_store, deployment_id, online)
     wanted = (
-        set(completeness.ready) | set(completeness.partial)
+        set(completeness.ready) | (set(completeness.partial) - redo_when_ready)
     ) - _already_featurized(feature_store, deployment_id, online)
     if not wanted:
         log.info(

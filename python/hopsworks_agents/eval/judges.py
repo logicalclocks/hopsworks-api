@@ -285,6 +285,23 @@ def _judge_unusable(name: str, kind: str, reason: str) -> EvaluatorResult:
     return result
 
 
+def _as_bool(value: Any) -> bool | None:
+    """A judge's verdict, or None when it is not one.
+
+    Models quote booleans more often than not, and `bool("false")` is True: a
+    reply of `{"passed": "false", "score": 0.1}` was read as a pass with a
+    score of 0.1. Anything that is neither a bool nor one of the two words is
+    not a verdict, and saying so is better than guessing which way it leans.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        word = value.strip().lower()
+        if word in ("true", "false"):
+            return word == "true"
+    return None
+
+
 def _judged(name: str, kind: str, model: str, raw: str) -> EvaluatorResult:
     """A judge reply turned into a result, or ungradable if it is not usable."""
     parsed = _json_from(raw)
@@ -295,17 +312,23 @@ def _judged(name: str, kind: str, model: str, raw: str) -> EvaluatorResult:
             "judge did not return usable JSON; scoring zero here would blame the "
             "agent for the judge",
         )
-    try:
-        score = max(
-            0.0, min(1.0, float(parsed.get("score", 1.0 if parsed["passed"] else 0.0)))
+    passed = _as_bool(parsed["passed"])
+    if passed is None:
+        return _judge_unusable(
+            name,
+            kind,
+            f"judge answered {parsed['passed']!r} for passed, which is not a "
+            "verdict either way",
         )
+    try:
+        score = max(0.0, min(1.0, float(parsed.get("score", 1.0 if passed else 0.0))))
     except (TypeError, ValueError):
-        score = 1.0 if parsed["passed"] else 0.0
+        score = 1.0 if passed else 0.0
     return EvaluatorResult(
         evaluator_name=name,
         evaluator_type=kind,
         score=score,
-        passed=bool(parsed["passed"]),
+        passed=passed,
         reason=str(parsed.get("reason", ""))[:1000],
         assertions={"judge_model": model},
     )

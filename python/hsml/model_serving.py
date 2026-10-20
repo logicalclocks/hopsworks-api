@@ -536,12 +536,15 @@ class ModelServing:
         scaling_configuration: PredictorScalingConfig | dict | None = None,
         env_vars: dict | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
-        memory: DeploymentMemoryConfig | dict | None = None,
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
         knative_mode: bool | None = None,
+        # Appended rather than inserted: everything above it shipped in 5.0, so
+        # a position in the middle would move parameters callers may already be
+        # passing positionally.
+        memory: DeploymentMemoryConfig | dict | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -634,12 +637,13 @@ class ModelServing:
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
-        memory: DeploymentMemoryConfig | dict | None = None,
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
         knative_mode: bool | None = None,
+        # Appended rather than inserted, for the reason create_endpoint gives.
+        memory: DeploymentMemoryConfig | dict | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -812,6 +816,13 @@ class ModelServing:
             # existing record instead of creating a new one.
             predictor._id = existing.predictor.id
             predictor._version = existing.predictor.version
+            # And carry over a memory policy this call said nothing about. The
+            # documented way to roll out new code is to run deploy_agent again,
+            # and the backend overwrites an agent's memory column with whatever
+            # arrives -- so omitting `memory=` silently switched off memory
+            # that had been configured in the UI or on the first deploy.
+            if memory is None and existing.predictor.memory is not None:
+                predictor._memory = existing.predictor.memory
             existing.predictor = predictor
             existing.description = description
             existing.save()

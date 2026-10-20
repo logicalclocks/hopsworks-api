@@ -1158,6 +1158,15 @@ class AgentApp(FastAPI):
                         else:
                             chunks.append(payload)
                             yield _sse("message.delta", {"delta": {"text": payload}})
+                except asyncio.CancelledError:
+                    # What a client hanging up actually looks like. Starlette
+                    # cancels the generator on disconnect, so the await above
+                    # raises here and the is_disconnected() branch never runs.
+                    # Unmarked, the span ended UNSET -- the shape of a fast,
+                    # healthy reply -- and the turn stayed open until the
+                    # reaper called it abandoned much later.
+                    _mark_cancelled(span)
+                    raise
                 finally:
                     if not task.done():
                         task.cancel()
