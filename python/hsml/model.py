@@ -187,7 +187,7 @@ class Model:
         """Download the model files.
 
         If local_path is not provided, the model is downloaded to a cache directory
-        under `/tmp/hopsworks/models/{project_name}/{model_name}/{version}/{id}/` and
+        under `/tmp/hopsworks/models/{project_name}/{model_name}/{version}/{id}/` (under `%TEMP%` on Windows) and
         reused across subsequent downloads, including across processes.
         Cached models persist beyond program exit.
         The cache path includes the backend model `id`, so a model version that is
