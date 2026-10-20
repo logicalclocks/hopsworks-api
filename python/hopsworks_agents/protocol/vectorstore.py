@@ -360,7 +360,13 @@ class HopsworksVectorStore(VectorStore):
                 # search finds nothing, ask unfiltered and keep only what is
                 # ours, below: the comparison is then a Python `==` on the
                 # value itself, which is both exact and ours to rely on.
-                results = self._find_neighbors(fg, vector, k, None)
+                # Widened, because the filter is being applied below instead of
+                # by the index: the nearest rows are every subject's, and
+                # cutting to k before dropping the others can leave none of
+                # this caller's at all -- which is how a word that was indexed
+                # 62 times still read as "not searchable". One feature group
+                # per deployment makes a wider pool cheap.
+                results = self._find_neighbors(fg, vector, _widened(k), None)
         except Exception:  # noqa: BLE001
             log.exception("Vector search failed; returning no hits")
             return []
@@ -504,6 +510,15 @@ class HopsworksVectorStore(VectorStore):
             raise VectorPurgeError(
                 f"Could not purge vectors for {probe}: {err}"
             ) from err
+
+
+def _widened(k: int) -> int:
+    """How many neighbours to ask for when this will filter them itself.
+
+    Ten times what the caller wants, with a floor that covers a small index and
+    a ceiling the vector database accepts.
+    """
+    return max(min(max(k * 10, 100), 1000), k)
 
 
 def vector_store_for(embedder, deployment_id: str | None = None, **kwargs):

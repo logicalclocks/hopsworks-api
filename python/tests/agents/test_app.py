@@ -2624,7 +2624,7 @@ class TestReviewRegressions:
         asked = []
 
         def neighbors(fg, vector, k, condition):
-            asked.append(condition)
+            asked.append((condition, k))
             if condition is not None:
                 return []
             return [
@@ -2637,8 +2637,11 @@ class TestReviewRegressions:
 
         hits = store.search([0.0, 0.0, 1.0], k=5, subject="alice@example.com")
 
-        # asked with the filter first, then without it
-        assert len(asked) == 2 and asked[0] is not None and asked[1] is None
+        # asked with the filter first, then without it -- and the second ask is
+        # wider, because this is what drops the other subjects: cutting to k
+        # before filtering can leave none of the caller's rows at all
+        assert [bool(condition) for condition, _ in asked] == [True, False]
+        assert asked[0][1] == 5 and asked[1][1] >= 100
         # and only the subject's own row came back: the check is a Python
         # comparison on the value, so it is exact where the index's was not
         assert [h["item_id"] for h in hits] == ["i1"]
