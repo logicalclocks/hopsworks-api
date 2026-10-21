@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import urllib.parse
 
@@ -413,6 +414,20 @@ class App:
     def table_prefix(self) -> str | None:
         """The prefix every table of the app must start with, for example `app_reviews__`; `None` when `managed_db` is False."""
         return self._table_prefix
+
+    @public
+    @property
+    def table_options(self) -> str:
+        """The table options to end the app's `CREATE TABLE` with, so its columns are stored on disk in RonDB.
+
+        For example ``ENGINE=NDBCLUSTER TABLESPACE `ts_1` STORAGE DISK``, built from the `MYSQL_TABLESPACE` variable Hopsworks sets in the app's pod.
+        Outside the pod, or on a cluster without a tablespace, it is `ENGINE=NDBCLUSTER` and the table is kept in memory.
+        RonDB keeps primary-key and other indexed columns in memory even in a disk table.
+        """
+        tablespace = os.environ.get("MYSQL_TABLESPACE")
+        if not tablespace:
+            return "ENGINE=NDBCLUSTER"
+        return f"ENGINE=NDBCLUSTER TABLESPACE `{tablespace}` STORAGE DISK"
 
     @public
     @property

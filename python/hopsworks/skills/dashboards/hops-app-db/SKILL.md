@@ -36,6 +36,7 @@ variables, so code written for one works in the other.
 | `MYSQL_DB` | the project database, `<project_name>` lowercased |
 | `MYSQL_USER` | the app's own MySQL user, `hopsapp_<app id>`; for an app created before table registration, the user of the person who **started** it, `<project>_<username>` |
 | `MYSQL_PASSWORD_SECRET_NAME` | name of the **Hopsworks secret** holding that user's password (same string as `MYSQL_USER`) |
+| `MYSQL_TABLESPACE` | the RonDB tablespace to create the app's tables in so their columns are stored on disk, e.g. `ts_1`; set for apps that register their tables, absent on a cluster without one |
 
 - The password is never put in the environment. Read the secret named by
   `MYSQL_PASSWORD_SECRET_NAME` through the SDK or the REST API; it is a private
@@ -101,15 +102,16 @@ and the app's calls to public HTTPS APIs stop verifying.
 
 An app connects as its own user, which can `SELECT` anything in the project
 database but cannot create a table on its own. Register each table first; the
-app's user is then granted `ALL PRIVILEGES` on that one table, and the app runs
-its own `CREATE TABLE`:
+app's user is then granted the table privileges on that one table (`SELECT`,
+`INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`, `ALTER`, `INDEX`, `REFERENCES`;
+not `CREATE VIEW` or `TRIGGER`), and the app runs its own `CREATE TABLE`:
 
 ```python
 import os, hopsworks
 project = hopsworks.login()
 app = project.get_app_api().get_app(os.environ["HOPSWORKS_JOB_NAME"])
 NOTES = app.register_table("notes")          # -> "app_reviews__notes"; a no-op if already registered
-# then: CREATE TABLE IF NOT EXISTS {NOTES} (...)
+# then: CREATE TABLE IF NOT EXISTS {NOTES} (...) {app.table_options}
 ```
 
 - Table names are `<app.table_prefix><name>`, the prefix being
@@ -137,7 +139,15 @@ NOTES = app.register_table("notes")          # -> "app_reviews__notes"; a no-op 
 ### Table rules on RonDB
 
 - RonDB is MySQL Cluster: tables default to `ENGINE=NDBCLUSTER`. Declare it
-  explicitly so the table is never created as InnoDB by an unusual session default.
+  explicitly so the table is never created as InnoDB by an unusual session default;
+  the MySQL servers apps connect to refuse local engines such as InnoDB.
+- **Store the columns on disk.** End every `CREATE TABLE` with
+  `app.table_options` (Python) or `tableOptions()` (Node), which give
+  `ENGINE=NDBCLUSTER TABLESPACE <MYSQL_TABLESPACE> STORAGE DISK`. A table created
+  without them is held entirely in RonDB memory, which is shared with every
+  online feature group. Primary-key and other indexed columns stay in memory in
+  any case; mark a small, hot non-indexed column `STORAGE MEMORY` only if it must
+  be. The Apps page table viewer shows whether each table and column is on disk.
 - Always define a `PRIMARY KEY` (NDB adds a hidden one otherwise, which makes
   updates and replication slower).
 - Keep rows small: NDB stores at most ~30 000 bytes per row in-row; long
@@ -203,7 +213,7 @@ with connect() as conn, conn.cursor() as cur:
           user_email VARCHAR(255) NOT NULL,
           note       TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=NDBCLUSTER DEFAULT CHARSET=utf8mb4
+        ) {app.table_options} DEFAULT CHARSET=utf8mb4
     """)
     cur.execute(f"INSERT INTO {NOTES} (user_email, note) VALUES (%s, %s)", (email, note))
     cur.execute(f"SELECT * FROM {NOTES} ORDER BY created_at DESC LIMIT 20")
@@ -239,13 +249,14 @@ The statements the app runs. Register each app table first (see above). An app
 created before table registration and started by a Data Scientist can only read.
 
 ```sql
--- app state table (registered first): explicit engine, explicit primary key, the app's prefix
+-- app state table (registered first): explicit engine, explicit primary key, the app's prefix,
+-- columns on disk in the tablespace named by MYSQL_TABLESPACE (here ts_1)
 CREATE TABLE IF NOT EXISTS app_dashboard__settings (
   user_email VARCHAR(255) NOT NULL,
   settings   JSON         NOT NULL,
   updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (user_email)
-) ENGINE=NDBCLUSTER DEFAULT CHARSET=utf8mb4;
+) ENGINE=NDBCLUSTER TABLESPACE ts_1 STORAGE DISK DEFAULT CHARSET=utf8mb4;
 
 -- upsert
 INSERT INTO app_dashboard__settings (user_email, settings) VALUES (?, ?)
@@ -295,14 +306,14 @@ node_app = apps.create_app(
 // server.js — mysql2 pool over the injected variables; bind to 0.0.0.0:$APP_PORT
 import express from "express";
 import mysql from "mysql2/promise";
-import { mysqlConfig, registerTable } from "@hopsworks/app";   // throws a HopsworksEnvError naming the missing MYSQL_* variable
+import { mysqlConfig, registerTable, tableOptions } from "@hopsworks/app";   // throws a HopsworksEnvError naming the missing MYSQL_* variable
 
 const pool = mysql.createPool({ ...(await mysqlConfig()), waitForConnections: true, connectionLimit: 5 });
 const NOTES = await registerTable("notes");                         // "app_node_api__notes"; idempotent
 await pool.execute(
   `CREATE TABLE IF NOT EXISTS ${NOTES} (
      id BIGINT AUTO_INCREMENT PRIMARY KEY, note TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-   ) ENGINE=NDBCLUSTER DEFAULT CHARSET=utf8mb4`);
+   ) ${tableOptions()} DEFAULT CHARSET=utf8mb4`);
 
 const app = express();
 app.use(express.json());

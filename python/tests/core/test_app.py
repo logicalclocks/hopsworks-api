@@ -575,3 +575,13 @@ class TestAppTables:
         assert app.table_count == 1
         assert app.managed_db is True
         assert app.table_prefix == "app_reviews__"
+
+    def test_table_options_put_the_columns_on_disk_in_the_pods_tablespace(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        mocker.patch.dict("os.environ", {"MYSQL_TABLESPACE": "ts_1"})
+        assert app.table_options == "ENGINE=NDBCLUSTER TABLESPACE `ts_1` STORAGE DISK"
+
+    def test_table_options_without_a_tablespace_keep_the_table_in_memory(self, mocker):
+        app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
+        mocker.patch.dict("os.environ", {}, clear=True)
+        assert app.table_options == "ENGINE=NDBCLUSTER"

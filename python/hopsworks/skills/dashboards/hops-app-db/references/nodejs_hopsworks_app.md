@@ -50,7 +50,7 @@ const [rows] = await pool.execute("SELECT * FROM transactions_1 WHERE cc_num = ?
 
 `mysqlConfig()` honours an explicit `MYSQL_PASSWORD` (local development, or an
 entrypoint that resolved it with the Python SDK) and otherwise reads the secret.
-The privileges follow the starter's project role (**hops-app-db**, "Privileges").
+An app that registers its tables connects as its own database user, which writes only those tables; register them with `registerTable()` and end each `CREATE TABLE` with `tableOptions()` so the columns are stored on disk (**hops-app-db**).
 
 ## Offline feature groups (Trino)
 
