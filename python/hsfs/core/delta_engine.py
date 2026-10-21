@@ -538,8 +538,6 @@ class DeltaEngine:
         return self._delete_partitions_delta_rs(selection)
 
     def _delete_partitions_spark(self, selection):
-        from hopsworks_common.spark_connect_utils import _is_spark_connect_session
-
         location = self._feature_group.prepare_spark_location()
         if not _is_delta_table_at(self._spark_session, location):
             raise FeatureStoreException(
@@ -548,11 +546,6 @@ class DeltaEngine:
         detail = self._spark_session.sql(f"DESCRIBE DETAIL delta.`{location}`").first()
         self._require_physical_partition_columns(selection, detail["partitionColumns"])
         table = _delta_table_for_path(self._spark_session, location)
-
-        # Spark Connect exposes no DeltaLog, so there the whole log is searched.
-        connect = _is_spark_connect_session(self._spark_session)
-        if not connect:
-            version_before = self._spark_delta_log()[1].version()
 
         marker = str(uuid.uuid4())
         conf = self._spark_session.conf
@@ -568,12 +561,9 @@ class DeltaEngine:
             else:
                 conf.set(self.COMMIT_USER_METADATA_CONF, previous)
 
-        versions = None
-        if not connect:
-            versions = range(
-                version_before + 1, self._spark_delta_log()[1].version() + 1
-            )
-        marked = self._find_marked_commit(location, marker, versions)
+        # TODO(FSTORE-2150): read only the versions the delete committed once the
+        # DeltaLog version can be read from Python on classic Spark.
+        marked = self._find_marked_commit(location, marker)
         if marked is None:
             _logger.info(
                 "delete_partitions on %s wrote no commit.", self._feature_group.name
@@ -595,15 +585,12 @@ class DeltaEngine:
         return fg_commit, f"Delta version {version}"
 
     def _find_marked_commit(
-        self, location: str, marker: str, versions: range | None
+        self, location: str, marker: str
     ) -> tuple[int, int, list[str | None]] | None:
         """Find the commit carrying *marker* as its `userMetadata`.
 
         Read from `_delta_log/*.json` rather than `history()`, which needs a Hive
         client under Spark Connect.
-
-        Parameters:
-            versions: The log versions to search, or None to search the whole log.
 
         Returns:
             The commit's version, its in-commit timestamp in milliseconds and the
@@ -635,15 +622,9 @@ class DeltaEngine:
             ]
         )
         log_dir = location.rstrip("/") + "/_delta_log/"
-        if versions is None:
-            log_files = [log_dir + "*.json"]
-        elif not versions:
-            return None
-        else:
-            log_files = [f"{log_dir}{version:020d}.json" for version in versions]
         marked = (
             self._spark_session.read.schema(log_schema)
-            .json(log_files)
+            .json(log_dir + "*.json")
             .filter(F.col("commitInfo.userMetadata") == marker)
             .withColumn(
                 "version",

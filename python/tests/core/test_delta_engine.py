@@ -2894,27 +2894,15 @@ class TestDeltaEngine:
         with pytest.raises(FeatureStoreException, match="Cannot delete partitions"):
             engine._delete_partitions(self._day_selection())
 
-    def _spark_partition_delete_engine(self, mocker, marked, connect=False):
+    def _spark_partition_delete_engine(self, mocker, marked):
         fg = _make_fg("hopsfs://nn:8020/p")
         fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
         spark = mocker.MagicMock()
         spark.sql.return_value.first.return_value = {"partitionColumns": ["day"]}
         engine = DeltaEngine(1, "fs", fg, spark, mocker.MagicMock())
         mocker.patch("hsfs.core.delta_engine._is_delta_table_at", return_value=True)
-        mocker.patch(
-            "hopsworks_common.spark_connect_utils._is_spark_connect_session",
-            return_value=connect,
-        )
         table = mocker.Mock()
         mocker.patch("hsfs.core.delta_engine._delta_table_for_path", return_value=table)
-        mocker.patch.object(
-            engine,
-            "_spark_delta_log",
-            side_effect=[
-                (None, mocker.Mock(**{"version.return_value": 11})),
-                (None, mocker.Mock(**{"version.return_value": 12})),
-            ],
-        )
         mocker.patch.object(engine, "_find_marked_commit", return_value=marked)
         mocker.patch.object(
             engine,
@@ -2943,28 +2931,11 @@ class TestDeltaEngine:
         table.delete.assert_called_once_with(selection._spark_condition.return_value)
         marker_key, marker = markers_during_delete[0].args
         assert marker_key == DeltaEngine.COMMIT_USER_METADATA_CONF
-        # Only the versions the delete and concurrent writers committed are read.
-        engine._find_marked_commit.assert_called_once_with(
-            "hopsfs://nn:8020/p", marker, range(12, 13)
-        )
+        engine._find_marked_commit.assert_called_once_with("hopsfs://nn:8020/p", marker)
         spark.conf.unset.assert_called_once_with(DeltaEngine.COMMIT_USER_METADATA_CONF)
         assert committed == "Delta version 12"
         assert fg_commit.rows_deleted == 7
         assert fg_commit.commit_time == 1792417951699
-
-    def test_delete_partitions_spark_connect_searches_the_whole_log(self, mocker):
-        # Arrange
-        engine, spark, _ = self._spark_partition_delete_engine(
-            mocker, marked=None, connect=True
-        )
-        spark.conf.get.return_value = None
-
-        # Act
-        engine._delete_partitions(mocker.Mock(columns=["day"]))
-
-        # Assert
-        assert engine._find_marked_commit.call_args.args[2] is None
-        engine._spark_delta_log.assert_not_called()
 
     def test_delete_partitions_spark_rejects_non_physical_partition_column(
         self, mocker
@@ -3002,36 +2973,6 @@ class TestDeltaEngine:
 
         # Act & Assert
         assert engine._delete_partitions(mocker.Mock(columns=["day"])) is None
-
-    def test_find_marked_commit_reads_only_the_given_versions(self, mocker):
-        # Arrange
-        spark = mocker.MagicMock()
-        engine = DeltaEngine(1, "fs", _make_fg("hopsfs://nn:8020/p"), spark, None)
-        reader = spark.read.schema.return_value
-        reader.json.return_value.filter.return_value.withColumn.return_value.select.return_value.collect.return_value = []
-
-        # Act
-        marked = engine._find_marked_commit("hopsfs://nn:8020/p/", "m", range(12, 14))
-
-        # Assert
-        assert marked is None
-        reader.json.assert_called_once_with(
-            [
-                "hopsfs://nn:8020/p/_delta_log/00000000000000000012.json",
-                "hopsfs://nn:8020/p/_delta_log/00000000000000000013.json",
-            ]
-        )
-
-    def test_find_marked_commit_without_new_versions_reads_nothing(self, mocker):
-        # Arrange
-        spark = mocker.MagicMock()
-        engine = DeltaEngine(1, "fs", _make_fg("hopsfs://nn:8020/p"), spark, None)
-
-        # Act & Assert
-        assert (
-            engine._find_marked_commit("hopsfs://nn:8020/p", "m", range(12, 12)) is None
-        )
-        spark.read.schema.assert_not_called()
 
     @pytest.mark.parametrize(
         ("stats", "expected"),
