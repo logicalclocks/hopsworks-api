@@ -576,12 +576,21 @@ class TestAppTables:
         assert app.managed_db is True
         assert app.table_prefix == "app_reviews__"
 
-    def test_table_options_put_the_columns_on_disk_in_the_pods_tablespace(self, mocker):
+    def test_create_table_sends_the_definition_with_the_prefixed_name(self, mocker):
         app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
-        mocker.patch.dict("os.environ", {"MYSQL_TABLESPACE": "ts_1"})
-        assert app.table_options == "ENGINE=NDBCLUSTER TABLESPACE `ts_1` STORAGE DISK"
+        register = mocker.patch.object(
+            AppApi, "_register_table", return_value={"name": "app_reviews__notes"}
+        )
+        name = app.create_table("notes", "id BIGINT PRIMARY KEY, note TEXT")
+        assert name == "app_reviews__notes"
+        register.assert_called_once_with(
+            app.name, "app_reviews__notes", "id BIGINT PRIMARY KEY, note TEXT"
+        )
 
-    def test_table_options_without_a_tablespace_keep_the_table_in_memory(self, mocker):
+    def test_alter_table_sends_the_alteration(self, mocker):
         app = self._app(mocker, managedDb=True, tablePrefix="app_reviews__")
-        mocker.patch.dict("os.environ", {}, clear=True)
-        assert app.table_options == "ENGINE=NDBCLUSTER"
+        alter = mocker.patch.object(AppApi, "_alter_table", return_value={})
+        app.alter_table("notes", "ADD COLUMN score DOUBLE")
+        alter.assert_called_once_with(
+            app.name, "app_reviews__notes", "ADD COLUMN score DOUBLE"
+        )

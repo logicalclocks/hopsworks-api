@@ -433,14 +433,29 @@ class AppApi:
         """List the tables the app registered."""
         return client._get_instance()._send_request("GET", self._tables_path(app_name))
 
-    def _register_table(self, app_name: str, table_name: str) -> dict:
-        """Register a table for the app to create; idempotent for a table it already owns."""
+    def _register_table(
+        self, app_name: str, table_name: str, definition: str | None = None
+    ) -> dict:
+        """Register a table of the app, and create it on disk from `definition` when given; idempotent."""
         headers = {"content-type": "application/json"}
+        body = {"name": table_name}
+        if definition is not None:
+            body["definition"] = definition
         return client._get_instance()._send_request(
             "POST",
             self._tables_path(app_name),
             headers=headers,
-            data=json.dumps({"name": table_name}),
+            data=json.dumps(body),
+        )
+
+    def _alter_table(self, app_name: str, table_name: str, alteration: str) -> dict:
+        """Change a table of the app with `alteration`, what follows ALTER TABLE."""
+        headers = {"content-type": "application/json"}
+        return client._get_instance()._send_request(
+            "POST",
+            self._tables_path(app_name, table_name, "alter"),
+            headers=headers,
+            data=json.dumps({"alteration": alteration}),
         )
 
     def _get_table(self, app_name: str, table_name: str) -> dict:

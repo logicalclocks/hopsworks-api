@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import urllib.parse
 
@@ -417,20 +416,6 @@ class App:
 
     @public
     @property
-    def table_options(self) -> str:
-        """The table options to end the app's `CREATE TABLE` with, so its columns are stored on disk in RonDB.
-
-        For example ``ENGINE=NDBCLUSTER TABLESPACE `ts_1` STORAGE DISK``, built from the `MYSQL_TABLESPACE` variable Hopsworks sets in the app's pod.
-        Outside the pod, or on a cluster without a tablespace, it is `ENGINE=NDBCLUSTER` and the table is kept in memory.
-        RonDB keeps primary-key and other indexed columns in memory even in a disk table.
-        """
-        tablespace = os.environ.get("MYSQL_TABLESPACE")
-        if not tablespace:
-            return "ENGINE=NDBCLUSTER"
-        return f"ENGINE=NDBCLUSTER TABLESPACE `{tablespace}` STORAGE DISK"
-
-    @public
-    @property
     def table_count(self) -> int:
         """How many tables the app has registered."""
         return self._table_count
@@ -485,9 +470,10 @@ class App:
     @public
     @usage._method_logger
     def register_table(self, name: str) -> str:
-        """Register a table so the app can create it in the project's online database.
+        """Reserve a table name for the app in the project's online database, without creating the table.
 
-        Call it before `CREATE TABLE`: the app's database user is granted the registered table only, and the table is dropped when the app is deleted.
+        The app's database user is granted the registered table only, and the table is dropped when the app is deleted.
+        [`create_table`][hopsworks_common.app.App.create_table] registers the table too, so most apps only call that.
         Registering a table the app already owns does nothing, so it is safe on every start.
 
         Parameters:
@@ -499,13 +485,60 @@ class App:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the name is not lowercase `a-z`, `0-9` and `_`, is longer than 64 characters with the prefix, already exists as another table, or belongs to another app, or if the app does not register tables (`managed_db` is False).
         """
-        table_name = (
-            name
-            if self._table_prefix is None or name.startswith(self._table_prefix)
-            else self._table_prefix + name
+        registered = self._app_api._register_table(
+            self._name, self._full_table_name(name)
         )
-        registered = self._app_api._register_table(self._name, table_name)
         return registered["name"]
+
+    def _full_table_name(self, name: str) -> str:
+        if self._table_prefix is None or name.startswith(self._table_prefix):
+            return name
+        return self._table_prefix + name
+
+    @public
+    @usage._method_logger
+    def create_table(self, name: str, definition: str) -> str:
+        """Create a table of the app in the project's online database, stored on disk in RonDB.
+
+        The app's database user cannot create or alter tables, so Hopsworks runs the `CREATE TABLE`, registering the table first.
+        Hopsworks sets the engine, tablespace and `STORAGE DISK`; RonDB keeps primary-key and other indexed columns in memory.
+        Creating a table that exists does nothing, so it is safe on every start.
+
+        ```python
+        notes = app.create_table("notes", "id BIGINT AUTO_INCREMENT PRIMARY KEY, note TEXT")
+        ```
+
+        Parameters:
+            name: The table name, with or without the app's `table_prefix`; the prefix is added when missing.
+            definition: The columns and indexes, as written inside the parentheses of `CREATE TABLE`.
+
+        Returns:
+            The full table name to use in SQL.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the name is refused as by [`register_table`][hopsworks_common.app.App.register_table], if the definition sets an engine, tablespace or storage, or if the database refuses the definition.
+        """
+        table_name = self._full_table_name(name)
+        created = self._app_api._register_table(self._name, table_name, definition)
+        return created["name"]
+
+    @public
+    @usage._method_logger
+    def alter_table(self, name: str, alteration: str) -> None:
+        """Change a table of the app, for example to add a column; the table stays on disk.
+
+        ```python
+        app.alter_table("notes", "ADD COLUMN score DOUBLE")
+        ```
+
+        Parameters:
+            name: The table name, with or without the app's `table_prefix`.
+            alteration: What follows `ALTER TABLE <name>`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the app does not own the table, if the alteration sets an engine, tablespace or storage, or if the database refuses it.
+        """
+        self._app_api._alter_table(self._name, self._full_table_name(name), alteration)
 
     @public
     @usage._method_logger
