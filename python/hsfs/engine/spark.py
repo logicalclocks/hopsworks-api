@@ -295,25 +295,48 @@ class Engine:
     def _is_source_pushdown_supported(self):
         return True
 
-    def _register_pushdown_query(self, fs_query):
+    def _register_pushdown_query(self, fs_query, feature_names=None):
         external_fg = fs_query.on_demand_fg_aliases[0].on_demand_feature_group
         dataframe = external_fg.data_source.storage_connector.read(
-            fs_query.pushdown_query
+            fs_query.pushdown_query,
+            options=fs_query._pushdown_options() or None,
         )
-
-        # Feature names in the feature store are always lower case, while a warehouse that folds
-        # unquoted identifiers returns them upper case. Lower casing can only move a returned
-        # column towards its feature name, so it stays correct for warehouses that fold the other
-        # way or not at all.
-        for column in dataframe.columns:
-            if column != column.lower():
-                dataframe = dataframe.withColumnRenamed(column, column.lower())
+        dataframe = self._name_pushdown_columns(dataframe, feature_names)
 
         # A fixed name would let two concurrent reads in one session overwrite each other's
         # result between registration and execution, and answer from the wrong one.
         view = f"{self.PUSHDOWN_RESULT_VIEW_PREFIX}_{uuid.uuid4().hex}"
         dataframe.createOrReplaceTempView(view)
         return f"SELECT * FROM {view}"
+
+    @staticmethod
+    def _name_pushdown_columns(dataframe, feature_names):
+        # A warehouse that folds unquoted identifiers returns upper-case columns, while the query
+        # asked for names in their own case, join prefixes included. A column is renamed to the
+        # requested name it matches ignoring case. One that matches none is lower cased, since
+        # feature names in the feature store are lower case; that cannot move it away from its
+        # feature name on a warehouse that folds the other way or not at all.
+        spellings = {}
+        for name in feature_names or []:
+            spellings.setdefault(name.lower(), set()).add(name)
+        requested = {
+            key: next(iter(candidates))
+            for key, candidates in spellings.items()
+            if len(candidates) == 1
+        }
+
+        existing = set(dataframe.columns)
+        renamed = []
+        taken = set()
+        for column in dataframe.columns:
+            key = column.lower()
+            name = requested.get(key, key)
+            # Renaming onto a name another column carries would make the frame ambiguous.
+            if name != column and (name in taken or name in existing):
+                name = column
+            taken.add(name)
+            renamed.append(name)
+        return dataframe.toDF(*renamed) if renamed != dataframe.columns else dataframe
 
     def _register_spine_temporary_view(self, spine, alias):
         # A per-request alias, not a fixed name: two reads in one SparkSession would otherwise

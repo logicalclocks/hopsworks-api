@@ -338,6 +338,31 @@ class TestTrainingDatasetEngine:
         assert fs_query._register_external.call_count == 0
         assert fs_query._register_hudi_tables.call_count == 0
 
+    def test_query_pushdown_declined_for_differing_feature_group_options(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._is_source_pushdown_supported.return_value = True
+
+        td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
+
+        fs_query = mock_td_api.return_value._get_query.return_value
+        fs_query.pushdown_query = "SELECT 1"
+        fs_query.pit_query = None
+        fs_query._pushdown_options.return_value = None
+
+        # Act
+        result = td_engine._query(
+            training_dataset=None, online=None, with_label=None, is_hive_query=None
+        )
+
+        # Assert
+        assert mock_engine.return_value._register_pushdown_query.call_count == 0
+        assert fs_query._register_external.call_count == 1
+        assert result == fs_query.query
+
     def test_query_pushdown_declined_by_engine(self, mocker):
         # Arrange
         feature_store_id = 99

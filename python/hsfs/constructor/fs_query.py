@@ -118,6 +118,18 @@ class FsQuery:
         """
         return self._pushdown_query
 
+    def _pushdown_options(self) -> dict[str, Any] | None:
+        """The read options shared by every external feature group behind the pushdown query.
+
+        None when they carry different options, since one pushed-down read has a single set of options to apply.
+        """
+        options = [
+            dict(getattr(alias.on_demand_feature_group, "options", None) or {})
+            for alias in self._on_demand_fg_aliases
+        ]
+        shared = options[0] if options else {}
+        return shared if all(option == shared for option in options) else None
+
     @property
     def spine_applied(self) -> bool:
         """Whether the backend rendered this query against the inference spine it was sent.

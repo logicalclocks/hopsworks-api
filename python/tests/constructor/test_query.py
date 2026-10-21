@@ -739,9 +739,59 @@ class TestQuery:
         )
 
         assert sql_query == "SELECT * FROM pushed_down"
-        mock_engine._register_pushdown_query.assert_called_once_with(mock_fs_query)
+        mock_engine._register_pushdown_query.assert_called_once_with(
+            mock_fs_query, feature_names=["id", "label", "tf_name"]
+        )
         mock_fs_query._register_external.assert_not_called()
         mock_fs_query._register_hudi_tables.assert_not_called()
+
+    def test_prep_read_source_pushdown_differing_feature_group_options(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.MagicMock()
+        mock_engine._is_flyingduck_query_supported.return_value = False
+        mock_engine._is_source_pushdown_supported.return_value = True
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = "SELECT * FROM SALES_DB.PUBLIC.FG0 AS fg0"
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.pit_query = None
+        # One pushed-down read has one set of options, so differing ones read each group alone.
+        mock_fs_query._pushdown_options.return_value = None
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+
+        sql_query, _ = TestQuery.fg1.select_all()._prep_read(
+            online=False, read_options={}
+        )
+
+        assert sql_query == "SELECT * FROM test"
+        mock_engine._register_pushdown_query.assert_not_called()
+        mock_fs_query._register_external.assert_called()
+
+    def test_output_feature_names_apply_join_prefix(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        q = TestQuery.fg1.select_all().join(TestQuery.fg2.select_all(), prefix="R_")
+
+        assert sorted(q._output_feature_names()) == sorted(
+            ["id", "label", "tf_name", "R_id", "R_tf1_name"]
+        )
+
+    def test_output_feature_names_include_nested_joins(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        inner = TestQuery.fg2.select_all().join(
+            TestQuery.fg3.select_all(), prefix="Inner_"
+        )
+        q = TestQuery.fg1.select_all().join(inner, prefix="R_")
+
+        names = q._output_feature_names()
+
+        assert "R_id" in names
+        assert "Inner_tf3_name" in names
 
     def test_prep_read_source_pushdown_unsupported_engine(self, mocker):
         mocker.patch("hsfs.engine._get_type", return_value="python")

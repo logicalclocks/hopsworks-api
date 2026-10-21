@@ -192,15 +192,24 @@ class Query:
 
                 if fs_query.pushdown_query is not None:
                     engine_instance = engine._get_instance()
-                    if engine_instance._is_source_pushdown_supported():
+                    if fs_query._pushdown_options() is None:
+                        _logger.debug(
+                            "The query can be pushed down to its source, but its feature groups "
+                            "carry different read options. Reading each feature group separately instead."
+                        )
+                    elif engine_instance._is_source_pushdown_supported():
                         return (
-                            engine_instance._register_pushdown_query(fs_query),
+                            engine_instance._register_pushdown_query(
+                                fs_query,
+                                feature_names=self._output_feature_names(),
+                            ),
                             online_conn,
                         )
-                    _logger.debug(
-                        "The query can be pushed down to its source, but the current engine "
-                        "cannot execute it. Reading each feature group separately instead."
-                    )
+                    else:
+                        _logger.debug(
+                            "The query can be pushed down to its source, but the current engine "
+                            "cannot execute it. Reading each feature group separately instead."
+                        )
 
                 sql_query = self._to_string(fs_query, online)
                 # Register on demand feature groups as temporary tables
@@ -555,6 +564,21 @@ class Query:
             close = getattr(batches, "close", None)
             if close is not None:
                 close()
+
+    def _output_feature_names(self) -> list[str]:
+        """The names of the query's output columns, with join prefixes and fully qualified names applied.
+
+        Nested joins are included.
+        """
+        names = {
+            feature._get_fully_qualified_feature_name(
+                feature_group=self._left_feature_group
+            ): set()
+            for feature in self._left_features
+        }
+        return list(
+            self._extract_feature_to_feature_group_mapping_joins(self._joins, names)
+        )
 
     def _output_features(self) -> list[Feature]:
         """The query's features named as the columns of its SQL output, join prefixes included."""

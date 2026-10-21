@@ -15,6 +15,8 @@
 #
 
 
+import copy
+
 from hsfs.constructor import (
     external_feature_group_alias,
     fs_query,
@@ -60,3 +62,30 @@ class TestFsQuery:
         assert q.query_online is None
         assert q.pit_query is None
         assert q.pushdown_query is None
+
+    def _query_with_options(self, backend_fixtures, *options):
+        json = copy.deepcopy(backend_fixtures["fs_query"]["get"]["response"])
+        json["on_demand_feature_groups"] = json["on_demand_feature_groups"] * len(
+            options
+        )
+        q = fs_query.FsQuery.from_response_json(json)
+        for alias, option in zip(q._on_demand_fg_aliases, options, strict=True):
+            alias.on_demand_feature_group._options = option
+        return q
+
+    def test_pushdown_options_shared(self, backend_fixtures):
+        q = self._query_with_options(
+            backend_fixtures, {"sfRole": "ANALYST"}, {"sfRole": "ANALYST"}
+        )
+
+        assert q._pushdown_options() == {"sfRole": "ANALYST"}
+
+    def test_pushdown_options_none_and_empty_agree(self, backend_fixtures):
+        q = self._query_with_options(backend_fixtures, None, {})
+
+        assert q._pushdown_options() == {}
+
+    def test_pushdown_options_differ(self, backend_fixtures):
+        q = self._query_with_options(backend_fixtures, {"sfRole": "ANALYST"}, None)
+
+        assert q._pushdown_options() is None
