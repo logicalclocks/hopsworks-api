@@ -254,7 +254,7 @@ class SupersetApi:
             table_name: Name of the table (or virtual dataset).
             schema: Database schema name.
             sql: SQL expression for virtual datasets.
-            description: Optional description.
+            description: Optional description, set with a PUT after the create.
             owners: Optional list of Superset user IDs as owners.
 
         Returns:
@@ -268,11 +268,19 @@ class SupersetApi:
             payload["schema"] = schema
         if sql is not None:
             payload["sql"] = sql
-        if description is not None:
-            payload["description"] = description
         if owners is not None:
             payload["owners"] = owners
-        return self._request("POST", "/api/v1/dataset/", json_data=payload)
+        dataset = self._request("POST", "/api/v1/dataset/", json_data=payload)
+        # Superset's dataset POST schema has no description field (400 "Unknown field."): set it after.
+        if description:
+            try:
+                self.update_dataset(dataset["id"], description=description)
+            except requests.HTTPError as e:
+                raise requests.HTTPError(
+                    f"Superset dataset {dataset['id']} was created, but its description was not set: {e}",
+                    response=e.response,
+                ) from e
+        return dataset
 
     @public
     @usage._method_logger

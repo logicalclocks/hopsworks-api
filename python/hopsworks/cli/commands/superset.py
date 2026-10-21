@@ -70,7 +70,7 @@ def superset_dataset_info(ctx: click.Context, dataset_id: int) -> None:
 )
 @click.option("--schema", help="Schema the table lives in.")
 @click.option("--sql", help="SQL query for a virtual dataset.")
-@click.option("--description", default="", help="Free-form description.")
+@click.option("--description", help="Free-form description.")
 @click.pass_context
 def superset_dataset_create(
     ctx: click.Context,
@@ -78,7 +78,7 @@ def superset_dataset_create(
     table_name: str,
     schema: str | None,
     sql: str | None,
-    description: str,
+    description: str | None,
 ) -> None:
     """Create a Superset dataset.
 
@@ -180,7 +180,7 @@ def superset_chart_info(ctx: click.Context, chart_id: int) -> None:
     help="Superset dataset ID.",
 )
 @click.option("--params", required=True, help="JSON-string of viz parameters.")
-@click.option("--description", default="", help="Free-form description.")
+@click.option("--description", help="Free-form description.")
 @click.pass_context
 def superset_chart_create(
     ctx: click.Context,
@@ -188,7 +188,7 @@ def superset_chart_create(
     viz_type: str,
     datasource_id: int,
     params: str,
-    description: str,
+    description: str | None,
 ) -> None:
     """Create a Superset chart (slice).
 

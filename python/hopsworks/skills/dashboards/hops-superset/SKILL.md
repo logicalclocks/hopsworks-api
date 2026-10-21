@@ -180,11 +180,6 @@ created = api.create_dataset(
     sql=sql,
 )
 dataset_id = created["id"]
-
-# NOTE: Do NOT pass `description=...` to create_dataset. The SDK accepts
-# the kwarg but the Superset REST API in this deployment rejects it with
-# `400 {"message":{"description":["Unknown field."]}}`. Same for
-# create_chart / create_dashboard — keep to the core fields only.
 ```
 
 ### Idempotent create-or-reuse

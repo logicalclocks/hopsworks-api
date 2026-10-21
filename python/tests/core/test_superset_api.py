@@ -285,6 +285,41 @@ class TestSupersetApi:
         with pytest.raises(requests.HTTPError, match="referrer header is missing"):
             authed_api.create_dashboard(dashboard_title="d")
 
+    def test_create_dataset_sets_its_description_after_the_post(self, authed_api):
+        """Superset's dataset POST schema refuses a description field: it goes in a PUT."""
+        authed_api._request = Mock(side_effect=[{"id": 7}, {"id": 7}])
+
+        authed_api.create_dataset(
+            3, "sales_1", schema="p_featurestore", description="d"
+        )
+
+        post, put = authed_api._request.call_args_list
+        assert post.args == ("POST", "/api/v1/dataset/")
+        assert post.kwargs["json_data"] == {
+            "database": 3,
+            "table_name": "sales_1",
+            "schema": "p_featurestore",
+        }
+        assert put.args == ("PUT", "/api/v1/dataset/7")
+        assert put.kwargs["json_data"] == {"description": "d"}
+
+    def test_create_dataset_without_description_is_one_post(self, authed_api):
+        authed_api._request = Mock(return_value={"id": 7})
+
+        authed_api.create_dataset(3, "sales_1", description="")
+
+        assert authed_api._request.call_count == 1
+        assert "description" not in authed_api._request.call_args.kwargs["json_data"]
+
+    def test_create_dataset_names_the_dataset_when_the_description_fails(
+        self, authed_api
+    ):
+        refused = requests.HTTPError("403 Forbidden")
+        authed_api._request = Mock(side_effect=[{"id": 7}, refused])
+
+        with pytest.raises(requests.HTTPError, match="dataset 7 was created"):
+            authed_api.create_dataset(3, "sales_1", description="d")
+
     def test_204_returns_empty_dict(self, authed_api):
         """A 204 response returns an empty dict instead of calling .json()."""
         resp = self._mock_response(status_code=204)
