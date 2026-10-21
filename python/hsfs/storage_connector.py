@@ -4946,7 +4946,6 @@ class HopsworksConnector(StorageConnector):
     """
 
     type = StorageConnector.HOPSWORKS
-    DEFAULT_PORT = 443
 
     def __init__(
         self,
@@ -5025,28 +5024,6 @@ class HopsworksConnector(StorageConnector):
             }
         )
         return payload
-
-    @public
-    def connector_options(self) -> dict[str, Any]:
-        """Return keyword arguments for [`hopsworks.login`][hopsworks.login] to the remote cluster.
-
-        `hopsworks.login` replaces the current connection, so use these in a separate process from one that is connected to this cluster.
-
-        ```python
-        import hopsworks
-
-        sc = fs.get_storage_connector("my_remote_cluster")
-        remote_project = hopsworks.login(**sc.connector_options())
-        ```
-        """
-        self._ensure_full()
-        return {
-            "host": self._host,
-            "port": self._port or self.DEFAULT_PORT,
-            "project": self._project,
-            "api_key_value": self._api_key,
-            "hostname_verification": self._verify is not False,
-        }
 
     def spark_options(self) -> dict[str, Any]:
         return {}

@@ -3859,27 +3859,6 @@ class TestHopsworksConnector:
         }
         assert payload["verify"] is False
 
-    def test_connector_options_are_login_arguments(self):
-        assert self._connector(verify=False).connector_options() == {
-            "host": "hopsworks.example.com",
-            "port": 443,
-            "project": "Sales",
-            "api_key_value": "k",
-            "hostname_verification": False,
-        }
-
-    def test_connector_options_refetch_the_basic_info_copy(self, mocker):
-        sc = storage_connector.HopsworksConnector(
-            id=1, name="remote", featurestore_id=67
-        )
-
-        def refetch():
-            sc._host = "hopsworks.example.com"
-
-        mocker.patch.object(sc, "_refetch", side_effect=refetch)
-
-        assert sc.connector_options()["host"] == "hopsworks.example.com"
-
     def test_get_tables_defaults_to_the_remote_project_feature_store(self, mocker):
         sc = self._connector()
         mock_get_tables = mocker.patch.object(
