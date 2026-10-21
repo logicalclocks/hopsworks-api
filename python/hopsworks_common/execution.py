@@ -184,9 +184,9 @@ class Execution:
     @property
     def success(self) -> bool | None:
         """Boolean to indicate if execution ran successfully or failed."""
-        is_yarn_job = (
-            self.job_type.lower() == "spark" or self.job_type.lower() == "pyspark"
-        )
+        if self.state in constants.JOBS.FAILED_WITHOUT_FINAL_STATUS:
+            return False
+        is_yarn_job = (self.job_type or "").lower() in ("spark", "pyspark")
 
         if not is_yarn_job:
             if self.state in constants.JOBS.ERROR_STATES:
