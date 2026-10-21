@@ -158,7 +158,10 @@ def superset_chart_info(ctx: click.Context, chart_id: int) -> None:
 @superset_chart_group.command("create")
 @click.option("--name", "slice_name", required=True, help="Slice (chart) name.")
 @click.option(
-    "--viz-type", "viz_type", required=True, help="Viz type, e.g. bar, pie, table."
+    "--viz-type",
+    "viz_type",
+    required=True,
+    help="Viz type, e.g. echarts_timeseries_bar, pie, table.",
 )
 @click.option(
     "--datasource-id",
