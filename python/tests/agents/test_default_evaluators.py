@@ -113,7 +113,7 @@ class FakeApi(EvalApi):
         self.saved = []
         self._existing = [{"name": n} for n in existing]
 
-    def evaluators(self):
+    def _list_evaluators(self):
         return self._existing
 
     def _save_evaluator(self, name, checks, description=""):

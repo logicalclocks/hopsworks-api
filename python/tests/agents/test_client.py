@@ -65,14 +65,16 @@ REPLY = {
 class TestCalling:
     def test_extracts_the_answer_and_the_trace_id(self):
         c = client(FakeSession(post=FakeResponse(REPLY)))
-        result = c.call("2+2?", traceparent="00-abc123-s-01", baggage="b", timeout_s=10)
+        result = c._send_prompt(
+            "2+2?", traceparent="00-abc123-s-01", baggage="b", timeout_s=10
+        )
         assert result.text == "4"
         assert result.trace_id == "abc123"
         assert result.error == ""
 
     def test_sends_correlation_headers(self):
         session = FakeSession(post=FakeResponse(REPLY))
-        client(session).call(
+        client(session)._send_prompt(
             "q",
             traceparent="00-t-s-01",
             baggage="hopsworks.eval.run_id=r",
@@ -86,13 +88,13 @@ class TestCalling:
         # the runner classifies it as INFRA_ERROR and excludes it from the pass
         # rate; an exception here would abort the whole suite instead
         c = client(FakeSession(post_raises=ConnectionError("refused")))
-        result = c.call("q", traceparent="t", baggage="b", timeout_s=10)
+        result = c._send_prompt("q", traceparent="t", baggage="b", timeout_s=10)
         assert "refused" in result.error
         assert result.text == ""
 
     def test_an_http_error_is_reported_not_parsed(self):
         c = client(FakeSession(post=FakeResponse(status_code=500, text="boom")))
-        result = c.call("q", traceparent="t", baggage="b", timeout_s=10)
+        result = c._send_prompt("q", traceparent="t", baggage="b", timeout_s=10)
         assert "500" in result.error
         # carried as a number as well, so the runner can tell the agent crashing
         # (500) from the gateway never reaching it (503) without reading prose
@@ -102,7 +104,7 @@ class TestCalling:
         client(FakeSession(post=FakeResponse({**REPLY, "status": "failed"})))
         assert (
             client(FakeSession(post=FakeResponse({**REPLY, "status": "failed"})))
-            .call("q", traceparent="t", baggage="b", timeout_s=10)
+            ._send_prompt("q", traceparent="t", baggage="b", timeout_s=10)
             .error
             != ""
         )
@@ -116,7 +118,7 @@ class TestManifest:
         }
         session = FakeSession({".well-known": FakeResponse(manifest)})
         c = client(session)
-        assert c.manifest()["capabilities"]["trace_correlation"] is True
+        assert c._fetch_manifest()["capabilities"]["trace_correlation"] is True
         # the path the manifest declares is used, not a hardcoded one
         assert c._chat_path == "/v1/custom-chat"
 
@@ -328,7 +330,7 @@ class TestWhereTheAgentIs:
             project_name="g1",
             deployment_id=7,
         )
-        assert client.manifest() == {"endpoints": {"chat": "/v1/chat"}}
+        assert client._fetch_manifest() == {"endpoints": {"chat": "/v1/chat"}}
         # the one that answered, so a trial is not a second round of guessing
         assert client._base_url() == "http://a-predictor.g1.svc.cluster.local"
         assert sum(".well-known" in url for url in asked) == 2

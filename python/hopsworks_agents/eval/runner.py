@@ -72,9 +72,9 @@ class AgentResponse:
 class AgentClient(Protocol):
     """What the runner needs from the outside world."""
 
-    def manifest(self) -> dict[str, Any]: ...
+    def _fetch_manifest(self) -> dict[str, Any]: ...
 
-    def call(
+    def _send_prompt(
         self, prompt: str, *, traceparent: str, baggage: str, timeout_s: float
     ) -> AgentResponse: ...
 
@@ -362,7 +362,7 @@ def _run_trial(
         # stubs, and anyone else's -- keeps working.
         threaded = {"conversation_id": conversation_id} if conversation_id else {}
         try:
-            response = client.call(
+            response = client._send_prompt(
                 text,
                 traceparent=_traceparent(turn_trace, turn_span),
                 baggage=_baggage(run_id, suite, task, trial_index, trial_id),
@@ -545,7 +545,7 @@ def _manifest_when_ready(
     last: Exception | None = None
     while True:
         try:
-            return client.manifest()
+            return client._fetch_manifest()
         except Exception as err:  # noqa: BLE001 - any failure to reach it is "not up yet"
             last = err
             if time.monotonic() >= deadline:

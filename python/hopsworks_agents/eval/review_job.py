@@ -31,7 +31,7 @@ from .agent_source import (
     _load_agent_source,
     _relevant_files,
 )
-from .api import hopsworks_session
+from .api import _hopsworks_session
 from .client import HopsworksAgentClient
 from .clusters import (
     Cluster,
@@ -616,7 +616,7 @@ def main() -> None:
 
     project = hopsworks.login()
     host = os.environ.get("HOPSWORKS_HOST") or os.environ["REST_ENDPOINT"]
-    session = hopsworks_session()
+    session = _hopsworks_session()
     base = _api(host, project.id)
     outcomes = [
         _execute(run_id, session, base, project, host) for run_id in args.run_ids

@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 
-from .api import hopsworks_session
+from .api import _hopsworks_session
 from .evaluator_spec import SpecError, _evaluators_for_suite
 from .judges import LlmJudgeEvaluator
 from .metrics import _run_metrics
@@ -594,7 +594,7 @@ def main() -> None:
     # resolved them for the login above. Building either by hand failed twice:
     # a job has no API key, and the internal endpoint is signed by a CA no
     # system trust store carries.
-    session = hopsworks_session()
+    session = _hopsworks_session()
     base = _api(host, project.id)
 
     outcomes = [

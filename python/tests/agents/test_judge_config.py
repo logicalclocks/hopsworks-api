@@ -620,7 +620,7 @@ class TestProviderRequestShape:
             return "graded"
 
         temperature = _TemperatureParameter._for_model(provider, model, 0.0)
-        assert temperature.call(call) == "graded"
+        assert temperature._send(call) == "graded"
         assert seen == [{}]
 
     @pytest.mark.parametrize(
@@ -645,7 +645,7 @@ class TestProviderRequestShape:
             return "graded"
 
         temperature = _TemperatureParameter._for_model(provider, model, 0.7)
-        assert temperature.call(call) == "graded"
+        assert temperature._send(call) == "graded"
         assert seen == [{"temperature": 0.7}]
 
     @pytest.mark.parametrize(
@@ -662,7 +662,7 @@ class TestProviderRequestShape:
             return "graded"
 
         parameters = _ChatCompletionParameters("openai", model, 0.0, 1500)
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [{"max_completion_tokens": 1500}]
 
     def test_non_reasoning_chat_keeps_max_tokens_and_temperature(self):
@@ -675,7 +675,7 @@ class TestProviderRequestShape:
             return "graded"
 
         parameters = _ChatCompletionParameters("openai", "gpt-4o", 0.2, 1500)
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [{"max_tokens": 1500, "temperature": 0.2}]
 
     def test_anthropic_reasoning_effort_uses_output_config(self):
@@ -688,7 +688,7 @@ class TestProviderRequestShape:
             return "graded"
 
         parameters = _AnthropicMessagesParameters("claude-sonnet-5", 0.0, "high")
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [{"output_config": {"effort": "high"}}]
 
     def test_anthropic_omits_effort_for_models_that_do_not_support_it(self):
@@ -701,7 +701,7 @@ class TestProviderRequestShape:
             return "graded"
 
         parameters = _AnthropicMessagesParameters("claude-sonnet-4-5", 0.0, "high")
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [{"temperature": 0.0}]
 
     def test_openai_reasoning_effort_is_top_level(self):
@@ -716,7 +716,7 @@ class TestProviderRequestShape:
         parameters = _ChatCompletionParameters(
             "openai", "gpt-5.6-terra", 0.0, 1500, "high"
         )
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [{"max_completion_tokens": 1500, "reasoning_effort": "high"}]
 
     def test_non_reasoning_chat_omits_reasoning_effort(self):
@@ -729,7 +729,7 @@ class TestProviderRequestShape:
             return "graded"
 
         parameters = _ChatCompletionParameters("openai", "gpt-4o", 0.2, 1500, "high")
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [{"max_tokens": 1500, "temperature": 0.2}]
 
     def test_deepseek_reasoning_effort_enables_thinking(self):
@@ -744,7 +744,7 @@ class TestProviderRequestShape:
         parameters = _ChatCompletionParameters(
             "deepseek", "deepseek-v4-pro", 0.0, 1500, "max"
         )
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [
             {
                 "max_tokens": 1500,
@@ -765,7 +765,7 @@ class TestProviderRequestShape:
         parameters = _ChatCompletionParameters(
             "deepseek", "deepseek-v4-pro", 0.0, 1500, "none"
         )
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [
             {
                 "max_tokens": 1500,
@@ -789,8 +789,8 @@ class TestProviderRequestShape:
         parameters = _ChatCompletionParameters(
             "custom", "gpt-oss-120b", 0.0, 1500, "high"
         )
-        assert parameters.call(call) == "graded"
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [
             {"max_tokens": 1500, "temperature": 0.0, "reasoning_effort": "high"},
             {"max_tokens": 1500, "temperature": 0.0},
@@ -824,8 +824,8 @@ class TestProviderRequestShape:
             return "graded"
 
         parameters = _ChatCompletionParameters("custom", "new-fixed-model", 0.0, 1500)
-        assert parameters.call(call) == "graded"
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [
             {"max_tokens": 1500, "temperature": 0.0},
             {"max_tokens": 1500},
@@ -847,7 +847,7 @@ class TestProviderRequestShape:
             return "graded"
 
         parameters = _ChatCompletionParameters("custom", "maybe-reasoning", 0.0, 1500)
-        assert parameters.call(call) == "graded"
+        assert parameters._send(call) == "graded"
         assert seen == [
             {"max_tokens": 1500, "temperature": 0.0},
             {"max_completion_tokens": 1500, "temperature": 0.0},

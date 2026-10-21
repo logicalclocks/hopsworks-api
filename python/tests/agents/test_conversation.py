@@ -35,10 +35,12 @@ class ScriptedAgent:
         self._blocked_on = blocked_on
         self.calls: list[dict] = []
 
-    def manifest(self):
+    def _fetch_manifest(self):
         return CAPABLE
 
-    def call(self, prompt, *, traceparent, baggage, timeout_s, conversation_id=None):
+    def _send_prompt(
+        self, prompt, *, traceparent, baggage, timeout_s, conversation_id=None
+    ):
         self.calls.append({"prompt": prompt, "conversation_id": conversation_id})
         index = len(self.calls) - 1
         if self._error_on == index:

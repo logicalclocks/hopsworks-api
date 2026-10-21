@@ -97,7 +97,7 @@ class HopsworksAgentClient:
         """The address that answered, or the likeliest one before anything has."""
         return (self._agent_url or self._candidate_urls()[0]).rstrip("/")
 
-    def manifest(self) -> dict[str, Any]:
+    def _fetch_manifest(self) -> dict[str, Any]:
         """The agent's self-description, which is what the runner refuses on.
 
         Fetched rather than assumed: an agent on an SDK too old to continue a
@@ -124,7 +124,7 @@ class HopsworksAgentClient:
             raise last if last is not None else RuntimeError("no address to try")
         return self._manifest
 
-    def call(
+    def _send_prompt(
         self,
         prompt: str,
         *,

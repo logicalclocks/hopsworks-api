@@ -375,7 +375,7 @@ class TestOneExecutionManyRuns:
             return run_id != "bad"
 
         monkeypatch.setattr(run_job, "_execute", fake_execute)
-        monkeypatch.setattr(run_job, "hopsworks_session", lambda: object())
+        monkeypatch.setattr(run_job, "_hopsworks_session", lambda: object())
         monkeypatch.setattr(run_job, "_api", lambda host, pid: "base")
 
         import sys

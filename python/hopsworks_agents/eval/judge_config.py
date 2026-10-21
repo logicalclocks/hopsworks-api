@@ -638,7 +638,7 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
                 )
                 return _message_text(response.choices[0].message.content)
 
-            return parameters.call(call)
+            return parameters._send(call)
 
         return complete_openai
 
@@ -664,7 +664,7 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
                 if getattr(block, "type", "") == "text"
             )
 
-        return parameters.call(call)
+        return parameters._send(call)
 
     return complete_anthropic
 
@@ -716,7 +716,7 @@ class _TemperatureParameter:
     ) -> _TemperatureParameter:
         return cls(value, "omit" if _omits_temperature(provider, model) else "probe")
 
-    def extra(self) -> dict[str, float]:
+    def _extra_args(self) -> dict[str, float]:
         return {"temperature": self.value} if self._state in ("probe", "send") else {}
 
     def _accepted(self) -> None:
@@ -734,23 +734,23 @@ class _TemperatureParameter:
     def probing(self) -> bool:
         return self._state == "probe"
 
-    def call(self, call: Any) -> str:
+    def _send(self, send: Any) -> str:
         if self._state == "omit":
-            return call()
+            return send()
         if self._state == "send":
-            return call(temperature=self.value)
+            return send(temperature=self.value)
 
         with self._lock:
             if self._state == "omit":
-                return call()
+                return send()
             if self._state == "send":
-                return call(temperature=self.value)
+                return send(temperature=self.value)
             try:
-                result = call(temperature=self.value)
+                result = send(temperature=self.value)
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
                 if not self._rejected(err):
                     raise
-                return call()
+                return send()
             self._accepted()
             return result
 
@@ -773,7 +773,7 @@ class _ReasoningEffortParameter:
     ) -> _ReasoningEffortParameter:
         return cls(_chat_completion_reasoning_effort_extra(provider, model, effort))
 
-    def extra(self) -> dict[str, Any]:
+    def _extra_args(self) -> dict[str, Any]:
         return dict(self._extra)
 
     def _rejected(self, err: Exception) -> bool:
@@ -799,20 +799,20 @@ class _AnthropicMessagesParameters:
         )
         self._lock = Lock()
 
-    def call(self, call: Any) -> str:
+    def _send(self, send: Any) -> str:
         if not self._temperature.probing:
-            return self._call(call)
+            return self._retrying(send)
         with self._lock:
-            return self._call(call)
+            return self._retrying(send)
 
-    def _call(self, call: Any) -> str:
+    def _retrying(self, send: Any) -> str:
         last: Exception | None = None
         for _attempt in range(3):
             extra: dict[str, Any] = {}
-            extra.update(self._temperature.extra())
-            extra.update(self._reasoning_effort.extra())
+            extra.update(self._temperature._extra_args())
+            extra.update(self._reasoning_effort._extra_args())
             try:
-                result = call(**extra)
+                result = send(**extra)
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
                 last = err
                 if self._temperature._rejected(err):
@@ -848,20 +848,20 @@ class _ChatCompletionParameters:
         )
         self._lock = Lock()
 
-    def call(self, call: Any) -> str:
+    def _send(self, send: Any) -> str:
         if not self._temperature.probing:
-            return self._call(call)
+            return self._retrying(send)
         with self._lock:
-            return self._call(call)
+            return self._retrying(send)
 
-    def _call(self, call: Any) -> str:
+    def _retrying(self, send: Any) -> str:
         last: Exception | None = None
         for _attempt in range(3):
             extra: dict[str, Any] = {self._token_limit: self.max_tokens}
-            extra.update(self._temperature.extra())
-            extra.update(self._reasoning_effort.extra())
+            extra.update(self._temperature._extra_args())
+            extra.update(self._reasoning_effort._extra_args())
             try:
-                result = call(**extra)
+                result = send(**extra)
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
                 last = err
                 replacement = _replacement_token_limit(err, self._token_limit)
@@ -898,7 +898,7 @@ def _without_rejected_temperature(call: Any, temperature: float) -> str:
     Retried once, only on that specific complaint. A 400 about anything else is a
     real problem and must not be swallowed by a blind retry.
     """
-    return _TemperatureParameter(temperature).call(call)
+    return _TemperatureParameter(temperature)._send(call)
 
 
 def _rejects_temperature(err: Exception) -> bool:

@@ -88,7 +88,7 @@ class TestWhatItSends:
 
     def test_adding_a_task_authors_it_then_joins_it_with_its_expectations(self):
         client = api([FakeResponse(body={"taskId": "t1"}), FakeResponse()])
-        client.add_task({"suiteId": "s1", "version": 2}, "hello", {"contains": "UB40"})
+        client._add_task({"suiteId": "s1", "version": 2}, "hello", {"contains": "UB40"})
         author, join = client._session.sent
         assert json.loads(author[2]["inputMessages"])[0]["content"] == "hello"
         assert "suiteId=s1&version=2" in join[1]
@@ -97,7 +97,7 @@ class TestWhatItSends:
     def test_a_task_with_no_expectations_still_sends_the_key(self):
         # an omitted map and an empty one mean different things to the server
         client = api([FakeResponse(body={"taskId": "t1"}), FakeResponse()])
-        client.add_task({"suiteId": "s1", "version": 1}, "hello")
+        client._add_task({"suiteId": "s1", "version": 1}, "hello")
         assert client._session.sent[1][2] == {"expectations": {}}
 
     def test_a_run_is_started_with_query_parameters_not_a_body(self):
@@ -348,7 +348,7 @@ class TestReachingTheApiFromInsideAJob:
             "_from_hopsworks_client",
             lambda: ("the-auth", "/srv/hops/certs/ca_chain.pem"),
         )
-        session = api_module.hopsworks_session()
+        session = api_module._hopsworks_session()
         assert session.auth == "the-auth"
         assert session.verify == "/srv/hops/certs/ca_chain.pem"
 
@@ -359,7 +359,7 @@ class TestReachingTheApiFromInsideAJob:
         monkeypatch.setattr(api_module, "_from_hopsworks_client", lambda: None)
         monkeypatch.setenv("HOPSWORKS_API_KEY", "the-key")
         request = FakeRequest()
-        api_module.hopsworks_session().auth(request)
+        api_module._hopsworks_session().auth(request)
         assert request.headers["Authorization"] == "ApiKey the-key"
 
     def test_the_accessor_this_calls_is_the_one_the_client_has(self):
@@ -423,4 +423,4 @@ class TestTheEvaluatorLibrary:
         # a suite copies these in when created; the library changing later must
         # not alter what a published suite means
         client = api([FakeResponse(body=[{"name": "Account untouched"}])])
-        assert client.evaluators()[0]["name"] == "Account untouched"
+        assert client._list_evaluators()[0]["name"] == "Account untouched"

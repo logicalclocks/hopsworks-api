@@ -798,7 +798,7 @@ class TestArguments:
             "_execute",
             lambda run_id, *a, **k: seen.setdefault("run", run_id) or True,
         )
-        monkeypatch.setattr(rj, "hopsworks_session", lambda: object())
+        monkeypatch.setattr(rj, "_hopsworks_session", lambda: object())
         monkeypatch.setenv("HOPSWORKS_HOST", "https://h")
         fake_hopsworks = type(
             "H",

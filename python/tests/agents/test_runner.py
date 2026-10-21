@@ -69,7 +69,7 @@ class FakeClient:
         self._manifest_failures = manifest_failures
         self.calls: list[dict] = []
 
-    def manifest(self):
+    def _fetch_manifest(self):
         # A deployment that is still coming up refuses the manifest; the runner
         # waits for it rather than reporting the restart as a broken agent.
         if self._manifest_failures > 0:
@@ -77,7 +77,7 @@ class FakeClient:
             raise ConnectionError("connection refused")
         return self._manifest
 
-    def call(self, prompt, *, traceparent, baggage, timeout_s):
+    def _send_prompt(self, prompt, *, traceparent, baggage, timeout_s):
         self.calls.append(
             {"prompt": prompt, "traceparent": traceparent, "baggage": baggage}
         )
@@ -569,8 +569,8 @@ class TestTraceReadiness:
         # traceparent named had that trace graded while the trial row kept the
         # id the runner generated -- a row naming a trace nobody can open.
         class OwnTrace(FakeClient):
-            def call(self, prompt, *, traceparent, baggage, timeout_s):
-                response = super().call(
+            def _send_prompt(self, prompt, *, traceparent, baggage, timeout_s):
+                response = super()._send_prompt(
                     prompt,
                     traceparent=traceparent,
                     baggage=baggage,

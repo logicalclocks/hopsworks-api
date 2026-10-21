@@ -19,7 +19,7 @@ from typing import Any
 
 from hopsworks_apigen import public
 
-from ..api import EvalApiError, _StaticAuth, hopsworks_session
+from ..api import EvalApiError, _hopsworks_session, _StaticAuth
 
 
 TIMEOUT_S = 60
@@ -142,7 +142,7 @@ class Transport:
             self._session.verify = verify
         else:
             # whatever this container has: a job's JWT, a notebook's connected client
-            self._session = hopsworks_session()
+            self._session = _hopsworks_session()
             if verify is not True:
                 self._session.verify = verify
 
