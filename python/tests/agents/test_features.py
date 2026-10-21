@@ -10,7 +10,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from hopsworks_agents.eval import select_ready_traces, trace_features
+from hopsworks_agents.eval.features import _select_ready_traces, _trace_features
 
 
 NOW = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
@@ -53,7 +53,7 @@ def attr(span_id, key, value):
 
 class TestCompleteness:
     def test_quiet_trace_with_a_root_is_ready(self):
-        result = select_ready_traces([span()], now=NOW, grace=timedelta(minutes=3))
+        result = _select_ready_traces([span()], now=NOW, grace=timedelta(minutes=3))
         assert result.ready == ["t1"]
 
     def test_a_trace_still_receiving_spans_is_not_ready(self):
@@ -63,14 +63,14 @@ class TestCompleteness:
             span("root", ingested_seconds_ago=600),
             span("child", parent="root", ingested_seconds_ago=5),
         ]
-        result = select_ready_traces(spans, now=NOW, grace=timedelta(minutes=3))
+        result = _select_ready_traces(spans, now=NOW, grace=timedelta(minutes=3))
         assert result.ready == []
         assert result.pending == ["t1"]
 
     def test_a_root_span_alone_does_not_mean_finished(self):
         # the failure this whole design guards against: the root span is not a
         # completion signal, it is just another span that happened to arrive
-        result = select_ready_traces(
+        result = _select_ready_traces(
             [span("root", ingested_seconds_ago=1)], now=NOW, grace=timedelta(minutes=3)
         )
         assert result.ready == []
@@ -79,7 +79,7 @@ class TestCompleteness:
         # an agent that crashed before exporting its root span is exactly the
         # trace worth keeping; dropping it hides the failures
         spans = [span("child", parent="missing", ingested_seconds_ago=3600)]
-        result = select_ready_traces(
+        result = _select_ready_traces(
             spans,
             now=NOW,
             grace=timedelta(minutes=3),
@@ -90,7 +90,7 @@ class TestCompleteness:
 
     def test_a_rootless_trace_still_within_the_timeout_waits(self):
         spans = [span("child", parent="missing", ingested_seconds_ago=60)]
-        result = select_ready_traces(
+        result = _select_ready_traces(
             spans,
             now=NOW,
             grace=timedelta(minutes=3),
@@ -106,14 +106,14 @@ class TestCompleteness:
             span("root", start_ns=0, ingested_seconds_ago=600),
             span("late", parent="root", start_ns=0, ingested_seconds_ago=2),
         ]
-        assert select_ready_traces(
+        assert _select_ready_traces(
             spans, now=NOW, grace=timedelta(minutes=3)
         ).pending == ["t1"]
 
     def test_spans_without_an_ingestion_time_are_not_guessed_at(self):
         naive = span()
         del naive["created_at"]
-        result = select_ready_traces([naive], now=NOW)
+        result = _select_ready_traces([naive], now=NOW)
         assert result.pending == ["t1"]
 
     def test_traces_are_judged_independently(self):
@@ -121,7 +121,7 @@ class TestCompleteness:
             span("a", trace_id="quiet", ingested_seconds_ago=600),
             span("b", trace_id="busy", ingested_seconds_ago=1),
         ]
-        result = select_ready_traces(spans, now=NOW, grace=timedelta(minutes=3))
+        result = _select_ready_traces(spans, now=NOW, grace=timedelta(minutes=3))
         assert result.ready == ["quiet"]
         assert result.pending == ["busy"]
 
@@ -131,7 +131,7 @@ class TestTraceFeatures:
         # what the SDK stamps from the response object -- authoritative, unlike
         # anything reconstructed from child spans
         spans = [span("root", messages=[{"role": "assistant", "content": "guessed"}])]
-        row = trace_features(spans, [attr("root", "output.value", "authoritative")])
+        row = _trace_features(spans, [attr("root", "output.value", "authoritative")])
         assert row["final_output"] == "authoritative"
 
     def test_final_output_falls_back_to_the_last_assistant_message(self):
@@ -144,10 +144,10 @@ class TestTraceFeatures:
                 messages=[{"role": "assistant", "content": "answer"}],
             ),
         ]
-        assert trace_features(spans)["final_output"] == "answer"
+        assert _trace_features(spans)["final_output"] == "answer"
 
     def test_final_output_is_empty_rather_than_invented(self):
-        assert trace_features([span("root")])["final_output"] == ""
+        assert _trace_features([span("root")])["final_output"] == ""
 
     def test_counts_tools_and_their_errors(self):
         spans = [
@@ -161,7 +161,7 @@ class TestTraceFeatures:
             attr("t2s", "openinference.span.kind", "TOOL"),
             attr("t2s", "tool.name", "refund"),
         ]
-        row = trace_features(spans, attrs)
+        row = _trace_features(spans, attrs)
         assert row["tool_call_count"] == 2
         assert row["tool_error_count"] == 1
         assert json.loads(row["tool_names"]) == ["search", "refund"]
@@ -191,7 +191,7 @@ class TestTraceFeatures:
             attr("tool", "openinference.span.kind", "TOOL"),
             attr("tool", "gen_ai.usage.input_tokens", "999"),
         ]
-        row = trace_features(spans, attrs)
+        row = _trace_features(spans, attrs)
         # 10+7+5 and 5+3+1: the three model calls. The AGENT span's figure is
         # the agent's own total for the whole turn -- adding it to the calls it
         # is the total of charged every trace twice.
@@ -208,7 +208,7 @@ class TestTraceFeatures:
             attr("root", "hopsworks.turn.output_tokens", "7"),
             attr("tool", "openinference.span.kind", "TOOL"),
         ]
-        row = trace_features(spans, attrs)
+        row = _trace_features(spans, attrs)
         assert row["input_tokens"] == 11
         assert row["output_tokens"] == 7
 
@@ -221,7 +221,7 @@ class TestTraceFeatures:
             attr("root", "gen_ai.usage.input_tokens", "11"),
             attr("root", "gen_ai.usage.output_tokens", "7"),
         ]
-        row = trace_features(spans, attrs)
+        row = _trace_features(spans, attrs)
         assert row["input_tokens"] == 11
         assert row["output_tokens"] == 7
 
@@ -238,20 +238,20 @@ class TestTraceFeatures:
             attr("inner", "gen_ai.usage.input_tokens", "11"),
             attr("inner", "gen_ai.usage.output_tokens", "7"),
         ]
-        row = trace_features(spans, attrs)
+        row = _trace_features(spans, attrs)
         assert row["input_tokens"] == 11
         assert row["output_tokens"] == 7
 
     def test_eval_traffic_is_marked(self):
         # the separation every downstream query depends on
-        row = trace_features(
+        row = _trace_features(
             [span("root")], [attr("root", "hopsworks.eval.run_id", "run_7")]
         )
         assert row["is_eval"] is True
         assert row["eval_run_id"] == "run_7"
 
     def test_production_traffic_is_not_marked(self):
-        row = trace_features([span("root")])
+        row = _trace_features([span("root")])
         assert row["is_eval"] is False
         assert row["eval_run_id"] == ""
 
@@ -262,7 +262,7 @@ class TestTraceFeatures:
             attr("llm", "openinference.span.kind", "LLM"),
             attr("llm", "gen_ai.request.model", "claude-opus-5"),
         ]
-        assert trace_features(spans, attrs)["model_name"] == "claude-opus-5"
+        assert _trace_features(spans, attrs)["model_name"] == "claude-opus-5"
 
     def test_cost_is_null_when_no_price_is_known(self):
         # zero would claim the trace was free and average into cost dashboards
@@ -272,7 +272,7 @@ class TestTraceFeatures:
             attr("llm", "openinference.span.kind", "LLM"),
             attr("llm", "gen_ai.usage.input_tokens", "1000"),
         ]
-        assert trace_features(spans, attrs)["estimated_cost"] is None
+        assert _trace_features(spans, attrs)["estimated_cost"] is None
 
     def test_cost_is_computed_when_prices_are_given(self):
         spans = [span("root"), span("llm", parent="root", start_ns=1)]
@@ -281,7 +281,7 @@ class TestTraceFeatures:
             attr("llm", "gen_ai.usage.input_tokens", "1000000"),
             attr("llm", "gen_ai.usage.output_tokens", "500000"),
         ]
-        row = trace_features(
+        row = _trace_features(
             spans,
             attrs,
             input_token_price_per_million=3.0,
@@ -296,10 +296,10 @@ class TestTraceFeatures:
         ]
         # the child outlived the root: latency must cover it, not stop at the
         # root's end
-        assert trace_features(spans)["latency_ms"] == pytest.approx(9000.0)
+        assert _trace_features(spans)["latency_ms"] == pytest.approx(9000.0)
 
     def test_partial_traces_say_so(self):
-        row = trace_features([span("child", parent="missing")], is_partial=True)
+        row = _trace_features([span("child", parent="missing")], is_partial=True)
         assert row["trace_status"] == "PARTIAL"
         assert row["root_span_id"] == ""
 
@@ -308,12 +308,12 @@ class TestTraceFeatures:
             {"name": "hopsworks.guardrail.trigger", "span_id": "root"},
             {"name": "something.else", "span_id": "root"},
         ]
-        row = trace_features([span("root")], [], events)
+        row = _trace_features([span("root")], [], events)
         assert row["guardrail_trigger_count"] == 1
 
     def test_empty_input_is_rejected_rather_than_producing_a_blank_row(self):
         with pytest.raises(ValueError):
-            trace_features([])
+            _trace_features([])
 
 
 class TestTheJobDoesNotRedoItsWork:
@@ -369,7 +369,7 @@ class TestTheJobDoesNotRedoItsWork:
         fj, store = self.store(
             [{"deployment_id": 7, "trace_id": "t1", "trace_status": "RECEIVED"}]
         )
-        assert fj.featurize(store, 7, now=NOW) == 0
+        assert fj._featurize(store, 7, now=NOW) == 0
         assert store.groups[fj.FEATURES_FG].inserted == []
 
     def test_a_trace_recorded_as_partial_is_done_again(self):
@@ -377,8 +377,8 @@ class TestTheJobDoesNotRedoItsWork:
         fj, store = self.store(
             [{"deployment_id": 7, "trace_id": "t1", "trace_status": "PARTIAL"}]
         )
-        assert fj.featurize(store, 7, now=NOW) == 1
+        assert fj._featurize(store, 7, now=NOW) == 1
 
     def test_the_first_run_featurizes_everything(self):
         fj, store = self.store([])
-        assert fj.featurize(store, 7, now=NOW) == 1
+        assert fj._featurize(store, 7, now=NOW) == 1

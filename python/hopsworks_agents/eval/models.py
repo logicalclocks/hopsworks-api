@@ -86,17 +86,17 @@ class Task:
     category: str = ""
     tags: list[str] = field(default_factory=list)
 
-    def expects_text(self, name: str) -> str:
+    def _expects_text(self, name: str) -> str:
         """What this task expects of the named check, as written."""
         return (self.expectations.get(name) or "").strip()
 
-    def expects_list(self, name: str) -> list[str]:
+    def _expects_list(self, name: str) -> list[str]:
         """The same value read as a comma-separated list, order preserved."""
         return [
-            item.strip() for item in self.expects_text(name).split(",") if item.strip()
+            item.strip() for item in self._expects_text(name).split(",") if item.strip()
         ]
 
-    def expects_tools(self, name: str) -> tuple[list[str], list[str]]:
+    def _expects_tools(self, name: str) -> tuple[list[str], list[str]]:
         """The required and forbidden lists a tool check reads.
 
         The one expectation that is two things, so it is stored as a JSON object
@@ -106,7 +106,7 @@ class Task:
         """
         import json
 
-        raw = self.expects_text(name)
+        raw = self._expects_text(name)
         if not raw.startswith("{"):
             # A bare list, as someone types it into a CSV column: the tools
             # that must be called, with a leading "!" for one that must not.
@@ -115,7 +115,7 @@ class Task:
             # "!delete_order" and the check could never pass.
             required = []
             forbidden = []
-            for item in self.expects_list(name):
+            for item in self._expects_list(name):
                 if item.startswith("!"):
                     banned = item[1:].strip()
                     if banned:
@@ -138,7 +138,7 @@ class Task:
             )
         return [], []
 
-    def turns(self) -> list[str]:
+    def _turns(self) -> list[str]:
         """The user messages to send, in order.
 
         A single-turn task has one. A multi-turn task is the same array with
@@ -173,7 +173,7 @@ class Task:
         conversation ungradable because it has more than one turn would blame
         the agent for the format.
         """
-        turns = self.turns()
+        turns = self._turns()
         if len(turns) <= 1:
             return turns[0] if turns else ""
         return "\n".join(f"{i + 1}. {turn}" for i, turn in enumerate(turns))
@@ -187,10 +187,10 @@ class Task:
         three turns sent the third, ran cleanly, and produced a pass rate for a
         conversation that never happened.
         """
-        turns = self.turns()
+        turns = self._turns()
         if len(turns) > 1:
             raise ValueError(
-                f"task {self.task_id} has {len(turns)} user turns; use turns() "
+                f"task {self.task_id} has {len(turns)} user turns; use _turns() "
                 "and run them in order"
             )
         return turns[0] if turns else ""
@@ -308,7 +308,7 @@ class Trial:
     completed_at: datetime | None = None
 
 
-def derive_trial_id(
+def _derive_trial_id(
     run_id: str, task_id: str, task_version: int, trial_index: int
 ) -> str:
     """Deterministic, so a crashed runner that retries overwrites the trial's.
@@ -334,6 +334,6 @@ UNGRADED_STATUSES = (
 )
 
 
-def gradable_trials(trials: Sequence[Trial]) -> list[Trial]:
+def _gradable_trials(trials: Sequence[Trial]) -> list[Trial]:
     """Trials whose outcome says something about the agent."""
     return [t for t in trials if t.status not in UNGRADED_STATUSES]

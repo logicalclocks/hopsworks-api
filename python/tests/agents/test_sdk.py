@@ -1705,10 +1705,10 @@ class TestCompositeIdsDoNotGoInPaths:
     """
 
     def test_a_trial_review_sends_the_trial_id_as_a_parameter(self):
-        from hopsworks_agents.eval.models import derive_trial_id
+        from hopsworks_agents.eval.models import _derive_trial_id
 
         evals, session = client(Reply(None))
-        trial_id = derive_trial_id("run-1", "task-1", 1, 0)
+        trial_id = _derive_trial_id("run-1", "task-1", 1, 0)
         assert trial_id.count("/") == 3, "the id shape this case is about changed"
 
         evals.runs.review_trial(

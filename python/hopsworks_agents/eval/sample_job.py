@@ -35,9 +35,9 @@ import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from .evaluators import Evaluator, Trace, verdict
+from .evaluators import Evaluator, Trace, _verdict
 from .models import PassPolicy, Task, TraceStatus, Trial, TrialStatus
-from .run_fields import run_trials
+from .run_fields import _run_trials
 from .runner import RunResult, _transcript
 
 
@@ -66,7 +66,9 @@ CONTEXT_TURNS = 20
 SESSION_PAGE = 100
 
 
-def evaluators_for(run: dict[str, Any], judge_completer: Any = None) -> list[Evaluator]:
+def _evaluators_for(
+    run: dict[str, Any], judge_completer: Any = None
+) -> list[Evaluator]:
     """The checks this monitor grades with, from the spec on the run.
 
     The same `evaluators_from_spec` a suite run uses. It is the same machinery on
@@ -77,16 +79,16 @@ def evaluators_for(run: dict[str, Any], judge_completer: Any = None) -> list[Eva
     The spec is on the run rather than looked up, so an evaluator edited after
     this started cannot change what it graded with halfway through.
     """
-    from .evaluator_spec import evaluators_from_spec
+    from .evaluator_spec import _evaluators_from_spec
 
     return list(
-        evaluators_from_spec(
+        _evaluators_from_spec(
             run.get("sampleEvaluators") or "[]", judge_completer=judge_completer
         )
     )
 
 
-def summary_ms(summary: dict[str, Any]) -> float | None:
+def _summary_ms(summary: dict[str, Any]) -> float | None:
     """When a listed conversation started, in epoch milliseconds.
 
     A trace summary is an `OtelSpanDTO`, and the field it carries is
@@ -106,7 +108,7 @@ def summary_ms(summary: dict[str, Any]) -> float | None:
     return None
 
 
-def within_window(
+def _within_window(
     summaries: Sequence[dict[str, Any]], start_ms: float, end_ms: float
 ) -> list[dict[str, Any]]:
     """The summaries inside the window, half-open: (start, end].
@@ -123,7 +125,7 @@ def within_window(
             # when the backend understands `excludeEval`; this is the same rule for one that
             # does not.
             continue
-        created = summary_ms(summary)
+        created = _summary_ms(summary)
         if created is None:
             # Its age is unknown, and treating unknown as inside would quietly
             # widen whatever window was asked for.
@@ -133,7 +135,7 @@ def within_window(
     return inside
 
 
-def oldest_first(inside: Sequence[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+def _oldest_first(inside: Sequence[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     """Everything in the window, oldest first, up to the ceiling.
 
     Not a random sample any more. The window already says what to grade — since
@@ -146,11 +148,11 @@ def oldest_first(inside: Sequence[dict[str, Any]], limit: int) -> list[dict[str,
     run then stops at the last trace it graded and the next one continues from
     there, so a ceiling defers work rather than skipping it.
     """
-    ordered = sorted(inside, key=lambda s: summary_ms(s) or 0)
+    ordered = sorted(inside, key=lambda s: _summary_ms(s) or 0)
     return ordered[:limit] if limit and limit > 0 else ordered
 
 
-def question_and_answer(detail: dict[str, Any]) -> tuple[str, str]:
+def _question_and_answer(detail: dict[str, Any]) -> tuple[str, str]:
     """The user's question and the agent's final answer, from the trace.
 
     The messages are on whichever span carried them, so this takes the first
@@ -162,13 +164,13 @@ def question_and_answer(detail: dict[str, Any]) -> tuple[str, str]:
     ):
         if not span.get("messages"):
             continue
-        question, answer = turn_of(span.get("messages"))
+        question, answer = _turn_of(span.get("messages"))
         if question or answer:
             return question, answer
     return "", ""
 
 
-def turn_of(messages_raw: Any) -> tuple[str, str]:
+def _turn_of(messages_raw: Any) -> tuple[str, str]:
     """One trace's user question and final agent answer, from its messages."""
     try:
         messages = (
@@ -188,7 +190,7 @@ def turn_of(messages_raw: Any) -> tuple[str, str]:
     return question, answer
 
 
-def started_ns(summary: dict[str, Any], detail: dict[str, Any]) -> int:
+def _started_ns(summary: dict[str, Any], detail: dict[str, Any]) -> int:
     """When the graded turn began, for telling earlier turns from later ones."""
     if summary.get("startTimeNs"):
         return int(summary["startTimeNs"])
@@ -196,7 +198,7 @@ def started_ns(summary: dict[str, Any], detail: dict[str, Any]) -> int:
     return min((t for t in starts if t), default=0)
 
 
-def conversation_before(
+def _conversation_before(
     session: Any,
     base: str,
     session_id: str,
@@ -243,12 +245,12 @@ def conversation_before(
     )[-CONTEXT_TURNS:]
     spoken: list[tuple[str, str]] = []
     for turn in earlier:
-        question, answer = turn_of(turn.get("messages"))
+        question, answer = _turn_of(turn.get("messages"))
         spoken.extend((("user", question), ("agent", answer)))
     return spoken
 
 
-def as_trial(
+def _as_trial(
     run_id: str, deployment_id: int, trace_id: str, answer: str, trace: Trace | None
 ) -> Trial:
     """A sampled trace, as a trial, before it has been graded.
@@ -276,7 +278,7 @@ def as_trial(
     )
 
 
-def grade_trace(
+def _grade_trace(
     evaluators: Sequence[Evaluator],
     run_id: str,
     deployment_id: int,
@@ -293,9 +295,9 @@ def grade_trace(
     conversation task in a suite is graded. Without it -- a first turn, or a
     trace with no session -- the judge sees the turn alone, which is all there is.
     """
-    from .evaluators import run_evaluators
+    from .evaluators import _run_evaluators
 
-    question, answer = question_and_answer(detail)
+    question, answer = _question_and_answer(detail)
     # The trace id is the task id: production has no task, and this is the only
     # identifier that leads back to what was actually said.
     #
@@ -306,13 +308,13 @@ def grade_trace(
         task_id=trace_id,
         input_messages=json.dumps([{"role": "user", "content": question}]),
     )
-    trial = as_trial(run_id, deployment_id, trace_id, answer, trace)
+    trial = _as_trial(run_id, deployment_id, trace_id, answer, trace)
     trial.session_id = session_id
     if earlier_turns:
         trial.transcript = _transcript(
             [*earlier_turns, ("user", question), ("agent", answer)]
         )
-    trial.evaluator_results = list(run_evaluators(evaluators, task, trial, trace))
+    trial.evaluator_results = list(_run_evaluators(evaluators, task, trial, trace))
 
     # `all`, and not configurable: a sample has no suite to carry a pass policy,
     # and the checks here are few and unrelated -- a judge saying the answer was
@@ -322,7 +324,7 @@ def grade_trace(
     # judge configured and no tool calls says nothing about the agent either
     # way, and counting it as a failure would make an unconfigured sample look
     # like a broken agent.
-    outcome = verdict(trial.evaluator_results, PassPolicy.ALL)
+    outcome = _verdict(trial.evaluator_results, PassPolicy.ALL)
     trial.status = (
         TrialStatus.PASSED
         if outcome
@@ -333,7 +335,7 @@ def grade_trace(
     return trial
 
 
-def graded_through(sampled: Sequence[dict[str, Any]], window_end_ms: float) -> float:
+def _graded_through(sampled: Sequence[dict[str, Any]], window_end_ms: float) -> float:
     """Where this run actually got to, which is where the next one starts.
 
     The end of the window when everything in it was graded, and the last graded
@@ -343,10 +345,10 @@ def graded_through(sampled: Sequence[dict[str, Any]], window_end_ms: float) -> f
     """
     if not sampled:
         return window_end_ms
-    return max(summary_ms(s) or 0 for s in sampled)
+    return max(_summary_ms(s) or 0 for s in sampled)
 
 
-def run_sample(
+def _run_sample(
     client: Any,
     session: Any,
     api_base: str,
@@ -377,7 +379,7 @@ def run_sample(
     end_ms = float(
         run.get("sampleTo") or datetime.now(tz=timezone.utc).timestamp() * 1000
     )
-    graded_limit = run_trials(run, 0)
+    graded_limit = _run_trials(run, 0)
     # The window, in SQL, oldest first. Asking for "the newest 500 traces" and
     # filtering them here meant that above 500 in a window the monitor graded
     # the newest slice and skipped everything older -- and said nothing, because
@@ -411,7 +413,7 @@ def run_sample(
     # Filtered again here, and sorted again below: a cluster whose backend
     # predates the window parameters answers with the newest page of everything,
     # and grading that as if it were the window would be wrong rather than slow.
-    recent = within_window(summaries, start_ms, end_ms)
+    recent = _within_window(summaries, start_ms, end_ms)
     available = body.get("count")
     if not isinstance(available, int) or available < len(recent):
         available = len(recent)
@@ -433,7 +435,7 @@ def run_sample(
     sampled = (
         list(recent[:graded_limit] if graded_limit and graded_limit > 0 else recent)
         if strategy == "random"
-        else oldest_first(recent, graded_limit)
+        else _oldest_first(recent, graded_limit)
     )
     if available > len(sampled):
         # Said plainly, because the alternative reading -- that this is all the
@@ -459,16 +461,16 @@ def run_sample(
             continue
         try:
             detail = session.get(f"{base}/traces/{trace_id}", timeout=60).json()
-            trace = client.fetch_trace(trace_id)
+            trace = client._fetch_trace(trace_id)
         except Exception:  # noqa: BLE001 — one unreadable trace is not the run failing
             log.exception("could not read trace %s", trace_id)
             continue
         session_id = str(summary.get("sessionId") or "")
-        earlier = conversation_before(
-            session, base, session_id, started_ns(summary, detail), sessions
+        earlier = _conversation_before(
+            session, base, session_id, _started_ns(summary, detail), sessions
         )
         trials.append(
-            grade_trace(
+            _grade_trace(
                 evaluators,
                 run["runId"],
                 deployment_id,
@@ -511,7 +513,7 @@ def run_sample(
         # start carried a fraction of a millisecond fell inside the next window
         # again and was graded a second time, as a second trial row, counted
         # twice.
-        newest = max(summary_ms(summary) or 0 for summary in sampled)
+        newest = max(_summary_ms(summary) or 0 for summary in sampled)
         processed_through = math.floor(newest) + 1
     # Every trace in the window unreadable is not a quiet night, it is a broken read. Reported
     # SUCCEEDED it moved the watermark over all of them, so the traffic nobody graded was never

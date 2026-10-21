@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def run_trials(run: dict[str, Any], default: int) -> int:
+def _run_trials(run: dict[str, Any], default: int) -> int:
     """The run's trial budget, however the server spelled it.
 
     The field is ``nTrials``; a backend before the wire name was pinned sent it as

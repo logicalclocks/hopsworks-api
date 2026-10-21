@@ -72,7 +72,7 @@ class FakeClient:
     def __init__(self, traces=None):
         self.traces = traces or {}
 
-    def fetch_trace(self, trace_id):
+    def _fetch_trace(self, trace_id):
         return self.traces.get(trace_id)
 
 
@@ -171,7 +171,7 @@ SETTINGS = {
 
 class TestSettings:
     def test_come_off_the_jobs_configuration_with_the_backends_defaults(self):
-        settings = rj.review_settings(
+        settings = rj._review_settings(
             {
                 "config": {
                     "provider": "openai",
@@ -198,16 +198,16 @@ class TestSettings:
             "api_key_env": "MY_KEY",
             "context_turns": 6,
         }
-        assert rj.review_settings(None)["provider"] == "anthropic"
-        assert rj.review_settings({})["context_turns"] == 20
+        assert rj._review_settings(None)["provider"] == "anthropic"
+        assert rj._review_settings({})["context_turns"] == 20
 
     def test_sources_and_code_reading_have_defaults_and_can_be_set(self):
-        defaults = rj.review_settings({})
+        defaults = rj._review_settings({})
         assert defaults["sources"] == ("feedback", "errors", "judge")
         assert (
             defaults["read_source_code"] is True and defaults["source_location"] == ""
         )
-        custom = rj.review_settings(
+        custom = rj._review_settings(
             {
                 "config": {
                     "sources": "feedback, anomalies",
@@ -228,31 +228,33 @@ class TestSettings:
             "gitCurrentCommit": "abc",
             "predictor": "chinook/agent.py",
         }
-        described = rj.code_location(session, "http://h", 1, 3, rj.review_settings({}))
+        described = rj._code_location(
+            session, "http://h", 1, 3, rj._review_settings({})
+        )
         assert (
             described.git_url == "https://github.com/o/r"
             and described.git_commit == "abc"
         )
         assert described.script_file == "chinook/agent.py"
-        overridden = rj.code_location(
+        overridden = rj._code_location(
             session,
             "http://h",
             1,
             3,
-            rj.review_settings(
+            rj._review_settings(
                 {"config": {"sourceLocation": "/Projects/p/Models/agent/2"}}
             ),
         )
         assert overridden.model_path == "/Projects/p/Models/agent/2"
         # the entry script is still the deployment's
         assert overridden.script_file == "chinook/agent.py"
-        unreadable = rj.code_location(
-            FakeSession([]), "http://h", 1, 3, rj.review_settings({})
+        unreadable = rj._code_location(
+            FakeSession([]), "http://h", 1, 3, rj._review_settings({})
         )
-        assert not unreadable.known()
+        assert not unreadable._known()
 
     def test_a_custom_endpoint_carries_its_base_url_and_headers(self, monkeypatch):
-        settings = rj.review_settings(
+        settings = rj._review_settings(
             {
                 "config": {
                     "provider": "custom",
@@ -264,10 +266,10 @@ class TestSettings:
         )
         assert settings["base_url"] == "https://gw.internal/v1"
         assert settings["headers"] == {"X-Tenant": "acme"}
-        assert rj.review_settings({"config": {"headers": "not json"}})["headers"] == {}
+        assert rj._review_settings({"config": {"headers": "not json"}})["headers"] == {}
         # an OpenAI-compatible provider without a base url is a reason, not a crash
         monkeypatch.setenv("MY_KEY", "k")
-        complete, why = rj.completer_from(
+        complete, why = rj._completer_from(
             {**settings, "base_url": "", "api_key_env": "MY_KEY"}
         )
         assert complete is None and "base URL" in why
@@ -276,13 +278,17 @@ class TestSettings:
         # Zero is a choice -- "do not show the model the earlier turns" -- and the
         # settings read it with `or`, so the one setting that turns the context off
         # was the one setting that could not be made.
-        assert rj.review_settings({"config": {"contextTurns": 0}})["context_turns"] == 0
-        assert rj.review_settings({"config": {}})["context_turns"] == 20
-        assert rj.review_settings({"config": {"contextTurns": 5}})["context_turns"] == 5
+        assert (
+            rj._review_settings({"config": {"contextTurns": 0}})["context_turns"] == 0
+        )
+        assert rj._review_settings({"config": {}})["context_turns"] == 20
+        assert (
+            rj._review_settings({"config": {"contextTurns": 5}})["context_turns"] == 5
+        )
 
     def test_a_missing_key_is_a_reason_not_an_exception(self, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        complete, why = rj.completer_from(SETTINGS)
+        complete, why = rj._completer_from(SETTINGS)
         assert complete is None
         assert "ANTHROPIC_API_KEY" in why
 
@@ -292,7 +298,7 @@ class TestTheWindow:
         session = FakeSession([feedback(i) for i in range(7)])
         rj.PAGE, saved = 3, rj.PAGE
         try:
-            rows = rj.feedback_in_window(session, "http://h/otel", 1_000.0, 2_000.0)
+            rows = rj._feedback_in_window(session, "http://h/otel", 1_000.0, 2_000.0)
         finally:
             rj.PAGE = saved
         assert len(rows) == 7
@@ -307,7 +313,7 @@ class TestTheWindow:
 
     def test_one_trace_is_asked_for_by_id_whenever_it_was_given(self):
         session = FakeSession([feedback(0), feedback(1)])
-        rows = rj.feedback_in_window(
+        rows = rj._feedback_in_window(
             session, "http://h/otel", 1_000.0, 2_000.0, trace_id="trace-1"
         )
         assert [r["feedbackId"] for r in rows] == ["fb-1"]
@@ -316,14 +322,14 @@ class TestTheWindow:
         assert "from" not in request and "to" not in request
 
     def test_the_run_row_says_which_trace_it_is_about(self):
-        assert rj.trace_of({"sampleSource": "feedback:trace:305b97bb"}) == "305b97bb"
-        assert rj.trace_of({"sampleSource": "feedback:window"}) == ""
-        assert rj.trace_of({"sampleSource": "feedback"}) == ""
-        assert rj.trace_of({}) == ""
+        assert rj._trace_of({"sampleSource": "feedback:trace:305b97bb"}) == "305b97bb"
+        assert rj._trace_of({"sampleSource": "feedback:window"}) == ""
+        assert rj._trace_of({"sampleSource": "feedback"}) == ""
+        assert rj._trace_of({}) == ""
 
     def test_oldest_first_whatever_order_the_server_used(self):
         session = FakeSession([feedback(2), feedback(0), feedback(1)])
-        rows = rj.feedback_in_window(session, "http://h/otel", 0, 10**13)
+        rows = rj._feedback_in_window(session, "http://h/otel", 0, 10**13)
         assert [r["feedbackId"] for r in rows] == ["fb-0", "fb-1", "fb-2"]
 
 
@@ -338,7 +344,7 @@ class TestReviewing:
             return good_reply(prompt)
 
         session = FakeSession([feedback(0)], details={"trace-0": detail()})
-        rj.review_feedback(
+        rj._review_feedback(
             session,
             FakeClient(),
             "http://h/otel",
@@ -395,7 +401,7 @@ class TestReviewing:
                 }
             }
         )
-        rows, processed = rj.review_feedback(
+        rows, processed = rj._review_feedback(
             session, client, "http://h/otel", run_row(), SETTINGS, complete
         )
         assert processed is None
@@ -421,7 +427,7 @@ class TestReviewing:
             details={f"trace-{i}": detail() for i in range(3)},
         )
 
-        rows, processed = rj.review_feedback(
+        rows, processed = rj._review_feedback(
             session,
             FakeClient({f"trace-{i}": {} for i in range(3)}),
             "http://h/otel",
@@ -470,7 +476,7 @@ class TestReviewing:
                 }
             }
         )
-        rj.review_feedback(
+        rj._review_feedback(
             session,
             client,
             "http://h/otel",
@@ -489,7 +495,7 @@ class TestReviewing:
             [feedback(i) for i in range(5)],
             details={f"trace-{i}": detail() for i in range(5)},
         )
-        rows, processed = rj.review_feedback(
+        rows, processed = rj._review_feedback(
             session,
             FakeClient(),
             "http://h/otel",
@@ -503,7 +509,7 @@ class TestReviewing:
 
     def test_no_model_means_every_row_says_so_rather_than_a_silent_success(self):
         session = FakeSession([feedback(0), feedback(1)])
-        rows, _ = rj.review_feedback(
+        rows, _ = rj._review_feedback(
             session,
             FakeClient(),
             "http://h/otel",
@@ -518,7 +524,7 @@ class TestReviewing:
 
     def test_an_unreadable_trace_is_one_row_not_a_failed_run(self):
         session = FakeSession([feedback(0), feedback(1)], details={"trace-1": detail()})
-        rows, _ = rj.review_feedback(
+        rows, _ = rj._review_feedback(
             session, FakeClient(), "http://h/otel", run_row(), SETTINGS, good_reply
         )
         assert (
@@ -527,7 +533,7 @@ class TestReviewing:
         assert rows[1]["ungradable"] is False
 
     def test_an_empty_window_is_nothing_to_do(self):
-        rows, processed = rj.review_feedback(
+        rows, processed = rj._review_feedback(
             FakeSession([]),
             FakeClient(),
             "http://h/otel",
@@ -542,10 +548,10 @@ class TestWriting:
     def test_rows_go_to_the_triage_group_through_the_schema_matcher(self):
         pytest.importorskip("pandas")
         store = FakeFeatureStore()
-        rj.write_triage(
+        rj._write_triage(
             store,
             [
-                rj.triage_row(
+                rj._triage_row(
                     feedback(0), None, run_id="r", provider="p", model="m", error="x"
                 )
             ],
@@ -560,7 +566,7 @@ class TestWriting:
         from hopsworks_agents.eval.clusters import Cluster
 
         store = FakeFeatureStore()
-        rj.write_clusters(
+        rj._write_clusters(
             store, [Cluster(cluster_id="c1", deployment_id=3, signature="s", size=2)]
         )
         assert (rj.CLUSTERS_FG, 1) in store.asked
@@ -578,9 +584,13 @@ class TestWriting:
         with pytest.raises(
             RuntimeError, match="agent_feedback_triage v1 does not exist"
         ):
-            rj.write_triage(
+            rj._write_triage(
                 NoGroup(),
-                [rj.triage_row(feedback(0), None, run_id="r", provider="p", model="m")],
+                [
+                    rj._triage_row(
+                        feedback(0), None, run_id="r", provider="p", model="m"
+                    )
+                ],
             )
 
     def test_an_undecided_timestamp_column_is_typed_not_null(self):
@@ -599,7 +609,7 @@ class TestWriting:
             Feature("other_at", "timestamp"),
         ]
         rows = [
-            rj.triage_row(feedback(i), None, run_id="r", provider="p", model="m")
+            rj._triage_row(feedback(i), None, run_id="r", provider="p", model="m")
             for i in range(2)
         ]
         frame = pd.DataFrame(rows)
@@ -614,7 +624,7 @@ class TestWriting:
 
     def test_nothing_is_written_for_an_empty_run(self):
         store = FakeFeatureStore()
-        rj.write_triage(store, [])
+        rj._write_triage(store, [])
         assert store.asked == []
 
 
@@ -807,9 +817,9 @@ class TestArguments:
 
 class TestTheBudgetField:
     def test_is_read_however_the_server_spelled_it(self):
-        from hopsworks_agents.eval.run_fields import run_trials
+        from hopsworks_agents.eval.run_fields import _run_trials
 
-        assert run_trials({"nTrials": 7}, 0) == 7
-        assert run_trials({"ntrials": 7}, 0) == 7
-        assert run_trials({}, 3) == 3
-        assert run_trials({"nTrials": "x"}, 3) == 3
+        assert _run_trials({"nTrials": 7}, 0) == 7
+        assert _run_trials({"ntrials": 7}, 0) == 7
+        assert _run_trials({}, 3) == 3
+        assert _run_trials({"nTrials": "x"}, 3) == 3

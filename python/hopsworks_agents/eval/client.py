@@ -189,7 +189,7 @@ class HopsworksAgentClient:
 
     # ── the trace ───────────────────────────────────────────────────────────
 
-    def fetch_trace(self, trace_id: str) -> Trace | None:
+    def _fetch_trace(self, trace_id: str) -> Trace | None:
         """The trace as a evaluator needs it: the aggregate plus what tools ran.
 
         Read through the backend rather than the feature store directly, so the

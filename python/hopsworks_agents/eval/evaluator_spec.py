@@ -47,10 +47,10 @@ from .evaluators import (
 )
 from .judge_config import (
     JudgeConfigError,
-    api_key_for,
-    api_key_source,
+    _api_key_for,
+    _api_key_source,
+    _parse_judge_config,
     completer_for,
-    parse_judge_config,
 )
 
 
@@ -173,13 +173,13 @@ def _one(
         # only the rubric one — there is no reason a pairwise comparison should
         # be stuck with the project default when a rubric judge is not.
         try:
-            config = parse_judge_config(entry)
+            config = _parse_judge_config(entry)
         except JudgeConfigError as err:
             raise SpecError(str(err)) from err
 
         completer = judge_completer
         if config.model or entry.get("provider"):
-            api_key = api_key_for(config)
+            api_key = _api_key_for(config)
             if api_key:
                 completer = completer_for(config, api_key)
             else:
@@ -188,13 +188,13 @@ def _one(
                     "is reported as skipped and its trials are not graded",
                     name,
                     config.provider,
-                    api_key_source(config),
+                    _api_key_source(config),
                 )
                 return SkippedEvaluator(
                     name,
                     kind,
                     f"no API key for the {config.provider} judge; looked in "
-                    f"{api_key_source(config)}",
+                    f"{_api_key_source(config)}",
                 )
 
         if completer is None:
@@ -228,7 +228,7 @@ def _one(
     )
 
 
-def evaluators_from_spec(
+def _evaluators_from_spec(
     spec: str | Sequence[dict[str, Any]] | None,
     *,
     judge_completer: Callable[[str], str] | None = None,
@@ -264,19 +264,19 @@ def evaluators_from_spec(
     return evaluators
 
 
-def validate_spec(spec: str | None) -> None:
+def _validate_spec(spec: str | None) -> None:
     """Raise :class:`SpecError` unless every entry could be built.
 
     Uses stand-in judge and query callables so a spec naming those evaluators
     validates without a provider key or a database session — authoring a task
     must not depend on runtime configuration that only the job has.
     """
-    evaluators_from_spec(
+    _evaluators_from_spec(
         spec, judge_completer=lambda _prompt: "", query=lambda _sql: None
     )
 
 
-def flatten_rows(spec: str | Sequence[dict[str, Any]] | None):
+def _flatten_rows(spec: str | Sequence[dict[str, Any]] | None):
     """Rows as the spec builder wants them: config merged in beside type and name.
 
     The API stores one row per check with everything but its type and name in a
@@ -307,7 +307,7 @@ def flatten_rows(spec: str | Sequence[dict[str, Any]] | None):
     return entries
 
 
-def evaluators_for_suite(
+def _evaluators_for_suite(
     suite: Suite,
     *,
     judge_completer: Callable[[str], str] | None = None,
@@ -325,6 +325,6 @@ def evaluators_for_suite(
     each task's own expected output — so tasks differ in substance while the
     measurement stays identical.
     """
-    return evaluators_from_spec(
-        flatten_rows(suite.evaluators), judge_completer=judge_completer, query=query
+    return _evaluators_from_spec(
+        _flatten_rows(suite.evaluators), judge_completer=judge_completer, query=query
     )

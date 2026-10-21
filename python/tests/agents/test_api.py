@@ -9,8 +9,8 @@ import pytest
 from hopsworks_agents.eval.api import (
     EvalApi,
     EvalApiError,
-    evaluator,
-    tool_expectation,
+    _evaluator,
+    _tool_expectation,
 )
 
 
@@ -49,7 +49,7 @@ class TestWritingAChecksConfig:
     def test_a_checks_own_configuration_is_held_apart_from_its_type(self):
         # the row shape: everything but type and name goes in config, because what a
         # check takes differs by type
-        one = evaluator(
+        one = _evaluator(
             "llm_judge", name="quality", provider="anthropic", temperature=0
         )
         assert one["type"] == "llm_judge"
@@ -57,20 +57,20 @@ class TestWritingAChecksConfig:
         assert json.loads(one["config"]) == {"provider": "anthropic", "temperature": 0}
 
     def test_a_check_defaults_to_being_named_after_its_type(self):
-        assert evaluator("tool_call")["name"] == "tool_call"
+        assert _evaluator("tool_call")["name"] == "tool_call"
 
     def test_a_check_with_no_configuration_still_sends_an_object(self):
-        assert json.loads(evaluator("no_tool_error")["config"]) == {}
+        assert json.loads(_evaluator("no_tool_error")["config"]) == {}
 
     def test_a_tool_expectation_carries_both_directions(self):
-        assert json.loads(tool_expectation(required=["a"], forbidden=["b"])) == {
+        assert json.loads(_tool_expectation(required=["a"], forbidden=["b"])) == {
             "required": ["a"],
             "forbidden": ["b"],
         }
 
     def test_either_direction_alone_is_enough(self):
         # a call check judges both, so a forbidden list on its own is a real expectation
-        assert json.loads(tool_expectation(forbidden=["place_order"])) == {
+        assert json.loads(_tool_expectation(forbidden=["place_order"])) == {
             "required": [],
             "forbidden": ["place_order"],
         }
@@ -80,7 +80,7 @@ class TestWhatItSends:
     def test_a_suite_is_created_with_its_checks_in_the_same_call(self):
         # a suite with no checks grades by nothing and every trial comes back ungradable
         client = api()
-        client.create_suite("s", evaluators=[evaluator("contains")], tags=["safety"])
+        client._create_suite("s", evaluators=[_evaluator("contains")], tags=["safety"])
         method, url, body, _ = client._session.sent[0]
         assert (method, url.endswith("/suites")) == ("POST", True)
         assert body["evaluators"][0]["type"] == "contains"
@@ -104,7 +104,7 @@ class TestWhatItSends:
         # the endpoint reads the query string; a body is ignored, which would create a run
         # against no suite at all and only show up as a job failing
         client = api([FakeResponse(body={"runId": "r1"})])
-        client.start_run({"suiteId": "s1", "version": 1}, deployment_id=7, n_trials=3)
+        client._start_run({"suiteId": "s1", "version": 1}, deployment_id=7, n_trials=3)
         [(method, url, body, params)] = client._session.sent
         assert (method, url.endswith("/runs")) == ("POST", True)
         assert body is None
@@ -116,12 +116,12 @@ class TestWhatItSends:
     def test_recording_and_starting_are_one_call(self):
         # a recorded run nobody started is only useful when the start itself failed
         client = api([FakeResponse(body={"runId": "r1"})])
-        client.start_run({"suiteId": "s1", "version": 1}, deployment_id=1)
+        client._start_run({"suiteId": "s1", "version": 1}, deployment_id=1)
         assert client._session.sent[0][3]["start"] == "true"
 
     def test_the_runner_job_can_be_sized_before_it_exists(self):
         client = api()
-        client.ensure_runner_job(
+        client._ensure_runner_job(
             deployment_id=7, environment_name="mine", cores=2, memory=4096
         )
         method, url, body, params = client._session.sent[0]
@@ -136,7 +136,7 @@ class TestWhatItSends:
         # the tag replaced a category that used to imply a gate, so the gate has
         # to be stated or the suite blocks nothing while looking like it does
         client = api([FakeResponse(body={"suiteId": "s1", "version": 1})])
-        client.create_suite(
+        client._create_suite(
             "Orders are recorded",
             evaluators=[],
             tags=["golden"],
@@ -151,7 +151,7 @@ class TestWhatItSends:
         # absent rather than an empty string, so nothing downstream has to
         # decide whether "" means "no gate" or "a metric called nothing"
         client = api([FakeResponse(body={"suiteId": "s1", "version": 1})])
-        client.create_suite("Catalogue answers", evaluators=[])
+        client._create_suite("Catalogue answers", evaluators=[])
         body = client._session.sent[0][2]
         assert "gateMetric" not in body
         assert "gateThreshold" not in body
@@ -159,7 +159,7 @@ class TestWhatItSends:
     def test_production_is_monitored_with_a_named_evaluator(self):
         # monitoring points a check at live traffic; it does not invent one
         client = api([FakeResponse(body={"runId": "r1", "runType": "ONLINE_SAMPLE"})])
-        client.monitor_production(deployment_id=3, evaluator="tpl-1", sample=50)
+        client._monitor_production(deployment_id=3, evaluator="tpl-1", sample=50)
         [(method, url, body, params)] = client._session.sent
         assert (method, url.endswith("/sample-runs")) == ("POST", True)
         assert body is None
@@ -170,7 +170,7 @@ class TestWhatItSends:
     def test_a_suites_checks_can_monitor_too(self):
         # a suite without tasks is a set of checks, which is all a monitor needs
         client = api([FakeResponse(body={"runId": "r1"})])
-        client.monitor_production(
+        client._monitor_production(
             deployment_id=3, suite={"suiteId": "s1", "version": 2}
         )
         params = client._session.sent[0][3]
@@ -179,14 +179,14 @@ class TestWhatItSends:
     def test_monitoring_with_nothing_is_refused_before_it_is_sent(self):
         client = api()
         with pytest.raises(EvalApiError, match="evaluator or a suite"):
-            client.monitor_production(deployment_id=3)
+            client._monitor_production(deployment_id=3)
         assert client._session.sent == []
 
     def test_no_range_means_since_the_last_monitor(self):
         # what makes a schedule cover each trace once rather than re-grading the
         # same day every night; the server holds the watermark
         client = api([FakeResponse(body={"runId": "r1"})])
-        client.monitor_production(deployment_id=3, evaluator="tpl-1")
+        client._monitor_production(deployment_id=3, evaluator="tpl-1")
         params = client._session.sent[0][3]
         assert "from" not in params and "to" not in params
 
@@ -197,7 +197,7 @@ class TestWhatItSends:
 
         client = api([FakeResponse(body={"runId": "r1"})])
         since = datetime(2026, 8, 1, tzinfo=timezone.utc)
-        client.monitor_production(deployment_id=3, evaluator="tpl-1", since=since)
+        client._monitor_production(deployment_id=3, evaluator="tpl-1", since=since)
         assert client._session.sent[0][3]["from"] == int(since.timestamp() * 1000)
 
     def test_the_runner_job_belongs_to_a_deployment(self):
@@ -205,7 +205,7 @@ class TestWhatItSends:
         # reason the job is not shared -- so there is no project-wide call to make
         client = api()
         with pytest.raises(TypeError):
-            client.ensure_runner_job(environment_name="mine")
+            client._ensure_runner_job(environment_name="mine")
 
 
 class TestWhenTheApiRefuses:
@@ -216,18 +216,18 @@ class TestWhenTheApiRefuses:
             [FakeResponse(400, {"usrMsg": "publish the suite before running it"})]
         )
         with pytest.raises(EvalApiError, match="publish the suite"):
-            client.suites()
+            client._suites()
 
     def test_a_refusal_with_no_message_still_says_something(self):
         client = api([FakeResponse(503, {})])
         with pytest.raises(EvalApiError, match="503"):
-            client.suites()
+            client._suites()
 
     def test_an_unparseable_refusal_does_not_mask_itself(self):
         response = FakeResponse(502)
         response.json = lambda: (_ for _ in ()).throw(ValueError("not json"))
         with pytest.raises(EvalApiError, match="502"):
-            api([response]).suites()
+            api([response])._suites()
 
 
 class TestHowAJobAuthenticates:
@@ -239,28 +239,28 @@ class TestHowAJobAuthenticates:
     def test_a_jwt_on_disk_is_used_when_there_is_no_api_key(
         self, tmp_path, monkeypatch
     ):
-        from hopsworks_agents.eval.api import hopsworks_auth
+        from hopsworks_agents.eval.api import _hopsworks_auth
 
         (tmp_path / "token.jwt").write_text("  the-token\n")
         monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
         monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
 
         request = FakeRequest()
-        hopsworks_auth()(request)
+        _hopsworks_auth()(request)
         assert request.headers["Authorization"] == "Bearer the-token"
 
     def test_the_token_is_read_per_request_so_a_rotation_is_picked_up(
         self, tmp_path, monkeypatch
     ):
         # a suite of five hundred tasks outlives the copy read at startup
-        from hopsworks_agents.eval.api import hopsworks_auth
+        from hopsworks_agents.eval.api import _hopsworks_auth
 
         token = tmp_path / "token.jwt"
         token.write_text("first")
         monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
         monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
 
-        auth = hopsworks_auth()
+        auth = _hopsworks_auth()
         first = FakeRequest()
         auth(first)
         token.write_text("second")
@@ -272,14 +272,14 @@ class TestHowAJobAuthenticates:
 
     def test_an_api_key_wins_when_one_is_set(self, tmp_path, monkeypatch):
         # how this works from a notebook, or anywhere outside a job
-        from hopsworks_agents.eval.api import hopsworks_auth
+        from hopsworks_agents.eval.api import _hopsworks_auth
 
         (tmp_path / "token.jwt").write_text("ignored")
         monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
         monkeypatch.setenv("HOPSWORKS_API_KEY", "the-key")
 
         request = FakeRequest()
-        hopsworks_auth()(request)
+        _hopsworks_auth()(request)
         assert request.headers["Authorization"] == "ApiKey the-key"
 
     def test_a_serving_pods_api_key_file_is_used_when_there_is_no_jwt(
@@ -288,25 +288,25 @@ class TestHowAJobAuthenticates:
         # A deployment is given /keys/api.key, not a JWT. Demanding one of the
         # other two made every evaluation request a 403 from the agent, and the
         # run waited five minutes and then timed out.
-        from hopsworks_agents.eval.api import hopsworks_auth
+        from hopsworks_agents.eval.api import _hopsworks_auth
 
         (tmp_path / "api.key").write_text("  the-serving-key\n")
         monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
         monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
 
         request = FakeRequest()
-        hopsworks_auth()(request)
+        _hopsworks_auth()(request)
         assert request.headers["Authorization"] == "ApiKey the-serving-key"
 
     def test_the_key_file_is_read_per_request_too(self, tmp_path, monkeypatch):
-        from hopsworks_agents.eval.api import hopsworks_auth
+        from hopsworks_agents.eval.api import _hopsworks_auth
 
         key = tmp_path / "api.key"
         key.write_text("first")
         monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
         monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
 
-        auth = hopsworks_auth()
+        auth = _hopsworks_auth()
         first = FakeRequest()
         auth(first)
         key.write_text("second")
@@ -320,12 +320,12 @@ class TestHowAJobAuthenticates:
         self, tmp_path, monkeypatch
     ):
         # KeyError: 'HOPSWORKS_API_KEY' is a stack trace, not an explanation
-        from hopsworks_agents.eval.api import hopsworks_auth
+        from hopsworks_agents.eval.api import _hopsworks_auth
 
         monkeypatch.delenv("HOPSWORKS_API_KEY", raising=False)
         monkeypatch.setenv("SECRETS_DIR", str(tmp_path))
         with pytest.raises(EvalApiError, match="nothing to authenticate with"):
-            hopsworks_auth()
+            _hopsworks_auth()
 
 
 class FakeRequest:
@@ -413,7 +413,7 @@ class TestTheEvaluatorLibrary:
 
     def test_saving_one_sends_the_checks_as_a_spec(self):
         client = api()
-        client.save_evaluator("Account untouched", [{"type": "tool_call"}], "why")
+        client._save_evaluator("Account untouched", [{"type": "tool_call"}], "why")
         method, url, body, _ = client._session.sent[0]
         assert (method, url.endswith("/evaluators")) == ("POST", True)
         assert json.loads(body["spec"]) == [{"type": "tool_call"}]

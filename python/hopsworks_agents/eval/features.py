@@ -69,7 +69,7 @@ def _ingested_at(span: Span) -> datetime | None:
     return None
 
 
-def select_ready_traces(
+def _select_ready_traces(
     spans: Sequence[Span],
     *,
     now: datetime,
@@ -181,7 +181,7 @@ def _messages(span: Span) -> list[dict[str, str]]:
     return parsed if isinstance(parsed, list) else []
 
 
-def trace_features(
+def _trace_features(
     spans: Sequence[Span],
     attributes: Sequence[Attribute] = (),
     events: Sequence[Event] = (),

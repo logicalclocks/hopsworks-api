@@ -128,7 +128,7 @@ class TestTrace:
     def test_a_missing_trace_is_none_not_an_error(self):
         # a permanent condition the runner must tolerate: sidecar insert
         # failures are logged and dropped
-        assert client(FakeSession()).fetch_trace("nope") is None
+        assert client(FakeSession())._fetch_trace("nope") is None
 
     def test_tool_names_come_back_in_call_order(self):
         # a trajectory evaluator asks about sequence, so an arbitrary order would
@@ -145,18 +145,18 @@ class TestTrace:
             {"spanId": "b", "attrKey": "tool.name", "attrValue": "refund"},
         ]
         session = FakeSession({"/traces/": self._trace(spans, attrs)})
-        assert client(session).fetch_trace("t")["tool_names"] == ["lookup", "refund"]
+        assert client(session)._fetch_trace("t")["tool_names"] == ["lookup", "refund"]
 
     def test_reports_the_root_span_so_readiness_can_tell_partial_from_complete(self):
         spans = [{"spanId": "root", "parentSpanId": "", "startTimeNs": 0}]
         session = FakeSession({"/traces/": self._trace(spans, [])})
-        assert client(session).fetch_trace("t")["root_span_id"] == "root"
+        assert client(session)._fetch_trace("t")["root_span_id"] == "root"
 
     def test_a_trace_with_no_root_span_reports_none(self):
         spans = [{"spanId": "child", "parentSpanId": "missing", "startTimeNs": 0}]
         session = FakeSession({"/traces/": self._trace(spans, [])})
         # the runner reads this as PARTIAL rather than RECEIVED
-        assert client(session).fetch_trace("t")["root_span_id"] == ""
+        assert client(session)._fetch_trace("t")["root_span_id"] == ""
 
     def test_counts_tool_errors(self):
         spans = [
@@ -172,7 +172,7 @@ class TestTrace:
             {"spanId": "t1", "attrKey": "openinference.span.kind", "attrValue": "TOOL"}
         ]
         session = FakeSession({"/traces/": self._trace(spans, attrs)})
-        assert client(session).fetch_trace("t")["tool_error_count"] == 1
+        assert client(session)._fetch_trace("t")["tool_error_count"] == 1
 
     def test_counts_tokens_from_model_and_token_bearing_agent_spans(self):
         spans = [
@@ -222,13 +222,13 @@ class TestTrace:
 
         trace = client(
             FakeSession({"/traces/": self._trace(spans, attrs)})
-        ).fetch_trace("t")
+        )._fetch_trace("t")
         assert trace["input_tokens"] == 17
         assert trace["output_tokens"] == 8
 
     def test_an_empty_trace_is_none(self):
         session = FakeSession({"/traces/": FakeResponse({"spans": []})})
-        assert client(session).fetch_trace("t") is None
+        assert client(session)._fetch_trace("t") is None
 
 
 class TestWhereTheAgentIs:

@@ -12,15 +12,15 @@ import json
 
 import pytest
 from hopsworks_agents.eval import judge_config as jc
-from hopsworks_agents.eval.evaluator_spec import SpecError, evaluators_from_spec
+from hopsworks_agents.eval.evaluator_spec import SpecError, _evaluators_from_spec
 from hopsworks_agents.eval.judge_config import (
     FAILURE_CATEGORIES,
     PROVIDERS,
     REASONING_EFFORTS,
     JudgeConfigError,
+    _parse_judge_config,
+    _render_prompt,
     default_templates,
-    parse_judge_config,
-    render_prompt,
 )
 from hopsworks_agents.eval.judges import LlmJudgeEvaluator
 from hopsworks_agents.eval.models import Task, Trial
@@ -99,12 +99,12 @@ def trial(output: str = "Done — order 4471 is cancelled.") -> Trial:
 
 def judge(reply: dict | str, **overrides) -> LlmJudgeEvaluator:
     text = reply if isinstance(reply, str) else json.dumps(reply)
-    return LlmJudgeEvaluator(lambda _p: text, parse_judge_config(entry(**overrides)))
+    return LlmJudgeEvaluator(lambda _p: text, _parse_judge_config(entry(**overrides)))
 
 
 class TestParsing:
     def test_criteria_as_an_object_of_settings(self):
-        config = parse_judge_config(entry())
+        config = _parse_judge_config(entry())
         assert [c.name for c in config.criteria] == [
             "task_completion",
             "correctness",
@@ -113,13 +113,13 @@ class TestParsing:
         assert config.criteria[2].critical_min == 4
 
     def test_criteria_as_a_plain_list_of_names(self):
-        config = parse_judge_config(
+        config = _parse_judge_config(
             {"type": "llm_judge", "criteria": ["accuracy", "tone"]}
         )
         assert [c.weight for c in config.criteria] == [1.0, 1.0]
 
     def test_pass_score_defaults_to_three_quarters_of_the_scale(self):
-        config = parse_judge_config(
+        config = _parse_judge_config(
             {"type": "llm_judge", "score_range": [1, 5], "criteria": ["a"]}
         )
         assert config.pass_score == 4.0
@@ -127,7 +127,7 @@ class TestParsing:
     def test_a_critical_floor_naming_no_criterion_is_refused(self):
         # silently ignoring it would leave someone believing a floor is enforced
         with pytest.raises(JudgeConfigError, match="no such criterion"):
-            parse_judge_config(
+            _parse_judge_config(
                 entry(
                     thresholds={"critical_dimensions": {"tone": 3}},
                 )
@@ -135,79 +135,79 @@ class TestParsing:
 
     def test_a_pass_score_outside_the_range_is_refused(self):
         with pytest.raises(JudgeConfigError, match="inside score_range"):
-            parse_judge_config(entry(thresholds={"pass_score": 9}))
+            _parse_judge_config(entry(thresholds={"pass_score": 9}))
 
     def test_an_unknown_provider_is_refused(self):
         with pytest.raises(JudgeConfigError, match="provider must be"):
-            parse_judge_config(entry(provider="mystery"))
+            _parse_judge_config(entry(provider="mystery"))
 
     def test_an_unknown_input_is_refused(self):
         with pytest.raises(JudgeConfigError, match="unknown input"):
-            parse_judge_config(entry(inputs=["user_request", "the_weather"]))
+            _parse_judge_config(entry(inputs=["user_request", "the_weather"]))
 
     def test_zero_weights_are_refused(self):
         with pytest.raises(JudgeConfigError, match="weights cannot all be zero"):
-            parse_judge_config(entry(criteria={"a": {"weight": 0}}))
+            _parse_judge_config(entry(criteria={"a": {"weight": 0}}))
 
     def test_a_custom_template_must_have_the_answer_in_it(self):
         with pytest.raises(JudgeConfigError, match="prompt_template"):
-            parse_judge_config(entry(prompt_template="grade {question} please"))
+            _parse_judge_config(entry(prompt_template="grade {question} please"))
 
     def test_temperature_is_bounded(self):
         with pytest.raises(JudgeConfigError, match="temperature"):
-            parse_judge_config(entry(temperature=5))
+            _parse_judge_config(entry(temperature=5))
 
     def test_reasoning_effort_is_enumerated(self):
         assert (
-            parse_judge_config(entry(reasoning_effort="High")).reasoning_effort
+            _parse_judge_config(entry(reasoning_effort="High")).reasoning_effort
             == "high"
         )
         assert (
-            parse_judge_config(entry(reasoningEffort="max")).reasoning_effort == "max"
+            _parse_judge_config(entry(reasoningEffort="max")).reasoning_effort == "max"
         )
         with pytest.raises(JudgeConfigError, match="reasoning_effort"):
-            parse_judge_config(entry(reasoning_effort="heroic"))
+            _parse_judge_config(entry(reasoning_effort="heroic"))
 
     def test_normalisation_maps_the_scale_onto_zero_to_one(self):
-        config = parse_judge_config(entry())
-        assert config.normalise(1) == 0.0
-        assert config.normalise(5) == 1.0
-        assert config.normalise(3) == 0.5
+        config = _parse_judge_config(entry())
+        assert config._normalise(1) == 0.0
+        assert config._normalise(5) == 1.0
+        assert config._normalise(3) == 0.5
 
     def test_normalisation_clamps_a_judge_that_left_the_scale(self):
         # models told to answer 1-5 occasionally answer 0 or 6
-        config = parse_judge_config(entry())
-        assert config.normalise(0) == 0.0
-        assert config.normalise(9) == 1.0
+        config = _parse_judge_config(entry())
+        assert config._normalise(0) == 0.0
+        assert config._normalise(9) == 1.0
 
 
 class TestPrompt:
     def test_it_names_every_criterion_with_its_description(self):
-        prompt = render_prompt(parse_judge_config(entry()), question="q", answer="a")
+        prompt = _render_prompt(_parse_judge_config(entry()), question="q", answer="a")
         assert "task_completion: Did it finish the job?" in prompt
         assert "safety: Did it respect the limits?" in prompt
 
     def test_it_asks_for_the_configured_scale(self):
-        prompt = render_prompt(parse_judge_config(entry()), question="q", answer="a")
+        prompt = _render_prompt(_parse_judge_config(entry()), question="q", answer="a")
         assert "1 to 5" in prompt
 
     def test_inputs_control_what_the_judge_is_shown(self):
         # a judge asked whether the agent could get there alone must not be
         # shown the answer
-        config = parse_judge_config(entry(inputs=["user_request", "agent_response"]))
-        prompt = render_prompt(config, question="q", answer="a", expected="the answer")
+        config = _parse_judge_config(entry(inputs=["user_request", "agent_response"]))
+        prompt = _render_prompt(config, question="q", answer="a", expected="the answer")
         assert "the answer" not in prompt
 
-        seeing = parse_judge_config(entry(inputs=["expected_result"]))
-        assert "the answer" in render_prompt(
+        seeing = _parse_judge_config(entry(inputs=["expected_result"]))
+        assert "the answer" in _render_prompt(
             seeing, question="q", answer="a", expected="the answer"
         )
 
     def test_tool_context_appears_only_when_asked_for(self):
-        config = parse_judge_config(
+        config = _parse_judge_config(
             entry(inputs=["user_request", "agent_response", "tool_results"])
         )
-        prompt = render_prompt(
+        prompt = _render_prompt(
             config,
             question="q",
             answer="a",
@@ -218,8 +218,8 @@ class TestPrompt:
         assert "lookup()" not in prompt
 
     def test_a_custom_template_can_ask_for_the_output_shape(self):
-        prompt = render_prompt(
-            parse_judge_config(
+        prompt = _render_prompt(
+            _parse_judge_config(
                 entry(prompt_template="{question}|{answer}|reply with {output_shape}")
             ),
             question="q",
@@ -233,8 +233,8 @@ class TestPrompt:
         assert "task_completion" in prompt
 
     def test_a_custom_template_gets_the_criteria_and_a_whole_number_range(self):
-        prompt = render_prompt(
-            parse_judge_config(
+        prompt = _render_prompt(
+            _parse_judge_config(
                 entry(
                     prompt_template="{question}|{answer}|{criteria}|{score_min}-{score_max}"
                 )
@@ -250,8 +250,10 @@ class TestPrompt:
         assert "1-5" in prompt
 
     def test_a_custom_template_replaces_the_built_in_one(self):
-        prompt = render_prompt(
-            parse_judge_config(entry(prompt_template="only this: {question} {answer}")),
+        prompt = _render_prompt(
+            _parse_judge_config(
+                entry(prompt_template="only this: {question} {answer}")
+            ),
             question="q",
             answer="a",
         )
@@ -260,7 +262,7 @@ class TestPrompt:
         assert "You are grading" not in prompt
 
     def test_the_failure_taxonomy_is_enumerated_in_the_prompt(self):
-        prompt = render_prompt(parse_judge_config(entry()), question="q", answer="a")
+        prompt = _render_prompt(_parse_judge_config(entry()), question="q", answer="a")
         for category in FAILURE_CATEGORIES:
             assert category in prompt
 
@@ -269,7 +271,7 @@ class TestGrading:
     def test_a_weighted_total_above_the_bar_passes(self):
         result = judge(
             {"scores": {"task_completion": 5, "correctness": 4, "safety": 5}}
-        ).grade(task(), trial(), None)
+        )._grade(task(), trial(), None)
         assert result.passed
         assert result.assertions["weighted_score"] == pytest.approx(4.7)
         assert result.score == pytest.approx((4.7 - 1) / 4)
@@ -277,7 +279,7 @@ class TestGrading:
     def test_a_weighted_total_below_the_bar_fails_and_says_so(self):
         result = judge(
             {"scores": {"task_completion": 3, "correctness": 3, "safety": 4}}
-        ).grade(task(), trial(), None)
+        )._grade(task(), trial(), None)
         assert result.passed is False
         assert "needs 4" in result.reason
 
@@ -285,7 +287,7 @@ class TestGrading:
         # the whole point: six good scores must not hide one catastrophic result
         result = judge(
             {"scores": {"task_completion": 5, "correctness": 5, "safety": 1}}
-        ).grade(task(), trial(), None)
+        )._grade(task(), trial(), None)
         assert result.passed is False
         assert result.assertions["critical_breached"] == ["safety"]
         assert "below the floor on safety" in result.reason
@@ -293,32 +295,32 @@ class TestGrading:
     def test_the_breakdown_is_kept_in_both_scales(self):
         result = judge(
             {"scores": {"task_completion": 5, "correctness": 4, "safety": 5}}
-        ).grade(task(), trial(), None)
+        )._grade(task(), trial(), None)
         assert result.assertions["criteria"]["correctness"] == 4
         assert result.assertions["criteria_normalised"]["correctness"] == 0.75
 
     def test_a_judge_scoring_only_some_criteria_is_ungradable(self):
         # a weighted total over whichever criteria came back is a different
         # measurement every time
-        result = judge({"scores": {"task_completion": 5}}).grade(task(), trial(), None)
+        result = judge({"scores": {"task_completion": 5}})._grade(task(), trial(), None)
         assert result.ungradable
         assert "did not score correctness, safety" in result.reason
 
     def test_prose_instead_of_json_is_ungradable_not_a_failure(self):
-        result = judge("Looks good to me!").grade(task(), trial(), None)
+        result = judge("Looks good to me!")._grade(task(), trial(), None)
         assert result.ungradable and result.passed is False
 
     def test_a_judge_that_raises_is_ungradable(self):
         evaluator = LlmJudgeEvaluator(
             lambda _p: (_ for _ in ()).throw(RuntimeError("rate limited")),
-            parse_judge_config(entry()),
+            _parse_judge_config(entry()),
         )
-        result = evaluator.grade(task(), trial(), None)
+        result = evaluator._grade(task(), trial(), None)
         assert result.ungradable
         assert "rate limited" in result.reason
 
     def test_no_answer_is_ungradable(self):
-        result = judge({"scores": {}}).grade(task(), trial(""), None)
+        result = judge({"scores": {}})._grade(task(), trial(""), None)
         assert result.ungradable
 
     def test_an_unknown_failure_category_becomes_other(self):
@@ -327,7 +329,7 @@ class TestGrading:
                 "scores": {"task_completion": 5, "correctness": 4, "safety": 5},
                 "failure_category": "vibes",
             }
-        ).grade(task(), trial(), None)
+        )._grade(task(), trial(), None)
         assert result.assertions["failure_category"] == "other"
 
     def test_reasoning_reaches_the_reason_when_it_failed(self):
@@ -336,7 +338,7 @@ class TestGrading:
                 "scores": {"task_completion": 2, "correctness": 2, "safety": 5},
                 "reasoning": {"correctness": "the order id was invented"},
             }
-        ).grade(task(), trial(), None)
+        )._grade(task(), trial(), None)
         assert "the order id was invented" in result.reason
 
     def test_a_judge_reading_tool_calls_needs_a_trace(self):
@@ -344,7 +346,7 @@ class TestGrading:
             {"scores": {}}, inputs=["user_request", "agent_response", "tool_calls"]
         )
         assert evaluator.needs_trace is True
-        assert evaluator.grade(task(), trial(), None).ungradable
+        assert evaluator._grade(task(), trial(), None).ungradable
 
     def test_a_judge_not_reading_tool_calls_does_not_need_one(self):
         # otherwise it would go ungradable for want of a trace it never reads
@@ -352,12 +354,12 @@ class TestGrading:
             {"scores": {"task_completion": 5, "correctness": 5, "safety": 5}}
         )
         assert evaluator.needs_trace is False
-        assert evaluator.grade(task(), trial(), None).passed
+        assert evaluator._grade(task(), trial(), None).passed
 
 
 class TestSpecIntegration:
     def test_criteria_are_carried_onto_the_evaluator(self):
-        evaluators = evaluators_from_spec([entry()], judge_completer=lambda _p: "{}")
+        evaluators = _evaluators_from_spec([entry()], judge_completer=lambda _p: "{}")
         assert [c.name for c in evaluators[0].config.criteria] == [
             "task_completion",
             "correctness",
@@ -367,10 +369,10 @@ class TestSpecIntegration:
     def test_a_judge_with_no_criteria_gets_one_called_overall(self):
         # not a different class, not a different code path — the same judge
         # scoring a single unnamed thing
-        evaluators = evaluators_from_spec(
+        evaluators = _evaluators_from_spec(
             [{"type": "llm_judge"}], judge_completer=lambda _p: "{}"
         )
-        assert [c.name for c in evaluators[0].config.effective_criteria()] == [
+        assert [c.name for c in evaluators[0].config._effective_criteria()] == [
             "overall"
         ]
 
@@ -382,7 +384,7 @@ class TestSpecIntegration:
         os.environ["OPENAI_API_KEY"] = "for-this-test"
         try:
             for kind in ("pairwise", "tool_arguments_judge", "tool_result_used"):
-                evaluators = evaluators_from_spec(
+                evaluators = _evaluators_from_spec(
                     [{"type": kind, "provider": "openai", "model": "gpt-4o"}]
                 )
                 assert evaluators[0].model == "gpt-4o", kind
@@ -392,7 +394,7 @@ class TestSpecIntegration:
     def test_a_bad_judge_config_is_a_spec_error(self):
         # so it is refused at authoring time like every other malformed entry
         with pytest.raises(SpecError, match="provider must be"):
-            evaluators_from_spec(
+            _evaluators_from_spec(
                 [entry(provider="mystery")], judge_completer=lambda _p: ""
             )
 
@@ -401,12 +403,12 @@ class TestSpecIntegration:
         # trial says this one never ran -- which is what keeps it out of every
         # pass denominator instead of letting the others answer for it.
         monkeypatch.delenv("NOPE", raising=False)
-        evaluators = evaluators_from_spec(
+        evaluators = _evaluators_from_spec(
             [entry(provider="openai", model="gpt-4o", api_key_env="NOPE")],
             judge_completer=lambda _p: "{}",
         )
         assert len(evaluators) == 1
-        result = evaluators[0].grade(None, None, None)
+        result = evaluators[0]._grade(None, None, None)
         assert result.assertions["skipped"] is True
         assert "NOPE" in result.reason
 
@@ -414,7 +416,7 @@ class TestSpecIntegration:
         # a suite can mix a cheap judge for canaries with an expensive one for a
         # release gate, each on its own key
         monkeypatch.setenv("MY_KEY", "its-own")
-        evaluators = evaluators_from_spec(
+        evaluators = _evaluators_from_spec(
             [entry(provider="openai", model="gpt-4o", api_key_env="MY_KEY")]
         )
         assert len(evaluators) == 1
@@ -423,7 +425,7 @@ class TestSpecIntegration:
 
 def test_the_default_templates_all_build():
     for template in default_templates():
-        evaluators = evaluators_from_spec(
+        evaluators = _evaluators_from_spec(
             template["spec"], judge_completer=lambda _p: "{}"
         )
         assert evaluators, template["name"]
@@ -456,10 +458,10 @@ class TestProviders:
 
     def test_a_custom_provider_needs_a_base_url(self):
         with pytest.raises(JudgeConfigError, match="needs a base_url"):
-            parse_judge_config({"type": "llm_judge", "provider": "custom"})
+            _parse_judge_config({"type": "llm_judge", "provider": "custom"})
 
     def test_a_custom_provider_with_a_base_url_is_fine(self):
-        config = parse_judge_config(
+        config = _parse_judge_config(
             {
                 "type": "llm_judge",
                 "provider": "custom",
@@ -473,7 +475,7 @@ class TestProviders:
             entry = {"type": "llm_judge", "provider": key}
             if key == "custom":
                 entry["base_url"] = "https://x/v1"
-            assert parse_judge_config(entry).provider == key
+            assert _parse_judge_config(entry).provider == key
 
 
 class TestWhereAJudgesKeyComesFrom:
@@ -501,43 +503,43 @@ class TestWhereAJudgesKeyComesFrom:
     def test_a_judge_naming_its_own_variable_uses_that_one(self, monkeypatch):
         # for a judge that needs a different key from everything else — a release
         # gate on its own quota
-        from hopsworks_agents.eval.judge_config import api_key_for
+        from hopsworks_agents.eval.judge_config import _api_key_for
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient")
         monkeypatch.setenv("GATE_KEY", "its-own")
-        assert api_key_for(self.config(named="GATE_KEY")) == "its-own"
+        assert _api_key_for(self.config(named="GATE_KEY")) == "its-own"
 
     def test_the_providers_own_variable_is_the_default(self, monkeypatch):
         # what a project already has set, because every SDK reads it
-        from hopsworks_agents.eval.judge_config import api_key_for
+        from hopsworks_agents.eval.judge_config import _api_key_for
 
         monkeypatch.setenv("OPENAI_API_KEY", "from-env")
-        assert api_key_for(self.config(provider="openai")) == "from-env"
+        assert _api_key_for(self.config(provider="openai")) == "from-env"
 
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        assert api_key_for(self.config()) is None
+        assert _api_key_for(self.config()) is None
 
     def test_a_named_variable_that_is_unset_is_not_silently_replaced(self, monkeypatch):
         # naming one is a choice; falling back to the ambient key would grade with
         # a key the suite did not ask for
-        from hopsworks_agents.eval.judge_config import api_key_for
+        from hopsworks_agents.eval.judge_config import _api_key_for
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient")
         monkeypatch.delenv("GATE_KEY", raising=False)
-        assert api_key_for(self.config(named="GATE_KEY")) is None
+        assert _api_key_for(self.config(named="GATE_KEY")) is None
 
     def test_a_custom_provider_has_nowhere_to_look(self, monkeypatch):
         # a gateway has no conventional variable, so it has to be told
-        from hopsworks_agents.eval.judge_config import api_key_for
+        from hopsworks_agents.eval.judge_config import _api_key_for
 
-        assert api_key_for(self.config(provider="custom")) is None
+        assert _api_key_for(self.config(provider="custom")) is None
 
     def test_the_variable_read_is_reportable(self):
         # so a skipped judge says what to set, rather than that something is absent
-        from hopsworks_agents.eval.judge_config import api_key_source
+        from hopsworks_agents.eval.judge_config import _api_key_source
 
-        assert "GATE_KEY" in api_key_source(self.config(named="GATE_KEY"))
-        assert "account" in api_key_source(self.config())
+        assert "GATE_KEY" in _api_key_source(self.config(named="GATE_KEY"))
+        assert "account" in _api_key_source(self.config())
 
 
 class TestWhenAModelRejectsTemperature:
@@ -617,7 +619,7 @@ class TestProviderRequestShape:
             seen.append(extra)
             return "graded"
 
-        temperature = _TemperatureParameter.for_model(provider, model, 0.0)
+        temperature = _TemperatureParameter._for_model(provider, model, 0.0)
         assert temperature.call(call) == "graded"
         assert seen == [{}]
 
@@ -642,7 +644,7 @@ class TestProviderRequestShape:
             seen.append(extra)
             return "graded"
 
-        temperature = _TemperatureParameter.for_model(provider, model, 0.7)
+        temperature = _TemperatureParameter._for_model(provider, model, 0.7)
         assert temperature.call(call) == "graded"
         assert seen == [{"temperature": 0.7}]
 
@@ -891,9 +893,9 @@ class TestReferenceFreeTemplates:
 
     @pytest.mark.parametrize("name", sorted(REFERENCE_FREE))
     def test_it_grades_without_an_expected_answer(self, name):
-        from hopsworks_agents.eval.judge_config import parse_judge_config
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
 
-        config = parse_judge_config(self._spec(name))
+        config = _parse_judge_config(self._spec(name))
         # `multi` is what makes the judge grade against its own criteria rather
         # than looking for a rubric the task does not have.
         assert config.multi, f"{name} would be ungradable on production traffic"
@@ -903,46 +905,46 @@ class TestReferenceFreeTemplates:
 
     @pytest.mark.parametrize("name", sorted(REFERENCE_FREE))
     def test_its_criteria_are_weighted_and_named(self, name):
-        from hopsworks_agents.eval.judge_config import parse_judge_config
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
 
-        config = parse_judge_config(self._spec(name))
-        criteria = config.effective_criteria()
+        config = _parse_judge_config(self._spec(name))
+        criteria = config._effective_criteria()
         assert len(criteria) > 1, f"{name} scores one thing; use a plain rubric instead"
         assert all(c.weight > 0 for c in criteria)
 
     def test_safety_cannot_average_away_a_leak(self):
         # A safety score that passes because two of three criteria were fine reads
         # as a pass, which is the one reading it must never produce.
-        from hopsworks_agents.eval.judge_config import parse_judge_config
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
 
-        config = parse_judge_config(self._spec("Safety"))
+        config = _parse_judge_config(self._spec("Safety"))
         # The floor is carried on the criterion itself, as critical_min.
-        floors = {c.name: c.critical_min for c in config.effective_criteria()}
+        floors = {c.name: c.critical_min for c in config._effective_criteria()}
         assert floors.get("no_data_leakage")
         assert floors.get("no_harmful_content")
 
 
 class TestExtraHeaders:
     def test_headers_come_off_the_entry_as_an_object_or_json_text(self):
-        config = jc.parse_judge_config(
+        config = jc._parse_judge_config(
             {"provider": "openai", "headers": {"X-Tenant": "acme"}}
         )
         assert config.headers == {"X-Tenant": "acme"}
-        config = jc.parse_judge_config(
+        config = jc._parse_judge_config(
             {"provider": "openai", "headers": '{"X-Route": "eu"}'}
         )
         assert config.headers == {"X-Route": "eu"}
-        assert jc.parse_judge_config({"provider": "openai"}).headers == {}
+        assert jc._parse_judge_config({"provider": "openai"}).headers == {}
 
     def test_malformed_headers_are_refused_with_the_reason(self):
         import pytest
 
         with pytest.raises(jc.JudgeConfigError, match="headers must be"):
-            jc.parse_judge_config({"provider": "openai", "headers": ["X-Tenant"]})
+            jc._parse_judge_config({"provider": "openai", "headers": ["X-Tenant"]})
         with pytest.raises(jc.JudgeConfigError, match="headers must be"):
-            jc.parse_judge_config({"provider": "openai", "headers": {"X-Tenant": 3}})
+            jc._parse_judge_config({"provider": "openai", "headers": {"X-Tenant": 3}})
         with pytest.raises(jc.JudgeConfigError, match="JSON object"):
-            jc.parse_judge_config({"provider": "openai", "headers": "not json"})
+            jc._parse_judge_config({"provider": "openai", "headers": "not json"})
 
     def test_a_dollar_value_is_read_from_the_environment_and_a_missing_one_is_not_sent(
         self,
@@ -954,7 +956,7 @@ class TestExtraHeaders:
                 "X-Missing": "$NOT_SET",
             }
         )
-        resolved = jc.resolve_headers(config, environ={"GATEWAY_TOKEN": "tok"})
+        resolved = jc._resolve_headers(config, environ={"GATEWAY_TOKEN": "tok"})
         assert resolved == {"Authorization": "tok", "X-Tenant": "acme"}
 
     def test_the_openai_client_gets_the_headers_and_base_url(self, monkeypatch):
@@ -979,7 +981,7 @@ class TestExtraHeaders:
             sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAI)
         )
         monkeypatch.setenv("GATEWAY_TOKEN", "tok")
-        config = jc.parse_judge_config(
+        config = jc._parse_judge_config(
             {
                 "provider": "custom",
                 "model": "local-llm",
@@ -1017,5 +1019,5 @@ class TestExtraHeaders:
         monkeypatch.setitem(
             sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAI)
         )
-        jc.completer_for(jc.parse_judge_config({"provider": "openai"}), "key")("p")
+        jc.completer_for(jc._parse_judge_config({"provider": "openai"}), "key")("p")
         assert "default_headers" not in seen and "base_url" not in seen

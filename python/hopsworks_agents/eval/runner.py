@@ -24,10 +24,10 @@ from typing import TYPE_CHECKING, Any, Protocol
 from .evaluators import (
     Evaluator,
     Trace,
-    awaits_review,
-    run_evaluators,
-    verdict,
-    was_skipped,
+    _awaits_review,
+    _run_evaluators,
+    _verdict,
+    _was_skipped,
 )
 from .models import (
     ExecutionMode,
@@ -36,7 +36,7 @@ from .models import (
     TraceStatus,
     Trial,
     TrialStatus,
-    derive_trial_id,
+    _derive_trial_id,
 )
 
 
@@ -78,7 +78,7 @@ class AgentClient(Protocol):
         self, prompt: str, *, traceparent: str, baggage: str, timeout_s: float
     ) -> AgentResponse: ...
 
-    def fetch_trace(self, trace_id: str) -> Trace | None: ...
+    def _fetch_trace(self, trace_id: str) -> Trace | None: ...
 
 
 @dataclass
@@ -130,7 +130,7 @@ class RunResult:
     error_message: str = ""
 
 
-def check_deployment_supports(suite: Suite, manifest: dict[str, Any]) -> None:
+def _check_deployment_supports(suite: Suite, manifest: dict[str, Any]) -> None:
     """Refuse a run that cannot produce trustworthy results.
 
     Both checks exist because the alternative is worse than an error: a run
@@ -288,7 +288,7 @@ def _await_trace(
     partial: Trace | None = None
     while time.monotonic() < deadline:
         try:
-            trace = client.fetch_trace(trace_id)
+            trace = client._fetch_trace(trace_id)
         except Exception:  # noqa: BLE001 — a transient read must not end the poll
             trace = None
         if trace and trace.get("root_span_id"):
@@ -327,7 +327,7 @@ def _run_trial(
     config: RunnerConfig,
     sleep=time.sleep,
 ) -> Trial:
-    trial_id = derive_trial_id(run_id, task.task_id, task.task_version, trial_index)
+    trial_id = _derive_trial_id(run_id, task.task_id, task.task_version, trial_index)
     trace_id, span_id = _new_ids()
     trial = Trial(
         trial_id=trial_id,
@@ -342,7 +342,7 @@ def _run_trial(
         trace_id=trace_id,
     )
 
-    turns = task.turns()
+    turns = task._turns()
     # One conversation for the whole script, so the agent's memory sees the
     # turns as one exchange -- which is the thing a multi-turn suite is testing.
     conversation_id = trial_id if len(turns) > 1 else None
@@ -456,10 +456,10 @@ def _run_trial(
         trial.output_tokens = trace.get("output_tokens")
         trial.estimated_cost = _cost(trial, config)
 
-    trial.evaluator_results = run_evaluators(evaluators, task, trial, trace)
-    outcome = verdict(trial.evaluator_results, suite.pass_policy, suite.pass_threshold)
+    trial.evaluator_results = _run_evaluators(evaluators, task, trial, trace)
+    outcome = _verdict(trial.evaluator_results, suite.pass_policy, suite.pass_threshold)
 
-    if was_skipped(trial.evaluator_results):
+    if _was_skipped(trial.evaluator_results):
         # A check the suite asked for could not run -- a judge with no key, most
         # often. The remaining checks are not the answer: a suite whose only
         # correctness check was that judge would report a pass for a wrong
@@ -475,7 +475,7 @@ def _run_trial(
         trial.completed_at = datetime.now(tz=timezone.utc)
         return trial
 
-    if awaits_review(trial.evaluator_results):
+    if _awaits_review(trial.evaluator_results):
         # A task that asked for human judgement has not been judged by the other
         # evaluators agreeing with each other. Held open rather than resolved, so a
         # reviewer's verdict is the thing that settles it.
@@ -557,7 +557,7 @@ def _manifest_when_ready(
             sleep(config.deployment_ready_poll_s)
 
 
-def run_suite(
+def _run_suite(
     client: AgentClient,
     suite: Suite,
     *,
@@ -584,7 +584,7 @@ def run_suite(
     a write that failed is a row missing, not a suite to abandon.
     """
     config = config or RunnerConfig()
-    check_deployment_supports(suite, _manifest_when_ready(client, config, sleep))
+    _check_deployment_supports(suite, _manifest_when_ready(client, config, sleep))
 
     unsupported = [t for t in suite.tasks if t.task_type not in TASK_TYPES]
     if unsupported:
@@ -592,7 +592,7 @@ def run_suite(
             f"unsupported task types: {sorted({t.task_type for t in unsupported})}"
         )
     scripted = [
-        t for t in suite.tasks if t.task_type == "single_turn" and len(t.turns()) > 1
+        t for t in suite.tasks if t.task_type == "single_turn" and len(t._turns()) > 1
     ]
     if scripted:
         # The failure this replaces: prompt returned the last user message, so
@@ -608,7 +608,7 @@ def run_suite(
     # outside the pass rate, so a suite quietly graded fewer tasks than it
     # claims to hold. Refused by name instead, because a suite that cannot run
     # what it says it runs has no result worth publishing.
-    empty = [t for t in suite.tasks if not t.turns()]
+    empty = [t for t in suite.tasks if not t._turns()]
     if empty:
         raise SuiteRefused(
             "these tasks have no content to send; their files are missing: "
@@ -670,7 +670,7 @@ def run_suite(
                 # work, written nowhere, because one evaluator had a bug.
                 log.exception("trial %s/%s could not be run", task.task_id, index)
                 broken = Trial(
-                    trial_id=derive_trial_id(
+                    trial_id=_derive_trial_id(
                         run_id, task.task_id, task.task_version, index
                     ),
                     run_id=run_id,

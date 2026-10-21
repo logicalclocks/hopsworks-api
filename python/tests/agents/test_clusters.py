@@ -30,7 +30,7 @@ def row(
 class TestAssigning:
     def test_the_same_signature_is_one_cluster_and_rows_point_at_it(self):
         rows = [row(0), row(1), row(2, "wrong tool")]
-        changed = c.assign_clusters(rows, [])
+        changed = c._assign_clusters(rows, [])
         by_sig = {k.signature: k for k in changed}
         assert set(by_sig) == {"discount not applied", "wrong tool"}
         assert by_sig["discount not applied"].size == 2
@@ -58,7 +58,7 @@ class TestAssigning:
             first_seen=datetime(2026, 9, 1, tzinfo=timezone.utc),
         )
         rows = [row(5, severity="high")]
-        changed = c.assign_clusters(rows, [existing])
+        changed = c._assign_clusters(rows, [existing])
         assert [k.cluster_id for k in changed] == ["c-old"]
         assert existing.size == 10
         assert existing.severity == "high"
@@ -77,7 +77,7 @@ class TestAssigning:
         )
         rows = [row(5, signature="Discount  not applied")]
 
-        changed = c.assign_clusters(rows, [existing])
+        changed = c._assign_clusters(rows, [existing])
 
         assert [k.cluster_id for k in changed] == ["c-old"]
         assert existing.size == 2
@@ -109,7 +109,7 @@ class TestAssigning:
             }
         )
 
-        (merged,) = c.merge_decisions([stale], [fresh])
+        (merged,) = c._merge_decisions([stale], [fresh])
 
         assert merged.status == "dismissed"
         assert merged.dismiss_reason == "works as designed"
@@ -120,7 +120,7 @@ class TestAssigning:
 
     def test_a_cluster_the_backend_has_never_seen_is_written_as_it_is(self):
         new = c.Cluster(cluster_id="c-2", deployment_id=3, signature="x", size=1)
-        (merged,) = c.merge_decisions([new], [])
+        (merged,) = c._merge_decisions([new], [])
         assert merged.status == "open"
 
     def test_the_representative_is_the_best_member_and_only_moves_for_a_better_one(
@@ -131,7 +131,7 @@ class TestAssigning:
             row(1, severity="high", status="usable", confidence=0.4),
             row(2, severity="high", status="usable", confidence=0.3),
         ]
-        (cluster,) = c.assign_clusters(rows, [])
+        (cluster,) = c._assign_clusters(rows, [])
         assert cluster.representative_feedback_id == "fb-1"
         assert cluster.label == "summary 1"
         # an existing representative keeps its place against an equal or weaker newcomer
@@ -145,23 +145,23 @@ class TestAssigning:
                 "representativeFeedbackId": "fb-rep",
             }
         )
-        c.assign_clusters([row(7, "s", severity="high", status="missing")], [existing])
+        c._assign_clusters([row(7, "s", severity="high", status="missing")], [existing])
         assert existing.representative_feedback_id == "fb-rep"
-        c.assign_clusters(
+        c._assign_clusters(
             [row(8, "s", severity="critical", status="usable")], [existing]
         )
         assert existing.representative_feedback_id == "fb-8"
 
     def test_unclustered_rows_say_so_rather_than_joining_an_unknown_bucket(self):
         rows = [row(0, ungradable=True), row(1, signature="")]
-        assert c.assign_clusters(rows, []) == []
+        assert c._assign_clusters(rows, []) == []
         assert rows[0]["cluster_id"] == "" and rows[1]["cluster_id"] == ""
 
     def test_a_dismissed_cluster_counts_its_new_members_but_stays_dismissed(self):
         existing = c.Cluster(
             cluster_id="c", deployment_id=3, signature="s", size=1, status="dismissed"
         )
-        c.assign_clusters([row(0, "s")], [existing])
+        c._assign_clusters([row(0, "s")], [existing])
         assert existing.size == 2 and existing.status == "dismissed"
 
 
@@ -180,7 +180,7 @@ class TestKnownSignatures:
 class TestRows:
     def test_a_row_has_every_column_and_no_null_timestamp(self):
         now = datetime(2026, 9, 10, tzinfo=timezone.utc)
-        fresh = c.Cluster(cluster_id="c", deployment_id=3, signature="s").to_row(now)
+        fresh = c.Cluster(cluster_id="c", deployment_id=3, signature="s")._to_row(now)
         assert (
             fresh["first_seen"] == now
             and fresh["last_seen"] == now

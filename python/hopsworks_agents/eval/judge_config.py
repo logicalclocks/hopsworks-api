@@ -223,7 +223,7 @@ class JudgeConfig:
         """Whether the configuration named its own criteria."""
         return bool(self.criteria)
 
-    def effective_criteria(self) -> list[Criterion]:
+    def _effective_criteria(self) -> list[Criterion]:
         """What to score, always at least one thing.
 
         Everything downstream — the prompt, the weighting, the floors, the
@@ -243,7 +243,7 @@ class JudgeConfig:
             )
         ]
 
-    def normalise(self, raw: float) -> float:
+    def _normalise(self, raw: float) -> float:
         """A judge's score in storage units.
 
         Clamped rather than rejected: a model told to answer 1-5 occasionally
@@ -263,7 +263,7 @@ def _as_float(value: Any, where: str) -> float:
         raise JudgeConfigError(f"{where} must be a number") from None
 
 
-def parse_judge_config(entry: dict[str, Any]) -> JudgeConfig:
+def _parse_judge_config(entry: dict[str, Any]) -> JudgeConfig:
     """Read a judge configuration out of a spec entry, or explain why not."""
     config = JudgeConfig()
 
@@ -371,7 +371,7 @@ def parse_judge_config(entry: dict[str, Any]) -> JudgeConfig:
         )
         nested_range = output.get("score_range")
         if nested_range and score_range is None:
-            return parse_judge_config({**entry, "score_range": nested_range})
+            return _parse_judge_config({**entry, "score_range": nested_range})
 
     template = entry.get("prompt_template") or entry.get("promptTemplate") or ""
     if template:
@@ -443,9 +443,9 @@ def _parse_criteria(
     return criteria
 
 
-def validate_judge_entry(entry: dict[str, Any]) -> None:
+def _validate_judge_entry(entry: dict[str, Any]) -> None:
     """Raise :class:`JudgeConfigError` unless this entry is usable."""
-    parse_judge_config(entry)
+    _parse_judge_config(entry)
 
 
 # ── prompt ────────────────────────────────────────────────────────────────
@@ -472,7 +472,7 @@ Reply with JSON only, no prose:
 {output_shape}"""
 
 
-def render_prompt(
+def _render_prompt(
     config: JudgeConfig,
     *,
     question: str,
@@ -539,14 +539,14 @@ def _number(value: float) -> str:
 def _criteria_block(config: JudgeConfig) -> str:
     return "\n".join(
         f"- {c.name}: {c.description or 'no description given'}"
-        for c in config.effective_criteria()
+        for c in config._effective_criteria()
     )
 
 
 def _output_shape(config: JudgeConfig) -> str:
     scores = ", ".join(
         f'"{c.name}": <{_number(config.score_min)}-{_number(config.score_max)}>'
-        for c in config.effective_criteria()
+        for c in config._effective_criteria()
     )
     parts = [f'"scores": {{{scores}}}']
     if config.include_reasoning:
@@ -561,7 +561,7 @@ def _output_shape(config: JudgeConfig) -> str:
 # ── providers ─────────────────────────────────────────────────────────────
 
 
-def resolve_headers(
+def _resolve_headers(
     config: JudgeConfig, environ: dict[str, str] | None = None
 ) -> dict[str, str]:
     """The extra headers with "$NAME" values read from the environment.
@@ -615,7 +615,7 @@ def completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
     # a known provider at a proxy without inventing a new provider name.
     base_url = config.base_url or registry["base_url"]
     model = config.model or registry["default_model"]
-    headers = resolve_headers(config)
+    headers = _resolve_headers(config)
     if registry["adapter"] == "openai":
         parameters = _ChatCompletionParameters(
             config.provider,
@@ -711,7 +711,7 @@ class _TemperatureParameter:
         self._lock = Lock()
 
     @classmethod
-    def for_model(
+    def _for_model(
         cls, provider: str, model: str, value: float
     ) -> _TemperatureParameter:
         return cls(value, "omit" if _omits_temperature(provider, model) else "probe")
@@ -719,11 +719,11 @@ class _TemperatureParameter:
     def extra(self) -> dict[str, float]:
         return {"temperature": self.value} if self._state in ("probe", "send") else {}
 
-    def accepted(self) -> None:
+    def _accepted(self) -> None:
         if self._state == "probe":
             self._state = "send"
 
-    def rejected(self, err: Exception) -> bool:
+    def _rejected(self, err: Exception) -> bool:
         if self._state not in ("probe", "send") or not _rejects_temperature(err):
             return False
         self._state = "omit"
@@ -748,10 +748,10 @@ class _TemperatureParameter:
             try:
                 result = call(temperature=self.value)
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
-                if not self.rejected(err):
+                if not self._rejected(err):
                     raise
                 return call()
-            self.accepted()
+            self._accepted()
             return result
 
 
@@ -762,13 +762,13 @@ class _ReasoningEffortParameter:
         self._extra = extra
 
     @classmethod
-    def for_anthropic(cls, model: str, effort: str) -> _ReasoningEffortParameter:
+    def _for_anthropic(cls, model: str, effort: str) -> _ReasoningEffortParameter:
         if not _supports_anthropic_reasoning_effort(model, effort):
             return cls({})
         return cls({"output_config": {"effort": effort}})
 
     @classmethod
-    def for_chat_completion(
+    def _for_chat_completion(
         cls, provider: str, model: str, effort: str
     ) -> _ReasoningEffortParameter:
         return cls(_chat_completion_reasoning_effort_extra(provider, model, effort))
@@ -776,7 +776,7 @@ class _ReasoningEffortParameter:
     def extra(self) -> dict[str, Any]:
         return dict(self._extra)
 
-    def rejected(self, err: Exception) -> bool:
+    def _rejected(self, err: Exception) -> bool:
         if not self._extra or not _rejects_reasoning_effort(err):
             return False
         self._extra = {}
@@ -791,10 +791,10 @@ class _AnthropicMessagesParameters:
     """Keyword arguments for Anthropic Messages requests."""
 
     def __init__(self, model: str, temperature: float, reasoning_effort: str):
-        self._temperature = _TemperatureParameter.for_model(
+        self._temperature = _TemperatureParameter._for_model(
             "anthropic", model, temperature
         )
-        self._reasoning_effort = _ReasoningEffortParameter.for_anthropic(
+        self._reasoning_effort = _ReasoningEffortParameter._for_anthropic(
             model, reasoning_effort
         )
         self._lock = Lock()
@@ -815,12 +815,12 @@ class _AnthropicMessagesParameters:
                 result = call(**extra)
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
                 last = err
-                if self._temperature.rejected(err):
+                if self._temperature._rejected(err):
                     continue
-                if self._reasoning_effort.rejected(err):
+                if self._reasoning_effort._rejected(err):
                     continue
                 raise
-            self._temperature.accepted()
+            self._temperature._accepted()
             return result
         if last is not None:
             raise last
@@ -840,10 +840,10 @@ class _ChatCompletionParameters:
     ):
         self.max_tokens = max_tokens
         self._token_limit = _token_limit_parameter(model)
-        self._temperature = _TemperatureParameter.for_model(
+        self._temperature = _TemperatureParameter._for_model(
             provider, model, temperature
         )
-        self._reasoning_effort = _ReasoningEffortParameter.for_chat_completion(
+        self._reasoning_effort = _ReasoningEffortParameter._for_chat_completion(
             provider, model, reasoning_effort
         )
         self._lock = Lock()
@@ -874,12 +874,12 @@ class _ChatCompletionParameters:
                     )
                     self._token_limit = replacement
                     continue
-                if self._temperature.rejected(err):
+                if self._temperature._rejected(err):
                     continue
-                if self._reasoning_effort.rejected(err):
+                if self._reasoning_effort._rejected(err):
                     continue
                 raise
-            self._temperature.accepted()
+            self._temperature._accepted()
             return result
         if last is not None:
             raise last
@@ -1183,7 +1183,7 @@ def _version_at_least(identifier: str, major: int, minor: int) -> bool:
     return (found_major, found_minor) >= (major, minor)
 
 
-def tool_calls_text(trace: dict[str, Any] | None, limit: int = 600) -> tuple[str, str]:
+def _tool_calls_text(trace: dict[str, Any] | None, limit: int = 600) -> tuple[str, str]:
     """What the agent called, and what came back, for the prompt."""
     calls = (trace or {}).get("tool_calls") or []
     if not calls:
@@ -1609,7 +1609,7 @@ def default_templates() -> list[dict[str, Any]]:
     ]
 
 
-def api_key_for(config: JudgeConfig) -> str | None:
+def _api_key_for(config: JudgeConfig) -> str | None:
     """The key this judge should use.
 
     From the environment, and only from there. A key set on a Hopsworks account
@@ -1632,7 +1632,7 @@ def api_key_for(config: JudgeConfig) -> str | None:
     return (os.environ.get(env_var) or None) if env_var else None
 
 
-def api_key_source(config: JudgeConfig) -> str:
+def _api_key_source(config: JudgeConfig) -> str:
     """Which variable would be read, for an error that can be acted on."""
     named = getattr(config, "api_key_env", "") or ""
     if named:

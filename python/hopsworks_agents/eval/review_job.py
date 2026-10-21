@@ -28,29 +28,29 @@ from .agent_source import (
     DEFAULT_SOURCE_CHARS,
     CodeLocation,
     SourceBundle,
-    load_agent_source,
-    relevant_files,
+    _load_agent_source,
+    _relevant_files,
 )
 from .api import hopsworks_session
 from .client import HopsworksAgentClient
 from .clusters import (
     Cluster,
-    assign_clusters,
+    _assign_clusters,
+    _merge_decisions,
     from_api,
     known_signatures,
-    merge_decisions,
 )
 from .judge_config import (
     JudgeConfig,
-    api_key_for,
-    api_key_source,
+    _api_key_for,
+    _api_key_source,
+    _tool_calls_text,
     completer_for,
-    tool_calls_text,
 )
-from .run_fields import run_trials
+from .run_fields import _run_trials
 from .run_job import _api, _match_schema, _short
-from .sample_job import conversation_before, question_and_answer, started_ns
-from .triage import TriageInput, triage, triage_row
+from .sample_job import _conversation_before, _question_and_answer, _started_ns
+from .triage import TriageInput, _triage_row, triage
 
 
 if TYPE_CHECKING:
@@ -89,7 +89,7 @@ def _serving(host: str, project_id: int, deployment_id: int) -> str:
 DEFAULT_SOURCES = ("feedback", "errors", "judge")
 
 
-def review_settings(job: dict[str, Any] | None) -> dict[str, Any]:
+def _review_settings(job: dict[str, Any] | None) -> dict[str, Any]:
     """The model settings off the job's configuration, with the defaults the backend uses."""
     config = (job or {}).get("config") or {}
     raw_sources = str(config.get("sources") or "")
@@ -145,7 +145,7 @@ def _headers_setting(raw: Any) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items() if str(k).strip()}
 
 
-def code_location(
+def _code_location(
     session: Any,
     host: str,
     project_id: int,
@@ -153,7 +153,7 @@ def code_location(
     settings: dict[str, Any],
 ) -> CodeLocation:
     """Where the agent's code is: the job's override when set, else what the deployment says."""
-    override = CodeLocation.from_override(settings.get("source_location") or "")
+    override = CodeLocation._from_override(settings.get("source_location") or "")
     view: dict[str, Any] = {}
     try:
         response = session.get(_serving(host, project_id, deployment_id), timeout=60)
@@ -163,15 +163,17 @@ def code_location(
         log.exception(
             "could not read deployment %s; its code location is unknown", deployment_id
         )
-    described = CodeLocation.from_serving(view)
-    if override.known():
+    described = CodeLocation._from_serving(view)
+    if override._known():
         # the entry script is still the deployment's, unless the override names a file itself
         override.script_file = override.script_file or described.script_file
         return override
     return described
 
 
-def completer_from(settings: dict[str, Any]) -> tuple[Callable[[str], str] | None, str]:
+def _completer_from(
+    settings: dict[str, Any],
+) -> tuple[Callable[[str], str] | None, str]:
     """The model call, or why there is none. A missing key is a reason, not an exception."""
     config = JudgeConfig(
         provider=settings["provider"],
@@ -186,7 +188,7 @@ def completer_from(settings: dict[str, Any]) -> tuple[Callable[[str], str] | Non
             None,
             "an OpenAI-compatible provider needs a base URL; set one on the job",
         )
-    key = api_key_for(config)
+    key = _api_key_for(config)
     # A custom provider is somebody's own endpoint -- a vLLM, an internal
     # gateway, a model server on the cluster -- and those commonly want no
     # credential at all. Demanding one made them unusable: there is no secret to
@@ -194,7 +196,7 @@ def completer_from(settings: dict[str, Any]) -> tuple[Callable[[str], str] | Non
     if not key and config.provider != "custom":
         return (
             None,
-            f"no API key: set {api_key_source(config)} on the job's environment",
+            f"no API key: set {_api_key_source(config)} on the job's environment",
         )
     return completer_for(config, key), ""
 
@@ -218,7 +220,7 @@ def _ms(value: Any) -> float:
 TRACE_SOURCE_PREFIX = "feedback:trace:"
 
 
-def trace_of(run: dict[str, Any]) -> str:
+def _trace_of(run: dict[str, Any]) -> str:
     """The one trace a run was asked to review, or empty for a window."""
     source = str(run.get("sampleSource") or "")
     return (
@@ -228,7 +230,7 @@ def trace_of(run: dict[str, Any]) -> str:
     )
 
 
-def feedback_in_window(
+def _feedback_in_window(
     session: Any, otel_base: str, from_ms: float, to_ms: float, trace_id: str = ""
 ) -> list[dict[str, Any]]:
     """Every verdict that needs attention in (from, to], oldest first -- or every verdict.
@@ -264,7 +266,7 @@ def feedback_in_window(
     return rows
 
 
-def existing_clusters(session: Any, otel_base: str) -> list[Cluster]:
+def _existing_clusters(session: Any, otel_base: str) -> list[Cluster]:
     """The deployment's clusters as the backend has them; none when they cannot be read,.
 
     because a review that cannot see its clusters still reviews, it just files under new ones.
@@ -282,7 +284,7 @@ def existing_clusters(session: Any, otel_base: str) -> list[Cluster]:
         return []
 
 
-def review_feedback(
+def _review_feedback(
     session: Any,
     client: Any,
     otel_base: str,
@@ -299,10 +301,10 @@ def review_feedback(
     """
     from_ms = _ms(run.get("sampleFrom"))
     to_ms = _ms(run.get("sampleTo")) or datetime.now(tz=timezone.utc).timestamp() * 1000
-    budget = min(run_trials(run, 0) or MAX_BUDGET, MAX_BUDGET)
+    budget = min(_run_trials(run, 0) or MAX_BUDGET, MAX_BUDGET)
 
-    trace_id = trace_of(run)
-    pending = feedback_in_window(session, otel_base, from_ms, to_ms, trace_id)
+    trace_id = _trace_of(run)
+    pending = _feedback_in_window(session, otel_base, from_ms, to_ms, trace_id)
     if not pending:
         if trace_id:
             log.info("no feedback needing attention on trace %s", trace_id)
@@ -378,30 +380,30 @@ def _review_one(
         "model": settings["model"],
     }
     if complete is None:
-        return triage_row(feedback, None, error=no_model_reason, **provenance)
+        return _triage_row(feedback, None, error=no_model_reason, **provenance)
     trace_id = str(feedback.get("traceId") or "")
     try:
         detail = session.get(f"{otel_base}/traces/{trace_id}", timeout=60).json()
-        trace = client.fetch_trace(trace_id)
+        trace = client._fetch_trace(trace_id)
     except Exception as err:  # noqa: BLE001 -- one unreadable trace is one row that says so
         log.exception("could not read trace %s", trace_id)
-        return triage_row(
+        return _triage_row(
             feedback, None, error=f"could not read trace: {err}", **provenance
         )
-    question, answer = question_and_answer(detail)
-    earlier = conversation_before(
+    question, answer = _question_and_answer(detail)
+    earlier = _conversation_before(
         session,
         otel_base,
         str(feedback.get("sessionId") or ""),
-        started_ns({}, detail),
+        _started_ns({}, detail),
         sessions,
     )
-    tool_calls, tool_results = tool_calls_text(trace)
+    tool_calls, tool_results = _tool_calls_text(trace)
     source_files: list[tuple[str, str]] = []
     if source:
         # the files this trace has a reason to be read against: what it called, and the words
         # of the failure (a detector's error message, a reviewer's note)
-        source_files = relevant_files(
+        source_files = _relevant_files(
             source,
             tool_names=list((trace or {}).get("tool_names") or []),
             clues=[
@@ -425,10 +427,10 @@ def _review_one(
         ),
         context_turns=settings["context_turns"],
     )
-    return triage_row(feedback, result, error=why, **provenance)
+    return _triage_row(feedback, result, error=why, **provenance)
 
 
-def write_clusters(feature_store: Any, clusters: Sequence[Cluster]) -> None:
+def _write_clusters(feature_store: Any, clusters: Sequence[Cluster]) -> None:
     """Upsert the clusters that changed. The online table keys on cluster_id, so a.
 
     cluster written again replaces its row; offline history keeps every version.
@@ -445,12 +447,12 @@ def write_clusters(feature_store: Any, clusters: Sequence[Cluster]) -> None:
             "Hopsworks provisions it when a review job is started -- check the server log for why "
             "that failed, then run the review again"
         )
-    frame = pd.DataFrame([c.to_row(now) for c in clusters])
+    frame = pd.DataFrame([c._to_row(now) for c in clusters])
     group.insert(_match_schema(group, frame), write_options={"mode": "append"})
     log.info("wrote %d clusters to %s", len(clusters), CLUSTERS_FG)
 
 
-def write_triage(feature_store: Any, rows: Sequence[dict[str, Any]]) -> None:
+def _write_triage(feature_store: Any, rows: Sequence[dict[str, Any]]) -> None:
     if not rows:
         return
     import pandas as pd  # noqa: PLC0415 -- only a job that has rows pays for pandas
@@ -519,8 +521,8 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
                     "could not read job %s; reviewing with default settings",
                     run["jobName"],
                 )
-        settings = review_settings(job)
-        complete, reason = completer_from(settings)
+        settings = _review_settings(job)
+        complete, reason = _completer_from(settings)
         if complete is None:
             # Not a review. Every row would be ungradable, and a SUCCEEDED run moves the
             # watermark past the window -- so the feedback nobody reviewed would never be
@@ -536,18 +538,20 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
             deployment_id=deployment_id,
         )
         otel_base = _otel(host, project.id, deployment_id)
-        clusters = existing_clusters(session, otel_base)
+        clusters = _existing_clusters(session, otel_base)
         log.info("sources for this run: %s", ", ".join(settings["sources"]))
         source: SourceBundle | None = None
         if settings["read_source_code"]:
-            location = code_location(session, host, project.id, deployment_id, settings)
-            source = load_agent_source(location, dataset_api=_dataset_api(project))
+            location = _code_location(
+                session, host, project.id, deployment_id, settings
+            )
+            source = _load_agent_source(location, dataset_api=_dataset_api(project))
             if not source:
                 log.warning(
                     "reviewing without the agent's source code (%s)",
                     source.origin or "location unknown",
                 )
-        rows, processed_through = review_feedback(
+        rows, processed_through = _review_feedback(
             session,
             client,
             otel_base,
@@ -558,13 +562,13 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
             clusters,
             source,
         )
-        changed = assign_clusters(rows, clusters)
+        changed = _assign_clusters(rows, clusters)
         # Re-read immediately before writing: a review run takes minutes, and whole rows go
         # back, so a dismiss, promotion or rename made while it was going was undone by it.
-        changed = merge_decisions(changed, existing_clusters(session, otel_base))
+        changed = _merge_decisions(changed, _existing_clusters(session, otel_base))
         feature_store = project.get_feature_store()
-        write_triage(feature_store, rows)
-        write_clusters(feature_store, changed)
+        _write_triage(feature_store, rows)
+        _write_clusters(feature_store, changed)
         if rows and all(row.get("ungradable") for row in rows):
             # Every model call failed -- an expired key, an exhausted quota, a
             # provider outage. Reported SUCCEEDED this moved the watermark to

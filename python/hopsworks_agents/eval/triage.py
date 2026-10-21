@@ -95,7 +95,7 @@ AUTOMATED_PREFIXES = ("detector:", "judge:")
 END_USER_PREFIX = "user:"
 
 
-def origin_of(feedback: dict[str, Any]) -> str:
+def _origin_of(feedback: dict[str, Any]) -> str:
     """Who gave this verdict: "human" (a reviewer in Hopsworks), "end_user" (someone talking to.
 
     the agent), "detector" (an error, timeout or anomaly the platform found in the trace) or
@@ -314,7 +314,7 @@ empty: a bug you cannot point at is not a finding.
 """
 
 
-def render_triage_prompt(inp: TriageInput, *, context_turns: int = 20) -> str:
+def _render_triage_prompt(inp: TriageInput, *, context_turns: int = 20) -> str:
     feedback = inp.feedback
     turns = list(inp.earlier_turns)[-context_turns:] if context_turns > 0 else []
     transcript = (
@@ -339,7 +339,7 @@ def render_triage_prompt(inp: TriageInput, *, context_turns: int = 20) -> str:
         )
     verdict = str(feedback.get("verdict") or "negative")
     reviewer = str(feedback.get("reviewer") or "")
-    origin = origin_of(feedback)
+    origin = _origin_of(feedback)
     if origin == "end_user":
         # Shown apart from a reviewer's verdict, which it used to be indistinguishable from.
         # An end user is a person, so their words are evidence -- but they never saw the
@@ -428,7 +428,7 @@ def _text(
     return value[:limit]
 
 
-def parse_triage(text: str) -> TriageResult:
+def _parse_triage(text: str) -> TriageResult:
     """The model's reply as a validated result, or a TriageParseError saying why not."""
     parsed = _json_from(text)
     if parsed is None:
@@ -546,20 +546,20 @@ def triage(
     complete: Callable[[str], str], inp: TriageInput, *, context_turns: int = 20
 ) -> tuple[TriageResult | None, str]:
     """One call. Returns the result and, when there is none, why."""
-    prompt = render_triage_prompt(inp, context_turns=context_turns)
+    prompt = _render_triage_prompt(inp, context_turns=context_turns)
     try:
         raw = complete(prompt)
     except Exception as err:  # noqa: BLE001 — one failed call is one ungradable row, not a failed run
         return None, f"model call failed: {err}"
     try:
-        result = parse_triage(raw)
+        result = _parse_triage(raw)
     except TriageParseError as err:
         return None, str(err)
-    verify_patches(result, inp.source_files)
+    _verify_patches(result, inp.source_files)
     return result, ""
 
 
-def verify_patches(
+def _verify_patches(
     result: TriageResult, source_files: Sequence[tuple[str, str]]
 ) -> None:
     """Mark each finding's patch verified when its original lines occur, exactly once, in the.
@@ -587,7 +587,7 @@ def verify_patches(
         finding.verified = shown.count(finding.original) == 1
 
 
-def triage_row(
+def _triage_row(
     feedback: dict[str, Any],
     result: TriageResult | None,
     *,

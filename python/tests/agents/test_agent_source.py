@@ -28,7 +28,7 @@ class TestReadingADirectory:
         (tmp_path / "__pycache__" / "x.py").write_text("ignored\n")
         (tmp_path / "big.py").write_text("x" * (src.MAX_FILE_BYTES + 1))
 
-        result = src.bundle_from_directory(tmp_path, entry="main.py", origin="test")
+        result = src._bundle_from_directory(tmp_path, entry="main.py", origin="test")
 
         assert set(result.files) == {"agent/main.py"}
         assert result.entry == "agent/main.py"
@@ -50,7 +50,7 @@ class TestReadingADirectory:
         # and one reached through a linked directory, which the name check alone misses
         (checkout / "vendor").symlink_to(secret.parent, target_is_directory=True)
 
-        result = src.bundle_from_directory(checkout, origin="test")
+        result = src._bundle_from_directory(checkout, origin="test")
 
         assert set(result.files) == {"agent/main.py"}
         assert "ghp_realtoken" not in "".join(result.files.values())
@@ -90,7 +90,7 @@ class TestReadingADirectory:
         original = src.clone_repository
         src.clone_repository = explode
         try:
-            bundle = src.load_agent_source(
+            bundle = src._load_agent_source(
                 src.CodeLocation(git_url="https://u:ghp_realtoken@h/r")
             )
         finally:
@@ -119,7 +119,7 @@ class TestReadingADirectory:
 
 class TestWhereTheCodeIs:
     def test_comes_off_the_serving_view(self):
-        location = src.CodeLocation.from_serving(
+        location = src.CodeLocation._from_serving(
             {
                 "gitUrl": "https://github.com/o/r",
                 "gitBranch": "main",
@@ -132,14 +132,14 @@ class TestWhereTheCodeIs:
         assert location.git_url == "https://github.com/o/r"
         assert location.git_branch == "release" and location.git_commit == "abc123"
         assert location.script_file == "chinook/support_agent.py"
-        assert location.known()
+        assert location._known()
 
     def test_an_override_is_a_git_url_with_an_optional_ref_or_a_hopsfs_path(self):
-        git = src.CodeLocation.from_override("https://github.com/o/r#v2")
+        git = src.CodeLocation._from_override("https://github.com/o/r#v2")
         assert git.git_url == "https://github.com/o/r" and git.git_branch == "v2"
-        fs = src.CodeLocation.from_override("/Projects/g1/Models/agent/1")
+        fs = src.CodeLocation._from_override("/Projects/g1/Models/agent/1")
         assert fs.model_path == "/Projects/g1/Models/agent/1" and not fs.git_url
-        assert not src.CodeLocation.from_override("").known()
+        assert not src.CodeLocation._from_override("")._known()
 
     def test_the_credential_for_a_host_comes_off_what_hopsworks_injected(self):
         entries = [
@@ -213,19 +213,19 @@ class TestCloning:
             raise RuntimeError("no network")
 
         monkeypatch.setattr(src, "clone_repository", boom)
-        result = src.load_agent_source(
+        result = src._load_agent_source(
             src.CodeLocation(git_url="https://github.com/o/r"), workdir=str(tmp_path)
         )
         assert not result
         assert "no network" in result.origin
 
     def test_an_unknown_location_is_an_empty_bundle(self):
-        assert not src.load_agent_source(src.CodeLocation())
+        assert not src._load_agent_source(src.CodeLocation())
 
 
 class TestChoosingFiles:
     def test_the_entry_and_what_it_imports_come_first(self):
-        chosen = [path for path, _ in src.relevant_files(bundle())]
+        chosen = [path for path, _ in src._relevant_files(bundle())]
         assert chosen[:3] == ["agent/main.py", "agent/tools.py", "agent/memory.py"]
         # nothing calls for the unrelated module or the tests, so they are not shown
         assert "agent/unrelated.py" not in chosen
@@ -234,18 +234,22 @@ class TestChoosingFiles:
     def test_files_that_mention_the_tools_called_or_the_failure_are_added(self):
         chosen = [
             path
-            for path, _ in src.relevant_files(bundle(), tool_names=["recall_interests"])
+            for path, _ in src._relevant_files(
+                bundle(), tool_names=["recall_interests"]
+            )
         ]
         assert "README.md" in chosen
         chosen = [
             path
-            for path, _ in src.relevant_files(bundle(), clues=["noop returned nothing"])
+            for path, _ in src._relevant_files(
+                bundle(), clues=["noop returned nothing"]
+            )
         ]
         assert "agent/unrelated.py" in chosen
 
     def test_the_budget_clips_and_says_so(self):
         files = {"a.py": "x" * 500, "b.py": "y" * 500}
-        chosen = src.relevant_files(
+        chosen = src._relevant_files(
             src.SourceBundle(files=files, entry="a.py"),
             clues=["yyyy"],
             budget_chars=800,
@@ -255,12 +259,12 @@ class TestChoosingFiles:
         assert sum(len(text) for _, text in chosen) <= 800 + 40
 
     def test_without_an_entry_or_a_match_the_smallest_python_files_stand_in(self):
-        chosen = [path for path, _ in src.relevant_files(bundle(entry=""))]
+        chosen = [path for path, _ in src._relevant_files(bundle(entry=""))]
         assert chosen[0] == "agent/memory.py"
         assert all(path.endswith(".py") for path in chosen)
 
     def test_nothing_is_shown_from_an_empty_bundle(self):
-        assert src.relevant_files(src.SourceBundle(files={}), tool_names=["x"]) == []
+        assert src._relevant_files(src.SourceBundle(files={}), tool_names=["x"]) == []
 
     def test_rendering_numbers_the_lines_under_each_path(self):
         text = src.render_source(
@@ -275,14 +279,14 @@ class TestChoosingFiles:
 class TestImports:
     def test_resolves_relative_and_absolute_imports_inside_the_repository(self):
         files = bundle().files
-        assert src.imported_files(files, "agent/main.py") == [
+        assert src._imported_files(files, "agent/main.py") == [
             "agent/main.py",
             "agent/tools.py",
             "agent/memory.py",
         ]
 
     def test_ignores_an_entry_that_is_not_in_the_bundle(self):
-        assert src.imported_files({"a.py": "import os"}, "missing.py") == []
+        assert src._imported_files({"a.py": "import os"}, "missing.py") == []
 
     @pytest.mark.parametrize(
         "module,expected",

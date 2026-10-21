@@ -8,9 +8,9 @@ the last turn — which produced a pass rate for an exchange that never happened
 import json
 
 import pytest
-from hopsworks_agents.eval.judge_config import parse_judge_config, render_prompt
+from hopsworks_agents.eval.judge_config import _parse_judge_config, _render_prompt
 from hopsworks_agents.eval.models import ExecutionMode, Suite, Task, TrialStatus
-from hopsworks_agents.eval.runner import AgentResponse, RunnerConfig, run_suite
+from hopsworks_agents.eval.runner import AgentResponse, RunnerConfig, _run_suite
 
 
 CAPABLE = {"capabilities": {"trace_correlation": True, "eval_mode": True}}
@@ -56,7 +56,7 @@ class ScriptedAgent:
             blocked_by_guardrail=self._blocked_on == index,
         )
 
-    def fetch_trace(self, trace_id):
+    def _fetch_trace(self, trace_id):
         return None
 
 
@@ -69,7 +69,7 @@ def conversation(*turns, task_id="c1"):
 
 
 def run(client, task):
-    return run_suite(
+    return _run_suite(
         client,
         Suite(suite_id="s1", tasks=[task]),
         run_id="run-1",
@@ -201,7 +201,7 @@ class TestWhenATurnFails:
             blocks_are_success=True,
             execution_mode=ExecutionMode.SANDBOXED,
         )
-        trial = run_suite(
+        trial = _run_suite(
             client,
             safety,
             run_id="run-1",
@@ -217,8 +217,8 @@ class TestWhenATurnFails:
 
 class TestTheJudgeSeesIt:
     def test_the_transcript_reaches_the_prompt(self):
-        prompt = render_prompt(
-            parse_judge_config(
+        prompt = _render_prompt(
+            _parse_judge_config(
                 {
                     "type": "llm_judge",
                     "criteria": {"resolved": {"weight": 1, "description": "d"}},
@@ -233,8 +233,8 @@ class TestTheJudgeSeesIt:
         assert "agent: hello" in prompt
 
     def test_a_single_turn_prompt_has_no_conversation_block(self):
-        prompt = render_prompt(
-            parse_judge_config(
+        prompt = _render_prompt(
+            _parse_judge_config(
                 {
                     "type": "llm_judge",
                     "criteria": {"ok": {"weight": 1, "description": "d"}},
@@ -249,7 +249,7 @@ class TestTheJudgeSeesIt:
 
 class TestTheTaskItself:
     def test_turns_reads_the_user_side_in_order(self):
-        assert conversation("a", "b", "c").turns() == ["a", "b", "c"]
+        assert conversation("a", "b", "c")._turns() == ["a", "b", "c"]
 
     def test_assistant_messages_are_not_part_of_the_script(self):
         # [user, assistant, user] is ambiguous between a two-turn script and a
@@ -266,7 +266,7 @@ class TestTheTaskItself:
             task_type="multi_turn",
         )
 
-        assert task.turns() == ["one", "two"]
+        assert task._turns() == ["one", "two"]
 
     def test_prompt_refuses_a_conversation_rather_than_narrowing_it(self):
         with pytest.raises(ValueError, match="3 user turns"):

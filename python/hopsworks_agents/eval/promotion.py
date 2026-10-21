@@ -71,7 +71,7 @@ class CandidateTask:
     reviewer: str = ""
     created_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
-    def to_row(self) -> dict[str, Any]:
+    def _to_row(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "task_version": 1,
@@ -109,7 +109,7 @@ def _finding_dicts(
     ]
 
 
-def promote_trace(
+def _promote_trace(
     trace_features: dict[str, Any],
     *,
     task_id: str,
@@ -196,7 +196,7 @@ def confirm_redaction(
     return task
 
 
-def can_add_to_suite(task: CandidateTask) -> tuple[bool, str]:
+def _can_add_to_suite(task: CandidateTask) -> tuple[bool, str]:
     """Whether this task may join a suite, and why not if it may not.
 
     Returns a reason rather than a bare False so the refusal can be shown to
@@ -214,7 +214,7 @@ def can_add_to_suite(task: CandidateTask) -> tuple[bool, str]:
     return True, ""
 
 
-def tasks_from_trace(
+def _tasks_from_trace(
     tasks: Sequence[CandidateTask], trace_id: str
 ) -> list[CandidateTask]:
     """Every task promoted from a given trace.

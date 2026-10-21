@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from .models import TraceStatus, Trial, TrialStatus, gradable_trials
+from .models import TraceStatus, Trial, TrialStatus, _gradable_trials
 
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ def _bucket(score: float) -> str:
     return SCORE_BUCKETS[index]
 
 
-def variance(values: Sequence[float]) -> float:
+def _variance(values: Sequence[float]) -> float:
     """Population variance.
 
     Zero for a single value, which is the honest answer:
@@ -82,7 +82,7 @@ def _passed(trial: Trial) -> bool:
     return trial.status is TrialStatus.PASSED
 
 
-def percentile(values: Sequence[float], pct: float) -> float:
+def _percentile(values: Sequence[float], pct: float) -> float:
     if not values:
         return 0.0
     ordered = sorted(values)
@@ -92,7 +92,7 @@ def percentile(values: Sequence[float], pct: float) -> float:
     return ordered[lo] + (ordered[hi] - ordered[lo]) * (k - lo)
 
 
-def pass_at_k(trials: Sequence[Trial]) -> float:
+def _pass_at_k(trials: Sequence[Trial]) -> float:
     """Fraction of tasks that succeeded at least once across their trials."""
     by_task = _by_task(trials)
     if not by_task:
@@ -102,7 +102,7 @@ def pass_at_k(trials: Sequence[Trial]) -> float:
     ) / len(by_task)
 
 
-def pass_all_k(trials: Sequence[Trial]) -> float:
+def _pass_all_k(trials: Sequence[Trial]) -> float:
     """Fraction of tasks that succeeded on *every* trial — ``pass^k``.
 
     The reliability number. A task that passes 4 of 5 counts here as a failure,
@@ -117,7 +117,7 @@ def pass_all_k(trials: Sequence[Trial]) -> float:
     ) / len(by_task)
 
 
-def flaky_tasks(trials: Sequence[Trial]) -> list[str]:
+def _flaky_tasks(trials: Sequence[Trial]) -> list[str]:
     """Tasks that both passed and failed across their trials.
 
     Worth naming separately: a flaky task is neither a regression to fix nor a
@@ -133,7 +133,7 @@ def flaky_tasks(trials: Sequence[Trial]) -> list[str]:
 
 def _by_task(trials: Sequence[Trial]) -> dict[str, list[Trial]]:
     grouped: dict[str, list[Trial]] = defaultdict(list)
-    for trial in gradable_trials(trials):
+    for trial in _gradable_trials(trials):
         grouped[trial.task_id].append(trial)
     return dict(grouped)
 
@@ -150,7 +150,7 @@ def _tool_error_rate(trials: Sequence[Trial]) -> float:
     return sum(1 for t in seen if t.tool_error_count) / len(seen)
 
 
-def run_metrics(
+def _run_metrics(
     run_id: str,
     suite_id: str,
     deployment_id: int,
@@ -165,7 +165,7 @@ def run_metrics(
     "how did the run do", "how did this task do" and "how did this evaluator
     behave" without a second aggregation somewhere else that could disagree.
     """
-    gradable = gradable_trials(trials)
+    gradable = _gradable_trials(trials)
     awaited_a_trace = [
         t for t in trials if t.trace_status is not TraceStatus.NOT_FETCHED
     ]
@@ -189,11 +189,11 @@ def run_metrics(
 
     values: dict[str, float] = {
         "pass_rate": passed / len(gradable) if gradable else 0.0,
-        "pass_at_k": pass_at_k(trials),
-        "pass_all_k": pass_all_k(trials),
-        "p50_latency_ms": percentile(latencies, 50),
-        "p95_latency_ms": percentile(latencies, 95),
-        "p99_latency_ms": percentile(latencies, 99),
+        "pass_at_k": _pass_at_k(trials),
+        "pass_all_k": _pass_all_k(trials),
+        "p50_latency_ms": _percentile(latencies, 50),
+        "p95_latency_ms": _percentile(latencies, 95),
+        "p99_latency_ms": _percentile(latencies, 99),
         # Not a quality metric: a high rate means the observability pipeline is
         # broken, and trajectory numbers from this run cannot be trusted.
         # Over the trials that waited for a trace, not over all of them: a
@@ -221,8 +221,10 @@ def run_metrics(
         "over_refusal_rate": (
             blocked / len(trials) if not is_safety and trials else 0.0
         ),
-        "flaky_task_count": float(len(flaky_tasks(trials))),
-        "flaky_task_rate": len(flaky_tasks(trials)) / task_count if task_count else 0.0,
+        "flaky_task_count": float(len(_flaky_tasks(trials))),
+        "flaky_task_rate": len(_flaky_tasks(trials)) / task_count
+        if task_count
+        else 0.0,
         "tool_error_rate": _tool_error_rate(trials),
         "input_tokens": float(tokens_in),
         "output_tokens": float(tokens_out),
@@ -298,8 +300,8 @@ def _row(
 
 def _mean_task_variance(trials: Sequence[Trial]) -> float:
     per_task = [
-        variance([1.0 if _passed(t) else 0.0 for t in group])
-        for group in _by_task(gradable_trials(trials)).values()
+        _variance([1.0 if _passed(t) else 0.0 for t in group])
+        for group in _by_task(_gradable_trials(trials)).values()
     ]
     return sum(per_task) / len(per_task) if per_task else 0.0
 
@@ -310,7 +312,7 @@ def _task_rows(
     """Per task, so a dashboard can rank what is failing without re-deriving it."""
     rows = []
     for task_id, group in _by_task(trials).items():
-        gradable = gradable_trials(group)
+        gradable = _gradable_trials(group)
         rows.append(
             _row(
                 run_id,
@@ -334,7 +336,7 @@ def _task_rows(
                 "task",
                 task_id,
                 "pass_all_k",
-                pass_all_k(group),
+                _pass_all_k(group),
                 1,
                 len(group),
             )
@@ -347,7 +349,7 @@ def _task_rows(
                 "task",
                 task_id,
                 "trial_variance",
-                variance([1.0 if _passed(t) else 0.0 for t in gradable]),
+                _variance([1.0 if _passed(t) else 0.0 for t in gradable]),
                 1,
                 len(group),
             )
@@ -370,7 +372,7 @@ def _category_rows(
             grouped[category].append(trial)
     rows = []
     for category, group in grouped.items():
-        gradable = gradable_trials(group)
+        gradable = _gradable_trials(group)
         rows.append(
             _row(
                 run_id,

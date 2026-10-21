@@ -12,8 +12,8 @@ import pytest
 from hopsworks_agents.eval.metrics import (
     EVALUATOR_FAMILIES,
     SCORE_BUCKETS,
-    run_metrics,
-    variance,
+    _run_metrics,
+    _variance,
 )
 from hopsworks_agents.eval.models import (
     EvaluatorResult,
@@ -52,7 +52,7 @@ def result(
 
 
 def rows(trials, **kwargs):
-    return run_metrics("r", "s", 7, trials, **kwargs)
+    return _run_metrics("r", "s", 7, trials, **kwargs)
 
 
 def at(trials, scope, name, value="", **kwargs):
@@ -247,11 +247,11 @@ class TestCostAndTokens:
 class TestVarianceAndFlakiness:
     def test_variance_of_a_single_trial_is_zero(self):
         # one trial says nothing about how much the agent varies
-        assert variance([1.0]) == 0.0
+        assert _variance([1.0]) == 0.0
 
     def test_variance_rises_with_disagreement(self):
-        assert variance([1.0, 0.0]) == 0.25
-        assert variance([1.0, 1.0]) == 0.0
+        assert _variance([1.0, 0.0]) == 0.25
+        assert _variance([1.0, 1.0]) == 0.0
 
     def test_flaky_rate_accompanies_the_count(self):
         trials = [

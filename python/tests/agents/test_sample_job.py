@@ -21,13 +21,13 @@ from datetime import datetime, timedelta, timezone
 from hopsworks_agents.eval.evaluators import EvaluatorResult
 from hopsworks_agents.eval.models import TraceStatus, TrialStatus
 from hopsworks_agents.eval.sample_job import (
-    as_trial,
-    evaluators_for,
-    grade_trace,
-    oldest_first,
-    question_and_answer,
-    run_sample,
-    within_window,
+    _as_trial,
+    _evaluators_for,
+    _grade_trace,
+    _oldest_first,
+    _question_and_answer,
+    _run_sample,
+    _within_window,
 )
 
 
@@ -46,11 +46,11 @@ TRACE_ONLY_SPEC = json.dumps([{"type": "no_tool_error", "name": "no_tool_errored
 
 
 def with_judge(judge):
-    return evaluators_for({"sampleEvaluators": JUDGE_SPEC}, judge_completer=judge)
+    return _evaluators_for({"sampleEvaluators": JUDGE_SPEC}, judge_completer=judge)
 
 
 def trace_only():
-    return evaluators_for({"sampleEvaluators": TRACE_ONLY_SPEC})
+    return _evaluators_for({"sampleEvaluators": TRACE_ONLY_SPEC})
 
 
 #: A fixed reference for the window tests, which are handed their own `now`.
@@ -124,10 +124,10 @@ class StubJudge:
 class TestChoosingWhatToGrade:
     def test_only_traces_inside_the_window_are_candidates(self):
         summaries = [summary("old", 100, NOW), summary("new", 1, NOW)]
-        window = within_window(summaries, ms(24) - 0, ms(0))
+        window = _within_window(summaries, ms(24) - 0, ms(0))
         assert [
             s["traceId"]
-            for s in within_window(
+            for s in _within_window(
                 summaries,
                 (NOW - timedelta(hours=24)).timestamp() * 1000,
                 NOW.timestamp() * 1000,
@@ -140,8 +140,8 @@ class TestChoosingWhatToGrade:
         # the run that starts at T: monitoring counts each conversation once
         boundary = NOW.timestamp() * 1000
         at_boundary = {"traceId": "edge", "startTimeNs": int(boundary * 1e6)}
-        assert within_window([at_boundary], boundary, boundary + 1000) == []
-        assert within_window([at_boundary], boundary - 1000, boundary) == [at_boundary]
+        assert _within_window([at_boundary], boundary, boundary + 1000) == []
+        assert _within_window([at_boundary], boundary - 1000, boundary) == [at_boundary]
 
     def test_the_window_reads_the_field_the_backend_actually_sends(self):
         # The whole feature turned on this: summaries are OtelSpanDTO rows with
@@ -150,7 +150,7 @@ class TestChoosingWhatToGrade:
         # SUCCEEDED with no trials and moved its watermark over the traffic,
         # which reads as a quiet night rather than as a monitor grading nothing.
         row = {"traceId": "t", "startTimeNs": int(NOW.timestamp() * 1e9)}
-        window = within_window(
+        window = _within_window(
             [row],
             (NOW - timedelta(hours=1)).timestamp() * 1000,
             (NOW + timedelta(hours=1)).timestamp() * 1000,
@@ -162,7 +162,7 @@ class TestChoosingWhatToGrade:
         # grading "the last hour" graded a nightly suite's questions as if customers had asked
         # them -- a safety suite's injection attempts included, which are meant to be refused.
         trial = {**summary("t", 1, NOW), "evalRunId": "run-9"}
-        window = within_window(
+        window = _within_window(
             [trial, summary("real", 1, NOW)],
             (NOW - timedelta(hours=2)).timestamp() * 1000,
             NOW.timestamp() * 1000,
@@ -172,29 +172,29 @@ class TestChoosingWhatToGrade:
     def test_a_trace_with_no_timestamp_is_not_guessed_into_the_window(self):
         # its age is unknown, and treating unknown as recent would quietly widen
         # whatever window someone asked for
-        assert within_window([{"traceId": "t"}], ms(24), ms(0)) == []
+        assert _within_window([{"traceId": "t"}], ms(24), ms(0)) == []
 
     def test_everything_in_the_window_is_graded(self):
         # the window already says what is new, so choosing a subset of it would
         # decide on someone's behalf how much of their own traffic to look at
         summaries = [summary(str(i), i, NOW) for i in range(20)]
-        assert len(oldest_first(summaries, 0)) == 20
+        assert len(_oldest_first(summaries, 0)) == 20
 
     def test_a_ceiling_cuts_the_newest_not_the_middle(self):
         # so what is left ungraded is contiguous and the watermark can stop in
         # front of it -- a ceiling defers work rather than skipping it
         summaries = [summary(str(i), i, NOW) for i in range(10)]
-        graded = oldest_first(summaries, 3)
+        graded = _oldest_first(summaries, 3)
         assert [s["traceId"] for s in graded] == ["9", "8", "7"]
 
     def test_asking_for_more_than_exists_grades_everything(self):
         summaries = [summary("a", 1, NOW), summary("b", 2, NOW)]
-        assert len(oldest_first(summaries, 50)) == 2
+        assert len(_oldest_first(summaries, 50)) == 2
 
 
 class TestReadingTheTranscript:
     def test_the_question_and_the_final_answer_come_off_the_trace(self):
-        assert question_and_answer(detail()) == ("who sings this?", "UB40")
+        assert _question_and_answer(detail()) == ("who sings this?", "UB40")
 
     def test_the_last_assistant_turn_wins(self):
         # an agent that spoke twice said the second thing to the customer
@@ -213,7 +213,7 @@ class TestReadingTheTranscript:
                 }
             ]
         }
-        assert question_and_answer(trace)[1] == "second"
+        assert _question_and_answer(trace)[1] == "second"
 
     def test_an_unparseable_span_is_skipped_rather_than_fatal(self):
         trace = {
@@ -226,10 +226,10 @@ class TestReadingTheTranscript:
                 },
             ]
         }
-        assert question_and_answer(trace)[0] == "q"
+        assert _question_and_answer(trace)[0] == "q"
 
     def test_a_trace_carrying_no_messages_is_empty_rather_than_an_error(self):
-        assert question_and_answer({"spans": [{"spanId": "a"}]}) == ("", "")
+        assert _question_and_answer({"spans": [{"spanId": "a"}]}) == ("", "")
 
 
 class TestWhatCanGradeProductionTraffic:
@@ -246,7 +246,7 @@ class TestWhatCanGradeProductionTraffic:
     def test_an_empty_spec_grades_with_nothing(self):
         # the server refuses this, so reaching it means something went wrong
         # upstream -- reporting nothing beats inventing a default check
-        assert evaluators_for({"sampleEvaluators": "[]"}) == []
+        assert _evaluators_for({"sampleEvaluators": "[]"}) == []
 
 
 class TestGradingOneTrace:
@@ -254,7 +254,7 @@ class TestGradingOneTrace:
         # a criteria-based judge needs nothing from the task, which is exactly
         # what makes it usable where nobody wrote an expected answer
         judge = StubJudge(criterion="supported")
-        trial = grade_trace(with_judge(judge), "run1", 3, "t1", detail(), None)
+        trial = _grade_trace(with_judge(judge), "run1", 3, "t1", detail(), None)
         assert "supported" in judge.prompts[0]
         assert trial.trial_id == "run1/t1"
         assert not any(r.ungradable for r in trial.evaluator_results)
@@ -263,17 +263,17 @@ class TestGradingOneTrace:
         # production has none, and inventing one would anchor the judge on an
         # answer nobody wrote
         judge = StubJudge(criterion="supported")
-        grade_trace(with_judge(judge), "r", 1, "t", detail(), None)
+        _grade_trace(with_judge(judge), "r", 1, "t", detail(), None)
         assert "expected" not in judge.prompts[0].lower().split("<user")[0]
 
     def test_the_verdict_settles_the_trial_status(self):
         # a fixed PASSED would make every sample report a pass rate of exactly
         # 1.0, which is a confidently wrong number rather than an absent one
         trace = {"trace_id": "t", "tool_calls": [], "tool_error_count": 0}
-        passing = grade_trace(
+        passing = _grade_trace(
             with_judge(StubJudge(5.0, "supported")), "r", 1, "t", detail(), trace
         )
-        failing = grade_trace(
+        failing = _grade_trace(
             with_judge(StubJudge(1.0, "supported")), "r", 1, "t2", detail(), trace
         )
         assert passing.status is TrialStatus.PASSED
@@ -287,14 +287,14 @@ class TestGradingOneTrace:
             def __call__(self, prompt: str) -> str:
                 return json.dumps({"score": 5.0})
 
-        trial = grade_trace(with_judge(Bare()), "r", 1, "t", detail(), None)
+        trial = _grade_trace(with_judge(Bare()), "r", 1, "t", detail(), None)
         assert all(r.ungradable for r in trial.evaluator_results)
 
     def test_nothing_gradable_is_not_counted_as_a_failure(self):
         # no judge configured and no trace: the trial says nothing about the
         # agent either way, and calling that a failure makes an unconfigured
         # sample look like a broken agent
-        trial = grade_trace([], "r", 1, "t", detail(), None)
+        trial = _grade_trace([], "r", 1, "t", detail(), None)
         assert trial.status is not TrialStatus.FAILED
 
     def test_a_graded_trace_records_that_it_had_one(self):
@@ -305,7 +305,7 @@ class TestGradingOneTrace:
             "input_tokens": 10,
             "output_tokens": 4,
         }
-        trial = as_trial("r", 1, "t", "answer", trace)
+        trial = _as_trial("r", 1, "t", "answer", trace)
         assert trial.trace_status is TraceStatus.RECEIVED
         assert (trial.input_tokens, trial.output_tokens) == (10, 4)
 
@@ -353,7 +353,7 @@ class FakeClient:
         self._traces = traces or {}
         self._fails = set(fails)
 
-    def fetch_trace(self, trace_id):
+    def _fetch_trace(self, trace_id):
         if trace_id in self._fails:
             raise RuntimeError("unreadable")
         return self._traces.get(trace_id)
@@ -377,7 +377,7 @@ class TestARunOverProduction:
         session = FakeSession(
             [summary("a", 1), summary("b", 2)], {"a": detail(), "b": detail()}
         )
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), with_judge(StubJudge())
         )
         assert {t.task_id for t in result.trials} == {"a", "b"}
@@ -387,7 +387,7 @@ class TestARunOverProduction:
         # nothing was executed against a frozen set of cases, and an empty suite
         # id is the record of that rather than a missing value
         session = FakeSession([summary("a", 1)], {"a": detail()})
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), trace_only()
         )
         assert result.suite_id == ""
@@ -396,7 +396,7 @@ class TestARunOverProduction:
         # an agent with no traffic overnight is a normal state; reporting it as
         # FAILED would page someone about it
         session = FakeSession([summary("old", 500)], {})
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), trace_only()
         )
         assert (result.status, result.trials) == ("SUCCEEDED", [])
@@ -405,7 +405,7 @@ class TestARunOverProduction:
         session = FakeSession(
             [summary("a", 1), summary("b", 1)], {"a": detail(), "b": detail()}
         )
-        result = run_sample(
+        result = _run_sample(
             FakeClient(fails={"a"}), session, "https://h", 1, sample_run(), trace_only()
         )
         assert [t.task_id for t in result.trials] == ["b"]
@@ -417,7 +417,7 @@ class TestARunOverProduction:
             [summary(str(i), i + 1) for i in range(10)],
             {str(i): detail() for i in range(10)},
         )
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(nTrials=3), trace_only()
         )
         assert len(result.trials) == 3
@@ -428,9 +428,9 @@ class TestResultsAreWritable:
         # _write_results read run["suiteId"] unconditionally, which is a KeyError
         # for a run that has none -- after every trace has been judged, which is
         # the most expensive moment to find out
-        from hopsworks_agents.eval.metrics import run_metrics
+        from hopsworks_agents.eval.metrics import _run_metrics
 
-        trial = as_trial("run1", 3, "t", "answer", None)
+        trial = _as_trial("run1", 3, "t", "answer", None)
         trial.status = TrialStatus.PASSED
         trial.evaluator_results = [
             EvaluatorResult(
@@ -440,7 +440,7 @@ class TestResultsAreWritable:
                 passed=True,
             )
         ]
-        rows = run_metrics("run1", "", 3, [trial])
+        rows = _run_metrics("run1", "", 3, [trial])
         assert any(r["metric_name"] == "pass_rate" for r in rows)
         assert all(r["suite_id"] == "" for r in rows)
 
@@ -449,28 +449,28 @@ class TestWhereTheNextRunStarts:
     """The watermark, which is what makes a schedule cover each trace once."""
 
     def test_it_reaches_the_end_of_the_window_when_all_of_it_was_graded(self):
-        from hopsworks_agents.eval.sample_job import graded_through
+        from hopsworks_agents.eval.sample_job import _graded_through
 
         end = ms(0)
         graded = [summary("a", 3), summary("b", 1)]
-        assert graded_through(graded, end) <= end
+        assert _graded_through(graded, end) <= end
 
     def test_it_stops_at_the_last_graded_trace_when_the_ceiling_cut_in(self):
         # advancing to the window's end regardless would step over traces nobody
         # looked at, and nothing would ever report them
-        from hopsworks_agents.eval.sample_job import graded_through
+        from hopsworks_agents.eval.sample_job import _graded_through
 
         end = ms(0)
         graded = [summary("old", 10)]
-        assert graded_through(graded, end) < end - 3600_000
+        assert _graded_through(graded, end) < end - 3600_000
 
     def test_an_empty_window_still_advances(self):
         # nothing arrived, so there is nothing to come back for; holding the
         # watermark still would re-scan the same empty range forever
-        from hopsworks_agents.eval.sample_job import graded_through
+        from hopsworks_agents.eval.sample_job import _graded_through
 
         end = ms(0)
-        assert graded_through([], end) == end
+        assert _graded_through([], end) == end
 
 
 def turn(
@@ -526,7 +526,7 @@ class TestTheConversationSoFar:
                 ]
             },
         )
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), with_judge(judge)
         )
         return result, judge, session
@@ -606,7 +606,7 @@ class TestTheConversationSoFar:
             {f"g{i}": detail() for i in range(3)},
             {"s1": [turn("t1", 100, "x", "y")]},
         )
-        run_sample(
+        _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), with_judge(judge)
         )
         assert session.session_fetches == 1
@@ -622,7 +622,7 @@ class TestTheConversationSoFar:
         judge = StubJudge()
         row = {**summary("g", 1), "sessionId": "s1"}
         session = Broken([row], {"g": detail()}, {})
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), with_judge(judge)
         )
         assert len(result.trials) == 1
@@ -645,7 +645,7 @@ class TestTheWindowIsTheServersJob:
     def test_the_listing_asks_for_the_window_oldest_first(self):
         session = FakeSession([summary("a", 1)], {"a": detail()})
         run = sample_run()
-        run_sample(FakeClient(), session, "https://h", 1, run, trace_only())
+        _run_sample(FakeClient(), session, "https://h", 1, run, trace_only())
         assert session.listing_params["from"] == int(run["sampleFrom"])
         assert session.listing_params["to"] == int(run["sampleTo"])
         assert session.listing_params["order"] == "oldest"
@@ -659,7 +659,7 @@ class TestTheWindowIsTheServersJob:
         # not at the end of this window, or the other three are never graded
         summaries = [summary(str(i), 5 - i) for i in range(5)]
         session = FakeSession(summaries, {str(i): detail() for i in range(5)}, count=5)
-        result = run_sample(
+        result = _run_sample(
             FakeClient(),
             session,
             "https://h",
@@ -682,7 +682,7 @@ class TestTheWindowIsTheServersJob:
         # ceiling graded no traffic at all and reported a quiet hour.
         summaries = [summary(str(i), i + 1) for i in range(3)]
         session = FakeSession(summaries, {str(i): detail() for i in range(3)}, count=3)
-        result = run_sample(
+        result = _run_sample(
             FakeClient(),
             session,
             "https://h",
@@ -703,7 +703,7 @@ class TestTheWindowIsTheServersJob:
         batches = []
         saved, sj.WRITE_BATCH = sj.WRITE_BATCH, 2
         try:
-            result = run_sample(
+            result = _run_sample(
                 FakeClient(),
                 session,
                 "https://h",
@@ -729,7 +729,7 @@ class TestTheWindowIsTheServersJob:
 
         summaries = [summary("a", 2), summary("b", 1)]
         session = Unreadable(summaries, {}, count=2)
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), trace_only()
         )
 
@@ -742,7 +742,7 @@ class TestTheWindowIsTheServersJob:
         # an agent with no traffic in the window is a normal state, and failing it would page
         # someone about a quiet night
         session = FakeSession([], {}, count=0)
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), trace_only()
         )
         assert result.status == "SUCCEEDED"
@@ -751,7 +751,7 @@ class TestTheWindowIsTheServersJob:
         session = FakeSession(
             [summary("a", 2), summary("b", 1)], {"a": detail(), "b": detail()}, count=2
         )
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), trace_only()
         )
         assert result.processed_through_ms is None
@@ -764,7 +764,7 @@ class TestTheWindowIsTheServersJob:
         # end stands.
         summaries = [summary(str(i), 5 - i) for i in range(5)]
         session = FakeSession(summaries, {str(i): detail() for i in range(5)}, count=5)
-        result = run_sample(
+        result = _run_sample(
             FakeClient(),
             session,
             "https://h",
@@ -785,7 +785,7 @@ class TestTheWindowIsTheServersJob:
         # that one failed it" stops being a question anyone can ask.
         session = FakeSession([summary("a", 1)], {"a": detail()}, count=5)
         run = sample_run(nTrials=2)
-        run_sample(
+        _run_sample(
             FakeClient(),
             session,
             "https://h",
@@ -798,7 +798,7 @@ class TestTheWindowIsTheServersJob:
 
     def test_an_independent_draw_asks_for_no_seed(self):
         session = FakeSession([summary("a", 1)], {"a": detail()}, count=5)
-        run_sample(
+        _run_sample(
             FakeClient(),
             session,
             "https://h",
@@ -813,7 +813,7 @@ class TestTheWindowIsTheServersJob:
     def test_the_oldest_strategy_needs_no_seed_to_agree(self):
         # ordering by time is already the same answer for every evaluator
         session = FakeSession([summary("a", 1)], {"a": detail()}, count=5)
-        run_sample(FakeClient(), session, "https://h", 1, sample_run(), trace_only())
+        _run_sample(FakeClient(), session, "https://h", 1, sample_run(), trace_only())
         assert "seed" not in session.listing_params
 
     def test_a_backend_that_ignores_the_window_is_still_filtered_here(self):
@@ -823,7 +823,7 @@ class TestTheWindowIsTheServersJob:
             [summary("recent", 1), summary("ancient", 500)],
             {"recent": detail(), "ancient": detail()},
         )
-        result = run_sample(
+        result = _run_sample(
             FakeClient(), session, "https://h", 1, sample_run(), trace_only()
         )
         assert {t.task_id for t in result.trials} == {"recent"}

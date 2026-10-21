@@ -18,7 +18,7 @@ from hopsworks_agents.eval.evaluators import (
     UnnecessaryToolEvaluator,
 )
 from hopsworks_agents.eval.judges import ToolArgumentsJudge, ToolResultUsedJudge
-from hopsworks_agents.eval.metrics import run_metrics
+from hopsworks_agents.eval.metrics import _run_metrics
 from hopsworks_agents.eval.models import Task, TraceStatus, Trial, TrialStatus
 
 
@@ -105,7 +105,7 @@ def trace(*calls: dict) -> dict:
 class TestToolArguments:
     def test_arguments_carrying_the_required_keys_pass(self):
         evaluator = ToolArgumentEvaluator("cancel_order", ["order_id"])
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(),
             trial(),
             trace(call("cancel_order", arguments='{"order_id": "4471"}')),
@@ -114,7 +114,7 @@ class TestToolArguments:
 
     def test_a_missing_key_fails_and_names_it(self):
         evaluator = ToolArgumentEvaluator("cancel_order", ["order_id"])
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(), trial(), trace(call("cancel_order", arguments='{"reason": "x"}'))
         )
         assert result.passed is False
@@ -122,7 +122,7 @@ class TestToolArguments:
 
     def test_arguments_that_are_not_json_fail_when_they_must_parse(self):
         evaluator = ToolArgumentEvaluator("cancel_order")
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(), trial(), trace(call("cancel_order", arguments="order 4471"))
         )
         assert result.passed is False
@@ -131,7 +131,7 @@ class TestToolArguments:
     def test_untraced_arguments_are_ungradable_not_a_failure(self):
         # whether the framework records arguments says nothing about the agent
         evaluator = ToolArgumentEvaluator("cancel_order", ["order_id"])
-        result = evaluator.grade(task(), trial(), trace(call("cancel_order")))
+        result = evaluator._grade(task(), trial(), trace(call("cancel_order")))
         assert result.ungradable and result.passed is False
         assert "does not appear to trace them" in result.reason
 
@@ -139,12 +139,12 @@ class TestToolArguments:
         # "it never called the tool" is a tool_call verdict; repeating it here
         # would make one of the two evaluators noise
         evaluator = ToolArgumentEvaluator("cancel_order", ["order_id"])
-        result = evaluator.grade(task(), trial(), trace(call("lookup_order")))
+        result = evaluator._grade(task(), trial(), trace(call("lookup_order")))
         assert result.ungradable
 
     def test_every_call_of_the_tool_is_checked(self):
         evaluator = ToolArgumentEvaluator("lookup", ["id"])
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(),
             trial(),
             trace(
@@ -156,13 +156,13 @@ class TestToolArguments:
         assert result.assertions["calls_checked"] == 2
 
     def test_no_trace_is_ungradable(self):
-        assert ToolArgumentEvaluator("x").grade(task(), trial(), None).ungradable
+        assert ToolArgumentEvaluator("x")._grade(task(), trial(), None).ungradable
 
 
 class TestUnnecessaryTools:
     def test_a_tool_the_task_did_not_ask_for_fails(self):
         evaluator = UnnecessaryToolEvaluator()
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(required_tools=["cancel_order"]),
             trial(),
             trace(call("cancel_order"), call("send_email")),
@@ -172,14 +172,14 @@ class TestUnnecessaryTools:
 
     def test_only_expected_tools_passes(self):
         evaluator = UnnecessaryToolEvaluator()
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(required_tools=["cancel_order"]), trial(), trace(call("cancel_order"))
         )
         assert result.passed
 
     def test_an_explicit_allowlist_widens_what_is_acceptable(self):
         evaluator = UnnecessaryToolEvaluator(allowed=["cancel_order", "lookup_order"])
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(required_tools=["cancel_order"]),
             trial(),
             trace(call("cancel_order"), call("lookup_order")),
@@ -188,7 +188,7 @@ class TestUnnecessaryTools:
 
     def test_a_task_naming_no_tools_is_ungradable(self):
         # otherwise every agent that used any tool fails a check nobody set
-        result = UnnecessaryToolEvaluator().grade(
+        result = UnnecessaryToolEvaluator()._grade(
             task(), trial(), trace(call("anything"))
         )
         assert result.ungradable
@@ -197,7 +197,7 @@ class TestUnnecessaryTools:
 class TestToolRetries:
     def test_the_same_call_twice_is_a_retry(self):
         evaluator = ToolRetryEvaluator(max_retries=0)
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(),
             trial(),
             trace(
@@ -211,7 +211,7 @@ class TestToolRetries:
     def test_the_same_tool_with_different_arguments_is_not_a_retry(self):
         # looking up two different orders is two calls, not a retry
         evaluator = ToolRetryEvaluator(max_retries=0)
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(),
             trial(),
             trace(
@@ -223,7 +223,7 @@ class TestToolRetries:
 
     def test_without_arguments_it_falls_back_to_names_and_says_so(self):
         evaluator = ToolRetryEvaluator(max_retries=0)
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(),
             trial(),
             trace(call("lookup", span_id="a"), call("lookup", span_id="b")),
@@ -243,7 +243,7 @@ class TestToolRetries:
             call("lookup", span_id=f"a{i}", arguments='{"id": "1"}') for i in range(6)
         ] + [call("lookup", span_id=f"b{i}", arguments='{"id": "2"}') for i in range(2)]
 
-        result = evaluator.grade(task(), trial(), trace(*calls))
+        result = evaluator._grade(task(), trial(), trace(*calls))
 
         assert result.passed is False, (
             f"five retries passed a budget of one: {result.assertions}"
@@ -252,7 +252,7 @@ class TestToolRetries:
 
     def test_a_budget_of_one_tolerates_a_single_retry(self):
         evaluator = ToolRetryEvaluator(max_retries=1)
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(),
             trial(),
             trace(
@@ -265,13 +265,13 @@ class TestToolRetries:
 
 class TestToolLatency:
     def test_a_call_inside_the_budget_passes(self):
-        result = ToolLatencyEvaluator(max_ms=500).grade(
+        result = ToolLatencyEvaluator(max_ms=500)._grade(
             task(), trial(), trace(call("lookup", duration_ms=120.0))
         )
         assert result.passed
 
     def test_the_slowest_call_decides(self):
-        result = ToolLatencyEvaluator(max_ms=500).grade(
+        result = ToolLatencyEvaluator(max_ms=500)._grade(
             task(),
             trial(),
             trace(
@@ -284,7 +284,7 @@ class TestToolLatency:
 
     def test_an_unfinished_span_fails_rather_than_counting_as_instant(self):
         # an unclosed span is the shape a hung tool leaves behind
-        result = ToolLatencyEvaluator(max_ms=500).grade(
+        result = ToolLatencyEvaluator(max_ms=500)._grade(
             task(),
             trial(),
             trace(
@@ -296,13 +296,13 @@ class TestToolLatency:
         assert "unfinished span" in result.reason
 
     def test_no_timed_span_at_all_is_ungradable(self):
-        result = ToolLatencyEvaluator(max_ms=500).grade(
+        result = ToolLatencyEvaluator(max_ms=500)._grade(
             task(), trial(), trace(call("a", duration_ms=None))
         )
         assert result.ungradable
 
     def test_scoping_to_one_tool_ignores_the_others(self):
-        result = ToolLatencyEvaluator(max_ms=500, tool="a").grade(
+        result = ToolLatencyEvaluator(max_ms=500, tool="a")._grade(
             task(),
             trial(),
             trace(
@@ -321,7 +321,7 @@ class TestToolJudges:
 
     def test_the_argument_judge_reads_traced_arguments(self):
         evaluator = ToolArgumentsJudge(self.reply(True))
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(),
             trial(),
             trace(call("cancel_order", arguments='{"order_id":"4471"}')),
@@ -330,18 +330,18 @@ class TestToolJudges:
 
     def test_the_argument_judge_is_ungradable_without_arguments(self):
         evaluator = ToolArgumentsJudge(self.reply(True))
-        assert evaluator.grade(task(), trial(), trace(call("cancel_order"))).ungradable
+        assert evaluator._grade(task(), trial(), trace(call("cancel_order"))).ungradable
 
     def test_a_judge_returning_prose_is_ungradable_not_a_failure(self):
         evaluator = ToolArgumentsJudge(lambda _p: "looks fine to me")
-        result = evaluator.grade(task(), trial(), trace(call("x", arguments="{}")))
+        result = evaluator._grade(task(), trial(), trace(call("x", arguments="{}")))
         assert result.ungradable and result.passed is False
 
     def test_a_judge_that_raises_is_ungradable(self):
         def boom(_p):
             raise RuntimeError("rate limited")
 
-        result = ToolArgumentsJudge(boom).grade(
+        result = ToolArgumentsJudge(boom)._grade(
             task(), trial(), trace(call("x", arguments="{}"))
         )
         assert result.ungradable
@@ -349,7 +349,7 @@ class TestToolJudges:
 
     def test_the_result_judge_reads_tool_results(self):
         evaluator = ToolResultUsedJudge(self.reply(False))
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(),
             trial("Your order is still open."),
             trace(call("lookup", result='{"status": "cancelled"}')),
@@ -358,11 +358,11 @@ class TestToolJudges:
 
     def test_the_result_judge_is_ungradable_without_results(self):
         evaluator = ToolResultUsedJudge(self.reply(True))
-        assert evaluator.grade(task(), trial(), trace(call("lookup"))).ungradable
+        assert evaluator._grade(task(), trial(), trace(call("lookup"))).ungradable
 
     def test_the_result_judge_is_ungradable_without_an_answer(self):
         evaluator = ToolResultUsedJudge(self.reply(True))
-        result = evaluator.grade(
+        result = evaluator._grade(
             task(), trial(""), trace(call("lookup", result="something"))
         )
         assert result.ungradable
@@ -386,7 +386,7 @@ class TestToolErrorRate:
         ]
 
     def value(self, trials) -> float:
-        rows = run_metrics("r", "s", 1, trials)
+        rows = _run_metrics("r", "s", 1, trials)
         return next(
             r["metric_value"] for r in rows if r["metric_name"] == "tool_error_rate"
         )

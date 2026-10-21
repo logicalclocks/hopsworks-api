@@ -30,8 +30,8 @@ from .evaluators import SKIPPED, Trace, _ungradable
 from .judge_config import (
     FAILURE_CATEGORIES,
     JudgeConfig,
-    render_prompt,
-    tool_calls_text,
+    _render_prompt,
+    _tool_calls_text,
 )
 from .models import EvaluatorResult, Task, Trial
 
@@ -91,7 +91,7 @@ def _json_from(text: str) -> dict[str, Any] | None:
         return None
 
 
-def pairwise_verdict(
+def _pairwise_verdict(
     complete: Callable[[str], str],
     question: str,
     answer_a: str,
@@ -119,7 +119,7 @@ def pairwise_verdict(
     return {"winner": parsed["winner"], "reason": str(parsed.get("reason", ""))[:1000]}
 
 
-def anthropic_completer(
+def _anthropic_completer(
     api_key: str, model: str = DEFAULT_MODEL, max_tokens: int = 1024
 ) -> Callable[[str], str]:
     """A ``complete`` backed by Anthropic.
@@ -179,8 +179,8 @@ class PairwiseEvaluator:
         self.name = name
         self.model = model
 
-    def grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
-        reference = self.reference or task.expects_text(self.name)
+    def _grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
+        reference = self.reference or task._expects_text(self.name)
         if not reference:
             return _ungradable(
                 self.name,
@@ -190,12 +190,12 @@ class PairwiseEvaluator:
         if not trial.final_output:
             return _ungradable(self.name, self.type, "the agent produced no answer")
 
-        outcome = pairwise_verdict(
+        outcome = _pairwise_verdict(
             self._complete,
             question=task.asked,
             answer_a=reference,
             answer_b=trial.final_output,
-            rubric=task.expects_text(self.name),
+            rubric=task._expects_text(self.name),
         )
         winner = outcome.get("winner")
         if winner not in ("a", "b", "tie"):
@@ -358,7 +358,7 @@ class ToolArgumentsJudge:
         self.name = name
         self.model = model
 
-    def grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
+    def _grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
         calls = [
             c
             for c in _tool_calls(trace)
@@ -379,7 +379,7 @@ class ToolArgumentsJudge:
             calls=rendered,
             rubric_block=(
                 f"\n<criteria>\n{rubric}\n</criteria>\n"
-                if (rubric := task.expects_text(self.name))
+                if (rubric := task._expects_text(self.name))
                 else ""
             ),
         )
@@ -414,7 +414,7 @@ class ToolResultUsedJudge:
         self.name = name
         self.model = model
 
-    def grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
+    def _grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
         results = [c for c in _tool_calls(trace) if c.get("result")]
         if not results:
             return _ungradable(
@@ -478,9 +478,9 @@ class LlmJudgeEvaluator:
             {"tool_calls", "tool_results"} & set(self.config.inputs)
         )
 
-    def grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
-        criteria = self.config.effective_criteria()
-        if not self.config.multi and not task.expects_text(self.name):
+    def _grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
+        criteria = self.config._effective_criteria()
+        if not self.config.multi and not task._expects_text(self.name):
             # Nothing to grade against: a judge asked to score against nothing
             # returns a number anyway, and that number is noise dressed as a
             # measurement.
@@ -498,7 +498,7 @@ class LlmJudgeEvaluator:
                 self.type,
                 "no trace: this judge is configured to read the tool calls",
             )
-        calls, results = tool_calls_text(trace)
+        calls, results = _tool_calls_text(trace)
         # One value, one slot. A task has a single expectation per check, and
         # passing it as both `expected` and `rubric` rendered it twice under
         # the default inputs -- once as <expected> and once as
@@ -509,9 +509,9 @@ class LlmJudgeEvaluator:
         # your own words", and the default inputs tick both boxes. Untick
         # `rubric` and the value is being called an expected answer on
         # purpose, so it goes to <expected> instead.
-        expectation = task.expects_text(self.name)
+        expectation = task._expects_text(self.name)
         shows_rubric = "rubric" in self.config.inputs
-        prompt = render_prompt(
+        prompt = _render_prompt(
             self.config,
             question=task.asked,
             answer=trial.final_output,
@@ -598,7 +598,7 @@ class LlmJudgeEvaluator:
         return EvaluatorResult(
             evaluator_name=self.name,
             evaluator_type=self.type,
-            score=self.config.normalise(weighted),
+            score=self.config._normalise(weighted),
             passed=passed,
             reason=(reason + (f" ({detail})" if detail and not passed else ""))[:1000],
             assertions={
@@ -606,7 +606,7 @@ class LlmJudgeEvaluator:
                 # this sees the numbers the prompt talked about.
                 "criteria": graded,
                 "criteria_normalised": {
-                    n: self.config.normalise(v) for n, v in graded.items()
+                    n: self.config._normalise(v) for n, v in graded.items()
                 },
                 "weighted_score": weighted,
                 "pass_score": self.config.pass_score,

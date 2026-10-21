@@ -25,13 +25,13 @@ from typing import TYPE_CHECKING, Any
 from hopsworks_apigen import public
 
 from .api import hopsworks_session
-from .evaluator_spec import SpecError, evaluators_for_suite
+from .evaluator_spec import SpecError, _evaluators_for_suite
 from .judges import LlmJudgeEvaluator
-from .metrics import run_metrics
+from .metrics import _run_metrics
 from .models import ExecutionMode, PassPolicy, Suite, Task
-from .run_fields import run_trials
-from .runner import RunnerConfig, SuiteRefused, run_suite
-from .sample_job import evaluators_for, run_sample
+from .run_fields import _run_trials
+from .runner import RunnerConfig, SuiteRefused, _run_suite
+from .sample_job import _evaluators_for, _run_sample
 
 
 if TYPE_CHECKING:
@@ -278,7 +278,7 @@ def _write_results(
         # executed no suite, which is what tells a query reading both kinds
         # apart when it has only the metrics in hand.
         {**m, "suite_version": run.get("suiteVersion") or 0, "created_at": now}
-        for m in run_metrics(
+        for m in _run_metrics(
             result.run_id,
             run.get("suiteId") or "",
             run["deploymentId"],
@@ -459,13 +459,13 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
             written.update(t.trial_id for t in finished)
 
         if run.get("runType") == "ONLINE_SAMPLE":
-            result = run_sample(
+            result = _run_sample(
                 client,
                 session,
                 host,
                 project.id,
                 run,
-                evaluators_for(run, judge_completer=completer),
+                _evaluators_for(run, judge_completer=completer),
                 strategy=args.sample_strategy,
                 shared=not args.sample_independent,
                 on_progress=record,
@@ -491,7 +491,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
         ).json()
         suite = _to_suite(run, tasks)
 
-        result = run_suite(
+        result = _run_suite(
             client,
             suite,
             run_id=run_id,
@@ -499,11 +499,11 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
             # One list for the whole suite: every task is measured the same
             # way, which is what makes the run's pass rate comparable to the
             # next one's.
-            evaluators=evaluators_for_suite(
+            evaluators=_evaluators_for_suite(
                 suite, judge_completer=completer, query=query
             ),
             config=RunnerConfig(
-                n_trials=run_trials(run, 1),
+                n_trials=_run_trials(run, 1),
                 readiness_timeout_s=args.readiness_timeout_s,
                 max_concurrency=args.max_concurrency,
                 input_token_price_per_million=run.get("inputTokenPricePerMillion"),

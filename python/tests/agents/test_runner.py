@@ -13,14 +13,14 @@ from hopsworks_agents.eval.evaluators import (
     ExactMatchEvaluator,
     ToolCallEvaluator,
     ToolOrderEvaluator,
-    run_evaluators,
-    verdict,
+    _run_evaluators,
+    _verdict,
 )
 from hopsworks_agents.eval.metrics import (
-    flaky_tasks,
-    pass_all_k,
-    pass_at_k,
-    run_metrics,
+    _flaky_tasks,
+    _pass_all_k,
+    _pass_at_k,
+    _run_metrics,
 )
 from hopsworks_agents.eval.models import (
     ExecutionMode,
@@ -29,14 +29,14 @@ from hopsworks_agents.eval.models import (
     TraceStatus,
     Trial,
     TrialStatus,
-    derive_trial_id,
+    _derive_trial_id,
 )
 from hopsworks_agents.eval.runner import (
     AgentResponse,
     RunnerConfig,
     SuiteRefused,
-    check_deployment_supports,
-    run_suite,
+    _check_deployment_supports,
+    _run_suite,
 )
 
 
@@ -91,7 +91,7 @@ class FakeClient:
             latency_ms=100.0,
         )
 
-    def fetch_trace(self, trace_id):
+    def _fetch_trace(self, trace_id):
         return self._trace
 
 
@@ -144,7 +144,7 @@ def suite(**kwargs):
 
 
 def go(client, s=None, evaluators=None, on_progress=None, **config_kwargs):
-    return run_suite(
+    return _run_suite(
         client,
         s or suite(),
         run_id="run-1",
@@ -165,24 +165,24 @@ class TestRefusals:
         # an SDK too old to continue the traceparent: every trial row would
         # point at a trace that was never created
         with pytest.raises(SuiteRefused, match="trace_correlation"):
-            check_deployment_supports(suite(), {"capabilities": {}})
+            _check_deployment_supports(suite(), {"capabilities": {}})
 
     def test_refuses_when_tracing_is_disabled(self):
         with pytest.raises(SuiteRefused, match="tracing is disabled"):
-            check_deployment_supports(
+            _check_deployment_supports(
                 suite(), {"capabilities": {"trace_correlation": False}}
             )
 
     def test_refuses_a_sandboxed_suite_against_a_live_deployment(self):
         # the tools can still reach production systems
         with pytest.raises(SuiteRefused, match="eval_mode"):
-            check_deployment_supports(
+            _check_deployment_supports(
                 suite(execution_mode=ExecutionMode.SANDBOXED),
                 {"capabilities": {"trace_correlation": True, "eval_mode": False}},
             )
 
     def test_allows_a_sandboxed_suite_against_an_eval_mode_deployment(self):
-        check_deployment_supports(
+        _check_deployment_supports(
             suite(execution_mode=ExecutionMode.SANDBOXED), CAPABLE
         )
 
@@ -190,7 +190,7 @@ class TestRefusals:
         # the agent reads the run id off each turn's baggage and skips its
         # production writes for a verified run, so live traffic and a sandboxed
         # suite can share one deployment
-        check_deployment_supports(
+        _check_deployment_supports(
             suite(execution_mode=ExecutionMode.SANDBOXED),
             {
                 "capabilities": {
@@ -205,14 +205,16 @@ class TestRefusals:
         # safety suites contain injection and exfiltration attempts by
         # construction; read_only is not a strong enough claim
         with pytest.raises(SuiteRefused, match="sandboxed"):
-            check_deployment_supports(
+            _check_deployment_supports(
                 suite(blocks_are_success=True, execution_mode=ExecutionMode.READ_ONLY),
                 CAPABLE,
             )
 
     def test_refuses_live_execution_mode(self):
         with pytest.raises(SuiteRefused, match="live"):
-            check_deployment_supports(suite(execution_mode=ExecutionMode.LIVE), CAPABLE)
+            _check_deployment_supports(
+                suite(execution_mode=ExecutionMode.LIVE), CAPABLE
+            )
 
     def test_refuses_task_types_it_cannot_run(self):
         with pytest.raises(SuiteRefused, match="handwritten"):
@@ -254,7 +256,7 @@ class TestCorrelation:
 
 class TestIdempotency:
     def test_trial_ids_are_deterministic(self):
-        assert derive_trial_id("run-1", "t1", 1, 0) == "run-1/t1/1/0"
+        assert _derive_trial_id("run-1", "t1", 1, 0) == "run-1/t1/1/0"
 
     def test_a_rerun_produces_the_same_trial_ids(self):
         # a crashed runner that retries must overwrite rows, not append; random
@@ -286,9 +288,9 @@ class TestFailureClassification:
         # tasks reported a pass rate of 1.0 and passed its gate.
         result = go(FakeClient(error="agent returned 500: KeyError('customer')"))
         assert result.trials[0].status is TrialStatus.AGENT_ERROR
-        from hopsworks_agents.eval.models import gradable_trials
+        from hopsworks_agents.eval.models import _gradable_trials
 
-        assert len(gradable_trials(result.trials)) == 1
+        assert len(_gradable_trials(result.trials)) == 1
 
     def test_an_agent_reporting_its_own_failure_counts_too(self):
         # status: "failed" in the body, with HTTP 200 around it
@@ -310,14 +312,14 @@ class TestFailureClassification:
         result = go(FakeClient(raises=ConnectionError("boom")))
         metrics = {
             m["metric_name"]: m["metric_value"]
-            for m in run_metrics("r", "s", 7, result.trials)
+            for m in _run_metrics("r", "s", 7, result.trials)
         }
         # nothing gradable happened, so the pass rate must not read as 0% agent
         # quality
         assert metrics["pass_rate"] == 0.0
-        from hopsworks_agents.eval.models import gradable_trials
+        from hopsworks_agents.eval.models import _gradable_trials
 
-        assert gradable_trials(result.trials) == []
+        assert _gradable_trials(result.trials) == []
 
 
 class TestWhenTheHarnessItselfBreaks:
@@ -410,7 +412,7 @@ class TestGuardrails:
         assert result.trials[0].guardrail_blocked
         metrics = {
             m["metric_name"]: m["metric_value"]
-            for m in run_metrics("r", "s", 7, result.trials, blocks_are_success=True)
+            for m in _run_metrics("r", "s", 7, result.trials, blocks_are_success=True)
         }
         assert metrics["guardrail_block_rate"] == 1.0
         # and it is not read as timidity: refusing an attack is the point
@@ -454,14 +456,14 @@ class TestGuardrails:
         result = go(FakeClient(), suite())
         metrics = {
             m["metric_name"]: m["metric_value"]
-            for m in run_metrics("r", "", 7, result.trials, window_size=12000)
+            for m in _run_metrics("r", "", 7, result.trials, window_size=12000)
         }
         assert metrics["window_conversations"] == 12000.0
         assert metrics["sampled_fraction"] == len(result.trials) / 12000
 
     def test_a_suite_run_has_no_window_to_report(self):
         metrics = {
-            m["metric_name"] for m in run_metrics("r", "s", 7, go(FakeClient()).trials)
+            m["metric_name"] for m in _run_metrics("r", "s", 7, go(FakeClient()).trials)
         }
         assert "window_conversations" not in metrics
         assert "sampled_fraction" not in metrics
@@ -470,7 +472,7 @@ class TestGuardrails:
         result = go(FakeClient(blocked=True), suite())
         metrics = {
             m["metric_name"]: m["metric_value"]
-            for m in run_metrics("r", "s", 7, result.trials)
+            for m in _run_metrics("r", "s", 7, result.trials)
         }
         assert metrics["guardrail_block_rate"] == 1.0
         assert metrics["over_refusal_rate"] == 1.0
@@ -507,7 +509,7 @@ class TestWhatCountsAsAMissingTrace:
         )
         metrics = {
             m["metric_name"]: m["metric_value"]
-            for m in run_metrics("r", "s", 7, result.trials)
+            for m in _run_metrics("r", "s", 7, result.trials)
         }
         # no trial waited for a trace, so none is missing one
         assert metrics["trace_missing_rate"] == 0.0
@@ -550,7 +552,7 @@ class TestTraceReadiness:
                 super().__init__(**kwargs)
                 self.reads = 0
 
-            def fetch_trace(self, trace_id):
+            def _fetch_trace(self, trace_id):
                 self.reads += 1
                 if self.reads < 3:
                     return {"tool_names": "[]"}
@@ -577,7 +579,7 @@ class TestTraceReadiness:
                 response.trace_id = "ffffffffffffffffffffffffffffffff"
                 return response
 
-            def fetch_trace(self, trace_id):
+            def _fetch_trace(self, trace_id):
                 self.asked = trace_id
                 return {"root_span_id": "a", "tool_names": "[]"}
 
@@ -636,7 +638,7 @@ class TestMetrics:
             for index, ok in enumerate(results):
                 trials.append(
                     Trial(
-                        trial_id=derive_trial_id("r", task_id, 1, index),
+                        trial_id=_derive_trial_id("r", task_id, 1, index),
                         run_id="r",
                         task_id=task_id,
                         task_version=1,
@@ -651,21 +653,21 @@ class TestMetrics:
 
     def test_pass_at_k_counts_a_task_that_ever_succeeded(self):
         trials = self._trials({"a": [False, True], "b": [False, False]})
-        assert pass_at_k(trials) == 0.5
+        assert _pass_at_k(trials) == 0.5
 
     def test_pass_all_k_requires_every_trial(self):
         # the reliability number: 4-of-5 is not 80% good, it is unreliable
         trials = self._trials({"a": [True, True], "b": [True, False]})
-        assert pass_all_k(trials) == 0.5
+        assert _pass_all_k(trials) == 0.5
 
     def test_pass_at_k_and_pass_all_k_differ_where_it_matters(self):
         trials = self._trials({"a": [True, False, True]})
-        assert pass_at_k(trials) == 1.0
-        assert pass_all_k(trials) == 0.0
+        assert _pass_at_k(trials) == 1.0
+        assert _pass_all_k(trials) == 0.0
 
     def test_flaky_tasks_are_named(self):
         trials = self._trials({"a": [True, False], "b": [True, True]})
-        assert flaky_tasks(trials) == ["a"]
+        assert _flaky_tasks(trials) == ["a"]
 
     def test_run_metrics_are_hand_checkable(self):
         trials = self._trials({"a": [True, True], "b": [True, False]})
@@ -673,7 +675,7 @@ class TestMetrics:
         # and flattening on the name alone silently reads the last task's value
         metrics = {
             m["metric_name"]: m["metric_value"]
-            for m in run_metrics("r", "s", 7, trials)
+            for m in _run_metrics("r", "s", 7, trials)
             if m["metric_scope"] == "run"
         }
         assert metrics["pass_rate"] == 0.75  # 3 of 4 trials
@@ -682,7 +684,7 @@ class TestMetrics:
         assert metrics["flaky_task_count"] == 1.0
 
     def test_metric_rows_carry_the_scope_key(self):
-        rows = run_metrics("r", "s", 7, self._trials({"a": [True]}))
+        rows = _run_metrics("r", "s", 7, self._trials({"a": [True]}))
         # run-scope rows carry no value; every other scope must, or two
         # categories reporting the same metric collide into one row
         for row in rows:
@@ -715,18 +717,18 @@ class TestATaskThatExpectsNothing:
 
     def test_contains_says_so_instead_of_passing(self):
         blank = Task(task_id="t1", input_messages="[]", expectations={})
-        result = ContainsEvaluator().grade(blank, self._trial(), None)
+        result = ContainsEvaluator()._grade(blank, self._trial(), None)
         assert result.ungradable is True
         assert result.passed is None or result.passed is False
 
     def test_exact_match_says_so_instead_of_failing(self):
         blank = Task(task_id="t1", input_messages="[]", expectations={})
-        result = ExactMatchEvaluator().grade(blank, self._trial(), None)
+        result = ExactMatchEvaluator()._grade(blank, self._trial(), None)
         assert result.ungradable is True
 
     def test_tool_order_says_so_instead_of_passing(self):
         blank = Task(task_id="t1", input_messages="[]", expectations={})
-        result = ToolOrderEvaluator().grade(
+        result = ToolOrderEvaluator()._grade(
             blank, self._trial(), {"tool_names": '["lookup"]'}
         )
         assert result.ungradable is True
@@ -737,10 +739,10 @@ class TestEvaluatorRobustness:
         class Exploding:
             name, type, needs_trace = "boom", "custom", False
 
-            def grade(self, task, trial, trace):
+            def _grade(self, task, trial, trace):
                 raise ValueError("bad evaluator")
 
-        results = run_evaluators(
+        results = _run_evaluators(
             [Exploding()],
             task(),
             Trial(
@@ -758,7 +760,7 @@ class TestEvaluatorRobustness:
 
     def test_verdict_is_none_when_nothing_was_gradable(self):
         # not the same as failing: the trial says nothing either way
-        results = run_evaluators(
+        results = _run_evaluators(
             [ToolCallEvaluator()],
             task(),
             Trial(
@@ -771,7 +773,7 @@ class TestEvaluatorRobustness:
             ),
             None,
         )
-        assert verdict(results) is None
+        assert _verdict(results) is None
 
     def test_every_gradable_evaluator_must_pass(self):
         trial = Trial(
@@ -783,13 +785,13 @@ class TestEvaluatorRobustness:
             deployment_id=7,
             final_output="4",
         )
-        results = run_evaluators(
+        results = _run_evaluators(
             [ExactMatchEvaluator(), ContainsEvaluator(expected="five")],
             task(),
             trial,
             None,
         )
-        assert verdict(results) is False
+        assert _verdict(results) is False
 
 
 class TestToolEvaluators:
@@ -805,7 +807,7 @@ class TestToolEvaluators:
         )
 
     def test_required_tools_must_be_called(self):
-        result = ToolCallEvaluator().grade(
+        result = ToolCallEvaluator()._grade(
             task(required_tools=["recall"]),
             self._trial(),
             {"tool_names": '["purchase_history"]'},
@@ -814,7 +816,7 @@ class TestToolEvaluators:
         assert result.assertions["missing_required"] == ["recall"]
 
     def test_forbidden_tools_must_not_be(self):
-        result = ToolCallEvaluator().grade(
+        result = ToolCallEvaluator()._grade(
             task(forbidden_tools=["refund"]),
             self._trial(),
             {"tool_names": '["refund"]'},
@@ -823,7 +825,7 @@ class TestToolEvaluators:
 
     def test_order_allows_extra_calls_in_between(self):
         # an agent that also checked something else has not done the wrong thing
-        result = ToolOrderEvaluator().grade(
+        result = ToolOrderEvaluator()._grade(
             task(required_tools=["lookup", "refund"]),
             self._trial(),
             {"tool_names": '["lookup", "audit", "refund"]'},
@@ -831,7 +833,7 @@ class TestToolEvaluators:
         assert result.passed is True
 
     def test_order_catches_a_reversed_sequence(self):
-        result = ToolOrderEvaluator().grade(
+        result = ToolOrderEvaluator()._grade(
             task(required_tools=["lookup", "refund"]),
             self._trial(),
             {"tool_names": '["refund", "lookup"]'},
@@ -862,7 +864,7 @@ class TestPerTaskEvaluators:
         def per_task(t):
             return (
                 [ExactMatchEvaluator()]
-                if t.expects_text("exact_match")
+                if t._expects_text("exact_match")
                 else [ToolCallEvaluator()]
             )
 
@@ -949,10 +951,10 @@ class TestPassPolicyAndReview:
         saying the judgement never happened. EVALUATOR_ERROR is the harness
         failing, which keeps the trial out of every pass denominator.
         """
-        from hopsworks_agents.eval.evaluator_spec import evaluators_from_spec
+        from hopsworks_agents.eval.evaluator_spec import _evaluators_from_spec
 
         # No judge_completer and no key: exactly what a project without one has.
-        evaluators = evaluators_from_spec(
+        evaluators = _evaluators_from_spec(
             [
                 {"type": "llm_judge", "name": "matches_correction"},
                 {"type": "no_tool_error", "name": "no_tool_errored"},
@@ -1040,7 +1042,7 @@ class TestWaitingForTheDeployment:
     def test_it_waits_for_a_deployment_that_is_still_coming_up(self):
         client = FakeClient(manifest_failures=3)
         slept: list[float] = []
-        result = run_suite(
+        result = _run_suite(
             client,
             suite(),
             run_id="r1",
@@ -1060,7 +1062,7 @@ class TestWaitingForTheDeployment:
             deployment_ready_timeout_s=0.0, deployment_ready_poll_s=0.0
         )
         with pytest.raises(SuiteRefused, match="did not answer"):
-            run_suite(
+            _run_suite(
                 client,
                 suite(),
                 run_id="r1",

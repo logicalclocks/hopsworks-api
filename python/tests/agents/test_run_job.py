@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from hopsworks_agents.eval.evaluator_spec import evaluators_for_suite
+from hopsworks_agents.eval.evaluator_spec import _evaluators_for_suite
 from hopsworks_agents.eval.models import ExecutionMode, PassPolicy
 from hopsworks_agents.eval.run_job import _tags, _to_suite
 
@@ -143,7 +143,7 @@ class TestTasks:
     def test_expectations_are_copied_under_the_check_that_reads_them(self):
         # the same key results come back under, so this is a copy not a translation
         suite = _to_suite(run(), [task(expectations={"names_the_record": "UB40"})])
-        assert suite.tasks[0].expects_text("names_the_record") == "UB40"
+        assert suite.tasks[0]._expects_text("names_the_record") == "UB40"
 
     def test_a_blank_expectation_is_dropped_rather_than_stored(self):
         # an empty value reads as a check that has been answered, which is the
@@ -164,7 +164,7 @@ class TestTasks:
     def test_tool_expectations_keep_both_directions(self):
         stored = json.dumps({"required": ["lookup"], "forbidden": ["refund"]})
         suite = _to_suite(run(), [task(expectations={"tool_call": stored})])
-        assert suite.tasks[0].expects_tools("tool_call") == (["lookup"], ["refund"])
+        assert suite.tasks[0]._expects_tools("tool_call") == (["lookup"], ["refund"])
 
     def test_a_bang_marks_a_tool_that_must_not_be_called(self):
         # The spelling the skill has documented from the start. Without it,
@@ -173,7 +173,7 @@ class TestTasks:
         suite = _to_suite(
             run(), [task(expectations={"tool_call": "refund_order, !delete_order"})]
         )
-        assert suite.tasks[0].expects_tools("tool_call") == (
+        assert suite.tasks[0]._expects_tools("tool_call") == (
             ["refund_order"],
             ["delete_order"],
         )
@@ -182,7 +182,7 @@ class TestTasks:
 class TestSuite:
     def test_the_checks_arrive_as_rows_and_still_build(self):
         # the end of this path: rows in, evaluators out
-        [evaluator] = evaluators_for_suite(_to_suite(run(), [task()]))
+        [evaluator] = _evaluators_for_suite(_to_suite(run(), [task()]))
         assert evaluator.type == "contains"
         assert evaluator.name == "names_the_record"
 

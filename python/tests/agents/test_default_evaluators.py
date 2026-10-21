@@ -7,7 +7,7 @@ cover what they are and what installing them must not do.
 import json
 
 from hopsworks_agents.eval.api import EvalApi
-from hopsworks_agents.eval.judge_config import default_templates, parse_judge_config
+from hopsworks_agents.eval.judge_config import _parse_judge_config, default_templates
 
 
 def named(name):
@@ -32,7 +32,7 @@ class TestWhatIsOffered:
         # chosen, and then fails in a job
         for template in default_templates():
             for check in json.loads(template["spec"]):
-                parse_judge_config(check)
+                _parse_judge_config(check)
 
     def test_every_criterion_says_what_it_looks_for(self):
         # the server refuses a criterion with no description, so an entry missing
@@ -116,7 +116,7 @@ class FakeApi(EvalApi):
     def evaluators(self):
         return self._existing
 
-    def save_evaluator(self, name, checks, description=""):
+    def _save_evaluator(self, name, checks, description=""):
         self.saved.append(name)
         return {"name": name}
 
@@ -125,7 +125,7 @@ class TestInstalling:
     def test_writes_them_all_into_an_empty_library(self):
         api = FakeApi()
 
-        written = api.install_default_evaluators()
+        written = api._install_default_evaluators()
 
         assert written == [t["name"] for t in default_templates()]
         assert api.saved == written
@@ -134,7 +134,7 @@ class TestInstalling:
         # a project may have retuned the weights; re-running must not undo that
         api = FakeApi(existing=["Toxicity"])
 
-        written = api.install_default_evaluators()
+        written = api._install_default_evaluators()
 
         assert "Toxicity" not in written
         assert "Toxicity" not in api.saved
@@ -142,11 +142,11 @@ class TestInstalling:
     def test_overwrites_only_when_asked(self):
         api = FakeApi(existing=["Toxicity"])
 
-        assert "Toxicity" in api.install_default_evaluators(overwrite=True)
+        assert "Toxicity" in api._install_default_evaluators(overwrite=True)
 
     def test_running_twice_writes_nothing_the_second_time(self):
         api = FakeApi()
-        api.install_default_evaluators()
+        api._install_default_evaluators()
         api._existing = [{"name": n} for n in api.saved]
 
-        assert api.install_default_evaluators() == []
+        assert api._install_default_evaluators() == []

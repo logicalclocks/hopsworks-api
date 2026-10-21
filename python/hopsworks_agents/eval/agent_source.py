@@ -99,7 +99,7 @@ class CodeLocation:
     script_file: str = ""
 
     @classmethod
-    def from_serving(cls, view: dict[str, Any] | None) -> CodeLocation:
+    def _from_serving(cls, view: dict[str, Any] | None) -> CodeLocation:
         view = view or {}
         return cls(
             git_url=str(view.get("gitUrl") or "").strip(),
@@ -112,7 +112,7 @@ class CodeLocation:
         )
 
     @classmethod
-    def from_override(cls, location: str, script_file: str = "") -> CodeLocation:
+    def _from_override(cls, location: str, script_file: str = "") -> CodeLocation:
         """A location typed into the job's settings: an https git url or a HopsFS path."""
         location = (location or "").strip()
         if not location:
@@ -122,7 +122,7 @@ class CodeLocation:
             return cls(git_url=url, git_branch=ref, script_file=script_file)
         return cls(model_path=location, script_file=script_file)
 
-    def known(self) -> bool:
+    def _known(self) -> bool:
         return bool(self.git_url or self.model_path)
 
 
@@ -136,7 +136,7 @@ def _is_source(path: str) -> bool:
     return Path(path).suffix.lower() in SOURCE_SUFFIXES
 
 
-def bundle_from_directory(
+def _bundle_from_directory(
     root: str | os.PathLike[str], *, entry: str = "", origin: str = ""
 ) -> SourceBundle:
     """Every source file under ``root``, as relative paths with forward slashes."""
@@ -201,7 +201,7 @@ def _resolve_entry(files: dict[str, str], entry: str) -> str:
 GIT_CREDENTIALS_ENV = "GIT_CREDENTIALS"
 
 
-def git_credentials(environ: dict[str, str] | None = None) -> list[str]:
+def _git_credentials(environ: dict[str, str] | None = None) -> list[str]:
     """The "https://user:token@host" entries Hopsworks put in the environment, if any."""
     raw = (environ if environ is not None else os.environ).get(GIT_CREDENTIALS_ENV, "")
     return [entry for entry in raw.split() if entry.startswith("http")]
@@ -272,7 +272,7 @@ def clone_repository(
         raise RuntimeError(
             "git is not installed and only GitHub repositories can be fetched without it"
         )
-    _, token = _credential_for(url, git_credentials())
+    _, token = _credential_for(url, _git_credentials())
     return _github_tarball(url, commit or ref or "HEAD", token, into)
 
 
@@ -297,7 +297,7 @@ def _github_tarball(url: str, ref: str, token: str, into: str) -> str:
     return children[0] if len(children) == 1 and os.path.isdir(children[0]) else target
 
 
-def download_hopsfs_directory(dataset_api: Any, path: str, into: str) -> str:
+def _download_hopsfs_directory(dataset_api: Any, path: str, into: str) -> str:
     """Every source file under a HopsFS path, downloaded flat into ``into`` keeping structure."""
     root = path.rstrip("/")
     target = os.path.join(into, "model")
@@ -369,7 +369,7 @@ def _reason(err: BaseException) -> str:
     return _without_credentials(f"{type(err).__name__}: {err}")
 
 
-def load_agent_source(
+def _load_agent_source(
     location: CodeLocation, *, dataset_api: Any = None, workdir: str | None = None
 ) -> SourceBundle:
     """The code at ``location``, or an empty bundle with the reason logged.
@@ -377,7 +377,7 @@ def load_agent_source(
     Nothing here raises: a review without the code is a poorer review, not a failed one,
     and the rows it writes still say what the model saw.
     """
-    if not location.known():
+    if not location._known():
         log.info(
             "the deployment's code location is not known; reviewing without source"
         )
@@ -389,7 +389,7 @@ def load_agent_source(
             root = clone_repository(
                 location.git_url, location.git_branch, location.git_commit, into
             )
-            bundle = bundle_from_directory(
+            bundle = _bundle_from_directory(
                 root,
                 entry=location.script_file,
                 origin=f"git {_without_credentials(location.git_url)}@{ref}",
@@ -397,8 +397,8 @@ def load_agent_source(
         else:
             if dataset_api is None:
                 raise RuntimeError("no dataset API to read the model path with")
-            root = download_hopsfs_directory(dataset_api, location.model_path, into)
-            bundle = bundle_from_directory(
+            root = _download_hopsfs_directory(dataset_api, location.model_path, into)
+            bundle = _bundle_from_directory(
                 root, entry=location.script_file, origin=f"hopsfs {location.model_path}"
             )
         log.info(
@@ -452,7 +452,7 @@ def _module_candidates(files: dict[str, str], importer: str, module: str) -> lis
     return candidates
 
 
-def imported_files(files: dict[str, str], entry: str, limit: int = 40) -> list[str]:
+def _imported_files(files: dict[str, str], entry: str, limit: int = 40) -> list[str]:
     """Files the entry script imports, transitively, within the repository. Entry first."""
     if not entry or entry not in files:
         return []
@@ -484,7 +484,7 @@ def _mentions(text: str, terms: Iterable[str]) -> int:
     return sum(1 for term in terms if term and term.lower() in lowered)
 
 
-def relevant_files(
+def _relevant_files(
     bundle: SourceBundle,
     *,
     tool_names: Sequence[str] = (),
@@ -502,7 +502,7 @@ def relevant_files(
     terms = {t for t in tool_names if t}
     for clue in clues:
         terms.update(word for word in _WORD.findall(clue or "") if len(word) > 3)
-    ordered = imported_files(bundle.files, bundle.entry)
+    ordered = _imported_files(bundle.files, bundle.entry)
     rest = [path for path in bundle.files if path not in ordered]
     mentioned = sorted(
         (path for path in rest if _mentions(bundle.files[path], terms) > 0),

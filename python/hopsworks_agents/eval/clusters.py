@@ -61,7 +61,7 @@ class Cluster:
     )
     changed: bool = field(default=False, repr=False, compare=False)
 
-    def to_row(self, now: datetime) -> dict[str, Any]:
+    def _to_row(self, now: datetime) -> dict[str, Any]:
         return {
             "cluster_id": self.cluster_id,
             "deployment_id": self.deployment_id,
@@ -154,7 +154,7 @@ def _score(row: dict[str, Any]) -> tuple:
     )
 
 
-def signature_key(signature: str) -> str:
+def _signature_key(signature: str) -> str:
     """What makes two failure signatures the same one.
 
     The model writes these as prose, so "discount  not applied" and "Discount
@@ -166,7 +166,7 @@ def signature_key(signature: str) -> str:
     return " ".join(str(signature or "").lower().split())
 
 
-def merge_decisions(
+def _merge_decisions(
     changed: Sequence[Cluster], current: Iterable[Cluster]
 ) -> list[Cluster]:
     """Keep a decision a reviewer made while the run was going.
@@ -194,7 +194,7 @@ def merge_decisions(
     return list(changed)
 
 
-def assign_clusters(
+def _assign_clusters(
     rows: Sequence[dict[str, Any]],
     existing: Iterable[Cluster],
     *,
@@ -210,7 +210,7 @@ def assign_clusters(
     now = now or datetime.now(tz=timezone.utc)
     by_signature: dict[str, Cluster] = {}
     for cluster in existing:
-        key = signature_key(cluster.signature)
+        key = _signature_key(cluster.signature)
         if key and key not in by_signature:
             by_signature[key] = cluster
 
@@ -219,7 +219,7 @@ def assign_clusters(
         if row.get("ungradable") or not signature:
             row["cluster_id"] = ""
             continue
-        cluster = by_signature.get(signature_key(signature))
+        cluster = by_signature.get(_signature_key(signature))
         seen_at = _parse_when(row.get("created_at")) or now
         if cluster is None:
             cluster = Cluster(
@@ -229,7 +229,7 @@ def assign_clusters(
                 first_seen=seen_at,
                 last_seen=seen_at,
             )
-            by_signature[signature_key(signature)] = cluster
+            by_signature[_signature_key(signature)] = cluster
         row["cluster_id"] = cluster.cluster_id
         cluster.size += 1
         cluster.changed = True

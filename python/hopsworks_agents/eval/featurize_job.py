@@ -24,7 +24,7 @@ from typing import Any
 
 from hopsworks_apigen import public
 
-from .features import select_ready_traces, trace_features
+from .features import _select_ready_traces, _trace_features
 
 
 log = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ def _featurized_partial(
     }
 
 
-def featurize(
+def _featurize(
     feature_store: Any,
     deployment_id: int,
     *,
@@ -129,7 +129,7 @@ def featurize(
         log.info("No spans for deployment %s", deployment_id)
         return 0
 
-    completeness = select_ready_traces(
+    completeness = _select_ready_traces(
         spans,
         now=now,
         grace=timedelta(minutes=grace_minutes),
@@ -177,7 +177,7 @@ def featurize(
     for trace_id, trace_spans in spans_by_trace.items():
         try:
             rows.append(
-                trace_features(
+                _trace_features(
                     trace_spans,
                     [a for a in attributes if a.get("trace_id") == trace_id],
                     [e for e in events if e.get("trace_id") == trace_id],
@@ -224,7 +224,7 @@ def main() -> None:
     import hopsworks
 
     project = hopsworks.login()
-    written = featurize(
+    written = _featurize(
         project.get_feature_store(),
         args.deployment_id,
         grace_minutes=args.grace_minutes,

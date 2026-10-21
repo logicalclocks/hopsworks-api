@@ -9,7 +9,7 @@ import pytest
 from hopsworks_agents.eval.judges import (
     LlmJudgeEvaluator,
     _json_from,
-    pairwise_verdict,
+    _pairwise_verdict,
 )
 from hopsworks_agents.eval.models import Task, Trial
 
@@ -70,9 +70,9 @@ def trial(answer="Rayleigh scattering."):
 
 def judge(reply, **config_overrides):
     """A judge with no criteria named — one `overall` score, scored 1-5."""
-    from hopsworks_agents.eval.judge_config import parse_judge_config
+    from hopsworks_agents.eval.judge_config import _parse_judge_config
 
-    config = parse_judge_config({"type": "llm_judge", **config_overrides})
+    config = _parse_judge_config({"type": "llm_judge", **config_overrides})
     return LlmJudgeEvaluator(lambda _prompt: reply, config)
 
 
@@ -83,7 +83,7 @@ GOOD = '{"scores": {"overall": 5}, "reasoning": {"overall": "Correct."}}'
 
 class TestGrading:
     def test_a_clean_verdict_is_used(self):
-        result = judge(GOOD).grade(task(), trial(), None)
+        result = judge(GOOD)._grade(task(), trial(), None)
         assert result.passed is True
         assert result.score == pytest.approx(1.0)
         assert result.ungradable is False
@@ -91,13 +91,13 @@ class TestGrading:
     def test_the_judge_model_is_recorded(self):
         # a score that moved because the judge changed is not an agent
         # regression, and without the model on the row the two look identical
-        result = judge(GOOD, model="claude-opus-5").grade(task(), trial(), None)
+        result = judge(GOOD, model="claude-opus-5")._grade(task(), trial(), None)
         assert result.assertions["judge_model"] == "claude-opus-5"
 
     def test_one_unnamed_criterion_behaves_like_any_other(self):
         # there is no separate single-score judge: a configuration naming no
         # criteria gets one called `overall` and the same code path
-        result = judge(GOOD).grade(task(), trial(), None)
+        result = judge(GOOD)._grade(task(), trial(), None)
         assert set(result.assertions["criteria"]) == {"overall"}
 
     def test_the_threshold_decides_the_verdict(self):
@@ -105,10 +105,10 @@ class TestGrading:
         # passing at 0.6 while another fails at 0.7 because the judge felt
         # differently makes results incomparable
         reply = '{"scores": {"overall": 3}}'
-        assert judge(reply).grade(task(), trial(), None).passed is False
+        assert judge(reply)._grade(task(), trial(), None).passed is False
         assert (
             judge(reply, thresholds={"pass_score": 3})
-            .grade(task(), trial(), None)
+            ._grade(task(), trial(), None)
             .passed
             is True
         )
@@ -116,7 +116,7 @@ class TestGrading:
     def test_scores_are_clamped(self):
         # a model told to answer 1-5 and returning 7 has not found extra quality
         reply = '{"scores": {"overall": 7}}'
-        assert judge(reply).grade(task(), trial(), None).score == 1.0
+        assert judge(reply)._grade(task(), trial(), None).score == 1.0
 
 
 class TestWhatTheJudgeIsShown:
@@ -132,10 +132,10 @@ class TestWhatTheJudgeIsShown:
             seen["prompt"] = prompt
             return GOOD
 
-        from hopsworks_agents.eval.judge_config import parse_judge_config
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
 
-        config = parse_judge_config({"type": "llm_judge"})
-        LlmJudgeEvaluator(capture, config).grade(
+        config = _parse_judge_config({"type": "llm_judge"})
+        LlmJudgeEvaluator(capture, config)._grade(
             task(rubric="Mentions scattering."), trial(), None
         )
 
@@ -158,15 +158,15 @@ class TestWhatTheJudgeIsShown:
             seen["prompt"] = prompt
             return GOOD
 
-        from hopsworks_agents.eval.judge_config import parse_judge_config
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
 
-        config = parse_judge_config(
+        config = _parse_judge_config(
             {
                 "type": "llm_judge",
                 "inputs": ["user_request", "agent_response", "rubric"],
             }
         )
-        LlmJudgeEvaluator(capture, config).grade(
+        LlmJudgeEvaluator(capture, config)._grade(
             task(rubric="Mentions scattering."), trial(), None
         )
 
@@ -184,15 +184,15 @@ class TestWhatTheJudgeIsShown:
             seen["prompt"] = prompt
             return GOOD
 
-        from hopsworks_agents.eval.judge_config import parse_judge_config
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
 
-        config = parse_judge_config(
+        config = _parse_judge_config(
             {
                 "type": "llm_judge",
                 "inputs": ["user_request", "expected_result", "agent_response"],
             }
         )
-        LlmJudgeEvaluator(capture, config).grade(
+        LlmJudgeEvaluator(capture, config)._grade(
             task(rubric="Mentions scattering."), trial(), None
         )
 
@@ -208,29 +208,29 @@ class TestWhenTheJudgeMisbehaves:
         def explode(_prompt):
             raise RuntimeError("rate limited")
 
-        result = LlmJudgeEvaluator(explode).grade(task(), trial(), None)
+        result = LlmJudgeEvaluator(explode)._grade(task(), trial(), None)
         assert result.ungradable is True
         assert result.score == 0.0
         assert "rate limited" in result.reason
 
     def test_unparseable_output_is_ungradable(self):
-        result = judge("I think it was pretty good actually").grade(
+        result = judge("I think it was pretty good actually")._grade(
             task(), trial(), None
         )
         assert result.ungradable is True
 
     def test_a_non_numeric_score_is_ungradable(self):
         reply = '{"score": "high", "passed": true, "reason": "good"}'
-        assert judge(reply).grade(task(), trial(), None).ungradable is True
+        assert judge(reply)._grade(task(), trial(), None).ungradable is True
 
     def test_grading_against_nothing_is_refused(self):
         # a judge given no rubric and no expected answer still returns a number,
         # and that number is noise dressed as a measurement
         bare = task(rubric="", expected_output="")
-        assert judge(GOOD).grade(bare, trial(), None).ungradable is True
+        assert judge(GOOD)._grade(bare, trial(), None).ungradable is True
 
     def test_an_empty_answer_is_ungradable(self):
-        assert judge(GOOD).grade(task(), trial(answer=""), None).ungradable is True
+        assert judge(GOOD)._grade(task(), trial(answer=""), None).ungradable is True
 
 
 class TestJsonSalvage:
@@ -254,7 +254,7 @@ class TestJsonSalvage:
 
 class TestPairwise:
     def test_a_winner_is_reported(self):
-        result = pairwise_verdict(
+        result = _pairwise_verdict(
             lambda _p: '{"winner": "b", "reason": "more complete"}',
             "q",
             "short",
@@ -266,17 +266,17 @@ class TestPairwise:
         # forcing a winner would read downstream as a real difference between
         # two versions that are equivalent — the common case when comparing
         # close deployments
-        result = pairwise_verdict(
+        result = _pairwise_verdict(
             lambda _p: '{"winner": "tie", "reason": "equivalent"}', "q", "a", "b"
         )
         assert result["winner"] == "tie"
 
     def test_an_unusable_verdict_is_unknown_not_a_winner(self):
-        result = pairwise_verdict(lambda _p: "the first one I guess", "q", "a", "b")
+        result = _pairwise_verdict(lambda _p: "the first one I guess", "q", "a", "b")
         assert result["winner"] == "unknown"
 
     def test_a_failed_call_is_unknown(self):
         def explode(_p):
             raise ConnectionError("no route")
 
-        assert pairwise_verdict(explode, "q", "a", "b")["winner"] == "unknown"
+        assert _pairwise_verdict(explode, "q", "a", "b")["winner"] == "unknown"
