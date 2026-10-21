@@ -576,8 +576,6 @@ class ModelServing:
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
             tracing: Tracing configuration for the endpoint.
-            memory: Memory given to an agent that configures none itself; see
-                [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
             git_url: Optional Git repository URL for a git-backed endpoint.
             git_provider: Git provider for git-backed endpoints.
             git_branch: Optional branch to clone for git-backed endpoints.
@@ -587,6 +585,8 @@ class ModelServing:
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            memory: Memory given to an agent that configures none itself; see
+                [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
 
         Returns:
             The predictor metadata object.
@@ -687,11 +687,6 @@ class ModelServing:
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             scaling_configuration: Scaling configuration for the predictor.
             tracing: Tracing configuration for the deployment.
-            memory:
-                Memory the deployment gives the agent, for an agent that configures none in
-                its own code; see [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
-                The agent SDK applies it only when the agent passed no memory store of its
-                own, so code always wins over it.
             git_url: Optional Git repository URL. When set, `entry` is treated as
                 a relative path inside the repository and is not uploaded.
             git_provider: Git provider for git-backed agent deployments.
@@ -703,6 +698,11 @@ class ModelServing:
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            memory:
+                Memory the deployment gives the agent, for an agent that configures none in
+                its own code; see [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
+                The agent SDK applies it only when the agent passed no memory store of its
+                own, so code always wins over it.
 
         Returns:
             The deployment metadata object.
