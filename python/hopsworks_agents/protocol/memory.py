@@ -1576,7 +1576,15 @@ class ManagedMemoryService(ChatMemory):
             for start in range(0, len(rows), batch_size):
                 frame = pd.DataFrame(rows[start : start + batch_size])
                 frame = self._prepare_for_insert(frame)
-                insert_kwargs = {"write_options": {"mode": "append"}}
+                # No `mode: append`. The docstring above promises that
+                # re-exporting a range is safe because a feature group upserts
+                # on the primary key, and an explicit append is the one thing
+                # that stops it: the Delta writer takes it literally and skips
+                # the merge, so a scheduled export with no watermark, or one
+                # whose window overlapped the last, wrote every message row
+                # twice and anything reading the offline table counted each
+                # conversation twice.
+                insert_kwargs: dict = {}
                 if storage_arg is not None:
                     insert_kwargs["storage"] = storage_arg
                 fg.insert(frame, **insert_kwargs)
@@ -2146,14 +2154,23 @@ class ManagedMemoryService(ChatMemory):
             if row.message_count - row.last_summarized_count < self._summarize_every:
                 return None
 
-            # Never fold across a turn that is still open. Its reply does not
-            # exist yet, so folding would compact the question into the summary
-            # and leave the answer dangling in the visible window.
+            # Never fold across a turn that is not closed. Open is the
+            # obvious case: its reply does not exist yet, so folding would
+            # compact the question into the summary and leave the answer
+            # dangling in the visible window.
+            #
+            # Abandoned counts too, because end_turn revives a turn the reaper
+            # gave up on. Protecting only open rows, the cutoff moved past an
+            # abandoned question while the row itself was neither folded nor
+            # kept -- so when the slow turn finally finished, its answer landed
+            # above the cutoff and was visible while its question sat below it,
+            # in no summary at all. The model saw an answer to a question
+            # nobody asked.
             open_min = conn.execute(
                 self._mine(t.select(), t)
                 .with_only_columns(func.min(t.c.id))
                 .where(t.c.conversation_id == conversation_id)
-                .where(t.c.status == TURN_OPEN)
+                .where(t.c.status != TURN_CLOSED)
             ).scalar()
 
             stmt = (
@@ -2645,11 +2662,44 @@ class ManagedMemoryService(ChatMemory):
                 )
             return payload
 
+        def _still_there() -> bool:
+            """Whether the conversation survived the time spent embedding."""
+            from sqlalchemy import func, select
+
+            t = self._table
+            with self._engine.connect() as conn:
+                return (
+                    conn.execute(
+                        self._mine(select(func.count()).select_from(t), t).where(
+                            t.c.conversation_id == conversation_id
+                        )
+                    ).scalar()
+                    or 0
+                ) > 0
+
         try:
             # embedding is CPU-bound and the insert is I/O; neither belongs on
             # the event loop
             payload = await asyncio.to_thread(_embed_rows)
             await asyncio.to_thread(self._vector_store.ingest, payload)
+            # A delete that landed while this was embedding has already purged
+            # the vector store and answered 204, and it cannot purge rows that
+            # did not exist yet -- so without this the deleted messages went
+            # back in and `search` returned them, which is exactly what the
+            # delete route promises it prevents. Checked after the insert, not
+            # before it: a delete arriving after the check does its own purge
+            # and finds these rows there to remove.
+            if not await asyncio.to_thread(_still_there):
+                log.info(
+                    "conversation %s was deleted while turn %s was being "
+                    "embedded; removing what was just ingested",
+                    conversation_id,
+                    turn_id,
+                )
+                await asyncio.to_thread(
+                    self._vector_store.purge, conversation_id=conversation_id
+                )
+                return 0
         except Exception:  # noqa: BLE001 — search is best-effort; the SQL tier
             # remains the source of truth
             log.exception("Vector ingest failed for turn %s", turn_id)

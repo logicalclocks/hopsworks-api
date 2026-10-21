@@ -2501,6 +2501,78 @@ class TestSemanticSearch:
         assert asyncio.run(memory.ingest_turn("c1", tid)) == 0
         assert memory.search("kayaking", subject="alice") == []
 
+    def test_an_out_of_range_criterion_score_is_pinned_to_the_scale(self):
+        """A judge's own numbers must not decide outside the scale they are on.
+
+        On a 1-5 scale with a pass score of 4, scores of 1 and 7 averaged 4.0
+        and passed; clamped to 1 and 5 they average 3.0 and fail. The stored
+        score was clamped afterwards, so it disagreed with the verdict next to
+        it.
+        """
+        import json
+
+        from hopsworks_agents.eval.judge_config import Criterion, JudgeConfig
+        from hopsworks_agents.eval.judges import LlmJudgeEvaluator
+        from hopsworks_agents.eval.models import Task, Trial
+
+        config = JudgeConfig(
+            score_min=1.0,
+            score_max=5.0,
+            pass_score=4.0,
+            criteria=[
+                Criterion(name="helpful", description="is it helpful?"),
+                Criterion(name="correct", description="is it right?"),
+            ],
+        )
+        reply = json.dumps({"scores": {"helpful": 7, "correct": 1}})
+        judge = LlmJudgeEvaluator(lambda prompt: reply, config, name="quality")
+
+        task = Task(task_id="t1", input_messages='[{"role":"user","content":"q"}]')
+        trial = Trial(
+            trial_id="t1/0",
+            run_id="r",
+            task_id="t1",
+            task_version=1,
+            trial_index=0,
+            deployment_id=7,
+            final_output="an answer",
+        )
+        result = judge._grade(task, trial, None)
+
+        assert result.passed is False, (
+            "a 7 on a 1-5 scale carried the average over the pass score"
+        )
+
+    def test_a_conversation_deleted_while_embedding_stays_deleted(self, tmp_path):
+        """The erasure the delete route promises has to survive an in-flight ingest.
+
+        ingest_turn reads the closed rows, then spends real time embedding
+        them. A delete arriving in that window clears SQL, purges the vector
+        store and answers 204 -- and it cannot purge rows that do not exist
+        yet. Without a check after the insert, the deleted messages went back
+        in and `search` returned them.
+        """
+        from hopsworks_agents.protocol.memory import new_turn_id
+
+        memory = self._store(tmp_path)
+        tid = new_turn_id()
+        memory.begin_turn("c1", tid, "user", "kayaking in Sweden", subject="alice")
+        memory.end_turn("c1", tid)
+
+        # the delete lands while the embedding is in flight
+        embed = memory._embedder
+
+        def slow_embed(text):
+            memory.clear("c1")
+            memory.purge_vectors(conversation_id="c1")
+            return embed(text)
+
+        memory._embedder = slow_embed
+        assert asyncio.run(memory.ingest_turn("c1", tid)) == 0
+        memory._embedder = embed
+
+        assert memory.search("kayaking", subject="alice") == []
+
     def test_keyword_fallback_without_embedder(self, tmp_path):
         memory = self._store(tmp_path, embedder=None, vector_store=None)
         self._turn(memory, "c1", "I love kayaking", "noted", subject="alice")
@@ -3512,7 +3584,10 @@ class TestFeatureGroupExport:
         _, kwargs = fs.groups[("agent_memory_messages", 1)].inserts[0]
         # online is already live — the agent wrote it. Offline is what is missing.
         assert kwargs["storage"] == "offline"
-        assert kwargs["write_options"] == {"mode": "append"}
+        # No explicit append: the feature group upserts on the primary key,
+        # which is what makes re-exporting an overlapping range safe, and an
+        # explicit append makes the Delta writer skip that merge.
+        assert "write_options" not in kwargs
 
     def test_the_entry_point_exports_offline_like_the_method(self):
         """The module-level function defaulted to online, over the live store.

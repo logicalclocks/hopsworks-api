@@ -543,7 +543,17 @@ class LlmJudgeEvaluator:
         for criterion in criteria:
             value = scores.get(criterion.name)
             try:
-                graded[criterion.name] = float(value)
+                # Pinned to the configured scale before anything reads it. A
+                # model told to answer 1-5 occasionally answers 0 or 7, and
+                # the raw value went straight into the weighted total and the
+                # floor check: on a 1-5 scale with a pass score of 4, scores
+                # of 1 and 7 averaged 4.0 and passed, where the clamped 1 and
+                # 5 average 3.0 and fail. The stored score was clamped
+                # afterwards, so it disagreed with the verdict beside it.
+                graded[criterion.name] = min(
+                    self.config.score_max,
+                    max(self.config.score_min, float(value)),
+                )
             except (TypeError, ValueError):
                 missing.append(criterion.name)
 
