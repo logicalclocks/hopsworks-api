@@ -11,9 +11,9 @@ import pytest
 from hopsworks_agents.eval.promotion import (
     RedactionStatus,
     _can_add_to_suite,
+    _confirm_redaction,
     _promote_trace,
     _tasks_from_trace,
-    confirm_redaction,
 )
 
 
@@ -50,14 +50,14 @@ class TestTheGate:
 
     def test_a_confirmed_task_may_join_a_suite(self):
         task = _promote_trace(trace(), task_id="task-1")
-        confirm_redaction(task, reviewer="gibson@logicalclocks.com")
+        _confirm_redaction(task, reviewer="gibson@logicalclocks.com")
         assert _can_add_to_suite(task) == (True, "")
 
     def test_confirmation_without_a_reviewer_is_refused(self):
         # an unattributed confirmation is the same as no confirmation
         task = _promote_trace(trace(), task_id="task-1")
         with pytest.raises(ValueError):
-            confirm_redaction(task, reviewer="")
+            _confirm_redaction(task, reviewer="")
 
     def test_a_redacted_task_with_no_reviewer_cannot_join_a_suite(self):
         # guards against the status being set directly, bypassing confirm
@@ -123,7 +123,7 @@ class TestRedactionOnPromotion:
 
     def test_a_reviewer_can_edit_the_content_while_confirming(self):
         task = _promote_trace(trace(), task_id="task-1")
-        confirm_redaction(
+        _confirm_redaction(
             task, reviewer="gibson@logicalclocks.com", expected_output="corrected"
         )
         assert task.proposed_output == "corrected"

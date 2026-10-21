@@ -542,7 +542,7 @@ def _normalise_signature(value: str) -> str:
     return re.sub(r"[^a-z0-9 ]+", " ", value.lower()).strip()
 
 
-def triage(
+def _triage(
     complete: Callable[[str], str], inp: TriageInput, *, context_turns: int = 20
 ) -> tuple[TriageResult | None, str]:
     """One call. Returns the result and, when there is none, why."""

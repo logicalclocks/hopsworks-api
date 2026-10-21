@@ -96,7 +96,7 @@ def _parse_when(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def from_api(entry: dict[str, Any]) -> Cluster:
+def _from_api(entry: dict[str, Any]) -> Cluster:
     """A cluster as the backend lists it (camelCase), as the job works with it."""
     return Cluster(
         cluster_id=str(entry.get("clusterId") or ""),

@@ -96,7 +96,7 @@ class TestAssigning:
             size=10,
             status="open",
         )
-        fresh = c.from_api(
+        fresh = c._from_api(
             {
                 "clusterId": "c-1",
                 "deploymentId": 3,
@@ -135,7 +135,7 @@ class TestAssigning:
         assert cluster.representative_feedback_id == "fb-1"
         assert cluster.label == "summary 1"
         # an existing representative keeps its place against an equal or weaker newcomer
-        existing = c.from_api(
+        existing = c._from_api(
             {
                 "clusterId": "c",
                 "deploymentId": 3,
@@ -202,7 +202,7 @@ class TestRows:
         }
 
     def test_api_shape_round_trips(self):
-        parsed = c.from_api(
+        parsed = c._from_api(
             {
                 "clusterId": "c",
                 "deploymentId": "3",

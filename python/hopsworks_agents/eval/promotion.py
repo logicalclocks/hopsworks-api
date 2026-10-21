@@ -172,7 +172,7 @@ def _promote_trace(
     )
 
 
-def confirm_redaction(
+def _confirm_redaction(
     task: CandidateTask,
     *,
     reviewer: str,

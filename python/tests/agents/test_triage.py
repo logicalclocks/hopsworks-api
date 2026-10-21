@@ -150,14 +150,14 @@ class TestOneCall:
         def boom(_prompt):
             raise RuntimeError("rate limited")
 
-        result, why = t.triage(
+        result, why = t._triage(
             boom, t.TriageInput(feedback=feedback(), question="q", answer="a")
         )
         assert result is None
         assert "rate limited" in why
 
     def test_an_unusable_reply_says_why(self):
-        result, why = t.triage(
+        result, why = t._triage(
             lambda _p: reply(category="latency"),
             t.TriageInput(feedback=feedback(), question="q", answer="a"),
         )
@@ -378,7 +378,7 @@ class TestPatches:
         assert "copied verbatim from the file (same" in prompt
 
     def test_a_patch_whose_original_is_in_the_file_shown_is_verified(self):
-        result, why = t.triage(
+        result, why = t._triage(
             lambda _p: self._reply(
                 original="    return db.find(name=key)",
                 replacement="    return db.find(key=key)",
@@ -394,7 +394,7 @@ class TestPatches:
         assert finding.verified is True
 
     def test_a_patch_that_does_not_match_the_file_is_kept_but_not_verified(self):
-        result, _ = t.triage(
+        result, _ = t._triage(
             lambda _p: self._reply(
                 original="    return db.find(customer=key)", replacement="x"
             ),
@@ -406,7 +406,7 @@ class TestPatches:
 
     def test_an_original_that_occurs_twice_is_ambiguous_and_not_verified(self):
         source = [("agent/tools.py", "    pass\n    pass\n")]
-        result, _ = t.triage(
+        result, _ = t._triage(
             lambda _p: self._reply(original="    pass", replacement="    return 1"),
             t.TriageInput(
                 feedback=feedback(), question="q", answer="a", source_files=source
@@ -415,7 +415,7 @@ class TestPatches:
         assert result.code_findings[0].verified is False
 
     def test_the_file_may_be_named_by_its_tail(self):
-        result, _ = t.triage(
+        result, _ = t._triage(
             lambda _p: self._reply(
                 file="tools.py", original="def other():", replacement="def other(key):"
             ),
@@ -433,7 +433,7 @@ class TestPatches:
         )
 
     def test_nothing_is_verified_when_no_source_was_shown(self):
-        result, _ = t.triage(
+        result, _ = t._triage(
             lambda _p: self._reply(
                 original="    return db.find(name=key)", replacement="y"
             ),
@@ -442,7 +442,7 @@ class TestPatches:
         assert result.code_findings[0].verified is False
 
     def test_the_row_carries_the_patch_and_its_verification(self):
-        result, _ = t.triage(
+        result, _ = t._triage(
             lambda _p: self._reply(
                 original="    return db.find(name=key)",
                 replacement="    return db.find(key=key)",

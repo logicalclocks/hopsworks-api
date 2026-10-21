@@ -36,9 +36,9 @@ from .client import HopsworksAgentClient
 from .clusters import (
     Cluster,
     _assign_clusters,
+    _from_api,
     _known_signatures,
     _merge_decisions,
-    from_api,
 )
 from .judge_config import (
     JudgeConfig,
@@ -50,7 +50,7 @@ from .judge_config import (
 from .run_fields import _run_trials
 from .run_job import _api, _match_schema, _short
 from .sample_job import _conversation_before, _question_and_answer, _started_ns
-from .triage import TriageInput, _triage_row, triage
+from .triage import TriageInput, _triage, _triage_row
 
 
 if TYPE_CHECKING:
@@ -276,7 +276,7 @@ def _existing_clusters(session: Any, otel_base: str) -> list[Cluster]:
         response.raise_for_status()
         body = response.json() or []
         items = body if isinstance(body, list) else body.get("items") or []
-        return [from_api(item) for item in items]
+        return [_from_api(item) for item in items]
     except Exception:  # noqa: BLE001 -- clustering is a help, not a requirement
         log.exception(
             "could not read existing clusters; new ones will be made where needed"
@@ -412,7 +412,7 @@ def _review_one(
             ],
             budget_chars=int(settings.get("source_chars") or DEFAULT_SOURCE_CHARS),
         )
-    result, why = triage(
+    result, why = _triage(
         complete,
         TriageInput(
             feedback=feedback,
