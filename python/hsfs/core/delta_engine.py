@@ -538,12 +538,21 @@ class DeltaEngine:
         return self._delete_partitions_delta_rs(selection)
 
     def _delete_partitions_spark(self, selection):
+        from hopsworks_common.spark_connect_utils import _is_spark_connect_session
+
         location = self._feature_group.prepare_spark_location()
         if not _is_delta_table_at(self._spark_session, location):
             raise FeatureStoreException(
                 f"Feature group {self._feature_group.name} is not DELTA enabled "
             )
+        detail = self._spark_session.sql(f"DESCRIBE DETAIL delta.`{location}`").first()
+        self._require_physical_partition_columns(selection, detail["partitionColumns"])
         table = _delta_table_for_path(self._spark_session, location)
+
+        # Spark Connect exposes no DeltaLog, so there the whole log is searched.
+        connect = _is_spark_connect_session(self._spark_session)
+        if not connect:
+            version_before = self._spark_delta_log()[1].version()
 
         marker = str(uuid.uuid4())
         conf = self._spark_session.conf
@@ -559,17 +568,24 @@ class DeltaEngine:
             else:
                 conf.set(self.COMMIT_USER_METADATA_CONF, previous)
 
-        marked = self._find_marked_commit(location, marker)
+        versions = None
+        if not connect:
+            versions = range(
+                version_before + 1, self._spark_delta_log()[1].version() + 1
+            )
+        marked = self._find_marked_commit(location, marker, versions)
         if marked is None:
             _logger.info(
-                f"delete_partitions on {self._feature_group.name} wrote no commit."
+                "delete_partitions on %s wrote no commit.", self._feature_group.name
             )
             return None
         version, timestamp, removed_stats = marked
         if not removed_stats:
             _logger.info(
-                f"delete_partitions on {self._feature_group.name} matched no partition "
-                f"(Delta version {version} removed no file)."
+                "delete_partitions on %s matched no partition "
+                "(Delta version %s removed no file).",
+                self._feature_group.name,
+                version,
             )
             return None
         rows_deleted = self._sum_num_records(removed_stats)
@@ -579,12 +595,15 @@ class DeltaEngine:
         return fg_commit, f"Delta version {version}"
 
     def _find_marked_commit(
-        self, location: str, marker: str
+        self, location: str, marker: str, versions: range | None
     ) -> tuple[int, int, list[str | None]] | None:
         """Find the commit carrying *marker* as its `userMetadata`.
 
         Read from `_delta_log/*.json` rather than `history()`, which needs a Hive
         client under Spark Connect.
+
+        Parameters:
+            versions: The log versions to search, or None to search the whole log.
 
         Returns:
             The commit's version, its in-commit timestamp in milliseconds and the
@@ -616,9 +635,15 @@ class DeltaEngine:
             ]
         )
         log_dir = location.rstrip("/") + "/_delta_log/"
+        if versions is None:
+            log_files = [log_dir + "*.json"]
+        elif not versions:
+            return None
+        else:
+            log_files = [f"{log_dir}{version:020d}.json" for version in versions]
         marked = (
             self._spark_session.read.schema(log_schema)
-            .json(log_dir + "*.json")
+            .json(log_files)
             .filter(F.col("commitInfo.userMetadata") == marker)
             .withColumn(
                 "version",
@@ -640,6 +665,21 @@ class DeltaEngine:
             .collect()
         )
         return version, int(marked[0]["timestamp"]), [row["stats"] for row in removed]
+
+    def _require_physical_partition_columns(self, selection, physical: list[str]):
+        """Raise unless every selected column partitions the Delta table itself.
+
+        `partition_key` can drift from the table layout, and a delete on a column the
+        table is not partitioned by reads and rewrites data files.
+        """
+        not_physical = [c for c in selection.columns if c not in physical]
+        if not_physical:
+            raise FeatureStoreException(
+                f"{not_physical} are partition columns of feature group "
+                f"{self._feature_group.name} but not of its Delta table, which is "
+                f"partitioned by {sorted(physical)}. Deleting by them would read and "
+                "rewrite data files instead of dropping whole partitions."
+            )
 
     @staticmethod
     def _sum_num_records(stats_json: list[str | None]) -> int | None:
@@ -671,29 +711,24 @@ class DeltaEngine:
                 f"Feature group {self._feature_group.name} is not DELTA enabled "
             ) from e
 
-        physical = set(table.metadata().partition_columns)
-        not_physical = [c for c in selection.columns if c not in physical]
-        if not_physical:
-            raise FeatureStoreException(
-                f"{not_physical} are partition columns of feature group "
-                f"{self._feature_group.name} but not of its Delta table, which is "
-                f"partitioned by {sorted(physical)}. Deleting by them would read and "
-                "rewrite data files instead of dropping whole partitions."
-            )
+        self._require_physical_partition_columns(
+            selection, table.metadata().partition_columns
+        )
 
         # Counted from the snapshot the delete runs against: delta-rs does not report
         # deleted rows when a delete drops whole files.
         rows_deleted = self._count_selected_records(table, selection)
         version_before = table.version()
         _logger.debug(
-            f"Deleting partitions {selection.columns} from Delta table at {location}"
+            "Deleting partitions %s from Delta table at %s", selection.columns, location
         )
         metrics = table.delete(selection._sql_predicate())
         # The handle that ran the delete carries the version that delete committed.
         version = table.version()
         if version == version_before or not metrics.get("num_removed_files"):
             _logger.info(
-                f"delete_partitions on {self._feature_group.name} matched no partition."
+                "delete_partitions on %s matched no partition.",
+                self._feature_group.name,
             )
             return None
 

@@ -468,7 +468,7 @@ fg.insert(reloaded_df, operation="insert")
 ```
 
 - **Selection:** values of one column are ORed, columns are ANDed, so `{"region": ["eu", "us"], "day": [1, 2]}` is all four combinations. An omitted partition column is unrestricted; `None` selects the null partition.
-- **Formats:** DELTA (Spark or Python), ICEBERG (classic Spark or Python; identity partitions only, not `day(...)`/`bucket(...)` transforms), HUDI (classic Spark only).
+- **Formats:** DELTA (Spark or Python), ICEBERG (classic Spark, or Python inside the cluster when the FG is on HopsFS; identity partitions only, not `day(...)`/`bucket(...)` transforms), HUDI (classic Spark only).
 - **Types:** string, integer, boolean and date partition columns. Values must already have the column's type (`1.9` for an int column is an error, not partition `1`); dates as `datetime.date` or `"YYYY-MM-DD"`.
 - **Offline only:** the online store keeps the rows; use `remove_rows(df, storage="online")` for those.
 - **Two commits:** readers between the delete and the insert see the partitions missing, and a failed insert leaves them deleted. Time travel to before the delete still returns the old rows until vacuum / snapshot expiry / the Hudi cleaner removes the files.

@@ -1172,15 +1172,35 @@ class TestIcebergEngine:
 
         # Act
         fg_commit, _ = iceberg_engine._partition_delete_commit(
+            [
+                {"snapshot_id": 4, "committed_at": 1000, "operation": "append"},
+                {"snapshot_id": 5, "committed_at": 2000, "operation": "delete"},
+            ],
             5,
-            2000,
             {"deleted-data-files": "2", "added-data-files": "1"},
-            [1000, 2000],
         )
 
         # Assert
         assert "rewrote 1 data file(s)" in caplog.text
         assert fg_commit.rows_deleted is None
+
+    def test_build_fg_commit_for_a_snapshot_before_the_latest(self, mocker):
+        # Arrange: a concurrent append committed after snapshot 5.
+        iceberg_engine = _make_engine(mocker)
+        snapshots = [
+            {"snapshot_id": 4, "committed_at": 1792000000000, "operation": "append"},
+            {"snapshot_id": 5, "committed_at": 1792100000000, "operation": "delete"},
+            {"snapshot_id": 6, "committed_at": 1792200000000, "operation": "append"},
+        ]
+
+        # Act
+        fg_commit = iceberg_engine._build_fg_commit(
+            snapshots, rows_inserted=0, rows_updated=0, snapshot_id=5
+        )
+
+        # Assert
+        assert fg_commit.commit_time == 1792100000000
+        assert fg_commit.last_active_commit_time == 1792000000000
 
 
 class TestFeatureGroupEngineIceberg:

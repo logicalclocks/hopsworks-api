@@ -5388,6 +5388,7 @@ class FeatureGroup(FeatureGroupBase):
         Note: Supported formats and partition columns
             - DELTA: the columns of `partition_key`, from the Spark or the Python engine.
             - ICEBERG: the columns of `partition_key`, or the identity transforms of `partitioned_by`, from classic Spark or the Python engine.
+              On a feature group stored on HopsFS, the Python engine must run inside the Hopsworks cluster, because pyiceberg reaches HopsFS through libhdfs.
               A partition of a `day(...)` or `bucket(...)` transform cannot be named by a column value.
             - HUDI: the columns of `partition_key`, or the identity transforms of `partitioned_by`, from classic Spark only.
 

@@ -857,8 +857,9 @@ class IcebergEngine:
         before = table.currentSnapshot()
         before_id = before.snapshotId() if before is not None else None
         _logger.debug(
-            f"Deleting partitions {selection.columns} from Iceberg table "
-            f"{self._feature_group.name} through the Java API"
+            "Deleting partitions %s from Iceberg table %s through the Java API",
+            selection.columns,
+            self._feature_group.name,
         )
         # deleteFromRowFilter only drops files whose rows all match and fails the commit
         # when a file matches partly, so it cannot turn into a data rewrite.
@@ -868,22 +869,28 @@ class IcebergEngine:
         after = table.currentSnapshot()
         if after is None or after.snapshotId() == before_id:
             _logger.info(
-                f"delete_partitions on {self._feature_group.name} matched no partition."
+                "delete_partitions on %s matched no partition.",
+                self._feature_group.name,
             )
             return None
 
+        snapshots = []
+        iterator = table.snapshots().iterator()
+        while iterator.hasNext():
+            snapshot = iterator.next()
+            snapshots.append(
+                {
+                    "committed_at": snapshot.timestampMillis(),
+                    "snapshot_id": snapshot.snapshotId(),
+                    "operation": snapshot.operation(),
+                }
+            )
+        snapshots.sort(key=lambda s: s["committed_at"])
         summary = after.summary()
-        data_snapshot_times = []
-        snapshots = table.snapshots().iterator()
-        while snapshots.hasNext():
-            snapshot = snapshots.next()
-            if snapshot.operation() in self.DATA_OPERATIONS:
-                data_snapshot_times.append(snapshot.timestampMillis())
         return self._partition_delete_commit(
+            snapshots,
             after.snapshotId(),
-            after.timestampMillis(),
             {key: summary.get(key) for key in summary.keySet()},
-            data_snapshot_times,
         )
 
     @_uses_pyiceberg
@@ -905,13 +912,16 @@ class IcebergEngine:
         before = table.current_snapshot()
         before_id = before.snapshot_id if before is not None else None
         _logger.debug(
-            f"Deleting partitions {selection.columns} from Iceberg table at {location}"
+            "Deleting partitions %s from Iceberg table at %s",
+            selection.columns,
+            location,
         )
         table.delete(delete_filter=selection._pyiceberg_expression())
         after = table.current_snapshot()
         if after is None or after.snapshot_id == before_id:
             _logger.info(
-                f"delete_partitions on {self._feature_group.name} matched no partition."
+                "delete_partitions on %s matched no partition.",
+                self._feature_group.name,
             )
             return None
         self._publish_hadoop_metadata(table, location, (version or 0) + 1)
@@ -919,27 +929,21 @@ class IcebergEngine:
         snapshots = self._pyiceberg_snapshots(table)
         current = next(s for s in snapshots if s["snapshot_id"] == after.snapshot_id)
         return self._partition_delete_commit(
-            after.snapshot_id,
-            current["committed_at"],
-            current["summary"],
-            [
-                s["committed_at"]
-                for s in snapshots
-                if s["operation"] in self.DATA_OPERATIONS
-            ],
+            snapshots, after.snapshot_id, current["summary"]
         )
 
     def _partition_delete_commit(
         self,
+        snapshots: list[dict[str, Any]],
         snapshot_id: int,
-        committed_at: int,
         summary: dict[str, str],
-        data_snapshot_times: list[int],
     ) -> tuple[feature_group_commit.FeatureGroupCommit, str] | None:
         if not int(summary.get("deleted-data-files") or 0):
             _logger.info(
-                f"delete_partitions on {self._feature_group.name} matched no partition "
-                f"(snapshot {snapshot_id} removed no data file)."
+                "delete_partitions on %s matched no partition "
+                "(snapshot %s removed no data file).",
+                self._feature_group.name,
+                snapshot_id,
             )
             return None
         if int(summary.get("added-data-files") or 0):
@@ -947,23 +951,19 @@ class IcebergEngine:
             # for files written under an older partition spec. The result is still
             # correct, so the commit stands and is registered.
             _logger.warning(
-                f"delete_partitions on {self._feature_group.name} rewrote "
-                f"{summary.get('added-data-files')} data file(s) in snapshot "
-                f"{snapshot_id}: some files are not partitioned by the selected "
-                "columns."
+                "delete_partitions on %s rewrote %s data file(s) in snapshot %s: "
+                "some files are not partitioned by the selected columns.",
+                self._feature_group.name,
+                summary.get("added-data-files"),
+                snapshot_id,
             )
+        fg_commit = self._build_fg_commit(
+            snapshots, rows_inserted=0, rows_updated=0, snapshot_id=snapshot_id
+        )
         deleted_records = summary.get("deleted-records")
-        commit_time = util._convert_event_time_to_timestamp(committed_at)
-        fg_commit = feature_group_commit.FeatureGroupCommit(
-            commitid=None,
-            commit_date_string=util._get_hudi_datestr_from_timestamp(commit_time),
-            commit_time=commit_time,
-            rows_inserted=0,
-            rows_updated=0,
-            rows_deleted=int(deleted_records) if deleted_records is not None else None,
-            last_active_commit_time=util._convert_event_time_to_timestamp(
-                min(data_snapshot_times, default=committed_at)
-            ),
+        # Unknown stays None rather than the 0 _build_fg_commit defaults to.
+        fg_commit.rows_deleted = (
+            int(deleted_records) if deleted_records is not None else None
         )
         return fg_commit, f"Iceberg snapshot {snapshot_id}"
 
@@ -1729,14 +1729,23 @@ class IcebergEngine:
         rows_inserted: int | None = None,
         rows_updated: int | None = None,
         rows_deleted: int | None = None,
+        snapshot_id: int | None = None,
     ) -> feature_group_commit.FeatureGroupCommit | None:
-        """Build a FeatureGroupCommit from a snapshot log sorted oldest first."""
+        """Build a FeatureGroupCommit from a snapshot log sorted oldest first.
+
+        Parameters:
+            snapshot_id: The snapshot the commit is for; the latest data snapshot when None.
+        """
         snapshots = [s for s in snapshots if s.get("operation") in self.DATA_OPERATIONS]
         if not snapshots:
             return None
 
         oldest_snapshot = snapshots[0]
-        last_snapshot = snapshots[-1]
+        last_snapshot = (
+            snapshots[-1]
+            if snapshot_id is None
+            else next(s for s in snapshots if s["snapshot_id"] == snapshot_id)
+        )
         summary = last_snapshot.get("summary") or {}
 
         commit_timestamp = util._convert_event_time_to_timestamp(

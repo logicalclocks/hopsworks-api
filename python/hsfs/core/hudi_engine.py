@@ -191,12 +191,16 @@ class HudiEngine:
         ]
         if not paths:
             _logger.info(
-                f"delete_partitions on {self._feature_group.name} matched no partition."
+                "delete_partitions on %s matched no partition.",
+                self._feature_group.name,
             )
             return None
         hudi_options[self.HUDI_PARTITIONS_TO_DELETE] = ",".join(paths)
         _logger.debug(
-            f"Deleting Hudi partitions {paths} of {self._feature_group.name} at {location}"
+            "Deleting Hudi partitions %s of %s at %s",
+            paths,
+            self._feature_group.name,
+            location,
         )
 
         before = self._latest_completed_instant(location)
@@ -224,6 +228,15 @@ class HudiEngine:
                 f"delete_partitions on {self._feature_group.name} expected Hudi to "
                 f"complete a {self.HUDI_REPLACE_COMMIT_ACTION} for partitions {paths}, "
                 f"but the latest completed instant is {after}."
+            )
+        replaced = sorted(self._replaced_partitions(location, after))
+        if replaced != sorted(paths):
+            raise FeatureStoreException(
+                f"delete_partitions on {self._feature_group.name} expected Hudi "
+                f"instant {after.getCompletionTime()} to replace partitions "
+                f"{sorted(paths)}, but it replaced {replaced}. Another writer may "
+                "have committed after the delete: check the table's timeline before "
+                "retrying."
             )
         fg_commit = self._get_last_commit_metadata(self._spark_context, location)
         fg_commit.rows_inserted = 0
@@ -283,6 +296,24 @@ class HudiEngine:
         return jvm.org.apache.hudi.HoodieDataSourceHelpers.latestCompletedCommit(
             fs, location
         )
+
+    def _replaced_partitions(self, location: str, instant) -> list[str]:
+        """The partition paths whose file groups a replacecommit *instant* retired."""
+        jvm = self._spark_context._jvm
+        fs = jvm.org.apache.hadoop.fs.FileSystem.get(
+            self._spark_context._jsc.hadoopConfiguration()
+        )
+        timeline = (
+            jvm.org.apache.hudi.HoodieDataSourceHelpers.allCompletedCommitsCompactions(
+                fs, location
+            )
+        )
+        metadata = (
+            jvm.org.apache.hudi.common.table.timeline.TimelineUtils.getCommitMetadata(
+                instant, timeline
+            )
+        )
+        return list(metadata.getPartitionToReplaceFileIds().keySet())
 
     # endregion
 

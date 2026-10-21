@@ -805,7 +805,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             if spark_context is None:
                 raise exceptions.FeatureStoreException(
                     "delete_partitions on a HUDI feature group is not supported with "
-                    "Spark Connect. Use DELTA time travel format instead."
+                    "Spark Connect. Run it from a classic Spark session, such as a "
+                    "Spark job."
                 )
             result = hudi_engine.HudiEngine(
                 feature_group.feature_store_id,
