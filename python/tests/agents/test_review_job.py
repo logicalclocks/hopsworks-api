@@ -641,7 +641,7 @@ class TestOneExecution:
 
     def test_reports_success_with_where_it_stopped(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-        monkeypatch.setattr(rj, "completer_for", lambda config, key: good_reply)
+        monkeypatch.setattr(rj, "_completer_for", lambda config, key: good_reply)
         session = FakeSession(
             [feedback(i) for i in range(3)],
             details={f"trace-{i}": detail() for i in range(3)},
@@ -687,7 +687,7 @@ class TestOneExecution:
         def outage(_prompt):
             raise RuntimeError("HTTP 429: rate limit exceeded")
 
-        monkeypatch.setattr(rj, "completer_for", lambda config, key: outage)
+        monkeypatch.setattr(rj, "_completer_for", lambda config, key: outage)
         session = FakeSession(
             [feedback(0)],
             details={"trace-0": detail()},
@@ -762,7 +762,7 @@ class TestOneExecution:
 
     def test_a_crash_is_reported_as_failed_not_left_running(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-        monkeypatch.setattr(rj, "completer_for", lambda config, key: good_reply)
+        monkeypatch.setattr(rj, "_completer_for", lambda config, key: good_reply)
 
         class Broken(FakeFeatureStore):
             def get_feature_group(self, name, version):

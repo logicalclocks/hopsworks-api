@@ -87,14 +87,14 @@ class TestReadingADirectory:
         def explode(*args, **kwargs):
             raise err
 
-        original = src.clone_repository
-        src.clone_repository = explode
+        original = src._clone_repository
+        src._clone_repository = explode
         try:
             bundle = src._load_agent_source(
                 src.CodeLocation(git_url="https://u:ghp_realtoken@h/r")
             )
         finally:
-            src.clone_repository = original
+            src._clone_repository = original
         assert bundle.files == {}
         assert "ghp_realtoken" not in bundle.origin
         assert bundle.origin.startswith("unreadable: git exited 128")
@@ -166,7 +166,7 @@ class TestCloning:
             calls.append(command)
             return subprocess.CompletedProcess(command, 0)
 
-        target = src.clone_repository(
+        target = src._clone_repository(
             "https://github.com/o/r", "main", "abc123", str(tmp_path), run=run
         )
         assert target == os.path.join(str(tmp_path), "repo")
@@ -179,7 +179,7 @@ class TestCloning:
         monkeypatch.setenv("GIT_CREDENTIALS", "https://alice:secret@github.com")
         monkeypatch.setenv("HOME", str(tmp_path))
         calls = []
-        src.clone_repository(
+        src._clone_repository(
             "https://github.com/o/r",
             "main",
             "",
@@ -197,7 +197,7 @@ class TestCloning:
         monkeypatch.setattr(src.shutil, "which", lambda name: "/usr/bin/git")
         calls = []
         monkeypatch.delenv("GIT_CREDENTIALS", raising=False)
-        src.clone_repository(
+        src._clone_repository(
             "https://github.com/o/r",
             "dev",
             "",
@@ -212,7 +212,7 @@ class TestCloning:
         def boom(*args, **kwargs):
             raise RuntimeError("no network")
 
-        monkeypatch.setattr(src, "clone_repository", boom)
+        monkeypatch.setattr(src, "_clone_repository", boom)
         result = src._load_agent_source(
             src.CodeLocation(git_url="https://github.com/o/r"), workdir=str(tmp_path)
         )

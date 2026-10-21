@@ -604,7 +604,7 @@ def _client_options(
     return options
 
 
-def completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
+def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
     """A `complete` for this configuration.
 
     Both SDKs are imported lazily: a project judging with one provider should

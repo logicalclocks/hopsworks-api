@@ -44,8 +44,8 @@ from .judge_config import (
     JudgeConfig,
     _api_key_for,
     _api_key_source,
+    _completer_for,
     _tool_calls_text,
-    completer_for,
 )
 from .run_fields import _run_trials
 from .run_job import _api, _match_schema, _short
@@ -198,7 +198,7 @@ def _completer_from(
             None,
             f"no API key: set {_api_key_source(config)} on the job's environment",
         )
-    return completer_for(config, key), ""
+    return _completer_for(config, key), ""
 
 
 def _ms(value: Any) -> float:

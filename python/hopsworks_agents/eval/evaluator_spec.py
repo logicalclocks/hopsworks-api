@@ -49,8 +49,8 @@ from .judge_config import (
     JudgeConfigError,
     _api_key_for,
     _api_key_source,
+    _completer_for,
     _parse_judge_config,
-    completer_for,
 )
 
 
@@ -181,7 +181,7 @@ def _one(
         if config.model or entry.get("provider"):
             api_key = _api_key_for(config)
             if api_key:
-                completer = completer_for(config, api_key)
+                completer = _completer_for(config, api_key)
             else:
                 log.warning(
                     "no key for judge %r (%s provider); looked in %s. The check "

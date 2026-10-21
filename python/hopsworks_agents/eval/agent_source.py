@@ -221,7 +221,7 @@ def _credential_for(url: str, entries: Sequence[str]) -> tuple[str, str]:
     return "", ""
 
 
-def clone_repository(
+def _clone_repository(
     url: str,
     ref: str,
     commit: str,
@@ -386,7 +386,7 @@ def _load_agent_source(
     try:
         if location.git_url:
             ref = location.git_commit or location.git_branch or "default branch"
-            root = clone_repository(
+            root = _clone_repository(
                 location.git_url, location.git_branch, location.git_commit, into
             )
             bundle = _bundle_from_directory(

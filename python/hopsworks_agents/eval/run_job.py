@@ -82,7 +82,7 @@ def _judge_for(
     separately — and, being asked wrongly, silently skipped every judge while the
     run reported success.
     """
-    from .judge_config import PROVIDERS, JudgeConfig, completer_for
+    from .judge_config import PROVIDERS, JudgeConfig, _completer_for
 
     chosen = (provider or os.environ.get("EVAL_JUDGE_PROVIDER") or "anthropic").lower()
     registry = PROVIDERS.get(chosen)
@@ -104,7 +104,7 @@ def _judge_for(
     named = model or os.environ.get("EVAL_JUDGE_MODEL") or ""
     config = JudgeConfig(provider=chosen, model=named or registry["default_model"])
     log.info("LLM judge enabled (provider=%s model=%s)", chosen, config.model)
-    return LlmJudgeEvaluator(completer_for(config, api_key), config)
+    return LlmJudgeEvaluator(_completer_for(config, api_key), config)
 
 
 def _tags(raw: Any) -> list[str]:

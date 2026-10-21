@@ -989,7 +989,7 @@ class TestExtraHeaders:
                 "headers": {"Authorization": "$GATEWAY_TOKEN", "X-Tenant": "acme"},
             }
         )
-        complete = jc.completer_for(config, "key")
+        complete = jc._completer_for(config, "key")
         assert complete("hello") == '{"score": 5}'
         assert seen["base_url"] == "https://gw.internal/v1"
         assert seen["default_headers"] == {"Authorization": "tok", "X-Tenant": "acme"}
@@ -1019,5 +1019,5 @@ class TestExtraHeaders:
         monkeypatch.setitem(
             sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAI)
         )
-        jc.completer_for(jc._parse_judge_config({"provider": "openai"}), "key")("p")
+        jc._completer_for(jc._parse_judge_config({"provider": "openai"}), "key")("p")
         assert "default_headers" not in seen and "base_url" not in seen
