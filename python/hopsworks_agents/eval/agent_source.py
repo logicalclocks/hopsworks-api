@@ -528,7 +528,7 @@ def _relevant_files(
     return chosen
 
 
-def render_source(files: Sequence[tuple[str, str]], origin: str = "") -> str:
+def _render_source(files: Sequence[tuple[str, str]], origin: str = "") -> str:
     """The files as one block for the prompt, each under its path with line numbers."""
     if not files:
         return ""

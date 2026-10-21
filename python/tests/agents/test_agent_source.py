@@ -267,13 +267,13 @@ class TestChoosingFiles:
         assert src._relevant_files(src.SourceBundle(files={}), tool_names=["x"]) == []
 
     def test_rendering_numbers_the_lines_under_each_path(self):
-        text = src.render_source(
+        text = src._render_source(
             [("agent/tools.py", "def f():\n    pass\n")], origin="git x@main"
         )
         assert '<agent_source origin="git x@main">' in text
         assert '<file path="agent/tools.py">' in text
         assert "   1  def f():" in text and "   2      pass" in text
-        assert src.render_source([]) == ""
+        assert src._render_source([]) == ""
 
 
 class TestImports:

@@ -124,7 +124,7 @@ def from_api(entry: dict[str, Any]) -> Cluster:
     )
 
 
-def known_signatures(
+def _known_signatures(
     clusters: Iterable[Cluster], limit: int = KNOWN_SIGNATURES_LIMIT
 ) -> list[str]:
     """The signatures worth offering the model, largest clusters first. Dismissed.

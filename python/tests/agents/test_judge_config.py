@@ -18,9 +18,9 @@ from hopsworks_agents.eval.judge_config import (
     PROVIDERS,
     REASONING_EFFORTS,
     JudgeConfigError,
+    _default_templates,
     _parse_judge_config,
     _render_prompt,
-    default_templates,
 )
 from hopsworks_agents.eval.judges import LlmJudgeEvaluator
 from hopsworks_agents.eval.models import Task, Trial
@@ -424,7 +424,7 @@ class TestSpecIntegration:
 
 
 def test_the_default_templates_all_build():
-    for template in default_templates():
+    for template in _default_templates():
         evaluators = _evaluators_from_spec(
             template["spec"], judge_completer=lambda _p: "{}"
         )
@@ -434,7 +434,7 @@ def test_the_default_templates_all_build():
 def test_the_default_template_leaves_tool_checks_to_the_tool_evaluators():
     # paying a model to decide whether a required tool ran is slower, costlier
     # and less reliable than the evaluator that knows
-    spec = json.loads(default_templates()[0]["spec"])
+    spec = json.loads(_default_templates()[0]["spec"])
     names = set(spec[0]["criteria"])
     assert not names & {"tool_selection", "tool_execution", "efficiency"}
 
@@ -886,9 +886,9 @@ class TestReferenceFreeTemplates:
     def _spec(self, name):
         import json
 
-        from hopsworks_agents.eval.judge_config import default_templates
+        from hopsworks_agents.eval.judge_config import _default_templates
 
-        [entry] = [t for t in default_templates() if t["name"] == name]
+        [entry] = [t for t in _default_templates() if t["name"] == name]
         return json.loads(entry["spec"])[0]
 
     @pytest.mark.parametrize("name", sorted(REFERENCE_FREE))

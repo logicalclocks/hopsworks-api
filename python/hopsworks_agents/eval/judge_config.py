@@ -1203,7 +1203,7 @@ def _tool_calls_text(trace: dict[str, Any] | None, limit: int = 600) -> tuple[st
     return rendered, results
 
 
-def default_templates() -> list[dict[str, Any]]:
+def _default_templates() -> list[dict[str, Any]]:
     """Starter configurations, so nobody meets an empty page.
 
     The tool dimensions a deterministic evaluator answers exactly are deliberately

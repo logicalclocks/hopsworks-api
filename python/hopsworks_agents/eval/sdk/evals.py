@@ -678,11 +678,11 @@ class Evaluators:
     @public
     def install_defaults(self, overwrite: bool = False) -> list[str]:
         """The built-in judges (hallucination, frustration, toxicity, ...) into this library."""
-        from ..judge_config import default_templates
+        from ..judge_config import _default_templates
 
         existing = {e.name for e in self.list()}
         written = []
-        for template in default_templates():
+        for template in _default_templates():
             if template["name"] in existing and not overwrite:
                 continue
             self.save(

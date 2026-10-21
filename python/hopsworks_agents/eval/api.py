@@ -357,11 +357,11 @@ class EvalApi:
 
         Returns the names it wrote.
         """
-        from .judge_config import default_templates
+        from .judge_config import _default_templates
 
         existing = {entry["name"] for entry in self.evaluators()}
         written = []
-        for template in default_templates():
+        for template in _default_templates():
             if template["name"] in existing and not overwrite:
                 continue
             self._save_evaluator(

@@ -510,14 +510,14 @@ class TestEvaluators:
         assert body["spec"] == '[{"type":"llm_judge"}]'
 
     def test_installing_defaults_leaves_existing_ones_alone(self):
-        from hopsworks_agents.eval.judge_config import default_templates
+        from hopsworks_agents.eval.judge_config import _default_templates
 
-        first = default_templates()[0]["name"]
+        first = _default_templates()[0]["name"]
         evals, session = client(
             Reply([{"templateId": "e", "name": first, "spec": "[]"}])
         )
         written = evals.evaluators.install_defaults()
-        assert first not in written and len(written) == len(default_templates()) - 1
+        assert first not in written and len(written) == len(_default_templates()) - 1
 
     def test_judge_models_asks_the_provider(self):
         evals, session = client(Reply(["gpt-5.6-terra"]))

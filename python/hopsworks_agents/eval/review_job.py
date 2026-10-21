@@ -36,9 +36,9 @@ from .client import HopsworksAgentClient
 from .clusters import (
     Cluster,
     _assign_clusters,
+    _known_signatures,
     _merge_decisions,
     from_api,
-    known_signatures,
 )
 from .judge_config import (
     JudgeConfig,
@@ -337,7 +337,7 @@ def _review_feedback(
 
     rows: list[dict[str, Any]] = []
     sessions: dict[str, list[dict[str, Any]]] = {}
-    signatures = known_signatures(clusters)
+    signatures = _known_signatures(clusters)
     for feedback in chosen:
         rows.append(
             _review_one(

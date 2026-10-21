@@ -368,10 +368,10 @@ def _render_triage_prompt(inp: TriageInput, *, context_turns: int = 20) -> str:
     source = ""
     if inp.source_files:
         from .agent_source import (
-            render_source,  # noqa: PLC0415 -- avoids an import cycle at module load
+            _render_source,  # noqa: PLC0415 -- avoids an import cycle at module load
         )
 
-        source = "\n" + render_source(inp.source_files, inp.source_origin) + "\n"
+        source = "\n" + _render_source(inp.source_files, inp.source_origin) + "\n"
     return PROMPT.format(
         intro=intro,
         known=known,

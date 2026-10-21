@@ -7,17 +7,17 @@ cover what they are and what installing them must not do.
 import json
 
 from hopsworks_agents.eval.api import EvalApi
-from hopsworks_agents.eval.judge_config import _parse_judge_config, default_templates
+from hopsworks_agents.eval.judge_config import _default_templates, _parse_judge_config
 
 
 def named(name):
-    [entry] = [t for t in default_templates() if t["name"] == name]
+    [entry] = [t for t in _default_templates() if t["name"] == name]
     return json.loads(entry["spec"])[0]
 
 
 class TestWhatIsOffered:
     def test_the_checks_people_ask_for_are_there(self):
-        names = {t["name"] for t in default_templates()}
+        names = {t["name"] for t in _default_templates()}
 
         assert {
             "Hallucination",
@@ -30,14 +30,14 @@ class TestWhatIsOffered:
     def test_every_one_builds(self):
         # a library entry that cannot be parsed is worse than none: it is offered,
         # chosen, and then fails in a job
-        for template in default_templates():
+        for template in _default_templates():
             for check in json.loads(template["spec"]):
                 _parse_judge_config(check)
 
     def test_every_criterion_says_what_it_looks_for(self):
         # the server refuses a criterion with no description, so an entry missing
         # one could be installed by nobody
-        for template in default_templates():
+        for template in _default_templates():
             for check in json.loads(template["spec"]):
                 for name, settings in (check.get("criteria") or {}).items():
                     assert settings.get("description", "").strip(), (
@@ -52,7 +52,7 @@ class TestWhatIsOffered:
         #
         # "Agent execution judge" is the exception and stays one: it grades a task
         # against what the task said the answer should be, which is a suite.
-        for template in default_templates():
+        for template in _default_templates():
             if template["name"] == "Agent execution judge":
                 continue
             for check in json.loads(template["spec"]):
@@ -127,7 +127,7 @@ class TestInstalling:
 
         written = api._install_default_evaluators()
 
-        assert written == [t["name"] for t in default_templates()]
+        assert written == [t["name"] for t in _default_templates()]
         assert api.saved == written
 
     def test_leaves_an_existing_entry_alone(self):

@@ -173,8 +173,8 @@ class TestKnownSignatures:
             c.Cluster("d", 3, "gone", size=100, status="dismissed"),
             c.Cluster("e", 3, "big", size=2),
         ]
-        assert c.known_signatures(clusters) == ["big", "small"]
-        assert c.known_signatures(clusters, limit=1) == ["big"]
+        assert c._known_signatures(clusters) == ["big", "small"]
+        assert c._known_signatures(clusters, limit=1) == ["big"]
 
 
 class TestRows:
