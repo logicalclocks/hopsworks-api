@@ -57,22 +57,21 @@ def create_model(
     Triton serves the version folders its `version_policy` selects, by default the highest one, independently of the model registry version.
 
     Note: Lazy
-        This method is lazy and does not persist any metadata or uploads model artifacts in the
-        model registry on its own. To save the model object and the model artifacts, call the `save()` method with a
-        local file path to the directory containing the model artifacts.
+        This method is lazy and does not persist any metadata or upload model artifacts in the model registry on its own.
+        To save the model object and the model artifacts, call the `save()` method with a local path to the directory containing the model artifacts.
 
     Parameters:
         name: Name of the model to create.
-        version: Optionally version of the model to create, defaults to `None` and
-            will create the model with incremented version from the last
-            version in the model registry.
-        metrics: Optionally a dictionary with model evaluation metrics (e.g., accuracy, MAE)
-        description: Optionally a string describing the model, defaults to empty string
-            `""`.
-        input_example: Optionally an input example that represents a single input for the model, defaults to `None`.
-        model_schema: Optionally a model schema for the model inputs and/or outputs.
-        feature_view: Optionally a feature view object returned by querying the feature store. If the feature view is not provided, the model will not have access to provenance.
-        training_dataset_version: Optionally a training dataset version. If training dataset version is not provided, but the feature view is provided, the training dataset version used will be the last accessed training dataset of the feature view, within the code/notebook that reads the feature view and training dataset and then creates the model.
+        version: Version of the model to create.
+            When it is `None`, the model gets the version after the last one in the model registry.
+        metrics: Model evaluation metrics, for example accuracy or MAE.
+        description: Description of the model.
+        input_example: An input example that represents a single input for the model.
+        model_schema: A model schema for the model inputs and outputs.
+        feature_view: The feature view the model was trained from, as returned by the feature store.
+            Without it, the model has no provenance.
+        training_dataset_version: The training dataset version the model was trained on.
+            When it is `None` and `feature_view` is set, it is the training dataset of the feature view that this code or notebook read last.
         tags: Optionally the tags to attach to the model when it is saved, in the same shapes accepted by feature groups.
             A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
             The tags ride the create request, so any mandatory model tags missing from them cause the backend to reject the save.
