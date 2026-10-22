@@ -827,6 +827,38 @@ class TestFeatureGroup:
             fg, None, {"delta.enableChangeDataFeed": "true"}
         )
 
+    @pytest.mark.parametrize(
+        "cdf, expected",
+        [
+            (False, "false"),
+            ("False", "false"),
+            ("false", "false"),
+            (True, "true"),
+            ("TRUE", "true"),
+        ],
+    )
+    def test_save_change_data_feed_option(self, mocker, cdf, expected):
+        mock_save_metadata = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata",
+            return_value=None,
+        )
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            time_travel_format="DELTA",
+            features=[feature.Feature(name="pk", type="int")],
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+        )
+
+        fg.save(write_options={"delta.enableChangeDataFeed": cdf})
+
+        mock_save_metadata.assert_called_once_with(
+            fg, None, {"delta.enableChangeDataFeed": expected}
+        )
+
     def test_save_exception_empty_input(self):
         fg = feature_group.FeatureGroup(
             name="test_fg",

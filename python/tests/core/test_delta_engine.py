@@ -3247,3 +3247,24 @@ def test_insert_nested_naive_timestamp_into_utc_table(
     (row,) = DeltaTable(location).to_pyarrow_table().column("n").to_pylist()
     ts = row[0] if isinstance(row, list) else row["ts"]
     assert ts.isoformat() == "2026-10-21T11:30:00+00:00"
+
+
+@pytest.mark.parametrize("cdf, expected", [(False, "false"), ("False", "false")])
+@pytest.mark.parametrize("existing", [True, False], ids=["existing", "new"])
+def test_change_data_feed_option_is_a_lowercase_string(
+    mocker, monkeypatch, tmp_path, cdf, expected, existing
+):
+    location = str(tmp_path / "fg")
+    if existing:
+        _backend_made_table(location, [("id", "long")], [])
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+    from deltalake import DeltaTable
+
+    engine._write_delta_rs_dataset(
+        pd.DataFrame({"id": [1]}),
+        write_options={"delta.enableChangeDataFeed": cdf},
+        operation="insert",
+    )
+
+    configuration = DeltaTable(location).metadata().configuration
+    assert configuration["delta.enableChangeDataFeed"] == expected

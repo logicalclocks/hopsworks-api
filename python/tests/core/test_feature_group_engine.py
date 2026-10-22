@@ -2334,7 +2334,14 @@ class TestFeatureGroupEngine:
         )
         mock_save_empty_table.assert_not_called()
 
-    def _create_delta_fg(self, mocker, response_extra, engine_type="python", **fg_args):
+    def _create_delta_fg(
+        self,
+        mocker,
+        response_extra,
+        engine_type="python",
+        write_options=None,
+        **fg_args,
+    ):
         """Create a feature group through the real FeatureGroupApi.
 
         Defaults to DELTA on the python engine. The REST answer echoes the
@@ -2381,7 +2388,7 @@ class TestFeatureGroupEngine:
         )._save_feature_group_metadata(
             feature_group=fg,
             dataframe_features=None,
-            write_options={"delta.enableChangeDataFeed": "false"},
+            write_options=write_options or {"delta.enableChangeDataFeed": "false"},
         )
         return fg, requests
 
@@ -2400,6 +2407,29 @@ class TestFeatureGroupEngine:
         assert fg._offline_table_initialized is True
         save_empty_table.assert_not_called()
         delta_table.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "cdf, expected",
+        [
+            (False, False),
+            ("False", False),
+            ("FALSE", False),
+            (True, True),
+            ("True", True),
+        ],
+    )
+    def test_save_feature_group_metadata_change_data_feed_option(
+        self, mocker, cdf, expected
+    ):
+        mocker.patch("deltalake.DeltaTable")
+
+        _, requests = self._create_delta_fg(
+            mocker,
+            {"offlineTableInitialized": True},
+            write_options={"delta.enableChangeDataFeed": cdf},
+        )
+
+        assert requests[0]["enableChangeDataFeed"] is expected
 
     @pytest.mark.parametrize(
         "engine_type, fg_args",

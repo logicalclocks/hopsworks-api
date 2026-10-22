@@ -978,9 +978,11 @@ class DeltaEngine:
 
         if not is_delta_table:
             configuration = {
-                self.DELTA_ENABLE_CHANGE_DATA_FEED: (write_options or {}).get(
-                    self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
-                )
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: str(
+                    (write_options or {}).get(
+                        self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
+                    )
+                ).lower()
             }
             deltars_write(
                 location,
@@ -998,9 +1000,9 @@ class DeltaEngine:
             ):
                 fg_source_table.alter.set_table_properties(
                     {
-                        self.DELTA_ENABLE_CHANGE_DATA_FEED: write_options.get(
-                            self.DELTA_ENABLE_CHANGE_DATA_FEED
-                        )
+                        self.DELTA_ENABLE_CHANGE_DATA_FEED: str(
+                            write_options.get(self.DELTA_ENABLE_CHANGE_DATA_FEED)
+                        ).lower()
                     }
                 )
             if append_requested:

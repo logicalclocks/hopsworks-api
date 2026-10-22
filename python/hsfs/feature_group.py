@@ -4441,15 +4441,12 @@ class FeatureGroup(FeatureGroupBase):
 
         if write_options is None:
             write_options = {}
-        if all(
-            [
-                not self._id,
-                self.time_travel_format == "DELTA",
-                write_options.get("delta.enableChangeDataFeed") != "false",
-            ]
-        ):
+        if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
-            write_options["delta.enableChangeDataFeed"] = "true"
+            cdf = str(write_options.get("delta.enableChangeDataFeed", "true")).lower()
+            write_options["delta.enableChangeDataFeed"] = (
+                "false" if cdf == "false" else "true"
+            )
 
         if (
             (features is None and len(self._features) > 0)
@@ -4703,15 +4700,12 @@ class FeatureGroup(FeatureGroupBase):
             write_options["wait_for_online_ingestion"] = wait
         if not self._id and self._offline_backfill_every_hr is not None:
             write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
-        if all(
-            [
-                not self._id,
-                self.time_travel_format == "DELTA",
-                write_options.get("delta.enableChangeDataFeed") != "false",
-            ]
-        ):
+        if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
-            write_options["delta.enableChangeDataFeed"] = "true"
+            cdf = str(write_options.get("delta.enableChangeDataFeed", "true")).lower()
+            write_options["delta.enableChangeDataFeed"] = (
+                "false" if cdf == "false" else "true"
+            )
 
         job, ge_report = self._feature_group_engine._insert(
             self,

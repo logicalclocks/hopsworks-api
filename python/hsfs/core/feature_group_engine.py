@@ -1073,9 +1073,14 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             # Ask the backend to write the first Delta commit at create, so
             # the client skips the empty-table write. Old backends ignore it.
             feature_group._initialize_offline_table = True
-            feature_group._enable_change_data_feed = (write_options or {}).get(
-                delta_engine.DeltaEngine.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
-            ) != "false"
+            feature_group._enable_change_data_feed = (
+                str(
+                    (write_options or {}).get(
+                        delta_engine.DeltaEngine.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
+                    )
+                ).lower()
+                != "false"
+            )
         new_fg = self._feature_group_api._save(feature_group)
         if (
             pre_save_rest_endpoint
