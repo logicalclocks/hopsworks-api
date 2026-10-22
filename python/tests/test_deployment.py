@@ -955,6 +955,18 @@ class TestDeployment:
             # Act and Assert
             assert not d.is_stopped(or_created=True)
 
+    # model server
+
+    def test_model_server_is_read_only(self, mocker, backend_fixtures):
+        # Arrange: the predictor derives it from the model framework and has no setter.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+
+        # Act + Assert
+        with pytest.raises(AttributeError):
+            d.model_server = "TRITON"
+        assert d.model_server == p.model_server
+
     # predict
 
     def test_predict(self, mocker, backend_fixtures):
@@ -970,7 +982,7 @@ class TestDeployment:
 
         # Assert
         mock_serving_engine_predict.assert_called_once_with(
-            d, "data", "inputs", validate=True
+            d, "data", "inputs", validate=True, outputs=None
         )
 
     # download artifact

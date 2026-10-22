@@ -74,7 +74,8 @@ Stored and versioned in Hopsworks alongside the feature view.
 
 A versioned artifact in the model registry, private to a project.
 Stores model files in their native framework format, plus metrics, input/output schema, sample test data, provenance links to source notebooks and datasets, and environment metadata.
-Framework subclasses (`TorchModel`, `TensorFlowModel`, `SkLearnModel`, `PythonModel`, `LlmModel`) add `save()` and `load()` appropriate for each framework.
+Framework subclasses (`TorchModel`, `TensorFlowModel`, `SkLearnModel`, `PythonModel`, `LlmModel`, `TritonModel`) add `save()` and `load()` appropriate for each framework.
+A `TritonModel` holds one Triton model directory: `config.pbtxt` and numeric version folders.
 Integrates with KServe for deployment.
 
 ### Deployment
@@ -86,13 +87,14 @@ Key methods: `start()`, `stop()`, `predict(data)`, `get_logs()`.
 
 ### Predictor
 
-Configures the model server: which model to serve, the serving runtime (Python, TensorFlow Serving, or vLLM), instance count, resource limits, and scaling behavior.
+Configures the model server: which model to serve, the serving runtime (Python, TensorFlow Serving, vLLM, or Triton Inference Server), instance count, resource limits, and scaling behavior.
+Triton is opt-in per cluster: it is available only when the cluster advertises Triton image tags, and its REST and gRPC endpoints speak Open Inference Protocol v2 (`/v2/models/<name>/infer`) instead of KServe v1.
 
 ### Transformer
 
 Optional pre- and post-processing layer that runs before and after the predictor.
 Typically used to fetch online features from the Feature Store and enrich the raw inference request with them before passing it to the model.
-Not available for vLLM deployments.
+Not available for vLLM and Triton deployments.
 
 ### InferenceLogger
 

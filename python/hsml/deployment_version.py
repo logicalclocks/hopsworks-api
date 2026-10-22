@@ -85,6 +85,7 @@ class DeploymentVersion:
         git_current_commit: str | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        triton_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
         feature_logging: DeploymentLoggingConfig | dict | None = None,
         **kwargs: Any,
@@ -128,6 +129,7 @@ class DeploymentVersion:
         self._git_current_commit = git_current_commit
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
+        self._triton_image_tag = triton_image_tag
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
         self._feature_logging = util._get_obj_from_json(
             feature_logging, DeploymentLoggingConfig
@@ -185,6 +187,7 @@ class DeploymentVersion:
             "gitCurrentCommit": self._git_current_commit,
             "vllmVariant": self._vllm_variant,
             "vllmImageTag": self._vllm_image_tag,
+            "tritonImageTag": self._triton_image_tag,
             "tracing": self._tracing.to_dict() if self._tracing else None,
             "featureLogging": (
                 self._feature_logging.to_dict() if self._feature_logging else None
@@ -388,6 +391,12 @@ class DeploymentVersion:
     def vllm_image_tag(self) -> str | None:
         """VLLM image tag of an LLM deployment."""
         return self._vllm_image_tag
+
+    @public
+    @property
+    def triton_image_tag(self) -> str | None:
+        """Triton Inference Server image tag of a Triton deployment."""
+        return self._triton_image_tag
 
     @public
     @property
