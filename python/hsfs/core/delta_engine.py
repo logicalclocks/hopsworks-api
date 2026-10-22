@@ -1072,29 +1072,20 @@ class DeltaEngine:
     def _reconcile_type(source, target):
         """Return *source* with its decimals and timestamps set to the types of *target*.
 
-        Only decimal to decimal, and timestamp to timestamp of the same unit
-        with another time zone, take the table's type, at the top level and
-        inside lists and structs. Every other pair, and every extra or missing
-        struct field, keeps the batch type so delta-rs reports it as before.
+        Only decimal to decimal and timestamp to timestamp take the table's
+        type (unit and time zone), at the top level and inside lists and
+        structs. Every other pair, and every extra or missing struct field,
+        keeps the batch type so delta-rs reports it as before. delta-rs
+        reports every list as `list`, so a `large_list` batch is left as is.
         """
         import pyarrow as pa
 
         if pa.types.is_decimal(source) and pa.types.is_decimal(target):
             return target
-        if (
-            pa.types.is_timestamp(source)
-            and pa.types.is_timestamp(target)
-            and source.unit == target.unit
-        ):
+        if pa.types.is_timestamp(source) and pa.types.is_timestamp(target):
             return target
         if pa.types.is_list(source) and pa.types.is_list(target):
             return pa.list_(
-                source.value_field.with_type(
-                    DeltaEngine._reconcile_type(source.value_type, target.value_type)
-                )
-            )
-        if pa.types.is_large_list(source) and pa.types.is_large_list(target):
-            return pa.large_list(
                 source.value_field.with_type(
                     DeltaEngine._reconcile_type(source.value_type, target.value_type)
                 )

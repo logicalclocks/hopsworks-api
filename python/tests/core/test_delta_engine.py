@@ -3205,3 +3205,45 @@ def test_new_table_write_keeps_partition_by(mocker, monkeypatch, tmp_path):
     engine._write_delta_rs_dataset(df, operation="upsert")
 
     assert DeltaTable(location).metadata().partition_columns == ["p", "i"]
+
+
+@pytest.mark.parametrize(
+    "delta_type, value",
+    [
+        (
+            {"type": "array", "elementType": "timestamp", "containsNull": True},
+            [pd.Timestamp("2026-10-21 11:30:00")],
+        ),
+        (
+            {
+                "type": "struct",
+                "fields": [
+                    {
+                        "name": "ts",
+                        "type": "timestamp",
+                        "nullable": True,
+                        "metadata": {},
+                    }
+                ],
+            },
+            {"ts": pd.Timestamp("2026-10-21 11:30:00")},
+        ),
+    ],
+    ids=["list", "struct"],
+)
+def test_insert_nested_naive_timestamp_into_utc_table(
+    mocker, monkeypatch, tmp_path, delta_type, value
+):
+    # Spark-created feature groups hold UTC timestamps, nested ones included.
+    location = str(tmp_path / "fg")
+    _backend_made_table(location, [("id", "long"), ("n", delta_type)], [])
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+    from deltalake import DeltaTable
+
+    df = pd.DataFrame({"id": [1], "n": [value]})
+
+    engine._write_delta_rs_dataset(df, operation="insert")
+
+    (row,) = DeltaTable(location).to_pyarrow_table().column("n").to_pylist()
+    ts = row[0] if isinstance(row, list) else row["ts"]
+    assert ts.isoformat() == "2026-10-21T11:30:00+00:00"
