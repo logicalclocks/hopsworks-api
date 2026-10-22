@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import os
 import sys
 from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
@@ -1983,6 +1984,9 @@ class TestSpark:
         mocker.patch.object(spark_engine, "_jvm", jvm_mock)
         mocker.patch.object(spark_engine, "_spark_context", mocker.MagicMock())
         mocker.patch.object(spark_engine, "_is_connect", False)
+        mock_sync = mocker.patch(
+            "hsfs.core.iceberg_engine.IcebergEngine._sync_metastore"
+        )
 
         table_mock = jvm_mock.org.apache.iceberg.hadoop.HadoopTables.return_value.load.return_value
         existing_field = mocker.Mock()
@@ -2013,6 +2017,7 @@ class TestSpark:
         ]
         assert added_columns == ["col_1", "col_2"]
         update_schema_mock.commit.assert_called_once()
+        mock_sync.assert_called_once()
 
     def test_add_cols_to_iceberg_table_no_new_columns(self, mocker):
         # Arrange
@@ -2021,6 +2026,9 @@ class TestSpark:
         mocker.patch.object(spark_engine, "_jvm", jvm_mock)
         mocker.patch.object(spark_engine, "_spark_context", mocker.MagicMock())
         mocker.patch.object(spark_engine, "_is_connect", False)
+        mock_sync = mocker.patch(
+            "hsfs.core.iceberg_engine.IcebergEngine._sync_metastore"
+        )
 
         table_mock = jvm_mock.org.apache.iceberg.hadoop.HadoopTables.return_value.load.return_value
         existing_field = mocker.Mock()
@@ -2036,6 +2044,7 @@ class TestSpark:
 
         # Assert
         table_mock.updateSchema.assert_not_called()
+        mock_sync.assert_not_called()
 
     def test_save_online_dataframe(self, mocker, backend_fixtures):
         # Arrange
@@ -4892,6 +4901,23 @@ class TestSpark:
             mock_dataset_api.return_value.read_content.assert_not_called()
             mock_add_file.assert_called_once_with("hdfs://test_file")
             mock_pyspark_files_get.assert_called_once_with("test_file")
+
+    def test_add_file_external_downloads_to_temp_dir(self, mocker):
+        # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
+        mock_dataset_api.return_value.read_content.return_value.content = b""
+        mocker.patch("hopsworks_common.client._is_external", return_value=True)
+
+        spark_engine = spark.Engine()
+        mock_open_file = mocker.patch("builtins.open", mocker.mock_open())
+
+        # Act
+        path = spark_engine._add_file(file="test_file", distribute=False)
+
+        # Assert
+        expected = os.path.join(constants._temp_dir(), "test_file")
+        assert path == expected
+        mock_open_file.assert_called_once_with(expected, "wb")
 
     def test_add_file_if_present_in_job_configuration(self, mocker):
         # Arrange

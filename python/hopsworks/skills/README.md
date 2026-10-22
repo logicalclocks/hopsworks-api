@@ -33,8 +33,9 @@ into bucket folders:
 - [hops-online-inference](ml/hops-online-inference/SKILL.md) — KServe model deployment.
 - [hops-monitoring](ml/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
 
-## agents/ — served agents and scheduled agent tasks
-- [hops-agent-deployment](agents/hops-agent-deployment/SKILL.md) — served interactive agent.
+## agents/ — served agents, their evaluation, and scheduled agent tasks
+- [hops-agent-deployment](agents/hops-agent-deployment/SKILL.md) — served, chat-ready interactive agent (`AgentApp`); talk to it from Python.
+- [hops-agent-evals](agents/hops-agent-evals/SKILL.md) — suites, LLM judges, traces and feedback, failure analysis into regression tests.
 - [hops-agent-task](agents/hops-agent-task/SKILL.md) — scheduled coding-agent task (claude-code / codex job).
 
 ## dashboards/ — apps and BI
@@ -49,7 +50,7 @@ into bucket folders:
 - [hops-job](platform/hops-job/SKILL.md) — jobs and Airflow DAGs.
 - [hops-environments](platform/hops-environments/SKILL.md) — clone a Python env, install custom libs.
 - [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
-- [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, and feature store/dataset sharing.
+- [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, per-namespace compute cost, and feature store/dataset sharing.
 - [hops-kubectl-debug](platform/hops-kubectl-debug/SKILL.md) — diagnose failed workloads from namespace-scoped pod state, events, and logs.
 - [hops-factory](platform/hops-factory/SKILL.md) — software factories: definitions, cloning, import and export.
 
