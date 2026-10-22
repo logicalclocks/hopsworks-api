@@ -1657,12 +1657,15 @@ class Engine:
         is_polars = HAS_POLARS and isinstance(
             df, (pl.DataFrame, pl.dataframe.frame.DataFrame)
         )
-        columns = training_dataset_split._split_columns(feature_view_obj, df.columns)
+        columns = training_dataset_split._split_columns(
+            feature_view_obj, list(df.columns)
+        )
         groups = training_dataset_split._split_indexes(
             [
                 df.get_column(name).to_list() if is_polars else df[name].tolist()
-                for name in columns
+                for name, _ in columns
             ],
+            [offline_type for _, offline_type in columns],
             training_dataset_split._split_salt(training_dataset_obj),
             [split.percentage for split in splits],
         )

@@ -52,7 +52,7 @@ if HAS_NUMPY:
 
 try:
     import pyspark
-    from pyspark import SparkFiles
+    from pyspark import SparkFiles, StorageLevel
     from pyspark.rdd import RDD
     from pyspark.sql import DataFrame, SparkSession, Window
     from pyspark.sql.avro.functions import from_avro, to_avro
@@ -70,7 +70,11 @@ try:
         regexp_replace,
         row_number,
         struct,
+        transform,
+        transform_keys,
+        transform_values,
         udf,
+        unix_micros,
         unix_millis,
         when,
     )
@@ -159,6 +163,36 @@ def _has_local_timestamp(data_type) -> bool:
     if isinstance(data_type, StructType):
         return any(_has_local_timestamp(field.dataType) for field in data_type.fields)
     return False
+
+
+def _utc_micros(column, data_type):
+    """Replace every TimestampType value in `column` by its UTC epoch microseconds."""
+    if isinstance(data_type, TimestampType):
+        return unix_micros(column)
+    if not _has_local_timestamp(data_type):
+        return column
+    if isinstance(data_type, ArrayType):
+        return transform(column, lambda x: _utc_micros(x, data_type.elementType))
+    if isinstance(data_type, MapType):
+        if _has_local_timestamp(data_type.keyType):
+            column = transform_keys(
+                column, lambda k, _: _utc_micros(k, data_type.keyType)
+            )
+        if _has_local_timestamp(data_type.valueType):
+            column = transform_values(
+                column, lambda _, v: _utc_micros(v, data_type.valueType)
+            )
+        return column
+    return when(column.isNull(), lit(None)).otherwise(
+        struct(
+            *[
+                _utc_micros(column.getField(field.name), field.dataType).alias(
+                    field.name
+                )
+                for field in data_type.fields
+            ]
+        )
+    )
 
 
 class Engine:
@@ -1321,40 +1355,65 @@ class Engine:
 
     def _random_split(self, dataset, training_dataset, feature_view_obj=None):
         splits = training_dataset.splits
-        columns = training_dataset_split._split_columns(
-            feature_view_obj, dataset.columns
-        )
-        # Spark hands TimestampType values to Python as naive wall time in the session zone.
-        session_tz = self._spark_session.conf.get("spark.sql.session.timeZone")
-        naive_tzs = [
-            session_tz if _has_local_timestamp(dataset.schema[name].dataType) else None
-            for name in columns
-        ]
+        split_column = f"_SPLIT_INDEX_{uuid.uuid4().hex}"
+        # Spark hands TimestampType values to Python as wall time in the session zone,
+        # so they are hashed as UTC epoch microseconds computed in Spark.
+        hashed, micros_columns, micros_names = [], [], []
+        for index, (name, declared) in enumerate(
+            training_dataset_split._split_columns(feature_view_obj, dataset.columns)
+        ):
+            data_type = dataset.schema[name].dataType
+            offline_type = declared or data_type.simpleString()
+            if _has_local_timestamp(data_type):
+                alias = f"{split_column}_{index}"
+                micros_columns.append(
+                    _utc_micros(col(f"`{name}`"), data_type).alias(alias)
+                )
+                micros_names.append(alias)
+                hashed.append((alias, offline_type))
+            else:
+                hashed.append((name, offline_type))
         salt = training_dataset_split._split_salt(training_dataset)
         fractions = [split.percentage for split in splits]
-        split_column = f"_SPLIT_INDEX_{uuid.uuid4().hex}"
 
         def assign_split(batches):
             for batch in batches:
-                batch[split_column] = training_dataset_split._split_indexes(
-                    [batch[name].tolist() for name in columns],
+                indexes = training_dataset_split._split_indexes(
+                    [batch[name].tolist() for name, _ in hashed],
+                    [offline_type for _, offline_type in hashed],
                     salt,
                     fractions,
-                    naive_tzs,
                 )
+                batch = batch.drop(columns=micros_names)
+                batch[split_column] = indexes
                 yield batch
 
-        indexed = dataset.mapInPandas(
-            assign_split,
-            StructType(
-                dataset.schema.fields
-                + [StructField(split_column, IntegerType(), False)]
-            ),
+        # Hash each row once: the indexed frame is held in memory while the splits are
+        # cached from it, then released.
+        indexed = (
+            dataset.select("*", *micros_columns)
+            .mapInPandas(
+                assign_split,
+                StructType(
+                    dataset.schema.fields
+                    + [StructField(split_column, IntegerType(), False)]
+                ),
+            )
+            .persist(StorageLevel.MEMORY_ONLY)
         )
-        return {
-            split.name: indexed.filter(col(split_column) == i).drop(split_column)
-            for i, split in enumerate(splits)
-        }
+        result = {}
+        try:
+            for index, split in enumerate(splits):
+                split_df = (
+                    indexed.filter(col(split_column) == index)
+                    .drop(split_column)
+                    .cache()
+                )
+                split_df.count()
+                result[split.name] = split_df
+        finally:
+            indexed.unpersist()
+        return result
 
     def _time_series_split(
         self, training_dataset, dataset, event_time, drop_event_time=False

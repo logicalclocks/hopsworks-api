@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import sys
+import types
 from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
 import hopsworks_common
@@ -3854,11 +3855,20 @@ class TestSpark:
         rows, spark_df = self._hash_split_frame(spark_engine._spark_session)
         td = self._hash_split_td()
 
+        view = types.SimpleNamespace(
+            features=[
+                TrainingDatasetFeature(
+                    name=field.name, type=field.dataType.simpleString()
+                )
+                for field in spark_df.schema.fields
+            ]
+        )
+
         # Act
         spark_result = spark_engine._random_split(
-            dataset=spark_df.repartition(4), training_dataset=td
+            dataset=spark_df.repartition(4), training_dataset=td, feature_view_obj=view
         )
-        pandas_result = python.Engine()._random_split(pd.DataFrame(rows), td)
+        pandas_result = python.Engine()._random_split(pd.DataFrame(rows), td, view)
 
         # Assert
         assert self._split_keys(spark_result) == {
@@ -3888,11 +3898,10 @@ class TestSpark:
         return rows, spark_df, TestPython._null_split_view()
 
     @pytest.mark.parametrize("time_zone", ["UTC", "Europe/Stockholm"])
-    def test_random_split_with_nulls_agrees_with_python_engine(
-        self, mocker, time_zone
-    ):
+    def test_random_split_with_nulls_agrees_with_python_engine(self, mocker, time_zone):
         # Arrange
         from hsfs.engine import python
+
         from tests.engine.test_python import TestPython
 
         pl = pytest.importorskip("polars")
@@ -3916,9 +3925,7 @@ class TestSpark:
             pandas_result = python.Engine()._random_split(
                 TestPython._null_split_pandas(rows), td, view
             )
-            polars_result = python.Engine()._random_split(
-                pl.DataFrame(rows), td, view
-            )
+            polars_result = python.Engine()._random_split(pl.DataFrame(rows), td, view)
         finally:
             conf.set("spark.sql.session.timeZone", previous)
 
