@@ -339,9 +339,18 @@ class Agent:
 
     @public
     def session(self, session_id: str, *, limit: int = -1) -> list[TraceSummary]:
-        """Every trace of a conversation, oldest first."""
+        """Every trace of a conversation, oldest first.
+
+        The id travels as a query parameter, not in the path: an evaluation
+        trial's session id is its trial id, ``"<run>/<task>/<version>/<index>"``,
+        and interpolating that into the path made it four path segments -- a
+        different route, answering 404 -- so the earlier turns of a multi-turn
+        trial could not be read at all.
+        """
         rows = TraceSummary.list_from_api(
-            self._http.get(f"{self._otel}/traces/sessions/{session_id}", limit=limit)
+            self._http.get(
+                f"{self._otel}/traces/sessions", sessionId=session_id, limit=limit
+            )
         )
         return sorted(rows, key=lambda t: t.start_time_ns)
 

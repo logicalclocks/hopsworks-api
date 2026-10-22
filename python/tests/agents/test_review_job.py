@@ -44,9 +44,11 @@ class FakeSession:
             return FakeResponse(
                 {"count": len(rows), "items": rows[offset : offset + limit]}
             )
-        if "/traces/sessions/" in url:
+        if url.endswith("/traces/sessions"):
+            # The session id is a query parameter: a trial's id has slashes in
+            # it, so in the path it was a different route.
             return FakeResponse(
-                {"items": self.sessions.get(url.rsplit("/", 1)[-1], [])}
+                {"items": self.sessions.get((params or {}).get("sessionId", ""), [])}
             )
         if "/traces/" in url:
             trace_id = url.rsplit("/", 1)[-1]

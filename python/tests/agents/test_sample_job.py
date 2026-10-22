@@ -340,11 +340,12 @@ class FakeSession:
             if self._count is not None:
                 body["count"] = self._count
             return FakeResponse(body)
-        if "/traces/sessions/" in url:
+        if url.endswith("/traces/sessions"):
+            # The session id travels as a query parameter: a trial's id has
+            # slashes in it, so in the path it was a different route.
             self.session_fetches += 1
-            return FakeResponse(
-                {"items": self._sessions.get(url.rsplit("/", 1)[-1], [])}
-            )
+            asked = (params or {}).get("sessionId", "")
+            return FakeResponse({"items": self._sessions.get(asked, [])})
         return FakeResponse(self._details[url.rsplit("/", 1)[-1]])
 
 

@@ -308,7 +308,7 @@ class TestGrading:
 
     def test_prose_instead_of_json_is_ungradable_not_a_failure(self):
         result = judge("Looks good to me!")._grade(task(), trial(), None)
-        assert result.ungradable and result.passed is False
+        assert result.ungradable and result.passed is None and result.score is None
 
     def test_a_judge_that_raises_is_ungradable(self):
         evaluator = LlmJudgeEvaluator(

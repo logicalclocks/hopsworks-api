@@ -1156,10 +1156,12 @@ class Jobs:
     ) -> EvalJob:
         """The deployment's evaluation job, created if it has none.
 
-        One per deployment: an existing one is returned untouched whatever name is asked
-        for, since what used to be a second job is this one's suites, its monitors and its
-        schedule. It runs one execution at a time -- a run asked for while one is going is
-        queued -- unless ``parallel_runs`` says otherwise.
+        One per deployment, whatever name is asked for, since what used to be a second job
+        is this one's suites, its monitors and its schedule. An existing job is configured
+        with whatever this call passes and left alone in every other respect, so naming the
+        deployment and nothing else returns it unchanged. It runs one execution at a time --
+        a run asked for while one is going is queued -- unless ``parallel_runs`` says
+        otherwise.
 
         ``analyse_failures`` is on: a run that breaks something has it explained, by the
         deployment's analysis job, which this creates alongside. A failure nobody explains is

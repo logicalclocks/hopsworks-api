@@ -210,7 +210,9 @@ class TestWhenTheJudgeMisbehaves:
 
         result = LlmJudgeEvaluator(explode)._grade(task(), trial(), None)
         assert result.ungradable is True
-        assert result.score == 0.0
+        # No score, rather than a zero that reads as the worst possible answer.
+        assert result.score is None
+        assert result.passed is None
         assert "rate limited" in result.reason
 
     def test_unparseable_output_is_ungradable(self):

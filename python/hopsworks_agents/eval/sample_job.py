@@ -222,9 +222,11 @@ def _conversation_before(
         return []
     if session_id not in cache:
         try:
+            # The id as a query parameter: a trial's session id has slashes in
+            # it, which in the path is a different route.
             response = session.get(
-                f"{base}/traces/sessions/{session_id}",
-                params={"limit": SESSION_PAGE},
+                f"{base}/traces/sessions",
+                params={"sessionId": session_id, "limit": SESSION_PAGE},
                 timeout=60,
             )
             response.raise_for_status()
