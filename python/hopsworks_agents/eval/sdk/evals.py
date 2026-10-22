@@ -893,10 +893,13 @@ class Runs:
         by_task_after = _by_task(self.trials(after))
 
         asked: dict[str, str] = {}
+        keys: dict[str, str] = {}
         if questions:
             for run in (before, after):
                 if run.suite_id:
-                    asked.update(self._questions(run))
+                    for task_id, (question, key) in self._questions(run).items():
+                        asked[task_id] = question
+                        keys[task_id] = key
 
         # A new version of a suite copies its tasks, and a copy is a new row with
         # a new id -- so comparing on ids alone made every carried-over case
@@ -904,8 +907,8 @@ class Runs:
         # task asks is what identifies the case; it is already how the backend
         # deduplicates an import. Falls back to the id when the questions were
         # not read, where the two runs are of one version and ids line up.
-        before_key = _case_keys(by_task_before, asked)
-        after_key = _case_keys(by_task_after, asked)
+        before_key = _case_keys(by_task_before, keys)
+        after_key = _case_keys(by_task_after, keys)
         cases: dict[str, str] = {}
         for task_id, key in (*after_key.items(), *before_key.items()):
             # the candidate's ids win, so a difference names the task a reader
@@ -931,10 +934,16 @@ class Runs:
             )
         return RunDiff(baseline=before, candidate=after, tasks=diffs)
 
-    def _questions(self, run: Run) -> dict[str, str]:
-        """Each task's first user turn, for the suite this run executed.
+    def _questions(self, run: Run) -> dict[str, tuple[str, str]]:
+        """Per task of the suite this run executed: what it asks, and what it is.
 
-        Best effort: a suite deleted since the run leaves the comparison with
+        The first user turn names the case in one line, for a reader. Every user
+        turn identifies it, for the matching -- three tasks that all open by
+        giving the same email address are three cases, and keyed on that opening
+        line they collapsed into one, so a three-task suite compared as a single
+        unchanged case and none of the regressions `changes()` found appeared here.
+
+        One read per run: a suite deleted since the run leaves the comparison with
         ids, which is worse than questions and better than an error on a
         comparison that is otherwise fine.
         """
@@ -943,12 +952,12 @@ class Runs:
         except AgentServingError:
             log.debug("could not read the tasks of suite %s", run.suite_id)
             return {}
-        asked = {}
+        index: dict[str, tuple[str, str]] = {}
         for task in tasks:
-            question = _first_user_turn(task.input_messages)
-            if question:
-                asked[task.task_id] = question
-        return asked
+            turns = [turn for turn in _user_turns(task.input_messages) if turn]
+            if turns:
+                index[task.task_id] = (turns[0], "\n\u241f".join(turns))
+        return index
 
     @public
     def metrics(self, run: Run | str) -> list[RunMetric]:
@@ -1073,9 +1082,10 @@ def _case_keys(
 ) -> dict[str, str]:
     """What identifies each task as a *case*, across versions of its suite.
 
-    The question it asks, when that was read; its id otherwise. Two versions of
-    one suite hold two rows for the same case -- copying mints a new id -- so an
-    id is the identity of a row and the question is the identity of the case.
+    The conversation it scripts, when that was read; its id otherwise. Two
+    versions of one suite hold two rows for the same case -- copying mints a new
+    id -- so an id is the identity of a row and the scripted turns are the
+    identity of the case.
     """
     return {
         task_id: (asked.get(task_id) or "").strip() or task_id for task_id in by_task
@@ -1089,24 +1099,31 @@ def _by_task(trials: Sequence[Trial]) -> dict[str, list[Trial]]:
     return grouped
 
 
+def _user_turns(input_messages: str | None) -> list[str]:
+    """Every user turn a task scripts, in order."""
+    if not input_messages:
+        return []
+    try:
+        messages = json.loads(input_messages)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(messages, list):
+        return []
+    return [
+        str(message.get("content") or "").strip()
+        for message in messages
+        if isinstance(message, dict) and message.get("role") == "user"
+    ]
+
+
 def _first_user_turn(input_messages: str | None) -> str:
     """What the task asks, from the messages it scripts.
 
     The first user turn, which is what names a case in one line. A task that
     scripts a conversation has more; the rest are in the run detail.
     """
-    if not input_messages:
-        return ""
-    try:
-        messages = json.loads(input_messages)
-    except (TypeError, ValueError):
-        return ""
-    if not isinstance(messages, list):
-        return ""
-    for message in messages:
-        if isinstance(message, dict) and message.get("role") == "user":
-            return str(message.get("content") or "").strip()
-    return ""
+    turns = [turn for turn in _user_turns(input_messages) if turn]
+    return turns[0] if turns else ""
 
 
 class Jobs:

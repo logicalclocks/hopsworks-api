@@ -511,7 +511,16 @@ class AgentApp(FastAPI):
         The store is the only thing that can answer it, so this is one read
         before the turn opens, and only for a turn that asserted no subject.
         """
-        if self.memory is None or ctx.has_subject:
+        if ctx.has_subject:
+            # The client said who this is, which is the one identity that actually
+            # keys durable memory -- and it reached the span and nothing else, so
+            # the traces table, feedback by user and failure analysis by user all
+            # showed nothing while memory quietly followed the person. Recorded
+            # here as the client's claim, which is what subject_source is for.
+            if ctx.subject_source == "client":
+                ctx.record_subject(ctx.subject, source="client")
+            return
+        if self.memory is None:
             return
         try:
             subject = await asyncio.to_thread(

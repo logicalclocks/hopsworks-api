@@ -1969,6 +1969,79 @@ class TestCompositeIdsDoNotGoInPaths:
         assert body["passed"] is True
 
 
+class TestTasksThatShareAnOpeningLine:
+    """Three scripted conversations that start the same way are three cases.
+
+    A suite whose tasks all begin by giving the same email address keyed every
+    one of them on that line: the comparison saw one case, reported it unchanged,
+    and found none of the regressions `changes()` reported for the same run. A
+    release gate reading either got a different answer.
+    """
+
+    @staticmethod
+    def _tasks(suffixes):
+        return [
+            {
+                "taskId": f"t{i}",
+                "inputMessages": json.dumps(
+                    [
+                        {"role": "user", "content": "dana@example.com"},
+                        {"role": "user", "content": tail},
+                    ]
+                ),
+            }
+            for i, tail in enumerate(suffixes)
+        ]
+
+    def _diff(self, before_status, after_status):
+        tails = ["Analyze MSFT.", "Propose strategies.", "Plan execution."]
+        return client(
+            Reply(
+                {
+                    "runId": "v1",
+                    "suiteId": "s",
+                    "suiteVersion": 1,
+                    "status": "SUCCEEDED",
+                }
+            ),
+            Reply(
+                {
+                    "runId": "v2",
+                    "suiteId": "s",
+                    "suiteVersion": 2,
+                    "status": "SUCCEEDED",
+                }
+            ),
+            Reply(
+                [{"taskId": f"t{i}", "status": s} for i, s in enumerate(before_status)]
+            ),
+            Reply(
+                [{"taskId": f"t{i}", "status": s} for i, s in enumerate(after_status)]
+            ),
+            Reply(self._tasks(tails)),
+            Reply(self._tasks(tails)),
+        )
+
+    def test_each_is_its_own_case(self):
+        evals, _ = self._diff(["PASSED"] * 3, ["PASSED"] * 3)
+        diff = evals.runs.compare("v1", "v2")
+        assert len(diff.tasks) == 3, f"{diff.tasks}"
+        assert len(diff.unchanged) == 3
+
+    def test_a_regression_in_one_of_them_is_seen(self):
+        evals, _ = self._diff(
+            ["PASSED", "PASSED", "PASSED"], ["PASSED", "FAILED", "PASSED"]
+        )
+        diff = evals.runs.compare("v1", "v2")
+        assert [t.task_id for t in diff.regressed] == ["t1"], f"{diff.tasks}"
+        assert not diff.added and not diff.removed
+
+    def test_the_difference_is_still_named_by_its_opening_question(self):
+        evals, _ = self._diff(["PASSED"] * 3, ["PASSED", "FAILED", "PASSED"])
+        diff = evals.runs.compare("v1", "v2")
+        assert diff.regressed[0].question == "dana@example.com"
+
+
 class TestComparingAcrossSuiteVersions:
     """A new version copies its tasks, and a copy is a new row with a new id.
 

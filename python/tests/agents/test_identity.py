@@ -468,3 +468,44 @@ class TestTheConversationsOwnSubject:
         seen = self._subject_seen(Broken("cust-1"), conversation_id="conv-7")
 
         assert seen["subject"] == "conv-7"
+
+
+class TestAClientAssertedSubjectIsOnTheTrace:
+    """The identity that keys memory is the one the traces table was missing.
+
+    `agent.chat(..., subject="marcus@example.com")` is what makes a second
+    conversation start knowing him. It reached the span's `user.id` and nothing
+    else: the conversation-subjects table is what the traces list, feedback by
+    user and failure analysis by user all read, and it only ever held what the
+    agent's own code recorded. So the one real identity showed as no identity.
+    """
+
+    @staticmethod
+    def _app_with_index(recorded):
+        class Index:
+            def record(self, conversation_id, subject, source):
+                recorded.append((conversation_id, subject, source))
+                return True
+
+        app = AgentApp(name="Identified agent", tracing=False)
+        app._subjects = Index()
+
+        @app.chat
+        async def chat(request):
+            return "ok"
+
+        return app
+
+    def test_the_clients_subject_is_recorded_as_the_clients(self):
+        recorded = []
+        app = self._app_with_index(recorded)
+        TestClient(app).post(
+            "/v1/chat", json=make_request(subject="marcus@example.com")
+        )
+        assert recorded == [("c1", "marcus@example.com", "client")]
+
+    def test_a_turn_with_no_subject_records_nothing(self):
+        recorded = []
+        app = self._app_with_index(recorded)
+        TestClient(app).post("/v1/chat", json=make_request("hi"))
+        assert recorded == []
