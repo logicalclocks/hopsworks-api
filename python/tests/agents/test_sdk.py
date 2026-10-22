@@ -2028,3 +2028,62 @@ class TestComparingAcrossSuiteVersions:
         )
         assert not diff.added and not diff.removed, f"{diff}"
         assert diff.regressed[0].question == "Where is order 4182?"
+
+
+class TestTraceAttributes:
+    """A span read back carries what was recorded on it.
+
+    The API sends attributes as one flat list for the whole trace, keyed by span, because
+    that is how they are stored. Everything that says what a span did -- its kind, the
+    model, the prompt, the answer -- is in there, so a span on its own said only its name
+    and when it ran, and reading a trace meant knowing about a second list.
+    """
+
+    @staticmethod
+    def _trace():
+        from hopsworks_agents.eval.sdk.models import Trace
+
+        return Trace.from_api(
+            {
+                "spans": [
+                    {"spanId": "a", "name": "invoke_agent"},
+                    {"spanId": "b", "name": "chat"},
+                ],
+                "spanAttributes": [
+                    {
+                        "spanId": "a",
+                        "attrKey": "openinference.span.kind",
+                        "attrValue": "AGENT",
+                    },
+                    {
+                        "spanId": "b",
+                        "attrKey": "openinference.span.kind",
+                        "attrValue": "LLM",
+                    },
+                    {"spanId": "b", "attrKey": "llm.model_name", "attrValue": "gpt-5"},
+                ],
+                "events": [{"eventId": 7, "spanId": "b", "name": "gen_ai.choice"}],
+                "eventAttributes": [
+                    {"eventId": 7, "attrKey": "role", "attrValue": "assistant"}
+                ],
+            }
+        )
+
+    def test_each_span_carries_its_own_attributes(self):
+        spans = {s["spanId"]: s for s in self._trace().spans}
+        assert spans["a"]["attributes"]["openinference.span.kind"] == "AGENT"
+        assert spans["b"]["attributes"]["llm.model_name"] == "gpt-5"
+
+    def test_a_span_with_none_gets_an_empty_dict_not_a_missing_key(self):
+        from hopsworks_agents.eval.sdk.models import Trace
+
+        trace = Trace.from_api({"spans": [{"spanId": "z"}], "spanAttributes": []})
+        assert trace.spans[0]["attributes"] == {}
+
+    def test_events_carry_theirs_too(self):
+        assert self._trace().events[0]["attributes"]["role"] == "assistant"
+
+    def test_the_flat_lists_are_still_there(self):
+        trace = self._trace()
+        assert len(trace.span_attributes) == 3
+        assert trace.attributes_of("b")["llm.model_name"] == "gpt-5"

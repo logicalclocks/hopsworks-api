@@ -569,8 +569,15 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
         # back, so a dismiss, promotion or rename made while it was going was undone by it.
         changed = _merge_decisions(changed, _existing_clusters(session, otel_base))
         feature_store = project.get_feature_store()
-        _write_triage(feature_store, rows)
+        # Clusters first, and not the other way round. Either write can fail -- a full
+        # tablespace is how we found this -- and the run then fails without moving the
+        # watermark, so the next one sees the same feedback again. A cluster written
+        # without its members is refilled by that run, because the members are filed by
+        # signature and land in the same cluster. A triage row written with a cluster_id
+        # that was never created is not: the re-triage gets a new run id, so a new row,
+        # and the orphan stays pointing at nothing for good.
         _write_clusters(feature_store, changed)
+        _write_triage(feature_store, rows)
         if rows and all(row.get("ungradable") for row in rows):
             # Every model call failed -- an expired key, an exhausted quota, a
             # provider outage. Reported SUCCEEDED this moved the watermark to

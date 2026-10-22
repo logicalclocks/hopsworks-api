@@ -752,12 +752,49 @@ class Trace(ApiModel):
             self.spans[0] if self.spans else None,
         )
 
+    @classmethod
+    def from_api(cls, data: dict[str, Any] | None) -> Trace:
+        """As the API sends it, with each span's and event's attributes put on it.
+
+        The wire format keeps them apart -- one flat list of (spanId, attrKey, attrValue)
+        rows for the whole trace -- because that is how they are stored. Read back, every
+        span looked empty: the span kind, the model, the prompt and the answer all live in
+        attributes, so ``for span in trace.spans`` showed a name, two timestamps and
+        nothing about what happened. The flat lists are still there, and ``attributes_of``
+        still works; this puts a dict on each span as well, which is where anybody looks
+        first. Set with ``setdefault``, so a server that one day sends them inline wins.
+        """
+        trace = super().from_api(data)
+        for span in trace.spans:
+            if isinstance(span, dict):
+                span.setdefault(
+                    "attributes", trace.attributes_of(str(span.get("spanId") or ""))
+                )
+        for event in trace.events:
+            if isinstance(event, dict):
+                event.setdefault(
+                    "attributes", trace.attributes_of_event(event.get("eventId"))
+                )
+        return trace
+
     @public
     def attributes_of(self, span_id: str) -> dict[str, str]:
+        """Every attribute recorded on one span, by key."""
         return {
             a.get("attrKey", ""): a.get("attrValue", "")
             for a in self.span_attributes
             if a.get("spanId") == span_id
+        }
+
+    @public
+    def attributes_of_event(self, event_id: Any) -> dict[str, str]:
+        """Every attribute recorded on one event, by key."""
+        if event_id is None:
+            return {}
+        return {
+            a.get("attrKey", ""): a.get("attrValue", "")
+            for a in self.event_attributes
+            if a.get("eventId") == event_id
         }
 
     @property
