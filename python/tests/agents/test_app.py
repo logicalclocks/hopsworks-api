@@ -4627,3 +4627,105 @@ class TestFeedback:
             "c0" not in app._last_trace
             and f"c{app_module.LAST_TRACE_LIMIT + 4}" in app._last_trace
         )
+
+
+class TestOneChipPerToolCall:
+    """A tool call surfaces once, whoever reported it.
+
+    ``tool_events=True`` bridges the framework's TOOL spans to event frames so an
+    agent needs no code for them. An agent that emits its own as well got both: two
+    chips for one call, under two id spaces -- the framework's call id and the span
+    id -- and the handler's pair closing under the event's name rather than the
+    tool's. The handler wins: it has said what it wants shown.
+    """
+
+    def _traced_app(self, **kwargs):
+        pytest.importorskip("opentelemetry.sdk")
+        from hopsworks_agents.protocol.autoevents import install_auto_tool_events
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+            InMemorySpanExporter,
+        )
+
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        app = AgentApp(name="Tooled agent", tracing=False, tool_events=True, **kwargs)
+        app.tracer_provider = provider
+        install_auto_tool_events(provider)
+        return app
+
+    @staticmethod
+    def _events(app, handler):
+        app.chat(handler)
+        body = TestClient(app).post("/v1/chat", json=make_request("hi")).json()
+        return body.get("metadata", {}).get("tool_events", [])
+
+    def test_a_span_alone_is_reported_once(self):
+        app = self._traced_app()
+
+        async def chat(request):
+            tracer = app.tracer_provider.get_tracer("framework")
+            with tracer.start_as_current_span(
+                "identify",
+                attributes={"openinference.span.kind": "TOOL", "tool.name": "identify"},
+            ):
+                pass
+            return AgentResponse.text(text="ok")
+
+        events = self._events(app, chat)
+        assert [(e["name"], e["status"]) for e in events] == [
+            ("identify", "running"),
+            ("identify", "done"),
+        ]
+
+    def test_the_handlers_own_events_suppress_the_automatic_ones(self):
+        app = self._traced_app()
+
+        async def chat(request):
+            ctx = request.context if hasattr(request, "context") else None  # noqa: F841
+            from hopsworks_agents.protocol.autoevents import current_context
+
+            handler_ctx = current_context.get(None)
+            await handler_ctx.emit_event("identify", "running", event_id="call_1")
+            tracer = app.tracer_provider.get_tracer("framework")
+            with tracer.start_as_current_span(
+                "identify",
+                attributes={"openinference.span.kind": "TOOL", "tool.name": "identify"},
+            ):
+                pass
+            await handler_ctx.emit_event("identify", "done", event_id="call_1")
+            return AgentResponse.text(text="ok")
+
+        events = self._events(app, chat)
+        assert [(e.get("id"), e["name"], e["status"]) for e in events] == [
+            ("call_1", "identify", "running"),
+            ("call_1", "identify", "done"),
+        ]
+
+    def test_a_tool_the_handler_never_claims_is_still_reported(self):
+        app = self._traced_app()
+
+        async def chat(request):
+            from hopsworks_agents.protocol.autoevents import current_context
+
+            handler_ctx = current_context.get(None)
+            await handler_ctx.emit_event("identify", "running", event_id="call_1")
+            tracer = app.tracer_provider.get_tracer("framework")
+            for tool in ("identify", "recall"):
+                with tracer.start_as_current_span(
+                    tool,
+                    attributes={"openinference.span.kind": "TOOL", "tool.name": tool},
+                ):
+                    pass
+            await handler_ctx.emit_event("identify", "done", event_id="call_1")
+            return AgentResponse.text(text="ok")
+
+        events = self._events(app, chat)
+        assert [(e["name"], e["status"]) for e in events] == [
+            ("identify", "running"),
+            ("recall", "running"),
+            ("recall", "done"),
+            ("identify", "done"),
+        ]

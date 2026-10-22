@@ -476,13 +476,23 @@ class Agent:
         )
 
     @public
-    def retract_feedback(self, trace_id: str, *, reviewer: str | None = None) -> None:
+    def retract_feedback(
+        self, trace: Feedback | str, *, reviewer: str | None = None
+    ) -> None:
         """Take back your own verdict on a trace, or an end user's.
+
+        Takes a trace id or the ``Feedback`` row itself, as ``promote_feedback``
+        does: the two are used together, on the same row, and taking only the id
+        here meant a row passed by mistake went into the URL as its repr and came
+        back as "Invalid URI" rather than as anything about feedback.
 
         ``reviewer`` may only name an end user (``user:<subject>``), whose verdict
         the agent relayed and who has no session here to take it back from; a
         project member's verdict is theirs alone and naming an account is refused.
         """
+        trace_id = trace.trace_id if isinstance(trace, Feedback) else str(trace)
+        if not trace_id:
+            raise ValueError("retract_feedback needs a trace id or a feedback row")
         self._http.delete(f"{self._otel}/traces/{trace_id}/feedback", reviewer=reviewer)
 
     @public

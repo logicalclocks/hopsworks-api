@@ -24,7 +24,7 @@ hops agent logs my_agent         # startup errors land here
 
 ## Ask the user (only when state is ambiguous)
 - **Framework.** `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`: picks the tracing instrumentation.
-- **Memory.** Working memory only, plus a short-term rolling summary, plus long-term memory across conversations (the summary needs a summariser key; long-term memory needs the agent to know who the user is).
+- **Memory.** Working memory only, plus a short-term rolling summary, plus long-term memory across conversations (the summary needs a summariser key; long-term memory needs the *client* to say who the user is — see **Who long-term memory belongs to**).
 - **Source.** A local script uploaded to HopsFS, or a Git repository (branch, and whether to auto-redeploy on push).
 - **Evaluation.** Whether the agent will be evaluated against a sandboxed suite while serving customers (`eval_per_request=True` and tools that check `in_evaluation()`), or in a deployment of its own (`EVAL_MODE=true`).
 
@@ -76,6 +76,28 @@ What matters in the handler:
 - **Embedding models never download in a pod.** Register once where there is internet with `register_sentence_transformer("all-MiniLM-L6-v2")` (a notebook or the feature pipeline that embeds the data) and load with `load_sentence_transformer("all-MiniLM-L6-v2")` in the agent; `sentence_transformer_embedder()` does the same for memory search. An unregistered model falls back to the hub with a warning; `fallback=False` forbids it.
 - **Evaluation-safe writes:** an agent that writes (refunds, tickets) checks `hopsworks_agents.protocol.evaluation.in_evaluation()` in its tools and skips the real write, so a sandboxed suite can run against the production deployment (`eval_per_request=True` on the app). A deployment that exists only to be evaluated sets `EVAL_MODE=true` instead.
 
+## Who long-term memory belongs to
+
+`user`-scope memory is keyed by the request's **subject**, and the subject is whatever the client asserted — `agent.chat(..., subject="marcus@example.com")`, the chat panel's signed-in user, or your own application calling `ctx.rebind_subject(key)` after it has verified the person. That is what makes a second conversation start knowing them.
+
+**Asking the user who they are does not do this.** The `identify` tool (from `identity_tools`) calls `ctx.record_subject(..., source="model")`, which *labels* the conversation for traces and failure analysis and nothing more. It deliberately does not rebind: rebinding decides whose durable memory a conversation may read, and the caller there is a model acting on text a user typed, so an agent could be talked into reading someone else's facts. With `identify` alone, every `remember(..., scope="user")` is owned by the conversation id, and the next conversation — same email, same person — knows nothing.
+
+So, when you design an agent with long-term memory:
+
+- a real deployment has a login: the app asserts `subject` per request and nobody is asked anything;
+- a demo without one either passes `subject=` from the client, or calls `ctx.rebind_subject` in app code after the email is given — and should say in its own README why that is acceptable only for a demo;
+- `ctx.has_subject` / `ctx.subject_source` (`"client"` vs the per-conversation fallback) tell the handler which case it is in, so it can skip asking when the identity arrived with the request.
+
+**Reading back what an agent remembers.** There is no SDK accessor yet. The facts are a feature group in the project's online store, so read them there:
+
+```python
+fs = project.get_feature_store()
+facts = fs.get_feature_group("agent_memory_facts", 1).read(online=True)
+facts[facts.deployment_id == agent.id][["owner", "scope", "key", "value"]]
+```
+
+Online, not offline: the offline Delta table has no commits until a materialisation runs, so `hops sql` / Trino answers `DELTA_LAKE_INVALID_SCHEMA ... has no commits`. `owner` is the subject for `user` scope — an email where the client asserted one, a conversation id where it did not, which is the quickest way to see whether the paragraph above is biting.
+
 Streaming, multimodal content, memory tiers, progress events and the structure graph are in the protocol README: `python/hopsworks_agents/protocol/README.md`.
 
 ## Deploy — CLI (preferred for local sources)
@@ -118,9 +140,31 @@ agents.deploy_agent(
 - an agent with several models — a cheap router and an expensive writer, or a judge of its own — bills at whichever one runs, so price the one that does the volume and say so in a comment;
 - a provider-prefixed name (`anthropic/claude-sonnet-4-5`) is LiteLLM routing to that provider, and the price is that provider's.
 
+**Then check against a real trace, because the source can be wrong.** The spans say which model actually answered, and a framework default beats anything the README claims:
+
+```python
+from collections import Counter
+trace = agent.trace(agent.traces(limit=1)[0].trace_id)
+print(Counter(s["attributes"].get("llm.model_name") for s in trace.spans
+               if s["attributes"].get("openinference.span.kind") == "LLM"))
+```
+
+One chat after deploying settles it in a second, and it is the only way to catch an agent priced for the model its docstring names while the SDK runs its own default.
+
 Prices change, so write them where the model is chosen and say when they were taken. A deployment whose model changed and whose prices did not is worse than an unpriced one: it reports a number that is confidently wrong.
 
 The two keys are per deployment, so two agents on different models each cost correctly, and re-deploying with new prices is what changes them — they are read per turn, not baked into old traces. Re-reading an old window after a price change does not re-cost it.
+
+**A trace is not readable the instant the reply is.** `agent.trace(reply.trace_id)` straight after `chat()` or `chat_stream()` raises `AgentServingError: Trace not found` — the spans are exported after the answer, through the sidecar, and land a second or two later. Retry rather than concluding tracing is off:
+
+```python
+for _ in range(10):
+    try:
+        trace = agent.trace(reply.trace_id)
+        break
+    except AgentServingError:
+        time.sleep(1)
+```
 
 **When a start takes too long, or says nothing.** A first start on a node that has not pulled the agent image can take ten minutes or more, and `start(await_running=...)` giving up does **not** stop the deployment — it usually comes up shortly after. When `hops agent info` shows an empty status and `hops agent logs` prints only `[failed to read pod logs]`, the container never started, so there are no logs to read: look at the pod instead.
 
@@ -197,14 +241,16 @@ agent.manifest()                               # what the agent advertises
 
 **Tool events pair by id.** Each tool call yields more than one event, `status` going `running` then `done`, matched on the id. The closing event is named for the event, not for the tool — an agent that emits `ctx.emit_event("tool", status="done")` ends with `name == "tool"` — so follow the id rather than the name.
 
-They arrive in two shapes, which is worth knowing before writing the loop. `stream.tool_events` are `ToolEvent` **objects** — `.id`, `.name`, `.status`, `.message`, `.data`, `.raw`; the field is `id`, not `event_id`, and `json.dumps(event)` raises. On a non-streamed `agent.chat()` they ride on `reply.metadata["tool_events"]` as plain dicts, and those carry no `status`, so pair them on `id` and treat their presence as the whole story:
+They arrive in two shapes, which is worth knowing before writing the loop. `stream.tool_events` are `ToolEvent` **objects** — `.id`, `.name`, `.status`, `.message`, `.data`, `.raw`; the field is `id`, not `event_id`, and `json.dumps(event)` raises. On a non-streamed `agent.chat()` the same events ride on `reply.metadata["tool_events"]` as plain dicts with the same keys:
 
 ```python
 for event in stream.tool_events:
-    print(event.id, event.name, event.status)          # objects
+    print(event.id, event.name, event.status)                  # objects
 for event in reply.metadata.get("tool_events", []):
-    print(event.get("id"), event.get("name"))          # dicts, no status
+    print(event["id"], event["name"], event["status"])         # dicts, same fields
 ```
+
+**Don't emit your own when `tool_events=True`.** The flag bridges the framework's tool spans to events by itself, which is the point of it: no code in the agent. An agent that also calls `ctx.emit_event` for the same tool used to produce two chips per call under two id spaces — the framework's call id and the span id. The automatic emitter now stays off any tool the handler reports itself, so either style works and mixing them is harmless; a tool you never claim is still reported for you.
 
 **Reading a conversation back.** `agent.traces()` lists conversations, one row per session; `agent.session(session_id)` gives that conversation's turns and `agent.conversation(session_id)` pairs them as `{trace_id, user, assistant}` — `role`/`content` is the shape of the messages inside a turn, not of these.
 

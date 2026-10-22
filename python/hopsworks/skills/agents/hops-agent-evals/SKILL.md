@@ -109,7 +109,9 @@ declared a `gate_metric` and `gate_threshold`, each with `passed`, plus `has_evi
 deployment: a gating suite that has never run against it counts as no evidence rather than as a
 pass. Gates are advisory — they report, they do not block a deploy.
 
-**Draft vs published.** A draft is editable and cannot run; publishing freezes it. `suite.new_version()` copies a published suite into a new draft. Deleting a suite with runs needs `force=True`.
+**Draft vs published.** A draft is editable and cannot run; publishing freezes it. Deleting a suite with runs needs `force=True`.
+
+`suite.new_version()` copies a published suite's **checks** into a new draft — **not its tasks**. The draft comes back with `task_count` 0 and you re-add them, which is the point: a new version usually exists because the tasks are changing. Copy them across yourself if you only meant to change a check.
 
 **Human review of a judge.** `run.review_trial(trial, passed=..., reason=..., evaluator="quality")` records a person's verdict per judge; the UI shows judge agreement per evaluator from these.
 
@@ -146,7 +148,18 @@ Every offending evaluator is named at once when the job is configured, so you do
 
 **A generic judge does not know your agent.** The installed defaults see the request, the reply and the tools — not the system prompt. An agent designed to ask for an email before answering gets failed by *Answer relevance* for doing exactly that, and one that identifies a user across conversations gets failed by *Hallucination* for a claim its own design makes true. Prefer a judge written for the agent, and before trusting a monitor, read a sample of its failures and record what you find with `run.review_trial(...)` — judge agreement per evaluator is built from those.
 
+**A memory-backed answer looks invented to a judge.** What the agent recalled reaches the model in its system prompt; the judge sees the request, the reply and the tool results, so "you told me you are aggressive and short-term" has no visible source and *Hallucination* fails it. Any agent with long-term memory will be marked down for using it. Either say so in the judge's criteria (*facts about the user may come from stored memory and are not inventions*), or have the agent recall through a **tool** rather than through the prompt, so the recalled value is in the trace where a judge can see it.
+
 **One form for both jobs, one model for both.** `judge_model` on the evaluation job is what any check that names no model of its own judges with, *and* what the failure analysis uses — a judge used to be configured inside every check and again on the analysis job. `ensure_eval_job(...)` creates the analysis job with the evaluation's own environment, resources and model, and the evaluation triggers it. **It is on by default** — a failure nobody explains is one somebody reads twice — so pass `analyse_failures=False` for a deployment that should not spend model calls on it, and `judge_model=` to name the model. The provider is guessed from the agent's framework when you name none: the OpenAI Agents SDK implies OpenAI, the Claude SDK implies Anthropic, everything else keeps the default — no schedule of its own, and only when a run produced a **new failure or a regression**, since the same failures again need no second explanation. Its advanced settings (sources, source code, auto-promotion thresholds) stay on the analysis job itself.
+
+**Check the pair matches before you rely on automatic analysis.** The two jobs hold the judge separately, and they can drift — a deployment recreated under a new id got the framework's default provider on its analysis job while keeping the evaluation's model, leaving `provider=anthropic, model=gpt-5.6-terra`, an impossible pair. Every analysis the evaluation triggered then failed with *"no API key: set the environment variable ANTHROPIC_API_KEY"*, and nothing said so except the run's own status. One line settles it:
+
+```python
+job, review = agent.eval_job(), agent.review_job()
+assert (review.provider, review.model) == (job.judge_provider, job.judge_model)
+```
+
+If they disagree, re-saving the evaluation's judge re-syncs the analysis job: `agents.jobs.update_eval_job(job.name, judge_provider=..., judge_model=...)`.
 
 **An agent gets its evaluation job with it**, empty — no suites, no monitors, nothing scheduled — so configuring evaluation starts from a form with the deployment's defaults rather than from a page asking you to create something first.
 
@@ -218,7 +231,7 @@ for cluster in agent.clusters():                      # open clusters, most wort
 task = agent.promote_cluster(agent.clusters()[0])     # -> task, PENDING_REDACTION
 task.confirm_redaction().add_to_regressions()         # a person checked it for personal data
 agent.promote_feedback(row)                           # one verdict, with its conversation
-agents.jobs.run_regressions(agent.id)                 # the standing <agent>_feedback_regressions suite
+agents.jobs.run_regressions(agent.id)                 # publishes pending tasks, then runs them
 ```
 
 **`agent.regressions()` is not a `Suite`.** It returns a `RegressionSuite`: a status report on the standing suite — `exists`, `suite_id`, `name`, `version`, `published_version`, `task_count`, `published_task_count`, `unpublished_task_count`, `judge_check` — with no `.tasks()` and no `.checks`. It answers "is there anything waiting to be published", which is what you want before a release. For the suite itself, `agents.suites.get(reg.suite_id)`.

@@ -282,3 +282,64 @@ class TestPairwise:
             raise ConnectionError("no route")
 
         assert _pairwise_verdict(explode, "q", "a", "b")["winner"] == "unknown"
+
+
+class TestAPassSaysWhyItPassed:
+    """A green judge result is checkable without opening the trial.
+
+    A pass used to carry no reason at all, so a judge that waved a reply through
+    against the correction it was meant to be grading looked exactly like one that
+    had read it properly: `passed=True, score=0.84, reason=None`. The judge already
+    returns its per-criterion reasoning; putting it on the pass is what makes a
+    false pass something a person can spot in a results listing.
+    """
+
+    @staticmethod
+    def _criteria_judge(reply):
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
+
+        config = _parse_judge_config(
+            {
+                "type": "llm_judge",
+                "score_range": [1, 5],
+                "criteria": {
+                    "correctness": {
+                        "weight": 0.5,
+                        "description": "says what the correction says",
+                    },
+                    "task_completion": {
+                        "weight": 0.5,
+                        "description": "did what was asked",
+                    },
+                },
+                "thresholds": {"pass_score": 4.0},
+            }
+        )
+        return LlmJudgeEvaluator(lambda _prompt: reply, config)
+
+    def test_a_pass_carries_the_score_it_earned(self):
+        reply = (
+            '{"scores": {"correctness": 5, "task_completion": 4},'
+            ' "reasoning": {"correctness": "matches the correction"}}'
+        )
+        result = self._criteria_judge(reply)._grade(task(), trial(), None)
+        assert result.passed is True
+        assert "scored 4.50 of 5" in result.reason
+
+    def test_a_pass_carries_the_judges_own_reasoning(self):
+        reply = (
+            '{"scores": {"correctness": 5, "task_completion": 4},'
+            ' "reasoning": {"correctness": "matches the correction"}}'
+        )
+        result = self._criteria_judge(reply)._grade(task(), trial(), None)
+        assert "matches the correction" in result.reason
+
+    def test_a_failure_still_says_why(self):
+        reply = (
+            '{"scores": {"correctness": 1, "task_completion": 2},'
+            ' "reasoning": {"correctness": "contradicts the correction"}}'
+        )
+        result = self._criteria_judge(reply)._grade(task(), trial(), None)
+        assert result.passed is False
+        assert "needs 4" in result.reason
+        assert "contradicts the correction" in result.reason

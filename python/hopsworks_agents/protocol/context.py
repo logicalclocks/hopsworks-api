@@ -95,6 +95,13 @@ class HandlerContext:
         self._event_queue: asyncio.Queue[Any] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._event_buffer: list[dict[str, Any]] = []
+        #: Tool names the handler has emitted an event for in this turn. The
+        #: automatic span-driven emitter stays off them: an agent that reports
+        #: its own progress has said what it wants shown.
+        self._handler_emitted: set[str] = set()
+        #: Spans the automatic emitter opened and then found to be the handler's
+        #: after all, so its closing event is dropped with its opening one.
+        self._auto_suppressed: set[str] = set()
         # set by the LLM-span detector when a model call is traced during this
         # turn: what says whether the turn's own usage figure is the only one
         # a reader of these spans will find
@@ -442,6 +449,10 @@ class HandlerContext:
         same id for the start and end of one call (the SDK's auto-emit uses the
         span id); omit it and each event stands alone.
         """
+        # The handler is emitting for this tool itself, so the automatic emitter
+        # must not emit for it too: two chips for one call, with different ids,
+        # one closing under the tool's name and one under the event's.
+        self._handler_emitted.add(name)
         self._emit_sync(name, status, message, data, event_id)
 
     def _emit_sync(

@@ -272,7 +272,10 @@ def identify(subject: str) -> str:
     Call this when the user gives you the identifier your instructions say to
     ask for — a customer key, an account number, a reference. It only labels
     the conversation so a support engineer can find it later; it does not look
-    anything up and does not change what you can remember or recall.
+    anything up and does not change what you can remember or recall. In
+    particular it does not make long-term memory follow the person: that is
+    `ctx.rebind_subject`, which an application calls after its own verification,
+    and is deliberately not something a model may do on typed text.
 
     Args:
         subject: the identifier exactly as the user gave it.
@@ -291,7 +294,16 @@ def identify(subject: str) -> str:
             "The identifier could not be recorded. Continue with the "
             "conversation and do not retry."
         )
-    return f"Recorded this conversation as being with {subject}."
+    # Says what it did and what it did not do. "Recorded this conversation as
+    # being with X" read as "memory now follows X", so the model told users it
+    # would remember them across conversations, and then did not: user-scope
+    # facts stay keyed by the conversation unless the application rebinds.
+    return (
+        f"Labelled this conversation as being with {subject}, for traces and "
+        "analysis. Memory stays with this conversation: what you remember now "
+        "will not be there in their next one unless the application identifies "
+        "them. Do not tell the user you will remember them."
+    )
 
 
 #: Registered separately from the memory tools. Identity is the one thing in
