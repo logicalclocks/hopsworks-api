@@ -4445,7 +4445,7 @@ class FeatureGroup(FeatureGroupBase):
         if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
             write_options["delta.enableChangeDataFeed"] = (
-                delta_engine.DeltaEngine._change_data_feed_value(
+                delta_engine.DeltaEngine.change_data_feed_value(
                     write_options.get("delta.enableChangeDataFeed", "true")
                 )
             )
@@ -4479,7 +4479,7 @@ class FeatureGroup(FeatureGroupBase):
             )
 
             self._feature_group_engine._save_feature_group_metadata(
-                self, None, write_options or {}
+                self, None, write_options
             )
 
             return None, None
@@ -4705,7 +4705,7 @@ class FeatureGroup(FeatureGroupBase):
         if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
             write_options["delta.enableChangeDataFeed"] = (
-                delta_engine.DeltaEngine._change_data_feed_value(
+                delta_engine.DeltaEngine.change_data_feed_value(
                     write_options.get("delta.enableChangeDataFeed", "true")
                 )
             )

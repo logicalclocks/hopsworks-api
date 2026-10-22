@@ -1074,7 +1074,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             # the client skips the empty-table write. Old backends ignore it.
             feature_group._initialize_offline_table = True
             feature_group._enable_change_data_feed = (
-                delta_engine.DeltaEngine._change_data_feed_value(
+                delta_engine.DeltaEngine.change_data_feed_value(
                     (write_options or {}).get(
                         delta_engine.DeltaEngine.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
                     )

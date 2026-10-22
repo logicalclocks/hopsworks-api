@@ -1295,7 +1295,7 @@ class TestDeltaEngine:
         writer.partitionBy.assert_called_once_with(["pk"])
 
     @pytest.mark.parametrize(
-        "cdf, expected", [(False, "false"), ("False", "false"), (1, "true")]
+        "cdf, expected", [(False, "false"), ("False", "false"), (True, "true")]
     )
     def test_write_delta_dataset_change_data_feed_is_a_lowercase_string(
         self, mocker, monkeypatch, cdf, expected
@@ -1334,6 +1334,20 @@ class TestDeltaEngine:
             **{"delta.enableChangeDataFeed": expected}
         )
         assert write_options == {"delta.enableChangeDataFeed": cdf}
+
+    @pytest.mark.parametrize(
+        "cdf", [1, "1", 0, "0", "off"], ids=["int-1", "str-1", "int-0", "str-0", "off"]
+    )
+    def test_write_delta_dataset_change_data_feed_rejects_other_values(
+        self, mocker, cdf
+    ):
+        _patch_client(mocker, is_external=False)
+        engine = DeltaEngine(1, "fs", _make_fg("hopsfs://nn:8020/p"), None, None)
+
+        with pytest.raises(FeatureStoreException, match="delta.enableChangeDataFeed"):
+            engine._write_delta_dataset(
+                mocker.MagicMock(), {"delta.enableChangeDataFeed": cdf}, "upsert"
+            )
 
     def _rs_engine(self, mocker, partition_key=None, features=None):
         _patch_client(mocker, is_external=False)
@@ -3335,7 +3349,8 @@ def test_insert_nested_polars_list_into_backend_made_table(
 
 
 @pytest.mark.parametrize(
-    "cdf, expected", [(False, "false"), ("False", "false"), (1, "true")]
+    "cdf, expected",
+    [(None, "true"), (False, "false"), ("False", "false"), (True, "true")],
 )
 @pytest.mark.parametrize("existing", [True, False], ids=["existing", "new"])
 def test_change_data_feed_option_is_a_lowercase_string(
@@ -3355,6 +3370,26 @@ def test_change_data_feed_option_is_a_lowercase_string(
 
     configuration = DeltaTable(location).metadata().configuration
     assert configuration["delta.enableChangeDataFeed"] == expected
+
+
+@pytest.mark.parametrize(
+    "cdf", [1, "1", 0, "0", "off"], ids=["int-1", "str-1", "int-0", "str-0", "off"]
+)
+@pytest.mark.parametrize("existing", [True, False], ids=["existing", "new"])
+def test_change_data_feed_option_rejects_other_values(
+    mocker, monkeypatch, tmp_path, cdf, existing
+):
+    location = str(tmp_path / "fg")
+    if existing:
+        _backend_made_table(location, [("id", "long")], [])
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+
+    with pytest.raises(FeatureStoreException, match="delta.enableChangeDataFeed"):
+        engine._write_delta_rs_dataset(
+            pd.DataFrame({"id": [1]}),
+            write_options={"delta.enableChangeDataFeed": cdf},
+            operation="insert",
+        )
 
 
 @pytest.mark.parametrize("operation", ["insert", "upsert"])

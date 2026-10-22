@@ -666,7 +666,7 @@ class DeltaEngine:
         if self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options:
             write_options = {
                 **write_options,
-                self.DELTA_ENABLE_CHANGE_DATA_FEED: self._change_data_feed_value(
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: self.change_data_feed_value(
                     write_options[self.DELTA_ENABLE_CHANGE_DATA_FEED]
                 ),
             }
@@ -985,7 +985,7 @@ class DeltaEngine:
 
         if not is_delta_table:
             configuration = {
-                self.DELTA_ENABLE_CHANGE_DATA_FEED: self._change_data_feed_value(
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: self.change_data_feed_value(
                     (write_options or {}).get(
                         self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
                     )
@@ -1007,7 +1007,7 @@ class DeltaEngine:
             ):
                 fg_source_table.alter.set_table_properties(
                     {
-                        self.DELTA_ENABLE_CHANGE_DATA_FEED: self._change_data_feed_value(
+                        self.DELTA_ENABLE_CHANGE_DATA_FEED: self.change_data_feed_value(
                             write_options.get(self.DELTA_ENABLE_CHANGE_DATA_FEED)
                         )
                     }
@@ -1078,12 +1078,24 @@ class DeltaEngine:
         )
 
     @staticmethod
-    def _change_data_feed_value(value):
+    def change_data_feed_value(value):
         """Return the `delta.enableChangeDataFeed` option as Delta's string.
 
-        Only false, in any case or type, disables the change data feed.
+        Unset means true. Otherwise the value must read as true or false, in
+        any case or type.
+
+        Raises:
+            FeatureStoreException: The value is neither true nor false.
         """
-        return "false" if str(value).lower() == "false" else "true"
+        if value is None:
+            return "true"
+        cdf = str(value).lower()
+        if cdf not in ("true", "false"):
+            raise FeatureStoreException(
+                f"Invalid value {value!r} for write option "
+                f"'{DeltaEngine.DELTA_ENABLE_CHANGE_DATA_FEED}': use true or false."
+            )
+        return cdf
 
     @staticmethod
     def _reconcile_type(source, target):
