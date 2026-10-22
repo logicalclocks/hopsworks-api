@@ -2334,6 +2334,71 @@ class TestFeatureGroupEngine:
         )
         mock_save_empty_table.assert_not_called()
 
+    def _create_delta_fg(self, mocker, response_extra):
+        """Create a DELTA feature group on the python engine through the real FeatureGroupApi.
+
+        The REST answer echoes the request plus *response_extra*.
+        """
+        import json
+
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        client = mocker.patch("hopsworks_common.client._get_instance")
+        requests = []
+
+        def _send_request(method, path_params, headers=None, data=None, **kwargs):
+            body = json.loads(data)
+            requests.append(body)
+            return {**body, "id": 10, **response_extra}
+
+        client.return_value._send_request.side_effect = _send_request
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+            features=[feature.Feature(name="id", type="bigint")],
+        )
+        feature_group_engine.FeatureGroupEngine(
+            feature_store_id=99
+        )._save_feature_group_metadata(
+            feature_group=fg,
+            dataframe_features=None,
+            write_options={"delta.enableChangeDataFeed": "false"},
+        )
+        return fg, requests
+
+    def test_save_feature_group_metadata_skips_empty_table_when_backend_initialized(
+        self, mocker
+    ):
+        save_empty_table = mocker.spy(
+            feature_group_engine.FeatureGroupEngine, "_save_empty_table"
+        )
+        delta_table = mocker.patch("deltalake.DeltaTable")
+
+        fg, requests = self._create_delta_fg(mocker, {"offlineTableInitialized": True})
+
+        assert requests[0]["initializeOfflineTable"] is True
+        assert requests[0]["enableChangeDataFeed"] is False
+        assert fg._offline_table_initialized is True
+        save_empty_table.assert_not_called()
+        delta_table.assert_not_called()
+
+    def test_save_feature_group_metadata_old_backend_saves_empty_table(self, mocker):
+        save_empty_table = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save_empty_table"
+        )
+
+        fg, _ = self._create_delta_fg(mocker, {})
+
+        assert fg._offline_table_initialized is None
+        save_empty_table.assert_called_once()
+
     def test_save_feature_group_metadata_creates_sink_job(self, mocker):
         # Arrange
         feature_store_id = 42

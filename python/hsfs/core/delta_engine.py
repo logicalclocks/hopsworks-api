@@ -991,6 +991,7 @@ class DeltaEngine:
                 commit_properties=commit_properties,
             )
         else:
+            dataset = self._cast_to_table_schema(dataset, fg_source_table)
             if (
                 isinstance(write_options, dict)
                 and self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options
@@ -1026,7 +1027,6 @@ class DeltaEngine:
                     location,
                     dataset,
                     mode="append",
-                    partition_by=self._feature_group.partition_key,
                     storage_options=storage_options or None,
                 )
             else:
@@ -1067,6 +1067,33 @@ class DeltaEngine:
         return self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
         )
+
+    @staticmethod
+    def _cast_to_table_schema(dataset, delta_table):
+        """Safe-cast the columns of *dataset* to the types of an existing Delta table.
+
+        Decimal precision of the batch follows its values, and naive timestamps
+        are UTC after `_prepare_df_for_delta`. A table written by the backend
+        holds decimal(p,0) and UTC timestamps, which delta-rs does not cast to.
+        The cast is safe, so an out-of-range or fractional decimal raises
+        `ArrowInvalid` instead of being truncated.
+        """
+        import pyarrow as pa
+
+        if not isinstance(dataset, pa.Table):
+            return dataset
+        table_schema = pa.schema(delta_table.schema().to_arrow())
+        columns = []
+        for name, column in zip(dataset.column_names, dataset.columns, strict=True):
+            index = table_schema.get_field_index(name)
+            target = table_schema.field(index).type if index >= 0 else column.type
+            # No cast exists: keep the column so delta-rs reports the schema
+            # mismatch as it does today.
+            if target != column.type:
+                with contextlib.suppress(pa.lib.ArrowNotImplementedError):
+                    column = column.cast(target, safe=True)
+            columns.append(column)
+        return pa.Table.from_arrays(columns, names=dataset.column_names)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):

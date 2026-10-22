@@ -1063,6 +1063,19 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             if feature_group.data_source
             else None
         )
+        if (
+            is_new_feature_group
+            and feature_schema_available
+            and (feature_group.time_travel_format or "").upper() == "DELTA"
+            and not feature_group.clustered_by
+            and FeatureGroupEngine._get_spark_session_and_context()[0] is None
+        ):
+            # Ask the backend to write the first Delta commit at create, so
+            # the client skips the empty-table write. Old backends ignore it.
+            feature_group._initialize_offline_table = True
+            feature_group._enable_change_data_feed = (write_options or {}).get(
+                delta_engine.DeltaEngine.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
+            ) != "false"
         new_fg = self._feature_group_api._save(feature_group)
         if (
             pre_save_rest_endpoint
@@ -1089,7 +1102,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 source_features=pre_save_features,
             )
 
-        if feature_schema_available:
+        if feature_schema_available and not feature_group._offline_table_initialized:
             # create empty table to write feature schema to table path. The
             # engines apply the feature group's partitioned_by at creation
             # (Iceberg partition spec, Delta liquid clustering, Hudi grain

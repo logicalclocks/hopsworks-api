@@ -3596,6 +3596,7 @@ class FeatureGroup(FeatureGroupBase):
         clustered_by: list[str] | None = None,
         bucket_index: dict[str, Any] | None = None,
         sort_order: list[str] | None = None,
+        offline_table_initialized: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3663,6 +3664,12 @@ class FeatureGroup(FeatureGroupBase):
             None if sort_order is None else list(sort_order)
         )
         self._online_partition_columns: bool = bool(online_partition_columns)
+        # True when the backend wrote the first Delta commit at create.
+        # Old backends do not return the field, so it stays None.
+        self._offline_table_initialized: bool | None = offline_table_initialized
+        # Create-request options, set by the engine before the POST only.
+        self._initialize_offline_table: bool | None = None
+        self._enable_change_data_feed: bool | None = None
 
         self._materialization_job: Job = None
 
@@ -5951,6 +5958,10 @@ class FeatureGroup(FeatureGroupBase):
                 fg_meta_dict["bucketIndex"]["engine"] = self._bucket_index["engine"]
         if self._sort_order:
             fg_meta_dict["sortOrder"] = list(self._sort_order)
+        if self._initialize_offline_table is not None:
+            fg_meta_dict["initializeOfflineTable"] = self._initialize_offline_table
+        if self._enable_change_data_feed is not None:
+            fg_meta_dict["enableChangeDataFeed"] = self._enable_change_data_feed
         if self.data_source:
             fg_meta_dict["dataSource"] = self.data_source.to_dict()
         if self._online_config:

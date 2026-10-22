@@ -2573,6 +2573,8 @@ class TestDeltaEngine:
         fake_write = mocker.Mock()
         fake_delta_table = mocker.Mock()
         fake_delta_table.merge.return_value.when_matched_update_all.return_value.when_not_matched_insert_all.return_value.execute = mocker.Mock()
+        # No table columns, so the cast to the table schema leaves the batch as is.
+        fake_delta_table.schema.return_value.to_arrow.return_value = pa.schema([])
 
         class _FakeTableNotFoundError(Exception):
             pass
@@ -2653,8 +2655,10 @@ class TestDeltaEngine:
         class _FakeTableNotFoundError(Exception):
             pass
 
+        fake_table = mocker.Mock()
+        fake_table.schema.return_value.to_arrow.return_value = pa.schema([])
         fake_deltalake = types.SimpleNamespace(
-            DeltaTable=mocker.Mock(return_value=mocker.Mock()),
+            DeltaTable=mocker.Mock(return_value=fake_table),
             write_deltalake=fake_write,
         )
         fake_exceptions = types.SimpleNamespace(
@@ -2985,3 +2989,150 @@ def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
         ("fg/chunk/a", 1),
         ("fg/chunk/b", 1),
     ]
+
+
+def _backend_made_table(location, fields, partition_columns):
+    """Write the first Delta commit the way the backend does at create.
+
+    Same actions and order as an empty hops-deltalake write: commitInfo,
+    protocol, metaData. Hive decimal(p) is decimal(p,0) and timestamp is the
+    Delta UTC `timestamp`.
+    """
+    import json
+    import uuid
+
+    now_ms = 1760000000000
+    parameters = {"mode": "ErrorIfExists"}
+    if partition_columns:
+        parameters["partitionBy"] = json.dumps(partition_columns, separators=(",", ":"))
+    schema = {
+        "type": "struct",
+        "fields": [
+            {"name": name, "type": type_, "nullable": True, "metadata": {}}
+            for name, type_ in fields
+        ],
+    }
+    actions = [
+        {
+            "commitInfo": {
+                "timestamp": now_ms,
+                "operation": "WRITE",
+                "operationParameters": parameters,
+                "engineInfo": "hopsworks-backend",
+                "clientVersion": "hopsworks-backend",
+                "operationMetrics": {
+                    "execution_time_ms": 0,
+                    "num_added_files": 0,
+                    "num_added_rows": 0,
+                    "num_partitions": 0,
+                    "num_removed_files": 0,
+                },
+            }
+        },
+        {"protocol": {"minReaderVersion": 1, "minWriterVersion": 4}},
+        {
+            "metaData": {
+                "id": str(uuid.uuid4()),
+                "name": None,
+                "description": None,
+                "format": {"provider": "parquet", "options": {}},
+                "schemaString": json.dumps(schema, separators=(",", ":")),
+                "partitionColumns": list(partition_columns),
+                "createdTime": now_ms,
+                "configuration": {"delta.enableChangeDataFeed": "true"},
+            }
+        },
+    ]
+    log = os.path.join(location, "_delta_log")
+    os.makedirs(log)
+    with open(os.path.join(log, "00000000000000000000.json"), "x") as f:
+        f.write("\n".join(json.dumps(a, separators=(",", ":")) for a in actions))
+
+
+def _local_rs_engine(mocker, monkeypatch, location, partition_key=None):
+    # Drop any fake left in sys.modules so these tests reach the real delta-rs.
+    monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+    monkeypatch.delitem(sys.modules, "deltalake.exceptions", raising=False)
+    pytest.importorskip("deltalake")
+    _patch_client(mocker, is_external=False)
+    fg = _make_fg(location)
+    fg.primary_key = ["id"]
+    fg.event_time = None
+    fg.partition_key = partition_key or []
+    engine = DeltaEngine(1, "fs", fg, None, None)
+    mocker.patch.object(engine, "_get_delta_rs_location", return_value=location)
+    mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+    return engine
+
+
+def test_first_insert_into_backend_made_table_casts_decimal_and_timestamp(
+    mocker, monkeypatch, tmp_path
+):
+    from decimal import Decimal
+
+    location = str(tmp_path / "fg")
+    _backend_made_table(
+        location,
+        [("id", "long"), ("amount", "decimal(7,0)"), ("ts", "timestamp")],
+        [],
+    )
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+    from deltalake import DeltaTable
+
+    df = pd.DataFrame(
+        {
+            "id": [1, 2],
+            "amount": [Decimal("1234567"), Decimal("12")],
+            "ts": pd.to_datetime(["2026-10-21 10:00:00", "2026-10-21 11:30:00"]),
+        }
+    )
+
+    engine._write_delta_rs_dataset(df, operation="insert")
+
+    table = DeltaTable(location).to_pyarrow_table()
+    assert table.schema.field("amount").type == pa.decimal128(7, 0)
+    assert table.schema.field("ts").type == pa.timestamp("us", tz="UTC")
+    rows = sorted(table.to_pylist(), key=lambda r: r["id"])
+    assert [r["amount"] for r in rows] == [Decimal("1234567"), Decimal("12")]
+    # Naive timestamps keep their wall time as UTC.
+    assert rows[1]["ts"].isoformat() == "2026-10-21T11:30:00+00:00"
+
+
+@pytest.mark.parametrize("value", ["12345678", "1.5"])
+def test_insert_out_of_range_or_fractional_decimal_raises(
+    mocker, monkeypatch, tmp_path, value
+):
+    from decimal import Decimal
+
+    location = str(tmp_path / "fg")
+    _backend_made_table(location, [("id", "long"), ("amount", "decimal(7,0)")], [])
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+    df = pd.DataFrame({"id": [1], "amount": [Decimal(value)]})
+
+    with pytest.raises(pa.ArrowInvalid):
+        engine._write_delta_rs_dataset(df, operation="insert")
+
+
+def test_append_to_table_partitioned_in_feature_order(mocker, monkeypatch, tmp_path):
+    location = str(tmp_path / "fg")
+    # The backend writes partition columns in feature order; the creating
+    # session keeps the user's partition_key order.
+    _backend_made_table(
+        location, [("id", "long"), ("i", "integer"), ("p", "string")], ["i", "p"]
+    )
+    engine = _local_rs_engine(mocker, monkeypatch, location, partition_key=["p", "i"])
+    from deltalake import DeltaTable
+
+    df = pd.DataFrame(
+        {
+            "id": pd.Series([1, 2], dtype="int64"),
+            "i": pd.Series([1, 2], dtype="int32"),
+            "p": ["a", "b"],
+        }
+    )
+
+    engine._write_delta_rs_dataset(df, operation="upsert")
+
+    table = DeltaTable(location)
+    assert table.metadata().partition_columns == ["i", "p"]
+    assert table.to_pyarrow_table().num_rows == 2
