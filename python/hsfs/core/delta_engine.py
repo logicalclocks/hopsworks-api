@@ -663,6 +663,13 @@ class DeltaEngine:
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
+        if self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options:
+            write_options = {
+                **write_options,
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: str(
+                    write_options[self.DELTA_ENABLE_CHANGE_DATA_FEED]
+                ).lower(),
+            }
 
         if not _is_delta_table_at(self._spark_session, location):
             cluster_columns = self._cluster_columns()

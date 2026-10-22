@@ -1294,6 +1294,45 @@ class TestDeltaEngine:
         writer = dataset.write.format.return_value.options.return_value
         writer.partitionBy.assert_called_once_with(["pk"])
 
+    @pytest.mark.parametrize("cdf", [False, "False"])
+    def test_write_delta_dataset_change_data_feed_is_a_lowercase_string(
+        self, mocker, monkeypatch, cdf
+    ):
+        # Arrange: a new clustered table, so the option reaches both the
+        # table builder and the DataFrameWriter
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        fg.clustered_by = ["ts"]
+        fg.partition_key = []
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta_table_cls.isDeltaTable.return_value = False
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+        mocker.patch.object(engine, "_get_last_commit_metadata", return_value="commit")
+
+        dataset = mocker.MagicMock()
+        dataset.schema = _fake_schema([("ts", None)])
+        spark.sql.return_value.select.return_value.collect.return_value = [(["ts"],)]
+        write_options = {"delta.enableChangeDataFeed": cdf}
+
+        # Act
+        engine._write_delta_dataset(dataset, write_options, "upsert")
+
+        # Assert
+        clustered = fake_delta_table_cls.createIfNotExists.return_value.location.return_value.addColumns.return_value.clusterBy.return_value
+        clustered.property.assert_any_call("delta.enableChangeDataFeed", "false")
+        dataset.write.format.return_value.options.assert_called_once_with(
+            **{"delta.enableChangeDataFeed": "false"}
+        )
+        assert write_options == {"delta.enableChangeDataFeed": cdf}
+
     def _rs_engine(self, mocker, partition_key=None, features=None):
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
