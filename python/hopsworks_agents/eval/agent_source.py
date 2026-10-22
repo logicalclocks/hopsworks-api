@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -101,14 +102,25 @@ class CodeLocation:
     @classmethod
     def _from_serving(cls, view: dict[str, Any] | None) -> CodeLocation:
         view = view or {}
+        script_file = str(view.get("predictor") or "").strip()
+        model_path = str(view.get("modelPath") or "").strip()
+        if not model_path and not view.get("gitUrl") and script_file.startswith("/"):
+            # An agent deployed from a local directory is neither git-backed nor
+            # a model: it has no gitUrl and no modelPath, and the only thing
+            # saying where its code is is the entry script's own path. Without
+            # this the location was unknown for every such agent, so failure
+            # analysis read no source at all -- every triage came back
+            # suspected_code_bug false with no findings, including for a failure
+            # that was a line of the prompt.
+            model_path = posixpath.dirname(script_file)
         return cls(
             git_url=str(view.get("gitUrl") or "").strip(),
             git_branch=str(
                 view.get("gitResolvedBranch") or view.get("gitBranch") or ""
             ).strip(),
             git_commit=str(view.get("gitCurrentCommit") or "").strip(),
-            model_path=str(view.get("modelPath") or "").strip(),
-            script_file=str(view.get("predictor") or "").strip(),
+            model_path=model_path,
+            script_file=script_file,
         )
 
     @classmethod

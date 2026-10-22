@@ -134,6 +134,36 @@ class TestWhereTheCodeIs:
         assert location.script_file == "chinook/support_agent.py"
         assert location._known()
 
+    def test_a_locally_deployed_agent_is_found_by_its_entry_script(self):
+        # Neither git-backed nor a model: no gitUrl, no modelPath, and the only
+        # thing that says where the code is is the entry script's own path. The
+        # location used to come back unknown for every such agent, so failure
+        # analysis read no source -- every triage came back with no findings,
+        # including for a failure that was a line of the prompt.
+        location = src.CodeLocation._from_serving(
+            {
+                "predictor": "/Projects/g1/Resources/fa/advisor_agent_openai.py",
+                "modelPath": None,
+                "gitUrl": None,
+            }
+        )
+        assert location.model_path == "/Projects/g1/Resources/fa"
+        assert location.script_file.endswith("advisor_agent_openai.py")
+        assert location._known()
+
+    def test_a_git_agent_is_still_read_from_git(self):
+        # The script path must not become a HopsFS location for an agent whose
+        # code is in a repository: the clone is the source of truth there.
+        location = src.CodeLocation._from_serving(
+            {
+                "gitUrl": "https://github.com/o/r",
+                "predictor": "/Projects/g1/Resources/fa/advisor.py",
+                "modelPath": None,
+            }
+        )
+        assert location.model_path == ""
+        assert location.git_url == "https://github.com/o/r"
+
     def test_an_override_is_a_git_url_with_an_optional_ref_or_a_hopsfs_path(self):
         git = src.CodeLocation._from_override("https://github.com/o/r#v2")
         assert git.git_url == "https://github.com/o/r" and git.git_branch == "v2"
