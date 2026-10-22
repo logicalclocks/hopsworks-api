@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import datetime
+import decimal
 import json
 import logging
 import os
@@ -58,6 +59,7 @@ from hsfs.training_dataset_feature import TrainingDatasetFeature
 from hsfs.transformation_function import TransformationType
 from hsfs.transformation_statistics import TransformationStatistics
 from pyspark.sql import DataFrame, Window
+from pyspark.sql import functions as F
 from pyspark.sql.functions import (
     lit,
     monotonically_increasing_id,
@@ -3738,6 +3740,152 @@ class TestSpark:
 
         # Act / Assert
         assert train_rows(1) != train_rows(2)
+
+    @staticmethod
+    def _hash_split_frame(spark_session):
+        # Duplicate primary key: rows sharing an id differ in the joined feature.
+        base = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
+        rows = [
+            {
+                "id": i // 2,
+                "joined": i * 0.5,
+                "tags": [i % 3, i % 5],
+                "info": {"a": i % 7, "b": f"v{i}"},
+                "attrs": {"k2": i % 4, "k1": i % 2},
+                "price": decimal.Decimal(f"{i}.50"),
+                "ts": base + datetime.timedelta(minutes=i),
+            }
+            for i in range(2000)
+        ]
+        schema = StructType(
+            [
+                StructField("id", LongType()),
+                StructField("joined", DoubleType()),
+                StructField("tags", ArrayType(LongType())),
+                StructField(
+                    "info",
+                    StructType(
+                        [StructField("a", LongType()), StructField("b", StringType())]
+                    ),
+                ),
+                StructField("attrs", MapType(StringType(), LongType())),
+                StructField("price", DecimalType(10, 2)),
+                StructField("ts", TimestampType()),
+            ]
+        )
+        spark_rows = [
+            (
+                r["id"],
+                r["joined"],
+                r["tags"],
+                (r["info"]["a"], r["info"]["b"]),
+                r["attrs"],
+                r["price"],
+                r["ts"],
+            )
+            for r in rows
+        ]
+        return rows, spark_session.createDataFrame(spark_rows, schema)
+
+    @staticmethod
+    def _hash_split_td(seed=42):
+        return training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.6, "validation": 0.2, "test": 0.2},
+            seed=seed,
+            id=10,
+        )
+
+    @staticmethod
+    def _split_keys(result):
+        return {
+            name: {(r["id"], r["joined"]) for r in split_df.select("id", "joined").collect()}
+            for name, split_df in result.items()
+        }
+
+    @pytest.fixture
+    def stockholm_session_time_zone(self):
+        # A non-UTC session zone: Spark hands timestamps to Python as local wall time.
+        conf = spark.Engine()._spark_session.conf
+        previous = conf.get("spark.sql.session.timeZone")
+        conf.set("spark.sql.session.timeZone", "Europe/Stockholm")
+        yield
+        conf.set("spark.sql.session.timeZone", previous)
+
+    def test_random_split_ignores_order_and_partitioning(
+        self, mocker, stockholm_session_time_zone
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        rows, spark_df = self._hash_split_frame(spark_engine._spark_session)
+        td = self._hash_split_td()
+
+        # Act
+        first = spark_engine._random_split(
+            dataset=spark_df.repartition(4), training_dataset=td
+        )
+        second = spark_engine._random_split(
+            dataset=spark_df.orderBy(F.col("joined").desc()).repartition(8),
+            training_dataset=td,
+        )
+
+        # Assert
+        first_keys = self._split_keys(first)
+        assert first_keys == self._split_keys(second)
+        assert sum(len(v) for v in first_keys.values()) == len(rows)
+        for name, fraction in {"train": 0.6, "validation": 0.2, "test": 0.2}.items():
+            assert abs(len(first_keys[name]) / len(rows) - fraction) < 0.04
+
+    def test_random_split_agrees_with_python_engine(
+        self, mocker, stockholm_session_time_zone
+    ):
+        # Arrange
+        from hsfs.engine import python
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        rows, spark_df = self._hash_split_frame(spark_engine._spark_session)
+        td = self._hash_split_td()
+
+        # Act
+        spark_result = spark_engine._random_split(
+            dataset=spark_df.repartition(4), training_dataset=td
+        )
+        pandas_result = python.Engine()._random_split(pd.DataFrame(rows), td)
+
+        # Assert
+        assert self._split_keys(spark_result) == {
+            name: set(zip(split_df["id"], split_df["joined"]))
+            for name, split_df in pandas_result.items()
+        }
+
+    def test_random_split_keeps_values(self, mocker, stockholm_session_time_zone):
+        # The rows pass through Python on the way to their split; values must not change.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        _, spark_df = self._hash_split_frame(spark_engine._spark_session)
+        spark_df = spark_df.union(
+            spark_engine._spark_session.createDataFrame(
+                [(None, None, None, None, None, None, None)], spark_df.schema
+            )
+        )
+
+        # Act
+        result = spark_engine._random_split(
+            dataset=spark_df, training_dataset=self._hash_split_td()
+        )
+
+        # Assert
+        split_rows = []
+        for split_df in result.values():
+            assert split_df.schema == spark_df.schema
+            split_rows += split_df.collect()
+        assert sorted(map(repr, split_rows)) == sorted(map(repr, spark_df.collect()))
 
     def test_time_series_split(self, mocker):
         # Arrange

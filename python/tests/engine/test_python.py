@@ -2496,9 +2496,51 @@ class TestPython:
         assert result is transformed_splits
         assert mock_fit_and_transform.call_args[0][2] is raw_splits
 
+    @staticmethod
+    def _hash_split_td(seed=42, version=1):
+        return training_dataset.TrainingDataset(
+            name="test",
+            version=version,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.6, "validation": 0.2, "test": 0.2},
+            train_split="train",
+            seed=seed,
+            id=10,
+        )
+
+    @staticmethod
+    def _hash_split_rows(n=2000):
+        # Duplicate primary key: rows sharing an id differ in the joined feature.
+        base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        return [
+            {
+                "id": i // 2,
+                "joined": i * 0.5,
+                "tags": [i % 3, i % 5],
+                "info": {"a": i % 7, "b": f"v{i}"},
+                "ts": base + timedelta(minutes=i),
+            }
+            for i in range(n)
+        ]
+
+    @staticmethod
+    def _split_keys(result, polars_frame=False):
+        keys = {}
+        for name, split_df in result.items():
+            if polars_frame:
+                split_df = split_df.to_pandas()
+            keys[name] = set(zip(split_df["id"], split_df["joined"]))
+        return keys
+
+    @staticmethod
+    def _assert_split_sizes(keys, n, tolerance=0.04):
+        assert sum(len(v) for v in keys.values()) == n
+        for name, fraction in {"train": 0.6, "validation": 0.2, "test": 0.2}.items():
+            assert abs(len(keys[name]) / n - fraction) < tolerance
+
     def test_random_split_is_reproducible_with_seed(self, mocker):
-        # A user-provided seed must make the random split reproducible across
-        # runs (the documented `seed` contract that the Spark engine honors).
+        # Same rows and seed give the same split, whatever the read order.
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         python_engine = python.Engine()
@@ -2516,11 +2558,114 @@ class TestPython:
 
         # Act
         first = python_engine._random_split(df.copy(), td)
-        second = python_engine._random_split(df.copy(), td)
+        second = python_engine._random_split(
+            df.sample(frac=1, random_state=1).reset_index(drop=True), td
+        )
 
         # Assert
         for name in ("train", "test"):
-            assert first[name]["col"].tolist() == second[name]["col"].tolist()
+            assert sorted(first[name]["col"]) == sorted(second[name]["col"])
+
+    def test_random_split_ignores_row_order(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col": range(20)})
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            seed=42,
+            id=10,
+        )
+
+        # Act
+        first = python_engine._random_split(df.copy(), td)
+        reversed_df = df.iloc[::-1].reset_index(drop=True)
+        second = python_engine._random_split(reversed_df, td)
+
+        # Assert
+        assert sorted(first["test"]["col"]) == sorted(second["test"]["col"])
+
+    def test_random_split_reordered_reads_pandas(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._hash_split_rows()
+        td = self._hash_split_td()
+
+        # Act
+        first = python_engine._random_split(pd.DataFrame(rows), td)
+        second = python_engine._random_split(pd.DataFrame(rows[::-1]), td)
+
+        # Assert
+        assert self._split_keys(first) == self._split_keys(second)
+        self._assert_split_sizes(self._split_keys(first), len(rows))
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_random_split_reordered_reads_polars(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._hash_split_rows()
+        td = self._hash_split_td()
+
+        # Act
+        first = python_engine._random_split(pl.DataFrame(rows), td)
+        second = python_engine._random_split(pl.DataFrame(rows[::-1]), td)
+
+        # Assert
+        first_keys = self._split_keys(first, polars_frame=True)
+        assert first_keys == self._split_keys(second, polars_frame=True)
+        self._assert_split_sizes(first_keys, len(rows))
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_random_split_pandas_and_polars_agree(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._hash_split_rows()
+        td = self._hash_split_td()
+
+        # Act
+        pandas_result = python_engine._random_split(pd.DataFrame(rows), td)
+        polars_result = python_engine._random_split(pl.DataFrame(rows), td)
+
+        # Assert
+        assert self._split_keys(pandas_result) == self._split_keys(
+            polars_result, polars_frame=True
+        )
+
+    def test_random_split_seed_none_is_salted_by_id_and_version(self, mocker):
+        # Versions created before seeds were generated have none stored.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._hash_split_rows()
+
+        # Act
+        first = python_engine._random_split(
+            pd.DataFrame(rows), self._hash_split_td(seed=None)
+        )
+        second = python_engine._random_split(
+            pd.DataFrame(rows[::-1]), self._hash_split_td(seed=None)
+        )
+        other_version = python_engine._random_split(
+            pd.DataFrame(rows), self._hash_split_td(seed=None, version=2)
+        )
+
+        # Assert
+        assert self._split_keys(first) == self._split_keys(second)
+        assert self._split_keys(first) != self._split_keys(other_version)
 
     def test_random_split_depends_on_seed(self, mocker):
         # Different seeds must yield different splits, proving the seed is

@@ -740,6 +740,56 @@ class TestFeatureViewEngine:
         assert mock_fv_engine_create_training_data_metadata.call_count == 1
         assert mock_fv_engine_compute_training_dataset.call_count == 1
 
+    @pytest.mark.parametrize(
+        ("user_seed", "splits"),
+        [
+            (None, {"train": 0.8, "test": 0.2}),
+            (7, {"train": 0.8, "test": 0.2}),
+            (None, {"train": 0.6, "validation": 0.2, "test": 0.2}),
+        ],
+    )
+    def test_create_training_data_metadata_sends_seed(
+        self, mocker, user_seed, splits
+    ):
+        # Arrange
+        import json
+
+        mock_client = mocker.patch("hopsworks_common.client._get_instance").return_value
+        mock_client._project_id = 50
+        mock_client._project_name = "p"
+        mock_client._send_request.side_effect = lambda *args, **kwargs: {
+            "type": "trainingDatasetDTO",
+            "id": 1,
+            "name": "fv_name",
+            "version": 1,
+            "featurestoreId": 99,
+            "dataFormat": "tsv",
+            "seed": json.loads(kwargs["data"])["seed"],
+        }
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        fv = MagicMock()
+        fv.name = "fv_name"
+        fv.version = 1
+        td = training_dataset.TrainingDataset(
+            name="fv_name",
+            version=None,
+            data_format="tsv",
+            featurestore_id=99,
+            splits=splits,
+            seed=user_seed,
+            training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
+        )
+
+        # Act
+        fv_engine._create_training_data_metadata(fv, td)
+
+        # Assert
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["seed"] is not None
+        assert 0 <= body["seed"] < 2**31
+        if user_seed is not None:
+            assert body["seed"] == user_seed
+
     def test_get_training_data(self, mocker):
         # Arrange
         feature_store_id = 99

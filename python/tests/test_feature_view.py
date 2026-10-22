@@ -1293,6 +1293,33 @@ class TestFeatureView:
         assert isinstance(td._tags[0], Tag)
         assert [(t.name, t.value) for t in td._tags] == [("team", "fraud")]
 
+    @pytest.mark.parametrize(
+        "method", ["training_data", "train_test_split", "train_validation_test_split"]
+    )
+    def test_in_memory_create_passes_seed(self, mocker, method):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+        get_training_data = mocker.patch.object(
+            fv._feature_view_engine,
+            "_get_training_data",
+            side_effect=lambda self, read_options, training_dataset_obj, **kwargs: (
+                training_dataset_obj,
+                "df",
+            ),
+        )
+        mocker.patch.object(fv, "update_last_accessed_training_dataset")
+
+        # Act
+        getattr(fv, method)(seed=7)
+
+        # Assert
+        td = get_training_data.call_args.kwargs["training_dataset_obj"]
+        assert td.seed == 7
+
 
 class TestFeatureViewExecuteOdts:
     def test_execute_odts_with_transformations(self, mocker):
