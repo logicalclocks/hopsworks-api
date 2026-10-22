@@ -3866,6 +3866,66 @@ class TestSpark:
             for name, split_df in pandas_result.items()
         }
 
+    @staticmethod
+    def _null_split_frame(spark_session):
+        # Nulls in int, float, date and timestamp columns; "row" is the key.
+        from tests.engine.test_python import TestPython
+
+        rows = TestPython._null_split_rows()
+        schema = StructType(
+            [
+                StructField("row", LongType()),
+                StructField("id", LongType()),
+                StructField("amount", DoubleType()),
+                StructField("day", DateType()),
+                StructField("ts", TimestampType()),
+                StructField("label", LongType()),
+            ]
+        )
+        spark_df = spark_session.createDataFrame(
+            [tuple(r[f.name] for f in schema.fields) for r in rows], schema
+        )
+        return rows, spark_df, TestPython._null_split_view()
+
+    @pytest.mark.parametrize("time_zone", ["UTC", "Europe/Stockholm"])
+    def test_random_split_with_nulls_agrees_with_python_engine(
+        self, mocker, time_zone
+    ):
+        # Arrange
+        from hsfs.engine import python
+        from tests.engine.test_python import TestPython
+
+        pl = pytest.importorskip("polars")
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        conf = spark_engine._spark_session.conf
+        previous = conf.get("spark.sql.session.timeZone")
+        conf.set("spark.sql.session.timeZone", time_zone)
+        try:
+            rows, spark_df, view = self._null_split_frame(spark_engine._spark_session)
+            td = self._hash_split_td()
+
+            # Act
+            spark_result = spark_engine._random_split(
+                spark_df.repartition(4), td, feature_view_obj=view
+            )
+            spark_keys = {
+                name: {r["row"] for r in split_df.select("row").collect()}
+                for name, split_df in spark_result.items()
+            }
+            pandas_result = python.Engine()._random_split(
+                TestPython._null_split_pandas(rows), td, view
+            )
+            polars_result = python.Engine()._random_split(
+                pl.DataFrame(rows), td, view
+            )
+        finally:
+            conf.set("spark.sql.session.timeZone", previous)
+
+        # Assert
+        assert spark_keys == TestPython._row_keys(pandas_result)
+        assert spark_keys == TestPython._row_keys(polars_result, polars_frame=True)
+
     def test_random_split_keeps_values(self, mocker, stockholm_session_time_zone):
         # The rows pass through Python on the way to their split; values must not change.
         # Arrange

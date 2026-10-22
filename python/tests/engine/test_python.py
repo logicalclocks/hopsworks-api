@@ -17,6 +17,7 @@ import decimal
 import json
 import logging
 import os
+import types
 from datetime import date, datetime, timedelta, timezone
 
 import hopsworks_common
@@ -2644,6 +2645,145 @@ class TestPython:
         assert self._split_keys(pandas_result) == self._split_keys(
             polars_result, polars_frame=True
         )
+
+    @staticmethod
+    def _null_split_rows(n=2000):
+        # Nulls in int, float, date and timestamp columns; "row" is the key.
+        base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        return [
+            {
+                "row": i,
+                "id": None if i % 7 == 0 else i // 2,
+                "amount": None if i % 5 == 0 else i * 0.25,
+                "day": None if i % 3 == 0 else date(2024, 1, 1) + timedelta(days=i),
+                "ts": None if i % 4 == 0 else base + timedelta(minutes=i),
+                "label": i % 2,
+            }
+            for i in range(n)
+        ]
+
+    @staticmethod
+    def _null_split_view():
+        return types.SimpleNamespace(
+            features=[
+                TrainingDatasetFeature(name="row", type="bigint"),
+                TrainingDatasetFeature(name="id", type="bigint"),
+                TrainingDatasetFeature(name="amount", type="double"),
+                TrainingDatasetFeature(name="day", type="date"),
+                TrainingDatasetFeature(name="ts", type="timestamp"),
+                TrainingDatasetFeature(name="label", type="bigint", label=True),
+                TrainingDatasetFeature(
+                    name="helper", type="string", inference_helper_column=True
+                ),
+            ]
+        )
+
+    @staticmethod
+    def _null_split_pandas(rows):
+        df = pd.DataFrame(rows)
+        # pandas reads a nullable bigint as float64 and may read a date as a timestamp.
+        assert df["id"].dtype == np.float64
+        df["day"] = pd.to_datetime(df["day"])
+        return df
+
+    @staticmethod
+    def _row_keys(result, polars_frame=False):
+        return {
+            name: set((split_df.to_pandas() if polars_frame else split_df)["row"])
+            for name, split_df in result.items()
+        }
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_random_split_pandas_and_polars_agree_with_nulls(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._null_split_rows()
+        td = self._hash_split_td()
+        view = self._null_split_view()
+
+        # Act
+        pandas_result = python_engine._random_split(
+            self._null_split_pandas(rows), td, view
+        )
+        polars_result = python_engine._random_split(pl.DataFrame(rows), td, view)
+        reordered = python_engine._random_split(
+            self._null_split_pandas(rows[::-1]), td, view
+        )
+
+        # Assert
+        assert self._row_keys(pandas_result) == self._row_keys(
+            polars_result, polars_frame=True
+        )
+        assert self._row_keys(pandas_result) == self._row_keys(reordered)
+
+    def test_random_split_ignores_columns_outside_the_view(self, mocker):
+        # primary_key=True and event_time=True add columns the view does not
+        # declare; they must not change the split.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        rows = self._null_split_rows()
+        td = self._hash_split_td()
+        view = self._null_split_view()
+        plain = self._null_split_pandas(rows)
+        extended = plain.copy()
+        extended["fg_pk"] = range(len(rows))
+        extended["fg_event_time"] = pd.Timestamp("2024-06-01")
+        extended["helper"] = "x"
+
+        # Act
+        first = python_engine._random_split(plain, td, view)
+        second = python_engine._random_split(extended, td, view)
+
+        # Assert
+        assert self._row_keys(first) == self._row_keys(second)
+
+    def test_random_split_rejects_value_outside_declared_type(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"id": [1.0, 3.5]})
+        view = types.SimpleNamespace(
+            features=[TrainingDatasetFeature(name="id", type="bigint")]
+        )
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="bigint"):
+            python_engine._random_split(df, self._hash_split_td(), view)
+
+    def test_random_split_tiny_dataset_is_stable(self, mocker):
+        # Fractions are approximate: a split may be empty, but always the same one.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col": [1, 2, 3]})
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "validation": 0.1, "test": 0.1},
+            seed=42,
+            id=10,
+        )
+
+        # Act
+        reads = [
+            python_engine._random_split(frame, td)
+            for frame in (df, df.iloc[::-1], df.iloc[[1, 2, 0]])
+        ]
+
+        # Assert
+        keys = [
+            {name: sorted(split_df["col"]) for name, split_df in read.items()}
+            for read in reads
+        ]
+        assert keys[0] == keys[1] == keys[2]
+        assert sum(len(v) for v in keys[0].values()) == 3
 
     def test_random_split_seed_none_is_salted_by_id_and_version(self, mocker):
         # Versions created before seeds were generated have none stored.
