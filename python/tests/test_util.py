@@ -41,6 +41,8 @@ from hsml.tensorflow.model import Model as TensorflowModel
 from hsml.tensorflow.predictor import Predictor as TFPredictor
 from hsml.torch.model import Model as TorchModel
 from hsml.torch.predictor import Predictor as TorchPredictor
+from hsml.triton.model import Model as TritonModel
+from hsml.triton.predictor import Predictor as TritonPredictor
 
 
 if HAS_SQLALCHEMY and HAS_AIOMYSQL:
@@ -117,6 +119,17 @@ class TestUtil:
         # Assert
         assert isinstance(model, LLMModel)
         assert model.framework == MODEL.FRAMEWORK_LLM
+
+    def test_set_model_class_triton(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["model"]["get_triton"]["response"]["items"][0]
+
+        # Act
+        model = util._set_model_class(json)
+
+        # Assert
+        assert isinstance(model, TritonModel)
+        assert model.framework == MODEL.FRAMEWORK_TRITON
 
     def test_set_model_class_unsupported(self, backend_fixtures):
         # Arrange
@@ -530,6 +543,25 @@ class TestUtil:
         pred_tensorflow.assert_not_called()
         pred_torch.assert_not_called()
         pred_llm.assert_called_once()
+
+    def test_get_predictor_for_model_triton(self, mocker, model_triton):
+        # Arrange
+        pred_base = mocker.patch("hsml.predictor.Predictor.__init__")
+        pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
+        pred_llm = mocker.patch("hsml.llm.predictor.Predictor.__init__")
+        pred_triton = mocker.patch(
+            "hsml.triton.predictor.Predictor.__init__", return_value=None
+        )
+
+        # Act
+        predictor = util._get_predictor_for_model(model_triton)
+
+        # Assert
+        assert isinstance(predictor, TritonPredictor)
+        pred_base.assert_not_called()
+        pred_python.assert_not_called()
+        pred_llm.assert_not_called()
+        pred_triton.assert_called_once()
 
     def test_get_predictor_for_model_non_base(self, mocker):
         # Arrange

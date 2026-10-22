@@ -67,6 +67,7 @@ Supported frameworks:
 | PyTorch | PYTHON | **Yes** | Custom script required |
 | TensorFlow | TF_SERVING | No | Script not supported |
 | LLM (vLLM) | VLLM | Optional | OpenAI-compatible endpoint |
+| Triton (`mr.triton`) | TRITON | No | Opt-in per cluster (`ms.get_triton_image_tags()` empty means not enabled); `config.pbtxt` + numeric version folders, no `name` in `config.pbtxt`; Open Inference Protocol v2 tensors over REST and gRPC; no script, transformer or inference logging |
 
 ---
 
@@ -103,7 +104,7 @@ The contract, the error codes, the discovery endpoint for non-Python clients, en
 ## Deploying a Model
 
 The model comes from the registry (registered by the training pipeline, see
-**hops-train**; `mr.python / sklearn / tensorflow / torch / llm .create_model(...)`
+**hops-train**; `mr.python / sklearn / tensorflow / torch / llm / triton .create_model(...)`
 then `model.save(dir)`).
 
 ```python

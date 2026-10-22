@@ -408,6 +408,7 @@ class Deployment:
         data: dict | InferInput = None,
         inputs: list | dict = None,
         validate: bool = True,
+        outputs: list[str | dict] | None = None,
     ) -> dict:
         """Send inference requests to the deployment.
 
@@ -417,10 +418,17 @@ class Deployment:
         against it before the request is sent, and a gRPC deployment sends them
         as one v2 tensor per field; the pod validates again regardless.
 
+        A Triton deployment speaks Open Inference Protocol v2 over REST as well as gRPC, so it takes tensors instead of rows.
+        Over REST, `data` is a complete v2 request body sent as given, and `inputs` is one tensor or a list of them, each a dictionary with `name`, `shape`, `datatype` and `data`, and optionally `parameters`.
+        The tensor names and data types are the ones the model's `config.pbtxt` declares.
+
         Parameters:
             data: Payload dictionary for the inference request including the model input(s).
             inputs: Model inputs used in the inference requests.
             validate: Whether to validate the rows against `schema` before sending.
+            outputs:
+                Output tensors to return from a Triton deployment over REST, each by name or as a dictionary with `name` and optionally `parameters`.
+                Triton returns every output when none is requested.
 
         Returns:
             Inference response.
@@ -448,9 +456,20 @@ class Deployment:
             # or using more sophisticated inference request payloads
             data = { "instances": [ my_model.input_example ], "key2": "value2" }
             predictions = my_deployment.predict(data)
+
+            # a Triton deployment takes v2 tensors named as in its config.pbtxt
+            triton_deployment = ms.get_deployment("my_triton_deployment")
+            predictions = triton_deployment.predict(
+                inputs=[
+                    {"name": "input", "shape": [1, 4], "datatype": "FP32", "data": [[5.1, 3.5, 1.4, 0.2]]}
+                ],
+                outputs=["probabilities"],
+            )
             ```
         """
-        return self._serving_engine._predict(self, data, inputs, validate=validate)
+        return self._serving_engine._predict(
+            self, data, inputs, validate=validate, outputs=outputs
+        )
 
     @public
     @usage._method_logger
@@ -1035,6 +1054,7 @@ class Deployment:
         """Get the KServe inference URL for standard model deployments.
 
         Returns the full URL with `:predict` suffix for KServe inference protocol.
+        A Triton deployment speaks Open Inference Protocol v2 instead, so its URL ends in `/v2/models/<name>/infer`, or in `:infer` through the Hopsworks REST API.
         This method only returns a URL for standard model deployments (non-vLLM,
         with a model attached).
 
@@ -1263,10 +1283,6 @@ class Deployment:
     def model_server(self):
         """Model server ran by the predictor."""
         return self._predictor.model_server
-
-    @model_server.setter
-    def model_server(self, model_server: str):
-        self._predictor.model_server = model_server
 
     @public
     @property
