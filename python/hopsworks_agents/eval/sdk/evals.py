@@ -1,0 +1,1395 @@
+"""The evaluation side of the client: suites, tasks, the library, runs and the jobs.
+
+Every handle here is a thin object over the same transport. Methods take and
+return the models in :mod:`models`; where a model can act on itself (publish a
+suite, join a task to a suite, wait for a run) the method lives on the model and
+calls back through the client it came from.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from hopsworks_apigen import public
+
+from ._transport import AgentServingError, Transport
+from .models import (
+    Check,
+    EvalJob,
+    EvaluatorResult,
+    EvaluatorTemplate,
+    RegressionSuite,
+    ReviewJob,
+    Run,
+    RunDiff,
+    RunMetric,
+    Suite,
+    SuiteFailureHistory,
+    Task,
+    TaskDiff,
+    Trial,
+    change_of,
+    verdict_of,
+)
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
+    from .client import AgentServing
+
+EVALS = "/agent-evals"
+
+log = logging.getLogger(__name__)
+
+
+@public
+def epoch_ms(value: Any) -> int | None:
+    """A datetime, or epoch milliseconds already, as epoch milliseconds."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return int(value.timestamp() * 1000)
+    return int(value)
+
+
+@public
+def check(type: str, name: str | None = None, **config: Any) -> dict[str, Any]:  # noqa: A002
+    """One check as a suite stores it: its type, the name results report under, its settings.
+
+    ``check("llm_judge", "quality", provider="anthropic", criteria=[...])``.
+    """
+    return {"type": type, "name": name or type, "config": json.dumps(config)}
+
+
+def _spec(checks: Iterable[dict[str, Any]]) -> str:
+    """A saved evaluator's spec, from checks written either way.
+
+    A check is spelled differently depending on where it is stored: a suite
+    keeps each one's settings in a `config` JSON string, while a saved
+    evaluator's spec carries them beside the type. One helper writes checks --
+    `check()`, which produces the suite's shape -- so a spec built from it had
+    its settings inside a string the server does not read there, and a regex
+    saved that way was refused for having no pattern. Flattened here, so the
+    same check means the same thing wherever it is written.
+    """
+    flattened = []
+    for entry in checks:
+        settings = entry.get("config")
+        if isinstance(settings, str):
+            try:
+                settings = json.loads(settings)
+            except ValueError:
+                settings = None
+        if isinstance(settings, dict):
+            entry = {**{k: v for k, v in entry.items() if k != "config"}, **settings}
+        flattened.append(entry)
+    return json.dumps(flattened)
+
+
+def _suite_ref(
+    suite: Suite | str, version: int | None = None
+) -> tuple[str, int | None]:
+    if isinstance(suite, Suite):
+        return suite.suite_id, suite.version
+    return suite, version
+
+
+def _task_id(task: Task | str) -> str:
+    return task.task_id if isinstance(task, Task) else task
+
+
+def _messages(
+    question: str | Sequence[str] | Sequence[dict[str, Any]],
+) -> tuple[str, str]:
+    """A question, a list of user turns, or full messages, as the JSON a task stores."""
+    if isinstance(question, str):
+        messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+    else:
+        messages = [
+            m if isinstance(m, dict) else {"role": "user", "content": str(m)}
+            for m in question
+        ]
+    user_turns = sum(1 for m in messages if m.get("role") == "user")
+    return json.dumps(messages), "multi_turn" if user_turns > 1 else "single_turn"
+
+
+class Suites:
+    def __init__(self, client: AgentServing):
+        self._client = client
+        self._http: Transport = client.http
+
+    @public
+    def list(self) -> list[Suite]:
+        return self._client._bind_all(
+            Suite.list_from_api(self._http.get(f"{EVALS}/suites"))
+        )
+
+    @public
+    def get(self, suite_id: str, version: int | None = None) -> Suite:
+        return self._client._bind(
+            Suite.from_api(
+                self._http.get(f"{EVALS}/suites/{suite_id}", version=version)
+            )
+        )
+
+    @public
+    def find(self, name: str) -> Suite | None:
+        """The newest version of the suite with this name, or none."""
+        matches = [s for s in self.list() if s.name == name]
+        return max(matches, key=lambda s: s.version) if matches else None
+
+    @public
+    def create(
+        self,
+        name: str,
+        *,
+        checks: Sequence[dict[str, Any]] = (),
+        description: str = "",
+        tags: Sequence[str] = (),
+        blocks_are_success: bool = False,
+        run_on_update: bool = False,
+        gate_metric: str = "",
+        gate_threshold: float | None = None,
+        pass_policy: str = "all",
+        pass_threshold: float | None = None,
+        execution_mode: str | None = None,
+    ) -> Suite:
+        """A new draft suite with the checks every task in it is graded by.
+
+        A suite of attacks (``blocks_are_success``) is sandboxed whatever else is asked, because
+        the backend refuses anything else; ``execution_mode`` is otherwise ``read_only``.
+        """
+        mode = execution_mode or ("sandboxed" if blocks_are_success else "read_only")
+        body: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "tags": json.dumps(list(tags)),
+            "executionMode": mode,
+            "blocksAreSuccess": blocks_are_success,
+            "runOnUpdate": run_on_update,
+            "passPolicy": pass_policy,
+            "evaluators": list(checks),
+        }
+        if gate_metric:
+            body["gateMetric"] = gate_metric
+            body["gateThreshold"] = 1.0 if gate_threshold is None else gate_threshold
+        if pass_threshold is not None:
+            body["passThreshold"] = pass_threshold
+        return self._client._bind(
+            Suite.from_api(self._http.post(f"{EVALS}/suites", body))
+        )
+
+    @public
+    def new_version(self, suite: Suite | str, version: int | None = None) -> Suite:
+        """A new draft version of a suite, carrying its settings and checks; tasks are joined anew."""
+        current = suite if isinstance(suite, Suite) else self.get(suite, version)
+        body = {
+            "suiteId": current.suite_id,
+            "name": current.name,
+            "description": current.description,
+            "tags": current.tags,
+            "executionMode": current.execution_mode,
+            "blocksAreSuccess": current.blocks_are_success,
+            "runOnUpdate": current.run_on_update,
+            "gateMetric": current.gate_metric,
+            "gateThreshold": current.gate_threshold,
+            "passPolicy": current.pass_policy,
+            "passThreshold": current.pass_threshold,
+            "evaluators": current.evaluators,
+        }
+        return self._client._bind(
+            Suite.from_api(self._http.post(f"{EVALS}/suites", body))
+        )
+
+    @public
+    def update(
+        self, suite: Suite | str, version: int | None = None, **changes: Any
+    ) -> Suite:
+        """Change name, tags or description at any time; how it runs while a draft.
+
+        Keyword names are the model's: ``name``, ``description``, ``tags`` (a list),
+        ``blocks_are_success``, ``run_on_update``, ``gate_metric``, ``gate_threshold``,
+        ``pass_policy``, ``pass_threshold``, ``execution_mode``.
+        """
+        suite_id, version = _suite_ref(suite, version)
+        body: dict[str, Any] = {}
+        for key, value in changes.items():
+            if value is None:
+                continue
+            if key == "tags" and not isinstance(value, str):
+                value = json.dumps(list(value))
+            body[
+                "".join(
+                    p.capitalize() if i else p for i, p in enumerate(key.split("_"))
+                )
+            ] = value
+        return self._client._bind(
+            Suite.from_api(
+                self._http.put(f"{EVALS}/suites/{suite_id}", body, version=version)
+            )
+        )
+
+    @public
+    def set_checks(
+        self,
+        suite: Suite | str,
+        checks: Sequence[dict[str, Any]],
+        version: int | None = None,
+    ) -> list[Check]:
+        """Replace a draft's checks. Refused once published."""
+        suite_id, version = _suite_ref(suite, version)
+        rows = self._http.put(
+            f"{EVALS}/suites/{suite_id}/evaluators",
+            {"evaluators": list(checks)},
+            version=version,
+        )
+        return Check.list_from_api(rows)
+
+    @public
+    def publish(self, suite: Suite | str, version: int | None = None) -> Suite:
+        """Freeze it, which is what lets a run say exactly what it executed."""
+        suite_id, version = _suite_ref(suite, version)
+        return self._client._bind(
+            Suite.from_api(
+                self._http.post(f"{EVALS}/suites/{suite_id}/publish", version=version)
+            )
+        )
+
+    @public
+    def delete(
+        self, suite: Suite | str, version: int | None = None, force: bool = False
+    ) -> None:
+        suite_id, version = _suite_ref(suite, version)
+        self._http.delete(
+            f"{EVALS}/suites/{suite_id}",
+            version=version,
+            force="true" if force else None,
+        )
+
+    @public
+    def tasks(self, suite: Suite | str, version: int | None = None) -> list[Task]:
+        suite_id, version = _suite_ref(suite, version)
+        return self._client._bind_all(
+            Task.list_from_api(
+                self._http.get(f"{EVALS}/suites/{suite_id}/tasks", version=version)
+            )
+        )
+
+    @public
+    def copy_tasks(
+        self,
+        suite: Suite | str,
+        from_version: int,
+        version: int | None = None,
+    ) -> dict[str, int]:
+        """Copy another version's tasks into this draft, provenance and all.
+
+        How a new version keeps the cases the last one had: :meth:`new_version` carries
+        the suite's settings and checks, and its tasks are joined anew, so without this
+        a version bump starts empty.
+
+        Copied by the server rather than re-imported, which is the difference that
+        matters for a task promoted from a customer conversation: an import re-authors
+        what it writes, so the copy would arrive with no source trace, no reviewer and
+        its redaction reset -- out of reach of the deletion path that goes looking for
+        it.
+
+        Returns ``{"imported": n, "skipped": m}``; a task the draft already has, by the
+        question it asks, is skipped rather than duplicated.
+        """
+        suite_id, version = _suite_ref(suite, version)
+        return (
+            self._http.post(
+                f"{EVALS}/suites/{suite_id}/tasks/copy",
+                version=version,
+                fromVersion=from_version,
+            )
+            or {}
+        )
+
+    @public
+    def import_tasks(
+        self,
+        suite: Suite | str,
+        tasks: Iterable[dict[str, Any]],
+        version: int | None = None,
+    ) -> dict[str, int]:
+        """Load many tasks at once; each is ``{"inputMessages"|"question", "expectations", ...}``.
+
+        Returns ``{"imported": n, "skipped": m}``.
+        """
+        suite_id, version = _suite_ref(suite, version)
+        rows = []
+        for task in tasks:
+            row = dict(task)
+            if "question" in row and "inputMessages" not in row:
+                row["inputMessages"], row["taskType"] = _messages(row.pop("question"))
+            rows.append(row)
+        return (
+            self._http.post(
+                f"{EVALS}/suites/{suite_id}/tasks/import", rows, version=version
+            )
+            or {}
+        )
+
+
+class Tasks:
+    def __init__(self, client: AgentServing):
+        self._client = client
+        self._http = client.http
+
+    @public
+    def list(
+        self, *, unassigned: bool = False, pending_redaction: bool = False
+    ) -> list[Task]:
+        """Every task, or the promotion queue: unassigned to a suite, or waiting for a redaction review."""
+        return self._client._bind_all(
+            Task.list_from_api(
+                self._http.get(
+                    f"{EVALS}/tasks",
+                    unassigned="true" if unassigned else None,
+                    pendingRedaction="true" if pending_redaction else None,
+                )
+            )
+        )
+
+    @public
+    def get(self, task_id: str) -> Task:
+        return self._client._bind(
+            Task.from_api(self._http.get(f"{EVALS}/tasks/{task_id}"))
+        )
+
+    @public
+    def create(
+        self,
+        question: str | Sequence[str] | Sequence[dict[str, Any]],
+        *,
+        expectations: dict[str, str] | None = None,
+        category: str | None = None,
+    ) -> Task:
+        """Author a task on its own; it joins a suite with :meth:`add_to_suite`."""
+        input_messages, task_type = _messages(question)
+        body: dict[str, Any] = {"inputMessages": input_messages, "taskType": task_type}
+        if expectations:
+            body["expectations"] = expectations
+        if category:
+            body["category"] = category
+        return self._client._bind(
+            Task.from_api(self._http.post(f"{EVALS}/tasks", body))
+        )
+
+    @public
+    def update(
+        self,
+        task: Task | str,
+        question: str | Sequence[str] | Sequence[dict[str, Any]] | None = None,
+        *,
+        expectations: dict[str, str] | None = None,
+        category: str | None = None,
+    ) -> Task:
+        """Change a task in a draft suite: what it asks, and what each check expects of it.
+
+        Only what is passed changes, so correcting one expectation does not mean
+        resending the question it answers::
+
+            task = suite.tasks()[0]
+            task.edit(["Analyze GOOGL.", "I'm conservative. Strategies?"])
+            task.edit(expectations={"Followed the process": "names each step"})
+
+        Drafts only. A published suite is frozen so its past runs still describe
+        what they ran; to change a task in one, take a new version of the suite.
+        """
+        body: dict[str, Any] = {}
+        if question is not None:
+            input_messages, task_type = _messages(question)
+            body["inputMessages"] = input_messages
+            body["taskType"] = task_type
+        if expectations is not None:
+            body["expectations"] = expectations
+        if category is not None:
+            body["category"] = category
+        return self._client._bind(
+            Task.from_api(self._http.put(f"{EVALS}/tasks/{_task_id(task)}", body))
+        )
+
+    @public
+    def attach(
+        self,
+        task: Task | str,
+        file: str | Path | bytes,
+        *,
+        name: str | None = None,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Attach a file to a task in a draft suite -- a picture, a recording.
+
+            task.attach("chart.png")
+            task.attach(audio_bytes, name="clip.wav", mime_type="audio/wav")
+
+        The name is the file's own unless given, and must be a single file name:
+        no directories, and nothing starting with a dot.
+        """
+        if isinstance(file, bytes):
+            if not name:
+                raise ValueError("name= is required when attaching bytes")
+            payload = file
+        else:
+            path = Path(file)
+            payload = path.read_bytes()
+            name = name or path.name
+        return self._http.request(
+            "POST",
+            f"{EVALS}/tasks/{_task_id(task)}/attachments/{name}",
+            data=payload,
+            params={"mimeType": mime_type} if mime_type else None,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+    @public
+    def attachment(self, task: Task | str, name: str) -> bytes:
+        """One attachment's bytes."""
+        return self._http.request(
+            "GET",
+            f"{EVALS}/tasks/{_task_id(task)}/attachments/{name}",
+            raw=True,
+        )
+
+    @public
+    def remove_attachment(self, task: Task | str, name: str) -> None:
+        """Remove an attachment from a task in a draft suite."""
+        self._http.delete(f"{EVALS}/tasks/{_task_id(task)}/attachments/{name}")
+
+    @public
+    def add_to_suite(
+        self,
+        task: Task | str,
+        suite: Suite | str,
+        version: int | None = None,
+        expectations: dict[str, str] | None = None,
+    ) -> Task:
+        """Join a task to a suite with what it expects of each of the suite's checks, by check name."""
+        suite_id, version = _suite_ref(suite, version)
+        return self._client._bind(
+            Task.from_api(
+                self._http.post(
+                    f"{EVALS}/tasks/{_task_id(task)}/suite",
+                    {"expectations": expectations or {}},
+                    suiteId=suite_id,
+                    version=version,
+                )
+            )
+        )
+
+    @public
+    def remove_from_suite(self, task: Task | str) -> Task:
+        return self._client._bind(
+            Task.from_api(self._http.delete(f"{EVALS}/tasks/{_task_id(task)}/suite"))
+        )
+
+    @public
+    def delete(self, task: Task | str) -> None:
+        self._http.delete(f"{EVALS}/tasks/{_task_id(task)}")
+
+    @public
+    def promote(
+        self,
+        deployment_id: int,
+        trace_id: str,
+        *,
+        expectations: dict[str, str] | None = None,
+        question: str | Sequence[str] | Sequence[dict[str, Any]] | None = None,
+        category: str | None = None,
+    ) -> Task:
+        """A task from a production trace. Lands PENDING_REDACTION: a person confirms before it joins."""
+        body: dict[str, Any] = {"taskType": "single_turn"}
+        if question is not None:
+            body["inputMessages"], body["taskType"] = _messages(question)
+        if expectations:
+            body["expectations"] = expectations
+        if category:
+            body["category"] = category
+        return self._client._bind(
+            Task.from_api(
+                self._http.post(
+                    f"{EVALS}/tasks/from-trace/{trace_id}",
+                    body,
+                    deploymentId=deployment_id,
+                )
+            )
+        )
+
+    @public
+    def confirm_redaction(
+        self,
+        task: Task | str,
+        *,
+        input_messages: str | Sequence[dict[str, Any]] | None = None,
+        expectations: dict[str, str] | None = None,
+    ) -> Task:
+        """Record that a named person checked a promoted task for personal data, with any edits."""
+        body: dict[str, Any] = {}
+        if input_messages is not None:
+            body["inputMessages"] = (
+                input_messages
+                if isinstance(input_messages, str)
+                else json.dumps(list(input_messages))
+            )
+        if expectations is not None:
+            body["expectations"] = expectations
+        return self._client._bind(
+            Task.from_api(
+                self._http.post(f"{EVALS}/tasks/{_task_id(task)}/redaction", body)
+            )
+        )
+
+    @public
+    def forget_trace(self, deployment_id: int, trace_id: str) -> dict[str, int]:
+        """Erase everything derived from a trace, for a deletion request.
+
+        The tasks promoted from it and the frozen copies of those in any published
+        suite, the verdicts people gave on it -- a corrected answer quotes the turn
+        it corrects -- and the proposals the analysis model wrote from those. The
+        trace's own spans go with the tracing store's retention.
+
+        Returns what was removed: ``{"tasks": n, "feedback": n, "triage": n,
+        "clusters": n}``, where ``clusters`` counts the recurring failures that
+        pointed at this trace as their representative and no longer do. A partial
+        erasure raises rather than answering, so it can be run again.
+        """
+        return (
+            self._http.delete(
+                f"{EVALS}/tasks/from-trace/{trace_id}", deploymentId=deployment_id
+            )
+            or {}
+        )
+
+    @public
+    def add_to_regressions(
+        self, task: Task | str, *, input_messages: str | None = None
+    ) -> Task:
+        """Confirm the redaction if pending and join the deployment's standing regression suite, in one call."""
+        body = {"inputMessages": input_messages} if input_messages is not None else {}
+        return self._client._bind(
+            Task.from_api(
+                self._http.post(f"{EVALS}/tasks/{_task_id(task)}/regressions", body)
+            )
+        )
+
+
+class Evaluators:
+    """The project's library of saved checks."""
+
+    def __init__(self, client: AgentServing):
+        self._client = client
+        self._http = client.http
+
+    @public
+    def list(self) -> list[EvaluatorTemplate]:
+        return EvaluatorTemplate.list_from_api(self._http.get(f"{EVALS}/evaluators"))
+
+    @public
+    def find(self, name: str) -> EvaluatorTemplate | None:
+        return next((e for e in self.list() if e.name == name), None)
+
+    @public
+    def save(
+        self,
+        name: str,
+        checks: Sequence[dict[str, Any]],
+        description: str = "",
+        tags: Sequence[str] | None = None,
+    ) -> EvaluatorTemplate:
+        """Save a named set of checks for reuse. A suite copies them in and never points back.
+
+        ``tags`` is how an entry is found once the library is longer than a
+        screen -- the agent it was written for, say -- and travels as a suite's
+        tags do.
+        """
+        body: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "spec": _spec(checks),
+        }
+        if tags is not None:
+            body["tags"] = json.dumps([str(t) for t in tags])
+        return EvaluatorTemplate.from_api(self._http.post(f"{EVALS}/evaluators", body))
+
+    @public
+    def update(
+        self,
+        template: EvaluatorTemplate | str,
+        *,
+        name: str | None = None,
+        checks: Sequence[dict[str, Any]] | None = None,
+        description: str | None = None,
+        tags: Sequence[str] | None = None,
+    ) -> EvaluatorTemplate:
+        """Change a saved evaluator: its name, its checks, its tags, or what it is for.
+
+        An edit, not another entry. :meth:`save` always creates one, so from
+        Python the only way to correct a library evaluator was to add a second
+        one under the same name -- the key sprawl a shared library exists to
+        avoid.
+
+        Nothing is re-graded by this: applying an evaluator copies its checks
+        into the suite or the task, so a published suite keeps meaning exactly
+        what it meant when it was published.
+        """
+        current = (
+            template
+            if isinstance(template, EvaluatorTemplate)
+            else self._by_id(template)
+        )
+        body = {
+            "templateId": current.template_id,
+            "name": current.name if name is None else name,
+            "description": current.description if description is None else description,
+            "tags": current.tags
+            if tags is None
+            else json.dumps([str(t) for t in tags]),
+            "spec": current.spec if checks is None else _spec(checks),
+        }
+        return EvaluatorTemplate.from_api(self._http.post(f"{EVALS}/evaluators", body))
+
+    def _by_id(self, template_id: str) -> EvaluatorTemplate:
+        found = next(
+            (e for e in self.list() if e.template_id == template_id),
+            None,
+        )
+        if found is None:
+            raise AgentServingError(f"no saved evaluator {template_id}")
+        return found
+
+    @public
+    def delete(self, template: EvaluatorTemplate | str) -> None:
+        template_id = (
+            template.template_id
+            if isinstance(template, EvaluatorTemplate)
+            else template
+        )
+        self._http.delete(f"{EVALS}/evaluators/{template_id}")
+
+    @public
+    def install_defaults(self, overwrite: bool = False) -> list[str]:
+        """The built-in judges (hallucination, frustration, toxicity, ...) into this library."""
+        from ..judge_config import _default_templates
+
+        existing = {e.name for e in self.list()}
+        written = []
+        for template in _default_templates():
+            if template["name"] in existing and not overwrite:
+                continue
+            self.save(
+                template["name"],
+                json.loads(template["spec"]),
+                template.get("description", ""),
+            )
+            written.append(template["name"])
+        return written
+
+    @public
+    def judge_models(self, provider: str, secret: str | None = None) -> list[str]:
+        """The models a provider currently offers, asked of the provider with the project's key."""
+        return list(
+            self._http.get(f"{EVALS}/judge-models", provider=provider, secret=secret)
+            or []
+        )
+
+
+class Runs:
+    def __init__(self, client: AgentServing):
+        self._client = client
+        self._http = client.http
+
+    @public
+    def list(self, deployment_id: int | None = None) -> list[Run]:
+        return self._client._bind_all(
+            Run.list_from_api(
+                self._http.get(f"{EVALS}/runs", deploymentId=deployment_id)
+            )
+        )
+
+    @public
+    def get(self, run_id: str) -> Run:
+        return self._client._bind(
+            Run.from_api(self._http.get(f"{EVALS}/runs/{run_id}"))
+        )
+
+    @public
+    def start(
+        self,
+        suite: Suite | str,
+        deployment_id: int,
+        *,
+        version: int | None = None,
+        n_trials: int = 1,
+        start: bool = True,
+    ) -> Run:
+        """Run a published suite against a deployment. ``n_trials`` above 1 is pass^k, not pass@k."""
+        suite_id, version = _suite_ref(suite, version)
+        return self._client._bind(
+            Run.from_api(
+                self._http.post(
+                    f"{EVALS}/runs",
+                    suiteId=suite_id,
+                    version=version,
+                    deploymentId=deployment_id,
+                    nTrials=n_trials,
+                    start="true" if start else "false",
+                )
+            )
+        )
+
+    @public
+    def sample(
+        self,
+        deployment_id: int,
+        *,
+        evaluator: EvaluatorTemplate | str | None = None,
+        suite: Suite | None = None,
+        since: Any = None,
+        until: Any = None,
+        sample: int | None = None,
+        start: bool = True,
+    ) -> Run:
+        """Grade a sample of real traffic with a saved evaluator or a suite's checks.
+
+        Without a window, what arrived since the last successful sample; ``since`` and ``until``
+        are datetimes or epoch milliseconds. ``sample`` caps how many conversations are graded,
+        since each costs a judge call.
+        """
+        if evaluator is None and suite is None:
+            raise AgentServingError("name an evaluator or a suite to grade with")
+        template_id = (
+            evaluator.template_id
+            if isinstance(evaluator, EvaluatorTemplate)
+            else evaluator
+        )
+        return self._client._bind(
+            Run.from_api(
+                self._http.post(
+                    f"{EVALS}/sample-runs",
+                    deploymentId=deployment_id,
+                    templateId=template_id,
+                    suiteId=suite.suite_id if suite else None,
+                    suiteVersion=suite.version if suite else None,
+                    **{"from": epoch_ms(since), "to": epoch_ms(until)},
+                    sample=sample,
+                    start="true" if start else "false",
+                )
+            )
+        )
+
+    @public
+    def sample_watermark(self, deployment_id: int) -> int | None:
+        """Where the next sample would start, as epoch milliseconds."""
+        body = (
+            self._http.get(f"{EVALS}/sample-runs/watermark", deploymentId=deployment_id)
+            or {}
+        )
+        return body.get("from")
+
+    @public
+    def start_recorded(self, run: Run | str) -> Run:
+        run_id = run.run_id if isinstance(run, Run) else run
+        return self._client._bind(
+            Run.from_api(self._http.post(f"{EVALS}/runs/{run_id}/start"))
+        )
+
+    @public
+    def trials(self, run: Run | str) -> list[Trial]:
+        run_id = run.run_id if isinstance(run, Run) else run
+        return Trial.list_from_api(self._http.get(f"{EVALS}/runs/{run_id}/trials"))
+
+    @public
+    def results(
+        self, run: Run | str, trial: Trial | str | None = None
+    ) -> list[EvaluatorResult]:
+        run_id = run.run_id if isinstance(run, Run) else run
+        trial_id = trial.trial_id if isinstance(trial, Trial) else trial
+        return EvaluatorResult.list_from_api(
+            self._http.get(f"{EVALS}/runs/{run_id}/evaluator-results", trialId=trial_id)
+        )
+
+    @public
+    def failure_history(
+        self,
+        deployment_id: int,
+        *,
+        run: Run | str | None = None,
+        execution_id: int | None = None,
+        depth: int | None = None,
+    ) -> list[SuiteFailureHistory]:
+        """Which of each suite's failures are new, which are regressions, and how old the rest are.
+
+        What Failure analysis shows, and what a report wants::
+
+            for suite in agents.runs.failure_history(agent.id):
+                print(suite)        # 1 new, 1 regressed, 2 fixed, 7 still failing
+
+        Every suite's latest run by default. ``run`` asks about one run instead -- what *it*
+        changed, which is not what the suite's latest run changed once a newer one exists --
+        and returns that run's suite alone; ``execution_id`` asks about every suite one
+        execution ran.
+
+        Read from the trials as they are stored, so it is as current as the last run and
+        needs no job to have processed anything. ``depth`` is how many of each suite's runs
+        to walk back for the age of a failure; ten by default.
+        """
+        run_id = run.run_id if isinstance(run, Run) else run
+        return SuiteFailureHistory.list_from_api(
+            self._http.get(
+                f"{EVALS}/failure-history",
+                deploymentId=deployment_id,
+                depth=depth,
+                runId=run_id,
+                executionId=execution_id,
+            )
+        )
+
+    @public
+    def compare(
+        self,
+        baseline: Run | str,
+        candidate: Run | str,
+        *,
+        questions: bool = True,
+    ) -> RunDiff:
+        """What changed between two runs of a suite.
+
+        The comparison a release gate asks for, and the one the Compare tab
+        shows::
+
+            diff = agents.runs.compare(previous, latest)
+            print(diff)                      # 2 regressed, 1 fixed, 17 unchanged
+            if diff.regressed:
+                raise SystemExit(f"{diff.regressed[0]} and {len(diff.regressed) - 1} more")
+
+        A task passes only when every gradable trial of it passed; see
+        :class:`~hopsworks_agents.eval.sdk.models.RunDiff` for that rule and for
+        how added, removed and ungradable tasks are treated.
+
+        Two runs of *different* suites can be compared -- they share no tasks,
+        so everything reads as added or removed -- and ``diff.same_suite`` says
+        so rather than the caller having to notice. ``diff.partial`` says when
+        one of the runs failed and may have graded only part of its suite.
+
+        Args:
+            baseline: The run to compare against, as a :class:`Run` or a run id.
+            candidate: The run being judged.
+            questions: Read each suite's tasks so a difference names the
+                question it asks rather than a task id. One extra call per
+                suite; pass False to skip it.
+        """
+        before = baseline if isinstance(baseline, Run) else self.get(baseline)
+        after = candidate if isinstance(candidate, Run) else self.get(candidate)
+        by_task_before = _by_task(self.trials(before))
+        by_task_after = _by_task(self.trials(after))
+
+        asked: dict[str, str] = {}
+        if questions:
+            for run in (before, after):
+                if run.suite_id:
+                    asked.update(self._questions(run))
+
+        # A new version of a suite copies its tasks, and a copy is a new row with
+        # a new id -- so comparing on ids alone made every carried-over case
+        # `added` and lost every regression at a version bump. The question a
+        # task asks is what identifies the case; it is already how the backend
+        # deduplicates an import. Falls back to the id when the questions were
+        # not read, where the two runs are of one version and ids line up.
+        before_key = _case_keys(by_task_before, asked)
+        after_key = _case_keys(by_task_after, asked)
+        cases: dict[str, str] = {}
+        for task_id, key in (*after_key.items(), *before_key.items()):
+            # the candidate's ids win, so a difference names the task a reader
+            # can open in the run they are looking at
+            cases.setdefault(key, task_id)
+
+        graded_before = {before_key[t]: ts for t, ts in by_task_before.items()}
+        graded_after = {after_key[t]: ts for t, ts in by_task_after.items()}
+
+        diffs = []
+        for key in sorted({*graded_before, *graded_after}):
+            verdict_before = verdict_of(graded_before.get(key, []))
+            verdict_after = verdict_of(graded_after.get(key, []))
+            task_id = cases.get(key, key)
+            diffs.append(
+                TaskDiff(
+                    task_id=task_id,
+                    before=verdict_before,
+                    after=verdict_after,
+                    change=change_of(verdict_before, verdict_after),
+                    question=asked.get(task_id, ""),
+                )
+            )
+        return RunDiff(baseline=before, candidate=after, tasks=diffs)
+
+    def _questions(self, run: Run) -> dict[str, str]:
+        """Each task's first user turn, for the suite this run executed.
+
+        Best effort: a suite deleted since the run leaves the comparison with
+        ids, which is worse than questions and better than an error on a
+        comparison that is otherwise fine.
+        """
+        try:
+            tasks = self._client.suites.tasks(run.suite_id, version=run.suite_version)
+        except AgentServingError:
+            log.debug("could not read the tasks of suite %s", run.suite_id)
+            return {}
+        asked = {}
+        for task in tasks:
+            question = _first_user_turn(task.input_messages)
+            if question:
+                asked[task.task_id] = question
+        return asked
+
+    @public
+    def metrics(self, run: Run | str) -> list[RunMetric]:
+        run_id = run.run_id if isinstance(run, Run) else run
+        return RunMetric.list_from_api(self._http.get(f"{EVALS}/runs/{run_id}/metrics"))
+
+    @public
+    def trend(self, deployment_id: int, limit: int = 20) -> list[RunMetric]:
+        """Run-scope metrics across a deployment's recent runs."""
+        return RunMetric.list_from_api(
+            self._http.get(
+                f"{EVALS}/runs/metrics", deploymentId=deployment_id, limit=limit
+            )
+        )
+
+    @public
+    def review_trial(
+        self,
+        run: Run | str,
+        trial: Trial | str,
+        *,
+        passed: bool,
+        score: float | None = None,
+        reason: str = "",
+        task_id: str | None = None,
+        evaluator: str | None = None,
+    ) -> None:
+        """A person's verdict on a trial: about one judge (``evaluator``), or the trial as a whole.
+
+        Per judge is how a suite with several judges is calibrated: saying the hallucination
+        judge was wrong about a trial says nothing about the helpfulness judge.
+        """
+        run_id = run.run_id if isinstance(run, Run) else run
+        trial_id = trial.trial_id if isinstance(trial, Trial) else trial
+        if task_id is None and isinstance(trial, Trial):
+            task_id = trial.task_id
+        body: dict[str, Any] = {
+            "taskId": task_id,
+            "passed": passed,
+            "score": score,
+            "reason": reason,
+        }
+        if evaluator:
+            body["evaluatorName"] = evaluator
+        # The trial id is `run/task/version/index` -- four segments, not one, so
+        # it travels as a parameter. Interpolated into the path it did not match
+        # the route at all and every review 404'd.
+        self._http.post(f"{EVALS}/runs/{run_id}/trials/review", body, trialId=trial_id)
+
+    @public
+    def agent_status(self, run: Run) -> str:
+        """The run's deployment status when it is not serving, else ``""``.
+
+        A run against a stopped deployment sits at ``RUNNING`` and looks exactly
+        like one that is working: the runner waits up to five minutes for the
+        deployment to answer before failing, because a canary fired by an update
+        is a run whose deployment is still coming up. This is how a caller tells
+        the two apart without waiting.
+
+        ``Idle`` is not down: a scaled-to-zero deployment wakes on the runner's
+        first request, the same way it wakes for a user.
+        """
+        if run.deployment_id is None:
+            return ""
+        try:
+            serving = self._http.get(f"/serving/{run.deployment_id}") or {}
+        except Exception:  # noqa: BLE001 - a status we cannot read is not a failure
+            return ""
+        status = str(serving.get("status") or "")
+        return "" if status in ("Running", "Idle") else status
+
+    @public
+    def wait(
+        self, run: Run | str, *, timeout_s: float = 1800, poll_s: float = 5
+    ) -> Run:
+        """Poll until the run finishes. Raises AgentServingError on timeout; returns the final row.
+
+        Says once, as soon as it is true, that the run is waiting on a
+        deployment that is not serving -- otherwise the only sign is a wait that
+        ends in "the deployment did not answer".
+        """
+        run_id = run.run_id if isinstance(run, Run) else run
+        deadline = time.monotonic() + timeout_s
+        waiting_on = ""
+        asked = False
+        while True:
+            current = self.get(run_id)
+            if current.finished:
+                return current
+            over = time.monotonic() >= deadline
+            # Once, and again at the deadline -- the state that matters is the
+            # one at the start (a run fired at a stopped deployment) and the one
+            # at the end (a deployment that went down during the wait). Asking
+            # every poll would be a serving request every five seconds for an
+            # answer that rarely changes.
+            if not asked or over:
+                was = waiting_on
+                waiting_on = self.agent_status(current)
+                if waiting_on and waiting_on != was:
+                    log.warning(
+                        "run %s is %s, waiting for deployment %s, which is %s",
+                        run_id,
+                        current.status.lower(),
+                        current.deployment_id,
+                        waiting_on,
+                    )
+                asked = True
+            if over:
+                raise AgentServingError(
+                    f"run {run_id} still {current.status} after {timeout_s:.0f}s"
+                    + (
+                        f"; deployment {current.deployment_id} is {waiting_on}"
+                        if waiting_on
+                        else ""
+                    )
+                )
+            time.sleep(poll_s)
+
+
+def _case_keys(
+    by_task: dict[str, list[Trial]], asked: dict[str, str]
+) -> dict[str, str]:
+    """What identifies each task as a *case*, across versions of its suite.
+
+    The question it asks, when that was read; its id otherwise. Two versions of
+    one suite hold two rows for the same case -- copying mints a new id -- so an
+    id is the identity of a row and the question is the identity of the case.
+    """
+    return {
+        task_id: (asked.get(task_id) or "").strip() or task_id for task_id in by_task
+    }
+
+
+def _by_task(trials: Sequence[Trial]) -> dict[str, list[Trial]]:
+    grouped: dict[str, list[Trial]] = {}
+    for trial in trials:
+        grouped.setdefault(trial.task_id, []).append(trial)
+    return grouped
+
+
+def _first_user_turn(input_messages: str | None) -> str:
+    """What the task asks, from the messages it scripts.
+
+    The first user turn, which is what names a case in one line. A task that
+    scripts a conversation has more; the rest are in the run detail.
+    """
+    if not input_messages:
+        return ""
+    try:
+        messages = json.loads(input_messages)
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(messages, list):
+        return ""
+    for message in messages:
+        if isinstance(message, dict) and message.get("role") == "user":
+            return str(message.get("content") or "").strip()
+    return ""
+
+
+class Jobs:
+    """The per-deployment jobs: the evaluation job and the failure-analysis job."""
+
+    def __init__(self, client: AgentServing):
+        self._client = client
+        self._http = client.http
+
+    # ── evaluation job ─────────────────────────────────────────────────────
+
+    @public
+    def eval_job(self, deployment_id: int) -> EvalJob:
+        """The deployment's evaluation job, or what creating one would look like (``exists`` says which)."""
+        return EvalJob.from_api(
+            self._http.get(f"{EVALS}/runner-job", deploymentId=deployment_id)
+        )
+
+    @public
+    def eval_jobs(self, deployment_id: int) -> list[EvalJob]:
+        return EvalJob.list_from_api(
+            self._http.get(f"{EVALS}/eval-jobs", deploymentId=deployment_id)
+        )
+
+    @public
+    def ensure_eval_job(
+        self,
+        deployment_id: int,
+        *,
+        name: str | None = None,
+        suites: Sequence[Suite | str] = (),
+        evaluators: Sequence[EvaluatorTemplate | str] = (),
+        monitor: bool | None = None,
+        suites_on_schedule: bool | None = None,
+        sample_ceiling: int | None = None,
+        sample_strategy: str | None = None,
+        shared_sample: bool | None = None,
+        parallel_runs: int | None = None,
+        analyse_failures: bool | None = True,
+        analysis_budget_calls: int | None = None,
+        judge_provider: str | None = None,
+        judge_model: str | None = None,
+        environment_name: str | None = None,
+        cores: int | None = None,
+        memory: int | None = None,
+        gpus: int | None = None,
+    ) -> EvalJob:
+        """The deployment's evaluation job, created if it has none.
+
+        One per deployment: an existing one is returned untouched whatever name is asked
+        for, since what used to be a second job is this one's suites, its monitors and its
+        schedule. It runs one execution at a time -- a run asked for while one is going is
+        queued -- unless ``parallel_runs`` says otherwise.
+
+        ``analyse_failures`` is on: a run that breaks something has it explained, by the
+        deployment's analysis job, which this creates alongside. A failure nobody explains is
+        one somebody reads twice. Pass False for a deployment that should not spend model
+        calls on it. The provider is guessed from the agent's framework when
+        ``judge_provider`` names none -- an agent on the OpenAI Agents SDK has an OpenAI key
+        in its environment, one on the Claude SDK an Anthropic one.
+        """
+        body = {
+            "name": name,
+            "suites": [
+                f"{s.suite_id}:{s.version}" if isinstance(s, Suite) else s
+                for s in suites
+            ]
+            or None,
+            "evaluators": [
+                e.template_id if isinstance(e, EvaluatorTemplate) else e
+                for e in evaluators
+            ]
+            or None,
+            "monitor": monitor,
+            "suitesOnSchedule": suites_on_schedule,
+            "sampleCeiling": sample_ceiling,
+            "sampleStrategy": sample_strategy,
+            "sharedSample": shared_sample,
+            "parallelRuns": parallel_runs,
+            "analyseFailures": analyse_failures,
+            "analysisBudgetCalls": analysis_budget_calls,
+            "judgeProvider": judge_provider,
+            "judgeModel": judge_model,
+            "environmentName": environment_name,
+            "cores": cores,
+            "memory": memory,
+            "gpus": gpus,
+        }
+        return EvalJob.from_api(
+            self._http.post(
+                f"{EVALS}/runner-job",
+                {k: v for k, v in body.items() if v is not None},
+                deploymentId=deployment_id,
+            )
+        )
+
+    @public
+    def update_eval_job(
+        self,
+        name: str,
+        *,
+        suites: Sequence[Suite | str] | None = None,
+        evaluators: Sequence[EvaluatorTemplate | str] | None = None,
+        monitor: bool | None = None,
+        suites_on_schedule: bool | None = None,
+        sample_ceiling: int | None = None,
+        sample_strategy: str | None = None,
+        shared_sample: bool | None = None,
+        parallel_runs: int | None = None,
+        analyse_failures: bool | None = None,
+        analysis_budget_calls: int | None = None,
+        judge_provider: str | None = None,
+        judge_model: str | None = None,
+        environment_name: str | None = None,
+        cores: int | None = None,
+        memory: int | None = None,
+    ) -> EvalJob:
+        body: dict[str, Any] = {}
+        if suites is not None:
+            body["suites"] = [
+                f"{s.suite_id}:{s.version}" if isinstance(s, Suite) else s
+                for s in suites
+            ]
+        if evaluators is not None:
+            body["evaluators"] = [
+                e.template_id if isinstance(e, EvaluatorTemplate) else e
+                for e in evaluators
+            ]
+        for key, value in (
+            ("monitor", monitor),
+            ("suitesOnSchedule", suites_on_schedule),
+            ("sampleCeiling", sample_ceiling),
+            ("sampleStrategy", sample_strategy),
+            ("sharedSample", shared_sample),
+            ("parallelRuns", parallel_runs),
+            ("analyseFailures", analyse_failures),
+            ("analysisBudgetCalls", analysis_budget_calls),
+            ("judgeProvider", judge_provider),
+            ("judgeModel", judge_model),
+            ("environmentName", environment_name),
+            ("cores", cores),
+            ("memory", memory),
+        ):
+            if value is not None:
+                body[key] = value
+        return EvalJob.from_api(self._http.put(f"{EVALS}/eval-jobs/{name}", body))
+
+    @public
+    def delete_eval_job(self, name: str) -> None:
+        self._http.delete(f"{EVALS}/eval-jobs/{name}")
+
+    @public
+    def run_eval_job(
+        self,
+        name: str,
+        *,
+        since: Any = None,
+        until: Any = None,
+        sample: int | None = None,
+        strategy: str | None = None,
+    ) -> list[Run]:
+        """Run everything the job is configured with, now. One run per suite, plus the monitor.
+
+        ``since``, ``until``, ``sample`` and ``strategy`` apply to this execution's monitors
+        only -- a window to try an evaluator out on, without changing what every scheduled fire
+        does. Left out, the monitor grades what arrived since the last successful sample with the
+        job's own ceiling and strategy.
+        """
+        return self._client._bind_all(
+            Run.list_from_api(
+                self._http.post(
+                    f"{EVALS}/eval-jobs/{name}/run",
+                    **{"from": epoch_ms(since), "to": epoch_ms(until)},
+                    sample=sample,
+                    strategy=strategy,
+                )
+            )
+        )
+
+    # ── failure analysis job ───────────────────────────────────────────────
+
+    @public
+    def review_jobs(self, deployment_id: int) -> list[ReviewJob]:
+        return self._client._bind_all(
+            ReviewJob.list_from_api(
+                self._http.get(f"{EVALS}/review-jobs", deploymentId=deployment_id)
+            )
+        )
+
+    @public
+    def review_job(self, deployment_id: int) -> ReviewJob | None:
+        jobs = self.review_jobs(deployment_id)
+        return jobs[0] if jobs else None
+
+    @public
+    def review_job_defaults(self, deployment_id: int) -> ReviewJob:
+        return ReviewJob.from_api(
+            self._http.get(f"{EVALS}/review-jobs/defaults", deploymentId=deployment_id)
+        )
+
+    @public
+    def ensure_review_job(self, deployment_id: int, **settings: Any) -> ReviewJob:
+        """Create the deployment's failure-analysis job unless it exists.
+
+        Settings use the model's field names: ``provider``, ``model``, ``reasoning_effort``,
+        ``api_key_env``, ``base_url``, ``headers`` (a dict), ``budget_calls``, ``context_turns``,
+        ``sources`` (a list or comma-separated text), ``read_source_code``, ``auto_promote`` and its
+        thresholds, plus ``name``, ``environment_name``, ``cores``, ``memory``.
+        """
+        return self._client._bind(
+            ReviewJob.from_api(
+                self._http.post(
+                    f"{EVALS}/review-jobs",
+                    _review_body(settings),
+                    deploymentId=deployment_id,
+                )
+            )
+        )
+
+    @public
+    def update_review_job(self, job: ReviewJob | str, **settings: Any) -> ReviewJob:
+        name = job.name if isinstance(job, ReviewJob) else job
+        return self._client._bind(
+            ReviewJob.from_api(
+                self._http.put(f"{EVALS}/review-jobs/{name}", _review_body(settings))
+            )
+        )
+
+    @public
+    def delete_review_job(self, job: ReviewJob | str) -> None:
+        name = job.name if isinstance(job, ReviewJob) else job
+        self._http.delete(f"{EVALS}/review-jobs/{name}")
+
+    @public
+    def analyse(
+        self,
+        job: ReviewJob | str,
+        *,
+        since: Any = None,
+        until: Any = None,
+        trace_id: str | None = None,
+    ) -> Run:
+        """Run the analysis now: since the last run by default, or over a window, or on one trace."""
+        name = job.name if isinstance(job, ReviewJob) else job
+        return self._client._bind(
+            Run.from_api(
+                self._http.post(
+                    f"{EVALS}/review-jobs/{name}/run",
+                    **{"from": epoch_ms(since), "to": epoch_ms(until)},
+                    traceId=trace_id,
+                )
+            )
+        )
+
+    # ── regressions ────────────────────────────────────────────────────────
+
+    @public
+    def regressions(self, deployment_id: int) -> RegressionSuite:
+        """The deployment's standing regression suite, whether or not it exists yet."""
+        return RegressionSuite.from_api(
+            self._http.get(f"{EVALS}/regressions", deploymentId=deployment_id)
+        )
+
+    @public
+    def run_regressions(self, deployment_id: int) -> Run:
+        """Publish the draft regressions, if any, and run them against the deployment."""
+        return self._client._bind(
+            Run.from_api(
+                self._http.post(f"{EVALS}/regressions/run", deploymentId=deployment_id)
+            )
+        )
+
+
+def _review_body(settings: dict[str, Any]) -> dict[str, Any]:
+    body: dict[str, Any] = {}
+    for key, value in settings.items():
+        if value is None:
+            continue
+        if key == "sources" and not isinstance(value, str):
+            value = ",".join(value)
+        if key == "headers" and not isinstance(value, str):
+            value = json.dumps(dict(value))
+        body[
+            "".join(p.capitalize() if i else p for i, p in enumerate(key.split("_")))
+        ] = value
+    return body

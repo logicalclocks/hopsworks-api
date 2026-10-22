@@ -1,0 +1,452 @@
+"""One HTTP door for the whole client.
+
+Every resource handle talks through this: it knows the project's base URL, how
+the caller is entitled to talk to it, and how a refusal is turned into an error
+that says which rule refused and why -- the API's own message, never a bare
+status. Paths are relative to ``/hopsworks-api/api/project/{id}``, so the same
+transport reaches the evaluation API and the tracing API.
+
+The agents themselves answer somewhere else: behind the inference gateway
+(istio), at ``/v1/{namespace}/{name}``. :meth:`Transport.agent_request` goes
+there, through the model-serving client's istio connection when the caller is
+logged in with ``hopsworks.login()`` and through the same session otherwise.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+from hopsworks_apigen import public
+
+from ..api import EvalApiError, _hopsworks_session, _StaticAuth
+
+
+TIMEOUT_S = 60
+
+
+class AgentServingError(EvalApiError):
+    """A refusal from the API, carrying the reason it gave and the status.
+
+    ``code`` and ``retryable`` are the agent protocol's error envelope, set when
+    the refusal came from an agent handler rather than from the platform. The
+    code is what a caller branches on -- "the agent declined" reads differently
+    from "the agent broke" -- so it travels as an attribute rather than only
+    inside the message.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        status: int = 0,
+        *,
+        code: str = "",
+        retryable: bool = False,
+    ):
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.retryable = retryable
+
+
+def _stream_lines(response: Any) -> Any:
+    """The frames a streaming caller reads, whichever way the agent answered.
+
+    A stream endpoint may reply with a plain JSON ChatResponse instead of
+    server-sent events -- the contract allows it, an agent with nothing to
+    stream does it, and the browser client already handles it. Read as SSE
+    those lines carry no ``event:`` or ``data:`` field, so the parser skips
+    every one of them and the caller is handed an empty failed reply with the
+    answer, the conversation id and the trace id all dropped. Turned into the
+    one completed frame it is, it reaches the caller as the reply it was.
+    """
+    content_type = ""
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        content_type = str(headers.get("content-type") or "").lower()
+    if "text/event-stream" not in content_type and "json" in content_type:
+        import json as _json
+
+        try:
+            body = response.json()
+        except ValueError:
+            return response.iter_lines(decode_unicode=True)
+        return ["event: message.completed", "data: " + _json.dumps(body), ""]
+    return response.iter_lines(decode_unicode=True)
+
+
+def _message(response: Any) -> str:
+    return _refusal(response).args[0]
+
+
+def _refusal(response: Any) -> AgentServingError:
+    """The refusal as an exception, with whatever the answer actually said.
+
+    Two error shapes reach this client. The platform answers with ``usrMsg`` /
+    ``errorMsg``; an agent handler's ``AgentError`` arrives as FastAPI's
+    ``detail``, which for the agent protocol is ``{"code", "message",
+    "retryable"}``. Only the platform's two were read, so a refusal from the
+    agent itself -- the case the protocol defines an envelope for -- reached the
+    caller as a bare "HTTP 409", with the agent's own message and the code they
+    were meant to branch on dropped.
+    """
+    status = int(getattr(response, "status_code", 0) or 0)
+    fallback = f"HTTP {status}"
+    try:
+        body = response.json()
+    except ValueError:
+        return AgentServingError(fallback, status)
+    if not isinstance(body, dict):
+        return AgentServingError(fallback, status)
+    detail = body.get("detail")
+    if isinstance(detail, dict):
+        message = str(detail.get("message") or "") or fallback
+        code = str(detail.get("code") or "")
+        return AgentServingError(
+            f"{message} ({code})" if code else message,
+            status,
+            code=code,
+            retryable=bool(detail.get("retryable")),
+        )
+    if isinstance(detail, str) and detail.strip():
+        # FastAPI's own refusals (a 422 from request validation, say) put a
+        # plain string here.
+        return AgentServingError(detail, status)
+    return AgentServingError(
+        body.get("usrMsg") or body.get("errorMsg") or fallback, status
+    )
+
+
+class Transport:
+    def __init__(
+        self,
+        host: str,
+        project_id: int,
+        *,
+        api_key: str | None = None,
+        verify: bool | str = True,
+        session: Any = None,
+        gateway_url: str | None = None,
+    ):
+        self.host = host.rstrip("/")
+        self.project_id = int(project_id)
+        self.base = f"{self.host}/hopsworks-api/api/project/{self.project_id}"
+        self._gateway_url = gateway_url.rstrip("/") if gateway_url else None
+        if session is not None:
+            self._session = session
+        elif api_key:
+            import requests
+
+            self._session = requests.Session()
+            self._session.auth = _StaticAuth("ApiKey " + api_key)
+            self._session.verify = verify
+        else:
+            # whatever this container has: a job's JWT, a notebook's connected client
+            self._session = _hopsworks_session()
+            if verify is not True:
+                self._session.verify = verify
+
+    @public
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+        data: bytes | None = None,
+        headers: dict[str, str] | None = None,
+        raw: bool = False,
+    ) -> Any:
+        """One call to the platform API.
+
+        ``data`` sends bytes instead of JSON and ``raw`` returns them, which is
+        what a task's attachments need: a picture is not JSON in either
+        direction, and base64 through the body would cost a third more for
+        nothing.
+        """
+        clean = None
+        if params:
+            # None means "not given", never the string "None"
+            clean = {k: v for k, v in params.items() if v is not None} or None
+        response = self._session.request(
+            method,
+            self.base + path,
+            params=clean,
+            json=json,
+            data=data,
+            headers=headers,
+            timeout=TIMEOUT_S,
+            # Bytes have to come back undecoded. Inside Hopsworks the session is
+            # the connected client, which parses every response as JSON before
+            # returning it -- so reading an attachment raised a JSON decode
+            # error on the picture's first byte. Streaming is how that client
+            # hands back a response nobody has parsed.
+            **({"stream": True} if raw else {}),
+        )
+        if response.status_code >= 400:
+            raise _refusal(response)
+        if raw:
+            return getattr(response, "content", b"")
+        if not getattr(response, "content", b""):
+            return None
+        return response.json()
+
+    @public
+    def get(self, path: str, **params: Any) -> Any:
+        return self.request("GET", path, params=params or None)
+
+    # ── the agents, behind the inference gateway ───────────────────────────
+
+    @property
+    def gateway_url(self) -> str:
+        """Where the inference gateway answers, without a trailing slash.
+
+        Given to the constructor, or read off the model-serving client's istio
+        connection, which the hopsworks library sets up from the cluster's
+        inference endpoints on first use.
+        """
+        if self._gateway_url:
+            return self._gateway_url
+        istio = _istio_client()
+        if istio is None:
+            raise AgentServingError(
+                "no inference gateway: log in with hopsworks.login() so the "
+                "cluster's inference endpoint is known, or pass gateway_url="
+            )
+        return str(istio._base_url).rstrip("/")
+
+    @public
+    def agent_request(
+        self,
+        method: str,
+        segments: list[str],
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
+        stream: bool = False,
+    ) -> Any:
+        """Send a request to an agent at ``gateway_url/<segments>``.
+
+        Through the istio client when the caller is logged in and gave no
+        gateway of their own: it carries the credential the gateway accepts and
+        the cluster's certificates. Otherwise through this transport's session,
+        whose credential the gateway accepts as well.
+
+        ``params`` is the query string, which an agent's own routes take: which
+        subject's conversations to list, which fact to forget, whether to
+        include the turns the agent abandoned. It travels as parameters rather
+        than inside the last segment, because a segment is url-encoded whole --
+        a "?" in one becomes %3F and the route stops matching.
+
+        With ``stream`` the body is not read: the response's lines come back as
+        an iterator of text, for server-sent events.
+        """
+        timeout = TIMEOUT_S if timeout is None else timeout
+        # None means "not given", never the string "None"
+        clean = {k: v for k, v in (params or {}).items() if v is not None} or None
+        if self._gateway_url is None:
+            istio = _istio_client()
+            if istio is not None:
+                response = _through_istio(
+                    istio, method, segments, json, headers, timeout, stream, clean
+                )
+                return _stream_lines(response) if stream else response
+        url = self.gateway_url + "/" + "/".join(segments)
+        response = self._session.request(
+            method,
+            url,
+            params=clean,
+            json=json,
+            headers=headers,
+            timeout=timeout,
+            stream=stream,
+        )
+        if response.status_code >= 400:
+            raise _refusal(response)
+        if stream:
+            return _stream_lines(response)
+        if not getattr(response, "content", b""):
+            return None
+        return response.json()
+
+    @public
+    def post(self, path: str, json: Any = None, **params: Any) -> Any:
+        return self.request("POST", path, params=params or None, json=json)
+
+    @public
+    def put(self, path: str, json: Any = None, **params: Any) -> Any:
+        return self.request("PUT", path, params=params or None, json=json)
+
+    @public
+    def delete(self, path: str, **params: Any) -> Any:
+        return self.request("DELETE", path, params=params or None)
+
+
+@public
+def host_from_env() -> str:
+    host = os.environ.get("HOPSWORKS_HOST") or os.environ.get("REST_ENDPOINT")
+    if not host:
+        raise AgentServingError("no host: pass host= or set HOPSWORKS_HOST")
+    if not host.startswith("http"):
+        host = "https://" + host
+    return host
+
+
+class HopsworksClientSession:
+    """A ``requests``-shaped session over the connected hopsworks client.
+
+    Inside Hopsworks -- a job, a notebook, ``hopsworks.login()`` -- the client
+    already holds the caller's token and the cluster's certificates, so the
+    evaluation client borrows it rather than building a second one. Only what
+    :class:`Transport` calls is implemented: ``request`` returning an object
+    with ``status_code``, ``content`` and ``json()``.
+    """
+
+    def __init__(self, client: Any):
+        self._client = client
+
+    @public
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+        data: bytes | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
+        stream: bool = False,
+    ) -> Any:
+        import json as json_module  # noqa: PLC0415
+
+        from hopsworks_common.client.exceptions import RestAPIError  # noqa: PLC0415
+
+        # the client adds the scheme, host and "hopsworks-api/api" itself
+        marker = "/hopsworks-api/api/"
+        path = url.split(marker, 1)[1] if marker in url else url.lstrip("/")
+        path_params = [segment for segment in path.split("/") if segment]
+        sent = dict(headers or {})
+        if json is not None:
+            sent.setdefault("content-type", "application/json")
+        # bytes win over json: an attachment is sent as it is, with the
+        # content type its caller chose
+        if data is not None:
+            payload: Any = data
+        elif json is not None:
+            payload = json_module.dumps(json)
+        else:
+            payload = None
+        try:
+            body = self._client._send_request(
+                method,
+                path_params,
+                query_params=params,
+                headers=sent or None,
+                data=payload,
+                stream=stream,
+                timeout=timeout,
+            )
+        except RestAPIError as err:
+            return _ClientResponse(err.response.status_code, _error_body(err))
+        if stream:
+            # The client hands back the response itself when streaming, which is
+            # the only way to get bytes out of it undecoded -- it parses every
+            # other reply as JSON, so reading an attachment died on the
+            # picture's first byte. Wrapped so the caller sees one shape either
+            # way; a fake client in a test may hand back the bytes directly.
+            return _ClientResponse(
+                getattr(body, "status_code", 200),
+                getattr(body, "content", body),
+            )
+        return _ClientResponse(200, body)
+
+
+class _ClientResponse:
+    def __init__(self, status_code: int, body: Any):
+        self.status_code = status_code
+        self._body = body
+        if body is None:
+            self.content = b""
+        elif isinstance(body, bytes):
+            self.content = body
+        elif isinstance(body, str):
+            self.content = body.encode()
+        else:
+            # a parsed JSON body: content only has to say "not empty"
+            self.content = b"x"
+
+    def json(self) -> Any:
+        return self._body
+
+
+def _error_body(err: Any) -> dict[str, Any]:
+    try:
+        body = err.response.json()
+        return body if isinstance(body, dict) else {"errorMsg": str(body)}
+    except Exception:  # noqa: BLE001 -- a body that is not JSON still has a status
+        return {"errorMsg": str(err)}
+
+
+@public
+def connected_transport() -> Transport | None:
+    """A transport over the connected hopsworks client, or None when nothing is connected."""
+    try:
+        from hopsworks_common import client as hopsworks_client  # noqa: PLC0415
+
+        instance = hopsworks_client._get_instance()
+    except Exception:  # noqa: BLE001 -- not connected, or the library is not there
+        return None
+    project_id = getattr(instance, "_project_id", None)
+    base_url = getattr(instance, "_base_url", None) or ""
+    if project_id is None:
+        return None
+    host = base_url.split("/hopsworks-api", 1)[0] if base_url else "https://hopsworks"
+    return Transport(host, int(project_id), session=HopsworksClientSession(instance))
+
+
+def _istio_client() -> Any:
+    """The model-serving client's istio connection, or None when there is none."""
+    try:
+        from hopsworks_common import client as hopsworks_client  # noqa: PLC0415
+
+        hopsworks_client._get_instance()  # raises when nothing is connected
+        return hopsworks_client.istio._get_instance()
+    except Exception:  # noqa: BLE001 -- not logged in, or no inference endpoint
+        return None
+
+
+def _through_istio(
+    istio: Any,
+    method: str,
+    segments: list[str],
+    json: Any,
+    headers: dict[str, str] | None,
+    timeout: float,
+    stream: bool = False,
+    params: dict[str, Any] | None = None,
+) -> Any:
+    import json as json_module  # noqa: PLC0415
+
+    from hopsworks_common.client.exceptions import RestAPIError  # noqa: PLC0415
+
+    sent = dict(headers or {})
+    if json is not None:
+        sent.setdefault("content-type", "application/json")
+    try:
+        return istio._send_request(
+            method,
+            segments,
+            query_params=params,
+            headers=sent or None,
+            data=None if json is None else json_module.dumps(json),
+            with_base_path_params=False,
+            timeout=timeout,
+            stream=stream,
+        )
+    except RestAPIError as err:
+        response = err.response
+        raise _refusal(response) from err
