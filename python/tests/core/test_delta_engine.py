@@ -3355,3 +3355,38 @@ def test_change_data_feed_option_is_a_lowercase_string(
 
     configuration = DeltaTable(location).metadata().configuration
     assert configuration["delta.enableChangeDataFeed"] == expected
+
+
+@pytest.mark.parametrize("operation", ["insert", "upsert"])
+def test_write_tz_map_into_backend_made_table(mocker, monkeypatch, tmp_path, operation):
+    # polars has no map type, so only a pyarrow batch can carry one.
+    location = str(tmp_path / "fg")
+    map_type = {
+        "type": "map",
+        "keyType": "string",
+        "valueType": "timestamp_ntz",
+        "valueContainsNull": True,
+    }
+    _backend_made_table(location, [("id", "long"), ("m", map_type)], [])
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+    from deltalake import DeltaTable
+
+    batch = pa.table(
+        {
+            "id": pa.array([1], pa.int64()),
+            "m": pa.array(
+                [[("a", datetime.datetime(2026, 10, 21, 11, 30))]],
+                pa.map_(pa.string(), pa.timestamp("us", tz="UTC")),
+            ),
+        }
+    )
+
+    # The second upsert merges into the row the first one wrote.
+    engine._write_delta_rs_dataset(batch, operation=operation)
+    engine._write_delta_rs_dataset(batch, operation=operation)
+
+    rows = 2 if operation == "insert" else 1
+    assert (
+        DeltaTable(location).to_pyarrow_table().column("m").to_pylist()
+        == [[("a", datetime.datetime(2026, 10, 21, 11, 30))]] * rows
+    )
