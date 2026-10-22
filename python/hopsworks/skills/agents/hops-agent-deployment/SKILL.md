@@ -131,7 +131,7 @@ kubectl describe pod -n <project> <pod>                  # Events says which
 
 See **hops-kubectl-debug**. `Pending` with no events is usually resources; `ImagePullBackOff` on a first deploy is the image still being pulled or missing from the cluster's registry.
 
-**Confirm before deleting.** `hops agent delete` tears down the served agent irreversibly; confirm the exact name with the user, and never tear down an agent you created as a side effect (temp or test ones included) unless they asked.
+**Confirm before deleting.** `hops agent delete` tears down the served agent irreversibly; confirm the exact name with the user, and never tear down an agent you created as a side effect (temp or test ones included) unless they asked. From Python it is `agent.delete(force=True)`, or `agent.stop()` and then `agent.delete()` — a plain `delete()` on a running agent raises `ModelServingException: Deployment not stopped`.
 
 ## Deploy — SDK
 
@@ -178,6 +178,7 @@ agent = agents.deploy_agent(
 
 ```python
 agent = agents.get_agent("my_agent")           # by name or deployment id; None if missing
+agents.get_agents()                            # every agent in the project, for scripts
 
 reply = agent.chat("hello")                    # ChatReply: .text, .conversation_id, .trace_id
 agent.chat("and then?", conversation_id=reply.conversation_id)
@@ -194,7 +195,16 @@ agent.manifest()                               # what the agent advertises
 
 **What `manifest()` returns** is the protocol document, not a flat summary: the agent's own fields are under `agent` (`name`, `description`, `version`, `framework`), the routes under `endpoints`, and the rest under `capabilities` and `ui`. `manifest()["agent"]["framework"]`, not `manifest()["framework"]` — the latter is `None` for every agent.
 
-**Tool events pair by id.** Each tool call yields more than one event: `{"name", "status", "event_id", "message"}`, `status` going `running` then `done`, matched on `event_id`. The closing event is named for the event, not for the tool — an agent that emits `ctx.emit_event("tool", status="done")` ends with `name == "tool"` — so follow `event_id` rather than the name.
+**Tool events pair by id.** Each tool call yields more than one event, `status` going `running` then `done`, matched on the id. The closing event is named for the event, not for the tool — an agent that emits `ctx.emit_event("tool", status="done")` ends with `name == "tool"` — so follow the id rather than the name.
+
+They arrive in two shapes, which is worth knowing before writing the loop. `stream.tool_events` are `ToolEvent` **objects** — `.id`, `.name`, `.status`, `.message`, `.data`, `.raw`; the field is `id`, not `event_id`, and `json.dumps(event)` raises. On a non-streamed `agent.chat()` they ride on `reply.metadata["tool_events"]` as plain dicts, and those carry no `status`, so pair them on `id` and treat their presence as the whole story:
+
+```python
+for event in stream.tool_events:
+    print(event.id, event.name, event.status)          # objects
+for event in reply.metadata.get("tool_events", []):
+    print(event.get("id"), event.get("name"))          # dicts, no status
+```
 
 **Reading a conversation back.** `agent.traces()` lists conversations, one row per session; `agent.session(session_id)` gives that conversation's turns and `agent.conversation(session_id)` pairs them as `{trace_id, user, assistant}` — `role`/`content` is the shape of the messages inside a turn, not of these.
 

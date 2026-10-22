@@ -70,10 +70,18 @@ run = agent.run(suite, n_trials=3).wait()   # n_trials > 1 is pass^k: every tria
                                             # run sits PENDING for up to a minute before trials
 for trial in run.trials():
     print(trial.task_id, trial.status, trial.trace_id, trial.latency_ms)
-for result in run.results():
+for result in run.results():                 # result.trial_id, not trace_id -- see below
     print(result.evaluator_name, result.passed, result.score, result.reason)
 run.metrics()                               # pass rate per check and overall
 agent.gates()                               # do the published suites' gates pass for this agent?
+```
+
+**A result says which trial, not which conversation.** `EvaluatorResult` carries `trial_id`; the trace is on the trial. Printing results alone leaves you with a page of verdicts and no way to open the conversation behind one, so join them:
+
+```python
+traces = {t.trial_id: t.trace_id for t in run.trials()}
+for result in run.results():
+    print(result.evaluator_name, result.passed, traces.get(result.trial_id))
 ```
 
 Check kinds, their configuration keys and how each reads a task's expectation are in [references/checks.md](references/checks.md). A check that needs an expected answer cannot grade live traces; the library tells you which.
@@ -152,13 +160,32 @@ Every evaluator of one execution grades the **same** conversations: the random d
 
 **A sample grades one turn of a conversation.** A sampled conversation is one trial, graded on its **last** exchange: `user_request` and `agent_response` are the final turn's. An earlier turn that went wrong is not graded, so a monitor over multi-turn traffic measures how conversations end. Suites are where a specific turn is pinned down.
 
+**So only a turn-invariant criterion belongs in a monitor.** "Introduced itself and showed the disclaimer" is about the *first* turn; pointed at a six-turn conversation it grades the last one and scores 1/6, and the agent looks broken when the evaluator was. The test: could this be true of any single exchange, read on its own? *Answer relevance*, *was the tool's result used*, *did the reply carry the disclaimer it needed* — yes. *Introduced itself*, *asked who it is talking to*, *ran the steps in order* — no; those are suite tasks, where the turn is pinned down.
+
+Write the criterion so that "this did not come up" is a pass rather than a miss, too. A judge told "advice must carry the disclaimer" fails every turn that gave no advice: say *when the reply gives advice, it carries the disclaimer; a reply that gives none passes*. Otherwise a correct agent reads as failing most of its traffic, and the failure clusters fill with an evaluator's own wording.
+
+**"Since the last sample" is the job's watermark, not yours.** `agent.sample(evaluator=...)` with no window continues from where the last sample of that evaluator stopped. Pass `since=`/`until=` — which is what a hand-run script usually does — and you grade that window whatever the job has already graded, so a `--since 24h` sample run right after the job re-grades the same conversations. The run says so: `window_conversations` and `sampled_fraction` are on its metrics.
+
+**The judge's key.** A sample run reads the key from the account's environment variables: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` by provider, or `EVAL_JUDGE_API_KEY` for whichever provider the judge names. Set one of those on the *job's* environment, not only in your shell — a judge with no key fails every trial as ungradable, and ungradable is not a failing score (see **A trial nobody could grade**).
+
 **Reading the run list.** `agents.runs.list(agent.id)` returns suite runs and online samples together — filter on `run.run_type` (`"ONLINE_SAMPLE"`, `"SUITE"`, `"FEEDBACK_REVIEW"`), and `run.sample_source` names the evaluator a sample graded with. `run_eval_job` returns a list of runs, one per monitor, all sharing one `execution_id`.
 
 **The analysis job.** `analyse_failures` creates a job named `<agent>_feedback_review`, which `agent.review_job()` reads back and configures: its provider and model, whether it reads the agent's source, which sources it triages (feedback, errors, judge) and its call budget.
 
 `run_eval_job` takes `since`, `until`, `sample` and `strategy` for one execution's monitors, which is how you try an evaluator out on a window you choose without changing what every scheduled fire does (the UI's Run button asks for the same four). Runs list with `agents.runs.list(agent.id)`; `agents.runs.trend(agent.id)` gives the pass-rate trend.
 
-**Which failures are new.** `run.changes()` — or `agents.runs.failure_history(agent.id)` for every suite's latest run — classifies each task against the run before it, the way a build view does: `.new` (the run before did not have this task), `.regressed` (passed then, fails now), `.repaired`, and `.still_failing` with an `age` in runs. Read from the trials as stored, so it needs no job to have processed anything. This is the **Changes** dialog on a run in the Jobs tab.
+**Which failures are new.** `run.changes()` — or `agents.runs.failure_history(agent.id)` for every suite's latest run — classifies each task against the run before it, the way a build view does. Both return a `list[SuiteFailureHistory]`, one per suite, with **counts** `new_failures`, `regressions`, `fixed`, `persistent`, `passing` and a `tasks` list of `TaskFailure`:
+
+```python
+for suite in run.changes():
+    print(suite.suite_name, suite.regressions, "regressed,", suite.fixed, "fixed")
+    for task in suite.tasks:
+        print(" ", task.task_id, task.status)
+```
+
+Read from the trials as stored, so it needs no job to have processed anything. This is the **Changes** dialog on a run in the Jobs tab.
+
+For a task-by-task diff of two particular runs, `previous.compare_to(latest)` (or `agents.runs.compare(previous, latest)`) returns a comparison with `.same_suite` and `.unchanged` / changed lists of `TaskDiff(before=..., after=..., change=..., question=...)`.
 
 **Comparing two runs.** `agents.runs.compare(previous, latest)` (or `previous.compare_to(latest)`) diffs them task by task and returns `.regressed`, `.fixed`, `.added`, `.removed`, `.ungraded` and `.unchanged` — the list a release gate reads. A task counts as passed only when *every* gradable trial of it passed (`pass^k`, not `pass@k`), harness errors (`INFRA_ERROR`, `EVALUATOR_ERROR`) are left out of the verdict, and a task present in one run only is reported as added or removed rather than as unchanged. `.same_suite` is False when the two runs ran different suites (then everything reads as added or removed) and `.partial` is True when one of them failed and may have graded only part of its suite. A running evaluation is stopped from the UI's Stop button (there is no client call yet).
 
@@ -194,9 +221,21 @@ agent.promote_feedback(row)                           # one verdict, with its co
 agents.jobs.run_regressions(agent.id)                 # the standing <agent>_feedback_regressions suite
 ```
 
+**`agent.regressions()` is not a `Suite`.** It returns a `RegressionSuite`: a status report on the standing suite — `exists`, `suite_id`, `name`, `version`, `published_version`, `task_count`, `published_task_count`, `unpublished_task_count`, `judge_check` — with no `.tasks()` and no `.checks`. It answers "is there anything waiting to be published", which is what you want before a release. For the suite itself, `agents.suites.get(reg.suite_id)`.
+
 **`agent.traces()` lists conversations, not turns.** Each row is a session's latest turn, so a six-turn conversation is one row; `agent.session(trace.session_id)` opens the turns.
 
 **A promotion carries the conversation.** The task takes every user turn up to the one the verdict is about, because a failure on the fourth turn cannot be reproduced by asking the fourth question of a fresh agent. `promote_feedback(row, conversation=False)` takes that turn alone when it stands on its own. `feedback.promoted_task_id` says whether a verdict already became a task.
+
+**Reading a trace.** Everything that says what a span *did* is an attribute: `openinference.span.kind` (`AGENT`, `LLM`, `TOOL`, `RETRIEVER`), `llm.model_name`, `input.value`, `output.value`, the token counts. The span itself carries little more than its name and its timestamps. Each span and each event is handed back with its own attributes as a dict, and the flat per-trace lists are there too — `trace.span_attributes` / `trace.event_attributes`, with `trace.attributes_of(span_id)` giving the same dict:
+
+```python
+for span in sorted(trace.spans, key=lambda s: s.get("startTimeNs") or 0):
+    attrs = span["attributes"]
+    print(attrs.get("openinference.span.kind"), span["name"], attrs.get("llm.model_name", ""))
+```
+
+`trace.tool_calls` is the tool spans already unpacked into `{name, arguments, result, status, span_id}`, which is what most trace-reading actually wants.
 
 **Write the correction as the reply, not as a rule.** The standing regression suite grades with `matches_correction`, which reads the `corrected_answer` as the expected answer verbatim. "Strategies must carry the disclaimer" grades the agent on vagueness; the reply it should have given grades it on the thing you meant. Put the rule in `note` or `expected_tool_behavior`.
 
