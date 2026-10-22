@@ -27,10 +27,21 @@ hops notebook run Users/alice/churn.ipynb --markdown --code "## Churn by plan"
 hops notebook run Users/alice/churn.ipynb --code "df = fs.get_feature_group('customers', version=1).read()"
 hops notebook run Users/alice/churn.ipynb --cell 3 --code "..."   # replace cell 3 and run it again
 hops notebook info Users/alice/churn.ipynb          # environment, kernel state, cells, run numbers, outputs
+hops notebook info Users/alice/churn.ipynb --source # every cell's number, type, id and whole text
+hops notebook update Users/alice/churn.ipynb <<'EOF'
+[{"cell": 2, "markdown": "## Churn by plan"}, {"cell": 4, "code": "df.describe()"}]
+EOF
 hops notebook stop                      # stops the server and its kernels
 hops notebook start --env <name>        # a not running server, in that environment (`hops env list`)
 ```
 
+- Several cells to change (wording, titles, emojis, a renamed column): read them with
+  `info --source`, then one `update` with every edit, a JSON list on stdin through a quoted
+  heredoc (`<<'EOF'`, so quotes, backticks and `$` stay as written; a newline in a text is `\n`).
+  One read and one save of the notebook, no kernel; never one `run --cell` per cell, and never a
+  download of the `.ipynb` parsed with Python. `update` runs nothing: a code cell it changed has
+  no outputs until `run --cell N` runs it. A cell the user edited in Hopsable refuses the whole
+  update.
 - One kernel per notebook: variables carry over from cell to cell, and JupyterLab joins the same
   kernel when the user opens the notebook.
 - A cell that raises exits 1 with the error after saving it; fix it with `--cell N`.

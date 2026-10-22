@@ -2,11 +2,13 @@
 
 Notebooks are ``.ipynb`` files in the project, named by their path in it (``Users/<username>/x.ipynb``,
 the user's Jupyter home unless they changed it in Hopsworks). ``run`` writes one cell, runs it on the notebook's kernel and saves the
-outputs, so the notebook opens in the user's JupyterLab exactly as the run left it.
+outputs, so the notebook opens in the user's JupyterLab exactly as the run left it. ``update``
+rewrites several cells in one save and runs none.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 
 import click
@@ -127,20 +129,24 @@ def notebook_run(
     text = sys.stdin.read() if code == "-" else code
     project_id = _project_id(ctx)
     try:
-        jupyter = notebook_api.connect(project_id, 300)
-        root = notebook_api.setup(project_id).root
+        # A markdown cell needs the notebook only, not its kernel.
+        jupyter = (notebook_api.attach if markdown else notebook_api.connect)(
+            project_id, 300
+        )
         project_path = path.strip("/")
-        path = notebook_api.in_jupyter(path, root)
+        path = notebook_api.in_jupyter(path, notebook_api.root(project_id))
         notebook = jupyter.read(path)
         if notebook is None and cell is not None:
             raise click.ClickException(f"Notebook '{project_path}' not found.")
         kernel_name = None
         if notebook is not None:
             kernel_name = notebook.get("metadata", {}).get("kernelspec", {}).get("name")
-        jupyter_session = jupyter.session(path, kernel_name)
+        jupyter_session = None if markdown else jupyter.session(path, kernel_name)
         if notebook is None:
             notebook = notebook_api.new_notebook(
-                jupyter.kernelspec(jupyter_session["kernel"]["name"])
+                jupyter.kernelspec(
+                    jupyter_session["kernel"]["name"] if jupyter_session else None
+                )
             )
         new = notebook_api.new_cell("markdown" if markdown else "code", text)
         cells = notebook["cells"]
@@ -199,18 +205,136 @@ def notebook_run(
         )
 
 
-@notebook_group.command("info")
+@notebook_group.command("update")
 @click.argument("path")
 @click.pass_context
-def notebook_info(ctx: click.Context, path: str) -> None:
-    """List a notebook's cells, their outputs and its kernel state.
+def notebook_update(ctx: click.Context, path: str) -> None:
+    """Rewrite several cells in one save, from JSON on stdin; none runs.
+
+    Each edit is {"cell": N, "markdown": "<text>"} or {"cell": N, "code": "<text>"}, N as
+    `hops notebook info` numbers the cells:
+
+    \b
+    hops notebook update Users/alice/churn.ipynb <<'EOF'
+    [{"cell": 2, "markdown": "## Churn by plan"},
+     {"cell": 4, "code": "df.groupby('plan').churned.mean()"}]
+    EOF
+
+    A cell keeps its id and its place. A code cell loses its outputs: run it with
+    `hops notebook run PATH --cell N --code -`. A cell the user edited in Hopsable is refused, and
+    then no cell changes.
 
     \f
     Args:
         ctx: Click context.
         path: Notebook path in the project.
     """
+    edits = _edits(sys.stdin.read())
+    project_path = path.strip("/")
     project_id = _project_id(ctx)
+    try:
+        jupyter = notebook_api.attach(project_id, 300)
+        path = notebook_api.in_jupyter(path, notebook_api.root(project_id))
+        notebook = jupyter.read(path)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not read notebook '{project_path}': {exc}"
+        ) from exc
+    if notebook is None:
+        raise click.ClickException(f"Notebook '{project_path}' not found.")
+    cells = notebook["cells"]
+    beyond = [n for n, _, _ in edits if n > len(cells)]
+    if beyond:
+        raise click.UsageError(
+            f"The notebook has {len(cells)} cells; there is no cell {beyond[0]}."
+        )
+    refused = [n for n, _, _ in edits if _edited_by_user(cells[n - 1])]
+    if refused:
+        cells_were = "Cell %s was" if len(refused) == 1 else "Cells %s were"
+        raise click.ClickException(
+            f"{cells_were % ', '.join(map(str, refused))} edited by the user in '{project_path}'; "
+            "no cell was changed. Ask the user before replacing them, or leave them out."
+        )
+    for n, kind, text in edits:
+        new = notebook_api.new_cell(kind, text)
+        # The same cell, rewritten: an open notebook view keeps it where it is.
+        new["id"] = cells[n - 1].get("id", new["id"])
+        cells[n - 1] = new
+    try:
+        jupyter.write(path, notebook)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not write notebook '{project_path}': {exc}"
+        ) from exc
+    numbers = [n for n, _, _ in edits]
+    code = [n for n, kind, _ in edits if kind == "code"]
+    if output.JSON_MODE:
+        output.print_json({"path": project_path, "cells": numbers, "not_run": code})
+        return
+    output.success("✓ Cells %s of %s saved", ", ".join(map(str, numbers)), project_path)
+    if code:
+        output.info(
+            "Code cells %s not run: `hops notebook run %s --cell N --code -` runs one.",
+            ", ".join(map(str, code)),
+            project_path,
+        )
+
+
+def _edits(raw: str) -> list[tuple[int, str, str]]:
+    """The edits from stdin as (cell number, cell type, text), checked before anything is read."""
+    try:
+        edits = json.loads(raw)
+    except ValueError as exc:
+        raise click.UsageError(f"The edits on stdin are not JSON: {exc}") from exc
+    if not isinstance(edits, list) or not edits:
+        raise click.UsageError("Give at least one edit, as a JSON list on stdin.")
+    checked = []
+    for edit in edits:
+        kinds = (
+            [k for k in ("markdown", "code") if k in edit]
+            if isinstance(edit, dict)
+            else []
+        )
+        cell = edit.get("cell") if isinstance(edit, dict) else None
+        if (
+            type(cell) is not int
+            or cell < 1
+            or len(kinds) != 1
+            or not isinstance(edit[kinds[0]], str)
+        ):
+            raise click.UsageError(
+                'Each edit is {"cell": N, "markdown": "<text>"} or {"cell": N, "code": "<text>"}, '
+                f"N from 1; got {json.dumps(edit)[:200]}"
+            )
+        checked.append((cell, kinds[0], edit[kinds[0]]))
+    numbers = [n for n, _, _ in checked]
+    twice = next((n for n in numbers if numbers.count(n) > 1), None)
+    if twice is not None:
+        raise click.UsageError(f"Cell {twice} is edited twice; give it once.")
+    return checked
+
+
+@notebook_group.command("info")
+@click.argument("path")
+@click.option(
+    "--source",
+    is_flag=True,
+    help="Print every cell's whole text, with its number, type and id, instead of the table.",
+)
+@click.pass_context
+def notebook_info(ctx: click.Context, path: str, source: bool) -> None:
+    """List a notebook's cells, their outputs and its kernel state.
+
+    \f
+    Args:
+        ctx: Click context.
+        path: Notebook path in the project.
+        source: Print the cells' text instead.
+    """
+    project_id = _project_id(ctx)
+    if source:
+        _print_source(project_id, path)
+        return
     try:
         jupyter = notebook_api.connect(project_id, 300)
         setup = notebook_api.setup(project_id)
@@ -237,6 +361,35 @@ def notebook_info(ctx: click.Context, path: str) -> None:
             ]
         )
     output.print_table(["CELL", "TYPE", "RUN", "OUTPUTS", "SOURCE"], rows)
+
+
+def _print_source(project_id: int, path: str) -> None:
+    project_path = path.strip("/")
+    try:
+        jupyter = notebook_api.attach(project_id, 300)
+        notebook = jupyter.read(
+            notebook_api.in_jupyter(path, notebook_api.root(project_id))
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not read notebook '{project_path}': {exc}"
+        ) from exc
+    if notebook is None:
+        raise click.ClickException(f"Notebook '{project_path}' not found.")
+    cells = [
+        {
+            "cell": i,
+            "id": c.get("id", ""),
+            "type": c["cell_type"],
+            "source": notebook_api.source(c),
+        }
+        for i, c in enumerate(notebook["cells"], 1)
+    ]
+    if output.JSON_MODE:
+        output.print_json(cells)
+        return
+    for c in cells:
+        sys.stdout.write(f"[cell {c['cell']}] {c['type']} {c['id']}\n{c['source']}\n\n")
 
 
 def _report(

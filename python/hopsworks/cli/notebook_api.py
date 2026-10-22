@@ -26,6 +26,8 @@ from hopsworks_common.client import exceptions
 NBFORMAT = 4
 NBFORMAT_MINOR = 5
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Jupyter's root per project, as root() found it: one lookup per process.
+_roots: dict[int, str] = {}
 
 
 class Run(NamedTuple):
@@ -100,18 +102,37 @@ class Setup(NamedTuple):
 
 def setup(project_id: int) -> Setup:
     """The user's Jupyter setup, from the saved settings and the cluster's contents driver."""
-    _client = client._get_instance()
     saved = settings(project_id)
+    home = _home(saved)
+    return Setup("" if _whole_project() else home, home, environment(saved))
+
+
+def root(project_id: int) -> str:
+    """Jupyter's root, as ``setup`` finds it, looked up once per process.
+
+    With the ``hopsfsmount`` driver the root is the project, and the saved settings are not read.
+    """
+    if project_id not in _roots:
+        _roots[project_id] = "" if _whole_project() else _home(settings(project_id))
+    return _roots[project_id]
+
+
+def _home(saved: dict) -> str:
     # baseDir is absolute: /Projects/<project>/<path in the project>.
-    home = "/".join(saved["baseDir"].strip("/").split("/")[2:])
+    return "/".join(saved["baseDir"].strip("/").split("/")[2:])
+
+
+def _whole_project() -> bool:
+    """Whether Jupyter's contents driver serves the whole project (``hopsfsmount``)."""
     try:
-        driver = _client._send_request("GET", ["variables", "jupyter_remote_fs_driver"])
+        driver = client._get_instance()._send_request(
+            "GET", ["variables", "jupyter_remote_fs_driver"]
+        )
     except exceptions.RestAPIError as exc:
         if exc.response.status_code != 404:
             raise
         driver = None
-    root = "" if (driver or {}).get("successMessage") == "hopsfsmount" else home
-    return Setup(root, home, environment(saved))
+    return (driver or {}).get("successMessage") == "hopsfsmount"
 
 
 def in_jupyter(path: str, root: str) -> str:
@@ -139,16 +160,38 @@ def connect(project_id: int, timeout: float, env: str | None = None) -> Jupyter:
                 f"`hops notebook stop` to start it in '{env}'; that ends its kernels."
             )
     running = running or start(project_id, env)
+    jupyter = _jupyter(running)
+    jupyter.wait_ready(timeout)
+    return jupyter
+
+
+def attach(project_id: int, timeout: float) -> Jupyter:
+    """A client for the caller's running Jupyter server, for its contents only.
+
+    Unlike ``connect``, a running server is not asked whether it answers: the first read does.
+    A server not running is started and waited for by ``connect``.
+    """
+    running = server(project_id)
+    if not (
+        running
+        and running.get("port")
+        and running.get("token")
+        and running.get("ready", True)
+    ):
+        return connect(project_id, timeout)
+    return _jupyter(running)
+
+
+def _jupyter(running: dict) -> Jupyter:
+    """A client for the server ``jupyter/running`` describes, through the Hopsworks proxy."""
     _client = client._get_instance()
     host = running.get("hostName")
     address = f"{host}:{running['port']}" if host else str(running["port"])
-    jupyter = Jupyter(
+    return Jupyter(
         f"{_client._base_url}/hopsworks-api/jupyter/{address}",
         running["token"],
         _client._verify,
     )
-    jupyter.wait_ready(timeout)
-    return jupyter
 
 
 class Jupyter:
@@ -228,9 +271,10 @@ class Jupyter:
             },
         )
 
-    def kernelspec(self, name: str) -> dict:
-        """The notebook metadata's ``kernelspec`` for kernel ``name``."""
+    def kernelspec(self, name: str | None = None) -> dict:
+        """The notebook metadata's ``kernelspec`` for kernel ``name``, by default the server's default."""
         specs = self._call("GET", "/api/kernelspecs") or {}
+        name = name or specs.get("default", "python3")
         spec = specs.get("kernelspecs", {}).get(name, {}).get("spec", {})
         return {
             "name": name,

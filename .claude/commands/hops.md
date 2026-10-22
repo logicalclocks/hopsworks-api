@@ -138,6 +138,9 @@ A notebook is cells run on the user's own Jupyter kernel and saved with their ou
 1. Run `hops notebook start`: it prints the Python environment the cells run in and the user's
    Jupyter folder (`Users/<username>`). The notebook is `<folder>/<slug>.ipynb`, named after what
    it shows. A package the environment lacks: the `hops-notebook` skill, never `pip install` in a cell.
+   An existing notebook: `hops notebook info <path> --source` prints every cell's text, and a change
+   to several cells is one `hops notebook update <path>` with all of them (`hops-notebook` skill),
+   never one `run --cell` per cell.
 2. Write one cell at a time and run it before writing the next:
    `hops notebook run <path> --code -` with the cell on stdin. The first cell is
    `import hopsworks` then `fs = hopsworks.login().get_feature_store()`. Each section starts with
