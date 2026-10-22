@@ -88,12 +88,21 @@ class TestCanonicalRowBytes:
             (3.5, "bigint"),
             (pd.Timestamp("2024-01-02 10:00"), "date"),
             (decimal.Decimal("1.234"), "decimal(10,2)"),
-            (0.1, "float"),
         ],
     )
     def test_value_outside_declared_type_raises(self, value, declared):
         with pytest.raises(ValueError, match=declared.split("(")[0]):
             _row_bytes(value, types=[declared])
+
+    def test_declared_float_hashes_float32_bits(self):
+        assert _row_bytes(0.1, types=["float"]) == _row_bytes(
+            np.float32(0.1), types=["float"]
+        )
+        assert _row_bytes(float(np.float32(0.1)), types=["float"]) == _row_bytes(
+            0.1, types=["float"]
+        )
+        assert _row_bytes(0.1, types=["float"]) != _row_bytes(0.1, types=["double"])
+        assert _row_bytes(float("nan"), types=["float"]) == _row_bytes(None)
 
     def test_timestamps_are_utc_micros(self):
         aware = datetime.datetime(2024, 1, 1, 12, tzinfo=datetime.timezone.utc)

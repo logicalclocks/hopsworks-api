@@ -2655,6 +2655,7 @@ class TestPython:
                 "row": i,
                 "id": None if i % 7 == 0 else i // 2,
                 "amount": None if i % 5 == 0 else i * 0.25,
+                "ratio": None if i % 6 == 0 else i * 0.1,
                 "day": None if i % 3 == 0 else date(2024, 1, 1) + timedelta(days=i),
                 "ts": None if i % 4 == 0 else base + timedelta(minutes=i),
                 "label": i % 2,
@@ -2669,6 +2670,8 @@ class TestPython:
                 TrainingDatasetFeature(name="row", type="bigint"),
                 TrainingDatasetFeature(name="id", type="bigint"),
                 TrainingDatasetFeature(name="amount", type="double"),
+                # pandas and polars hand a float feature over as float64.
+                TrainingDatasetFeature(name="ratio", type="float"),
                 TrainingDatasetFeature(name="day", type="date"),
                 TrainingDatasetFeature(name="ts", type="timestamp"),
                 TrainingDatasetFeature(name="label", type="bigint", label=True),

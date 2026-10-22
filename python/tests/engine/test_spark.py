@@ -3887,6 +3887,7 @@ class TestSpark:
                 StructField("row", LongType()),
                 StructField("id", LongType()),
                 StructField("amount", DoubleType()),
+                StructField("ratio", FloatType()),
                 StructField("day", DateType()),
                 StructField("ts", TimestampType()),
                 StructField("label", LongType()),
