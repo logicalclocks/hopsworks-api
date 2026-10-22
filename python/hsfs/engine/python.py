@@ -801,9 +801,7 @@ class Engine:
         # single pushed-down query has nowhere to go until that payload can carry one.
         return False
 
-    def _register_pushdown_query(
-        self, fs_query: FsQuery, feature_names: list[str] | None = None
-    ) -> str:
+    def _register_pushdown_query(self, fs_query: FsQuery) -> str:
         raise NotImplementedError(
             "Source pushdown is not supported by the python engine."
         )

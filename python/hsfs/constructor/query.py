@@ -199,10 +199,7 @@ class Query:
                         )
                     elif engine_instance._is_source_pushdown_supported():
                         return (
-                            engine_instance._register_pushdown_query(
-                                fs_query,
-                                feature_names=self._output_feature_names(),
-                            ),
+                            engine_instance._register_pushdown_query(fs_query),
                             online_conn,
                         )
                     else:
@@ -564,21 +561,6 @@ class Query:
             close = getattr(batches, "close", None)
             if close is not None:
                 close()
-
-    def _output_feature_names(self) -> list[str]:
-        """The names of the query's output columns, with join prefixes and fully qualified names applied.
-
-        Nested joins are included.
-        """
-        names = {
-            feature._get_fully_qualified_feature_name(
-                feature_group=self._left_feature_group
-            ): set()
-            for feature in self._left_features
-        }
-        return list(
-            self._extract_feature_to_feature_group_mapping_joins(self._joins, names)
-        )
 
     def _output_features(self) -> list[Feature]:
         """The query's features named as the columns of its SQL output, join prefixes included."""

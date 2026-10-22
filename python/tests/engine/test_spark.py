@@ -660,7 +660,7 @@ class TestSpark:
         assert spark_engine._spark_session.sql(result).columns == ["pk1", "value_2"]
 
     def _register_pushdown_with_columns(
-        self, mocker, backend_fixtures, columns, feature_names, options=None
+        self, mocker, backend_fixtures, columns, options=None
     ):
         mocker.patch("hopsworks_common.client._get_instance")
         spark_engine = spark.Engine()
@@ -676,9 +676,7 @@ class TestSpark:
             ),
         )
 
-        result = spark_engine._register_pushdown_query(
-            fs_query, feature_names=feature_names
-        )
+        result = spark_engine._register_pushdown_query(fs_query)
         return spark_engine._spark_session.sql(result).columns, mock_read
 
     def test_register_pushdown_query_forwards_feature_group_options(
@@ -690,7 +688,6 @@ class TestSpark:
             mocker,
             backend_fixtures,
             ["PK1"],
-            ["pk1"],
             options={"sfRole": "ANALYST", "sfWarehouse": "WH_S"},
         )
 
@@ -703,57 +700,19 @@ class TestSpark:
         self, mocker, backend_fixtures
     ):
         _, mock_read = self._register_pushdown_with_columns(
-            mocker, backend_fixtures, ["PK1"], ["pk1"], options={}
+            mocker, backend_fixtures, ["PK1"], options={}
         )
 
         assert mock_read.call_args.kwargs["options"] is None
 
-    def test_register_pushdown_query_keeps_the_case_of_a_join_prefix(
-        self, mocker, backend_fixtures
-    ):
-        # prefix="R_" asks for R_value, which a warehouse that folds identifiers returns as R_VALUE.
-        columns, _ = self._register_pushdown_with_columns(
-            mocker, backend_fixtures, ["PK1", "R_VALUE"], ["pk1", "R_value"]
-        )
-
-        assert columns == ["pk1", "R_value"]
-
-    def test_register_pushdown_query_keeps_requested_lower_case_names(
+    def test_register_pushdown_query_lower_cases_returned_columns(
         self, mocker, backend_fixtures
     ):
         columns, _ = self._register_pushdown_with_columns(
-            mocker, backend_fixtures, ["pk1", "value_2"], ["pk1", "value_2"]
+            mocker, backend_fixtures, ["PK1", "Value_2"]
         )
 
         assert columns == ["pk1", "value_2"]
-
-    def test_register_pushdown_query_lower_cases_columns_nobody_asked_for(
-        self, mocker, backend_fixtures
-    ):
-        columns, _ = self._register_pushdown_with_columns(
-            mocker, backend_fixtures, ["PK1", "EXTRA"], ["pk1"]
-        )
-
-        assert columns == ["pk1", "extra"]
-
-    def test_register_pushdown_query_lower_cases_names_that_differ_only_by_case(
-        self, mocker, backend_fixtures
-    ):
-        # Two requested spellings of one name leave nothing to pick between.
-        columns, _ = self._register_pushdown_with_columns(
-            mocker, backend_fixtures, ["VALUE"], ["Value", "value"]
-        )
-
-        assert columns == ["value"]
-
-    def test_register_pushdown_query_does_not_rename_onto_an_existing_column(
-        self, mocker, backend_fixtures
-    ):
-        columns, _ = self._register_pushdown_with_columns(
-            mocker, backend_fixtures, ["ID", "id"], ["id"]
-        )
-
-        assert sorted(columns) == ["ID", "id"]
 
     def test_register_pushdown_query_uses_a_distinct_view_per_call(
         self, mocker, backend_fixtures

@@ -739,9 +739,7 @@ class TestQuery:
         )
 
         assert sql_query == "SELECT * FROM pushed_down"
-        mock_engine._register_pushdown_query.assert_called_once_with(
-            mock_fs_query, feature_names=["id", "label", "tf_name"]
-        )
+        mock_engine._register_pushdown_query.assert_called_once_with(mock_fs_query)
         mock_fs_query._register_external.assert_not_called()
         mock_fs_query._register_hudi_tables.assert_not_called()
 
@@ -770,28 +768,6 @@ class TestQuery:
         assert sql_query == "SELECT * FROM test"
         mock_engine._register_pushdown_query.assert_not_called()
         mock_fs_query._register_external.assert_called()
-
-    def test_output_feature_names_apply_join_prefix(self, mocker):
-        mocker.patch("hsfs.engine._get_type", return_value="python")
-
-        q = TestQuery.fg1.select_all().join(TestQuery.fg2.select_all(), prefix="R_")
-
-        assert sorted(q._output_feature_names()) == sorted(
-            ["id", "label", "tf_name", "R_id", "R_tf1_name"]
-        )
-
-    def test_output_feature_names_include_nested_joins(self, mocker):
-        mocker.patch("hsfs.engine._get_type", return_value="python")
-
-        inner = TestQuery.fg2.select_all().join(
-            TestQuery.fg3.select_all(), prefix="Inner_"
-        )
-        q = TestQuery.fg1.select_all().join(inner, prefix="R_")
-
-        names = q._output_feature_names()
-
-        assert "R_id" in names
-        assert "Inner_tf3_name" in names
 
     def test_prep_read_source_pushdown_unsupported_engine(self, mocker):
         mocker.patch("hsfs.engine._get_type", return_value="python")
