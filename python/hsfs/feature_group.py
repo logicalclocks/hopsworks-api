@@ -4440,8 +4440,8 @@ class FeatureGroup(FeatureGroupBase):
                 "Sink can only be enabled for feature groups with time travel format DELTA."
             )
 
-        if write_options is None:
-            write_options = {}
+        # A copy, so the defaults set below stay out of the caller's dict.
+        write_options = dict(write_options or {})
         if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
             write_options["delta.enableChangeDataFeed"] = (
@@ -4694,8 +4694,8 @@ class FeatureGroup(FeatureGroupBase):
 
         if validation_options is None:
             validation_options = {}
-        if write_options is None:
-            write_options = {}
+        # A copy, so the defaults set below stay out of the caller's dict.
+        write_options = dict(write_options or {})
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
         if "wait_for_online_ingestion" not in write_options:
@@ -6594,8 +6594,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
         if validation_options is None:
             validation_options = {}
-        if write_options is None:
-            write_options = {}
+        # A copy, so the defaults set below stay out of the caller's dict.
+        write_options = dict(write_options or {})
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
         if "wait_for_online_ingestion" not in write_options:
