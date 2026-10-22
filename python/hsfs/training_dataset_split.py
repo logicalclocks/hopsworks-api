@@ -289,14 +289,11 @@ def _encode(value, declared, out):
         if value not in (True, False):
             raise _misfit(value, "boolean")
         out += b"B\x01" if value else b"B\x00"
-    elif kind in ("double", "float"):
-        value = float(value)
-        if (
-            kind == "float"
-            and struct.unpack(">f", struct.pack(">f", value))[0] != value
-        ):
-            raise _misfit(value, "float")
-        out += b"F" + struct.pack(">d", value)
+    elif kind == "float":
+        # Stored as float32: a float64 that widens it hashes the same.
+        out += b"f" + np.float32(value).astype(">f4").tobytes()
+    elif kind == "double":
+        out += b"F" + struct.pack(">d", float(value))
     elif kind == "decimal":
         out += b"D"
         _encode_int(_unscaled(value, declared[1]), out)
