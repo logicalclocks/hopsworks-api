@@ -16,7 +16,12 @@ from hopsworks_agents.eval.sdk import (
     Task,
     check,
 )
-from hopsworks_agents.eval.sdk.models import EvaluatorTemplate, Run, as_datetime
+from hopsworks_agents.eval.sdk.models import (
+    EvaluatorTemplate,
+    Feedback,
+    Run,
+    as_datetime,
+)
 
 
 class Reply:
@@ -1208,6 +1213,132 @@ class TestTracing:
             {"status": "promoted", "promotedTaskId": "task"},
             None,
         )
+
+    def test_promoting_a_verdict_carries_its_conversation(self):
+        # A failure on the fourth turn cannot be reproduced by asking the fourth
+        # question of a fresh agent, and a conversation is several traces
+        # sharing a session id -- so the turns that set it up are in the traces
+        # before the one the verdict is about.
+        evals, agent7, session = agent(
+            Reply(
+                {
+                    "items": [
+                        {
+                            "traceId": "t1",
+                            "startTimeNs": 1,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "my email is d@e.com"}]
+                            ),
+                        },
+                        {
+                            "traceId": "t2",
+                            "startTimeNs": 2,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "ticker MSFT"}]
+                            ),
+                        },
+                        {
+                            "traceId": "t3",
+                            "startTimeNs": 3,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "propose strategies"}]
+                            ),
+                        },
+                        {
+                            "traceId": "t4",
+                            "startTimeNs": 4,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "a later, unrelated turn"}]
+                            ),
+                        },
+                    ]
+                }
+            ),
+            Reply({"taskId": "task"}),
+        )
+        row = Feedback(
+            feedback_id="f",
+            trace_id="t3",
+            session_id="s1",
+            issue_category="wrong_answer",
+            corrected_answer="Strategies, with the disclaimer.",
+        )
+
+        task = agent7.promote_feedback(row)
+
+        assert task.task_id == "task"
+        # The session id travels as a query parameter, not in the path.
+        assert session.sent[0][1] == "/otel/servings/7/traces/sessions"
+        assert session.sent[0][2]["sessionId"] == "s1"
+        # Up to and including the verdict's turn, and no further.
+        assert json.loads(session.sent[1][3]["inputMessages"]) == [
+            {"role": "user", "content": "my email is d@e.com"},
+            {"role": "user", "content": "ticker MSFT"},
+            {"role": "user", "content": "propose strategies"},
+        ]
+        # The category and the correction are on the verdict, not the trace, so
+        # promoting one without them produced a task the redaction gate refuses.
+        assert session.sent[1][3]["category"] == "wrong_answer"
+        assert session.sent[1][3]["expectations"] == {
+            "expected": "Strategies, with the disclaimer."
+        }
+
+    def test_promoting_one_turn_on_its_own_is_still_possible(self):
+        evals, agent7, session = agent(Reply({"taskId": "task"}))
+        row = Feedback(
+            feedback_id="f",
+            trace_id="t3",
+            session_id="s1",
+            trace_messages=json.dumps(
+                [{"role": "user", "content": "propose strategies"}]
+            ),
+        )
+
+        agent7.promote_feedback(row, conversation=False)
+
+        # No session read at all: the one turn, as the verdict's trace has it.
+        assert session.sent[0][1] == "/agent-evals/tasks/from-trace/t3"
+        assert json.loads(session.sent[0][3]["inputMessages"]) == [
+            {"role": "user", "content": "propose strategies"}
+        ]
+
+    def test_a_cluster_takes_a_correction_from_any_member(self):
+        # A cluster is one failure seen several times and only some of those
+        # verdicts carry a correction. Insisting on the representative's left
+        # the task with nothing to grade against, and the judge it is graded by
+        # reads the expected answer.
+        evals, agent7, session = agent(
+            Reply(
+                [
+                    {
+                        "clusterId": "c",
+                        "size": 2,
+                        "representativeTraceId": "t",
+                        "representativeFeedbackId": "f",
+                    }
+                ]
+            ),
+            Reply(
+                [
+                    {"triageId": "x", "feedbackId": "f"},
+                    {
+                        "triageId": "y",
+                        "feedbackId": "other",
+                        "normalizedCorrection": "Say it with the disclaimer.",
+                    },
+                ]
+            ),
+            Reply({"count": 1, "items": [{"feedbackId": "f", "traceId": "t"}]}),
+            Reply({"taskId": "task"}),
+            Reply(None),
+        )
+        [cluster] = agent7.clusters()
+
+        agent7.promote_cluster(cluster)
+
+        assert session.sent[3][3]["expectations"] == {
+            "expected": "Say it with the disclaimer."
+        }
 
     def test_dismiss_rename_and_reopen(self):
         evals, agent7, session = agent(Reply(None), Reply(None), Reply(None))

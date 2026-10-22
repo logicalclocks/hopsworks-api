@@ -356,7 +356,14 @@ class Agent:
 
     @public
     def conversation(self, session_id: str) -> list[dict[str, str]]:
-        """The conversation as the user had it: one user and one assistant message per turn."""
+        """The conversation as the user had it, one entry per turn.
+
+        Each entry is ``{"trace_id": ..., "user": ..., "assistant": ...}`` --
+        the turn's two sides already paired, which is the shape a reader of a
+        conversation wants. Not ``role``/``content``: that is what
+        :meth:`session` gives, one message per element, and pairing those is
+        what this does.
+        """
         turns: list[dict[str, str]] = []
         previous: list[dict[str, Any]] = []
         for trace in self.session(session_id):
@@ -584,8 +591,22 @@ class Agent:
                 ),
                 None,
             )
-            if representative and representative.normalized_correction:
-                expectations = {"expected": representative.normalized_correction}
+            corrected = next(
+                # The representative's own correction first, then any member's.
+                # A cluster is one failure seen several times and only some of
+                # those verdicts carry a correction, so insisting on the
+                # representative's produced a task with nothing to grade
+                # against -- and the judge it is graded by reads the expected
+                # answer, so the task was ungradable from the moment it existed.
+                (
+                    m.normalized_correction
+                    for m in [representative, *members]
+                    if m is not None and m.normalized_correction
+                ),
+                None,
+            )
+            if corrected:
+                expectations = {"expected": corrected}
         task = self._client.tasks.promote(
             self.id,
             cluster.representative_trace_id,
@@ -594,11 +615,67 @@ class Agent:
             # what it is given, and the redaction gate then refuses to confirm a
             # task with nothing in it -- so the cluster became a row nobody
             # could ever put in a suite.
-            question=self._asked_in(cluster.representative_feedback_id) or None,
+            # Every user turn up to the one that went wrong, not only that turn:
+            # a failure on the fourth turn cannot be reproduced by asking the
+            # fourth question of a fresh agent. The platform stores what it is
+            # given and does not go back to the transcript, so a promotion with
+            # no question at all produces a task the redaction gate then refuses
+            # to confirm -- a cluster nobody could ever put in a suite.
+            question=self._asked_up_to(cluster.representative_feedback_id) or None,
             expectations=expectations,
         )
         self.mark_cluster_promoted(cluster, task)
         return task
+
+    @public
+    def promote_feedback(
+        self,
+        feedback: Feedback | str,
+        *,
+        conversation: bool = True,
+        expectations: dict[str, str] | None = None,
+    ) -> Task:
+        """One reviewer's verdict as a task, with what it was about and what it expected.
+
+        What ``tasks.promote`` cannot do on its own: it stores the content it is
+        handed, and the question, the correction and the category are all on the
+        feedback row rather than on the trace. Promoting a verdict meant reading
+        those out and passing them yourself, and promoting it with no arguments
+        produced a task with no content and no expectation -- one the redaction
+        gate refuses, so it could never reach a suite.
+
+        ``conversation`` carries every user turn up to the one the verdict is
+        about; pass False for the failing turn alone, which is right when the
+        turn stands on its own and wrong when it depends on what came before.
+
+        ``feedback.promoted_task_id`` says whether a verdict has already been
+        promoted, through its cluster or otherwise. This does not check it: two
+        reviewers' verdicts on one trace are two tasks on purpose.
+        """
+        row = self._feedback_row(feedback)
+        if row is None:
+            raise ValueError(f"no such feedback: {feedback}")
+        if expectations is None:
+            expectations = (
+                {"expected": row.corrected_answer} if row.corrected_answer else {}
+            )
+        return self._client.tasks.promote(
+            self.id,
+            row.trace_id,
+            question=(self._asked_up_to(row) if conversation else row.questions)
+            or None,
+            category=row.issue_category or None,
+            expectations=expectations,
+        )
+
+    def _feedback_row(self, feedback: Feedback | str) -> Feedback | None:
+        if isinstance(feedback, Feedback):
+            return feedback
+        try:
+            rows = self.feedback(feedback_id=feedback, limit=1).feedback
+        except AgentServingError:
+            return None
+        return rows[0] if rows else None
 
     def _asked_in(self, feedback_id: str | None) -> list[str]:
         """The user's turns in the trace one verdict is about.
@@ -609,11 +686,45 @@ class Agent:
         """
         if not feedback_id:
             return []
-        try:
-            rows = self.feedback(feedback_id=feedback_id, limit=1).feedback
-        except AgentServingError:
+        row = self._feedback_row(feedback_id) if feedback_id else None
+        return row.questions if row else []
+
+    def _asked_up_to(self, feedback: Feedback | str | None) -> list[str]:
+        """Every user turn of the conversation up to and including that verdict's.
+
+        A conversation is several traces sharing a session id, and a verdict is
+        about one of them -- so the turn's own trace carries one question and
+        the ones that set it up are in the traces before it. Reading only the
+        verdict's trace made a four-turn failure into a one-turn task that asks
+        the last question of an agent that was never told the first three.
+
+        Falls back to that one turn when the trace names no session or the
+        session cannot be read: a task with its last question is worth more than
+        no task at all.
+        """
+        row = self._feedback_row(feedback) if feedback else None
+        if row is None:
             return []
-        return rows[0].questions if rows else []
+        if not row.session_id:
+            return row.questions
+        try:
+            traces = self.session(row.session_id)
+        except AgentServingError:
+            return row.questions
+        asked: list[str] = []
+        for trace in traces:
+            for message in trace.conversation:
+                if message.get("role") == "user":
+                    content = str(message.get("content") or "")
+                    if content and content not in asked:
+                        asked.append(content)
+            if trace.trace_id == row.trace_id:
+                break
+        else:
+            # The verdict's own trace was not in the session listing, so the
+            # turns above are some other conversation's.
+            return row.questions
+        return asked or row.questions
 
     def _decide_cluster(self, cluster: Cluster | str, **params: Any) -> None:
         cluster_id = cluster.cluster_id if isinstance(cluster, Cluster) else cluster
