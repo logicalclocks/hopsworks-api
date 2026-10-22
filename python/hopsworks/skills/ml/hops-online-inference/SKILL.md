@@ -171,6 +171,44 @@ An online inference pipeline is a 24/7 operational service: make it robust to mi
 
 Total latency is the sum of every step (feature lookup + ODTs + MDTs + `model.predict` + logging + network), so define an SLO (p99 latency, allowed downtime) on the deployment API. For the lowest latency use a single predictor container (a separate transformer container adds a network hop), keep ODTs as low-latency Python UDFs at request time, and rely on the asynchronous logging below.
 
+### Where the time goes
+
+Turn tracing on to time the feature view's transformations; with it off the deployment runs no timing code at all:
+
+```python
+deployment = model.deploy(tracing={"enabled": True, "sampling_percentage": 10})
+```
+
+Every request is then counted on the predictor's Prometheus endpoint:
+
+| Metric | Labels | Meaning |
+|---|---|---|
+| `hopsworks_transformations_calls_total`, `hopsworks_transformations_seconds_total` | `feature_view`, `feature_view_version`, `kind` | Count and total time of all on-demand (`kind="on_demand"`) or all model-dependent (`kind="model_dependent"`) transformations of one feature vector; the average is `rate(seconds) / rate(calls)` |
+| `hopsworks_transformations_window_min_seconds`, `..._window_max_seconds` | the above | Fastest and slowest feature vector in the last complete 60 s window |
+| `hopsworks_transformation_function_calls_total`, `..._seconds_total`, `..._errors_total`, `..._window_min_seconds`, `..._window_max_seconds` | the above, `transformation`, `outputs` | The same per transformation function; `outputs` names it, since one function can be attached to several features |
+| `hopsworks_transformation_dag_edge` | the above, `depends_on` | 1 per edge of the transformation DAG; `depends_on` is the `outputs` of the function it consumes, empty for a function fed only by features |
+
+The Grafana deployment dashboard ("View in Grafana" in the Metrics section of the deployment page) charts them under "Feature view transformations".
+
+A sample of the requests (10% unless `sampling_percentage` says otherwise) is also traced, and the deployment page shows them in a Transformations section: `predict` > `feature_lookup` > `transformations` (first row only) > `on_demand_transformations` > one span per function in DAG order, then `model_dependent_transformations`, then `model_predict` and `feature_log`, with the background `feature_log_write` and `feature_view.log` in the same trace.
+Traces are written to the online store through a collector sidecar, so keep the sampling low on a busy deployment.
+
+---|---|---|
+| `hopsworks_transformations_duration_seconds` | `feature_view`, `feature_view_version`, `kind` | All on-demand (`kind="on_demand"`) or all model-dependent (`kind="model_dependent"`) transformations of one feature vector |
+| `hopsworks_transformation_function_duration_seconds` | the above, `transformation`, `outputs` | One transformation function on one feature vector; `outputs` names it, since one function can be attached to several features |
+| `hopsworks_transformation_function_errors_total` | the above | Calls that raised |
+| `hopsworks_transformation_dag_edge` | the above, `depends_on` | 1 per edge of the transformation DAG; `depends_on` is the `outputs` of the function it consumes, empty for a function fed only by features |
+
+The Grafana deployment dashboard ("View in Grafana" in the Metrics section of the deployment page) charts them under "Feature view transformations".
+
+To see one request's nested calls with their durations (`predict` > `feature_lookup` > `transformations` > `on_demand_transformations` > one span per function in DAG order, then `model_dependent_transformations`, then `model_predict`), turn tracing on; the deployment page then shows a Transformations section:
+
+```python
+deployment = model.deploy(tracing={"enabled": True, "sampling_percentage": 10})
+```
+
+Tracing adds a collector sidecar and writes each traced request to the online store, so sample a high-traffic deployment; a batch request traces its first ten rows and times all of them.
+
 ---
 
 ## Writing predictor.py Files

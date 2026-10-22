@@ -34,6 +34,9 @@ class DeploymentTracingConfig:
             compute trace cost metrics.
         output_token_price_per_million_tokens: Optional output token price used to
             compute trace cost metrics.
+        sampling_percentage: Percentage of a model deployment's requests to trace, from 0 to 100.
+            `None` traces 10%; every request is still counted in the transformation metrics.
+            Agent deployments ignore it.
     """
 
     STORAGE_ONLINE = "online"
@@ -47,8 +50,12 @@ class DeploymentTracingConfig:
         otel_tracing_storage: str | None = STORAGE_ONLINE,
         input_token_price_per_million_tokens: float | None = None,
         output_token_price_per_million_tokens: float | None = None,
+        sampling_percentage: int | None = None,
     ):
         self._enabled = enabled
+        self._sampling_percentage = self._validate_sampling_percentage(
+            sampling_percentage
+        )
         self._otel_tracing_storage = self._validate_otel_tracing_storage(
             otel_tracing_storage
         )
@@ -76,6 +83,14 @@ class DeploymentTracingConfig:
                 )
             )
         return otel_tracing_storage
+
+    @classmethod
+    def _validate_sampling_percentage(cls, sampling_percentage: int | None):
+        if sampling_percentage is not None and not 0 <= sampling_percentage <= 100:
+            raise ValueError(
+                f"sampling_percentage must be between 0 and 100, got {sampling_percentage}."
+            )
+        return sampling_percentage
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -118,6 +133,9 @@ class DeploymentTracingConfig:
                 config, "otel_output_token_price_per_million"
             )
         kwargs["output_token_price_per_million_tokens"] = output_price
+        kwargs["sampling_percentage"] = util._extract_field_from_json(
+            config, "sampling_percentage"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -140,6 +158,8 @@ class DeploymentTracingConfig:
             json["otelOutputTokenPricePerMillion"] = (
                 self._output_token_price_per_million_tokens
             )
+        if self._sampling_percentage is not None:
+            json["samplingPercentage"] = self._sampling_percentage
         return json
 
     @public
@@ -192,6 +212,18 @@ class DeploymentTracingConfig:
             output_token_price_per_million_tokens
         )
 
+    @public
+    @property
+    def sampling_percentage(self):
+        """Percentage of a model deployment's requests that are traced; `None` traces 10%."""
+        return self._sampling_percentage
+
+    @sampling_percentage.setter
+    def sampling_percentage(self, sampling_percentage: int | None):
+        self._sampling_percentage = self._validate_sampling_percentage(
+            sampling_percentage
+        )
+
     def __repr__(self):
         return (
             "DeploymentTracingConfig("
@@ -200,5 +232,6 @@ class DeploymentTracingConfig:
             f"input_token_price_per_million_tokens: "
             f"{self._input_token_price_per_million_tokens!r}, "
             f"output_token_price_per_million_tokens: "
-            f"{self._output_token_price_per_million_tokens!r})"
+            f"{self._output_token_price_per_million_tokens!r}, "
+            f"sampling_percentage: {self._sampling_percentage!r})"
         )

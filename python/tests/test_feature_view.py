@@ -746,6 +746,19 @@ class TestFeatureView:
         assert call_kwargs["predictions"] is predictions_df
         assert call_kwargs["transformed_features"] is None
 
+    def test_log_is_a_span_of_the_request_that_calls_it(self, mocker, span_exporter):
+        trace = pytest.importorskip("opentelemetry.trace")
+        fv = self._logging_feature_view(mocker, legacy=False)
+
+        with trace.get_tracer("test").start_as_current_span("predict"):
+            fv.log(pd.DataFrame({"fg1_feature": [0.1]}))
+
+        spans = {s.name: s for s in span_exporter.get_finished_spans()}
+        assert (
+            spans["feature_view.log"].parent.span_id == spans["predict"].context.span_id
+        )
+        fv._feature_view_engine._log_features.assert_called_once()
+
     def test_log_positional_predictions_reroute_on_legacy_three_args(self, mocker):
         # Arrange
         fv = self._logging_feature_view(mocker, legacy=True)

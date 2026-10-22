@@ -30,7 +30,7 @@ from typing import (
 import humps
 import pandas as pd
 from hopsworks_apigen import public
-from hopsworks_common import client
+from hopsworks_common import client, tracing
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
@@ -5800,31 +5800,38 @@ class FeatureView:
                     "explicitly as `log(features, predictions=...)`.",
                     stacklevel=1,
                 )
-        return self._feature_view_engine._log_features(
-            self,
-            feature_logging=self.feature_logging,
-            logs=logging_data,
-            untransformed_features=untransformed_features,
-            transformed_features=transformed_features,
-            predictions=predictions,
-            inference_helper_columns=inference_helper_columns,
-            request_parameters=request_parameters,
-            event_time=event_time,
-            serving_keys=serving_keys,
-            request_id=request_id,
-            write_options=write_options,
-            training_dataset_version=(
-                training_dataset_version
-                or self._serving_training_dataset_version
-                or (model.training_dataset_version if model else None)
-                or self.get_last_accessed_training_dataset()
-            ),
-            extra_logging_features=extra_logging_features,
-            hsml_model=model,
-            logger=self._feature_logger,
-            model_name=model_name,
-            model_version=model_version,
-        )
+        with tracing._child_span(
+            "feature_view.log",
+            {
+                "hopsworks.feature_view.name": self.name,
+                "hopsworks.feature_view.version": str(self.version),
+            },
+        ):
+            return self._feature_view_engine._log_features(
+                self,
+                feature_logging=self.feature_logging,
+                logs=logging_data,
+                untransformed_features=untransformed_features,
+                transformed_features=transformed_features,
+                predictions=predictions,
+                inference_helper_columns=inference_helper_columns,
+                request_parameters=request_parameters,
+                event_time=event_time,
+                serving_keys=serving_keys,
+                request_id=request_id,
+                write_options=write_options,
+                training_dataset_version=(
+                    training_dataset_version
+                    or self._serving_training_dataset_version
+                    or (model.training_dataset_version if model else None)
+                    or self.get_last_accessed_training_dataset()
+                ),
+                extra_logging_features=extra_logging_features,
+                hsml_model=model,
+                logger=self._feature_logger,
+                model_name=model_name,
+                model_version=model_version,
+            )
 
     @public
     def get_log_timeline(

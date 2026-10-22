@@ -1417,6 +1417,35 @@ def test_coalesced_requests_share_one_reservation(monkeypatch):
     worker._close(1)
 
 
+def test_a_queued_log_write_joins_the_trace_of_its_request(span_exporter):
+    trace = pytest.importorskip("opentelemetry.trace")
+    from hsml.default_predictor import _LogWorker
+
+    worker = _LogWorker(lambda items: None, 1000)
+    with trace.get_tracer("test").start_as_current_span("predict") as request:
+        assert worker._enqueue(([{"a": 1}, {"a": 2}], [[1], [2]], None, "r", None))
+    worker._wait(5)
+    worker._close(1)
+
+    [write] = [
+        s for s in span_exporter.get_finished_spans() if s.name == "feature_log_write"
+    ]
+    assert write.context.trace_id == request.get_span_context().trace_id
+    assert write.parent.span_id == request.get_span_context().span_id
+    assert write.attributes["hopsworks.rows"] == 2
+
+
+def test_a_log_write_outside_a_trace_records_no_span(span_exporter):
+    from hsml.default_predictor import _LogWorker
+
+    worker = _LogWorker(lambda items: None, 1000)
+    assert worker._enqueue(([{"a": 1}], [[1]], None, "r", None))
+    worker._wait(5)
+    worker._close(1)
+
+    assert span_exporter.get_finished_spans() == ()
+
+
 class TestAsyncPredict:
     """predict is a coroutine, and answers exactly as the blocking entry point does."""
 
@@ -1426,6 +1455,20 @@ class TestAsyncPredict:
     def test_predict_is_a_coroutine_function(self):
         assert inspect.iscoroutinefunction(dp.DefaultPredict.predict)
         assert not inspect.iscoroutinefunction(dp.DefaultPredict.predict_blocking)
+
+    def test_traces_the_lookup_and_the_prediction_under_the_request(
+        self, span_exporter
+    ):
+        trace = pytest.importorskip("opentelemetry.trace")
+
+        with trace.get_tracer("test").start_as_current_span("predict"):
+            asyncio.run(self._predictor().predict([{"cc_num": 1}]))
+
+        spans = {span.name: span for span in span_exporter.get_finished_spans()}
+        request = spans["predict"].context.span_id
+        assert spans["feature_lookup"].parent.span_id == request
+        assert spans["feature_lookup"].attributes["hopsworks.rows"] == 1
+        assert spans["model_predict"].parent.span_id == request
 
     def test_both_entry_points_answer_the_same(self):
         rows = [{"cc_num": 1}, {"cc_num": 2}]

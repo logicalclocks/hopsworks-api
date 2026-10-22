@@ -499,6 +499,7 @@ class TransformationFunctionEngine:
         request_parameters: dict[str, Any] | None = None,
         expected_features: set[str] | None = None,
         n_processes: int | None = None,
+        observer: Any = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Apply the transformation functions in the DAG to the passed data.
 
@@ -519,6 +520,7 @@ class TransformationFunctionEngine:
             n_processes: Number of worker processes for applying transformation functions in parallel.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine.
+            observer: A serving phase from `transformation_telemetry` that times each function of a dict or list of dicts; `None` runs them untimed.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
@@ -578,6 +580,7 @@ class TransformationFunctionEngine:
                 n_processes,
                 expected_features,
                 transformation_context,
+                observer,
             )
 
     @staticmethod
@@ -628,6 +631,7 @@ class TransformationFunctionEngine:
         n_processes: int | None,
         expected_features: set[str] | None,
         transformation_context: dict[str, Any] | None = None,
+        observer: Any = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Apply the transformations to a single dict or a list of dicts.
 
@@ -672,9 +676,9 @@ class TransformationFunctionEngine:
         if n_processes > 1:
             TransformationFunctionEngine._ensure_pool(n_processes)
             pool = TransformationFunctionEngine.__process_pool
-            TransformationFunctionEngine._schedule_dag(
-                execution_graph,
-                submit=lambda tf: pool.submit(
+
+            def submit(tf):
+                return pool.submit(
                     TransformationFunctionEngine._execute_udf,
                     udf=tf.hopsworks_udf,
                     data=task_inputs(tf),
@@ -682,10 +686,26 @@ class TransformationFunctionEngine:
                     engine_type=engine_type,
                     # A forked worker inherits whatever context the pool was forked under, and its initializer clears that, so the request's context travels with each task instead.
                     transformation_context=transformation_context,
-                ),
-                collect=merge,
+                )
+
+            collect = merge
+            if observer is not None:
+                started = {}
+                submit_untimed = submit
+
+                def submit(tf):
+                    # Timed from the scheduler, so a pooled function's duration includes shipping its inputs and result between processes.
+                    started[id(tf)] = observer._start()
+                    return submit_untimed(tf)
+
+                def collect(tf, result):
+                    observer._finish(tf, started.pop(id(tf)))
+                    merge(tf, result)
+
+            TransformationFunctionEngine._schedule_dag(
+                execution_graph, submit=submit, collect=collect
             )
-        else:
+        elif observer is None:
             for tf in execution_graph.nodes:
                 merge(
                     tf,
@@ -696,6 +716,21 @@ class TransformationFunctionEngine:
                         engine_type=engine_type,
                     ),
                 )
+        else:
+            for tf in execution_graph.nodes:
+                started = observer._start()
+                try:
+                    result = TransformationFunctionEngine._execute_udf(
+                        udf=tf.hopsworks_udf,
+                        data=task_inputs(tf),
+                        online=online,
+                        engine_type=engine_type,
+                    )
+                except BaseException as error:
+                    observer._finish(tf, started, error)
+                    raise
+                observer._finish(tf, started)
+                merge(tf, result)
 
         cleaned = [
             {k: v for k, v in row.items() if k not in dropped_features} for row in rows
