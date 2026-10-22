@@ -171,10 +171,10 @@ hops job stop telco-churn-usage-stream
 hops job stop telco-churn-usage-stream --force # if it stays in AGGREGATING_LOGS: ends it now, logs incomplete
 ```
 
-A stop lets the pods upload their logs first, which can take minutes (up to 20 for Spark);
+A stop of a Spark job lets its pods upload their logs first, which can take up to 20 minutes;
 the execution shows `AGGREGATING_LOGS` until then.
 `--force` (or `execution.stop(force=True)`) ends it at once and frees its resources,
-and the log files start with a note that they are incomplete.
+and its log files hold a note that they are incomplete.
 
 Hopsworks jobs have no restart policy. Whatever checks the system (`/hops verify`,
 `/hops status`) looks for a running execution and, when there is none, reports it
