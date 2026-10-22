@@ -13,10 +13,13 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import datetime
 import os
 import sys
 import types
+import zoneinfo
 from datetime import date
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest import mock
 
@@ -3247,6 +3250,47 @@ def test_insert_nested_naive_timestamp_into_utc_table(
     (row,) = DeltaTable(location).to_pyarrow_table().column("n").to_pylist()
     ts = row[0] if isinstance(row, list) else row["ts"]
     assert ts.isoformat() == "2026-10-21T11:30:00+00:00"
+
+
+STOCKHOLM = zoneinfo.ZoneInfo("Europe/Stockholm")
+
+
+@pytest.mark.parametrize(
+    "delta_type, values, expected",
+    [
+        (
+            {"type": "array", "elementType": "timestamp_ntz", "containsNull": True},
+            [[datetime.datetime(2026, 10, 21, 13, 30, tzinfo=STOCKHOLM)]],
+            [[datetime.datetime(2026, 10, 21, 11, 30)]],
+        ),
+        (
+            {"type": "array", "elementType": "decimal(7,0)", "containsNull": True},
+            [[Decimal("1234567.0"), Decimal("12")]],
+            [[Decimal("1234567"), Decimal("12")]],
+        ),
+        (
+            {"type": "array", "elementType": "timestamp", "containsNull": True},
+            [[datetime.datetime(2026, 10, 21, 11, 30)]],
+            [[datetime.datetime(2026, 10, 21, 11, 30, tzinfo=datetime.timezone.utc)]],
+        ),
+    ],
+    ids=["tz_timestamp", "decimal", "naive_into_utc"],
+)
+def test_insert_nested_polars_list_into_backend_made_table(
+    mocker, monkeypatch, tmp_path, delta_type, values, expected
+):
+    pl = pytest.importorskip("polars")
+    location = str(tmp_path / "fg")
+    _backend_made_table(location, [("id", "long"), ("n", delta_type)], [])
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+    from deltalake import DeltaTable
+
+    # polars to_arrow() gives large_list; 13:30 in Stockholm is 11:30 UTC.
+    df = pl.DataFrame({"id": [1], "n": values})
+
+    engine._write_delta_rs_dataset(df, operation="insert")
+
+    assert DeltaTable(location).to_pyarrow_table().column("n").to_pylist() == expected
 
 
 @pytest.mark.parametrize("cdf, expected", [(False, "false"), ("False", "false")])

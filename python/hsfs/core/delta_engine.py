@@ -1078,20 +1078,31 @@ class DeltaEngine:
         type (unit and time zone), at the top level and inside lists and
         structs. Every other pair, and every extra or missing struct field,
         keeps the batch type so delta-rs reports it as before. delta-rs
-        reports every list as `list`, so a `large_list` batch is left as is.
+        reports every list as `list` and accepts `large_list` and
+        `fixed_size_list` batches, so a list keeps the batch's container type.
         """
         import pyarrow as pa
+
+        def is_any_list(t):
+            return (
+                pa.types.is_list(t)
+                or pa.types.is_large_list(t)
+                or pa.types.is_fixed_size_list(t)
+            )
 
         if pa.types.is_decimal(source) and pa.types.is_decimal(target):
             return target
         if pa.types.is_timestamp(source) and pa.types.is_timestamp(target):
             return target
-        if pa.types.is_list(source) and pa.types.is_list(target):
-            return pa.list_(
-                source.value_field.with_type(
-                    DeltaEngine._reconcile_type(source.value_type, target.value_type)
-                )
+        if is_any_list(source) and is_any_list(target):
+            value_field = source.value_field.with_type(
+                DeltaEngine._reconcile_type(source.value_type, target.value_type)
             )
+            if pa.types.is_large_list(source):
+                return pa.large_list(value_field)
+            if pa.types.is_fixed_size_list(source):
+                return pa.list_(value_field, source.list_size)
+            return pa.list_(value_field)
         if pa.types.is_struct(source) and pa.types.is_struct(target):
             fields = []
             for field in source:
