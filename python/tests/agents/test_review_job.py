@@ -81,7 +81,10 @@ class FakeGroup:
         self.features = []
         self.frames = []
 
-    def insert(self, frame, write_options=None):
+    def insert(self, frame, storage=None, write_options=None):  # noqa: ARG002
+        # Online only, or the write starts a Spark materialization job per
+        # insert against the nodes the agent is running on.
+        assert storage == "online", f"not an online-only write: storage={storage!r}"
         self.frames.append(frame)
 
 

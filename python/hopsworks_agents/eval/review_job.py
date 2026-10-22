@@ -448,7 +448,10 @@ def _write_clusters(feature_store: Any, clusters: Sequence[Cluster]) -> None:
             "that failed, then run the review again"
         )
     frame = pd.DataFrame([c._to_row(now) for c in clusters])
-    group.insert(_match_schema(group, frame), write_options={"mode": "append"})
+    # Online only: an insert that is not starts this group's offline
+    # materialization job, a Spark driver and executors per write, and the
+    # clusters are read back from the online store.
+    group.insert(_match_schema(group, frame), storage="online")
     log.info("wrote %d clusters to %s", len(clusters), CLUSTERS_FG)
 
 
@@ -467,9 +470,8 @@ def _write_triage(feature_store: Any, rows: Sequence[dict[str, Any]]) -> None:
             "Hopsworks provisions it when a review job is started -- check the server log for "
             "why that failed, then run the review again"
         )
-    group.insert(
-        _match_schema(group, pd.DataFrame(list(rows))), write_options={"mode": "append"}
-    )
+    # Online only, as for the clusters above.
+    group.insert(_match_schema(group, pd.DataFrame(list(rows))), storage="online")
     log.info("wrote %d rows to %s", len(rows), TRIAGE_FG)
 
 

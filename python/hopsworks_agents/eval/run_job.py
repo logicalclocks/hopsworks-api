@@ -193,10 +193,9 @@ def _write_trials(feature_store: Any, trials: Sequence[Any]) -> None:
         if not batch:
             continue
         group = feature_store.get_feature_group(name, 1)
-        group.insert(
-            _match_schema(group, pd.DataFrame(batch)),
-            write_options={"mode": "append"},
-        )
+        # Online only, so no offline materialization job is started -- see the
+        # note on the run-metrics write below.
+        group.insert(_match_schema(group, pd.DataFrame(batch)), storage="online")
         log.info("wrote %d rows to %s", len(batch), name)
 
 
@@ -300,10 +299,15 @@ def _write_results(
         if not rows:
             continue
         group = feature_store.get_feature_group(name, 1)
-        group.insert(
-            _match_schema(group, pd.DataFrame(rows)),
-            write_options={"mode": "append"},
-        )
+        # Online only, and deliberately: an insert that is not online-only
+        # starts the feature group's offline materialization job, which is a
+        # Spark driver and its executors per write. These rows are read back
+        # over JDBC from the online store -- nothing reads the offline copy --
+        # so that was a cluster's worth of work per run for an output nobody
+        # looks at, scheduled against the same nodes as the agent pods it is
+        # recording. `mode: append` went with it: it configures the Delta
+        # writer, which an online-only write never reaches.
+        group.insert(_match_schema(group, pd.DataFrame(rows)), storage="online")
         log.info("wrote %d rows to %s", len(rows), name)
 
 

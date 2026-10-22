@@ -339,7 +339,10 @@ class TestTheJobDoesNotRedoItsWork:
 
             return Frame(self.rows)
 
-        def insert(self, frame, write_options=None):  # noqa: ARG002
+        def insert(self, frame, storage=None, write_options=None):  # noqa: ARG002
+            # Online only, or the write starts a Spark materialization job per
+            # run against the nodes the agent is running on.
+            assert storage == "online", f"not an online-only write: storage={storage!r}"
             self.inserted.append(frame)
 
     class FakeStore:
