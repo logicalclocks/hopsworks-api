@@ -238,7 +238,9 @@ class PartitionSelection:
             non_null = [v for v in values if v is not None]
             parts = []
             if non_null:
-                literals = ", ".join(self._sql_literal(v) for v in non_null)
+                literals = ", ".join(
+                    self._sql_literal(v, self._types[column]) for v in non_null
+                )
                 parts.append(f"{identifier} IN ({literals})")
             if None in values:
                 parts.append(f"{identifier} IS NULL")
@@ -246,11 +248,13 @@ class PartitionSelection:
         return " AND ".join(clauses)
 
     @staticmethod
-    def _sql_literal(value: Any) -> str:
+    def _sql_literal(value: Any, column_type: str) -> str:
         if isinstance(value, bool):
             return "true" if value else "false"
         if isinstance(value, int):
-            return str(value)
+            # A bare integer is an Int64 to DataFusion, and delta-rs refuses to compare
+            # it with a narrower partition column.
+            return f"CAST({value} AS {column_type.upper()})"
         if isinstance(value, datetime.date):
             return f"CAST('{value.isoformat()}' AS DATE)"
         return "'" + value.replace("'", "''") + "'"

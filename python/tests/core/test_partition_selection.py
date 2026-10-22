@@ -183,7 +183,32 @@ class TestPartitionSelection:
         predicate = selection._sql_predicate()
 
         # Assert
-        assert predicate == '"n" IN (1, 2) AND "flag" IN (true) AND "region" IS NULL'
+        assert predicate == (
+            '"n" IN (CAST(1 AS INT), CAST(2 AS INT)) AND "flag" IN (true) '
+            'AND "region" IS NULL'
+        )
+
+    @pytest.mark.parametrize(
+        ("column_type", "sql_type"),
+        [
+            ("tinyint", "TINYINT"),
+            ("smallint", "SMALLINT"),
+            ("int", "INT"),
+            ("integer", "INTEGER"),
+            ("bigint", "BIGINT"),
+        ],
+    )
+    def test_sql_predicate_casts_integers_to_the_column_type(
+        self, column_type, sql_type
+    ):
+        # Arrange
+        selection = PartitionSelection({"n": [-3]}, {"n": column_type})
+
+        # Act
+        predicate = selection._sql_predicate()
+
+        # Assert
+        assert predicate == f'"n" IN (CAST(-3 AS {sql_type}))'
 
     def test_spark_condition_ands_columns_and_ors_null(self, mocker):
         # Arrange
