@@ -5408,7 +5408,7 @@ class FeatureGroup(FeatureGroupBase):
 
         Returns:
             The commit of the delete, or `None` when no existing partition was selected.
-            Its `rows_deleted` is `None` where the format does not record how many rows the dropped files held, which is always the case on HUDI.
+            Its `rows_deleted` is `None` where the delete does not report how many rows the dropped files held: always on HUDI, and on DELTA with the Python engine.
 
         Raises:
             hopsworks.client.exceptions.FeatureStoreException:

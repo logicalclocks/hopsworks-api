@@ -229,15 +229,6 @@ class HudiEngine:
                 f"complete a {self.HUDI_REPLACE_COMMIT_ACTION} for partitions {paths}, "
                 f"but the latest completed instant is {after}."
             )
-        replaced = sorted(self._replaced_partitions(location, after))
-        if replaced != sorted(paths):
-            raise FeatureStoreException(
-                f"delete_partitions on {self._feature_group.name} expected Hudi "
-                f"instant {after.getCompletionTime()} to replace partitions "
-                f"{sorted(paths)}, but it replaced {replaced}. Another writer may "
-                "have committed after the delete: check the table's timeline before "
-                "retrying."
-            )
         fg_commit = self._get_last_commit_metadata(self._spark_context, location)
         fg_commit.rows_inserted = 0
         fg_commit.rows_updated = 0
@@ -296,24 +287,6 @@ class HudiEngine:
         return jvm.org.apache.hudi.HoodieDataSourceHelpers.latestCompletedCommit(
             fs, location
         )
-
-    def _replaced_partitions(self, location: str, instant) -> list[str]:
-        """The partition paths whose file groups a replacecommit *instant* retired."""
-        jvm = self._spark_context._jvm
-        fs = jvm.org.apache.hadoop.fs.FileSystem.get(
-            self._spark_context._jsc.hadoopConfiguration()
-        )
-        timeline = (
-            jvm.org.apache.hudi.HoodieDataSourceHelpers.allCompletedCommitsCompactions(
-                fs, location
-            )
-        )
-        metadata = (
-            jvm.org.apache.hudi.common.table.timeline.TimelineUtils.getCommitMetadata(
-                instant, timeline
-            )
-        )
-        return list(metadata.getPartitionToReplaceFileIds().keySet())
 
     # endregion
 

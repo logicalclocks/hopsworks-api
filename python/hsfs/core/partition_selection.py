@@ -176,8 +176,7 @@ class PartitionSelection:
     def _matches(self, stored: dict[str, Any]) -> bool:
         """Whether a partition with the stored values *stored* is selected.
 
-        *stored* maps partition column names to the values as storage reports them:
-        typed values from a Delta add action, or path segment strings from Hudi.
+        *stored* maps partition column names to their path segment strings.
         Columns of *stored* that are not selected on are ignored.
         """
         for column, values in self._columns.items():
@@ -185,19 +184,17 @@ class PartitionSelection:
                 return False
         return True
 
-    def _from_stored(self, column: str, raw: Any) -> Any:
+    def _from_stored(self, column: str, raw: str | None) -> Any:
         if raw is None or raw in _NULL_PARTITION_SEGMENTS:
             return None
         column_type = self._types[column]
         try:
             if column_type == "string":
-                return str(raw)
+                return raw
             if column_type == "boolean":
-                return raw if isinstance(raw, bool) else str(raw).lower() == "true"
+                return raw.lower() == "true"
             if column_type == "date":
-                if isinstance(raw, datetime.date):
-                    return raw
-                return datetime.date.fromisoformat(str(raw))
+                return datetime.date.fromisoformat(raw)
             return int(raw)
         except ValueError:
             # A stored partition value that does not parse as the column type cannot

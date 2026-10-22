@@ -473,7 +473,7 @@ fg.insert(reloaded_df, operation="insert")
 - **Offline only:** the online store keeps the rows; use `remove_rows(df, storage="online")` for those.
 - **Two commits:** readers between the delete and the insert see the partitions missing, and a failed insert leaves them deleted. Time travel to before the delete still returns the old rows until vacuum / snapshot expiry / the Hudi cleaner removes the files.
 - **Stream FGs:** run the materialization job before deleting, or rows of those partitions not yet materialized are written back afterwards.
-- Returns the commit, or `None` when no existing partition matched. `rows_deleted` is `None` where the format does not record the count (always on HUDI).
+- Returns the commit, or `None` when no existing partition matched. `rows_deleted` is `None` where the delete does not report the count (always on HUDI, and on DELTA with the Python engine).
 
 ---
 

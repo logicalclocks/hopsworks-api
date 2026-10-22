@@ -274,7 +274,6 @@ class TestPartitionSelection:
         ("stored", "expected"),
         [
             ({"day": "2026-09-02", "region": "eu"}, True),
-            ({"day": datetime.date(2026, 9, 2), "region": "eu"}, True),
             ({"day": "2026-09-02", "region": "us"}, False),
             ({"day": "__HIVE_DEFAULT_PARTITION__", "region": "eu"}, True),
             ({"day": "not-a-date", "region": "eu"}, False),

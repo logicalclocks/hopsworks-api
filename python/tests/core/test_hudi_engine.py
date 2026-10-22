@@ -781,9 +781,7 @@ class TestHudiEngine:
         instant.getCompletionTime.return_value = completion_time
         return instant
 
-    def _hudi_partition_delete(
-        self, mocker, after_action="replacecommit", replaced=("default", "2026-09-02")
-    ):
+    def _hudi_partition_delete(self, mocker, after_action="replacecommit"):
         from hsfs.core.partition_selection import PartitionSelection
 
         spark_session = mocker.MagicMock()
@@ -816,9 +814,6 @@ class TestHudiEngine:
                 self._instant(mocker, "commit", "20260901"),
                 self._instant(mocker, after_action, "20260902"),
             ],
-        )
-        mocker.patch.object(
-            h_engine, "_replaced_partitions", return_value=list(replaced)
         )
         mocker.patch.object(h_engine, "_migrate_table")
         mocker.patch.object(
@@ -877,16 +872,3 @@ class TestHudiEngine:
         # Act & Assert
         with pytest.raises(FeatureStoreException, match="replacecommit"):
             h_engine._delete_partitions(selection)
-
-    def test_delete_partitions_rejects_a_replacecommit_of_other_partitions(
-        self, mocker
-    ):
-        # Arrange: a concurrent clustering commit completed after the delete.
-        h_engine, _, selection = self._hudi_partition_delete(
-            mocker, replaced=("2026-09-01",)
-        )
-
-        # Act & Assert
-        with pytest.raises(FeatureStoreException, match="but it replaced"):
-            h_engine._delete_partitions(selection)
-        h_engine._get_last_commit_metadata.assert_not_called()
