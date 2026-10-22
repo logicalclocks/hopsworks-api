@@ -3802,7 +3802,10 @@ class TestSpark:
     @staticmethod
     def _split_keys(result):
         return {
-            name: {(r["id"], r["joined"]) for r in split_df.select("id", "joined").collect()}
+            name: {
+                (r["id"], r["joined"])
+                for r in split_df.select("id", "joined").collect()
+            }
             for name, split_df in result.items()
         }
 
@@ -3859,7 +3862,7 @@ class TestSpark:
 
         # Assert
         assert self._split_keys(spark_result) == {
-            name: set(zip(split_df["id"], split_df["joined"]))
+            name: set(zip(split_df["id"], split_df["joined"], strict=True))
             for name, split_df in pandas_result.items()
         }
 

@@ -1294,9 +1294,14 @@ class TestFeatureView:
         assert [(t.name, t.value) for t in td._tags] == [("team", "fraud")]
 
     @pytest.mark.parametrize(
-        "method", ["training_data", "train_test_split", "train_validation_test_split"]
+        ("method", "sizes"),
+        [
+            ("training_data", {}),
+            ("train_test_split", {"test_size": 0.2}),
+            ("train_validation_test_split", {"validation_size": 0.2, "test_size": 0.2}),
+        ],
     )
-    def test_in_memory_create_passes_seed(self, mocker, method):
+    def test_in_memory_create_passes_seed(self, mocker, method, sizes):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine._get_type", return_value="python")
@@ -1314,7 +1319,7 @@ class TestFeatureView:
         mocker.patch.object(fv, "update_last_accessed_training_dataset")
 
         # Act
-        getattr(fv, method)(seed=7)
+        getattr(fv, method)(seed=7, **sizes)
 
         # Assert
         td = get_training_data.call_args.kwargs["training_dataset_obj"]

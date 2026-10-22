@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import logging
+import secrets
 import tempfile
 import warnings
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -1097,6 +1098,12 @@ class FeatureViewEngine:
         return [super(td.__class__, td) for td in tds]
 
     def _create_training_data_metadata(self, feature_view_obj, training_dataset_obj):
+        # The seed salts the hash split, so every read of the version gives the same split.
+        if training_dataset_obj.seed is None and any(
+            split.split_type == TrainingDatasetSplit.RANDOM_SPLIT
+            for split in training_dataset_obj.splits
+        ):
+            training_dataset_obj.seed = secrets.randbits(31)
         return self._feature_view_api._create_training_dataset(
             feature_view_obj.name, feature_view_obj.version, training_dataset_obj
         )

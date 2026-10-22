@@ -2530,7 +2530,7 @@ class TestPython:
         for name, split_df in result.items():
             if polars_frame:
                 split_df = split_df.to_pandas()
-            keys[name] = set(zip(split_df["id"], split_df["joined"]))
+            keys[name] = set(zip(split_df["id"], split_df["joined"], strict=True))
         return keys
 
     @staticmethod
@@ -3171,8 +3171,7 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        d = {"col1": [1, 2], "col2": [3, 4]}
-        df = pd.DataFrame(data=d)
+        df = pd.DataFrame({"col1": range(100), "col2": range(100, 200)})
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -3200,8 +3199,7 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        d = {"col1": [1, 2] * 10, "col2": [3, 4] * 10}
-        df = pd.DataFrame(data=d)
+        df = pd.DataFrame({"col1": range(100), "col2": range(100, 200)})
 
         td = training_dataset.TrainingDataset(
             name="test",
@@ -3228,8 +3226,7 @@ class TestPython:
 
         python_engine = python.Engine()
 
-        d = {"col1": [1, 2] * 10, "col2": [3, 4] * 10}
-        df = pd.DataFrame(data=d)
+        df = pd.DataFrame({"col1": range(100), "col2": range(100, 200)})
 
         td = training_dataset.TrainingDataset(
             name="test",

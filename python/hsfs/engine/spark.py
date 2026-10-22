@@ -85,6 +85,7 @@ try:
         FloatType,
         IntegerType,
         LongType,
+        MapType,
         ShortType,
         StringType,
         StructField,
@@ -117,6 +118,7 @@ from hsfs import (
     feature_view,
     training_dataset,
     training_dataset_feature,
+    training_dataset_split,
     util,
 )
 from hsfs import feature_group as fg_mod
@@ -143,6 +145,20 @@ if HAS_AVRO:
     import avro
 
 _logger = logging.getLogger(__name__)
+
+
+def _has_local_timestamp(data_type) -> bool:
+    if isinstance(data_type, TimestampType):
+        return True
+    if isinstance(data_type, ArrayType):
+        return _has_local_timestamp(data_type.elementType)
+    if isinstance(data_type, MapType):
+        return _has_local_timestamp(data_type.keyType) or _has_local_timestamp(
+            data_type.valueType
+        )
+    if isinstance(data_type, StructType):
+        return any(_has_local_timestamp(field.dataType) for field in data_type.fields)
+    return False
 
 
 class Engine:
@@ -1224,7 +1240,10 @@ class Engine:
                 to_df=to_df,
             )
         split_dataset = self._split_df(
-            query_obj, training_dataset, read_options=read_options
+            query_obj,
+            training_dataset,
+            read_options=read_options,
+            feature_view_obj=feature_view_obj,
         )
         for key in split_dataset:
             if training_dataset.coalesce:
@@ -1248,7 +1267,9 @@ class Engine:
             to_df=to_df,
         )
 
-    def _split_df(self, query_obj, training_dataset, read_options=None):
+    def _split_df(
+        self, query_obj, training_dataset, read_options=None, feature_view_obj=None
+    ):
         if read_options is None:
             read_options = {}
         if (
@@ -1293,14 +1314,47 @@ class Engine:
                 event_time,
             )
         return self._random_split(
-            query_obj.read(read_options=read_options), training_dataset
+            query_obj.read(read_options=read_options),
+            training_dataset,
+            feature_view_obj=feature_view_obj,
         )
 
-    def _random_split(self, dataset, training_dataset):
-        splits = [(split.name, split.percentage) for split in training_dataset.splits]
-        split_weights = [split[1] for split in splits]
-        split_dataset = dataset.randomSplit(split_weights, training_dataset.seed)
-        return {split[0]: split_dataset[i] for i, split in enumerate(splits)}
+    def _random_split(self, dataset, training_dataset, feature_view_obj=None):
+        splits = training_dataset.splits
+        columns = training_dataset_split._split_columns(
+            feature_view_obj, dataset.columns
+        )
+        # Spark hands TimestampType values to Python as naive wall time in the session zone.
+        session_tz = self._spark_session.conf.get("spark.sql.session.timeZone")
+        naive_tzs = [
+            session_tz if _has_local_timestamp(dataset.schema[name].dataType) else None
+            for name in columns
+        ]
+        salt = training_dataset_split._split_salt(training_dataset)
+        fractions = [split.percentage for split in splits]
+        split_column = f"_SPLIT_INDEX_{uuid.uuid4().hex}"
+
+        def assign_split(batches):
+            for batch in batches:
+                batch[split_column] = training_dataset_split._split_indexes(
+                    [batch[name].tolist() for name in columns],
+                    salt,
+                    fractions,
+                    naive_tzs,
+                )
+                yield batch
+
+        indexed = dataset.mapInPandas(
+            assign_split,
+            StructType(
+                dataset.schema.fields
+                + [StructField(split_column, IntegerType(), False)]
+            ),
+        )
+        return {
+            split.name: indexed.filter(col(split_column) == i).drop(split_column)
+            for i, split in enumerate(splits)
+        }
 
     def _time_series_split(
         self, training_dataset, dataset, event_time, drop_event_time=False

@@ -748,9 +748,7 @@ class TestFeatureViewEngine:
             (None, {"train": 0.6, "validation": 0.2, "test": 0.2}),
         ],
     )
-    def test_create_training_data_metadata_sends_seed(
-        self, mocker, user_seed, splits
-    ):
+    def test_create_training_data_metadata_sends_seed(self, mocker, user_seed, splits):
         # Arrange
         import json
 
