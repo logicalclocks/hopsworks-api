@@ -1069,14 +1069,59 @@ class DeltaEngine:
         )
 
     @staticmethod
+    def _reconcile_type(source, target):
+        """Return *source* with its decimals and timestamps set to the types of *target*.
+
+        Only decimal to decimal, and timestamp to timestamp of the same unit
+        with another time zone, take the table's type, at the top level and
+        inside lists and structs. Every other pair, and every extra or missing
+        struct field, keeps the batch type so delta-rs reports it as before.
+        """
+        import pyarrow as pa
+
+        if pa.types.is_decimal(source) and pa.types.is_decimal(target):
+            return target
+        if (
+            pa.types.is_timestamp(source)
+            and pa.types.is_timestamp(target)
+            and source.unit == target.unit
+        ):
+            return target
+        if pa.types.is_list(source) and pa.types.is_list(target):
+            return pa.list_(
+                source.value_field.with_type(
+                    DeltaEngine._reconcile_type(source.value_type, target.value_type)
+                )
+            )
+        if pa.types.is_large_list(source) and pa.types.is_large_list(target):
+            return pa.large_list(
+                source.value_field.with_type(
+                    DeltaEngine._reconcile_type(source.value_type, target.value_type)
+                )
+            )
+        if pa.types.is_struct(source) and pa.types.is_struct(target):
+            fields = []
+            for field in source:
+                index = target.get_field_index(field.name)
+                if index >= 0:
+                    field = field.with_type(
+                        DeltaEngine._reconcile_type(
+                            field.type, target.field(index).type
+                        )
+                    )
+                fields.append(field)
+            return pa.struct(fields)
+        return source
+
+    @staticmethod
     def _cast_to_table_schema(dataset, delta_table):
-        """Safe-cast the columns of *dataset* to the types of an existing Delta table.
+        """Safe-cast the decimals and timestamps of *dataset* to an existing Delta table's types.
 
         Decimal precision of the batch follows its values, and naive timestamps
         are UTC after `_prepare_df_for_delta`. A table written by the backend
-        holds decimal(p,0) and UTC timestamps, which delta-rs does not cast to.
-        The cast is safe, so an out-of-range or fractional decimal raises
-        `ArrowInvalid` instead of being truncated.
+        holds decimal(p,0) and may hold UTC timestamps, which delta-rs does not
+        cast to. The cast is safe, so an out-of-range or fractional decimal
+        raises `ArrowInvalid` instead of being truncated.
         """
         import pyarrow as pa
 
@@ -1086,11 +1131,11 @@ class DeltaEngine:
         columns = []
         for name, column in zip(dataset.column_names, dataset.columns, strict=True):
             index = table_schema.get_field_index(name)
-            target = table_schema.field(index).type if index >= 0 else column.type
-            # No cast exists: keep the column so delta-rs reports the schema
-            # mismatch as it does today.
-            if target != column.type:
-                with contextlib.suppress(pa.lib.ArrowNotImplementedError):
+            if index >= 0:
+                target = DeltaEngine._reconcile_type(
+                    column.type, table_schema.field(index).type
+                )
+                if target != column.type:
                     column = column.cast(target, safe=True)
             columns.append(column)
         return pa.Table.from_arrays(columns, names=dataset.column_names)

@@ -2995,8 +2995,8 @@ def _backend_made_table(location, fields, partition_columns):
     """Write the first Delta commit the way the backend does at create.
 
     Same actions and order as an empty hops-deltalake write: commitInfo,
-    protocol, metaData. Hive decimal(p) is decimal(p,0) and timestamp is the
-    Delta UTC `timestamp`.
+    protocol, metaData. Hive decimal(p) is decimal(p,0) and timestamp is
+    `timestamp_ntz`, which needs the timestampNtz table feature.
     """
     import json
     import uuid
@@ -3012,6 +3012,14 @@ def _backend_made_table(location, fields, partition_columns):
             for name, type_ in fields
         ],
     }
+    protocol = {"minReaderVersion": 1, "minWriterVersion": 4}
+    if "timestamp_ntz" in json.dumps(schema):
+        protocol = {
+            "minReaderVersion": 3,
+            "minWriterVersion": 7,
+            "readerFeatures": ["timestampNtz"],
+            "writerFeatures": ["timestampNtz", "changeDataFeed"],
+        }
     actions = [
         {
             "commitInfo": {
@@ -3029,7 +3037,7 @@ def _backend_made_table(location, fields, partition_columns):
                 },
             }
         },
-        {"protocol": {"minReaderVersion": 1, "minWriterVersion": 4}},
+        {"protocol": protocol},
         {
             "metaData": {
                 "id": str(uuid.uuid4()),
@@ -3065,15 +3073,22 @@ def _local_rs_engine(mocker, monkeypatch, location, partition_key=None):
     return engine
 
 
+@pytest.mark.parametrize(
+    "delta_type, arrow_type",
+    [
+        ("timestamp_ntz", pa.timestamp("us")),
+        ("timestamp", pa.timestamp("us", tz="UTC")),
+    ],
+)
 def test_first_insert_into_backend_made_table_casts_decimal_and_timestamp(
-    mocker, monkeypatch, tmp_path
+    mocker, monkeypatch, tmp_path, delta_type, arrow_type
 ):
     from decimal import Decimal
 
     location = str(tmp_path / "fg")
     _backend_made_table(
         location,
-        [("id", "long"), ("amount", "decimal(7,0)"), ("ts", "timestamp")],
+        [("id", "long"), ("amount", "decimal(7,0)"), ("ts", delta_type)],
         [],
     )
     engine = _local_rs_engine(mocker, monkeypatch, location)
@@ -3082,7 +3097,8 @@ def test_first_insert_into_backend_made_table_casts_decimal_and_timestamp(
     df = pd.DataFrame(
         {
             "id": [1, 2],
-            "amount": [Decimal("1234567"), Decimal("12")],
+            # Precision follows the values: this batch is decimal(8,1).
+            "amount": [Decimal("1234567.0"), Decimal("12")],
             "ts": pd.to_datetime(["2026-10-21 10:00:00", "2026-10-21 11:30:00"]),
         }
     )
@@ -3091,11 +3107,11 @@ def test_first_insert_into_backend_made_table_casts_decimal_and_timestamp(
 
     table = DeltaTable(location).to_pyarrow_table()
     assert table.schema.field("amount").type == pa.decimal128(7, 0)
-    assert table.schema.field("ts").type == pa.timestamp("us", tz="UTC")
+    assert table.schema.field("ts").type == arrow_type
     rows = sorted(table.to_pylist(), key=lambda r: r["id"])
     assert [r["amount"] for r in rows] == [Decimal("1234567"), Decimal("12")]
-    # Naive timestamps keep their wall time as UTC.
-    assert rows[1]["ts"].isoformat() == "2026-10-21T11:30:00+00:00"
+    # Naive timestamps keep their wall time, as UTC on a UTC table.
+    assert rows[1]["ts"].replace(tzinfo=None).isoformat() == "2026-10-21T11:30:00"
 
 
 @pytest.mark.parametrize("value", ["12345678", "1.5"])
@@ -3136,3 +3152,56 @@ def test_append_to_table_partitioned_in_feature_order(mocker, monkeypatch, tmp_p
     table = DeltaTable(location)
     assert table.metadata().partition_columns == ["i", "p"]
     assert table.to_pyarrow_table().num_rows == 2
+
+
+def test_insert_int_into_decimal_column_is_left_to_delta_rs(
+    mocker, monkeypatch, tmp_path
+):
+    from decimal import Decimal
+
+    location = str(tmp_path / "fg")
+    _backend_made_table(location, [("id", "long"), ("amount", "decimal(10,0)")], [])
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+    from deltalake import DeltaTable
+
+    df = pd.DataFrame({"id": [1], "amount": pd.Series([12], dtype="int64")})
+
+    engine._write_delta_rs_dataset(df, operation="insert")
+
+    assert DeltaTable(location).to_pyarrow_table().column("amount").to_pylist() == [
+        Decimal("12")
+    ]
+
+
+def test_insert_extra_nested_struct_field_still_raises(mocker, monkeypatch, tmp_path):
+    from decimal import Decimal
+
+    location = str(tmp_path / "fg")
+    struct = {
+        "type": "struct",
+        "fields": [
+            {"name": "a", "type": "string", "nullable": True, "metadata": {}},
+            {"name": "b", "type": "decimal(7,0)", "nullable": True, "metadata": {}},
+        ],
+    }
+    _backend_made_table(location, [("id", "long"), ("st", struct)], [])
+    engine = _local_rs_engine(mocker, monkeypatch, location)
+    from deltalake.exceptions import SchemaMismatchError
+
+    # The nested decimal is cast; the extra field "c" is kept for delta-rs.
+    df = pd.DataFrame({"id": [1], "st": [{"a": "x", "b": Decimal("1"), "c": 2}]})
+
+    with pytest.raises(SchemaMismatchError):
+        engine._write_delta_rs_dataset(df, operation="insert")
+
+
+def test_new_table_write_keeps_partition_by(mocker, monkeypatch, tmp_path):
+    location = str(tmp_path / "fg")
+    engine = _local_rs_engine(mocker, monkeypatch, location, partition_key=["p", "i"])
+    from deltalake import DeltaTable
+
+    df = pd.DataFrame({"id": [1], "i": pd.Series([1], dtype="int32"), "p": ["a"]})
+
+    engine._write_delta_rs_dataset(df, operation="upsert")
+
+    assert DeltaTable(location).metadata().partition_columns == ["p", "i"]

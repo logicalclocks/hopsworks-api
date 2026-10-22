@@ -2334,15 +2334,27 @@ class TestFeatureGroupEngine:
         )
         mock_save_empty_table.assert_not_called()
 
-    def _create_delta_fg(self, mocker, response_extra):
-        """Create a DELTA feature group on the python engine through the real FeatureGroupApi.
+    def _create_delta_fg(self, mocker, response_extra, engine_type="python", **fg_args):
+        """Create a feature group through the real FeatureGroupApi.
 
-        The REST answer echoes the request plus *response_extra*.
+        Defaults to DELTA on the python engine. The REST answer echoes the
+        request plus *response_extra*.
         """
         import json
 
-        mocker.patch("hsfs.engine._get_type", return_value="python")
-        mocker.patch("hsfs.engine._get_instance")
+        from hsfs import engine
+
+        mocker.patch("hsfs.engine._get_type", return_value=engine_type)
+        engine_instance = (
+            mocker.MagicMock(spec=engine.spark.Engine)
+            if engine_type == "spark"
+            else mocker.MagicMock()
+        )
+        engine_instance._spark_session = (
+            mocker.MagicMock() if engine_type == "spark" else None
+        )
+        engine_instance._spark_context = None
+        mocker.patch("hsfs.engine._get_instance", return_value=engine_instance)
         mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
         mocker.patch("builtins.print")
         client = mocker.patch("hopsworks_common.client._get_instance")
@@ -2361,8 +2373,8 @@ class TestFeatureGroupEngine:
             primary_key=["id"],
             foreign_key=[],
             partition_key=[],
-            time_travel_format="DELTA",
             features=[feature.Feature(name="id", type="bigint")],
+            **{"time_travel_format": "DELTA", **fg_args},
         )
         feature_group_engine.FeatureGroupEngine(
             feature_store_id=99
@@ -2388,6 +2400,29 @@ class TestFeatureGroupEngine:
         assert fg._offline_table_initialized is True
         save_empty_table.assert_not_called()
         delta_table.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "engine_type, fg_args",
+        [
+            ("python", {"time_travel_format": "HUDI", "hudi_precombine_key": "id"}),
+            ("python", {"time_travel_format": "ICEBERG"}),
+            ("python", {"clustered_by": ["id"], "stream": True}),
+            ("spark", {}),
+        ],
+        ids=["hudi", "iceberg", "clustered", "spark"],
+    )
+    def test_save_feature_group_metadata_does_not_ask_backend_to_initialize(
+        self, mocker, engine_type, fg_args
+    ):
+        save_empty_table = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save_empty_table"
+        )
+
+        _, requests = self._create_delta_fg(mocker, {}, engine_type, **fg_args)
+
+        assert "initializeOfflineTable" not in requests[0]
+        assert "enableChangeDataFeed" not in requests[0]
+        save_empty_table.assert_called_once()
 
     def test_save_feature_group_metadata_old_backend_saves_empty_table(self, mocker):
         save_empty_table = mocker.patch(
