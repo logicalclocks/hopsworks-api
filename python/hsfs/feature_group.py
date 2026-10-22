@@ -62,6 +62,7 @@ from hsfs.constructor import filter as filter_module
 from hsfs.constructor import query
 from hsfs.core import data_source as ds
 from hsfs.core import (
+    delta_engine,
     deltastreamer_jobconf,
     expectation_suite_engine,
     explicit_provenance,
@@ -4443,9 +4444,10 @@ class FeatureGroup(FeatureGroupBase):
             write_options = {}
         if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
-            cdf = str(write_options.get("delta.enableChangeDataFeed", "true")).lower()
             write_options["delta.enableChangeDataFeed"] = (
-                "false" if cdf == "false" else "true"
+                delta_engine.DeltaEngine._change_data_feed_value(
+                    write_options.get("delta.enableChangeDataFeed", "true")
+                )
             )
 
         if (
@@ -4702,9 +4704,10 @@ class FeatureGroup(FeatureGroupBase):
             write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
         if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
-            cdf = str(write_options.get("delta.enableChangeDataFeed", "true")).lower()
             write_options["delta.enableChangeDataFeed"] = (
-                "false" if cdf == "false" else "true"
+                delta_engine.DeltaEngine._change_data_feed_value(
+                    write_options.get("delta.enableChangeDataFeed", "true")
+                )
             )
 
         job, ge_report = self._feature_group_engine._insert(

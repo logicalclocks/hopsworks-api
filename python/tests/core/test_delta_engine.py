@@ -1294,9 +1294,11 @@ class TestDeltaEngine:
         writer = dataset.write.format.return_value.options.return_value
         writer.partitionBy.assert_called_once_with(["pk"])
 
-    @pytest.mark.parametrize("cdf", [False, "False"])
+    @pytest.mark.parametrize(
+        "cdf, expected", [(False, "false"), ("False", "false"), (1, "true")]
+    )
     def test_write_delta_dataset_change_data_feed_is_a_lowercase_string(
-        self, mocker, monkeypatch, cdf
+        self, mocker, monkeypatch, cdf, expected
     ):
         # Arrange: a new clustered table, so the option reaches both the
         # table builder and the DataFrameWriter
@@ -1327,9 +1329,9 @@ class TestDeltaEngine:
 
         # Assert
         clustered = fake_delta_table_cls.createIfNotExists.return_value.location.return_value.addColumns.return_value.clusterBy.return_value
-        clustered.property.assert_any_call("delta.enableChangeDataFeed", "false")
+        clustered.property.assert_any_call("delta.enableChangeDataFeed", expected)
         dataset.write.format.return_value.options.assert_called_once_with(
-            **{"delta.enableChangeDataFeed": "false"}
+            **{"delta.enableChangeDataFeed": expected}
         )
         assert write_options == {"delta.enableChangeDataFeed": cdf}
 
@@ -3332,7 +3334,9 @@ def test_insert_nested_polars_list_into_backend_made_table(
     assert DeltaTable(location).to_pyarrow_table().column("n").to_pylist() == expected
 
 
-@pytest.mark.parametrize("cdf, expected", [(False, "false"), ("False", "false")])
+@pytest.mark.parametrize(
+    "cdf, expected", [(False, "false"), ("False", "false"), (1, "true")]
+)
 @pytest.mark.parametrize("existing", [True, False], ids=["existing", "new"])
 def test_change_data_feed_option_is_a_lowercase_string(
     mocker, monkeypatch, tmp_path, cdf, expected, existing

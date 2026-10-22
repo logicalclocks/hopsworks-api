@@ -666,9 +666,9 @@ class DeltaEngine:
         if self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options:
             write_options = {
                 **write_options,
-                self.DELTA_ENABLE_CHANGE_DATA_FEED: str(
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: self._change_data_feed_value(
                     write_options[self.DELTA_ENABLE_CHANGE_DATA_FEED]
-                ).lower(),
+                ),
             }
 
         if not _is_delta_table_at(self._spark_session, location):
@@ -985,11 +985,11 @@ class DeltaEngine:
 
         if not is_delta_table:
             configuration = {
-                self.DELTA_ENABLE_CHANGE_DATA_FEED: str(
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: self._change_data_feed_value(
                     (write_options or {}).get(
                         self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
                     )
-                ).lower()
+                )
             }
             deltars_write(
                 location,
@@ -1007,9 +1007,9 @@ class DeltaEngine:
             ):
                 fg_source_table.alter.set_table_properties(
                     {
-                        self.DELTA_ENABLE_CHANGE_DATA_FEED: str(
+                        self.DELTA_ENABLE_CHANGE_DATA_FEED: self._change_data_feed_value(
                             write_options.get(self.DELTA_ENABLE_CHANGE_DATA_FEED)
-                        ).lower()
+                        )
                     }
                 )
             if append_requested:
@@ -1076,6 +1076,14 @@ class DeltaEngine:
         return self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
         )
+
+    @staticmethod
+    def _change_data_feed_value(value):
+        """Return the `delta.enableChangeDataFeed` option as Delta's string.
+
+        Only false, in any case or type, disables the change data feed.
+        """
+        return "false" if str(value).lower() == "false" else "true"
 
     @staticmethod
     def _reconcile_type(source, target):
