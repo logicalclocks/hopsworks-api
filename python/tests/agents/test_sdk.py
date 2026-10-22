@@ -575,13 +575,15 @@ class TestRuns:
         evals, _ = client(Reply({"id": 7, "status": "Idle"}))
         assert evals.runs.agent_status(Run(run_id="r", deployment_id=7)) == ""
 
-    def test_failures_are_analysed_unless_a_caller_says_not_to(self):
-        # A failure nobody explains is one somebody reads twice, so a job
-        # created without an opinion gets the analysis; one that says no
-        # keeps its model calls.
+    def test_an_opinion_about_analysis_is_sent_and_silence_is_not(self):
+        # A failure nobody explains is one somebody reads twice, so a new job
+        # gets the analysis -- but that default belongs to the server, not to
+        # this call. Sending True for a caller who said nothing turned analysis
+        # back on for a job where somebody had deliberately turned it off,
+        # because ensure now applies what it is sent.
         evals, session = client(Reply({"name": "nightly"}), Reply({"name": "n2"}))
         evals.jobs.ensure_eval_job(7)
-        assert session.sent[0][3]["analyseFailures"] is True
+        assert "analyseFailures" not in session.sent[0][3]
 
         evals.jobs.ensure_eval_job(7, analyse_failures=False)
         assert session.sent[1][3]["analyseFailures"] is False
@@ -856,7 +858,6 @@ class TestJobs:
             "evaluators": ["tmpl"],
             "monitor": True,
             # the analysis comes with it unless the caller says otherwise
-            "analyseFailures": True,
             "cores": 2,
         }
 
@@ -1281,6 +1282,122 @@ class TestTracing:
         assert session.sent[1][3]["category"] == "wrong_answer"
         assert session.sent[1][3]["expectations"] == {
             "expected": "Strategies, with the disclaimer."
+        }
+
+    def test_a_repeated_request_is_kept(self):
+        # Deduplicating by text lost a genuine repeat: a user who says
+        # "continue" twice got one "continue", so the task replayed a different
+        # conversation from the one that failed -- and if the failure needs the
+        # second continuation, it cannot be reproduced at all.
+        evals, agent7, session = agent(
+            Reply(
+                {
+                    "items": [
+                        {
+                            "traceId": f"t{i}",
+                            "startTimeNs": i,
+                            "messages": json.dumps([{"role": "user", "content": text}]),
+                        }
+                        for i, text in enumerate(
+                            ["continue", "continue", "what next?"], start=1
+                        )
+                    ]
+                }
+            ),
+            Reply({"taskId": "task"}),
+        )
+
+        agent7.promote_feedback(
+            Feedback(feedback_id="f", trace_id="t3", session_id="s")
+        )
+
+        assert json.loads(session.sent[1][3]["inputMessages"]) == [
+            {"role": "user", "content": "continue"},
+            {"role": "user", "content": "continue"},
+            {"role": "user", "content": "what next?"},
+        ]
+
+    def test_a_trace_that_repeats_the_history_is_not_counted_twice(self):
+        # The other half: some frameworks put the whole conversation on every
+        # trace, so appending each trace's turns blindly would say everything
+        # twice. Position decides, not text.
+        evals, agent7, session = agent(
+            Reply(
+                {
+                    "items": [
+                        {
+                            "traceId": "t1",
+                            "startTimeNs": 1,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "first"}]
+                            ),
+                        },
+                        {
+                            "traceId": "t2",
+                            "startTimeNs": 2,
+                            "messages": json.dumps(
+                                [
+                                    {"role": "user", "content": "first"},
+                                    {"role": "user", "content": "second"},
+                                ]
+                            ),
+                        },
+                    ]
+                }
+            ),
+            Reply({"taskId": "task"}),
+        )
+
+        agent7.promote_feedback(
+            Feedback(feedback_id="f", trace_id="t2", session_id="s")
+        )
+
+        assert json.loads(session.sent[1][3]["inputMessages"]) == [
+            {"role": "user", "content": "first"},
+            {"role": "user", "content": "second"},
+        ]
+
+    def test_a_cluster_promotes_the_member_whose_correction_it_uses(self):
+        # A cluster groups by failure signature, not by question, so its members
+        # ask different things. Pairing one member's correction with another's
+        # question wrote an expected answer to a question nobody asked.
+        evals, agent7, session = agent(
+            Reply(
+                [
+                    {
+                        "clusterId": "c",
+                        "size": 2,
+                        "representativeTraceId": "t-rep",
+                        "representativeFeedbackId": "f-rep",
+                    }
+                ]
+            ),
+            Reply(
+                [
+                    {"triageId": "x", "feedbackId": "f-rep", "traceId": "t-rep"},
+                    {
+                        "triageId": "y",
+                        "feedbackId": "f-other",
+                        "traceId": "t-other",
+                        "normalizedCorrection": "Order 43 was delivered on Monday.",
+                    },
+                ]
+            ),
+            Reply(
+                {"count": 1, "items": [{"feedbackId": "f-other", "traceId": "t-other"}]}
+            ),
+            Reply({"taskId": "task"}),
+            Reply(None),
+        )
+        [cluster] = agent7.clusters()
+
+        agent7.promote_cluster(cluster)
+
+        # The correcting member's trace, so the question and the expected answer
+        # are the same exchange.
+        assert session.sent[3][1] == "/agent-evals/tasks/from-trace/t-other"
+        assert session.sent[3][3]["expectations"] == {
+            "expected": "Order 43 was delivered on Monday."
         }
 
     def test_promoting_one_turn_on_its_own_is_still_possible(self):

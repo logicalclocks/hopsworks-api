@@ -580,6 +580,8 @@ class Agent:
         """Promote the cluster's representative trace to a task and record it on the cluster."""
         if not cluster.representative_trace_id:
             raise ValueError("the cluster has no representative trace")
+        promote_from = cluster.representative_feedback_id
+        trace_id = cluster.representative_trace_id
         if expectations is None:
             expectations = {}
             members = self.cluster_members(cluster)
@@ -591,25 +593,30 @@ class Agent:
                 ),
                 None,
             )
+            # The member whose correction this is, and that member's trace. A
+            # cluster groups by failure signature, not by question, so members
+            # ask different things -- pairing one member's correction with
+            # another's question writes an expected answer to a question nobody
+            # asked. Only some verdicts carry a correction, so when the
+            # representative has none the task comes from the member that does,
+            # conversation and all. The cluster is still marked promoted: the
+            # task covers the failure, whichever of its members it was taken
+            # from.
             corrected = next(
-                # The representative's own correction first, then any member's.
-                # A cluster is one failure seen several times and only some of
-                # those verdicts carry a correction, so insisting on the
-                # representative's produced a task with nothing to grade
-                # against -- and the judge it is graded by reads the expected
-                # answer, so the task was ungradable from the moment it existed.
                 (
-                    m.normalized_correction
+                    m
                     for m in [representative, *members]
                     if m is not None and m.normalized_correction
                 ),
                 None,
             )
-            if corrected:
-                expectations = {"expected": corrected}
+            if corrected is not None:
+                expectations = {"expected": corrected.normalized_correction}
+                promote_from = corrected.feedback_id or promote_from
+                trace_id = corrected.trace_id or trace_id
         task = self._client.tasks.promote(
             self.id,
-            cluster.representative_trace_id,
+            trace_id,
             # What the user asked, off the verdict the cluster named. Without it
             # the promotion produces a task with no content: the platform stores
             # what it is given, and the redaction gate then refuses to confirm a
@@ -621,7 +628,7 @@ class Agent:
             # given and does not go back to the transcript, so a promotion with
             # no question at all produces a task the redaction gate then refuses
             # to confirm -- a cluster nobody could ever put in a suite.
-            question=self._asked_up_to(cluster.representative_feedback_id) or None,
+            question=self._asked_up_to(promote_from) or None,
             expectations=expectations,
         )
         self.mark_cluster_promoted(cluster, task)
@@ -713,11 +720,24 @@ class Agent:
             return row.questions
         asked: list[str] = []
         for trace in traces:
-            for message in trace.conversation:
-                if message.get("role") == "user":
-                    content = str(message.get("content") or "")
-                    if content and content not in asked:
-                        asked.append(content)
+            turns = [
+                str(message.get("content") or "")
+                for message in trace.conversation
+                if message.get("role") == "user" and message.get("content")
+            ]
+            # By position and length, not by text. A trace carries either its
+            # own turn or the whole conversation up to it, depending on the
+            # framework, so a trace that repeats history must not be counted
+            # twice -- but dropping anything already seen deduplicated genuine
+            # repeats, and a user who says "continue" twice got one
+            # "continue", replaying a different conversation from the one that
+            # failed. A trace only repeats history when it carries more turns
+            # than are already accounted for and begins with them; one turn is
+            # always its own.
+            if len(turns) > len(asked) and turns[: len(asked)] == asked:
+                asked.extend(turns[len(asked) :])
+            else:
+                asked.extend(turns)
             if trace.trace_id == row.trace_id:
                 break
         else:
