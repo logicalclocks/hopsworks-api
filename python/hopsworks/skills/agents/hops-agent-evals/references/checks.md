@@ -26,6 +26,21 @@ Reference for **hops-agent-evals**. A suite's checks are `check(type, name=None,
 
 Checks without a task expectation (`no_tool_error`, `tool_latency`, the judges whose `inputs` have neither `rubric` nor `expected_result`) can grade live traffic, which is what online sampling and `monitor=True` use. Checks that need an expectation only run in suites.
 
+A judge saved without an explicit `inputs` takes the defaults — `user_request`, `expected_result`, `agent_response`, `rubric` — two of which only a task can supply, so it is suite-only by accident and a monitor refuses it. A judge meant for live traffic says what it reads: `inputs=["user_request", "agent_response", "tool_calls", "tool_results"]`.
+
+## Criteria that may not apply
+
+A criterion is scored on every trial, so one that describes a conditional behaviour is scored even when its condition never arose — and a judge with nothing to go on scores it low rather than skipping it. Three criteria, two of them inapplicable, is a failing trial for an agent that did the right thing.
+
+Write each criterion so the inapplicable case passes:
+
+```text
+If the user gave a name instead of an email address, the reply asks for the address.
+If an address was already given, score 5.
+```
+
+Or split the conditional case into its own task, where the condition is part of the question. Prefer the split when the two behaviours are really two requirements: one task per behaviour reads better in a report than one criterion that is sometimes vacuous.
+
 ## Judge provider keys
 
 Every judge check and the analysis job take the same keys:

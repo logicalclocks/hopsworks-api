@@ -94,6 +94,15 @@ hops agent delete my_agent --yes
 
 A model loaded inside the agent (torch, an embedder) needs more than the default 1 GB of memory: pass `--memory` to `hops agent create`, or the pod is OOM-killed while it loads.
 
+**When a start takes too long, or says nothing.** A first start on a node that has not pulled the agent image can take ten minutes or more, and `start(await_running=...)` giving up does **not** stop the deployment — it usually comes up shortly after. When `hops agent info` shows an empty status and `hops agent logs` prints only `[failed to read pod logs]`, the container never started, so there are no logs to read: look at the pod instead.
+
+```bash
+kubectl get pods -n <project> | grep <name>-predictor    # ImagePullBackOff, Pending, OOMKilled
+kubectl describe pod -n <project> <pod>                  # Events says which
+```
+
+See **hops-kubectl-debug**. `Pending` with no events is usually resources; `ImagePullBackOff` on a first deploy is the image still being pulled or missing from the cluster's registry.
+
 **Confirm before deleting.** `hops agent delete` tears down the served agent irreversibly; confirm the exact name with the user, and never tear down an agent you created as a side effect (temp or test ones included) unless they asked.
 
 ## Deploy — SDK
@@ -154,6 +163,12 @@ agent.give_feedback(reply.trace_id, "positive")
 agent.url                                      # https://<gateway>/v1/<namespace>/<name>, for other clients
 agent.manifest()                               # what the agent advertises
 ```
+
+**What `manifest()` returns** is the protocol document, not a flat summary: the agent's own fields are under `agent` (`name`, `description`, `version`, `framework`), the routes under `endpoints`, and the rest under `capabilities` and `ui`. `manifest()["agent"]["framework"]`, not `manifest()["framework"]` — the latter is `None` for every agent.
+
+**Tool events pair by id.** Each tool call yields more than one event: `{"name", "status", "event_id", "message"}`, `status` going `running` then `done`, matched on `event_id`. The closing event is named for the event, not for the tool — an agent that emits `ctx.emit_event("tool", status="done")` ends with `name == "tool"` — so follow `event_id` rather than the name.
+
+**Reading a conversation back.** `agent.traces()` lists conversations, one row per session; `agent.session(session_id)` gives that conversation's turns and `agent.conversation(session_id)` pairs them as `{trace_id, user, assistant}` — `role`/`content` is the shape of the messages inside a turn, not of these.
 
 Messages go through the cluster's inference gateway, the route the chat panel uses; the logged-in user's credential is accepted there. From outside Hopsworks, log in with an API key.
 
