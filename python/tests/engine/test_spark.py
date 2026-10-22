@@ -3934,6 +3934,133 @@ class TestSpark:
         assert spark_keys == TestPython._row_keys(pandas_result)
         assert spark_keys == TestPython._row_keys(polars_result, polars_frame=True)
 
+    def test_random_split_returns_rows_unchanged(self, mocker):
+        # NaN (top level and inside an array) and a timestamp in the repeated
+        # DST hour of the session zone must come back exactly as they went in.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        session = spark_engine._spark_session
+        previous = session.conf.get("spark.sql.session.timeZone")
+        session.conf.set("spark.sql.session.timeZone", "America/New_York")
+        try:
+            utc = datetime.timezone.utc
+            repeated_hour = [
+                datetime.datetime(2024, 11, 3, 5, 30, tzinfo=utc),
+                datetime.datetime(2024, 11, 3, 6, 30, tzinfo=utc),
+            ]
+            rows = [
+                (
+                    i,
+                    float("nan") if i % 3 == 0 else (None if i % 3 == 1 else i * 0.5),
+                    [0.0, float("nan"), None] if i % 2 == 0 else [float(i)],
+                    repeated_hour[i % 2],
+                )
+                for i in range(40)
+            ]
+            schema = StructType(
+                [
+                    StructField("k", LongType()),
+                    StructField("x", DoubleType()),
+                    StructField("arr", ArrayType(DoubleType())),
+                    StructField("ts", TimestampType()),
+                ]
+            )
+            spark_df = session.createDataFrame(rows, schema)
+            view = types.SimpleNamespace(
+                features=[
+                    TrainingDatasetFeature(name=f.name, type=f.dataType.simpleString())
+                    for f in schema.fields
+                ]
+            )
+
+            # Act
+            result = spark_engine._random_split(
+                spark_df, self._hash_split_td(), feature_view_obj=view
+            )
+
+            # Assert
+            def as_utc(frame):
+                # repr keeps NaN distinct from None and compares it equal to itself.
+                return sorted(
+                    repr(r)
+                    for r in frame.select(
+                        "k", "x", "arr", F.unix_micros("ts").alias("ts")
+                    ).collect()
+                )
+
+            split_rows = []
+            for split_df in result.values():
+                assert split_df.schema == spark_df.schema
+                split_rows += as_utc(split_df)
+            assert sorted(split_rows) == as_utc(spark_df)
+        finally:
+            session.conf.set("spark.sql.session.timeZone", previous)
+
+    def test_random_split_ignores_unconvertible_columns_outside_the_view(
+        self, mocker
+    ):
+        # A calendar interval has no Arrow type; only hashed columns reach Python.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        spark_df = spark_engine._spark_session.range(100).withColumn(
+            "gap", F.expr("make_interval(0, 0, 0, 1, 0, 0, 0)")
+        )
+        view = types.SimpleNamespace(
+            features=[TrainingDatasetFeature(name="id", type="bigint")]
+        )
+
+        # Act
+        result = spark_engine._random_split(
+            spark_df, self._hash_split_td(), feature_view_obj=view
+        )
+
+        # Assert
+        assert sum(split_df.count() for split_df in result.values()) == 100
+        assert all("gap" in split_df.columns for split_df in result.values())
+
+    @pytest.mark.parametrize("to_df", [False, True])
+    def test_write_training_dataset_releases_split_caches(self, mocker, to_df):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            side_effect=lambda td, fv, splits, **kwargs: splits,
+        )
+        mocker.patch(
+            "hsfs.engine.spark.Engine._write_training_dataset_splits",
+            side_effect=lambda td, splits, *args, **kwargs: splits,
+        )
+        spark_engine = spark.Engine()
+        context = spark_engine._spark_session.sparkContext
+        spark_df = spark_engine._spark_session.range(1000)
+        query_obj = mocker.Mock()
+        query_obj.read.return_value = spark_df
+        view = types.SimpleNamespace(
+            features=[TrainingDatasetFeature(name="id", type="bigint")]
+        )
+        before = len(context._jsc.getPersistentRDDs())
+
+        # Act
+        result = spark_engine._write_training_dataset(
+            training_dataset=self._hash_split_td(),
+            query_obj=query_obj,
+            user_write_options=None,
+            save_mode=None,
+            read_options=None,
+            feature_view_obj=view,
+            to_df=to_df,
+        )
+
+        # Assert
+        persisted = len(context._jsc.getPersistentRDDs())
+        # Returned frames stay cached for the caller; nothing else is kept.
+        assert persisted - before == (len(result) if to_df else 0)
+        for split_df in result.values():
+            split_df.unpersist()
+
     def test_random_split_keeps_values(self, mocker, stockholm_session_time_zone):
         # The rows pass through Python on the way to their split; values must not change.
         # Arrange

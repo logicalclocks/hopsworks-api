@@ -104,6 +104,17 @@ class TestCanonicalRowBytes:
         assert _row_bytes(0.1, types=["float"]) != _row_bytes(0.1, types=["double"])
         assert _row_bytes(float("nan"), types=["float"]) == _row_bytes(None)
 
+    def test_float_out_of_float32_range_raises(self):
+        with pytest.raises(ValueError, match="float"):
+            _row_bytes(1e40, types=["float"])
+        assert _row_bytes(float("inf"), types=["float"]) == _row_bytes(
+            np.float32("inf"), types=["float"]
+        )
+
+    def test_struct_value_missing_a_field_raises(self):
+        with pytest.raises(ValueError, match="struct"):
+            _row_bytes({"a": 1}, types=["struct<a:bigint,b:string>"])
+
     def test_timestamps_are_utc_micros(self):
         aware = datetime.datetime(2024, 1, 1, 12, tzinfo=datetime.timezone.utc)
         expected = _row_bytes(aware, types=["timestamp"])
