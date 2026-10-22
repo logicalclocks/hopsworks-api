@@ -91,7 +91,7 @@ overall = {m.metric_name: m.metric_value for m in run.metrics() if m.metric_scop
 per_check = [m for m in run.metrics() if m.metric_scope == "evaluator"]
 ```
 
-`estimated_cost` and `costed_trial_rate` are in there too. Cost is derived from the model named on a trial's spans against the platform's price table, so an agent whose framework does not record the model, or one on a model the table does not price, reports `0.0` with a `costed_trial_rate` of `0.0` — that rate is how you tell "free" from "not priced".
+`estimated_cost` and `costed_trial_rate` are in there too. Cost is the trial's tokens against the **prices on the deployment**, which default to nothing — so an agent deployed without them reports `0.0` for every run, exactly as a free model would. `costed_trial_rate` of `0.0` is the giveaway. Set the prices when the agent is deployed, from the model it runs: see "Price the turns, or cost reads zero" in **hops-agent-deployment**.
 
 **Gate and canary.** A published suite created with `run_on_update=True` is a canary: updating the
 deployment starts it on its own, and `agent.canary()` starts the same suites by hand. A run that

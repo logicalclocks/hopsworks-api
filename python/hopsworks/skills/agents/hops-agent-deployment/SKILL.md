@@ -94,6 +94,34 @@ hops agent delete my_agent --yes
 
 A model loaded inside the agent (torch, an embedder) needs more than the default 1 GB of memory: pass `--memory` to `hops agent create`, or the pod is OOM-killed while it loads.
 
+## Price the turns, or cost reads zero
+
+An agent deployment reports a cost per turn, per trace and per evaluation run, computed from the tokens its spans record against the prices **on the deployment**. Those prices default to nothing, so an agent deployed without them reports `0.0` everywhere — and `0.0` is what a free model reports too. Nothing in the UI distinguishes "this cost nothing" from "nobody said what it costs"; the giveaway is `costed_trial_rate` of `0.0` on a run.
+
+Set them when you deploy, from the model the agent actually uses:
+
+```python
+agents.deploy_agent(
+    "my_agent.py", name="my_agent",
+    tracing={
+        "enabled": True,
+        "input_token_price_per_million_tokens": 3.0,
+        "output_token_price_per_million_tokens": 15.0,
+    },
+)
+```
+
+**Read the model out of the agent before you pick the numbers.** It is not always where you expect:
+
+- the model is usually a constant or an environment variable near the top of the entry script — `MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5")`;
+- a framework default counts: an `Agent(...)` built with no `model=` runs the SDK's own default, which is a different price from the one in the README;
+- an agent with several models — a cheap router and an expensive writer, or a judge of its own — bills at whichever one runs, so price the one that does the volume and say so in a comment;
+- a provider-prefixed name (`anthropic/claude-sonnet-4-5`) is LiteLLM routing to that provider, and the price is that provider's.
+
+Prices change, so write them where the model is chosen and say when they were taken. A deployment whose model changed and whose prices did not is worse than an unpriced one: it reports a number that is confidently wrong.
+
+The two keys are per deployment, so two agents on different models each cost correctly, and re-deploying with new prices is what changes them — they are read per turn, not baked into old traces. Re-reading an old window after a price change does not re-cost it.
+
 **When a start takes too long, or says nothing.** A first start on a node that has not pulled the agent image can take ten minutes or more, and `start(await_running=...)` giving up does **not** stop the deployment — it usually comes up shortly after. When `hops agent info` shows an empty status and `hops agent logs` prints only `[failed to read pod logs]`, the container never started, so there are no logs to read: look at the pod instead.
 
 ```bash
