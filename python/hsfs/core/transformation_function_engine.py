@@ -689,6 +689,7 @@ class TransformationFunctionEngine:
                 )
 
             collect = merge
+            fail = None
             if observer is not None:
                 started = {}
                 submit_untimed = submit
@@ -702,8 +703,11 @@ class TransformationFunctionEngine:
                     observer._finish(tf, started.pop(id(tf)))
                     merge(tf, result)
 
+                def fail(tf, error):
+                    observer._finish(tf, started.pop(id(tf)), error)
+
             TransformationFunctionEngine._schedule_dag(
-                execution_graph, submit=submit, collect=collect
+                execution_graph, submit=submit, collect=collect, fail=fail
             )
         elif observer is None:
             for tf in execution_graph.nodes:
@@ -933,11 +937,16 @@ class TransformationFunctionEngine:
         execution_graph: TransformationExecutionDAG,
         submit: Callable[[transformation_function.TransformationFunction], Any],
         collect: Callable[[transformation_function.TransformationFunction, Any], None],
+        fail: Callable[
+            [transformation_function.TransformationFunction, BaseException], None
+        ]
+        | None = None,
     ) -> None:
         """Drive a streaming DAG schedule over the process pool.
 
         ``submit(tf)`` submits one transformation's work and returns its future;
-        ``collect(tf, result)`` consumes that future's result. A transformation is
+        ``collect(tf, result)`` consumes that future's result, and ``fail(tf, error)``,
+        when given, is told which transformation raised. A transformation is
         submitted as soon as its predecessors complete (``wait(FIRST_COMPLETED)``),
         so independent branches run concurrently and a dependent starts the moment
         it unblocks. On any worker failure the pending futures are cancelled,
@@ -954,7 +963,13 @@ class TransformationFunctionEngine:
                 done, _ = wait(future_to_tf.keys(), return_when=FIRST_COMPLETED)
                 for future in done:
                     tf_id = future_to_tf.pop(future)
-                    collect(id_to_tf[tf_id], future.result())
+                    try:
+                        result = future.result()
+                    except BaseException as error:
+                        if fail is not None:
+                            fail(id_to_tf[tf_id], error)
+                        raise
+                    collect(id_to_tf[tf_id], result)
                     sorter.done(tf_id)
         except (Exception, BrokenProcessPool):
             for f in future_to_tf:

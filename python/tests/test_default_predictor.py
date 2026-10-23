@@ -1446,6 +1446,21 @@ def test_a_log_write_outside_a_trace_records_no_span(span_exporter):
     assert span_exporter.get_finished_spans() == ()
 
 
+def test_an_untraced_log_write_touches_no_tracing_code(mocker):
+    from hopsworks_common import tracing
+    from hsml.default_predictor import _LogWorker
+
+    capture = mocker.spy(tracing, "_capture")
+    child_span = mocker.spy(tracing, "_child_span")
+    worker = _LogWorker(lambda items: None, 1000)
+    assert worker._enqueue(([{"a": 1}], [[1]], None, "r", None))
+    worker._wait(5)
+    worker._close(1)
+
+    capture.assert_not_called()
+    child_span.assert_not_called()
+
+
 class TestAsyncPredict:
     """predict is a coroutine, and answers exactly as the blocking entry point does."""
 
@@ -1469,6 +1484,13 @@ class TestAsyncPredict:
         assert spans["feature_lookup"].parent.span_id == request
         assert spans["feature_lookup"].attributes["hopsworks.rows"] == 1
         assert spans["model_predict"].parent.span_id == request
+
+    def test_an_untraced_request_opens_no_spans(self, mocker):
+        from hopsworks_common import tracing
+
+        child_span = mocker.spy(tracing, "_child_span")
+        asyncio.run(self._predictor().predict([{"cc_num": 1}]))
+        child_span.assert_not_called()
 
     def test_both_entry_points_answer_the_same(self):
         rows = [{"cc_num": 1}, {"cc_num": 2}]

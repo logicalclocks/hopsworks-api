@@ -524,3 +524,51 @@ class TestRealPoolTelemetry:
             )
             == 1
         )
+
+    def test_a_pooled_failure_is_counted_as_an_error(self, span_exporter, mocker):
+        prometheus_client = pytest.importorskip("prometheus_client")
+        from hsfs.core import transformation_telemetry
+
+        mocker.patch.dict(transformation_telemetry._telemetries, clear=True)
+        dag = transformation_execution_dag.TransformationExecutionDAG(
+            [_make_tf(_add_one), _make_tf(_raise_in_worker)]
+        )
+        telemetry = transformation_telemetry._Telemetry(
+            "fv", 1, {transformation_telemetry.KIND_MODEL_DEPENDENT: dag}
+        )
+
+        with (
+            pytest.raises(Exception, match="UDF intentional failure"),
+            telemetry._phase(
+                transformation_telemetry.KIND_MODEL_DEPENDENT, dag, False
+            ) as observer,
+        ):
+            transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+                execution_graph=dag,
+                data={"col1": 1},
+                online=True,
+                n_processes=2,
+                observer=observer,
+            )
+
+        registry = prometheus_client.CollectorRegistry()
+        registry.register(transformation_telemetry._Collector())
+        labels = {
+            "feature_view": "fv",
+            "feature_view_version": "1",
+            "kind": "model_dependent",
+            "transformation": "_raise_in_worker",
+            "outputs": "_raise_in_worker_col1_",
+        }
+        assert (
+            registry.get_sample_value(
+                "hopsworks_transformation_function_errors_total", labels
+            )
+            == 1
+        )
+        assert (
+            registry.get_sample_value(
+                "hopsworks_transformation_function_calls_total", labels
+            )
+            == 1
+        )

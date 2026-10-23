@@ -143,12 +143,16 @@ class TestDisabled:
     def test_transforms_without_reading_a_clock(self, mocker, graphs, telemetry_off):
         clock = mocker.patch.object(transformation_telemetry.time, "perf_counter_ns")
         server = _server(mocker, graphs)
+        traced = mocker.spy(server, "_apply_transformation_traced")
+        child_span = mocker.spy(tracing, "_child_span")
 
         _, encoded = _apply(server)
 
         assert 1210 in encoded.values()
         assert server._telemetry is None
         clock.assert_not_called()
+        traced.assert_not_called()
+        child_span.assert_not_called()
         assert transformation_telemetry._telemetries == {}
 
     def test_helpers_hand_out_one_shared_no_op(self, telemetry_off):
