@@ -1297,6 +1297,12 @@ class Engine:
                 # frames to the caller: cache so the query is read and hashed once.
                 split_dataset[key] = split_dataset[key].cache()
                 cached_splits.append(split_dataset[key])
+            # Fill the split caches from the hashed frame, then release it, so the
+            # data is held once while statistics and the write run.
+            for cached in cached_splits:
+                cached.count()
+            while release:
+                release.pop().unpersist()
 
             split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
                 training_dataset,
@@ -1313,12 +1319,8 @@ class Engine:
                 save_mode,
                 to_df=to_df,
             )
-            if to_df:
-                # The returned frames read from these caches: fill them before the
-                # hashed source is released, so rows are not hashed again.
-                for cached in cached_splits:
-                    cached.count()
-                keep_cached = True
+            # The frames returned with to_df read from the split caches.
+            keep_cached = to_df
             return result
         finally:
             for frame in release + ([] if keep_cached else cached_splits):

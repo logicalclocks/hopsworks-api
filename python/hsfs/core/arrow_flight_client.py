@@ -56,6 +56,32 @@ if HAS_POLARS:
 
 _logger = logging.getLogger(__name__)
 
+
+def _to_pandas_exact_integers(table: pyarrow.Table):
+    """Convert to pandas without rounding integers above 2^53.
+
+    By default an integer holding a null becomes float64, also inside lists and structs.
+    A top-level integer column with a null becomes a pandas nullable integer instead.
+    """
+    import pandas as pd
+
+    nullable = {
+        pyarrow.int8(): pd.Int8Dtype(),
+        pyarrow.int16(): pd.Int16Dtype(),
+        pyarrow.int32(): pd.Int32Dtype(),
+        pyarrow.int64(): pd.Int64Dtype(),
+        pyarrow.uint8(): pd.UInt8Dtype(),
+        pyarrow.uint16(): pd.UInt16Dtype(),
+        pyarrow.uint32(): pd.UInt32Dtype(),
+        pyarrow.uint64(): pd.UInt64Dtype(),
+    }
+    frame = table.to_pandas(integer_object_nulls=True)
+    for field, column in zip(table.schema, table.columns, strict=True):
+        if field.type in nullable and column.null_count:
+            frame[field.name] = column.to_pandas(types_mapper=nullable.get)
+    return frame
+
+
 _arrow_flight_instance = None
 
 
@@ -539,7 +565,12 @@ class ArrowFlightClient:
         retry_on_exception=_should_retry,
     )
     def _get_dataset(
-        self, descriptor, timeout=None, headers=None, dataframe_type="pandas"
+        self,
+        descriptor,
+        timeout=None,
+        headers=None,
+        dataframe_type="pandas",
+        exact_integers=False,
     ):
         if timeout is None:
             timeout = self.timeout
@@ -557,6 +588,8 @@ class ArrowFlightClient:
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)
             return pl.from_arrow(reader.read_all())
+        if exact_integers:
+            return _to_pandas_exact_integers(reader.read_all())
         return reader.read_pandas()
 
     @_handle_afs_exception(user_message=READ_ERROR)
@@ -621,6 +654,9 @@ class ArrowFlightClient:
                 else None
             ),
             dataframe_type=dataframe_type,
+            exact_integers=bool(
+                arrow_flight_config and arrow_flight_config.get("exact_integers")
+            ),
         )
 
     def _stream_query(

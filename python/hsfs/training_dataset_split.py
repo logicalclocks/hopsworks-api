@@ -228,8 +228,13 @@ def _to_timestamp(value):
 def _epoch_micros(value):
     value = _to_timestamp(value)
     if HAS_PANDAS and isinstance(value, pd.Timestamp):
-        # Naive values are read as UTC: `.value` is then the wall time as UTC nanoseconds.
-        return value.value // 1000
+        # Naive values are read as UTC wall time.
+        if value.tz is not None:
+            value = value.tz_convert("UTC").tz_localize(None)
+        if getattr(value, "unit", "ns") == "ns":
+            return value.value // 1000
+        # Coarser units reach years a nanosecond count cannot hold.
+        return int(value.as_unit("us").asm8.view("i8"))
     if isinstance(value, datetime.datetime):
         if value.tzinfo is None:
             value = value.replace(tzinfo=datetime.timezone.utc)
@@ -295,7 +300,7 @@ def _encode(value, declared, out):
             single = np.float32(value)
         if np.isinf(single) and not np.isinf(float(value)):
             raise _misfit(value, "float")
-        out += b"f" + single.astype(">f4").tobytes()
+        out += b"f" + struct.pack(">f", single)
     elif kind == "double":
         out += b"F" + struct.pack(">d", float(value))
     elif kind == "decimal":

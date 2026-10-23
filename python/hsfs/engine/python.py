@@ -1618,6 +1618,12 @@ class Engine:
                     event_time,
                 )
         else:
+            # The hash needs integers above 2^53 exactly as stored.
+            read_option = dict(read_option or {})
+            read_option["arrow_flight_config"] = {
+                **(read_option.get("arrow_flight_config") or {}),
+                "exact_integers": True,
+            }
             result_dfs = self._random_split(
                 query_obj.read(read_options=read_option, dataframe_type=dataframe_type),
                 training_dataset_obj,

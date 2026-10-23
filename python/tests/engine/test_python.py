@@ -33,6 +33,7 @@ from hsfs import (
     feature_view,
     storage_connector,
     training_dataset,
+    training_dataset_split,
     util,
 )
 from hsfs.client import exceptions
@@ -2496,6 +2497,95 @@ class TestPython:
         # Assert
         assert result is transformed_splits
         assert mock_fit_and_transform.call_args[0][2] is raw_splits
+
+    def test_random_split_reads_large_bigints_exactly(self, mocker):
+        # The Query Service read turns an integer column holding a null into
+        # float64, which rounds values above 2^53 before they are hashed.
+        # Arrange
+        import pyarrow.flight as flight
+        from hsfs.constructor.fs_query import FsQuery
+        from hsfs.core import arrow_flight_client
+
+        big = [None if i % 5 == 0 else 2**53 + 1 + 2 * i for i in range(60)]
+        table = pa.table(
+            {
+                "k": pa.array(range(60), pa.int64()),
+                "big": pa.array(big, pa.int64()),
+                "arr": pa.array([[b, None] for b in big], pa.list_(pa.int64())),
+            }
+        )
+
+        class Server(flight.FlightServerBase):
+            def get_flight_info(self, context, descriptor):
+                return flight.FlightInfo(
+                    table.schema,
+                    descriptor,
+                    [flight.FlightEndpoint(b"t", [self.location])],
+                    table.num_rows,
+                    -1,
+                )
+
+            def do_get(self, context, ticket):
+                return flight.RecordBatchStream(table)
+
+        server = Server("grpc://127.0.0.1:0")
+        server.location = f"grpc://127.0.0.1:{server.port}"
+        afs = arrow_flight_client.ArrowFlightClient.__new__(
+            arrow_flight_client.ArrowFlightClient
+        )
+        afs._connection = flight.connect(server.location)
+        afs._server_version = None
+        afs.timeout = afs.health_check_timeout = 10
+        mocker.patch.object(arrow_flight_client, "_get_instance", return_value=afs)
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            side_effect=lambda td, fv, splits, **kwargs: splits,
+        )
+        python_engine = python.Engine()
+        fs_query = FsQuery(
+            query="q",
+            on_demand_feature_groups=None,
+            hudi_cached_feature_groups=None,
+            hqs_payload="q",
+        )
+        query_obj = mocker.Mock()
+        query_obj.read.side_effect = lambda read_options, dataframe_type: (
+            python_engine._sql_offline(
+                fs_query,
+                dataframe_type,
+                arrow_flight_config=(read_options or {}).get("arrow_flight_config"),
+            )
+        )
+        view = types.SimpleNamespace(
+            features=[
+                TrainingDatasetFeature(name="big", type="bigint"),
+                TrainingDatasetFeature(name="arr", type="array<bigint>"),
+            ]
+        )
+        td = self._hash_split_td()
+
+        # Act
+        try:
+            result = python_engine._prepare_transform_split_df(
+                query_obj, td, view, {}, "default"
+            )
+        finally:
+            server.shutdown()
+
+        # Assert
+        indexes = training_dataset_split._split_indexes(
+            [big, [[b, None] for b in big]],
+            ["bigint", "array<bigint>"],
+            training_dataset_split._split_salt(td),
+            [split.percentage for split in td.splits],
+        )
+        assert {name: set(df["k"]) for name, df in result.items()} == {
+            split.name: {k for k in range(60) if indexes[k] == i}
+            for i, split in enumerate(td.splits)
+        }
+        assert sorted(
+            b for df in result.values() for b in df["big"] if not pd.isna(b)
+        ) == sorted(b for b in big if b is not None)
 
     @staticmethod
     def _hash_split_td(seed=42, version=1):

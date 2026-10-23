@@ -3689,9 +3689,11 @@ class TestSpark:
         assert sum_rows == 6
 
     def test_random_split_is_reproducible_with_seed(self, mocker):
-        # A user-provided seed must make the random split reproducible across
-        # runs; the Spark engine forwards it to DataFrame.randomSplit.
+        # The split is the keyed hash of each row, salted by the seed, so every
+        # run gives the rows the hash assigns.
         # Arrange
+        from hsfs import training_dataset_split
+
         mocker.patch("hopsworks_common.client._get_instance")
         spark_engine = spark.Engine()
 
@@ -3706,6 +3708,16 @@ class TestSpark:
 
         df = pd.DataFrame({"col_0": list(range(100))})
         spark_df = spark_engine._spark_session.createDataFrame(df)
+        indexes = training_dataset_split._split_indexes(
+            [list(range(100))],
+            ["bigint"],
+            training_dataset_split._split_salt(td),
+            [0.5, 0.5],
+        )
+        expected = {
+            name: [row for row, index in enumerate(indexes) if index == i]
+            for i, name in enumerate(["test_split1", "test_split2"])
+        }
 
         # Act
         first = spark_engine._random_split(dataset=spark_df, training_dataset=td)
@@ -3713,9 +3725,8 @@ class TestSpark:
 
         # Assert
         for name in ("test_split1", "test_split2"):
-            first_rows = sorted(r["col_0"] for r in first[name].collect())
-            second_rows = sorted(r["col_0"] for r in second[name].collect())
-            assert first_rows == second_rows
+            assert sorted(r["col_0"] for r in first[name].collect()) == expected[name]
+            assert sorted(r["col_0"] for r in second[name].collect()) == expected[name]
 
     def test_random_split_depends_on_seed(self, mocker):
         # Different seeds must yield different splits, proving the seed is
@@ -3979,6 +3990,70 @@ class TestSpark:
             for name, split_df in spark_result.items()
         } == {name: set(split_df["k"]) for name, split_df in pandas_result.items()}
 
+    @pytest.mark.parametrize("legacy", [False, True])
+    def test_random_split_matches_golden_vectors(self, mocker, legacy):
+        # The same vectors are asserted by the Java client tests.
+        # Arrange
+        from hsfs.engine import python
+
+        from tests.test_training_dataset_split import _golden
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        golden, names, types_, rows = _golden()
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=golden["legacy"]["version"],
+            data_format="CSV",
+            featurestore_id=99,
+            splits=dict(golden["splits"]),
+            seed=None if legacy else golden["seed"],
+            id=golden["legacy"]["id"],
+        )
+        expected_buckets = golden["expected"]["legacy_buckets" if legacy else "buckets"]
+        expected = {
+            name: {
+                row[0]
+                for row, b in zip(rows, expected_buckets, strict=True)
+                if b == index
+            }
+            for index, (name, _) in enumerate(golden["splits"])
+        }
+        view = types.SimpleNamespace(
+            features=[
+                TrainingDatasetFeature(name=n, type=t)
+                for n, t in zip(names, types_, strict=True)
+            ]
+        )
+        spark_engine = spark.Engine()
+        session = spark_engine._spark_session
+        previous = session.conf.get("spark.sql.session.timeZone")
+        session.conf.set("spark.sql.session.timeZone", "America/New_York")
+        try:
+            spark_df = session.createDataFrame(
+                rows,
+                ", ".join(f"{n} {t}" for n, t in zip(names, types_, strict=True)),
+            )
+
+            # Act
+            spark_result = spark_engine._random_split(
+                spark_df.repartition(3), td, feature_view_obj=view
+            )
+            spark_keys = {
+                name: {r["k"] for r in split_df.select("k").collect()}
+                for name, split_df in spark_result.items()
+            }
+        finally:
+            session.conf.set("spark.sql.session.timeZone", previous)
+        pandas_result = python.Engine()._random_split(
+            pd.DataFrame(rows, columns=names, dtype=object), td, view
+        )
+
+        # Assert
+        assert spark_keys == expected
+        assert {
+            name: set(split_df["k"]) for name, split_df in pandas_result.items()
+        } == expected
+
     def test_random_split_returns_rows_unchanged(self, mocker):
         # NaN (top level and inside an array) and a timestamp in the repeated
         # DST hour of the session zone must come back exactly as they went in.
@@ -4072,9 +4147,15 @@ class TestSpark:
             "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
             side_effect=lambda td, fv, splits, **kwargs: splits,
         )
+        held_at_write = []
+
+        def write(td, splits, *args, **kwargs):
+            held_at_write.append(len(context._jsc.getPersistentRDDs()))
+            return splits
+
         mocker.patch(
             "hsfs.engine.spark.Engine._write_training_dataset_splits",
-            side_effect=lambda td, splits, *args, **kwargs: splits,
+            side_effect=write,
         )
         spark_engine = spark.Engine()
         context = spark_engine._spark_session.sparkContext
@@ -4099,6 +4180,8 @@ class TestSpark:
 
         # Assert
         persisted = len(context._jsc.getPersistentRDDs())
+        # Only the split caches are held while the write runs, not the hashed frame.
+        assert held_at_write == [before + len(result)]
         # Returned frames stay cached for the caller; nothing else is kept.
         assert persisted - before == (len(result) if to_df else 0)
         for split_df in result.values():
