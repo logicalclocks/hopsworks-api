@@ -509,3 +509,35 @@ class TestAClientAssertedSubjectIsOnTheTrace:
         app = self._app_with_index(recorded)
         TestClient(app).post("/v1/chat", json=make_request("hi"))
         assert recorded == []
+
+
+class TestAModelLabelDoesNotReplaceABinding:
+    """`identify` again on turn three replaced the app's binding with a model label.
+
+    The index keeps one row per conversation, last claim wins, so every trace of a
+    conversation the app had bound read subject_source "model" -- and the agent,
+    never told it was identified, asked again.
+    """
+
+    def test_record_subject_from_the_model_is_refused_when_bound(self):
+        index = FakeIndex()
+        ctx = context(index, subject="dana@example.com")
+        assert ctx.record_subject("dana@example.com", source="model") is False
+        assert index.rows == []
+
+    def test_an_unbound_conversation_still_takes_the_label(self):
+        index = FakeIndex()
+        ctx = context(index)
+        assert ctx.record_subject("dana@example.com", source="model") is True
+
+    def test_identify_tells_the_model_it_is_already_identified(self):
+        from hopsworks_agents.protocol.autoevents import current_context
+        from hopsworks_agents.protocol.tools import identify
+
+        ctx = context(FakeIndex(), subject="dana@example.com")
+        token = current_context.set(ctx)
+        try:
+            answer = identify("dana@example.com")
+        finally:
+            current_context.reset(token)
+        assert "already identified as dana@example.com" in answer

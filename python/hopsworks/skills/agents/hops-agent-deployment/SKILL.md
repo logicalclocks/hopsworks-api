@@ -86,7 +86,8 @@ So, when you design an agent with long-term memory:
 
 - a real deployment has a login: the app asserts `subject` per request and nobody is asked anything;
 - a demo without one either passes `subject=` from the client, or calls `ctx.rebind_subject` in app code after the email is given — and should say in its own README why that is acceptable only for a demo;
-- `ctx.has_subject` / `ctx.subject_source` (`"client"` vs the per-conversation fallback) tell the handler which case it is in, so it can skip asking when the identity arrived with the request.
+- `ctx.has_subject` is true exactly when the turn has a real identity, and `ctx.subject_source` says how it was known: `"client"` (asserted on the request), `"app"` (bound this turn with `rebind_subject`) or `"conversation"` (bound on an earlier turn of this conversation and read back by the SDK — what every turn after the binding reports). The per-conversation fallback is the one case with `has_subject` false. Check `has_subject`, not a list of sources: an agent that only trusted `"client"`/`"app"` never told the model it was identified on turn three, and the model called `identify` again.
+- a trace's `subject_source` (the traces table) can also read `"model"`: a label from `identify` on a conversation nobody bound. A model's label never replaces a binding, and `identify` on a bound conversation answers that it is already identified.
 - an **evaluation trial** with a subject reads that person's memory and never writes it: `remember`/`forget` under `user` scope land under the trial's own conversation, and its messages stay out of the person's history. That is what lets a regression replay a customer's turn as them (see **hops-agent-evals**) without the suite changing what is stored about them.
 
 **Reading back what an agent remembers.** There is no SDK accessor yet. The facts are a feature group in the project's online store, so read them there:
@@ -94,10 +95,10 @@ So, when you design an agent with long-term memory:
 ```python
 fs = project.get_feature_store()
 facts = fs.get_feature_group("agent_memory_facts", 1).read(online=True)
-facts[facts.deployment_id == agent.id][["owner", "scope", "key", "value"]]
+facts[facts.deployment_id == agent.id][["owner", "scope", "state_key", "value"]]
 ```
 
-Online, not offline: the offline Delta table has no commits until a materialisation runs, so `hops sql` / Trino answers `DELTA_LAKE_INVALID_SCHEMA ... has no commits`. `owner` is the subject for `user` scope — an email where the client asserted one, a conversation id where it did not, which is the quickest way to see whether the paragraph above is biting.
+Online, not offline: the offline Delta table has no commits until a materialisation runs, so `hops sql` / Trino answers `DELTA_LAKE_INVALID_SCHEMA ... has no commits`. `owner` is the subject for `user` scope — an email where the client asserted one, a conversation id where it did not, which is the quickest way to see whether the paragraph above is biting. The other columns are `id, source_ref, written_by, updated_at, expires_at` (`fg.columns`; `fg.features` is deprecated). An evaluation trial's `user`-scope facts have the **trial's** conversation id as `owner` (`<run>/<task>/…`), never the person's — that is how to confirm a replay did not write into a real user's memory.
 
 Streaming, multimodal content, memory tiers, progress events and the structure graph are in the protocol README: `python/hopsworks_agents/protocol/README.md`.
 
@@ -153,6 +154,8 @@ print(Counter(s["attributes"].get("llm.model_name") for s in trace.spans
 One chat after deploying settles it in a second, and it is the only way to catch an agent priced for the model its docstring names while the SDK runs its own default.
 
 Prices change, so write them where the model is chosen and say when they were taken. A deployment whose model changed and whose prices did not is worse than an unpriced one: it reports a number that is confidently wrong.
+
+**Where the cost shows.** A trace: `trace.total_input_tokens` / `total_output_tokens` and `trace.total_input_cost` / `total_output_cost` (there is no `total_cost` or `estimated_cost` on a trace). The totals are the sum over the trace's **model calls** — `llm.token_count.prompt` / `completion` on each LLM span, the turn's own figure only when no model call was traced — and cached prompt tokens are counted and priced at the full input price, so the cost is an upper bound for a provider that discounts cache reads. A run: `estimated_cost` and `costed_trial_rate` on its metrics, suite runs and monitor samples alike. A window: `agent.llm_metrics()` → `estimated_cost_usd` per model.
 
 The two keys are per deployment, so two agents on different models each cost correctly, and re-deploying with new prices is what changes them — they are read per turn, not baked into old traces. Re-reading an old window after a price change does not re-cost it.
 

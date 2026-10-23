@@ -354,6 +354,15 @@ class HandlerContext:
         """
         if not subject or self._subjects is None:
             return False
+        if source == "model" and self.has_subject:
+            # A model's label never overwrites an identity that keys memory. The
+            # index keeps one row per conversation and the last claim wins, so an
+            # agent that called `identify` again on turn three replaced the app's
+            # binding with its own guess, and every trace of the conversation then
+            # reported subject_source "model" -- including turns where the app had
+            # bound the person and memory followed them. The binding already says
+            # who this is, more authoritatively than the label could.
+            return False
         return self._subjects.record(self.conversation_id, subject, source)
 
     def _state_owner(self, scope: str) -> str:

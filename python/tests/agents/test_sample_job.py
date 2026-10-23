@@ -830,3 +830,31 @@ class TestTheWindowIsTheServersJob:
         assert {t.task_id for t in result.trials} == {"recent"}
         assert result.available == 1
         assert result.processed_through_ms is None
+
+
+class TestASampleIsCostedLikeASuite:
+    """A monitor run priced its trials at nothing while a suite run costed the same traffic.
+
+    Every run carries the deployment's prices; the suite runner applied them and the
+    sample job did not, so every monitor reported `estimated_cost 0.0` -- free, not
+    unpriced.
+    """
+
+    @staticmethod
+    def _graded(**prices):
+        session = FakeSession([summary("a", 1)], {"a": detail()})
+        client = FakeClient(
+            {"a": {"input_tokens": 1_000_000, "output_tokens": 500_000}}
+        )
+        return _run_sample(
+            client, session, "https://h", 1, sample_run(**prices), trace_only()
+        ).trials[0]
+
+    def test_a_priced_deployment_prices_the_trial(self):
+        trial = self._graded(
+            inputTokenPricePerMillion=2.0, outputTokenPricePerMillion=8.0
+        )
+        assert trial.estimated_cost == 6.0
+
+    def test_an_unpriced_one_stays_unpriced(self):
+        assert self._graded().estimated_cost is None

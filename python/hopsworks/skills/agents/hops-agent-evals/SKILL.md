@@ -111,6 +111,8 @@ pass. Gates are advisory — they report, they do not block a deploy.
 
 **Draft vs published.** A draft is editable and cannot run; publishing freezes it. Deleting a suite with runs needs `force=True`.
 
+**A version is a row.** `agents.suites.list()` lists every version of every suite, because a run records the version it executed; `list(latest=True)` is one row per suite, the newest. `suites.delete(s, force=True)` deletes one version — `delete(s, force=True, all_versions=True)` tears the whole suite down.
+
 `suite.new_version()` copies a published suite's **checks** into a new draft — **not its tasks**. The draft comes back with `task_count` 0 and you re-add them, which is the point: a new version usually exists because the tasks are changing. Copy them across yourself if you only meant to change a check.
 
 **Human review of a judge.** `run.review_trial(trial, passed=..., reason=..., evaluator="quality")` records a person's verdict per judge; the UI shows judge agreement per evaluator from these.
@@ -121,6 +123,8 @@ pass. Gates are advisory — they report, they do not block a deploy.
 agents.evaluators.judge_models("openai", secret="openai_api_key")   # pre-flight: does the key work,
                                                       # and is the model name real? [] means no key
                                                       # was found, not that there are no models
+agents.evaluators.judge_models("openai")              # no secret named: tries the secrets
+                                                      # EVAL_JUDGE_API_KEY, OPENAI_API_KEY, openai_api_key
 agents.evaluators.install_defaults()                  # Hallucination, Faithfulness, User frustration,
 judge = agents.evaluators.find("Hallucination")       # Toxicity, Profanity, Bias and fairness,
 agent.sample(evaluator=judge).wait()                  # Answer relevance, Safety
@@ -181,6 +185,8 @@ Write the criterion so that "this did not come up" is a pass rather than a miss,
 
 **The judge's key.** A sample run reads the key from the account's environment variables: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` by provider, or `EVAL_JUDGE_API_KEY` for whichever provider the judge names. Set one of those on the *job's* environment, not only in your shell — a judge with no key fails every trial as ungradable, and ungradable is not a failing score (see **A trial nobody could grade**).
 
+**A sample can fail for the platform's reasons, not the agent's.** Twelve monitors of one execution start together, and under that load a run can come back `FAILED` with `trials=0` and the HTTP error on `run.error_message` — a 500 listing the window or reading the trials feature group. The jobs retry such a failure twice before giving up, and the SDK retries a read (`run.metrics()` included) on a 5xx, so this is rare; when it happens, re-run the execution over the same window — `agents.jobs.run_eval_job(job.name, since=..., until=...)` — and, the draw being seeded by the window, every evaluator grades the same conversations again.
+
 **Reading the run list.** `agents.runs.list(agent.id)` returns suite runs and online samples together — filter on `run.run_type` (`"ONLINE_SAMPLE"`, `"SUITE"`, `"FEEDBACK_REVIEW"`), and `run.sample_source` names the evaluator a sample graded with. `run_eval_job` returns a list of runs, one per monitor, all sharing one `execution_id`.
 
 **The analysis job.** `analyse_failures` creates a job named `<agent>_feedback_review`, which `agent.review_job()` reads back and configures: its provider and model, whether it reads the agent's source, which sources it triages (feedback, errors, judge) and its call budget.
@@ -225,6 +231,8 @@ for triage in agent.triage(page.feedback):
     for finding in triage.findings:                   # file, line, finding, fix, original/replacement
         print(finding["file"], finding["line"], finding["fix"])
     agent.decide_triage(triage, "accepted")           # accepted / edited / rejected: calibration data
+    # agent.decide_triage(triage, "rejected")         # the analysis read the trace wrong: say so, so
+    #                                                 # agent.calibration() counts it against it
 
 for cluster in agent.clusters():                      # open clusters, most worth attention first
     print(cluster.label, cluster.size, cluster.severity)
@@ -248,7 +256,10 @@ task = agent.promote_feedback(row, subject="")        # asked anonymously
 task = agent.promote_feedback(row, subject="test-user@example.com")   # a test user with the same profile
 task.confirm_redaction(subject="test-user@example.com")               # or change it in review
 agents.tasks.create("What do you know about me?", subject="marcus@example.com", context={"plan": "pro"})
+suite.add_task("What do you know about me?", subject="marcus@example.com")   # straight into a suite
 ```
+
+**The regression suite is for promoted tasks.** `add_to_regressions` needs a task promoted from a deployment's trace — that is how it knows which deployment's standing suite to join — and refuses a hand-written one ("was not promoted from a deployment's trace"). Put a hand-written memory test in an ordinary suite with `suite.add_task(..., subject=...)`.
 
 The subject is a customer's address copied out of a trace, so it is part of what the redaction review checks, and the Promotion queue shows it ("as marcus@example.com"). **A trial reads that person's memory and never writes it**: under evaluation, `user`-scope writes go under the trial's own conversation and reads look there first, and the trial's messages are not filed in the person's conversation history — so a nightly regression run cannot rewrite a customer's stored profile. The same question asked as two people is two cases, for import dedup and for `changes()`.
 

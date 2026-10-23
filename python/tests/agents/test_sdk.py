@@ -131,13 +131,13 @@ class TestTransport:
         assert "the agent refused this turn on purpose" in str(err.value)
         assert "contract_refusal" in str(err.value)
 
-    def test_a_retryable_refusal_says_so(self):
-        evals, _ = client(
-            Reply(
-                {"detail": {"code": "vector_purge_failed", "retryable": True}},
-                status=500,
-            )
-        )
+    def test_a_retryable_refusal_says_so(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import _transport
+
+        monkeypatch.setattr(_transport.time, "sleep", lambda _s: None)
+        refusal = {"detail": {"code": "vector_purge_failed", "retryable": True}}
+        # a read is retried on a 5xx, so the server has to refuse every attempt
+        evals, _ = client(*(Reply(refusal, status=500) for _ in range(3)))
         with pytest.raises(AgentServingError) as err:
             evals.suites.list()
         assert err.value.retryable is True
@@ -2218,3 +2218,65 @@ class TestATaskCarriesWhoItIsAskedAs:
         assert task.subject == "marcus@example.com"
         assert task.request_context == {"plan": "pro"}
         assert Task.from_api({"taskId": "t"}).request_context == {}
+
+
+class TestSuiteVersionsAsOneSuite:
+    """A version is a row because a run records it; tearing a suite down took a pass per version."""
+
+    LISTING = [
+        {"suiteId": "a", "version": 1, "name": "A"},
+        {"suiteId": "a", "version": 2, "name": "A"},
+        {"suiteId": "b", "version": 1, "name": "B"},
+    ]
+
+    def test_latest_keeps_the_newest_of_each(self):
+        evals, _ = client(Reply(self.LISTING))
+        assert sorted(
+            (s.suite_id, s.version) for s in evals.suites.list(latest=True)
+        ) == [
+            ("a", 2),
+            ("b", 1),
+        ]
+
+    def test_the_plain_listing_is_every_version(self):
+        evals, _ = client(Reply(self.LISTING))
+        assert len(evals.suites.list()) == 3
+
+    def test_all_versions_deletes_each_newest_first(self):
+        evals, session = client(Reply(self.LISTING), Reply(None), Reply(None))
+        evals.suites.delete("a", force=True, all_versions=True)
+        deletes = [(m, u, p) for m, u, p, _ in session.sent if m == "DELETE"]
+        assert [p["version"] for _, _, p in deletes] == [2, 1]
+        assert all(p["force"] == "true" for _, _, p in deletes)
+
+
+class TestAReadRidesOutATransientServerError:
+    """`run.metrics()` failed once with a 500 straight after a run and worked a minute later."""
+
+    def test_a_get_is_retried_after_a_5xx(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import _transport
+
+        monkeypatch.setattr(_transport.time, "sleep", lambda _s: None)
+        evals, session = client(
+            Reply({"usrMsg": "host not found"}, status=500), Reply([])
+        )
+        assert evals.runs.metrics("run-1") == []
+        assert len(session.sent) == 2
+
+    def test_a_refusal_is_not_retried(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import _transport
+
+        monkeypatch.setattr(_transport.time, "sleep", lambda _s: None)
+        evals, session = client(Reply({"usrMsg": "no"}, status=404))
+        with pytest.raises(AgentServingError):
+            evals.runs.metrics("run-1")
+        assert len(session.sent) == 1
+
+    def test_a_write_is_not_retried(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import _transport
+
+        monkeypatch.setattr(_transport.time, "sleep", lambda _s: None)
+        evals, session = client(Reply({"usrMsg": "boom"}, status=500))
+        with pytest.raises(AgentServingError):
+            evals.tasks.create("hi")
+        assert len(session.sent) == 1

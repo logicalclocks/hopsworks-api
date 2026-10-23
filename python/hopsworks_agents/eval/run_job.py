@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 
+from ._retry import _retrying
 from .api import _hopsworks_session
 from .evaluator_spec import SpecError, _evaluators_for_suite
 from .judges import LlmJudgeEvaluator
@@ -196,7 +197,6 @@ def _write_trials(feature_store: Any, trials: Sequence[Any]) -> None:
     """
     if not trials:
         return
-    import pandas as pd
 
     now = datetime.now(tz=timezone.utc)
     rows = _trial_rows(trials, now)
@@ -207,10 +207,13 @@ def _write_trials(feature_store: Any, trials: Sequence[Any]) -> None:
     ):
         if not batch:
             continue
-        group = feature_store.get_feature_group(name, 1)
         # Online only, so no offline materialization job is started -- see the
-        # note on the run-metrics write below.
-        group.insert(_match_schema(group, pd.DataFrame(batch)), storage="online")
+        # note on the run-metrics write below. Retried, because an online insert
+        # is an upsert and a 500 under load is the platform's, not the run's.
+        _retrying(
+            lambda name=name, batch=batch: _insert_online(feature_store, name, batch),
+            what=f"writing {len(batch)} rows to {name}",
+        )
         log.info("wrote %d rows to %s", len(batch), name)
 
 
@@ -280,8 +283,6 @@ def _write_results(
     offline table appends, and a run would read as having run each of those trials
     twice.
     """
-    import pandas as pd
-
     now = datetime.now(tz=timezone.utc)
     pending = [t for t in result.trials if t.trial_id not in set(already_written)]
     trials = _trial_rows(pending, now)
@@ -313,7 +314,6 @@ def _write_results(
     ):
         if not rows:
             continue
-        group = feature_store.get_feature_group(name, 1)
         # Online only, and deliberately: an insert that is not online-only
         # starts the feature group's offline materialization job, which is a
         # Spark driver and its executors per write. These rows are read back
@@ -322,8 +322,19 @@ def _write_results(
         # looks at, scheduled against the same nodes as the agent pods it is
         # recording. `mode: append` went with it: it configures the Delta
         # writer, which an online-only write never reaches.
-        group.insert(_match_schema(group, pd.DataFrame(rows)), storage="online")
+        _retrying(
+            lambda name=name, rows=rows: _insert_online(feature_store, name, rows),
+            what=f"writing {len(rows)} rows to {name}",
+        )
         log.info("wrote %d rows to %s", len(rows), name)
+
+
+def _insert_online(feature_store: Any, name: str, rows: Sequence[Any]) -> None:
+    """One upsert into a feature group's online store; safe to repeat."""
+    import pandas as pd
+
+    group = feature_store.get_feature_group(name, 1)
+    group.insert(_match_schema(group, pd.DataFrame(rows)), storage="online")
 
 
 # What pandas infers, against what a feature group declares. Two dtypes per

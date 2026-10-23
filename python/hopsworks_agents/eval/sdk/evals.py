@@ -125,10 +125,25 @@ class Suites:
         self._http: Transport = client.http
 
     @public
-    def list(self) -> list[Suite]:
-        return self._client._bind_all(
+    def list(self, *, latest: bool = False) -> list[Suite]:
+        """Every suite version in the project, or with ``latest=True`` one row per suite.
+
+        A version is a row because a run records the version it executed, so v1
+        and v2 of one suite are both real and both listed. That makes the plain
+        listing grow with every ``new_version()``; ``latest=True`` is the view a
+        person usually means -- the newest version of each suite.
+        """
+        suites = self._client._bind_all(
             Suite.list_from_api(self._http.get(f"{EVALS}/suites"))
         )
+        if not latest:
+            return suites
+        newest: dict[str, Suite] = {}
+        for suite in suites:
+            kept = newest.get(suite.suite_id)
+            if kept is None or (suite.version or 0) > (kept.version or 0):
+                newest[suite.suite_id] = suite
+        return list(newest.values())
 
     @public
     def get(self, suite_id: str, version: int | None = None) -> Suite:
@@ -263,8 +278,28 @@ class Suites:
 
     @public
     def delete(
-        self, suite: Suite | str, version: int | None = None, force: bool = False
+        self,
+        suite: Suite | str,
+        version: int | None = None,
+        force: bool = False,
+        *,
+        all_versions: bool = False,
     ) -> None:
+        """Delete one version of a suite, or with ``all_versions=True`` every version of it.
+
+        One version per call is the default because a version is what a run
+        recorded; tearing a suite down entirely used to take one pass per version
+        over the listing. ``force`` is needed for a version that has runs.
+        """
+        if all_versions:
+            suite_id = suite.suite_id if isinstance(suite, Suite) else str(suite)
+            versions = sorted(
+                (s.version for s in self.list() if s.suite_id == suite_id),
+                reverse=True,
+            )
+            for each in versions:
+                self.delete(suite_id, each, force)
+            return
         suite_id, version = _suite_ref(suite, version)
         self._http.delete(
             f"{EVALS}/suites/{suite_id}",

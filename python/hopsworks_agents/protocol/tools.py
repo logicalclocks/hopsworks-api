@@ -293,6 +293,14 @@ def identify(subject: str) -> str:
     subject = (subject or "").strip()
     if not subject:
         return "No identifier was given, so nothing was recorded."
+    if ctx.has_subject:
+        # Said plainly, because the model asked again only because it did not
+        # know: a conversation the application already identified does not need,
+        # and must not get, a model's label over the top of it.
+        return (
+            f"This conversation is already identified as {ctx.subject}, and memory "
+            "follows them. Nothing to record; do not call `identify` again."
+        )
     # deliberately record_subject and not rebind_subject: rebinding decides
     # whose durable memory this conversation may read, and the caller here is a
     # model acting on text a user typed. See context.record_subject.
