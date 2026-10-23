@@ -3934,6 +3934,51 @@ class TestSpark:
         assert spark_keys == TestPython._row_keys(pandas_result)
         assert spark_keys == TestPython._row_keys(polars_result, polars_frame=True)
 
+    def test_random_split_hashes_large_bigints_exactly(self, mocker):
+        # pandas holds a bigint column with a null as float64, which rounds
+        # values above 2^53; a row's split must not depend on its neighbours.
+        # Arrange
+        from hsfs.engine import python
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        big = [None if i % 5 == 0 else 2**53 + 1 + 2 * i for i in range(60)]
+        rows = [(i, big[i], [big[i], None]) for i in range(60)]
+        schema = StructType(
+            [
+                StructField("k", LongType()),
+                StructField("big", LongType()),
+                StructField("arr", ArrayType(LongType())),
+            ]
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(rows, schema)
+        view = types.SimpleNamespace(
+            features=[
+                TrainingDatasetFeature(name="big", type="bigint"),
+                TrainingDatasetFeature(name="arr", type="array<bigint>"),
+            ]
+        )
+        td = self._hash_split_td()
+        pandas_df = pd.DataFrame(
+            {
+                "k": range(60),
+                "big": pd.Series(big, dtype="Int64"),
+                "arr": [[b, None] for b in big],
+            }
+        )
+
+        # Act
+        spark_result = spark_engine._random_split(
+            spark_df.coalesce(1), td, feature_view_obj=view
+        )
+        pandas_result = python.Engine()._random_split(pandas_df, td, view)
+
+        # Assert
+        assert {
+            name: {r["k"] for r in split_df.select("k").collect()}
+            for name, split_df in spark_result.items()
+        } == {name: set(split_df["k"]) for name, split_df in pandas_result.items()}
+
     def test_random_split_returns_rows_unchanged(self, mocker):
         # NaN (top level and inside an array) and a timestamp in the repeated
         # DST hour of the session zone must come back exactly as they went in.
@@ -4058,6 +4103,42 @@ class TestSpark:
         assert persisted - before == (len(result) if to_df else 0)
         for split_df in result.values():
             split_df.unpersist()
+
+    def test_write_training_dataset_releases_split_caches_on_error(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            side_effect=lambda td, fv, splits, **kwargs: splits,
+        )
+        mocker.patch(
+            "hsfs.engine.spark.Engine._write_training_dataset_splits",
+            side_effect=OSError("write failed"),
+        )
+        spark_engine = spark.Engine()
+        session = spark_engine._spark_session
+        # A lazy cache is registered without an RDD: check the cache manager.
+        session.catalog.clearCache()
+        query_obj = mocker.Mock()
+        query_obj.read.return_value = session.range(1000)
+        view = types.SimpleNamespace(
+            features=[TrainingDatasetFeature(name="id", type="bigint")]
+        )
+        # Act
+        with pytest.raises(OSError, match="write failed"):
+            spark_engine._write_training_dataset(
+                training_dataset=self._hash_split_td(),
+                query_obj=query_obj,
+                user_write_options=None,
+                save_mode=None,
+                read_options=None,
+                feature_view_obj=view,
+                to_df=True,
+            )
+
+        # Assert
+        assert session._jsparkSession.sharedState().cacheManager().isEmpty()
 
     def test_random_split_keeps_values(self, mocker, stockholm_session_time_zone):
         # The rows pass through Python on the way to their split; values must not change.

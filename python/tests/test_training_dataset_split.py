@@ -111,6 +111,11 @@ class TestCanonicalRowBytes:
             np.float32("inf"), types=["float"]
         )
 
+    def test_struct_field_names_match_any_case(self):
+        assert _row_bytes({"A": 1}, types=["struct<a:bigint>"]) == _row_bytes(
+            {"a": 1}, types=["struct<a:bigint>"]
+        )
+
     def test_struct_value_missing_a_field_raises(self):
         with pytest.raises(ValueError, match="struct"):
             _row_bytes({"a": 1}, types=["struct<a:bigint,b:string>"])

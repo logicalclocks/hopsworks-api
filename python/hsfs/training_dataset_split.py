@@ -319,11 +319,14 @@ def _encode(value, declared, out):
             _encode(item, declared[1], out)
     elif kind == "struct":
         out += b"R" + struct.pack(">I", len(declared[1]))
+        if isinstance(value, dict):
+            # Hive stores struct field names in lower case.
+            value = {str(key).lower(): item for key, item in value.items()}
         for index, (name, field_type) in enumerate(declared[1]):
-            if isinstance(value, dict) and name not in value:
+            if isinstance(value, dict) and name.lower() not in value:
                 raise _misfit(value, "struct")
             _encode(
-                value[name] if isinstance(value, dict) else value[index],
+                value[name.lower()] if isinstance(value, dict) else value[index],
                 field_type,
                 out,
             )

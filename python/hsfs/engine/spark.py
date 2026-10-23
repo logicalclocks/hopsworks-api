@@ -152,42 +152,48 @@ if HAS_AVRO:
 _logger = logging.getLogger(__name__)
 
 
-def _has_local_timestamp(data_type) -> bool:
-    if isinstance(data_type, TimestampType):
+def _needs_hash_prep(data_type) -> bool:
+    if isinstance(data_type, (TimestampType, LongType)):
         return True
     if isinstance(data_type, ArrayType):
-        return _has_local_timestamp(data_type.elementType)
+        return _needs_hash_prep(data_type.elementType)
     if isinstance(data_type, MapType):
-        return _has_local_timestamp(data_type.keyType) or _has_local_timestamp(
+        return _needs_hash_prep(data_type.keyType) or _needs_hash_prep(
             data_type.valueType
         )
     if isinstance(data_type, StructType):
-        return any(_has_local_timestamp(field.dataType) for field in data_type.fields)
+        return any(_needs_hash_prep(field.dataType) for field in data_type.fields)
     return False
 
 
-def _utc_micros(column, data_type):
-    """Replace every TimestampType value in `column` by its UTC epoch microseconds."""
+def _hash_prep(column, data_type):
+    """Make `column` exact in pandas: TimestampType as UTC epoch micros, bigints as decimals.
+
+    Spark hands timestamps to Python as wall time in the session zone, and pandas turns a
+    bigint column holding a null into float64, which rounds values above 2^53.
+    """
     if isinstance(data_type, TimestampType):
-        return unix_micros(column)
-    if not _has_local_timestamp(data_type):
+        return unix_micros(column).cast(DecimalType(20, 0))
+    if isinstance(data_type, LongType):
+        return column.cast(DecimalType(20, 0))
+    if not _needs_hash_prep(data_type):
         return column
     if isinstance(data_type, ArrayType):
-        return transform(column, lambda x: _utc_micros(x, data_type.elementType))
+        return transform(column, lambda x: _hash_prep(x, data_type.elementType))
     if isinstance(data_type, MapType):
-        if _has_local_timestamp(data_type.keyType):
+        if _needs_hash_prep(data_type.keyType):
             column = transform_keys(
-                column, lambda k, _: _utc_micros(k, data_type.keyType)
+                column, lambda k, _: _hash_prep(k, data_type.keyType)
             )
-        if _has_local_timestamp(data_type.valueType):
+        if _needs_hash_prep(data_type.valueType):
             column = transform_values(
-                column, lambda _, v: _utc_micros(v, data_type.valueType)
+                column, lambda _, v: _hash_prep(v, data_type.valueType)
             )
         return column
     return when(column.isNull(), lit(None)).otherwise(
         struct(
             *[
-                _utc_micros(column.getField(field.name), field.dataType).alias(
+                _hash_prep(column.getField(field.name), field.dataType).alias(
                     field.name
                 )
                 for field in data_type.fields
@@ -1274,7 +1280,7 @@ class Engine:
                 path,
                 to_df=to_df,
             )
-        release = []
+        release, cached_splits, keep_cached = [], [], False
         try:
             split_dataset = self._split_df(
                 query_obj,
@@ -1290,7 +1296,7 @@ class Engine:
                 # Statistics and the write both read each split, and to_df hands the
                 # frames to the caller: cache so the query is read and hashed once.
                 split_dataset[key] = split_dataset[key].cache()
-            cached_splits = list(split_dataset.values())
+                cached_splits.append(split_dataset[key])
 
             split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
                 training_dataset,
@@ -1312,11 +1318,10 @@ class Engine:
                 # hashed source is released, so rows are not hashed again.
                 for cached in cached_splits:
                     cached.count()
-            else:
-                release += cached_splits
+                keep_cached = True
             return result
         finally:
-            for frame in release:
+            for frame in release + ([] if keep_cached else cached_splits):
                 frame.unpersist()
 
     def _split_df(
@@ -1386,14 +1391,12 @@ class Engine:
         once, and appended to `release` for the caller to unpersist at the end of the read.
         """
         split_column = f"_SPLIT_INDEX_{uuid.uuid4().hex}"
-        # Spark hands TimestampType values to Python as wall time in the session zone,
-        # so they are hashed as UTC epoch microseconds computed in Spark.
         hashed, offline_types = [], []
         for index, (name, declared) in enumerate(
             training_dataset_split._split_columns(feature_view_obj, dataset.columns)
         ):
             data_type = dataset.schema[name].dataType
-            hashed.append(_utc_micros(col(f"`{name}`"), data_type).alias(f"c{index}"))
+            hashed.append(_hash_prep(col(f"`{name}`"), data_type).alias(f"c{index}"))
             offline_types.append(declared or data_type.simpleString())
         salt = training_dataset_split._split_salt(training_dataset)
         fractions = [split.percentage for split in training_dataset.splits]
