@@ -21,7 +21,6 @@ import os
 import posixpath
 import re
 import time
-import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
@@ -97,17 +96,19 @@ class StorageConnector(ABC):
 
     NOT_FOUND_ERROR_CODE = 270042
 
+    # Must match the backend's JsonSubTypes names exactly, case included: any other spelling
+    # deserialises as the base DTO, and creating the data source fails with a ClassCastException.
     _DTO_TYPE = {
         HOPSFS: "featurestoreHopsfsConnectorDTO",
         S3: "featurestoreS3ConnectorDTO",
         REDSHIFT: "featurestoreRedshiftConnectorDTO",
-        ADLS: "featurestoreAdlsConnectorDTO",
+        ADLS: "featurestoreADLSConnectorDTO",
         SNOWFLAKE: "featurestoreSnowflakeConnectorDTO",
         SAP_HANA: "featureStoreSapHanaConnectorDTO",
         MONGODB: "featurestoreMongoConnectorDTO",
         GLUE: "featurestoreGlueConnectorDTO",
         JDBC: "featurestoreJdbcConnectorDTO",
-        KAFKA: "featurestoreKafkaConnectorDTO",
+        KAFKA: "featureStoreKafkaConnectorDTO",
         GCS: "featureStoreGcsConnectorDTO",
         BIGQUERY: "featurestoreBigqueryConnectorDTO",
         SQL: "featurestoreSqlConnectorDTO",
@@ -2780,13 +2781,6 @@ class KafkaConnector(StorageConnector):
         if ssl_key_password is not None:
             config["ssl.key.password"] = ssl_key_password
 
-        if self._external_kafka:
-            warnings.warn(
-                "Getting connection details to externally managed Kafka cluster. "
-                "Make sure that the topic being used exists.",
-                stacklevel=1,
-            )
-
         return config
 
     @public
@@ -2849,7 +2843,9 @@ class KafkaConnector(StorageConnector):
                     "(.+?) .*username=[\"'](.+?)[\"'] .*password=[\"'](.+?)[\"']",
                     value,
                 )
-                if "sasl.mechanisms" not in config:
+                # Java clients take the mechanism from sasl.mechanism, which is passed on as it is below.
+                # The login module only names its family, and SCRAM can be SCRAM-SHA-256 or SCRAM-SHA-512.
+                if "sasl.mechanism" not in kafka_options:
                     mechanism = groups.group(1)
                     mechanism_value = None
                     if (
@@ -2861,13 +2857,13 @@ class KafkaConnector(StorageConnector):
                         mechanism
                         == "org.apache.kafka.common.security.scram.ScramLoginModule"
                     ):
-                        mechanism_value = "SCRAM-SHA-256"  # could also be SCRAM-SHA-512
+                        mechanism_value = "SCRAM-SHA-256"
                     elif (
                         mechanism
                         == "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule"
                     ):
                         mechanism_value = "OAUTHBEARER"
-                config["sasl.mechanisms"] = mechanism_value
+                    config["sasl.mechanisms"] = mechanism_value
                 config["sasl.username"] = groups.group(2)
                 config["sasl.password"] = groups.group(3)
             elif key == "ssl.endpoint.identification.algorithm":
