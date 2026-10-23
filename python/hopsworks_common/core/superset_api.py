@@ -460,7 +460,11 @@ class SupersetApi:
             payload["css"] = css
         if owners is not None:
             payload["owners"] = owners
-        return self._request("POST", "/api/v1/dashboard/", json_data=payload)
+        created = self._request("POST", "/api/v1/dashboard/", json_data=payload)
+        # Titles are not unique: the id tells which dashboard this change made.
+        if isinstance(created, dict) and isinstance(created.get("id"), int):
+            events.note(id=created["id"])
+        return created
 
     @public
     @usage._method_logger
@@ -505,6 +509,7 @@ class SupersetApi:
         Returns:
             The updated dashboard as a dict.
         """
+        events.note(id=dashboard_id)
         return self._request(
             "PUT", f"/api/v1/dashboard/{dashboard_id}", json_data=kwargs
         )
@@ -525,4 +530,5 @@ class SupersetApi:
         Returns:
             Empty dict on success.
         """
+        events.note(id=dashboard_id)
         return self._request("DELETE", f"/api/v1/dashboard/{dashboard_id}")

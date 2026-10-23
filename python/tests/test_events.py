@@ -274,3 +274,21 @@ def test_a_schedule_line_carries_what_the_server_stored(tmp_path, monkeypatch, m
     }
     assert delete_line["op"] == "delete"
     assert delete_line["detail"] == {"enabled": False}
+
+
+def test_a_dashboard_line_carries_its_id(tmp_path, monkeypatch, mocker):
+    from hopsworks_common.core.superset_api import SupersetApi
+
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+    api = SupersetApi.__new__(SupersetApi)
+    api._request = mocker.Mock(return_value={"id": 7, "result": {}})
+
+    api.create_dashboard("Churn")
+    api.update_dashboard(7, dashboard_title="Churn v2")
+    api.delete_dashboard(7)
+
+    created, updated, deleted = _lines(target)
+    assert (created["key"], created["detail"]) == ({"name": "Churn"}, {"id": 7})
+    assert (updated["key"], updated["detail"]) == ({"name": "Churn v2"}, {"id": 7})
+    assert (deleted["key"], deleted["detail"]) == ({"name": "7"}, {"id": 7})
