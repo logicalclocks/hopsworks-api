@@ -80,8 +80,7 @@ def telemetry_off(mocker):
 
 @pytest.fixture
 def telemetry_on(mocker, span_exporter):
-    mocker.patch.object(tracing, "_available", True)
-    mocker.patch.object(tracing, "_enabled", True)
+    # span_exporter switches telemetry on; patching it again here would restore the switched-on value at teardown.
     mocker.patch.dict(transformation_telemetry._telemetries, clear=True)
     return span_exporter
 
