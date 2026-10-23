@@ -599,6 +599,7 @@ public abstract class StorageConnector {
     public static final String POSTGRESQL = "POSTGRESQL";
     public static final String CLICKHOUSE = "CLICKHOUSE";
     public static final String TERADATA = "TERADATA";
+    public static final String SQLSERVER = "SQLSERVER";
 
     private static final Map<String, String> DRIVERS;
     private static final Map<String, String> JDBC_SCHEMES;
@@ -609,6 +610,7 @@ public abstract class StorageConnector {
       drivers.put(POSTGRESQL, "org.postgresql.Driver");
       drivers.put(CLICKHOUSE, "com.clickhouse.jdbc.ClickHouseDriver");
       drivers.put(TERADATA, "com.teradata.jdbc.TeraDriver");
+      drivers.put(SQLSERVER, "com.microsoft.sqlserver.jdbc.SQLServerDriver");
       DRIVERS = Collections.unmodifiableMap(drivers);
 
       Map<String, String> schemes = new HashMap<>();
@@ -616,6 +618,7 @@ public abstract class StorageConnector {
       schemes.put(POSTGRESQL, "postgresql");
       schemes.put(CLICKHOUSE, "clickhouse");
       schemes.put(TERADATA, "teradata");
+      schemes.put(SQLSERVER, "sqlserver");
       JDBC_SCHEMES = Collections.unmodifiableMap(schemes);
     }
 
@@ -647,8 +650,8 @@ public abstract class StorageConnector {
      * URL built from those same fields. Mirrors the set in hopsworks-ee and in the Python client.
      */
     private static final Set<String> RESERVED_ARGUMENTS = new HashSet<>(Arrays.asList(
-        "host", "port", "dbs_port", "database", "database_type", "user", "username", "password",
-        Constants.JDBC_URL, Constants.JDBC_DRIVER));
+        "host", "port", "dbs_port", "database", "databasename", "server", "servername", "portnumber", "database_type",
+        "user", "username", "password", Constants.JDBC_URL, Constants.JDBC_DRIVER));
 
     @Override
     public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
@@ -694,6 +697,12 @@ public abstract class StorageConnector {
           params.add("DBS_PORT=" + getPort());
         }
         return "jdbc:" + scheme + "://" + getHost() + "/" + String.join(",", params);
+      }
+      if (SQLSERVER.equals(normalizedType)) {
+        // The database is a ;-separated property, not a path, braced so a ; or = in it cannot start
+        // another property; }} is a literal } inside braces.
+        return "jdbc:" + scheme + "://" + getHost() + ":" + getPort() + ";databaseName={"
+            + Strings.nullToEmpty(databaseName).replace("}", "}}") + "}";
       }
       return "jdbc:" + scheme + "://" + getHost() + ":" + getPort() + "/" + databaseName;
     }
