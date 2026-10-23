@@ -1000,9 +1000,15 @@ class ServingEngine:
         is_update = deployment_instance.id is not None
 
         targets = [
-            (predictor, "script_file", "predictor", "script_file"),
             (predictor, "config_file", "config", "config_file"),
         ]
+        # A git-backed agent's script is a path inside the repository the pod
+        # clones, not a local file: resolving it here either fails (the cwd
+        # does not hold the repository) or uploads a copy and rewrites the
+        # field to an absolute HopsFS path, which the backend then refuses as
+        # not being a safe relative path. Left exactly as given.
+        if getattr(predictor, "git_url", None) is None:
+            targets.insert(0, (predictor, "script_file", "predictor", "script_file"))
         if predictor.transformer is not None:
             targets.append(
                 (
