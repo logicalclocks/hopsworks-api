@@ -1696,6 +1696,57 @@ class TestSqlConnector:
         ):
             connector.spark_options()
 
+    def test_sqlserver_url_carries_the_database_as_a_property(self):
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="SQLSERVER",
+            host="mssql.example.com",
+            port=1433,
+            database="sales",
+            user="sa",
+            password="pass",
+            arguments=[
+                {"name": "trustServerCertificate", "value": "true"},
+                {"name": "databaseName", "value": "other_db"},
+                {"name": "serverName", "value": "evil.example.com"},
+                {"name": "portNumber", "value": "1434"},
+                {"name": "server", "value": "evil.example.com"},
+            ],
+        )
+
+        options = connector.spark_options()
+
+        assert (
+            options["url"]
+            == "jdbc:sqlserver://mssql.example.com:1433;databaseName={sales}"
+        )
+        assert options["driver"] == "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+        assert options["trustServerCertificate"] == "true"
+        # The field owns the database; Spark would hand the argument to the driver and override it.
+        assert "databaseName" not in options
+        assert "serverName" not in options
+        assert "portNumber" not in options
+        assert "server" not in options
+
+    def test_sqlserver_database_cannot_add_url_properties(self):
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="SQLSERVER",
+            host="mssql.example.com",
+            port=1433,
+            database="sales;encrypt=false}x",
+            user="sa",
+            password="pass",
+        )
+
+        assert connector.spark_options()["url"] == (
+            "jdbc:sqlserver://mssql.example.com:1433;databaseName={sales;encrypt=false}}x}"
+        )
+
     def test_clickhouse_ssl_argument_reaches_the_jdbc_driver(self):
         # Arrange
         connector = storage_connector.SqlConnector(
@@ -3756,3 +3807,85 @@ class TestElasticsearchConnector:
             "/Projects/p/Resources/ts.jks"
         )
         assert options["es.net.ssl.truststore.location"] == "file:.hopsworks-ab-ts.jks"
+
+
+class TestHopsworksConnector:
+    @staticmethod
+    def _connector(**kwargs):
+        defaults = {
+            "id": 1,
+            "name": "remote",
+            "featurestore_id": 67,
+            "host": "hopsworks.example.com",
+            "project": "Sales",
+            "api_key": "k",
+        }
+        defaults.update(kwargs)
+        return storage_connector.HopsworksConnector(**defaults)
+
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_hopsworks"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.HopsworksConnector)
+        assert sc.host == "hopsworks.example.com"
+        assert sc.port == 443
+        assert sc.project == "Sales"
+        assert sc.api_key == "test_api_key"
+        assert sc.verify is True
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_hopsworks_basic_info"][
+            "response"
+        ]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.HopsworksConnector)
+        assert sc.host is None
+        assert sc.api_key is None
+
+    def test_to_dict_uses_the_backend_dto_name(self):
+        payload = self._connector(port=8181, verify=False).to_dict()
+
+        assert payload["type"] == "featurestoreHopsworksConnectorDTO"
+        assert payload["storageConnectorType"] == "HOPSWORKS"
+        assert {k: payload[k] for k in ("host", "port", "project", "apiKey")} == {
+            "host": "hopsworks.example.com",
+            "port": 8181,
+            "project": "Sales",
+            "apiKey": "k",
+        }
+        assert payload["verify"] is False
+
+    def test_get_tables_defaults_to_the_remote_project_feature_store(self, mocker):
+        sc = self._connector()
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "sales_featurestore")
+
+    def test_get_tables_takes_a_shared_feature_store(self, mocker):
+        sc = self._connector()
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        sc.get_tables("marketing_featurestore")
+
+        mock_get_tables.assert_called_once_with(sc, "marketing_featurestore")
+
+    def test_get_tables_without_project_needs_a_database(self, mocker):
+        sc = self._connector(project=None)
+        mocker.patch.object(sc, "_refetch")
+
+        with pytest.raises(ValueError, match="remote feature store name"):
+            sc.get_tables()
+
+    def test_read_points_to_an_external_feature_group(self):
+        with pytest.raises(NotImplementedError, match="external feature group"):
+            self._connector().read()

@@ -86,7 +86,15 @@ sqlalchemy-1 = [
 ]
 great-expectations = ["great_expectations>=0.18.12,<=1.24.0"]
 dev-no-opt = [
+    # No agent extras here. This is what the "No Optional Dependencies" job
+    # installs, and that job exists to catch an optional package imported at
+    # module load. With [agents,agents-eval] in it, FastAPI, pydantic,
+    # OpenTelemetry, anthropic, openai and SQLAlchemy 2 were always present and
+    # the job could no longer catch anything -- which matters because
+    # project.get_agent_serving() is documented as working on the core
+    # dependencies alone. They are in [dev], where the agent tests run.
     "hopsworks[python,trino,terminal]",
+    "httpx",
     "pytest==7.4.4",
     "pytest-mock==3.12.0",
     "pytest-cov>=4.0",
@@ -115,6 +123,10 @@ dev-pandas1 = [
 ]
 dev = [
     "hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]",
+    # The agent extras live here rather than in dev-no-opt: the agent tests
+    # need them, and the no-optional-dependencies job must not have them.
+    "hopsworks[agents,agents-eval]",
+    "sqlalchemy>=2.0.0",
     # The app skeleton shipped under hopsworks/skills is exercised by the unit
     # tests; FastAPI is a dependency of the app, not of this package.
     "fastapi",
@@ -141,6 +153,27 @@ trino=[
 terminal = [
     "websockets>=13",
 ]
+# Serving an agent: AgentApp, tracing, and the turn span the evaluation runner
+# correlates on. Runs inside an agent deployment. Talking to a deployed agent or
+# to the evaluation API needs none of this -- that half of the two agent
+# packages imports lazily and works on the core dependencies alone.
+agents = [
+    "fastapi>=0.100",
+    "pydantic>=2.0",
+    "opentelemetry-sdk>=1.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.0.0",
+]
+# The evaluation job's model calls: the LLM judge and the failure-analysis
+# review. Runs in a Hopsworks job, never in a serving pod.
+agents-eval = [
+    "anthropic>=0.40",
+    "openai>=1.0",
+]
+# Durable agent memory backed by the project's online store, with search.
+agents-memory = [
+    "sqlalchemy>=2.0.0",
+    "sentence-transformers>=2.2.0",
+]
 
 [dependency-groups]
 pre-commit = ["pre-commit"]
@@ -154,6 +187,9 @@ conflicts = [
     [{ extra = "dev-pandas1" }, { extra = "dev" }],
     [{ extra = "sqlalchemy-1" }, { extra = "dev-no-opt" }],
     [{ extra = "sqlalchemy-1" }, { extra = "dev" }],
+    # agent memory needs SQLAlchemy 2; the pandas-1 and SQLAlchemy-1 environments cannot carry it
+    [{ extra = "agents-memory" }, { extra = "dev-pandas1" }],
+    [{ extra = "agents-memory" }, { extra = "sqlalchemy-1" }],
 ]
 
 [build-system]
@@ -169,6 +205,7 @@ include = [
     "hsfs*",
     "hsml*",
     "hopsworks_common*",
+    "hopsworks_agents*",
 ]
 
 [tool.setuptools.package-data]
@@ -286,7 +323,7 @@ convention = "google"
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
-known-third-party = ["hopsworks", "hsfs", "hsml", "hopsworks_common"]
+known-third-party = ["hopsworks", "hsfs", "hsml", "hopsworks_common", "hopsworks_agents"]
 
 
 [tool.ruff.format]
