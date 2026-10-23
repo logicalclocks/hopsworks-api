@@ -482,15 +482,38 @@ def _render_prompt(
     tool_calls: str = "",
     tool_results: str = "",
     transcript: str = "",
+    subject: str = "",
 ) -> str:
     """The prompt for one trial, showing only what `inputs` allows."""
     sections = []
+    if subject:
+        # Who the request was for, when the application said. Without it a judge
+        # read an agent that rightly did not ask who it was talking to as one that
+        # skipped the question, and a fact it remembered about the person as one
+        # it invented -- the judge had no input that said who the person was.
+        sections.append(
+            f"\n<user>\nThis request was made on behalf of {subject}, identified by "
+            "the application rather than in the conversation. The agent may already "
+            "know them: it need not ask who they are, and what it says about them "
+            "from its memory of earlier conversations is not invented.\n</user>\n"
+        )
     if transcript:
         # Not behind an `inputs` flag: a transcript exists only for a task that
         # had several turns, and a judge grading one of those without seeing the
         # conversation is grading the last answer and calling it the whole
         # exchange. There is nothing to opt out of.
-        sections.append(f"\n<conversation>\n{transcript}\n</conversation>\n")
+        #
+        # Said which reply is graded, because criteria are written as "the
+        # reply ...": an introduction given on the first turn was failed on the
+        # last one, which had no reason to repeat it. A criterion that is about
+        # the whole exchange says so, and is then graded on it.
+        sections.append(
+            f"\n<conversation>\n{transcript}\n</conversation>\n"
+            "<agent_answer> below is the final reply of this conversation. Grade "
+            "each criterion on that reply; earlier replies are context, except where "
+            "a criterion says it is about the conversation, which is then graded on "
+            "every reply in it.\n"
+        )
     if "expected_result" in config.inputs and expected:
         sections.append(f"\n<expected>\n{expected}\n</expected>\n")
     if "rubric" in config.inputs and rubric:
@@ -515,6 +538,7 @@ def _render_prompt(
             tool_results=tool_results,
             context=context,
             transcript=transcript,
+            subject=subject,
             criteria=_criteria_block(config),
             score_min=_number(config.score_min),
             score_max=_number(config.score_max),

@@ -8,6 +8,7 @@ agent handle. The handle is fetched through :meth:`AgentServing.get_agent`.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -333,9 +334,34 @@ class Agent:
         )
 
     @public
-    def trace(self, trace_id: str) -> Trace:
-        """A whole trace: spans, attributes, events and totals."""
-        return Trace.from_api(self._http.get(f"{self._otel}/traces/{trace_id}"))
+    def trace(self, trace_id: str, *, wait: float = 0.0) -> Trace:
+        """A whole trace: spans, attributes, events and totals.
+
+        A trace is written a moment after the reply, span by span, so one read
+        straight after ``chat()`` can be missing -- or worse, present without its
+        model calls: no LLM span, zero tokens, zero cost, which reads as a turn
+        that cost nothing. ``wait`` (seconds) polls until the turn has closed --
+        its span carries the response id, which the SDK stamps last -- or the time
+        runs out, and returns what is there by then. An agent that does not use
+        the Hopsworks agent SDK never stamps it, so ``wait`` costs it the full time.
+
+        Raises:
+            AgentServingError: the trace was not found, after ``wait`` if one was given.
+        """
+        deadline = time.monotonic() + max(0.0, wait)
+        while True:
+            try:
+                trace = Trace.from_api(
+                    self._http.get(f"{self._otel}/traces/{trace_id}")
+                )
+            except AgentServingError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.5)
+                continue
+            if wait <= 0 or _turn_closed(trace) or time.monotonic() >= deadline:
+                return trace
+            time.sleep(0.5)
 
     @public
     def session(self, session_id: str, *, limit: int = -1) -> list[TraceSummary]:
@@ -857,6 +883,17 @@ class Agent:
         """Run the failure analysis now; the job is created with defaults if the deployment has none."""
         job = self.review_job() or self._client.jobs.ensure_review_job(self.id)
         return self._client.jobs.analyse(job, **kwargs)
+
+
+def _turn_closed(trace: Trace) -> bool:
+    """Whether the turn this trace records has finished landing.
+
+    The response id is stamped on the turn span when the turn closes, and that span
+    ends after every span inside it, so its presence means the rest are in.
+    """
+    return any(
+        a.get("attrKey") == "hopsworks.response_id" for a in trace.span_attributes
+    )
 
 
 def _chat_payload(

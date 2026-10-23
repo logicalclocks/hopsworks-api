@@ -76,7 +76,7 @@ run.metrics()                               # pass rate per check and overall
 agent.gates()                               # do the published suites' gates pass for this agent?
 ```
 
-**A result says which trial, not which conversation.** `EvaluatorResult` carries `trial_id`; the trace is on the trial. Printing results alone leaves you with a page of verdicts and no way to open the conversation behind one, so join them:
+**A result says which trial, not which conversation.** `EvaluatorResult` carries `trial_id`; the trace is on the trial. A `Trial` has no transcript of its own: the conversation a multi-turn trial had is `agent.conversation(trial.trial_id)` (its session id is its trial id). Printing results alone leaves you with a page of verdicts and no way to open the conversation behind one, so join them:
 
 ```python
 traces = {t.trial_id: t.trace_id for t in run.trials()}
@@ -86,7 +86,7 @@ for result in run.results():
 
 Check kinds, their configuration keys and how each reads a task's expectation are in [references/checks.md](references/checks.md). A check that needs an expected answer cannot grade live traces; the library tells you which.
 
-**A multi-turn task's trajectory checks grade the last turn.** `tool_call`, `tool_order`, `tool_arguments` and the rest read the trace of the final turn, because that is the trace the trial records. A judge gets the whole transcript, so it can be asked about the conversation. A pipeline that spans turns — analyse, then propose, then plan — cannot be checked with one `tool_order` over the lot: give each step its own task, or ask a judge.
+**A multi-turn task's trajectory checks grade the last turn.** `tool_call`, `tool_order`, `tool_arguments` and the rest read the trace of the final turn, because that is the trace the trial records. A judge gets the whole transcript — as **context**: it grades the final reply (`<agent_answer>`), and a criterion written as "the reply …" is graded on that turn alone. A behaviour that belongs to an earlier turn — an introduction, a disclaimer shown once, an email asked for at the start — must say so: *"in this reply or an earlier one in the conversation"* is graded across every reply. Otherwise the second turn of `["dana@example.com", "What can you do?"]` fails for not repeating what the first turn already did. A pipeline that spans turns — analyse, then propose, then plan — cannot be checked with one `tool_order` over the lot: give each step its own task, or ask a judge.
 
 **Sandboxed suites.** A suite with `execution_mode="sandboxed"` is accepted against a deployment whose manifest advertises per-request evaluation (`AgentApp(eval_per_request=True)`) or that runs with `EVAL_MODE=true`. Otherwise the runner refuses it. A red-team suite therefore needs no separate deployment if the agent already honours per-request eval.
 
@@ -156,6 +156,8 @@ Every offending evaluator is named at once when the job is configured, so you do
 
 **One form for both jobs, one model for both.** `judge_model` on the evaluation job is what any check that names no model of its own judges with, *and* what the failure analysis uses — a judge used to be configured inside every check and again on the analysis job. `ensure_eval_job(...)` creates the analysis job with the evaluation's own environment, resources and model, and the evaluation triggers it. **It is on by default** — a failure nobody explains is one somebody reads twice — so pass `analyse_failures=False` for a deployment that should not spend model calls on it, and `judge_model=` to name the model. The provider is guessed from the agent's framework when you name none: the OpenAI Agents SDK implies OpenAI, the Claude SDK implies Anthropic, everything else keeps the default — no schedule of its own, and only when a run produced a **new failure or a regression**, since the same failures again need no second explanation. Its advanced settings (sources, source code, auto-promotion thresholds) stay on the analysis job itself.
 
+**The evaluation starts analyses on its own,** whenever a run produces a new failure or a regression, so the clusters can change between two of your scripts' calls. A "since the last run" analysis never starts twice at once — asking while one is going returns that run — but read `agent.clusters()` once and work from that list, or check `agents.runs.list(agent.id)` for a `FEEDBACK_REVIEW` still `RUNNING` first. An open cluster whose verdicts a later analysis re-filed elsewhere is left off the list.
+
 **Check the pair matches before you rely on automatic analysis.** The two jobs hold the judge separately, and they can drift — a deployment recreated under a new id got the framework's default provider on its analysis job while keeping the evaluation's model, leaving `provider=anthropic, model=gpt-5.6-terra`, an impossible pair. Every analysis the evaluation triggered then failed with *"no API key: set the environment variable ANTHROPIC_API_KEY"*, and nothing said so except the run's own status. One line settles it:
 
 ```python
@@ -187,7 +189,7 @@ Write the criterion so that "this did not come up" is a pass rather than a miss,
 
 **A sample can fail for the platform's reasons, not the agent's.** Twelve monitors of one execution start together, and under that load a run can come back `FAILED` with `trials=0` and the HTTP error on `run.error_message` — a 500 listing the window or reading the trials feature group. The jobs retry such a failure twice before giving up, and the SDK retries a read (`run.metrics()` included) on a 5xx, so this is rare; when it happens, re-run the execution over the same window — `agents.jobs.run_eval_job(job.name, since=..., until=...)` — and, the draw being seeded by the window, every evaluator grades the same conversations again.
 
-**Reading the run list.** `agents.runs.list(agent.id)` returns suite runs and online samples together — filter on `run.run_type` (`"ONLINE_SAMPLE"`, `"SUITE"`, `"FEEDBACK_REVIEW"`), and `run.sample_source` names the evaluator a sample graded with. `run_eval_job` returns a list of runs, one per monitor, all sharing one `execution_id`.
+**Reading the run list.** `agents.runs.list(agent.id)` returns suite runs and online samples together — filter on `run.run_type` (`"ONLINE_SAMPLE"`, `"SUITE"`, `"FEEDBACK_REVIEW"`), and `run.sample_source` names the evaluator a sample graded with. `run_eval_job` returns a list of runs, one per monitor, all sharing one `execution_id` — once the job has picked them up; at creation it is `None`. One execution at a time: a run started while the job is busy sits `PENDING` until the execution ahead of it finishes, which for twelve monitors over a few conversations is about ten minutes, so give a poll that long. A sample run's `estimated_cost` is the cost of the **traffic** it graded (the conversations' own tokens), not of the judge calls, which no run reports.
 
 **The analysis job.** `analyse_failures` creates a job named `<agent>_feedback_review`, which `agent.review_job()` reads back and configures: its provider and model, whether it reads the agent's source, which sources it triages (feedback, errors, judge) and its call budget.
 
@@ -240,6 +242,7 @@ task = agent.promote_cluster(agent.clusters()[0])     # -> task, PENDING_REDACTI
 task.confirm_redaction().add_to_regressions()         # a person checked it for personal data
 agent.promote_feedback(row)                           # one verdict, with its conversation
 agents.jobs.run_regressions(agent.id)                 # publishes pending tasks, then runs them
+agents.jobs.run_regressions(agent.id, n_trials=3)    # a failure that happens some of the time
 ```
 
 **`agent.regressions()` is not a `Suite`.** It returns a `RegressionSuite`: a status report on the standing suite — `exists`, `suite_id`, `name`, `version`, `published_version`, `task_count`, `published_task_count`, `unpublished_task_count`, `judge_check` — with no `.tasks()` and no `.checks`. It answers "is there anything waiting to be published", which is what you want before a release. For the suite itself, `agents.suites.get(reg.suite_id)`.
@@ -262,6 +265,10 @@ suite.add_task("What do you know about me?", subject="marcus@example.com")   # s
 **The regression suite is for promoted tasks.** `add_to_regressions` needs a task promoted from a deployment's trace — that is how it knows which deployment's standing suite to join — and refuses a hand-written one ("was not promoted from a deployment's trace"). Put a hand-written memory test in an ordinary suite with `suite.add_task(..., subject=...)`.
 
 The subject is a customer's address copied out of a trace, so it is part of what the redaction review checks, and the Promotion queue shows it ("as marcus@example.com"). **A trial reads that person's memory and never writes it**: under evaluation, `user`-scope writes go under the trial's own conversation and reads look there first, and the trial's messages are not filed in the person's conversation history — so a nightly regression run cannot rewrite a customer's stored profile. The same question asked as two people is two cases, for import dedup and for `changes()`.
+
+**A replay reads that memory as it is now, not as it was.** A failure that happened *because* the person had not yet told the agent something — the first conversation, before a profile existed — replays differently once they have: the agent now knows the profile and takes another path, and the judge grades a different reply. Promote such a failure with `subject=""` or a fresh test subject, so the replay starts from the same empty memory. And a failure that happens only some of the time wants `run_regressions(..., n_trials=3)`: one trial passes it as often as not.
+
+**Judges are told who a request was for.** A task's `subject`, and a sampled turn's (from its trace), reaches the judge as a `<user>` section: the agent need not ask who they are, and what it says about them from memory is not invented. Without it *Asked who it is talking to* failed every client-identified turn, and *Hallucination* called the person's own name invented.
 
 **Reading a trace.** Everything that says what a span *did* is an attribute: `openinference.span.kind` (`AGENT`, `LLM`, `TOOL`, `RETRIEVER`), `llm.model_name`, `input.value`, `output.value`, the token counts. The span itself carries little more than its name and its timestamps. Each span and each event is handed back with its own attributes as a dict, and the flat per-trace lists are there too — `trace.span_attributes` / `trace.event_attributes`, with `trace.attributes_of(span_id)` giving the same dict:
 

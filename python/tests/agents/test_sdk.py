@@ -2280,3 +2280,45 @@ class TestAReadRidesOutATransientServerError:
         with pytest.raises(AgentServingError):
             evals.tasks.create("hi")
         assert len(session.sent) == 1
+
+
+class TestATraceReadStraightAfterTheReply:
+    """A trace lands span by span, and was served before its model calls arrived.
+
+    0.4 s after the reply: no LLM span, 0 tokens, 0 cost -- a turn that read as free.
+    """
+
+    HALF = {"spans": [{"spanId": "tool", "traceId": "t"}], "spanAttributes": []}
+    WHOLE = {
+        "spans": [
+            {"spanId": "turn", "traceId": "t"},
+            {"spanId": "llm", "traceId": "t"},
+        ],
+        "spanAttributes": [
+            {"spanId": "turn", "attrKey": "hopsworks.response_id", "attrValue": "r1"},
+            {"spanId": "llm", "attrKey": "openinference.span.kind", "attrValue": "LLM"},
+        ],
+        "totalInputTokens": 2784,
+    }
+
+    def test_wait_holds_out_for_the_turn_to_close(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import agent as agent_module
+
+        monkeypatch.setattr(agent_module.time, "sleep", lambda _s: None)
+        _, agent7, _ = agent(Reply(self.HALF), Reply(self.WHOLE))
+        trace = agent7.trace("t", wait=10)
+        assert trace.total_input_tokens == 2784
+
+    def test_wait_rides_out_not_found_too(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import agent as agent_module
+
+        monkeypatch.setattr(agent_module.time, "sleep", lambda _s: None)
+        _, agent7, _ = agent(
+            Reply({"usrMsg": "Trace not found"}, status=404), Reply(self.WHOLE)
+        )
+        assert agent7.trace("t", wait=10).total_input_tokens == 2784
+
+    def test_without_wait_it_is_one_read(self):
+        _, agent7, session = agent(Reply(self.HALF))
+        agent7.trace("t")
+        assert len(session.sent) == 1

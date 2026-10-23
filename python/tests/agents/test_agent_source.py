@@ -330,3 +330,27 @@ class TestImports:
         assert (
             src._module_candidates(bundle().files, "agent/main.py", module) == expected
         )
+
+
+class TestTheModuleAboutTheFailureIsShownFirst:
+    """In import order, a large early module used the budget before the prompt file.
+
+    The reference advisor's agent file and memory module filled the old budget
+    between them, so its prompts were never shown and no triage cited code.
+    """
+
+    def test_after_the_entry_imports_are_ranked_by_the_failure(self):
+        files = {
+            "agent.py": "import memory\nimport prompts\n",
+            "memory.py": "x = 1\n" * 200,
+            "prompts.py": "Name the risk analyst before calling it.\n",
+        }
+        shown = src._relevant_files(
+            src.SourceBundle(files=files, entry="agent.py"),
+            clues=["announced the risk analyst without calling it"],
+            budget_chars=10_000,
+        )
+        assert [path for path, _ in shown][:2] == ["agent.py", "prompts.py"]
+
+    def test_the_default_budget_holds_an_agent_and_its_prompts(self):
+        assert src.DEFAULT_SOURCE_CHARS >= 60_000

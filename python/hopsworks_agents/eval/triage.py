@@ -554,7 +554,20 @@ def _triage(
     try:
         result = _parse_triage(raw)
     except TriageParseError as err:
-        return None, str(err)
+        # Once more, saying what was wrong. A model that wrapped the object in prose
+        # or cut it short usually answers properly when told; without this the row
+        # was written ungradable with "reply was not a JSON object" and read in the
+        # queue as a triage with no category and no summary.
+        try:
+            raw = complete(
+                f"{prompt}\n\nYour previous reply could not be used ({err}). "
+                "Reply with the JSON object only: no prose, no code fence."
+            )
+            result = _parse_triage(raw)
+        except TriageParseError as again:
+            return None, str(again)
+        except Exception as again:  # noqa: BLE001 — as above
+            return None, f"model call failed: {again}"
     _verify_patches(result, inp.source_files)
     return result, ""
 

@@ -456,3 +456,32 @@ class TestPatches:
         assert stored["original"] == "    return db.find(name=key)"
         assert stored["replacement"] == "    return db.find(key=key)"
         assert stored["verified"] is True
+
+
+class TestAnUnusableReplyIsAskedForAgain:
+    """A model that wrapped its object in prose usually answers properly when told.
+
+    Without a second ask the row was written ungradable -- "reply was not a JSON
+    object" -- and read in the queue as a triage with no category and no summary.
+    """
+
+    def test_a_second_ask_that_works_is_the_result(self):
+        replies = iter(["I think the agent was wrong here.", reply()])
+        prompts = []
+
+        def complete(prompt):
+            prompts.append(prompt)
+            return next(replies)
+
+        result, why = t._triage(
+            complete, t.TriageInput(feedback=feedback(), question="q", answer="a")
+        )
+        assert result is not None and why == ""
+        assert "JSON object only" in prompts[1]
+
+    def test_two_unusable_replies_are_ungradable_and_say_why(self):
+        result, why = t._triage(
+            lambda _prompt: "still prose",
+            t.TriageInput(feedback=feedback(), question="q", answer="a"),
+        )
+        assert result is None and why

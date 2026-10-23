@@ -343,3 +343,35 @@ class TestAPassSaysWhyItPassed:
         assert result.passed is False
         assert "needs 4" in result.reason
         assert "contradicts the correction" in result.reason
+
+
+class TestWhatTheJudgeIsToldAboutTheExchange:
+    @staticmethod
+    def _prompt(**kwargs):
+        from hopsworks_agents.eval.judge_config import (
+            _parse_judge_config,
+            _render_prompt,
+        )
+
+        config = _parse_judge_config({"type": "llm_judge", "criteria": ["Is polite"]})
+        return _render_prompt(config, question="q", answer="a", **kwargs)
+
+    def test_a_known_user_is_named_so_skipping_the_question_is_not_a_failure(self):
+        # A client-asserted subject was invisible: "Asked who it is talking to" failed
+        # the agent for not asking, and "Hallucination" called a remembered name invented.
+        prompt = self._prompt(subject="marcus@example.com")
+        assert "<user>" in prompt and "marcus@example.com" in prompt
+        assert "need not ask who they are" in prompt
+
+    def test_no_user_no_section(self):
+        assert "<user>" not in self._prompt()
+
+    def test_the_graded_reply_is_named_as_the_last_one(self):
+        # An introduction given on turn one was failed on turn two, which had no
+        # reason to repeat it, because the judge was not told which reply it graded.
+        prompt = self._prompt(transcript="user: dana@example.com\nagent: Hello ...")
+        assert "final reply of this conversation" in prompt
+        assert "about the conversation" in prompt
+
+    def test_a_single_turn_has_no_such_note(self):
+        assert "final reply of this conversation" not in self._prompt()

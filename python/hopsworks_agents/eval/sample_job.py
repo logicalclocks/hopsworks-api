@@ -171,6 +171,14 @@ def _question_and_answer(detail: dict[str, Any]) -> tuple[str, str]:
     return "", ""
 
 
+def _subject_of(detail: dict[str, Any]) -> str:
+    """The person a production turn was for, as its turn span records it; "" when nobody said."""
+    for attribute in detail.get("spanAttributes") or []:
+        if attribute.get("attrKey") == "user.id" and attribute.get("attrValue"):
+            return str(attribute["attrValue"])
+    return ""
+
+
 def _turn_of(messages_raw: Any) -> tuple[str, str]:
     """One trace's user question and final agent answer, from its messages."""
     try:
@@ -310,6 +318,9 @@ def _grade_trace(
     task = Task(
         task_id=trace_id,
         input_messages=json.dumps([{"role": "user", "content": question}]),
+        # Who the turn was for, when the application said: the judge is told, so
+        # a turn that rightly skipped "who are you?" is not failed for it.
+        subject=_subject_of(detail),
     )
     trial = _as_trial(run_id, deployment_id, trace_id, answer, trace)
     trial.session_id = session_id

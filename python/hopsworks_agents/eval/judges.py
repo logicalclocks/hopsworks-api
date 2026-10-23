@@ -520,6 +520,7 @@ class LlmJudgeEvaluator:
             tool_calls=calls,
             tool_results=results,
             transcript=trial.transcript,
+            subject=getattr(task, "subject", "") or "",
         )
 
         try:

@@ -69,8 +69,12 @@ SKIPPED_DIRS = {
 MAX_FILE_BYTES = 200 * 1024
 #: Total text kept from one repository. Enough for an agent; not a monorepo.
 MAX_BUNDLE_BYTES = 5 * 1024 * 1024
-#: Characters of source shown per triage call by default. Roughly 6k tokens.
-DEFAULT_SOURCE_CHARS = 24_000
+#: Characters of source shown per triage call by default. Roughly 15k tokens.
+#: 24k was less than an entry script and one module it imports: the reference
+#: financial advisor's agent file and its memory module were 27k between them,
+#: so its prompts -- where a coordinator's behaviour actually lives -- were never
+#: shown, and every triage said the cause was "not identifiable in the shown files".
+DEFAULT_SOURCE_CHARS = 60_000
 
 
 @dataclass
@@ -515,6 +519,22 @@ def _relevant_files(
     for clue in clues:
         terms.update(word for word in _WORD.findall(clue or "") if len(word) > 3)
     ordered = _imported_files(bundle.files, bundle.entry)
+    # The entry first, then what it imports by relevance to this failure rather than
+    # by import order: the first module imported is rarely the one at fault, and in
+    # import order a large early module used up the budget before the prompt file the
+    # failure was about could be shown.
+    if len(ordered) > 1:
+        position = {path: i for i, path in enumerate(ordered)}
+        ordered = [
+            ordered[0],
+            *sorted(
+                ordered[1:],
+                key=lambda path: (
+                    -_mentions(bundle.files[path], terms),
+                    position[path],
+                ),
+            ),
+        ]
     rest = [path for path in bundle.files if path not in ordered]
     mentioned = sorted(
         (path for path in rest if _mentions(bundle.files[path], terms) > 0),

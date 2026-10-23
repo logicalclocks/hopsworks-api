@@ -858,3 +858,13 @@ class TestASampleIsCostedLikeASuite:
 
     def test_an_unpriced_one_stays_unpriced(self):
         assert self._graded().estimated_cost is None
+
+
+def test_a_sampled_turn_carries_who_it_was_for():
+    from hopsworks_agents.eval.sample_job import _subject_of
+
+    assert (
+        _subject_of({"spanAttributes": [{"attrKey": "user.id", "attrValue": "m@x"}]})
+        == "m@x"
+    )
+    assert _subject_of({"spanAttributes": []}) == ""

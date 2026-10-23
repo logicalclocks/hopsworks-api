@@ -88,6 +88,7 @@ So, when you design an agent with long-term memory:
 - a demo without one either passes `subject=` from the client, or calls `ctx.rebind_subject` in app code after the email is given — and should say in its own README why that is acceptable only for a demo;
 - `ctx.has_subject` is true exactly when the turn has a real identity, and `ctx.subject_source` says how it was known: `"client"` (asserted on the request), `"app"` (bound this turn with `rebind_subject`) or `"conversation"` (bound on an earlier turn of this conversation and read back by the SDK — what every turn after the binding reports). The per-conversation fallback is the one case with `has_subject` false. Check `has_subject`, not a list of sources: an agent that only trusted `"client"`/`"app"` never told the model it was identified on turn three, and the model called `identify` again.
 - a trace's `subject_source` (the traces table) can also read `"model"`: a label from `identify` on a conversation nobody bound. A model's label never replaces a binding, and `identify` on a bound conversation answers that it is already identified.
+- the traces table's subject is the **conversation's**, as it stands now, on every row of it — the first turn of a conversation shows the address given on the second. Which turn identified the person is not readable there; the `identify` call in that turn's `trace.tool_calls` is.
 - an **evaluation trial** with a subject reads that person's memory and never writes it: `remember`/`forget` under `user` scope land under the trial's own conversation, and its messages stay out of the person's history. That is what lets a regression replay a customer's turn as them (see **hops-agent-evals**) without the suite changing what is stored about them.
 
 **Reading back what an agent remembers.** There is no SDK accessor yet. The facts are a feature group in the project's online store, so read them there:
@@ -95,8 +96,10 @@ So, when you design an agent with long-term memory:
 ```python
 fs = project.get_feature_store()
 facts = fs.get_feature_group("agent_memory_facts", 1).read(online=True)
-facts[facts.deployment_id == agent.id][["owner", "scope", "state_key", "value"]]
+facts[facts.deployment_id.astype(str) == str(agent.id)][["owner", "scope", "state_key", "value"]]
 ```
+
+`deployment_id` is **text** in the memory groups (`agent_memory_facts`, `_messages`, `_conversations`) and a number in the others: the memory store runs outside Hopsworks too, where a deployment id is any name, so compare it as a string — `== agent.id` silently matches nothing.
 
 Online, not offline: the offline Delta table has no commits until a materialisation runs, so `hops sql` / Trino answers `DELTA_LAKE_INVALID_SCHEMA ... has no commits`. `owner` is the subject for `user` scope — an email where the client asserted one, a conversation id where it did not, which is the quickest way to see whether the paragraph above is biting. The other columns are `id, source_ref, written_by, updated_at, expires_at` (`fg.columns`; `fg.features` is deprecated). An evaluation trial's `user`-scope facts have the **trial's** conversation id as `owner` (`<run>/<task>/…`), never the person's — that is how to confirm a replay did not write into a real user's memory.
 
@@ -159,16 +162,13 @@ Prices change, so write them where the model is chosen and say when they were ta
 
 The two keys are per deployment, so two agents on different models each cost correctly, and re-deploying with new prices is what changes them — they are read per turn, not baked into old traces. Re-reading an old window after a price change does not re-cost it.
 
-**A trace is not readable the instant the reply is.** `agent.trace(reply.trace_id)` straight after `chat()` or `chat_stream()` raises `AgentServingError: Trace not found` — the spans are exported after the answer, through the sidecar, and land a second or two later. Retry rather than concluding tracing is off:
+**A trace is not readable the instant the reply is.** The spans are exported after the answer and land over a second or two, so a read straight after `chat()` either raises `AgentServingError: Trace not found` or — worse — returns the trace **without its model calls**: no LLM span, zero tokens, zero cost, a turn that reads as free. Ask it to wait for the turn to close:
 
 ```python
-for _ in range(10):
-    try:
-        trace = agent.trace(reply.trace_id)
-        break
-    except AgentServingError:
-        time.sleep(1)
+trace = agent.trace(reply.trace_id, wait=10)   # until the turn span has landed, or 10 s
 ```
+
+It polls until the turn span carries its response id, which the agent SDK stamps last. An agent not built on the Hopsworks agent SDK never stamps it, so `wait` costs it the full time.
 
 **When a start takes too long, or says nothing.** A first start on a node that has not pulled the agent image can take ten minutes or more, and `start(await_running=...)` giving up does **not** stop the deployment — it usually comes up shortly after. When `hops agent info` shows an empty status and `hops agent logs` prints only `[failed to read pod logs]`, the container never started, so there are no logs to read: look at the pod instead.
 

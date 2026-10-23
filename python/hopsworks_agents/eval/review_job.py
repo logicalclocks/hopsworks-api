@@ -412,6 +412,23 @@ def _review_one(
             ],
             budget_chars=int(settings.get("source_chars") or DEFAULT_SOURCE_CHARS),
         )
+        # Which files the model was shown, and which were cut: when a triage cites
+        # no code, this says whether it looked and found nothing or never saw it.
+        shown = {path for path, _ in source_files}
+        log.info(
+            "trace %s: showing %s; clipped %s; not shown %s",
+            feedback.get("traceId"),
+            ", ".join(
+                path for path, text in source_files if "[clipped" not in text[-60:]
+            )
+            or "nothing",
+            ", ".join(path for path, text in source_files if "[clipped" in text[-60:])
+            or "nothing",
+            ", ".join(
+                sorted(p for p in source.files if p not in shown and p.endswith(".py"))
+            )[:500]
+            or "nothing",
+        )
     result, why = _triage(
         complete,
         TriageInput(

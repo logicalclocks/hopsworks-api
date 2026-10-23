@@ -1494,11 +1494,20 @@ class Jobs:
         )
 
     @public
-    def run_regressions(self, deployment_id: int) -> Run:
-        """Publish the draft regressions, if any, and run them against the deployment."""
+    def run_regressions(self, deployment_id: int, n_trials: int | None = None) -> Run:
+        """Publish the draft regressions, if any, and run them against the deployment.
+
+        ``n_trials`` tries each task several times, pass^k: every trial must pass. A
+        failure promoted from feedback is often one that happens some of the time, and
+        one trial of it passes as often as not.
+        """
         return self._client._bind(
             Run.from_api(
-                self._http.post(f"{EVALS}/regressions/run", deploymentId=deployment_id)
+                self._http.post(
+                    f"{EVALS}/regressions/run",
+                    deploymentId=deployment_id,
+                    nTrials=n_trials,
+                )
             )
         )
 
