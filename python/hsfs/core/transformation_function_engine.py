@@ -688,27 +688,17 @@ class TransformationFunctionEngine:
                     transformation_context=transformation_context,
                 )
 
-            collect = merge
-            fail = None
-            if observer is not None:
-                started = {}
-                submit_untimed = submit
-
-                def submit(tf):
-                    # Timed from the scheduler, so a pooled function's duration includes shipping its inputs and result between processes.
-                    started[id(tf)] = observer._start()
-                    return submit_untimed(tf)
-
-                def collect(tf, result):
-                    observer._finish(tf, started.pop(id(tf)))
-                    merge(tf, result)
-
-                def fail(tf, error):
-                    observer._finish(tf, started.pop(id(tf)), error)
-
-            TransformationFunctionEngine._schedule_dag(
-                execution_graph, submit=submit, collect=collect, fail=fail
-            )
+            if observer is None:
+                TransformationFunctionEngine._schedule_dag(
+                    execution_graph, submit=submit, collect=merge
+                )
+            else:
+                TransformationFunctionEngine._schedule_dag(
+                    execution_graph,
+                    *TransformationFunctionEngine._timed_callbacks(
+                        observer, submit, merge
+                    ),
+                )
         elif observer is None:
             for tf in execution_graph.nodes:
                 merge(
@@ -931,6 +921,28 @@ class TransformationFunctionEngine:
             for row in transformed_data:
                 row.update(request_parameters)
         return transformed_data
+
+    @staticmethod
+    def _timed_callbacks(observer, submit, merge):
+        """Wrap `_schedule_dag`'s callbacks so each pooled function is timed by `observer`.
+
+        Kept out of `_apply_to_dict_list`, whose closures would otherwise capture these names on every call, timed or not.
+        """
+        started = {}
+
+        def timed_submit(tf):
+            # Timed from the scheduler, so a pooled function's duration includes shipping its inputs and result between processes.
+            started[id(tf)] = observer._start()
+            return submit(tf)
+
+        def collect(tf, result):
+            observer._finish(tf, started.pop(id(tf)))
+            merge(tf, result)
+
+        def fail(tf, error):
+            observer._finish(tf, started.pop(id(tf)), error)
+
+        return timed_submit, collect, fail
 
     @staticmethod
     def _schedule_dag(

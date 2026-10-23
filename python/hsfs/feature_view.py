@@ -5800,13 +5800,18 @@ class FeatureView:
                     "explicitly as `log(features, predictions=...)`.",
                     stacklevel=1,
                 )
-        with tracing._child_span(
-            "feature_view.log",
-            {
-                "hopsworks.feature_view.name": self.name,
-                "hopsworks.feature_view.version": str(self.version),
-            },
-        ):
+        span = (
+            tracing._child_span(
+                "feature_view.log",
+                {
+                    "hopsworks.feature_view.name": self.name,
+                    "hopsworks.feature_view.version": str(self.version),
+                },
+            )
+            if tracing._enabled
+            else tracing._NO_SPAN
+        )
+        with span:
             return self._feature_view_engine._log_features(
                 self,
                 feature_logging=self.feature_logging,
