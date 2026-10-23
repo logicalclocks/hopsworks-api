@@ -34,6 +34,7 @@ from .agent_source import (
 from .api import _hopsworks_session
 from .client import HopsworksAgentClient
 from .clusters import (
+    KNOWN_SIGNATURES_LIMIT,
     Cluster,
     _assign_clusters,
     _from_api,
@@ -171,6 +172,10 @@ def _code_location(
     return described
 
 
+#: Output budget of an analysis call, grown further when a model runs out of it.
+ANALYSIS_MAX_TOKENS = 8_000
+
+
 def _completer_from(
     settings: dict[str, Any],
 ) -> tuple[Callable[[str], str] | None, str]:
@@ -182,6 +187,10 @@ def _completer_from(
         api_key_env=settings["api_key_env"],
         base_url=settings.get("base_url", ""),
         headers=dict(settings.get("headers") or {}),
+        # A triage answers with findings and patches, against a prompt carrying the
+        # agent's source; a reasoning model thinks inside the same budget. The judge
+        # default of 1,500 ran out before the JSON was finished.
+        max_tokens=ANALYSIS_MAX_TOKENS,
     )
     if config.provider == "custom" and not config.base_url:
         return (
@@ -354,6 +363,13 @@ def _review_feedback(
                 source,
             )
         )
+        # Offered to the triages after it in this run, first. Only the clusters of
+        # earlier runs were, so the same failure triaged twice in one run -- an
+        # agent crashing on every turn -- was named twice in slightly different
+        # words and became two clusters that a reviewer had to merge by hand.
+        signature = str(rows[-1].get("failure_signature") or "").strip()
+        if signature and signature not in signatures:
+            signatures = [signature, *signatures][:KNOWN_SIGNATURES_LIMIT]
 
     processed_through = (
         _ms(chosen[-1].get("createdAt")) if len(chosen) < len(pending) else None

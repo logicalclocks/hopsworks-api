@@ -19,7 +19,7 @@ Start with a deterministic **LLM workflow** (a fixed sequence of steps) and only
 ```bash
 hops agent list                  # what agents exist (confirms auth + serving reachable)
 hops agent info my_agent         # status, URL, git source and commit
-hops agent logs my_agent         # startup errors land here
+hops agent logs my_agent         # startup and request errors land here
 ```
 
 ## Ask the user (only when state is ambiguous)
@@ -169,6 +169,8 @@ trace = agent.trace(reply.trace_id, wait=10)   # until the turn span has landed,
 ```
 
 It polls until the turn span carries its response id, which the agent SDK stamps last. An agent not built on the Hopsworks agent SDK never stamps it, so `wait` costs it the full time.
+
+**When every chat fails.** A running agent whose handler raises answers `/v1/chat` with a 500 whose body says why (`detail.code` `agent_error`, the exception in `detail.message`), and the traceback is in `hops agent logs`; an agent built on an older image returns a bare `500 Internal Server Error`, and then the log is the only place the reason is. A frequent cause after changing the model is a setting the new model refuses: gpt-6 and the o-series fix their own sampling and reject `temperature`, so leave it out for them.
 
 **When a start takes too long, or says nothing.** A first start on a node that has not pulled the agent image can take ten minutes or more, and `start(await_running=...)` giving up does **not** stop the deployment — it usually comes up shortly after. When `hops agent info` shows an empty status and `hops agent logs` prints only `[failed to read pod logs]`, the container never started, so there are no logs to read: look at the pod instead.
 

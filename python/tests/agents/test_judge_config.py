@@ -687,9 +687,9 @@ class TestProviderRequestShape:
             seen.append(extra)
             return "graded"
 
-        parameters = _AnthropicMessagesParameters("claude-sonnet-5", 0.0, "high")
+        parameters = _AnthropicMessagesParameters("claude-sonnet-5", 0.0, 1500, "high")
         assert parameters._send(call) == "graded"
-        assert seen == [{"output_config": {"effort": "high"}}]
+        assert seen == [{"max_tokens": 1500, "output_config": {"effort": "high"}}]
 
     def test_anthropic_omits_effort_for_models_that_do_not_support_it(self):
         from hopsworks_agents.eval.judge_config import _AnthropicMessagesParameters
@@ -700,9 +700,86 @@ class TestProviderRequestShape:
             seen.append(extra)
             return "graded"
 
-        parameters = _AnthropicMessagesParameters("claude-sonnet-4-5", 0.0, "high")
+        parameters = _AnthropicMessagesParameters(
+            "claude-sonnet-4-5", 0.0, 1500, "high"
+        )
         assert parameters._send(call) == "graded"
-        assert seen == [{"temperature": 0.0}]
+        assert seen == [{"max_tokens": 1500, "temperature": 0.0}]
+
+    def test_a_reply_cut_off_at_the_limit_is_asked_again_with_more(self):
+        # A reasoning model thinks inside the same budget as it answers; on a triage
+        # prompt it spent all 1,500 and returned half a JSON object, twice.
+        from hopsworks_agents.eval.judge_config import (
+            _ChatCompletionParameters,
+            _OutOfTokens,
+        )
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra["max_completion_tokens"])
+            if extra["max_completion_tokens"] < 6000:
+                raise _OutOfTokens(extra["max_completion_tokens"])
+            return "graded"
+
+        parameters = _ChatCompletionParameters("openai", "gpt-5.6-terra", 0.0, 1500)
+        assert parameters._send(call) == "graded"
+        assert seen == [1500, 3000, 6000]
+        # the next call starts where this one ended
+        assert parameters.max_tokens == 6000
+
+    def test_running_out_at_the_ceiling_is_reported(self):
+        from hopsworks_agents.eval.judge_config import (
+            _TOKEN_CEILING,
+            _AnthropicMessagesParameters,
+            _OutOfTokens,
+        )
+
+        seen = []
+
+        def call(**extra):
+            seen.append(extra["max_tokens"])
+            raise _OutOfTokens(extra["max_tokens"])
+
+        parameters = _AnthropicMessagesParameters("claude-sonnet-5", 0.0, 8000)
+        with pytest.raises(_OutOfTokens, match="ran out of output tokens"):
+            parameters._send(call)
+        assert seen == [8000, 16000, _TOKEN_CEILING]
+
+    def test_openai_completer_reads_a_truncated_finish_as_out_of_tokens(
+        self, monkeypatch
+    ):
+        import sys
+        import types
+
+        from hopsworks_agents.eval.judge_config import JudgeConfig, _completer_for
+
+        budgets = []
+
+        class Completions:
+            def create(self, **kwargs):
+                budgets.append(kwargs["max_completion_tokens"])
+                finish = "length" if len(budgets) == 1 else "stop"
+                text = '{"passed": tr' if finish == "length" else '{"passed": true}'
+                return types.SimpleNamespace(
+                    choices=[
+                        types.SimpleNamespace(
+                            finish_reason=finish,
+                            message=types.SimpleNamespace(content=text),
+                        )
+                    ]
+                )
+
+        class Client:
+            def __init__(self, **_):
+                self.chat = types.SimpleNamespace(completions=Completions())
+
+        monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=Client))
+        complete = _completer_for(
+            JudgeConfig(provider="openai", model="gpt-5.6-terra", max_tokens=1500), "k"
+        )
+        assert complete("grade this") == '{"passed": true}'
+        assert budgets == [1500, 3000]
 
     def test_openai_reasoning_effort_is_top_level(self):
         from hopsworks_agents.eval.judge_config import _ChatCompletionParameters

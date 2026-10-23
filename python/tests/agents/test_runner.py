@@ -314,12 +314,25 @@ class TestFailureClassification:
             m["metric_name"]: m["metric_value"]
             for m in _run_metrics("r", "s", 7, result.trials)
         }
-        # nothing gradable happened, so the pass rate must not read as 0% agent
-        # quality
-        assert metrics["pass_rate"] == 0.0
+        # nothing gradable happened, so there is no pass rate to read as 0% agent
+        # quality, and the run says how much of it went ungraded
+        assert "pass_rate" not in metrics
+        assert metrics["ungradable_rate"] == 1.0
         from hopsworks_agents.eval.models import _gradable_trials
 
         assert _gradable_trials(result.trials) == []
+
+    def test_an_agent_that_never_answered_is_an_outage_in_the_metrics(self):
+        # Every trial a 500 from the agent: failures, because nobody got an answer,
+        # but said as such rather than only as a pass rate of 0.0.
+        result = go(FakeClient(error="agent returned 500: Internal Server Error"))
+        metrics = {
+            m["metric_name"]: m["metric_value"]
+            for m in _run_metrics("r", "s", 7, result.trials)
+        }
+        assert result.trials[0].status is TrialStatus.AGENT_ERROR
+        assert metrics["pass_rate"] == 0.0
+        assert metrics["agent_error_rate"] == 1.0
 
 
 class TestWhenTheHarnessItselfBreaks:

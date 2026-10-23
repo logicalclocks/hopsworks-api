@@ -368,6 +368,33 @@ class TestReviewing:
         assert "Existing failure signatures for this agent" in prompts[0]
         assert "- customer key not used" in prompts[0]
 
+    def test_a_signature_named_earlier_in_the_run_is_offered_to_the_next(self):
+        # One crash triaged twice in one run was named twice in slightly different
+        # words: two clusters for one failure, merged by hand.
+        prompts = []
+
+        def complete(prompt):
+            prompts.append(prompt)
+            return good_reply(prompt)
+
+        session = FakeSession(
+            [feedback(0), feedback(1)],
+            details={"trace-0": detail(), "trace-1": detail()},
+        )
+        rows, _ = rj._review_feedback(
+            session,
+            FakeClient(),
+            "http://h/otel",
+            run_row(),
+            SETTINGS,
+            complete,
+            clusters=[],
+        )
+        first = rows[0]["failure_signature"]
+        assert first
+        assert "Existing failure signatures" not in prompts[0]
+        assert f"- {first}" in prompts[-1]
+
     def test_each_verdict_becomes_a_row_with_the_conversation_and_tools_in_view(self):
         prompts = []
 

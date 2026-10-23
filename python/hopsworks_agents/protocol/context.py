@@ -22,7 +22,7 @@ from hopsworks_apigen import public
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, MutableMapping
 
     from .evaluation import EvalTrial
     from .memory import ChatMemory, Turn
@@ -39,6 +39,7 @@ class HandlerContext:
         turn_id: str = "",
         subject: str | None = None,
         subjects: Any | None = None,
+        trial_subjects: MutableMapping[str, str] | None = None,
     ):
         self.request = request
         self.conversation_id = request.conversation_id or ""
@@ -69,6 +70,10 @@ class HandlerContext:
         # traced back to that customer's conversations. None when the app did
         # not configure one; every use tolerates that.
         self._subjects = subjects
+        # Who each evaluation trial's conversation was bound to, for the trial's
+        # next turn. A trial's messages are filed under its own conversation, so
+        # the store cannot answer that the way it does for a person's turns.
+        self._trial_subjects = trial_subjects
         # The evaluation trial this turn belongs to, when it is one: set by
         # AgentApp from the request's baggage, after verifying the run with
         # Hopsworks (or without verifying, under EVAL_MODE, where the whole
@@ -334,6 +339,11 @@ class HandlerContext:
             # A trial's rows stay the trial's: stamped with the person, they would
             # join that person's conversation list and episodic search.
             self.memory.rebind_turn_subject(self.conversation_id, self.turn_id, subject)
+        if self._in_trial and self._trial_subjects is not None:
+            # Kept for the trial's next turn, which otherwise started unbound: the
+            # agent identified the person again on every turn, and a multi-turn
+            # task could not test that a binding carries over.
+            self._trial_subjects[self.conversation_id] = subject
         # the same identification, recorded where a developer holding a
         # customer key will look for it. One writer for both, so the index and
         # the memory rows cannot end up disagreeing about who this is.

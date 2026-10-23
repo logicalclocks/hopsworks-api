@@ -297,6 +297,18 @@ class TestGradingOneTrace:
         trial = _grade_trace([], "r", 1, "t", detail(), None)
         assert trial.status is not TrialStatus.FAILED
 
+    def test_a_judge_that_could_not_be_called_is_not_a_missing_trace(self):
+        # A provider out of credits answered every judge call with a 429; the
+        # trials read TRACE_MISSING, so the window looked like a broken tracing
+        # pipeline while every trace was there.
+        class OutOfCredits:
+            def __call__(self, prompt: str) -> str:
+                raise RuntimeError("Error code: 429 - insufficient_quota")
+
+        trace = {"trace_id": "t", "tool_calls": [], "tool_error_count": 0}
+        trial = _grade_trace(with_judge(OutOfCredits()), "r", 1, "t", detail(), trace)
+        assert trial.status is TrialStatus.EVALUATOR_ERROR
+
     def test_a_graded_trace_records_that_it_had_one(self):
         trace = {
             "trace_id": "t",

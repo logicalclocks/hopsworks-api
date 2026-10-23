@@ -102,6 +102,23 @@ class TestChat:
             "retryable": False,
         }
 
+    def test_handler_crash_says_why(self):
+        # A model refusing a parameter on every request used to read as a bare
+        # "Internal Server Error"; the reason was only in the pod log.
+        app = AgentApp()
+
+        @app.chat
+        async def chat(request):
+            raise ValueError("'temperature' is not supported with this model")
+
+        result = TestClient(app, raise_server_exceptions=False).post(
+            "/v1/chat", json=make_request("hi")
+        )
+        assert result.status_code == 500
+        detail = result.json()["detail"]
+        assert detail["code"] == "agent_error"
+        assert "temperature" in detail["message"]
+
     def test_no_handler_is_501(self):
         client = TestClient(AgentApp())
         assert client.post("/v1/chat", json=make_request("x")).status_code == 501
@@ -4729,3 +4746,63 @@ class TestOneChipPerToolCall:
             ("recall", "done"),
             ("identify", "done"),
         ]
+
+
+class TestATrialKeepsItsBindingAcrossTurns:
+    """A multi-turn trial must carry the person turn one identified into turn two.
+
+    A trial's messages are filed under the trial, so the store could not say who
+    the conversation was bound to: every later turn started unbound and the agent
+    identified the person again, and no suite could test that a binding carries
+    over.
+    """
+
+    def test_the_second_turn_finds_the_first_turns_binding(self, monkeypatch):
+        from hopsworks_agents.protocol import conventions
+
+        monkeypatch.setenv(conventions.EVAL_MODE_ENV, "true")
+        app = AgentApp(name="t", tracing=False)
+        seen = []
+
+        @app.chat
+        async def chat(request, ctx):
+            seen.append((ctx.has_subject, ctx.subject, ctx.subject_source))
+            if "@" in request.text:
+                ctx.rebind_subject(request.text)
+            return AgentResponse.text(
+                text="ok", conversation_id=request.conversation_id
+            )
+
+        client = TestClient(app)
+        trial = {"baggage": "hopsworks.eval.run_id=run_7,hopsworks.eval.trial_index=0"}
+        for text in ("dana@example.com", "What do you remember about me?"):
+            client.post("/v1/chat", json=make_request(text, "run_7/t/0"), headers=trial)
+
+        assert seen[1] == (True, "dana@example.com", "conversation")
+
+    def test_another_trial_does_not_inherit_it(self, monkeypatch):
+        from hopsworks_agents.protocol import conventions
+
+        monkeypatch.setenv(conventions.EVAL_MODE_ENV, "true")
+        app = AgentApp(name="t", tracing=False)
+        seen = []
+
+        @app.chat
+        async def chat(request, ctx):
+            seen.append(ctx.has_subject)
+            if "@" in request.text:
+                ctx.rebind_subject(request.text)
+            return AgentResponse.text(
+                text="ok", conversation_id=request.conversation_id
+            )
+
+        client = TestClient(app)
+        trial = {"baggage": "hopsworks.eval.run_id=run_7,hopsworks.eval.trial_index=0"}
+        client.post(
+            "/v1/chat",
+            json=make_request("dana@example.com", "run_7/t/0"),
+            headers=trial,
+        )
+        client.post("/v1/chat", json=make_request("hi", "run_7/t/1"), headers=trial)
+
+        assert seen == [False, False]

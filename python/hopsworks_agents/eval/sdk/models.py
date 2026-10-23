@@ -409,7 +409,7 @@ class TaskFailure(ApiModel):
     """One task, and what the latest run of its suite did to it."""
 
     task_id: str = ""
-    #: new | regression | fixed | persistent
+    #: new | regression | fixed | persistent | unanswered
     status: str = ""
     previous_verdict: str = ""
     current_verdict: str = ""
@@ -434,6 +434,8 @@ class SuiteFailureHistory(ApiModel):
                 print(suite.suite_name, [t.task_id for t in suite.regressions])
 
     A verdict is ``pass^k``: a task passed only when every gradable trial of it passed.
+    A task whose every trial was an agent error is ``unanswered`` rather than failing: the agent
+    was down, and a run of nothing else is never the baseline the next run is compared with.
     Nothing has to have run since the evaluation itself -- this is read from the trials as
     they are stored.
     """
@@ -451,6 +453,8 @@ class SuiteFailureHistory(ApiModel):
     regressions: int = 0
     fixed: int = 0
     persistent: int = 0
+    #: Tasks the agent did not answer at all in the latest run.
+    unanswered: int = 0
     #: Tasks that passed in both runs, counted rather than listed.
     passing: int = 0
     tasks: list[TaskFailure] = field(default_factory=list)
@@ -482,11 +486,17 @@ class SuiteFailureHistory(ApiModel):
     def still_failing(self) -> list[TaskFailure]:
         return self._of("persistent")
 
+    @property
+    def not_answered(self) -> list[TaskFailure]:
+        """Every trial an agent error in the latest run: an outage, not a wrong answer."""
+        return self._of("unanswered")
+
     def __str__(self) -> str:
         return (
             f"{self.suite_name or self.suite_id}: {self.new_failures} new, "
             f"{self.regressions} regressed, {self.fixed} fixed, "
             f"{self.persistent} still failing"
+            + (f", {self.unanswered} not answered" if self.unanswered else "")
         )
 
 

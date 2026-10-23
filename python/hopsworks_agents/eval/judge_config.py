@@ -660,14 +660,17 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
                     messages=[{"role": "user", "content": prompt}],
                     **extra,
                 )
-                return _message_text(response.choices[0].message.content)
+                choice = response.choices[0]
+                if getattr(choice, "finish_reason", None) == "length":
+                    raise _OutOfTokens(extra.get(parameters._token_limit))
+                return _message_text(choice.message.content)
 
             return parameters._send(call)
 
         return complete_openai
 
     parameters = _AnthropicMessagesParameters(
-        model, config.temperature, config.reasoning_effort
+        model, config.temperature, config.max_tokens, config.reasoning_effort
     )
 
     def complete_anthropic(prompt: str) -> str:
@@ -678,10 +681,11 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
         def call(**extra: Any) -> str:
             response = client.messages.create(
                 model=model or "claude-sonnet-5",
-                max_tokens=config.max_tokens,
                 messages=[{"role": "user", "content": prompt}],
                 **extra,
             )
+            if getattr(response, "stop_reason", None) == "max_tokens":
+                raise _OutOfTokens(extra.get("max_tokens"))
             return "".join(
                 block.text
                 for block in response.content
@@ -811,10 +815,55 @@ class _ReasoningEffortParameter:
         return True
 
 
+#: Requests per call: the parameter probes above, plus doubling a token budget the
+#: model ran out of from 1,500 up to the ceiling.
+_ATTEMPTS = 8
+
+#: The most output a call is allowed to grow to after running out.
+_TOKEN_CEILING = 32_000
+
+
+class _OutOfTokens(Exception):
+    """The model stopped at the token limit, so its reply is cut short."""
+
+    def __init__(self, limit: Any):
+        super().__init__(
+            f"the model ran out of output tokens at {limit} before finishing its reply"
+        )
+
+
+def _more_tokens(parameters: Any) -> bool:
+    """Double a budget the model ran out of; false once it is at the ceiling.
+
+    A reasoning model counts its thinking against the same limit as its answer, and
+    on a long prompt -- a triage with the agent's source in it -- it can spend the
+    whole of 1,500 thinking and return nothing, or half a JSON object. That read
+    as "reply was not a JSON object" twice in a row and the analysis parked the
+    window. The larger budget is kept for the calls after it.
+    """
+    if parameters.max_tokens >= _TOKEN_CEILING:
+        return False
+    grown = min(_TOKEN_CEILING, parameters.max_tokens * 2)
+    log.info(
+        "the model ran out of output tokens at %d; asking again with %d",
+        parameters.max_tokens,
+        grown,
+    )
+    parameters.max_tokens = grown
+    return True
+
+
 class _AnthropicMessagesParameters:
     """Keyword arguments for Anthropic Messages requests."""
 
-    def __init__(self, model: str, temperature: float, reasoning_effort: str):
+    def __init__(
+        self,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        reasoning_effort: str = "",
+    ):
+        self.max_tokens = max_tokens
         self._temperature = _TemperatureParameter._for_model(
             "anthropic", model, temperature
         )
@@ -831,12 +880,17 @@ class _AnthropicMessagesParameters:
 
     def _retrying(self, send: Any) -> str:
         last: Exception | None = None
-        for _attempt in range(3):
-            extra: dict[str, Any] = {}
+        for _attempt in range(_ATTEMPTS):
+            extra: dict[str, Any] = {"max_tokens": self.max_tokens}
             extra.update(self._temperature._extra_args())
             extra.update(self._reasoning_effort._extra_args())
             try:
                 result = send(**extra)
+            except _OutOfTokens as err:
+                last = err
+                if not _more_tokens(self):
+                    raise
+                continue
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
                 last = err
                 if self._temperature._rejected(err):
@@ -880,12 +934,17 @@ class _ChatCompletionParameters:
 
     def _retrying(self, send: Any) -> str:
         last: Exception | None = None
-        for _attempt in range(3):
+        for _attempt in range(_ATTEMPTS):
             extra: dict[str, Any] = {self._token_limit: self.max_tokens}
             extra.update(self._temperature._extra_args())
             extra.update(self._reasoning_effort._extra_args())
             try:
                 result = send(**extra)
+            except _OutOfTokens as err:
+                last = err
+                if not _more_tokens(self):
+                    raise
+                continue
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
                 last = err
                 replacement = _replacement_token_limit(err, self._token_limit)

@@ -339,12 +339,18 @@ def _grade_trace(
     # way, and counting it as a failure would make an unconfigured sample look
     # like a broken agent.
     outcome = _verdict(trial.evaluator_results, PassPolicy.ALL)
+    # Nothing reached a verdict: for want of a trace, or because the evaluators could
+    # not -- a judge whose provider refused the call (out of credits, a bad key). That
+    # second case used to be TRACE_MISSING too, so a window graded by a judge with no
+    # credits read as a broken tracing pipeline while every trace was there.
     trial.status = (
         TrialStatus.PASSED
         if outcome
         else TrialStatus.FAILED
         if outcome is False
         else TrialStatus.TRACE_MISSING
+        if trace is None
+        else TrialStatus.EVALUATOR_ERROR
     )
     return trial
 
