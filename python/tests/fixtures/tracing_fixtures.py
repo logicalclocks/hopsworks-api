@@ -41,6 +41,7 @@ def span_exporter(_session_span_exporter, monkeypatch):
     """Spans finished during the test, recorded by the global tracer provider, with telemetry enabled as the model server enables it."""
     from hopsworks_common import tracing
 
+    monkeypatch.setattr(tracing, "_available", True)
     monkeypatch.setattr(tracing, "_enabled", True)
     _session_span_exporter.clear()
     return _session_span_exporter

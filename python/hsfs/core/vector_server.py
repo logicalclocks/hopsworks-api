@@ -385,7 +385,7 @@ class VectorServer:
                 self._model_dependent_transformation_functions
             )
         )
-        # Decided once: without tracing the transformation path carries no timing at all.
+        # Built only where the model server set tracing up; the hot paths also skip it while tracing is switched off.
         self._telemetry = (
             transformation_telemetry._Telemetry(
                 self._feature_view_name,
@@ -395,7 +395,7 @@ class VectorServer:
                     transformation_telemetry.KIND_MODEL_DEPENDENT: self._model_dependent_transformation_functions_execution_graph,
                 },
             )
-            if tracing._is_enabled()
+            if tracing._is_available()
             else None
         )
 
@@ -1435,7 +1435,7 @@ class VectorServer:
         # sequential; with n_processes > 1 independent transformations in the
         # DAG run concurrently in the shared worker pool for each row.
         for feature_vector in feature_vectors:
-            if self._telemetry is None:
+            if self._telemetry is None or not tracing._enabled:
                 transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                     execution_graph=self._model_dependent_transformation_functions_execution_graph,
                     data=feature_vector,
@@ -1542,7 +1542,7 @@ class VectorServer:
         for feature_vector, request_parameter in zip(
             feature_vectors, request_parameters, strict=False
         ):
-            if self._telemetry is None:
+            if self._telemetry is None or not tracing._enabled:
                 on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
                     execution_graph=self._on_demand_transformation_functions_execution_graph,
                     data=feature_vector,
@@ -1947,7 +1947,7 @@ class VectorServer:
             logging_meta_data: Metadata object for logging, if logging is enabled.
             n_processes: Number of processes for parallel transformation execution.
         """
-        if self._telemetry is not None:
+        if self._telemetry is not None and tracing._enabled:
             return self._apply_transformation_traced(
                 row_dict,
                 request_parameter,

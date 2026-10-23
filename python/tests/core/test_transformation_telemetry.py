@@ -73,12 +73,14 @@ def graphs(mocker):
 
 @pytest.fixture
 def telemetry_off(mocker):
+    mocker.patch.object(tracing, "_available", False)
     mocker.patch.object(tracing, "_enabled", False)
     mocker.patch.dict(transformation_telemetry._telemetries, clear=True)
 
 
 @pytest.fixture
 def telemetry_on(mocker, span_exporter):
+    mocker.patch.object(tracing, "_available", True)
     mocker.patch.object(tracing, "_enabled", True)
     mocker.patch.dict(transformation_telemetry._telemetries, clear=True)
     return span_exporter
@@ -99,7 +101,7 @@ def _server(mocker, graphs):
         new_callable=mocker.PropertyMock,
         return_value=[],
     )
-    if tracing._is_enabled():
+    if tracing._is_available():
         server._telemetry = transformation_telemetry._Telemetry(
             FEATURE_VIEW,
             VERSION,
@@ -218,6 +220,33 @@ class TestEnabled:
                     traced.append(row_traced)
 
         assert traced == [True, False, True, False]
+
+    def test_switching_tracing_off_stops_measuring_until_it_is_back_on(
+        self, mocker, graphs, telemetry_on
+    ):
+        server = _server(mocker, graphs)
+
+        tracing._set_active(False)
+        clock = mocker.spy(transformation_telemetry.time, "perf_counter_ns")
+        with (
+            trace.get_tracer("test").start_as_current_span("predict"),
+            tracing._request_scope(1),
+        ):
+            _, encoded = _apply(server)
+        assert 1210 in encoded.values()
+        clock.assert_not_called()
+        assert telemetry_on.get_finished_spans()[:-1] == ()
+        assert _sample(_metrics(), "hopsworks_transformations_calls_total") == 0
+
+        tracing._set_active(True)
+        with (
+            trace.get_tracer("test").start_as_current_span("predict"),
+            tracing._request_scope(1),
+        ):
+            _apply(server)
+        names = [span.name for span in telemetry_on.get_finished_spans()]
+        assert names.count("transformations") == 1
+        assert _sample(_metrics(), "hopsworks_transformations_calls_total") == 1
 
     def test_unsampled_request_is_measured_but_not_traced(
         self, mocker, graphs, telemetry_on

@@ -37,6 +37,9 @@ class DeploymentTracingConfig:
         sampling_percentage: Percentage of a model deployment's requests to trace, from 0 to 100.
             `None` traces 10%; every request is still counted in the transformation metrics.
             Agent deployments ignore it.
+        active: Whether a model deployment created with tracing records it right now.
+            `None` means it does.
+            Change it on a running deployment with [`Deployment.set_tracing`][hsml.deployment.Deployment.set_tracing], which needs no restart.
     """
 
     STORAGE_ONLINE = "online"
@@ -51,8 +54,10 @@ class DeploymentTracingConfig:
         input_token_price_per_million_tokens: float | None = None,
         output_token_price_per_million_tokens: float | None = None,
         sampling_percentage: int | None = None,
+        active: bool | None = None,
     ):
         self._enabled = enabled
+        self._active = active
         self._sampling_percentage = self._validate_sampling_percentage(
             sampling_percentage
         )
@@ -136,6 +141,7 @@ class DeploymentTracingConfig:
         kwargs["sampling_percentage"] = util._extract_field_from_json(
             config, "sampling_percentage"
         )
+        kwargs["active"] = util._extract_field_from_json(config, "active")
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -160,6 +166,8 @@ class DeploymentTracingConfig:
             )
         if self._sampling_percentage is not None:
             json["samplingPercentage"] = self._sampling_percentage
+        if self._active is not None:
+            json["active"] = self._active
         return json
 
     @public
@@ -171,6 +179,16 @@ class DeploymentTracingConfig:
     @enabled.setter
     def enabled(self, enabled: bool | None):
         self._enabled = enabled
+
+    @public
+    @property
+    def active(self):
+        """Whether a model deployment created with tracing records it right now; `None` means it does."""
+        return self._active
+
+    @active.setter
+    def active(self, active: bool | None):
+        self._active = active
 
     @public
     @property

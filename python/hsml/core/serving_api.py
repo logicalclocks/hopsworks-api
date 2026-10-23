@@ -417,6 +417,33 @@ class ServingApi:
         deployment_instance.project_name = _client._project_name
         return deployment_instance
 
+    def _set_tracing(
+        self,
+        deployment_instance: deployment.Deployment,
+        active: bool | None,
+        sampling_percentage: int | None,
+    ) -> dict[str, Any]:
+        """Switch a running deployment's tracing without redeploying it, returning the stored tracing config."""
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "tracing",
+        ]
+        body = {}
+        if active is not None:
+            body["active"] = active
+        if sampling_percentage is not None:
+            body["samplingPercentage"] = sampling_percentage
+        return _client._send_request(
+            "PUT",
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps(body),
+        )
+
     def _post(self, deployment_instance: deployment.Deployment, action: str):
         """Perform an action on the deployment.
 

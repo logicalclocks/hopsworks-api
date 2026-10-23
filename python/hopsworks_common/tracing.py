@@ -37,6 +37,9 @@ _TRACER_NAME = "hopsworks"
 # One shared instance: a disabled helper hands it out instead of creating a context manager per call.
 _NO_SPAN = contextlib.nullcontext()
 
+# Whether the model server set tracing up for this process, fixed at start; telemetry state is built only then.
+_available = False
+# Whether requests are traced right now; switched while the process runs, and only ever on when available.
 _enabled = False
 
 # The rows a traced request may open transformation spans for, and the rows each caller has taken; a mutable pair so a request counts its own.
@@ -45,14 +48,21 @@ _row_budget: contextvars.ContextVar[tuple[int, dict] | None] = contextvars.Conte
 )
 
 
-def _enable() -> None:
-    """Turn telemetry on for this process; called once by the model server after it configured a tracer provider."""
+def _enable(active: bool = True) -> None:
+    """Make telemetry available to this process, on or off; called once by the model server after it configured a tracer provider."""
+    global _available, _enabled
+    _available = True
+    _enabled = active
+
+
+def _set_active(active: bool) -> None:
+    """Switch telemetry on or off while the process runs; a no-op in a process [`_enable`][] was never called in."""
     global _enabled
-    _enabled = True
+    _enabled = _available and active
 
 
-def _is_enabled() -> bool:
-    return _enabled
+def _is_available() -> bool:
+    return _available
 
 
 def _trace_module():
