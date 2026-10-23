@@ -345,8 +345,8 @@ def _parse_judge_config(entry: dict[str, Any]) -> JudgeConfig:
     elif "pass_score" in entry:
         config.pass_score = _as_float(entry["pass_score"], "pass_score")
     else:
-        # 80% of the scale, so a default judge is demanding without being
-        # unreachable — 4 of 5 on the default range.
+        # Three quarters of the way up the scale, so a default judge is
+        # demanding without being unreachable — 4 of 5 on the default range.
         config.pass_score = config.score_min + 0.75 * (
             config.score_max - config.score_min
         )
