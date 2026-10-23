@@ -2624,7 +2624,7 @@ class TestFeatureViewEngine:
 
         # Act
         _ = fv_engine._create_training_data_metadata(
-            feature_view_obj=fv, training_dataset_obj=MagicMock()
+            feature_view_obj=fv, training_dataset_obj=td
         )
 
         # Assert

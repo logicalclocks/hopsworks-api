@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import logging
+import numbers
 import secrets
 import tempfile
 import warnings
@@ -1099,7 +1100,18 @@ class FeatureViewEngine:
 
     def _create_training_data_metadata(self, feature_view_obj, training_dataset_obj):
         # The seed salts the hash split, so every read of the version gives the same split.
-        if training_dataset_obj.seed is None and any(
+        seed = training_dataset_obj.seed
+        if seed is not None:
+            if (
+                isinstance(seed, bool)
+                or not isinstance(seed, numbers.Integral)
+                or not 0 <= seed < 2**63
+            ):
+                raise ValueError(
+                    f"The training dataset seed must be an integer from 0 to 2^63 - 1, got {seed!r}."
+                )
+            training_dataset_obj.seed = int(seed)
+        elif any(
             split.split_type == TrainingDatasetSplit.RANDOM_SPLIT
             for split in training_dataset_obj.splits
         ):

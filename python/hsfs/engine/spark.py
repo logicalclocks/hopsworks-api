@@ -67,6 +67,7 @@ try:
         length,
         lit,
         monotonically_increasing_id,
+        pandas_udf,
         regexp_replace,
         row_number,
         struct,
@@ -1273,36 +1274,58 @@ class Engine:
                 path,
                 to_df=to_df,
             )
-        split_dataset = self._split_df(
-            query_obj,
-            training_dataset,
-            read_options=read_options,
-            feature_view_obj=feature_view_obj,
-        )
-        for key in split_dataset:
-            if training_dataset.coalesce:
-                split_dataset[key] = split_dataset[key].coalesce(1)
+        release = []
+        try:
+            split_dataset = self._split_df(
+                query_obj,
+                training_dataset,
+                read_options=read_options,
+                feature_view_obj=feature_view_obj,
+                release=release,
+            )
+            for key in split_dataset:
+                if training_dataset.coalesce:
+                    split_dataset[key] = split_dataset[key].coalesce(1)
 
-            split_dataset[key] = split_dataset[key].cache()
+                # Statistics and the write both read each split, and to_df hands the
+                # frames to the caller: cache so the query is read and hashed once.
+                split_dataset[key] = split_dataset[key].cache()
+            cached_splits = list(split_dataset.values())
 
-        split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
-            training_dataset,
-            feature_view_obj,
-            split_dataset,
-            transformation_context=transformation_context,
-            training_dataset_version=training_dataset_version,
-        )
+            split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+                training_dataset,
+                feature_view_obj,
+                split_dataset,
+                transformation_context=transformation_context,
+                training_dataset_version=training_dataset_version,
+            )
 
-        return self._write_training_dataset_splits(
-            training_dataset,
-            split_dataset,
-            write_options,
-            save_mode,
-            to_df=to_df,
-        )
+            result = self._write_training_dataset_splits(
+                training_dataset,
+                split_dataset,
+                write_options,
+                save_mode,
+                to_df=to_df,
+            )
+            if to_df:
+                # The returned frames read from these caches: fill them before the
+                # hashed source is released, so rows are not hashed again.
+                for cached in cached_splits:
+                    cached.count()
+            else:
+                release += cached_splits
+            return result
+        finally:
+            for frame in release:
+                frame.unpersist()
 
     def _split_df(
-        self, query_obj, training_dataset, read_options=None, feature_view_obj=None
+        self,
+        query_obj,
+        training_dataset,
+        read_options=None,
+        feature_view_obj=None,
+        release=None,
     ):
         if read_options is None:
             read_options = {}
@@ -1351,69 +1374,52 @@ class Engine:
             query_obj.read(read_options=read_options),
             training_dataset,
             feature_view_obj=feature_view_obj,
+            release=release,
         )
 
-    def _random_split(self, dataset, training_dataset, feature_view_obj=None):
-        splits = training_dataset.splits
+    def _random_split(
+        self, dataset, training_dataset, feature_view_obj=None, release=None
+    ):
+        """Split by a keyed hash of each row, computed in Python over the hashed columns only.
+
+        With a `release` list, the frame carrying the bucket is persisted so each row is hashed
+        once, and appended to `release` for the caller to unpersist at the end of the read.
+        """
         split_column = f"_SPLIT_INDEX_{uuid.uuid4().hex}"
         # Spark hands TimestampType values to Python as wall time in the session zone,
         # so they are hashed as UTC epoch microseconds computed in Spark.
-        hashed, micros_columns, micros_names = [], [], []
+        hashed, offline_types = [], []
         for index, (name, declared) in enumerate(
             training_dataset_split._split_columns(feature_view_obj, dataset.columns)
         ):
             data_type = dataset.schema[name].dataType
-            offline_type = declared or data_type.simpleString()
-            if _has_local_timestamp(data_type):
-                alias = f"{split_column}_{index}"
-                micros_columns.append(
-                    _utc_micros(col(f"`{name}`"), data_type).alias(alias)
-                )
-                micros_names.append(alias)
-                hashed.append((alias, offline_type))
-            else:
-                hashed.append((name, offline_type))
+            hashed.append(_utc_micros(col(f"`{name}`"), data_type).alias(f"c{index}"))
+            offline_types.append(declared or data_type.simpleString())
         salt = training_dataset_split._split_salt(training_dataset)
-        fractions = [split.percentage for split in splits]
+        fractions = [split.percentage for split in training_dataset.splits]
 
-        def assign_split(batches):
-            for batch in batches:
-                indexes = training_dataset_split._split_indexes(
-                    [batch[name].tolist() for name, _ in hashed],
-                    [offline_type for _, offline_type in hashed],
+        def bucket(rows: pd.DataFrame) -> pd.Series:
+            return pd.Series(
+                training_dataset_split._split_indexes(
+                    [rows[name].tolist() for name in rows.columns],
+                    offline_types,
                     salt,
                     fractions,
-                )
-                batch = batch.drop(columns=micros_names)
-                batch[split_column] = indexes
-                yield batch
-
-        # Hash each row once: the indexed frame is held in memory while the splits are
-        # cached from it, then released.
-        indexed = (
-            dataset.select("*", *micros_columns)
-            .mapInPandas(
-                assign_split,
-                StructType(
-                    dataset.schema.fields
-                    + [StructField(split_column, IntegerType(), False)]
                 ),
+                dtype="int32",
             )
-            .persist(StorageLevel.MEMORY_ONLY)
+
+        # Only the bucket comes back from Python, so the data columns are never converted.
+        indexed = dataset.withColumn(
+            split_column, pandas_udf(bucket, IntegerType())(struct(*hashed))
         )
-        result = {}
-        try:
-            for index, split in enumerate(splits):
-                split_df = (
-                    indexed.filter(col(split_column) == index)
-                    .drop(split_column)
-                    .cache()
-                )
-                split_df.count()
-                result[split.name] = split_df
-        finally:
-            indexed.unpersist()
-        return result
+        if release is not None:
+            indexed = indexed.persist(StorageLevel.MEMORY_ONLY)
+            release.append(indexed)
+        return {
+            split.name: indexed.filter(col(split_column) == index).drop(split_column)
+            for index, split in enumerate(training_dataset.splits)
+        }
 
     def _time_series_split(
         self, training_dataset, dataset, event_time, drop_event_time=False

@@ -3997,9 +3997,7 @@ class TestSpark:
         finally:
             session.conf.set("spark.sql.session.timeZone", previous)
 
-    def test_random_split_ignores_unconvertible_columns_outside_the_view(
-        self, mocker
-    ):
+    def test_random_split_ignores_unconvertible_columns_outside_the_view(self, mocker):
         # A calendar interval has no Arrow type; only hashed columns reach Python.
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")

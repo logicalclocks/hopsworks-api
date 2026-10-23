@@ -291,7 +291,11 @@ def _encode(value, declared, out):
         out += b"B\x01" if value else b"B\x00"
     elif kind == "float":
         # Stored as float32: a float64 that widens it hashes the same.
-        out += b"f" + np.float32(value).astype(">f4").tobytes()
+        with np.errstate(over="ignore"):
+            single = np.float32(value)
+        if np.isinf(single) and not np.isinf(float(value)):
+            raise _misfit(value, "float")
+        out += b"f" + single.astype(">f4").tobytes()
     elif kind == "double":
         out += b"F" + struct.pack(">d", float(value))
     elif kind == "decimal":
@@ -316,8 +320,10 @@ def _encode(value, declared, out):
     elif kind == "struct":
         out += b"R" + struct.pack(">I", len(declared[1]))
         for index, (name, field_type) in enumerate(declared[1]):
+            if isinstance(value, dict) and name not in value:
+                raise _misfit(value, "struct")
             _encode(
-                value.get(name) if isinstance(value, dict) else value[index],
+                value[name] if isinstance(value, dict) else value[index],
                 field_type,
                 out,
             )
@@ -407,7 +413,7 @@ def _split_indexes(columns, types, salt: bytes, fractions) -> list[int]:
 
 def _split_salt(training_dataset) -> bytes:
     if training_dataset.seed is not None:
-        return training_dataset.seed.to_bytes(8, "big", signed=True)
+        return int(training_dataset.seed).to_bytes(8, "big", signed=True)
     # Versions created before seeds were generated: fixed per version.
     return f"{training_dataset.id}:{training_dataset.version}".encode()
 
