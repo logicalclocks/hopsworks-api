@@ -202,6 +202,23 @@ class TestEnabled:
             == 2
         )
 
+    def test_separate_phase_passes_each_trace_the_first_row(
+        self, mocker, graphs, telemetry_on
+    ):
+        server = _server(mocker, graphs)
+        on_demand, model_dependent = graphs
+
+        with (
+            trace.get_tracer("test").start_as_current_span("predict"),
+            tracing._request_scope(1),
+        ):
+            traced = []
+            for graph in (on_demand, on_demand, model_dependent, model_dependent):
+                with server._telemetry._row(graph) as row_traced:
+                    traced.append(row_traced)
+
+        assert traced == [True, False, True, False]
+
     def test_unsampled_request_is_measured_but_not_traced(
         self, mocker, graphs, telemetry_on
     ):

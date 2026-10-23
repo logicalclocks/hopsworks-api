@@ -39,8 +39,8 @@ _NO_SPAN = contextlib.nullcontext()
 
 _enabled = False
 
-# The rows a traced request may still open transformation spans for, as a one-element list so a request decrements its own budget.
-_row_budget: contextvars.ContextVar[list[int] | None] = contextvars.ContextVar(
+# The rows a traced request may open transformation spans for, and the rows each caller has taken; a mutable pair so a request counts its own.
+_row_budget: contextvars.ContextVar[tuple[int, dict] | None] = contextvars.ContextVar(
     "hopsworks_trace_row_budget", default=None
 )
 
@@ -67,19 +67,26 @@ def _recording() -> bool:
 @contextlib.contextmanager
 def _request_scope(traced_rows: int) -> Iterator[None]:
     """Bound the transformation spans of one request to its first `traced_rows` rows; the model server opens this around each request."""
-    token = _row_budget.set([traced_rows])
+    token = _row_budget.set((traced_rows, {}))
     try:
         yield
     finally:
         _row_budget.reset(token)
 
 
-def _take_row() -> bool:
-    """Whether the current sampled request may trace one more row, consuming it from the request's budget."""
+def _take_row(key: Any = None) -> bool:
+    """Whether the current sampled request may trace one more row for `key`, consuming it from the request's budget.
+
+    Each key has its own allowance, so a request whose phases run as separate passes over its rows traces the same first rows in each.
+    """
     budget = _row_budget.get()
-    if not budget or budget[0] <= 0 or not _recording():
+    if budget is None or not _recording():
         return False
-    budget[0] -= 1
+    allowance, taken = budget
+    used = taken.get(key, 0)
+    if used >= allowance:
+        return False
+    taken[key] = used + 1
     return True
 
 

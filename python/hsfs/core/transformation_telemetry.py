@@ -179,7 +179,8 @@ class _Telemetry:
         """
         if not any(graph is not None and graph.nodes for graph in execution_graphs):
             return _UNTRACED_ROW
-        if not tracing._take_row():
+        # Keyed by the DAGs, because a request with every feature passed runs its on-demand and its model-dependent phase as two passes over its rows.
+        if not tracing._take_row(execution_graphs):
             return _UNTRACED_ROW
         return self._traced_row()
 
