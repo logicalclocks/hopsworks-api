@@ -743,6 +743,69 @@ class TestQuery:
         mock_fs_query._register_external.assert_not_called()
         mock_fs_query._register_hudi_tables.assert_not_called()
 
+    def test_prep_read_source_pushdown_differing_feature_group_options(
+        self, mocker, caplog
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.MagicMock()
+        mock_engine._is_flyingduck_query_supported.return_value = False
+        mock_engine._is_source_pushdown_supported.return_value = True
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = "SELECT * FROM SALES_DB.PUBLIC.FG0 AS fg0"
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.pit_query = None
+        # One pushed-down read has one set of options, so differing ones read each group alone.
+        mock_fs_query._pushdown_options.return_value = None
+        mock_fs_query._pushdown_options_message.return_value = (
+            "not pushed down: options"
+        )
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+
+        with caplog.at_level(logging.INFO, logger="hsfs.constructor.query"):
+            sql_query, _ = TestQuery.fg1.select_all()._prep_read(
+                online=False, read_options={}
+            )
+
+        assert sql_query == "SELECT * FROM test"
+        assert "not pushed down: options" in caplog.text
+        mock_engine._register_pushdown_query.assert_not_called()
+        mock_fs_query._register_external.assert_called()
+
+    def test_prep_read_source_pushdown_differing_options_on_an_unsupported_engine(
+        self, mocker, caplog
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_engine = mocker.MagicMock()
+        mock_engine._is_flyingduck_query_supported.return_value = False
+        mock_engine._is_source_pushdown_supported.return_value = False
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = "SELECT * FROM SALES_DB.PUBLIC.FG0 AS fg0"
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.pit_query = None
+        mock_fs_query._pushdown_options.return_value = None
+        mock_fs_query._pushdown_options_message.return_value = (
+            "not pushed down: options"
+        )
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="hsfs.constructor.query"):
+            TestQuery.fg1.select_all()._prep_read(online=False, read_options={})
+
+        # The engine is what stops the pushdown here, so that is the reason logged.
+        assert "not pushed down: options" not in caplog.text
+        assert "the current engine cannot execute it" in caplog.text
+        mock_fs_query._pushdown_options_message.assert_not_called()
+
     def test_prep_read_source_pushdown_unsupported_engine(self, mocker):
         mocker.patch("hsfs.engine._get_type", return_value="python")
         mock_engine = mocker.MagicMock()

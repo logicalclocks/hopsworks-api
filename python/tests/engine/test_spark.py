@@ -659,6 +659,61 @@ class TestSpark:
         assert result.startswith("SELECT * FROM pushdown_result_hopsworks_")
         assert spark_engine._spark_session.sql(result).columns == ["pk1", "value_2"]
 
+    def _register_pushdown_with_columns(
+        self, mocker, backend_fixtures, columns, options=None
+    ):
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+
+        json = backend_fixtures["fs_query"]["get"]["response"]
+        fs_query = fs_query_mod.FsQuery.from_response_json(json)
+        fs_query.on_demand_fg_aliases[0].on_demand_feature_group._options = options
+
+        mock_read = mocker.patch(
+            "hsfs.storage_connector.JdbcConnector.read",
+            return_value=spark_engine._spark_session.createDataFrame(
+                [tuple(range(len(columns)))], columns
+            ),
+        )
+
+        result = spark_engine._register_pushdown_query(fs_query)
+        return spark_engine._spark_session.sql(result).columns, mock_read
+
+    def test_register_pushdown_query_forwards_feature_group_options(
+        self, mocker, backend_fixtures
+    ):
+        # A role or warehouse set on the feature group itself must reach the connector, as it does
+        # when the feature group is read on its own.
+        _, mock_read = self._register_pushdown_with_columns(
+            mocker,
+            backend_fixtures,
+            ["PK1"],
+            options={"sfRole": "ANALYST", "sfWarehouse": "WH_S"},
+        )
+
+        assert mock_read.call_args.kwargs["options"] == {
+            "sfRole": "ANALYST",
+            "sfWarehouse": "WH_S",
+        }
+
+    def test_register_pushdown_query_without_options_reads_with_none(
+        self, mocker, backend_fixtures
+    ):
+        _, mock_read = self._register_pushdown_with_columns(
+            mocker, backend_fixtures, ["PK1"], options={}
+        )
+
+        assert mock_read.call_args.kwargs["options"] is None
+
+    def test_register_pushdown_query_lower_cases_returned_columns(
+        self, mocker, backend_fixtures
+    ):
+        columns, _ = self._register_pushdown_with_columns(
+            mocker, backend_fixtures, ["PK1", "Value_2"]
+        )
+
+        assert columns == ["pk1", "value_2"]
+
     def test_register_pushdown_query_uses_a_distinct_view_per_call(
         self, mocker, backend_fixtures
     ):
