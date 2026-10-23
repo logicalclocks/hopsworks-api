@@ -281,6 +281,26 @@ public class SparkEngine extends EngineBase {
   public Dataset<Row>[] write(TrainingDataset trainingDataset, Query query, Map<String, String> queryReadOptions,
                               Map<String, String> writeOptions, SaveMode saveMode)
       throws FeatureStoreException, IOException {
+    return write(trainingDataset, query, queryReadOptions, writeOptions, saveMode, null);
+  }
+
+  /**
+   * Setup Spark to write the data on the File System, splitting by the feature view features.
+   *
+   * @param trainingDataset Training Dataset metadata object
+   * @param query Query Object
+   * @param queryReadOptions Additional read options as key-value pairs, defaults to empty Map
+   * @param writeOptions Additional write options as key-value pairs, defaults to empty Map
+   * @param saveMode org.apache.spark.sql.saveMode: Append, Overwrite, ErrorIfExists, Ignore
+   * @param features Feature view features a random split hashes, or null for every column
+   * @return Spark dataframe
+   * @throws FeatureStoreException If Client is not connected to Hopsworks
+   * @throws IOException Generic IO exception.
+   */
+  public Dataset<Row>[] write(TrainingDataset trainingDataset, Query query, Map<String, String> queryReadOptions,
+                              Map<String, String> writeOptions, SaveMode saveMode,
+                              List<TrainingDatasetFeature> features)
+      throws FeatureStoreException, IOException {
     setupConnectorHadoopConf(trainingDataset.getDataSource().getStorageConnector());
 
     if (trainingDataset.getSplits() == null || trainingDataset.getSplits().isEmpty()) {
@@ -296,7 +316,7 @@ public class SparkEngine extends EngineBase {
       writeSingle(dataset, trainingDataset.getDataFormat(), writeOptions, saveMode, path);
       return new Dataset[] {dataset};
     } else {
-      Dataset<Row>[] datasetSplits = splitDataset(trainingDataset, query, queryReadOptions);
+      Dataset<Row>[] datasetSplits = splitDataset(trainingDataset, query, queryReadOptions, features);
       if (trainingDataset.getCoalesce()) {
         for (int i = 0; i < datasetSplits.length; i++) {
           datasetSplits[i] = datasetSplits[i].coalesce(1);
@@ -311,6 +331,12 @@ public class SparkEngine extends EngineBase {
 
   public Dataset<Row>[] splitDataset(TrainingDataset trainingDataset, Query query, Map<String, String> readOptions)
       throws FeatureStoreException, IOException {
+    return splitDataset(trainingDataset, query, readOptions, null);
+  }
+
+  public Dataset<Row>[] splitDataset(TrainingDataset trainingDataset, Query query, Map<String, String> readOptions,
+                                     List<TrainingDatasetFeature> features)
+      throws FeatureStoreException, IOException {
     if (Split.SplitType.TIME_SERIES_SPLIT.equals(trainingDataset.getSplits().get(0).getSplitType())) {
       String eventTime = query.getLeftFeatureGroup().getEventTime();
       if (query.getLeftFeatures().stream().noneMatch(feature -> feature.getName().equals(eventTime))) {
@@ -320,7 +346,7 @@ public class SparkEngine extends EngineBase {
         return timeSeriesSplit(trainingDataset, query, readOptions, false);
       }
     } else {
-      return randomSplit(trainingDataset, query, readOptions);
+      return HashSplit.split((Dataset<Row>) query.read(false, readOptions), trainingDataset, features);
     }
   }
 
@@ -381,25 +407,6 @@ public class SparkEngine extends EngineBase {
         datasetSplits[i] = dataset;
       }
       i++;
-    }
-    return datasetSplits;
-  }
-
-  private Dataset<Row>[] randomSplit(TrainingDataset trainingDataset, Query query, Map<String, String> readOptions)
-      throws FeatureStoreException, IOException {
-    Dataset<Row> dataset = (Dataset<Row>) query.read(false, readOptions);
-
-    List<Float> splitFactors = trainingDataset.getSplits().stream()
-        .map(Split::getPercentage)
-        .collect(Collectors.toList());
-
-    // The actual data will be stored in training_ds_version/split_name
-    Dataset<Row>[] datasetSplits = null;
-    if (trainingDataset.getSeed() != null) {
-      datasetSplits = dataset.randomSplit(
-          splitFactors.stream().mapToDouble(Float::doubleValue).toArray(), trainingDataset.getSeed());
-    } else {
-      datasetSplits = dataset.randomSplit(splitFactors.stream().mapToDouble(Float::doubleValue).toArray());
     }
     return datasetSplits;
   }

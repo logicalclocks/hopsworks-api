@@ -40,6 +40,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
 
 import java.io.IOException;
+import java.security.SecureRandom;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
@@ -83,7 +84,7 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
     Query query = getBatchQuery(featureView, trainingDataset.getEventStartTime(),
         trainingDataset.getEventEndTime(), true, trainingDataset.getVersion(), Query.class);
     Dataset<Row>[] datasets = SparkEngine.getInstance().write(trainingDataset, query, Maps.newHashMap(),
-        writeOptions, SaveMode.Overwrite);
+        writeOptions, SaveMode.Overwrite, featureView.getFeatures());
     computeStatistics(featureView, trainingDataset, datasets);
   }
 
@@ -165,7 +166,7 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
         Query query = getBatchQuery(featureView, trainingDataset.getEventStartTime(), trainingDataset.getEventEndTime(),
             true, trainingDataset.getVersion(), Query.class);
         Dataset<Row>[] datasets = SparkEngine.getInstance().splitDataset(trainingDatasetUpdated, query,
-            userReadOptions);
+            userReadOptions, featureView.getFeatures());
         trainingDatasetBundle = new TrainingDatasetBundle(trainingDatasetUpdated.getVersion(),
             convertSplitDatasetsToMap(trainingDatasetUpdated.getSplits(), datasets),
             featureView.getLabels());
@@ -189,9 +190,23 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
     }
   }
 
+  // The seed salts the hash split, so every read of the version gives the same split.
+  static void assignSeed(TrainingDataset trainingDataset) throws FeatureStoreException {
+    if (trainingDataset.getSeed() != null) {
+      if (trainingDataset.getSeed() < 0) {
+        throw new FeatureStoreException(
+            "The training dataset seed must be an integer from 0 to 2^63 - 1, got " + trainingDataset.getSeed() + ".");
+      }
+    } else if (trainingDataset.getSplits() != null && trainingDataset.getSplits().stream()
+        .anyMatch(split -> !Split.SplitType.TIME_SERIES_SPLIT.equals(split.getSplitType()))) {
+      trainingDataset.setSeed((long) new SecureRandom().nextInt(Integer.MAX_VALUE));
+    }
+  }
+
   private TrainingDataset createTrainingDataMetadata(
       FeatureView featureView, TrainingDataset trainingDataset) throws IOException, FeatureStoreException {
     setEventTime(featureView, trainingDataset);
+    assignSeed(trainingDataset);
     return (TrainingDataset) featureViewApi.createTrainingData(
         featureView.getName(), featureView.getVersion(), trainingDataset, TrainingDataset.class);
   }
