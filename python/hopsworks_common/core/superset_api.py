@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 from hopsworks_apigen import public
-from hopsworks_common import client, usage
+from hopsworks_common import client, events, usage
 from hopsworks_common.core.variable_api import VariableApi
 
 
@@ -308,6 +308,9 @@ class SupersetApi:
 
     @public
     @usage._method_logger
+    @events.tracking(
+        "chart", "create", key=lambda self, slice_name, *a, **k: {"name": slice_name}
+    )
     def create_chart(
         self,
         slice_name: str,
@@ -374,6 +377,11 @@ class SupersetApi:
 
     @public
     @usage._method_logger
+    @events.tracking(
+        "chart",
+        "update",
+        key=lambda self, chart_id, **k: {"name": k.get("slice_name") or str(chart_id)},
+    )
     def update_chart(self, chart_id: int, **kwargs: Any) -> dict:
         """Update a Superset chart.
 
@@ -389,6 +397,9 @@ class SupersetApi:
 
     @public
     @usage._method_logger
+    @events.tracking(
+        "chart", "delete", key=lambda self, chart_id, *a, **k: {"name": str(chart_id)}
+    )
     def delete_chart(self, chart_id: int) -> dict:
         """Delete a Superset chart.
 
@@ -406,6 +417,11 @@ class SupersetApi:
 
     @public
     @usage._method_logger
+    @events.tracking(
+        "dashboard",
+        "create",
+        key=lambda self, dashboard_title, *a, **k: {"name": dashboard_title},
+    )
     def create_dashboard(
         self,
         dashboard_title: str,
@@ -444,7 +460,11 @@ class SupersetApi:
             payload["css"] = css
         if owners is not None:
             payload["owners"] = owners
-        return self._request("POST", "/api/v1/dashboard/", json_data=payload)
+        created = self._request("POST", "/api/v1/dashboard/", json_data=payload)
+        # Titles are not unique: the id tells which dashboard this change made.
+        if isinstance(created, dict) and isinstance(created.get("id"), int):
+            events.note(id=created["id"])
+        return created
 
     @public
     @usage._method_logger
@@ -471,6 +491,13 @@ class SupersetApi:
 
     @public
     @usage._method_logger
+    @events.tracking(
+        "dashboard",
+        "update",
+        key=lambda self, dashboard_id, **k: {
+            "name": k.get("dashboard_title") or str(dashboard_id)
+        },
+    )
     def update_dashboard(self, dashboard_id: int, **kwargs: Any) -> dict:
         """Update a Superset dashboard.
 
@@ -482,12 +509,18 @@ class SupersetApi:
         Returns:
             The updated dashboard as a dict.
         """
+        events.note(id=dashboard_id)
         return self._request(
             "PUT", f"/api/v1/dashboard/{dashboard_id}", json_data=kwargs
         )
 
     @public
     @usage._method_logger
+    @events.tracking(
+        "dashboard",
+        "delete",
+        key=lambda self, dashboard_id, *a, **k: {"name": str(dashboard_id)},
+    )
     def delete_dashboard(self, dashboard_id: int) -> dict:
         """Delete a Superset dashboard.
 
@@ -497,4 +530,5 @@ class SupersetApi:
         Returns:
             Empty dict on success.
         """
+        events.note(id=dashboard_id)
         return self._request("DELETE", f"/api/v1/dashboard/{dashboard_id}")
