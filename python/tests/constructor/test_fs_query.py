@@ -89,3 +89,20 @@ class TestFsQuery:
         q = self._query_with_options(backend_fixtures, {"sfRole": "ANALYST"}, None)
 
         assert q._pushdown_options() is None
+
+    def test_pushdown_options_message_names_the_feature_groups_and_keys_not_values(
+        self, backend_fixtures
+    ):
+        q = self._query_with_options(
+            backend_fixtures,
+            {"sfRole": "SECRET_ROLE", "sfWarehouse": "WH_S"},
+            {"sfRole": "SECRET_ROLE", "sfWarehouse": "WH_L", "sfSchema": "S2"},
+        )
+
+        message = q._pushdown_options_message()
+
+        assert "set different read options (sfSchema, sfWarehouse)" in message
+        assert "sfRole" not in message
+        assert "SECRET_ROLE" not in message
+        assert "WH_S" not in message
+        assert "Reading each feature group separately." in message

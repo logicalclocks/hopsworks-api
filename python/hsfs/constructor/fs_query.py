@@ -22,6 +22,9 @@ from hsfs import engine
 from hsfs.constructor import external_feature_group_alias, hudi_feature_group_alias
 
 
+_MISSING = object()
+
+
 class FsQuery:
     def __init__(
         self,
@@ -129,6 +132,33 @@ class FsQuery:
         ]
         shared = options[0] if options else {}
         return shared if all(option == shared for option in options) else None
+
+    def _pushdown_options_message(self) -> str:
+        """Why the query is not pushed down when its feature groups carry different read options.
+
+        Names the feature groups and the option keys that differ. The values are left out, since
+        they can carry connector credentials.
+        """
+        options = [
+            dict(getattr(alias.on_demand_feature_group, "options", None) or {})
+            for alias in self._on_demand_fg_aliases
+        ]
+        differing = sorted(
+            key
+            for key in {key for option in options for key in option}
+            if len({repr(option.get(key, _MISSING)) for option in options}) > 1
+        )
+        feature_groups = sorted(
+            {
+                f"{alias.on_demand_feature_group.name} v{alias.on_demand_feature_group.version}"
+                for alias in self._on_demand_fg_aliases
+            }
+        )
+        return (
+            f"Not pushing the query down to its source: feature groups {', '.join(feature_groups)} "
+            f"set different read options ({', '.join(differing)}). "
+            "Reading each feature group separately."
+        )
 
     @property
     def spine_applied(self) -> bool:

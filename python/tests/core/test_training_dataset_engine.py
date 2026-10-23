@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import logging
+
 from hsfs import (
     feature_group,
     training_dataset,
@@ -338,7 +340,9 @@ class TestTrainingDatasetEngine:
         assert fs_query._register_external.call_count == 0
         assert fs_query._register_hudi_tables.call_count == 0
 
-    def test_query_pushdown_declined_for_differing_feature_group_options(self, mocker):
+    def test_query_pushdown_declined_for_differing_feature_group_options(
+        self, mocker, caplog
+    ):
         # Arrange
         feature_store_id = 99
 
@@ -352,16 +356,19 @@ class TestTrainingDatasetEngine:
         fs_query.pushdown_query = "SELECT 1"
         fs_query.pit_query = None
         fs_query._pushdown_options.return_value = None
+        fs_query._pushdown_options_message.return_value = "not pushed down: options"
 
         # Act
-        result = td_engine._query(
-            training_dataset=None, online=None, with_label=None, is_hive_query=None
-        )
+        with caplog.at_level(logging.INFO, logger="hsfs.core.training_dataset_engine"):
+            result = td_engine._query(
+                training_dataset=None, online=None, with_label=None, is_hive_query=None
+            )
 
         # Assert
         assert mock_engine.return_value._register_pushdown_query.call_count == 0
         assert fs_query._register_external.call_count == 1
         assert result == fs_query.query
+        assert "not pushed down: options" in caplog.text
 
     def test_query_pushdown_declined_by_engine(self, mocker):
         # Arrange
