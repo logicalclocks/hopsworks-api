@@ -75,8 +75,18 @@ class AgentClient(Protocol):
     def _fetch_manifest(self) -> dict[str, Any]: ...
 
     def _send_prompt(
-        self, prompt: str, *, traceparent: str, baggage: str, timeout_s: float
-    ) -> AgentResponse: ...
+        self,
+        prompt: str,
+        *,
+        traceparent: str,
+        baggage: str,
+        timeout_s: float,
+        conversation_id: str | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> AgentResponse:
+        """Send one turn; the optional arguments are passed only when the task sets them."""
+        ...
 
     def _fetch_trace(self, trace_id: str) -> Trace | None: ...
 
@@ -361,6 +371,11 @@ def _run_trial(
         # did, so an AgentClient written against the old signature -- the tests'
         # stubs, and anyone else's -- keeps working.
         threaded = {"conversation_id": conversation_id} if conversation_id else {}
+        # Likewise only when the task names someone, for the same reason.
+        if task.subject:
+            threaded["subject"] = task.subject
+        if task.context:
+            threaded["context"] = task.context
         try:
             response = client._send_prompt(
                 text,

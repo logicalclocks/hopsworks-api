@@ -240,6 +240,18 @@ agents.jobs.run_regressions(agent.id)                 # publishes pending tasks,
 
 **A promotion carries the conversation.** The task takes every user turn up to the one the verdict is about, because a failure on the fourth turn cannot be reproduced by asking the fourth question of a fresh agent. `promote_feedback(row, conversation=False)` takes that turn alone when it stands on its own. `feedback.promoted_task_id` says whether a verdict already became a task.
 
+**…and the person it happened to.** A promoted task is asked as whoever the original turn ran as — `task.subject`, sent as the request's `subject` on every turn — with the request `context` the client sent (`task.request_context`). Both are read off the trace's turn span, for every way of promoting: a trace, a verdict, a cluster. Without them a memory or personalisation failure cannot be a regression at all: "what do you already know about me?" answered "nothing" is a *correct* answer to a stranger, so asked anonymously the regression passes every time.
+
+```python
+task = agent.promote_feedback(row)                    # asked as the turn's subject
+task = agent.promote_feedback(row, subject="")        # asked anonymously
+task = agent.promote_feedback(row, subject="test-user@example.com")   # a test user with the same profile
+task.confirm_redaction(subject="test-user@example.com")               # or change it in review
+agents.tasks.create("What do you know about me?", subject="marcus@example.com", context={"plan": "pro"})
+```
+
+The subject is a customer's address copied out of a trace, so it is part of what the redaction review checks, and the Promotion queue shows it ("as marcus@example.com"). **A trial reads that person's memory and never writes it**: under evaluation, `user`-scope writes go under the trial's own conversation and reads look there first, and the trial's messages are not filed in the person's conversation history — so a nightly regression run cannot rewrite a customer's stored profile. The same question asked as two people is two cases, for import dedup and for `changes()`.
+
 **Reading a trace.** Everything that says what a span *did* is an attribute: `openinference.span.kind` (`AGENT`, `LLM`, `TOOL`, `RETRIEVER`), `llm.model_name`, `input.value`, `output.value`, the token counts. The span itself carries little more than its name and its timestamps. Each span and each event is handed back with its own attributes as a dict, and the flat per-trace lists are there too — `trace.span_attributes` / `trace.event_attributes`, with `trace.attributes_of(span_id)` giving the same dict:
 
 ```python

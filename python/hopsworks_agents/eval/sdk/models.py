@@ -178,10 +178,24 @@ class Task(ApiModel):
     category: str | None = None
     created_by: str | None = None
     created_at: str | None = None
+    #: Who the task is asked as -- the request's ``subject`` on every turn. None
+    #: asks anonymously. A task promoted from a trace carries the subject that
+    #: turn ran as, so a memory regression is asked by the person who had the
+    #: memory rather than by a stranger who never did.
+    subject: str | None = None
+    #: The request ``context`` replayed with it, as the JSON text the API keeps;
+    #: :attr:`request_context` is the same as a dict.
+    context: str | None = None
 
     @property
     def messages(self) -> list[dict[str, Any]]:
         return as_json(self.input_messages, [])
+
+    @property
+    def request_context(self) -> dict[str, Any]:
+        """The request context this task is asked with, as a dict; empty when none."""
+        parsed = as_json(self.context, {})
+        return parsed if isinstance(parsed, dict) else {}
 
     @property
     def question(self) -> str:

@@ -206,7 +206,12 @@ def recall(key: str, scope: str = "user") -> str:
     # same normalization as remember, or a key the model stored is unreachable
     # by the spelling it used to store it
     key = _normalize_key(key)
-    value = memory.get_state(scope, _owner(ctx, scope), key)
+    # Through the context, not the store: the context knows when a read must
+    # look at what this evaluation trial wrote before the person's own facts.
+    try:
+        value = ctx.recall(key, scope=scope)
+    except ValueError as err:
+        return str(err)
     if value is None:
         return f"Nothing stored under {key!r} in {scope} memory."
     return value
@@ -227,7 +232,9 @@ def forget(key: str, scope: str = "user") -> str:
     if problem:
         return problem
     key = _normalize_key(key)
-    removed = memory.delete_state(scope, _owner(ctx, scope), key)
+    # Through the context, for the same reason as recall: in a trial it may only
+    # erase what the trial wrote.
+    removed = ctx.forget(key, scope=scope)
     if not removed:
         return f"Nothing stored under {key!r} in {scope} memory."
     return f"Forgot {key!r}."

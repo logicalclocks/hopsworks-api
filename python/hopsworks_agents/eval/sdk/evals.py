@@ -372,14 +372,27 @@ class Tasks:
         *,
         expectations: dict[str, str] | None = None,
         category: str | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Task:
-        """Author a task on its own; it joins a suite with :meth:`add_to_suite`."""
+        """Author a task on its own; it joins a suite with :meth:`add_to_suite`.
+
+        ``subject`` asks it as somebody -- the request's ``subject`` on every
+        turn, which is what keys the agent's long-term memory -- and ``context``
+        is the request context sent with it. Under evaluation the agent reads
+        that person's memory and writes only the trial's, so a suite can ask as
+        a real user without changing what is stored about them.
+        """
         input_messages, task_type = _messages(question)
         body: dict[str, Any] = {"inputMessages": input_messages, "taskType": task_type}
         if expectations:
             body["expectations"] = expectations
         if category:
             body["category"] = category
+        if subject:
+            body["subject"] = subject
+        if context:
+            body["context"] = _context_text(context)
         return self._client._bind(
             Task.from_api(self._http.post(f"{EVALS}/tasks", body))
         )
@@ -392,8 +405,13 @@ class Tasks:
         *,
         expectations: dict[str, str] | None = None,
         category: str | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Task:
         """Change a task in a draft suite: what it asks, and what each check expects of it.
+
+        ``subject=""`` and ``context={}`` clear them, so the task is asked
+        anonymously again; left as None they are left alone.
 
         Only what is passed changes, so correcting one expectation does not mean
         resending the question it answers::
@@ -414,6 +432,10 @@ class Tasks:
             body["expectations"] = expectations
         if category is not None:
             body["category"] = category
+        if subject is not None:
+            body["subject"] = subject
+        if context is not None:
+            body["context"] = _context_text(context)
         return self._client._bind(
             Task.from_api(self._http.put(f"{EVALS}/tasks/{_task_id(task)}", body))
         )
@@ -505,8 +527,19 @@ class Tasks:
         expectations: dict[str, str] | None = None,
         question: str | Sequence[str] | Sequence[dict[str, Any]] | None = None,
         category: str | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Task:
-        """A task from a production trace. Lands PENDING_REDACTION: a person confirms before it joins."""
+        """A task from a production trace. Lands PENDING_REDACTION: a person confirms before it joins.
+
+        It is asked as whoever the trace's turn ran as, with the context the
+        client sent, both read off the trace: a memory or personalisation
+        failure only happens to someone the agent has memory of, and asked
+        anonymously its regression would pass. Pass ``subject=""`` to ask it
+        anonymously anyway, or a subject of your own -- a test user with the same
+        stored profile -- to keep a customer's address out of the suite. The
+        reviewer sees and can change both before the task can join one.
+        """
         body: dict[str, Any] = {"taskType": "single_turn"}
         if question is not None:
             body["inputMessages"], body["taskType"] = _messages(question)
@@ -514,6 +547,10 @@ class Tasks:
             body["expectations"] = expectations
         if category:
             body["category"] = category
+        if subject is not None:
+            body["subject"] = subject
+        if context is not None:
+            body["context"] = _context_text(context)
         return self._client._bind(
             Task.from_api(
                 self._http.post(
@@ -531,8 +568,15 @@ class Tasks:
         *,
         input_messages: str | Sequence[dict[str, Any]] | None = None,
         expectations: dict[str, str] | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Task:
-        """Record that a named person checked a promoted task for personal data, with any edits."""
+        """Record that a named person checked a promoted task for personal data, with any edits.
+
+        The subject and context are part of what is checked: a promoted task
+        carries the address of the person whose turn it was. ``subject=""``
+        removes it, or name a test user who has the same stored memory.
+        """
         body: dict[str, Any] = {}
         if input_messages is not None:
             body["inputMessages"] = (
@@ -542,6 +586,10 @@ class Tasks:
             )
         if expectations is not None:
             body["expectations"] = expectations
+        if subject is not None:
+            body["subject"] = subject
+        if context is not None:
+            body["context"] = _context_text(context)
         return self._client._bind(
             Task.from_api(
                 self._http.post(f"{EVALS}/tasks/{_task_id(task)}/redaction", body)
@@ -571,10 +619,23 @@ class Tasks:
 
     @public
     def add_to_regressions(
-        self, task: Task | str, *, input_messages: str | None = None
+        self,
+        task: Task | str,
+        *,
+        input_messages: str | None = None,
+        subject: str | None = None,
     ) -> Task:
-        """Confirm the redaction if pending and join the deployment's standing regression suite, in one call."""
-        body = {"inputMessages": input_messages} if input_messages is not None else {}
+        """Confirm the redaction if pending and join the deployment's standing regression suite, in one call.
+
+        ``subject`` changes who the task is asked as while confirming it -- ``""``
+        to ask anonymously, a test user's to keep a customer's address out of the
+        suite. Left as None the task keeps the subject it was promoted with.
+        """
+        body: dict[str, Any] = {}
+        if input_messages is not None:
+            body["inputMessages"] = input_messages
+        if subject is not None:
+            body["subject"] = subject
         return self._client._bind(
             Task.from_api(
                 self._http.post(f"{EVALS}/tasks/{_task_id(task)}/regressions", body)
@@ -1097,6 +1158,13 @@ def _by_task(trials: Sequence[Trial]) -> dict[str, list[Trial]]:
     for trial in trials:
         grouped.setdefault(trial.task_id, []).append(trial)
     return grouped
+
+
+def _context_text(context: dict[str, Any]) -> str:
+    """A request context as the API keeps it: JSON text, and empty for none."""
+    if not isinstance(context, dict):
+        raise TypeError("context must be a dict")
+    return json.dumps(context) if context else ""
 
 
 def _user_turns(input_messages: str | None) -> list[str]:

@@ -87,6 +87,7 @@ So, when you design an agent with long-term memory:
 - a real deployment has a login: the app asserts `subject` per request and nobody is asked anything;
 - a demo without one either passes `subject=` from the client, or calls `ctx.rebind_subject` in app code after the email is given — and should say in its own README why that is acceptable only for a demo;
 - `ctx.has_subject` / `ctx.subject_source` (`"client"` vs the per-conversation fallback) tell the handler which case it is in, so it can skip asking when the identity arrived with the request.
+- an **evaluation trial** with a subject reads that person's memory and never writes it: `remember`/`forget` under `user` scope land under the trial's own conversation, and its messages stay out of the person's history. That is what lets a regression replay a customer's turn as them (see **hops-agent-evals**) without the suite changing what is stored about them.
 
 **Reading back what an agent remembers.** There is no SDK accessor yet. The facts are a feature group in the project's online store, so read them there:
 

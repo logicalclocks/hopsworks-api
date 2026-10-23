@@ -2160,3 +2160,61 @@ class TestTraceAttributes:
         trace = self._trace()
         assert len(trace.span_attributes) == 3
         assert trace.attributes_of("b")["llm.model_name"] == "gpt-5"
+
+
+class TestATaskCarriesWhoItIsAskedAs:
+    """B25: a promoted memory failure has to be asked by the person it happened to.
+
+    The task had no subject and no context, so a regression of "what do you
+    already know about me?" replayed as a stranger the agent never had memory of,
+    and passed every time.
+    """
+
+    def test_create_sends_them(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.create(
+            "What do you know about me?",
+            subject="marcus@example.com",
+            context={"plan": "pro"},
+        )
+        body = session.sent[0][3]
+        assert body["subject"] == "marcus@example.com"
+        assert json.loads(body["context"]) == {"plan": "pro"}
+
+    def test_promote_leaves_them_to_the_trace_unless_told(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.promote(7, "trace-1")
+        body = session.sent[0][3]
+        assert "subject" not in body and "context" not in body
+
+    def test_promote_can_ask_anonymously_or_as_someone_else(self):
+        evals, session = client(Reply({"taskId": "t"}), Reply({"taskId": "u"}))
+        evals.tasks.promote(7, "trace-1", subject="")
+        evals.tasks.promote(7, "trace-1", subject="test-user@example.com")
+        assert session.sent[0][3]["subject"] == ""
+        assert session.sent[1][3]["subject"] == "test-user@example.com"
+
+    def test_an_edit_can_clear_them(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.update("t", subject="", context={})
+        body = session.sent[0][3]
+        assert body == {"subject": "", "context": ""}
+
+    def test_the_redaction_reviewer_can_change_the_subject(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.confirm_redaction("t", subject="test-user@example.com")
+        assert session.sent[0][3]["subject"] == "test-user@example.com"
+
+    def test_the_model_reads_them_back(self):
+        from hopsworks_agents.eval.sdk.models import Task
+
+        task = Task.from_api(
+            {
+                "taskId": "t",
+                "subject": "marcus@example.com",
+                "context": '{"plan": "pro"}',
+            }
+        )
+        assert task.subject == "marcus@example.com"
+        assert task.request_context == {"plan": "pro"}
+        assert Task.from_api({"taskId": "t"}).request_context == {}

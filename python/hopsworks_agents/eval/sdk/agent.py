@@ -651,8 +651,14 @@ class Agent:
         *,
         conversation: bool = True,
         expectations: dict[str, str] | None = None,
+        subject: str | None = None,
     ) -> Task:
         """One reviewer's verdict as a task, with what it was about and what it expected.
+
+        It is asked as whoever the original turn ran as, read off the trace, so a
+        verdict about what the agent remembered is replayed by the person it
+        remembered. ``subject=""`` asks anonymously; a subject of your own asks as
+        a test user instead of the customer.
 
         What ``tasks.promote`` cannot do on its own: it stores the content it is
         handed, and the question, the correction and the category are all on the
@@ -683,6 +689,7 @@ class Agent:
             or None,
             category=row.issue_category or None,
             expectations=expectations,
+            subject=subject,
         )
 
     def _feedback_row(self, feedback: Feedback | str) -> Feedback | None:

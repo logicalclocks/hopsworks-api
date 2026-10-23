@@ -569,7 +569,7 @@ class AgentApp(FastAPI):
                 "user",
                 recorded,
                 message_id=ctx.message_id,
-                subject=ctx.subject,
+                subject=ctx._stamp_subject,
             )
             ctx._turn_open = True
         except Exception:  # noqa: BLE001 — memory must never break a turn
@@ -624,7 +624,7 @@ class AgentApp(FastAPI):
                 json.dumps(event),
                 memory_type="event",
                 message_id=ctx.message_id,
-                subject=ctx.subject,
+                subject=ctx._stamp_subject,
             )
         answer = "".join(
             part.text for part in response.message.content if part.type == "text"
@@ -636,7 +636,7 @@ class AgentApp(FastAPI):
                 "assistant",
                 answer,
                 message_id=ctx.message_id,
-                subject=ctx.subject,
+                subject=ctx._stamp_subject,
             )
 
     def _finalize(
@@ -1195,6 +1195,26 @@ class AgentApp(FastAPI):
                 await self._finalize_turn(ctx, completed)
 
 
+def _stamp_request_context(span: Any, ctx: HandlerContext) -> None:
+    """The client's request context, as JSON, for a promoted task to replay.
+
+    Left off when empty, and when too large to keep whole: a cut JSON object is
+    not a smaller context, it is no context, and a replay given one would fail
+    for a reason the original turn never had.
+    """
+    import json
+
+    context = getattr(ctx.request, "context", None) or {}
+    if not context:
+        return
+    try:
+        text = json.dumps(context, default=str)
+    except (TypeError, ValueError):
+        return
+    if len(text) <= conventions.MAX_REQUEST_CONTEXT_CHARS:
+        span.set_attribute(conventions.REQUEST_CONTEXT, text)
+
+
 def _describe_parts(request: Any) -> str:
     """What a message carried, for a transcript, when it carried no text.
 
@@ -1288,6 +1308,12 @@ def _annotate_span(ctx: HandlerContext, response: ChatResponse) -> None:
         if ctx.deployment_id:
             span.set_attribute(conventions.DEPLOYMENT_ID, ctx.deployment_id)
         span.set_attribute(conventions.RESPONSE_ID, response.id)
+        # Who the turn ran as, as it ended rather than as it began: an agent
+        # that identified the person mid-turn ran its memory reads under them.
+        if ctx.has_subject:
+            span.set_attribute(conventions.USER_ID, ctx.subject)
+            span.set_attribute(conventions.SUBJECT_SOURCE, ctx.subject_source)
+        _stamp_request_context(span, ctx)
         # the authoritative final answer, straight from the response object,
         # rather than reconstructed downstream from whichever child span
         # happened to look most like an answer

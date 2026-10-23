@@ -1071,3 +1071,57 @@ class TestWaitingForTheDeployment:
                 config=config,
                 sleep=lambda _s: None,
             )
+
+
+class TestATaskIsAskedAsWhoeverItNames:
+    """A promoted task replays the subject and context of the turn it came from.
+
+    A memory failure only happens to someone the agent has memory of. Asked by a
+    stranger, its regression passes, so the regression suite could never hold the
+    one kind of failure memory exists to prevent.
+    """
+
+    class Recording(FakeClient):
+        def _send_prompt(self, prompt, *, traceparent, baggage, timeout_s, **identity):
+            self.identity = getattr(self, "identity", [])
+            self.identity.append(identity)
+            return super()._send_prompt(
+                prompt, traceparent=traceparent, baggage=baggage, timeout_s=timeout_s
+            )
+
+    def test_the_subject_and_context_ride_on_the_request(self):
+        client = self.Recording()
+        go(
+            client,
+            suite(tasks=[task(subject="marcus@example.com", context={"plan": "pro"})]),
+        )
+        assert client.identity == [
+            {"subject": "marcus@example.com", "context": {"plan": "pro"}}
+        ]
+
+    def test_every_turn_of_a_scripted_conversation_carries_them(self):
+        client = self.Recording()
+        script = json.dumps(
+            [
+                {"role": "user", "content": "hi"},
+                {"role": "user", "content": "what do you know about me?"},
+            ]
+        )
+        go(
+            client,
+            suite(
+                tasks=[
+                    task(
+                        input_messages=script,
+                        task_type="multi_turn",
+                        subject="marcus@example.com",
+                    )
+                ]
+            ),
+        )
+        assert [i.get("subject") for i in client.identity] == ["marcus@example.com"] * 2
+
+    def test_an_anonymous_task_sends_neither(self):
+        client = self.Recording()
+        go(client, suite(tasks=[task()]))
+        assert client.identity == [{}]

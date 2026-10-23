@@ -149,10 +149,25 @@ def _to_suite(run: dict[str, Any], tasks: list[dict[str, Any]]) -> Suite:
                     if value
                 },
                 category=t.get("category") or "",
+                subject=t.get("subject") or "",
+                context=_context(t.get("context")),
             )
             for t in tasks
         ],
     )
+
+
+def _context(raw: Any) -> dict[str, Any]:
+    """A task's request context: a JSON object as text, or already an object; anything else is none."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 #: How much of a failure's message is reported. It travels as a query parameter

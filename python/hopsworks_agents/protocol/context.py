@@ -145,9 +145,18 @@ class HandlerContext:
         if self.memory is None:
             return {}
         owner = self._state_owner(scope)
-        return {
+        facts = {
             row["key"]: row["value"] for row in self.memory.list_state(scope, owner)
         }
+        if self._trial_overlay(scope):
+            # what this trial wrote, over what the person already had
+            facts.update(
+                {
+                    row["key"]: row["value"]
+                    for row in self.memory.list_state(scope, self.conversation_id)
+                }
+            )
+        return facts
 
     @public
     def recall(self, key: str, *, scope: str = "user") -> str | None:
@@ -172,6 +181,10 @@ class HandlerContext:
             raise ValueError(f"unknown scope {scope!r}; expected one of {SCOPES}")
         if self.memory is None:
             return None
+        if self._trial_overlay(scope):
+            written = self.memory.get_state(scope, self.conversation_id, key)
+            if written is not None:
+                return written
         return self.memory.get_state(scope, self._state_owner(scope), key)
 
     @public
@@ -236,7 +249,7 @@ class HandlerContext:
             return False
         self.memory.set_state(
             scope,
-            self._state_owner(scope),
+            self._write_owner(scope),
             key,
             value,
             source_ref=source_ref if source_ref is not None else self._provenance(),
@@ -264,7 +277,10 @@ class HandlerContext:
             )
         if self.memory is None:
             return 0
-        return self.memory.delete_state(scope, self._state_owner(scope), key)
+        # In a trial this erases only what the trial itself wrote: the person's
+        # own facts are read through, never changed, so a replay cannot forget
+        # anything on their behalf.
+        return self.memory.delete_state(scope, self._write_owner(scope), key)
 
     def _provenance(self) -> str:
         """Where a fact written this turn came from, as the store records it.
@@ -314,7 +330,9 @@ class HandlerContext:
         # tell the three apart.
         self.subject_source = "app"
         self.has_subject = True
-        if self.memory is not None:
+        if self.memory is not None and not self._in_trial:
+            # A trial's rows stay the trial's: stamped with the person, they would
+            # join that person's conversation list and episodic search.
             self.memory.rebind_turn_subject(self.conversation_id, self.turn_id, subject)
         # the same identification, recorded where a developer holding a
         # customer key will look for it. One writer for both, so the index and
@@ -344,6 +362,40 @@ class HandlerContext:
         if scope == "app":
             return ""
         return self.subject
+
+    @property
+    def _in_trial(self) -> bool:
+        """Whether this turn is an evaluation trial rather than somebody's turn."""
+        return self.evaluation is not None or self._eval_labelled
+
+    def _trial_overlay(self, scope: str) -> bool:
+        """Whether this turn reads a real person's facts but must not write them.
+
+        A trial replaying a promoted task runs as the subject the original turn
+        ran as -- that is the only way a memory regression can fail for the
+        reason the original did. Reading that person's memory is the point;
+        writing it is not: a regression suite run nightly would otherwise
+        rewrite a customer's stored profile with whatever the agent concluded
+        during the test. So in a trial with a subject, ``user`` writes land
+        under the trial's own conversation and reads look there first.
+        """
+        return scope == "user" and self.has_subject and self._in_trial
+
+    def _write_owner(self, scope: str) -> str:
+        """The owner a write goes under, which differs from a read's only in a trial."""
+        if self._trial_overlay(scope):
+            return self.conversation_id
+        return self._state_owner(scope)
+
+    @property
+    def _stamp_subject(self) -> str:
+        """The subject a turn's stored messages are filed under.
+
+        The person for their own turns. For a trial, the trial's conversation:
+        filed under the person, a replay's messages joined their conversation
+        list and came back from their episodic search as things they had said.
+        """
+        return self.conversation_id if self._in_trial else self.subject
 
     @public
     def system_context(

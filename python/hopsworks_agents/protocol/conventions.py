@@ -125,6 +125,19 @@ MESSAGE_ID = "hopsworks.message_id"
 DEPLOYMENT_ID = "hopsworks.deployment_id"
 FRAMEWORK = "hopsworks.framework"
 
+# Who the turn ran as and what the client sent with it, stamped when the turn
+# closes. A task promoted from this trace replays both: a turn that read one
+# person's memory, or depended on what the client said about them, is not the
+# same turn when it is asked anonymously, and its regression could never fail
+# for the reason the original did. ``user.id`` is the subject itself, set only
+# when there is one that keys memory; the source says how it was known --
+# ``client``, ``app`` (rebound by the agent's code) or ``conversation``.
+SUBJECT_SOURCE = "hopsworks.subject.source"
+REQUEST_CONTEXT = "hopsworks.request.context"
+#: Longest request context stamped on the span, as JSON. Past it the context is
+#: left off rather than cut: a truncated JSON object replays as nothing at all.
+MAX_REQUEST_CONTEXT_CHARS = 16_000
+
 # What the handler reported for the whole turn, deliberately outside the
 # `gen_ai.usage.*` namespace.
 #
