@@ -300,7 +300,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         else:
             # else, just verify that feature group schema matches user-provided dataframe
             self._verify_schema_compatibility(
-                self._columns_for_user_schema(feature_group), dataframe_features
+                self._columns_for_user_schema(feature_group),
+                dataframe_features,
+                decimals_cast=self._delta_rs_casts_decimals(feature_group),
             )
 
         # ge validation on python and non stream feature groups on spark
@@ -373,6 +375,17 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 "rowsDeleted": feature_group_commit.rows_deleted,
             }
         return commit_details
+
+    @staticmethod
+    def _delta_rs_casts_decimals(feature_group) -> bool:
+        """Whether the only write is the Python engine's delta-rs write, which casts decimals to the table's type."""
+        return (
+            engine._get_type() == "python"
+            and not isinstance(feature_group, fg.ExternalFeatureGroup)
+            and (feature_group.time_travel_format or "").upper() == "DELTA"
+            and not feature_group.stream
+            and not feature_group.online_enabled
+        )
 
     @staticmethod
     def _get_spark_session_and_context():
@@ -1001,7 +1014,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
             self._verify_schema_compatibility(
-                self._columns_for_user_schema(feature_group), dataframe_features
+                self._columns_for_user_schema(feature_group),
+                dataframe_features,
+                decimals_cast=self._delta_rs_casts_decimals(feature_group),
             )
 
         # set primary, foreign and partition key columns

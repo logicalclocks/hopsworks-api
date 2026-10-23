@@ -2282,6 +2282,123 @@ class TestFeatureGroupEngine:
             "spaces are automatically replaced with underscores."
         )
 
+    def test_verify_schema_compatibility_decimal_precision(self):
+        # Arrange
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=99)
+        fg_features = [
+            feature.Feature(name="amount", type="decimal(7)"),
+            feature.Feature(name="n", type="int"),
+        ]
+
+        # Act and Assert
+        for df_type in ("decimal(7,0)", "decimal(1,0)", "decimal(12,3)"):
+            df_features = [
+                feature.Feature(name="amount", type=df_type),
+                feature.Feature(name="n", type="int"),
+            ]
+            with pytest.raises(exceptions.FeatureStoreException):
+                fg_engine._verify_schema_compatibility(fg_features, df_features)
+            fg_engine._verify_schema_compatibility(
+                fg_features, df_features, decimals_cast=True
+            )
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            fg_engine._verify_schema_compatibility(
+                fg_features,
+                [
+                    feature.Feature(name="amount", type="double"),
+                    feature.Feature(name="n", type="int"),
+                ],
+                decimals_cast=True,
+            )
+        assert (
+            "amount (expected type: 'decimal(7)', derived from input: 'double')"
+            in str(e_info.value)
+        )
+
+    @pytest.mark.parametrize(
+        "engine_type,time_travel_format,stream,online_enabled,expected",
+        [
+            ("python", "DELTA", False, False, True),
+            ("python", "DELTA", True, False, False),
+            ("python", "DELTA", False, True, False),
+            ("python", "HUDI", False, False, False),
+            ("python", "ICEBERG", False, False, False),
+            ("spark", "DELTA", False, False, False),
+        ],
+    )
+    def test_delta_rs_casts_decimals(
+        self, engine_type, time_travel_format, stream, online_enabled, expected, mocker
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value=engine_type)
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format=time_travel_format,
+            stream=stream,
+            online_enabled=online_enabled,
+        )
+
+        # Act and Assert
+        assert (
+            feature_group_engine.FeatureGroupEngine._delta_rs_casts_decimals(fg)
+            is expected
+        )
+
+    def test_delta_rs_casts_decimals_external(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            data_source=DataSource(query="select 1"),
+        )
+
+        # Act and Assert
+        assert not feature_group_engine.FeatureGroupEngine._delta_rs_casts_decimals(fg)
+
+    def test_insert_existing_python_delta_passes_decimals_cast(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.core.schema_validation.DataFrameValidator._validate_schema")
+        mock_verify = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=99)
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+            stream=False,
+            id=10,
+        )
+
+        # Act
+        fg_engine._insert(
+            feature_group=fg,
+            feature_dataframe=None,
+            overwrite=None,
+            operation=None,
+            storage=None,
+            write_options=None,
+        )
+
+        # Assert
+        assert mock_verify.call_args.kwargs == {"decimals_cast": True}
+
     def test_save_feature_group_metadata(self, mocker):
         # Arrange
         feature_store_id = 99
