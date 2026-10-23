@@ -354,3 +354,22 @@ class TestTheModuleAboutTheFailureIsShownFirst:
 
     def test_the_default_budget_holds_an_agent_and_its_prompts(self):
         assert src.DEFAULT_SOURCE_CHARS >= 60_000
+
+
+def test_another_agents_folder_is_not_shown_because_it_mentions_a_tool():
+    # a repository of several agents gave the analysis all 94 of their files
+    files = {
+        "financial_advisor/agent.py": "import prompts\n",
+        "financial_advisor/prompts.py": "Call assess_risk last.\n",
+        "financial_advisor/notes.py": "assess_risk is the last step\n",
+        "travel_concierge/agent.py": "def assess_risk(): ...\n",
+    }
+    shown = [
+        path
+        for path, _ in src._relevant_files(
+            src.SourceBundle(files=files, entry="financial_advisor/agent.py"),
+            tool_names=["assess_risk"],
+        )
+    ]
+    assert "travel_concierge/agent.py" not in shown
+    assert "financial_advisor/notes.py" in shown

@@ -535,7 +535,18 @@ def _relevant_files(
                 ),
             ),
         ]
-    rest = [path for path in bundle.files if path not in ordered]
+    # Beyond what the entry imports, only its own part of the repository. A repository of
+    # several agents gave the analysis every one of them -- 94 files, the advisor among a
+    # concierge, a shopping agent and a benchmark -- and a file that merely mentions a tool
+    # name in another agent's folder is not evidence about this one. Files at the root stay:
+    # in a repository of one agent, its README is there.
+    home = posixpath.dirname(bundle.entry) if bundle.entry else ""
+    rest = [
+        path
+        for path in bundle.files
+        if path not in ordered
+        and (not home or path.startswith(home + "/") or "/" not in path)
+    ]
     mentioned = sorted(
         (path for path in rest if _mentions(bundle.files[path], terms) > 0),
         key=lambda path: (-_mentions(bundle.files[path], terms), path),

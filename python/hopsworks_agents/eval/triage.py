@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 #: Bumped whenever the prompt or the output schema changes, and written on every
 #: row, so a change in agreement rates can be attributed to the prompt that made it.
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 #: The form's categories. Kept identical to the frontend list on purpose: the
 #: whole point of counting is that the labels are stable.
@@ -299,8 +299,14 @@ AUTOMATED_FEEDBACK = """What was flagged:
 
 CODE_RULES = """- The agent's source code is shown under <agent_source>, with line numbers. Use it to tell \
 a bug in the agent from a weak answer: a tool called with the wrong argument, a lookup that ignores \
-what the user supplied, a retry with no exit, an exception swallowed into a polite reply. When the \
-code explains the failure, set suspected_code_bug and list each place under code_findings with the \
+what the user supplied, a retry with no exit, an exception swallowed into a polite reply. The \
+source includes the agent's prompts -- the instructions it gives its model, usually long strings \
+in a prompts module -- and those are where most behaviour comes from. When a reply did what an \
+instruction says, or the opposite of what it means (announced a step instead of running it, \
+asked for something it was told), that instruction is the finding: cite its file and line, quote \
+it as "original" and give the rewording as "replacement". A wrong instruction is as much the \
+agent's bug as wrong code, and the code being correct does not make the behaviour right. When the \
+code or a prompt explains the failure, set suspected_code_bug and list each place under code_findings with the \
 file and line as shown, what it does wrong, and what to change. Give the change as code: \
 "original" is the smallest run of whole lines to change, copied verbatim from the file (same \
 indentation, no line-number prefix), and "replacement" is those lines as they should read; leave \

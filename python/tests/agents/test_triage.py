@@ -343,7 +343,7 @@ class TestSourceCode:
             "line": 3,
             "fix": "g",
         }
-        assert row["prompt_version"] == "2"
+        assert row["prompt_version"] == t.PROMPT_VERSION
         empty = t._triage_row(
             feedback(), None, run_id="r", provider="p", model="m", error="x"
         )
@@ -485,3 +485,10 @@ class TestAnUnusableReplyIsAskedForAgain:
             t.TriageInput(feedback=feedback(), question="q", answer="a"),
         )
         assert result is None and why
+
+
+def test_a_prompt_instruction_is_a_finding_like_code():
+    # The triage found the behaviour and defended the Python ("the tool accepts empty
+    # preferences ... so the flagged inconsistency is not a bug"); the cause was one
+    # instruction in the prompts file, which it never attributed.
+    assert "prompts" in t.CODE_RULES and "instruction is the finding" in t.CODE_RULES
