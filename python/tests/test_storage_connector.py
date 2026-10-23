@@ -1261,6 +1261,38 @@ class TestKafkaConnector:
             "sasl.username": "222",
         }
 
+    def test_confluent_options_jaas_mechanism_from_options(self, mocker):
+        # Arrange
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._add_file.return_value = None
+        mocker.patch("hopsworks_common.client._get_instance")
+        sc = storage_connector.KafkaConnector(
+            1,
+            "kafka_connector",
+            0,
+            external_kafka=True,
+            options=[
+                {
+                    "name": "sasl.jaas.config",
+                    "value": 'org.apache.kafka.common.security.scram.ScramLoginModule required username="222" password="111";',
+                },
+                {"name": "sasl.mechanism", "value": "SCRAM-SHA-512"},
+            ],
+        )
+
+        # Act
+        config = sc.confluent_options()
+
+        # Assert
+        assert config == {
+            "bootstrap.servers": None,
+            "security.protocol": None,
+            "ssl.endpoint.identification.algorithm": None,
+            "sasl.mechanism": "SCRAM-SHA-512",
+            "sasl.password": "111",
+            "sasl.username": "222",
+        }
+
 
 class TestGcsConnector:
     def test_from_response_json(self, backend_fixtures):
@@ -3045,7 +3077,7 @@ class TestStorageConnectorToDict:
 
         d = sc.to_dict()
 
-        assert d["type"] == "featurestoreAdlsConnectorDTO"
+        assert d["type"] == "featurestoreADLSConnectorDTO"
         assert d["storageConnectorType"] == "ADLS"
         assert d["generation"] == "test_generation"
         assert d["directoryId"] == "test_directory_id"
@@ -3112,7 +3144,7 @@ class TestStorageConnectorToDict:
 
         d = sc.to_dict()
 
-        assert d["type"] == "featurestoreKafkaConnectorDTO"
+        assert d["type"] == "featureStoreKafkaConnectorDTO"
         assert d["storageConnectorType"] == "KAFKA"
         assert d["bootstrapServers"] == "test_bootstrap_servers"
         assert d["securityProtocol"] == "test_security_protocol"
