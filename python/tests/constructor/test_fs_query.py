@@ -106,3 +106,38 @@ class TestFsQuery:
         assert "SECRET_ROLE" not in message
         assert "WH_S" not in message
         assert "Reading each feature group separately." in message
+
+    def _parsed_query(self, backend_fixtures, *options):
+        # The backend sends options as a list of name/value pairs on the feature group.
+        json = copy.deepcopy(backend_fixtures["fs_query"]["get"]["response"])
+        json["on_demand_feature_groups"] = [
+            copy.deepcopy(json["on_demand_feature_groups"][0]) for _ in options
+        ]
+        for entry, option in zip(
+            json["on_demand_feature_groups"], options, strict=True
+        ):
+            entry["on_demand_feature_group"]["options"] = [
+                {"name": name, "value": value} for name, value in option.items()
+            ]
+        return fs_query.FsQuery.from_response_json(json)
+
+    def test_pushdown_options_parsed_from_the_backend_response(self, backend_fixtures):
+        q = self._parsed_query(
+            backend_fixtures,
+            {"sfRole": "ANALYST", "sfWarehouse": "WH_S"},
+            {"sfRole": "ANALYST", "sfWarehouse": "WH_S"},
+        )
+
+        assert q._pushdown_options() == {"sfRole": "ANALYST", "sfWarehouse": "WH_S"}
+
+    def test_pushdown_options_parsed_from_the_backend_response_differ(
+        self, backend_fixtures
+    ):
+        q = self._parsed_query(
+            backend_fixtures,
+            {"sfRole": "ANALYST", "sfWarehouse": "WH_S"},
+            {"sfRole": "ANALYST", "sfWarehouse": "WH_L"},
+        )
+
+        assert q._pushdown_options() is None
+        assert "(sfWarehouse)" in q._pushdown_options_message()
