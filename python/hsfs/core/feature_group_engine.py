@@ -290,6 +290,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group, feature_dataframe, dataframe_features
             )
 
+        decimals_cast = self._delta_rs_casts_decimals(feature_group)
         if not feature_group._id:
             # only save metadata if feature group does not exist
             self._save_feature_group_metadata(
@@ -302,7 +303,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             self._verify_schema_compatibility(
                 self._columns_for_user_schema(feature_group),
                 dataframe_features,
-                decimals_cast=self._delta_rs_casts_decimals(feature_group),
+                decimals_cast=decimals_cast,
             )
 
         # ge validation on python and non stream feature groups on spark
@@ -334,6 +335,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
 
         if overwrite:
+            if decimals_cast:
+                # The delta-rs cast raises only after the clear, which would lose the old rows.
+                self._check_declared_decimals(feature_group, feature_dataframe)
             self._feature_group_api._delete_content(feature_group)
 
         return (
@@ -382,10 +386,30 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return (
             engine._get_type() == "python"
             and not isinstance(feature_group, fg.ExternalFeatureGroup)
-            and (feature_group.time_travel_format or "").upper() == "DELTA"
+            and feature_group.time_travel_format == "DELTA"
             and not feature_group.stream
             and not feature_group.online_enabled
         )
+
+    @staticmethod
+    def _check_declared_decimals(feature_group, feature_dataframe) -> None:
+        """Raise `ArrowInvalid` if a decimal value does not fit the feature group's declared type."""
+        import pandas as pd
+        import pyarrow as pa
+
+        names = [
+            f.name
+            for f in feature_group.columns
+            if (f.type or "").lower().startswith("decimal")
+            and f.name in feature_dataframe.columns
+        ]
+        if not names:
+            return
+        if isinstance(feature_dataframe, pd.DataFrame):
+            batch = pa.Table.from_pandas(feature_dataframe[names], preserve_index=False)
+        else:
+            batch = feature_dataframe.select(names).to_arrow()
+        delta_engine.DeltaEngine._cast_to_declared_decimals(batch, feature_group)
 
     @staticmethod
     def _get_spark_session_and_context():

@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import sys
+
 import pytest
 from hopsworks_common.core import sink_job_configuration
 from hsfs import feature, feature_group, feature_group_commit, validation_report
@@ -2398,6 +2400,211 @@ class TestFeatureGroupEngine:
 
         # Assert
         assert mock_verify.call_args.kwargs == {"decimals_cast": True}
+
+    def test_delta_rs_casts_decimals_lowercase_setter(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+            stream=False,
+        )
+
+        # Act
+        fg.time_travel_format = "delta"
+
+        # Assert: the Python engine picks the delta-rs writer only on "DELTA".
+        assert not feature_group_engine.FeatureGroupEngine._delta_rs_casts_decimals(fg)
+
+    @staticmethod
+    def _python_delta_fg(mocker, monkeypatch, location):
+        """A Python-engine DELTA feature group with a decimal(7) feature, written by delta-rs at *location*."""
+        # Drop any fake left in sys.modules so these tests reach the real delta-rs.
+        monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+        monkeypatch.delitem(sys.modules, "deltalake.exceptions", raising=False)
+        pytest.importorskip("deltalake")
+        import pyarrow as pa
+        from hsfs.core import delta_engine
+
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hopsworks_common.client._get_instance"
+        ).return_value._is_external.return_value = False
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+        mock_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch(
+            "hsfs.core.schema_validation.DataFrameValidator._validate_schema",
+            side_effect=lambda fg, df, features: features,
+        )
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+            stream=False,
+            id=10,
+            features=[
+                feature.Feature(name="id", type="bigint", primary=True),
+                feature.Feature(name="amount", type="decimal(7)"),
+            ],
+        )
+
+        def parse_schema(df, *args, **kwargs):
+            amount = pa.Table.from_pandas(df).schema.field("amount").type
+            return [
+                feature.Feature(name="id", type="bigint"),
+                feature.Feature(
+                    name="amount", type=f"decimal({amount.precision},{amount.scale})"
+                ),
+            ]
+
+        def save_dataframe(feature_group, df, *args):
+            writer = delta_engine.DeltaEngine(99, "fs", feature_group, None, None)
+            mocker.patch.object(writer, "_get_delta_rs_location", return_value=location)
+            mocker.patch.object(
+                writer, "_get_delta_rs_storage_options", return_value={}
+            )
+            writer._write_delta_rs_dataset(df, operation="insert")
+
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._parse_schema_feature_group.side_effect = parse_schema
+        mock_engine.return_value._save_dataframe.side_effect = save_dataframe
+        return fg, mock_api.return_value
+
+    @pytest.mark.parametrize("value", ["1.5", "12345678"])
+    def test_insert_overwrite_rejected_decimal_keeps_rows(
+        self, mocker, monkeypatch, tmp_path, value
+    ):
+        # Arrange
+        import shutil
+        from decimal import Decimal
+
+        import pandas as pd
+        import pyarrow as pa
+
+        location = str(tmp_path / "fg")
+        fg, mock_api = self._python_delta_fg(mocker, monkeypatch, location)
+        from deltalake import DeltaTable, write_deltalake
+
+        write_deltalake(
+            location,
+            pa.table(
+                {
+                    "id": pa.array([1], pa.int64()),
+                    "amount": pa.array([Decimal("42")], pa.decimal128(7, 0)),
+                }
+            ),
+        )
+        # The backend recreates the feature group empty.
+        mock_api._delete_content.side_effect = lambda fg: shutil.rmtree(location)
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=99)
+
+        # Act
+        with pytest.raises(pa.ArrowInvalid):
+            fg_engine._insert(
+                feature_group=fg,
+                feature_dataframe=pd.DataFrame({"id": [2], "amount": [Decimal(value)]}),
+                overwrite=True,
+                operation=None,
+                storage=None,
+                write_options=None,
+            )
+
+        # Assert
+        mock_api._delete_content.assert_not_called()
+        assert DeltaTable(location).to_pyarrow_table().to_pylist() == [
+            {"id": 1, "amount": Decimal("42")}
+        ]
+
+    def test_check_declared_decimals_polars(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_instance")
+        from decimal import Decimal
+
+        import pyarrow as pa
+
+        pl = pytest.importorskip("polars")
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            features=[feature.Feature(name="amount", type="decimal(7)")],
+        )
+
+        # Act and Assert
+        feature_group_engine.FeatureGroupEngine._check_declared_decimals(
+            fg, pl.DataFrame({"amount": [Decimal("12")]})
+        )
+        with pytest.raises(pa.ArrowInvalid):
+            feature_group_engine.FeatureGroupEngine._check_declared_decimals(
+                fg, pl.DataFrame({"amount": [Decimal("1.5")]})
+            )
+
+    @pytest.mark.parametrize("value", ["1.5", "12345678"])
+    def test_insert_new_table_rejected_decimal(
+        self, mocker, monkeypatch, tmp_path, value
+    ):
+        # Arrange
+        from decimal import Decimal
+
+        import pandas as pd
+        import pyarrow as pa
+
+        location = str(tmp_path / "fg")
+        fg, _ = self._python_delta_fg(mocker, monkeypatch, location)
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=99)
+
+        # Act and Assert
+        with pytest.raises(pa.ArrowInvalid):
+            fg_engine._insert(
+                feature_group=fg,
+                feature_dataframe=pd.DataFrame({"id": [1], "amount": [Decimal(value)]}),
+                overwrite=None,
+                operation=None,
+                storage=None,
+                write_options=None,
+            )
+
+    def test_insert_new_table_takes_declared_decimal(
+        self, mocker, monkeypatch, tmp_path
+    ):
+        # Arrange
+        from decimal import Decimal
+
+        import pandas as pd
+        import pyarrow as pa
+
+        location = str(tmp_path / "fg")
+        fg, _ = self._python_delta_fg(mocker, monkeypatch, location)
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=99)
+        from deltalake import DeltaTable
+
+        # Act
+        fg_engine._insert(
+            feature_group=fg,
+            feature_dataframe=pd.DataFrame({"id": [1], "amount": [Decimal("12")]}),
+            overwrite=None,
+            operation=None,
+            storage=None,
+            write_options=None,
+        )
+
+        # Assert
+        table = DeltaTable(location).to_pyarrow_table()
+        assert table.schema.field("amount").type == pa.decimal128(7, 0)
+        assert table.column("amount").to_pylist() == [Decimal("12")]
 
     def test_save_feature_group_metadata(self, mocker):
         # Arrange

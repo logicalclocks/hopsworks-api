@@ -984,6 +984,7 @@ class DeltaEngine:
             is_delta_table = False
 
         if not is_delta_table:
+            dataset = self._cast_to_declared_decimals(dataset, self._feature_group)
             configuration = {
                 self.DELTA_ENABLE_CHANGE_DATA_FEED: self.change_data_feed_value(
                     (write_options or {}).get(
@@ -1000,7 +1001,7 @@ class DeltaEngine:
                 commit_properties=commit_properties,
             )
         else:
-            dataset = self._cast_to_table_schema(dataset, fg_source_table)
+            dataset = self._cast_to_schema(dataset, fg_source_table.schema().to_arrow())
             if (
                 isinstance(write_options, dict)
                 and self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options
@@ -1145,8 +1146,26 @@ class DeltaEngine:
         return source
 
     @staticmethod
-    def _cast_to_table_schema(dataset, delta_table):
-        """Safe-cast the decimals and timestamps of *dataset* to an existing Delta table's types.
+    def _cast_to_declared_decimals(dataset, feature_group):
+        """Safe-cast the decimal columns of *dataset* to the feature group's declared decimal types.
+
+        A new Delta table takes the batch's types, which follow the values, so
+        a decimal(7) feature would otherwise land as decimal(2,1) for 1.5.
+        """
+        import pyarrow as pa
+
+        schema = pa.schema(
+            [
+                pa.field(f.name, _convert_offline_type_to_pyarrow_type(f.type))
+                for f in feature_group.columns
+                if (f.type or "").lower().startswith("decimal")
+            ]
+        )
+        return DeltaEngine._cast_to_schema(dataset, schema)
+
+    @staticmethod
+    def _cast_to_schema(dataset, table_schema):
+        """Safe-cast the decimals and timestamps of *dataset* to the types of *table_schema*.
 
         Decimal precision of the batch follows its values, and naive timestamps
         are UTC after `_prepare_df_for_delta`. A table written by the backend
@@ -1158,7 +1177,7 @@ class DeltaEngine:
 
         if not isinstance(dataset, pa.Table):
             return dataset
-        table_schema = pa.schema(delta_table.schema().to_arrow())
+        table_schema = pa.schema(table_schema)
         columns = []
         for name, column in zip(dataset.column_names, dataset.columns, strict=True):
             index = table_schema.get_field_index(name)
