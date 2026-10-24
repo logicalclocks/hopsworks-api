@@ -662,7 +662,7 @@ def lease_renew(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
 @click.argument("slug_or_dir")
 @_TOKEN
 def lease_release(slug_or_dir: str, token: str | None) -> None:
-    """Give up the build lease TOKEN holds; a lease held with another token is left alone.
+    """Give up the build lease TOKEN holds; exits 4 when TOKEN holds none, and leaves a lease held with another token alone.
 
     Args:
         slug_or_dir: The system's slug or directory.
@@ -670,10 +670,14 @@ def lease_release(slug_or_dir: str, token: str | None) -> None:
     """
     from hopsworks.cli import system_doc
 
-    if system_doc.release(_require_path(slug_or_dir), token):
-        output.success("Lease released")
-    else:
-        output.info("No lease held with that token")
+    if not token:
+        raise click.UsageError("no --token and no HOPS_LEASE_TOKEN")
+    directory = _require_path(slug_or_dir)
+    if not system_doc.release(directory, token):
+        raise system_doc.LeaseHeld(
+            f"no build lease of {directory.name} is held with that token"
+        )
+    output.success("Lease released")
 
 
 @system_group.command("delete-assets")
