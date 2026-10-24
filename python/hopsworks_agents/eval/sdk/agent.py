@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
@@ -46,8 +47,10 @@ VERDICTS = ("positive", "negative", "false_alarm")
 MANIFEST_PATH = ".well-known/hopsworks-agent.json"
 DEFAULT_CHAT_PATH = "/v1/chat"
 DEFAULT_STREAM_PATH = "/v1/chat/stream"
-DEFAULT_CONVERSATIONS_PATH = "/v1/conversations"
-DEFAULT_SUBJECTS_PATH = "/v1/subjects"
+#: The feature groups an agent's memory is kept in, every deployment's rows together.
+MEMORY_MESSAGES_FG = "agent_memory_messages"
+MEMORY_CONVERSATIONS_FG = "agent_memory_conversations"
+MEMORY_FACTS_FG = "agent_memory_facts"
 
 
 @public
@@ -425,11 +428,16 @@ class Agent:
 
     @public
     def memory_conversations(
-        self, *, subject: str | None = None, limit: int = 50
+        self,
+        *,
+        subject: str | None = None,
+        limit: int = 50,
+        feature_store: Any = None,
     ) -> list[dict[str, Any]]:
         """The conversations the agent's memory holds, most recently active first.
 
-        Read from the agent's own memory store rather than from its traces, so it lists what the agent will remember, filed under the person it was filed under.
+        Read from the agent's memory feature groups, `agent_memory_messages` and `agent_memory_conversations`, so the agent need not be running.
+        It lists what the agent will remember, under the person each conversation is filed under.
         `conversation` reconstructs what was said from the traces instead, which exist whether or not the agent keeps memory.
 
         Example:
@@ -440,32 +448,66 @@ class Agent:
 
         Parameters:
             subject: Only the conversations filed under this person.
-            limit: How many to return, at most 500.
+            limit: How many to return.
+            feature_store: The feature store holding the agent's memory; the logged-in project's when omitted.
 
         Returns:
             One entry per conversation, with `conversation_id`, `subject`, `message_count` and `last_active_at`, and the rolling `summary` when the agent keeps one.
-
-        Raises:
-            `AgentServingError`: If the agent serves no memory routes, or refuses the request.
+            Empty when the agent keeps no memory.
         """
-        params: dict[str, Any] = {"limit": limit}
+        store = _memory_feature_store(feature_store)
+        filters = {"memory_type": "message", "status": "closed"}
         if subject:
-            params["subject"] = subject
-        body = self._http.agent_request(
-            "GET",
-            self._segments(self._endpoint("conversations", DEFAULT_CONVERSATIONS_PATH)),
-            params=params,
-        )
-        return list((body or {}).get("conversations") or [])
+            filters["subject"] = subject
+        rows = _memory_rows(store, MEMORY_MESSAGES_FG, str(self.id), **filters)
+        conversations: dict[str, dict[str, Any]] = {}
+        for row in sorted(rows, key=lambda r: r.get("id") or 0):
+            entry = conversations.setdefault(
+                str(row.get("conversation_id")),
+                {
+                    "conversation_id": str(row.get("conversation_id")),
+                    "subject": None,
+                    "message_count": 0,
+                    "last_active_at": None,
+                },
+            )
+            entry["message_count"] += 1
+            # The newest subject, as the store reports it: an agent that identifies
+            # the caller mid-conversation rebinds, and it is the identity it arrived
+            # at that the memory is filed under.
+            if row.get("subject"):
+                entry["subject"] = row["subject"]
+            created = _iso(row.get("created_at"))
+            if created and (entry["last_active_at"] or "") < created:
+                entry["last_active_at"] = created
+        listed = sorted(
+            conversations.values(),
+            key=lambda c: c["last_active_at"] or "",
+            reverse=True,
+        )[: max(1, limit)]
+        summaries = {
+            str(row.get("conversation_id")): row.get("summary")
+            for row in _memory_rows(store, MEMORY_CONVERSATIONS_FG, str(self.id))
+            if row.get("summary")
+        }
+        for entry in listed:
+            if entry["conversation_id"] in summaries:
+                entry["summary"] = summaries[entry["conversation_id"]]
+        return listed
 
     @public
     def memory_transcript(
-        self, conversation_id: str, *, include_events: bool = False
+        self,
+        conversation_id: str,
+        *,
+        include_events: bool = False,
+        feature_store: Any = None,
     ) -> dict[str, Any]:
         """One conversation as the agent's memory stored it.
 
+        Read from the agent's memory feature groups, so the agent need not be running.
         The stored record differs from what the model reads on its next turn.
-        Once a conversation grows past the summarizer's limit, older turns are folded into `summary` and leave the model's history, but they stay in `messages`; `summarized_through` marks where the two diverge.
+        Once a conversation grows past the summarizer's limit, older turns are folded into `summary` and leave the model's history, but they stay in `messages`; `summarized_through` is the id of the last message folded.
 
         Example:
             ```python
@@ -477,29 +519,68 @@ class Agent:
 
         Parameters:
             conversation_id: The conversation, as `ChatReply.conversation_id` or `memory_conversations` gives it.
-            include_events: Include the turns' tool events and the turns the agent abandoned, not only the messages.
+            include_events: Include the turns' tool calls and events, and the turns the agent abandoned, not only the completed messages.
+            feature_store: The feature store holding the agent's memory; the logged-in project's when omitted.
 
         Returns:
-            The `conversation_id`, the `messages` (each with `role`, `content`, `turn_id`, `status` and `created_at`), the rolling `summary`, `summarized_through`, and the `subject` the conversation is filed under, which may be one the agent bound mid-conversation and the client was never told.
-
-        Raises:
-            `AgentServingError`: If the agent serves no memory routes, or refuses the request.
+            The `conversation_id`, the `messages` in order (each with `id`, `role`, `content`, `turn_id`, `memory_type`, `status` and `created_at`), the rolling `summary`, `summarized_through`, and the `subject` the conversation is filed under, which may be one the agent bound mid-conversation and the client was never told.
         """
-        path = self._endpoint("conversations", DEFAULT_CONVERSATIONS_PATH)
-        return (
-            self._http.agent_request(
-                "GET",
-                [*self._segments(path), conversation_id, "messages"],
-                params={"include": "events"} if include_events else None,
-            )
-            or {}
+        store = _memory_feature_store(feature_store)
+        rows = sorted(
+            _memory_rows(
+                store,
+                MEMORY_MESSAGES_FG,
+                str(self.id),
+                conversation_id=conversation_id,
+            ),
+            key=lambda r: r.get("id") or 0,
         )
+        subject = next((r["subject"] for r in reversed(rows) if r.get("subject")), None)
+        if not include_events:
+            rows = [
+                r
+                for r in rows
+                if r.get("memory_type") == "message" and r.get("status") == "closed"
+            ]
+        session = next(
+            iter(
+                _memory_rows(
+                    store,
+                    MEMORY_CONVERSATIONS_FG,
+                    str(self.id),
+                    conversation_id=conversation_id,
+                )
+            ),
+            {},
+        )
+        return {
+            "conversation_id": conversation_id,
+            "messages": [
+                {
+                    "id": r.get("id"),
+                    "turn_id": r.get("turn_id"),
+                    "message_id": r.get("message_id"),
+                    "role": r.get("role"),
+                    "content": r.get("content"),
+                    "memory_type": r.get("memory_type"),
+                    "status": r.get("status"),
+                    "created_at": _iso(r.get("created_at")),
+                }
+                for r in rows
+            ],
+            "summary": session.get("summary"),
+            "summarized_through": int(session.get("last_summarized_item_id") or 0),
+            "subject": subject,
+        }
 
     @public
-    def memory_facts(self, subject: str) -> list[dict[str, Any]]:
+    def memory_facts(
+        self, subject: str, *, feature_store: Any = None
+    ) -> list[dict[str, Any]]:
         """What the agent remembers about one person: their `user`-scope facts.
 
-        These are the facts the agent stored with `remember` for this subject, which load into every later conversation with them; expired ones are left out.
+        Read from the agent's `agent_memory_facts` feature group, so the agent need not be running.
+        These are the facts the agent stored with `remember` for this subject, which load into every later conversation with them; expired ones are left out, as the agent leaves them out.
         Worth reading after a conversation, because a person can talk an agent into remembering something false about them.
 
         Example:
@@ -510,18 +591,30 @@ class Agent:
 
         Parameters:
             subject: The person as the agent identified them, either the `subject` asserted on the request or the one the agent bound.
+            feature_store: The feature store holding the agent's memory; the logged-in project's when omitted.
 
         Returns:
             One entry per fact, most recently updated first, with `key`, `value`, `written_by`, `source_ref` (the turn it came from), `updated_at` and `expires_at`.
-
-        Raises:
-            `AgentServingError`: If the agent serves no memory routes, or refuses the request.
         """
-        path = self._endpoint("subjects", DEFAULT_SUBJECTS_PATH)
-        body = self._http.agent_request(
-            "GET", [*self._segments(path), subject, "state"]
-        )
-        return list((body or {}).get("state") or [])
+        store = _memory_feature_store(feature_store)
+        now = datetime.now(tz=timezone.utc).isoformat()
+        facts = [
+            {
+                "key": row.get("state_key"),
+                "value": row.get("value"),
+                "scope": row.get("scope"),
+                "owner": row.get("owner"),
+                "written_by": row.get("written_by"),
+                "source_ref": row.get("source_ref"),
+                "updated_at": _iso(row.get("updated_at")),
+                "expires_at": _iso(row.get("expires_at")),
+            }
+            for row in _memory_rows(
+                store, MEMORY_FACTS_FG, str(self.id), scope="user", owner=subject
+            )
+        ]
+        live = [f for f in facts if not f["expires_at"] or f["expires_at"] > now]
+        return sorted(live, key=lambda f: f["updated_at"] or "", reverse=True)
 
     @public
     def memory_search(
@@ -1054,6 +1147,48 @@ class Agent:
         """Run the failure analysis now; the job is created with defaults if the deployment has none."""
         job = self.review_job() or self._client.jobs.ensure_review_job(self.id)
         return self._client.jobs.analyse(job, **kwargs)
+
+
+def _memory_feature_store(feature_store: Any) -> Any:
+    if feature_store is not None:
+        return feature_store
+    import hopsworks
+
+    return hopsworks.get_current_project().get_feature_store()
+
+
+def _memory_rows(
+    feature_store: Any, name: str, deployment_id: str, **equals: str
+) -> list[dict[str, Any]]:
+    """One deployment's rows of a memory feature group, read online, as dicts.
+
+    `deployment_id` is text in these groups: the memory store also runs outside
+    Hopsworks, where a deployment is any name, so it is compared as a string.
+    No rows when the group does not exist, which is an agent that keeps no
+    memory of that kind.
+    """
+    try:
+        group = feature_store.get_feature_group(name, 1)
+    except Exception:  # noqa: BLE001 -- hsfs raises its own types for "no such group"
+        return []
+    if group is None:
+        return []
+    condition = group.get_feature("deployment_id") == deployment_id
+    for column, value in equals.items():
+        condition = condition & (group.get_feature(column) == value)
+    frame = group.select_all().filter(condition).read(online=True)
+    return [] if frame is None else frame.to_dict("records")
+
+
+def _iso(value: Any) -> str | None:
+    """A timestamp as UTC ISO text, whatever the online read returned it as."""
+    if value is None or value != value:  # None, or NaN and NaT
+        return None
+    if isinstance(value, str):
+        return value
+    if getattr(value, "tzinfo", None) is None and hasattr(value, "replace"):
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
 
 def _turn_closed(trace: Trace) -> bool:

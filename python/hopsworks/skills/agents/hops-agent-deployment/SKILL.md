@@ -91,7 +91,7 @@ So, when you design an agent with long-term memory:
 - the traces table's subject is the **conversation's**, as it stands now, on every row of it — the first turn of a conversation shows the address given on the second. Which turn identified the person is not readable there; the `identify` call in that turn's `trace.tool_calls` is.
 - an **evaluation trial** with a subject reads that person's memory and never writes it: `remember`/`forget` under `user` scope land under the trial's own conversation, and its messages stay out of the person's history. That is what lets a regression replay a customer's turn as them (see **hops-agent-evals**) without the suite changing what is stored about them.
 
-**Reading back what an agent remembers.** Through the agent, which must be running:
+**Reading back what an agent remembers.** From its memory feature groups, so the agent need not be running:
 
 ```python
 agent.memory_conversations(subject="dana@example.com")   # what it stored, newest first
@@ -101,7 +101,7 @@ agent.memory_facts("dana@example.com")                    # the person's user-sc
 
 **Searching earlier conversations by meaning.** `agent.memory_search("what do they eat?", subject=..., conversation_id=..., k=5)` runs a similarity search on the deployment's memory feature group, `agent_memory_<deployment id>`, with the filters the agent's own `search` tool uses; the agent need not be running. The query must be embedded by the model that embedded the messages: it is read off the feature group's description and loaded with sentence-transformers by default (install it), or pass `embedder=` for another model, which is refused when its `model_id` differs. Without semantic search the agent has no such feature group and the result is `[]`.
 
-Or read the facts straight from the feature store, which works with the agent stopped:
+Those read the groups below for you. Reading them by hand:
 
 ```python
 fs = project.get_feature_store()

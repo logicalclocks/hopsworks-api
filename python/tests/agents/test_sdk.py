@@ -1664,57 +1664,171 @@ class TestAgents:
         # and nothing was invented for what the caller left out
         assert params == {"subject": "alice@example.com"}
 
-    def test_what_the_agents_memory_holds_is_read_from_its_own_routes(self):
-        manifest = Reply(
-            {
-                "endpoints": {
-                    "conversations": "/v1/conversations",
-                    "subjects": "/v1/subjects",
-                }
+    def test_what_the_agents_memory_holds_is_read_from_its_feature_groups(self):
+        # From the feature groups, not the agent: what an agent remembered is
+        # still readable when it is stopped, which is when someone usually asks.
+        import pandas as pd
+
+        class Column:
+            def __init__(self, name):
+                self.name = name
+
+            def __eq__(self, value):
+                return Condition(lambda row: row.get(self.name) == value)
+
+        class Condition:
+            def __init__(self, test):
+                self.test = test
+
+            def __and__(self, other):
+                return Condition(lambda row: self.test(row) and other.test(row))
+
+        class Group:
+            def __init__(self, rows):
+                self.rows = rows
+                self.condition = None
+
+            def get_feature(self, name):
+                return Column(name)
+
+            def select_all(self):
+                return self
+
+            def filter(self, condition):
+                self.condition = condition
+                return self
+
+            def read(self, online=False):
+                assert online, "memory is read from the online store"
+                return pd.DataFrame([r for r in self.rows if self.condition.test(r)])
+
+        def message(i, conversation, role, content, subject, **extra):
+            return {
+                "id": i,
+                "deployment_id": "7",
+                "conversation_id": conversation,
+                "turn_id": f"t{i}",
+                "message_id": None,
+                "role": role,
+                "content": content,
+                "subject": subject,
+                "memory_type": "message",
+                "status": "closed",
+                "created_at": pd.Timestamp(f"2026-10-24 10:0{i}:00"),
+                **extra,
             }
-        )
-        _, agent7, session = agent(
-            manifest,
-            Reply({"conversations": [{"conversation_id": "c1", "message_count": 4}]}),
-            Reply(
-                {"conversation_id": "c1", "messages": [], "subject": "dana@example.com"}
-            ),
-            Reply(
+
+        groups = {
+            "agent_memory_messages": [
+                message(1, "c1", "user", "hi", "c1"),
+                message(2, "c1", "user", "dana@example.com", "dana@example.com"),
+                message(3, "c1", "assistant", "hello Dana", "dana@example.com"),
+                message(
+                    4, "c1", "assistant", "...", "dana@example.com", memory_type="event"
+                ),
+                message(5, "c2", "user", "someone else", "bob@example.com"),
+                # another agent's row in the same group
                 {
-                    "subject": "dana@example.com",
-                    "state": [{"key": "diet", "value": "vegetarian"}],
-                }
-            ),
+                    **message(6, "c9", "user", "not ours", "dana@example.com"),
+                    "deployment_id": "8",
+                },
+            ],
+            "agent_memory_conversations": [
+                {
+                    "deployment_id": "7",
+                    "conversation_id": "c1",
+                    "summary": "Dana said hi",
+                    "last_summarized_item_id": 2,
+                },
+            ],
+            "agent_memory_facts": [
+                {
+                    "deployment_id": "7",
+                    "scope": "user",
+                    "owner": "dana@example.com",
+                    "state_key": "diet",
+                    "value": "vegetarian",
+                    "written_by": "agent",
+                    "source_ref": None,
+                    "updated_at": pd.Timestamp("2026-10-24 10:00"),
+                    "expires_at": None,
+                },
+                {
+                    "deployment_id": "7",
+                    "scope": "user",
+                    "owner": "dana@example.com",
+                    "state_key": "old",
+                    "value": "gone",
+                    "written_by": "agent",
+                    "source_ref": None,
+                    "updated_at": pd.Timestamp("2026-01-01"),
+                    "expires_at": pd.Timestamp("2026-02-01"),
+                },
+                {
+                    "deployment_id": "8",
+                    "scope": "user",
+                    "owner": "dana@example.com",
+                    "state_key": "elsewhere",
+                    "value": "x",
+                    "written_by": "agent",
+                    "source_ref": None,
+                    "updated_at": pd.Timestamp("2026-10-24"),
+                    "expires_at": None,
+                },
+            ],
+        }
+
+        class Store:
+            def get_feature_group(self, name, version):
+                assert version == 1
+                return Group(groups[name]) if name in groups else None
+
+        _, agent7, session = agent()
+        store = Store()
+
+        listed = agent7.memory_conversations(
+            subject="dana@example.com", feature_store=store
+        )
+        assert [c["conversation_id"] for c in listed] == ["c1"]
+        assert listed[0]["subject"] == "dana@example.com"
+        assert listed[0]["message_count"] == 2
+        assert listed[0]["summary"] == "Dana said hi"
+
+        stored = agent7.memory_transcript("c1", feature_store=store)
+        # the identity it arrived at, not the conversation id it started under
+        assert stored["subject"] == "dana@example.com"
+        assert [m["content"] for m in stored["messages"]] == [
+            "hi",
+            "dana@example.com",
+            "hello Dana",
+        ]
+        assert stored["summarized_through"] == 2
+        assert (
+            len(
+                agent7.memory_transcript(
+                    "c1", include_events=True, feature_store=store
+                )["messages"]
+            )
+            == 4
         )
 
-        assert agent7.memory_conversations(subject="dana@example.com", limit=10) == [
-            {"conversation_id": "c1", "message_count": 4}
-        ]
-        assert agent7.memory_transcript("c1", include_events=True)["subject"] == (
-            "dana@example.com"
-        )
-        assert agent7.memory_facts("dana@example.com") == [
-            {"key": "diet", "value": "vegetarian"}
-        ]
+        facts = agent7.memory_facts("dana@example.com", feature_store=store)
+        # expired facts are left out, and another agent's are not ours
+        assert [(f["key"], f["value"]) for f in facts] == [("diet", "vegetarian")]
 
-        calls = [(m, u, p) for m, u, p, _ in session.sent[1:]]
-        assert calls == [
-            (
-                "GET",
-                "https://gw/v1/g1/support/v1/conversations",
-                {"limit": 10, "subject": "dana@example.com"},
-            ),
-            (
-                "GET",
-                "https://gw/v1/g1/support/v1/conversations/c1/messages",
-                {"include": "events"},
-            ),
-            (
-                "GET",
-                "https://gw/v1/g1/support/v1/subjects/dana@example.com/state",
-                None,
-            ),
-        ]
+        # and none of it went through the agent
+        assert session.sent == []
+
+    def test_an_agent_with_no_memory_has_nothing_to_read(self):
+        _, agent7, _ = agent()
+
+        class Store:
+            def get_feature_group(self, name, version):
+                return None
+
+        assert agent7.memory_conversations(feature_store=Store()) == []
+        assert agent7.memory_facts("x", feature_store=Store()) == []
+        assert agent7.memory_transcript("c1", feature_store=Store())["messages"] == []
 
     def test_a_memory_search_embeds_the_query_with_the_model_that_embedded_the_memory(
         self,
