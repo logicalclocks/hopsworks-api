@@ -58,7 +58,8 @@ def _get_json_by(_client, path_params: list, query_params: dict, deadline: float
 
     A Requests timeout bounds each socket wait, not the whole answer: a server sending a byte every
     few seconds would hold it forever. So the body is read one socket read at a time, each bounded
-    by the step, and the deadline is checked between them.
+    by the step, and the deadline is checked after each of them: an answer completed past it is
+    dropped too.
     """
 
     def step() -> float:
@@ -81,12 +82,12 @@ def _get_json_by(_client, path_params: list, query_params: dict, deadline: float
         read1 = getattr(response.raw, "read1", None)
         body = bytearray()
         while True:
-            step()
             piece = (
                 read1(64 * 1024, decode_content=True)
                 if read1
                 else response.raw.read(1, decode_content=True)
             )
+            step()
             if not piece:
                 break
             body += piece

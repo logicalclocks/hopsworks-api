@@ -578,6 +578,23 @@ class TestPollDeploymentStatus:
             "`.get_logs(component='predictor')`"
         )
 
+    def test_failed_drops_a_tail_whose_last_read_ends_past_the_deadline(self, mocker):
+        eng, deployment = self._failed(mocker, "Failed to run: out of memory")
+        mocker.patch.object(serving_engine, "_FAILED_START_LOG_SECONDS", 0.05)
+
+        def get_logs(deployment, component, tail, previous=False, deadline=None, **kw):
+            if previous:
+                while time.monotonic() < deadline:  # time.sleep is patched out here
+                    pass
+            return [DeployableComponentLogs("p-1", f"line of previous={previous}")]
+
+        eng._serving_api._get_logs.side_effect = get_logs
+
+        assert self._message(eng, deployment) == (
+            "Failed to run: out of memory. Please, check the server logs using "
+            "`.get_logs(component='predictor')`"
+        )
+
     def test_failed_keeps_the_original_error_when_the_logs_fail(self, mocker):
         eng, deployment = self._failed(mocker, "Failed to run: out of memory")
         eng._serving_api._get_logs.side_effect = self._logs(

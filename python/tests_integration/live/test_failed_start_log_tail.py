@@ -22,8 +22,8 @@ Not part of the unit suite (`pytest tests`). Run from the python directory:
 
 The project must exist and the key's user must be allowed to deploy in it; login selects it by name,
 so it never prompts, and the id must match. The test refuses a name that already exists,
-creates one model and one deployment named hopsable_test_<time>, deletes exactly the model versions and
-the deployment it created, polls until they answer 404, and fails naming any it could not delete. A crashing
+creates one model and one deployment named hopsable_test_<time>, finds by that exact name, deletes the deployment and
+model versions it created, polls until they answer 404, and fails naming any it could not delete. A crashing
 predictor is restarted, so the start is repeated to catch a failure seen right after a restart.
 
 A missing environment variable or an unreachable cluster fails the run: there is no skip.
@@ -48,6 +48,7 @@ STARTS = 5
 REQUEST_TIMEOUT_SECONDS = 120
 START_TIMEOUT_SECONDS = 600
 CLEANUP_BUDGET_SECONDS = 600
+LOOKUP_ATTEMPTS = 3
 MARKER = "boom-hable-135"
 RAISING_PREDICTOR = (
     "class Predict:\n"
@@ -111,9 +112,6 @@ def raising_deployment(project):
     serving = project.get_model_serving()
     assert serving.get_deployment(name) is None, f"deployment {name} already exists"
     assert not registry.get_models(name), f"model {name} already exists"
-    # Each identity is recorded as soon as its create can have taken effect. The name was free
-    # before, so whatever answers to it after a failed save or deploy is this test's too.
-    created = []
     with tempfile.TemporaryDirectory(prefix="hable135-") as work:
         model_dir = os.path.join(work, "model")
         os.makedirs(model_dir)
@@ -124,28 +122,18 @@ def raising_deployment(project):
             f.write(RAISING_PREDICTOR)
         try:
             model = registry.python.create_model(name)
-            try:
-                model.save(model_dir)
-            finally:
-                created += [
-                    ("model", f"{m.name}_{m.version}")
-                    for m in registry.get_models(name)
-                ]
-            try:
-                deployment = model.deploy(name=name, script_file=script)
-            finally:
-                found = serving.get_deployment(name)
-                if found is not None:
-                    created.insert(0, ("deployment", found.id))
-            yield deployment
+            model.save(model_dir)
+            yield model.deploy(name=name, script_file=script)
         finally:
-            _delete_created(project, created)
+            _delete_named(project, name)
 
 
-def _delete_created(project, created):
-    """Delete every identity in `created` (deployments first) within one budget; 404 counts as deleted.
+def _delete_named(project, name):
+    """Delete the deployment and every model version named `name` (free before the test), deployment first.
 
-    Each one is tried even when another fails, and the test fails naming every one left.
+    The name is planned before any create, so a create whose reply was lost is found by it too. Each
+    lookup is retried within one budget, each resource is deleted on its own (404 counts as deleted),
+    and the test fails naming everything left.
     """
     deadline = time.monotonic() + CLEANUP_BUDGET_SECONDS
     _client = client._get_instance()
@@ -156,39 +144,55 @@ def _delete_created(project, created):
             raise TimeoutError(f"cleanup budget of {CLEANUP_BUDGET_SECONDS}s spent")
         return min(REQUEST_TIMEOUT_SECONDS, left)
 
-    def gone(method, path, query=None):
-        """Send the request; True when the resource answers 404."""
+    def send(method, path, query=None):
+        """The answer, or None when the resource answers 404."""
         try:
-            _client._send_request(method, path, query, timeout=remaining())
+            return _client._send_request(method, path, query, timeout=remaining())
         except RestAPIError as err:
             if err.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND:
-                return True
+                return None
             raise
-        return False
 
+    def lookup(path, query):
+        for attempt in range(LOOKUP_ATTEMPTS):
+            try:
+                return send("GET", path, query)
+            except Exception:
+                if attempt + 1 == LOOKUP_ATTEMPTS:
+                    raise
+                time.sleep(min(2, remaining()))
+        return None
+
+    serving = ["project", project.id, "serving"]
+    models = ["project", project.id, "modelregistries", project.id, "models"]
     left = []
-    for kind, identity in created:
-        if kind == "deployment":
-            path = ["project", project.id, "serving", identity]
-        else:
-            path = [
-                "project",
-                project.id,
-                "modelregistries",
-                project.id,
-                "models",
-                identity,
-            ]
+    targets = []
+    try:
+        found = lookup(serving, {"name": name})
+        found = found if isinstance(found, list) else [found] if found else []
+        targets += [serving + [d["id"]] for d in found if d.get("name") == name]
+    except Exception as err:
+        left.append(("deployment", name, repr(err)))
+    try:
+        found = lookup(models, {"filter_by": f"name_eq:{name}"}) or {}
+        targets += [
+            models + [f"{m['name']}_{m['version']}"]
+            for m in found.get("items", [])
+            if m.get("name") == name
+        ]
+    except Exception as err:
+        left.append(("model", name, repr(err)))
+    for path in targets:
         try:
-            if kind == "deployment":
+            if path[2] == "serving":
                 # An already stopped or failed deployment refuses the stop; the delete follows either way.
                 with contextlib.suppress(RestAPIError):
-                    gone("POST", path, {"action": "stop"})
-            if not gone("DELETE", path):
-                while not gone("GET", path):
-                    time.sleep(min(2, remaining()))
-        except Exception as err:  # noqa: BLE001
-            left.append((kind, identity, repr(err)))
+                    send("POST", path, {"action": "stop"})
+            send("DELETE", path)
+            while send("GET", path) is not None:
+                time.sleep(min(2, remaining()))
+        except Exception as err:
+            left.append((path[-2], path[-1], repr(err)))
     if left:
         pytest.fail(f"cleanup left these resources: {left}")
 

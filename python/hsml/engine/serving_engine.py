@@ -142,6 +142,8 @@ def _predictor_log_tail(serving, deployment_instance) -> str:
         parts.append(
             f"\nLast predictor log lines ({label} container):\n" + "\n".join(lines)
         )
+    if time.monotonic() >= deadline:
+        return ""
     return "".join(parts)
 
 
