@@ -456,10 +456,17 @@ class Agent:
             Empty when the agent keeps no memory.
         """
         store = _memory_feature_store(feature_store)
-        filters = {"memory_type": "message", "status": "closed"}
-        if subject:
-            filters["subject"] = subject
-        rows = _memory_rows(store, MEMORY_MESSAGES_FG, str(self.id), **filters)
+        # Every message, not only those stamped with the subject: the turns before the
+        # person was identified are filed under the conversation, and counting only the
+        # subject's rows reported a conversation a turn short of its transcript. Whose
+        # it is is its latest subject, filtered on below.
+        rows = _memory_rows(
+            store,
+            MEMORY_MESSAGES_FG,
+            str(self.id),
+            memory_type="message",
+            status="closed",
+        )
         conversations: dict[str, dict[str, Any]] = {}
         for row in sorted(rows, key=lambda r: r.get("id") or 0):
             entry = conversations.setdefault(
@@ -481,7 +488,11 @@ class Agent:
             if created and (entry["last_active_at"] or "") < created:
                 entry["last_active_at"] = created
         listed = sorted(
-            conversations.values(),
+            (
+                c
+                for c in conversations.values()
+                if not subject or c["subject"] == subject
+            ),
             key=lambda c: c["last_active_at"] or "",
             reverse=True,
         )[: max(1, limit)]

@@ -48,6 +48,14 @@ def as_datetime(value: Any) -> datetime | None:
 
 
 @public
+def _tag_list(value: Any) -> list[str]:
+    """Tags as a list, whether they arrived as JSON text, a list, or nothing."""
+    parsed = as_json(value, [])
+    if isinstance(parsed, str):
+        parsed = [parsed]
+    return [str(tag) for tag in parsed or []]
+
+
 def as_json(value: Any, default: Any) -> Any:
     """A JSON-as-text column parsed, or the default when empty or malformed."""
     if value in (None, ""):
@@ -110,7 +118,10 @@ class Suite(ApiModel):
     suite_id: str = ""
     version: int = 1
     name: str = ""
-    tags: str = ""
+    #: The suite's tags, as a list. The API carries them as JSON text, and read back
+    #: as that text, `tags=[agent.name, *suite.tags]` iterated its characters and
+    #: wrote "[", '"', "r", "e", ... onto every suite it touched.
+    tags: list[str] = field(default_factory=list)
     execution_mode: str = "read_only"
     blocks_are_success: bool = False
     run_on_update: bool = False
@@ -125,9 +136,13 @@ class Suite(ApiModel):
     created_at: str | None = None
     task_count: int | None = None
 
+    def __post_init__(self) -> None:
+        self.tags = _tag_list(self.tags)
+
     @property
     def tag_list(self) -> list[str]:
-        return [str(t) for t in as_json(self.tags, [])]
+        """The same as `tags`; kept for code written when `tags` was JSON text."""
+        return list(self.tags)
 
     @property
     def checks(self) -> list[Check]:
@@ -145,16 +160,20 @@ class EvaluatorTemplate(ApiModel):
     template_id: str = ""
     name: str = ""
     description: str = ""
-    tags: str = "[]"
+    #: The entry's tags, as a list; see `Suite.tags`.
+    tags: list[str] = field(default_factory=list)
     spec: str = "[]"
     created_by: str | None = None
     created_at: str | None = None
     used_in: list[dict[str, Any]] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.tags = _tag_list(self.tags)
+
     @property
     def tag_list(self) -> list[str]:
-        """The tags as a list; the API carries them as a JSON array string, like a suite's."""
-        return [str(t) for t in as_json(self.tags, [])]
+        """The same as `tags`; kept for code written when `tags` was JSON text."""
+        return list(self.tags)
 
     @property
     def checks(self) -> list[dict[str, Any]]:

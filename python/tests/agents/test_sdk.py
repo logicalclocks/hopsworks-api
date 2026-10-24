@@ -1831,7 +1831,8 @@ class TestAgents:
         )
         assert [c["conversation_id"] for c in listed] == ["c1"]
         assert listed[0]["subject"] == "dana@example.com"
-        assert listed[0]["message_count"] == 2
+        # the turn before she was identified counts too: it is in her transcript
+        assert listed[0]["message_count"] == 3
         assert listed[0]["summary"] == "Dana said hi"
 
         stored = agent7.memory_transcript("c1", feature_store=store)
@@ -1858,6 +1859,18 @@ class TestAgents:
 
         # and none of it went through the agent
         assert session.sent == []
+
+    def test_tags_read_back_as_a_list(self):
+        # Read back as JSON text, `[agent.name, *suite.tags]` iterated its
+        # characters and wrote them onto every suite it touched.
+        from hopsworks_agents.eval.sdk.models import EvaluatorTemplate, Suite
+
+        suite = Suite.from_api({"suiteId": "s", "tags": '["red-team", "safety"]'})
+        assert suite.tags == ["red-team", "safety"]
+        assert ["advisor", *suite.tags] == ["advisor", "red-team", "safety"]
+        assert Suite.from_api({"suiteId": "s"}).tags == []
+        entry = EvaluatorTemplate.from_api({"templateId": "e", "tags": "[]"})
+        assert entry.tags == [] and entry.tag_list == []
 
     def test_an_agent_with_no_memory_has_nothing_to_read(self):
         _, agent7, _ = agent()

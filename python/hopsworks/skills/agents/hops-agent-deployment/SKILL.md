@@ -255,7 +255,7 @@ agent.manifest()                               # what the agent advertises
 
 **A turn that takes minutes needs a longer client timeout.** `chat()` and `chat_stream()` wait 120 s by default (`timeout=`). An agent that runs analysts with web search can take longer, and a request that times out is not cancelled: the turn finishes in the pod and is traced, but the client never sees the reply. Pass `timeout=600` for such an agent, or use `chat_stream`, whose first delta arrives early.
 
-**A turn the application answers itself has no model call.** When the app replies without running the model (an agent that asks who you are before doing anything else, say), the trace is one agent span: no LLM span, zero tokens, no cost, and `trace(wait=)` returns as soon as the turn closes.
+**A turn the application answers itself has no model call.** When the app replies without running the model (an agent that asks who you are before doing anything else, say), the trace is one agent span: no LLM span, zero tokens, no cost, and `trace(wait=)` returns as soon as the turn closes. `wait` also covers the trace reaching the tracing store, which can take a few seconds after the reply on a busy cluster.
 
 **What `manifest()` returns** is the protocol document, not a flat summary: the agent's own fields are under `agent` (`name`, `description`, `version`, `framework`), the routes under `endpoints`, and the rest under `capabilities` and `ui`. `manifest()["agent"]["framework"]`, not `manifest()["framework"]` — the latter is `None` for every agent.
 

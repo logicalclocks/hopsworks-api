@@ -208,7 +208,7 @@ class Suites:
             "suiteId": current.suite_id,
             "name": current.name,
             "description": current.description,
-            "tags": current.tags,
+            "tags": json.dumps(list(current.tags)),
             "executionMode": current.execution_mode,
             "blocksAreSuccess": current.blocks_are_success,
             "runOnUpdate": current.run_on_update,
@@ -746,7 +746,7 @@ class Evaluators:
             "templateId": current.template_id,
             "name": current.name if name is None else name,
             "description": current.description if description is None else description,
-            "tags": current.tags
+            "tags": json.dumps(list(current.tags))
             if tags is None
             else json.dumps([str(t) for t in tags]),
             "spec": current.spec if checks is None else _spec(checks),
