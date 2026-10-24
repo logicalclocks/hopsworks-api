@@ -458,20 +458,97 @@ class TestRealBuilder:
         # The predictor's chunk for the commit job carries what the inference logger
         # would read from the event headers. Without a model there is no model
         # version header, so the column has to be null, as fv.log writes it.
+        import pandas as pd
         from hopsworks_common.constants import FEATURE_LOGGING
-        from hsfs import feature
+        from hopsworks_common.core.feature_logging_arrow import _ArrowBatchBuilder
+        from hsfs import feature, feature_group, feature_view
+        from hsfs import serving_key as sk
+        from hsfs import training_dataset_feature as tdf
+        from hsfs.constructor import query
+        from hsfs.core.feature_logging import FeatureLogging
         from hsml import default_predictor as dp
         from hsml import deployment, predictor
         from hsml.constants import PREDICTOR
         from hsml.deployment_schema import DeploymentSchema
 
-        from tests.core import test_feature_logging_arrow as parity
         from tests.core.test_delta_engine import _real_local_engine
 
         monkeypatch.delenv("DEPLOYMENT_NAME", raising=False)
         monkeypatch.delenv("DEPLOYMENT_VERSION", raising=False)
-        fixture, rows = parity._fixture()
-        builder, frame, predictions, extra = fixture["_inputs"]
+        location = str(tmp_path / "log_fg")
+        extras = [
+            feature.Feature("deployment_name", type="string"),
+            feature.Feature("deployment_version", type="int"),
+            feature.Feature("deployment_schema_id", type="string"),
+            feature.Feature("request_row", type="int"),
+        ]
+        declared = [
+            feature.Feature("log_id", type="string"),
+            feature.Feature("id", type="bigint"),
+            feature.Feature("amount", type="double"),
+            feature.Feature("predicted_label", type="int"),
+            feature.Feature("request_id", type="string"),
+            feature.Feature("log_time", type="timestamp"),
+            feature.Feature("td_version", type="int"),
+            feature.Feature("model_name", type="string"),
+            feature.Feature("model_version", type="string"),
+            *extras,
+        ]
+        # Also registers the real hsfs engine and client the groups below need.
+        writer = _real_local_engine(
+            monkeypatch,
+            location,
+            declared,
+            partition_key=[
+                FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
+            ],
+        )
+        # A real feature view over a real logging group. Without transformation
+        # functions its training dataset schema is its own features, so no request
+        # is made.
+        root = feature_group.FeatureGroup(
+            name="root",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            event_time="event_time",
+            features=[feature.Feature("id", type="bigint")],
+        )
+        view = feature_view.FeatureView(
+            name="fv",
+            query=query.Query(root, root.columns),
+            featurestore_id=99,
+            inference_helper_columns=["helper"],
+            serving_keys=[sk.ServingKey("id", 0, required=True)],
+            logging_enabled=True,
+        )
+        view.schema = [
+            tdf.TrainingDatasetFeature("id", type="bigint"),
+            tdf.TrainingDatasetFeature("amount", type="double"),
+            tdf.TrainingDatasetFeature("label", type="int", label=True),
+            tdf.TrainingDatasetFeature("helper", type="string"),
+        ]
+        view._feature_logging = FeatureLogging(
+            1,
+            untransformed_features=writer._feature_group,
+            extra_logging_columns=extras,
+        )
+        builder = _ArrowBatchBuilder(view, 3)
+        frame = pd.DataFrame({"id": [1, 2], "amount": [10.0, 20.0]})
+        frame.attrs["untransformed"] = frame.copy()
+        rows = [0, 1]
+        predictions = [1, 0]
+        extra = [
+            {
+                "deployment_name": "dep",
+                "deployment_version": 2,
+                "deployment_schema_id": "s",
+                "request_row": i,
+            }
+            for i in rows
+        ]
         # A real predictor without its constructor: the constructor fetches the
         # deployment's model and feature view from Hopsworks over REST. These are
         # the fields it sets for a model-less deployment.
@@ -488,22 +565,12 @@ class TestRealBuilder:
                 name="dep", model_server=PREDICTOR.MODEL_SERVER_PYTHON
             )
         )
-        batch = builder._build_batch(frame, predictions, extra, "r", parity._TIME)
+        log_time = datetime(2026, 9, 8, 12, 0, 0, 123456, tzinfo=timezone.utc)
+        batch = builder._build_batch(frame, predictions, extra, "r", log_time)
         completed = builder._complete(batch, model_less._file_column_values())
         path = tmp_path / "chunk.arrow"
         path.write_bytes(builder._serialize(completed))
 
-        location = str(tmp_path / "log_fg")
-        declared = sorted(builder._features, key=lambda f: f.name != "log_id")
-        writer = _real_local_engine(
-            monkeypatch,
-            location,
-            [feature.Feature(f.name, type=f.type) for f in declared],
-            partition_key=[
-                FEATURE_LOGGING.MODEL_COLUMN_NAME,
-                FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
-            ],
-        )
         from deltalake import DeltaTable
 
         # What _commit_part hands the feature group's insert.
