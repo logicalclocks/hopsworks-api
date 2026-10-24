@@ -1015,17 +1015,16 @@ class DeltaEngine:
                 )
             if append_requested:
                 deltars_write(
-                    location,
+                    fg_source_table,
                     dataset,
                     mode=self.APPEND,
-                    storage_options=storage_options or None,
                     commit_properties=commit_properties,
                 )
                 _logger.debug(
                     f"Explicit append mode requested for {location}. Skipping merge operation."
                 )
                 return self._get_last_commit_metadata(
-                    self._spark_session, location, storage_options=storage_options
+                    self._spark_session, location, delta_rs_table=fg_source_table
                 )
             # Optimisation: if the feature group is partitioned and none of the
             # incoming partition values already exist in the table, a plain append
@@ -1033,12 +1032,7 @@ class DeltaEngine:
             # existing partition data into memory for the join.
             use_append = self._can_use_append(fg_source_table, dataset)
             if use_append:
-                deltars_write(
-                    location,
-                    dataset,
-                    mode="append",
-                    storage_options=storage_options or None,
-                )
+                deltars_write(fg_source_table, dataset, mode="append")
             else:
                 source_alias = (
                     f"{self._feature_group.name}_{self._feature_group.version}_source"
@@ -1075,7 +1069,10 @@ class DeltaEngine:
             f"Executed delta-rs write. Retrieving commit metadata for Delta table at {location}"
         )
         return self._get_last_commit_metadata(
-            self._spark_session, location, storage_options=storage_options
+            self._spark_session,
+            location,
+            storage_options=storage_options,
+            delta_rs_table=fg_source_table if is_delta_table else None,
         )
 
     @staticmethod
@@ -1845,11 +1842,16 @@ class DeltaEngine:
 
     @staticmethod
     def _get_last_commit_metadata(
-        spark_context, base_path, storage_options: dict | None = None
+        spark_context,
+        base_path,
+        storage_options: dict | None = None,
+        delta_rs_table=None,
     ):
         """Retrieve oldest and last data-changing commits (MERGE/WRITE) from a Delta table.
 
-        Uses shared filtering logic for both Spark and delta-rs.
+        Uses shared filtering logic for both Spark and delta-rs. A delta-rs
+        `delta_rs_table` the caller already opened is refreshed and read
+        instead of opening the table again.
         """
         data_ops = ["MERGE", "WRITE"]
         _logger.debug(f"Retrieving last commit metadata for Delta table at {base_path}")
@@ -1934,9 +1936,15 @@ class DeltaEngine:
                     "Install 'hops-deltalake' to enable Delta RS features."
                 ) from e
             # delta-rs DeltaTable (returns list[dict])
-            fg_source_table = DeltaRsTable(
-                base_path, storage_options=storage_options or {}
-            )
+            if delta_rs_table is not None:
+                # update_incremental reloads the log to the latest commit;
+                # update() would be a row update.
+                delta_rs_table.update_incremental()
+                fg_source_table = delta_rs_table
+            else:
+                fg_source_table = DeltaRsTable(
+                    base_path, storage_options=storage_options or {}
+                )
             history_records = fg_source_table.history()
             _logger.debug(f"history_records for {base_path}: {history_records}")
 
