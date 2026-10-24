@@ -62,6 +62,7 @@ from hsfs.constructor import filter as filter_module
 from hsfs.constructor import query
 from hsfs.core import data_source as ds
 from hsfs.core import (
+    delta_engine,
     deltastreamer_jobconf,
     expectation_suite_engine,
     explicit_provenance,
@@ -3596,6 +3597,7 @@ class FeatureGroup(FeatureGroupBase):
         clustered_by: list[str] | None = None,
         bucket_index: dict[str, Any] | None = None,
         sort_order: list[str] | None = None,
+        offline_table_initialized: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3663,6 +3665,12 @@ class FeatureGroup(FeatureGroupBase):
             None if sort_order is None else list(sort_order)
         )
         self._online_partition_columns: bool = bool(online_partition_columns)
+        # True when the backend wrote the first Delta commit at create.
+        # Old backends do not return the field, so it stays None.
+        self._offline_table_initialized: bool | None = offline_table_initialized
+        # Create-request options, set by the engine before the POST only.
+        self._initialize_offline_table: bool | None = None
+        self._enable_change_data_feed: bool | None = None
 
         self._materialization_job: Job = None
 
@@ -4447,17 +4455,15 @@ class FeatureGroup(FeatureGroupBase):
                 "Sink can only be enabled for feature groups with time travel format DELTA."
             )
 
-        if write_options is None:
-            write_options = {}
-        if all(
-            [
-                not self._id,
-                self.time_travel_format == "DELTA",
-                write_options.get("delta.enableChangeDataFeed") != "false",
-            ]
-        ):
+        # A copy, so the defaults set below stay out of the caller's dict.
+        write_options = dict(write_options or {})
+        if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
-            write_options["delta.enableChangeDataFeed"] = "true"
+            write_options["delta.enableChangeDataFeed"] = (
+                delta_engine.DeltaEngine.change_data_feed_value(
+                    write_options.get("delta.enableChangeDataFeed", "true")
+                )
+            )
 
         if (
             (features is None and len(self._features) > 0)
@@ -4488,7 +4494,7 @@ class FeatureGroup(FeatureGroupBase):
             )
 
             self._feature_group_engine._save_feature_group_metadata(
-                self, None, write_options or {}
+                self, None, write_options
             )
 
             return None, None
@@ -4703,23 +4709,21 @@ class FeatureGroup(FeatureGroupBase):
 
         if validation_options is None:
             validation_options = {}
-        if write_options is None:
-            write_options = {}
+        # A copy, so the defaults set below stay out of the caller's dict.
+        write_options = dict(write_options or {})
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
         if "wait_for_online_ingestion" not in write_options:
             write_options["wait_for_online_ingestion"] = wait
         if not self._id and self._offline_backfill_every_hr is not None:
             write_options["offline_backfill_every_hr"] = self._offline_backfill_every_hr
-        if all(
-            [
-                not self._id,
-                self.time_travel_format == "DELTA",
-                write_options.get("delta.enableChangeDataFeed") != "false",
-            ]
-        ):
+        if not self._id and self.time_travel_format == "DELTA":
             # New delta FG allow for change data capture query
-            write_options["delta.enableChangeDataFeed"] = "true"
+            write_options["delta.enableChangeDataFeed"] = (
+                delta_engine.DeltaEngine.change_data_feed_value(
+                    write_options.get("delta.enableChangeDataFeed", "true")
+                )
+            )
 
         job, ge_report = self._feature_group_engine._insert(
             self,
@@ -5966,6 +5970,10 @@ class FeatureGroup(FeatureGroupBase):
                 fg_meta_dict["bucketIndex"]["engine"] = self._bucket_index["engine"]
         if self._sort_order:
             fg_meta_dict["sortOrder"] = list(self._sort_order)
+        if self._initialize_offline_table is not None:
+            fg_meta_dict["initializeOfflineTable"] = self._initialize_offline_table
+        if self._enable_change_data_feed is not None:
+            fg_meta_dict["enableChangeDataFeed"] = self._enable_change_data_feed
         if self.data_source:
             fg_meta_dict["dataSource"] = self.data_source.to_dict()
         if self._online_config:
@@ -6601,8 +6609,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
 
         if validation_options is None:
             validation_options = {}
-        if write_options is None:
-            write_options = {}
+        # A copy, so the defaults set below stay out of the caller's dict.
+        write_options = dict(write_options or {})
         if "wait_for_job" not in write_options:
             write_options["wait_for_job"] = wait
         if "wait_for_online_ingestion" not in write_options:

@@ -663,6 +663,13 @@ class DeltaEngine:
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
+        if self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options:
+            write_options = {
+                **write_options,
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: self.change_data_feed_value(
+                    write_options[self.DELTA_ENABLE_CHANGE_DATA_FEED]
+                ),
+            }
 
         if not _is_delta_table_at(self._spark_session, location):
             cluster_columns = self._cluster_columns()
@@ -977,9 +984,12 @@ class DeltaEngine:
             is_delta_table = False
 
         if not is_delta_table:
+            dataset = self._cast_to_declared_decimals(dataset, self._feature_group)
             configuration = {
-                self.DELTA_ENABLE_CHANGE_DATA_FEED: (write_options or {}).get(
-                    self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
+                self.DELTA_ENABLE_CHANGE_DATA_FEED: self.change_data_feed_value(
+                    (write_options or {}).get(
+                        self.DELTA_ENABLE_CHANGE_DATA_FEED, "true"
+                    )
                 )
             }
             deltars_write(
@@ -991,14 +1001,15 @@ class DeltaEngine:
                 commit_properties=commit_properties,
             )
         else:
+            dataset = self._cast_to_schema(dataset, fg_source_table.schema().to_arrow())
             if (
                 isinstance(write_options, dict)
                 and self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options
             ):
                 fg_source_table.alter.set_table_properties(
                     {
-                        self.DELTA_ENABLE_CHANGE_DATA_FEED: write_options.get(
-                            self.DELTA_ENABLE_CHANGE_DATA_FEED
+                        self.DELTA_ENABLE_CHANGE_DATA_FEED: self.change_data_feed_value(
+                            write_options.get(self.DELTA_ENABLE_CHANGE_DATA_FEED)
                         )
                     }
                 )
@@ -1026,7 +1037,6 @@ class DeltaEngine:
                     location,
                     dataset,
                     mode="append",
-                    partition_by=self._feature_group.partition_key,
                     storage_options=storage_options or None,
                 )
             else:
@@ -1067,6 +1077,118 @@ class DeltaEngine:
         return self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
         )
+
+    @staticmethod
+    def change_data_feed_value(value):
+        """Return the `delta.enableChangeDataFeed` option as Delta's string.
+
+        Unset means true. Otherwise the value must read as true or false, in
+        any case or type.
+
+        Raises:
+            FeatureStoreException: The value is neither true nor false.
+        """
+        if value is None:
+            return "true"
+        cdf = str(value).lower()
+        if cdf not in ("true", "false"):
+            raise FeatureStoreException(
+                f"Invalid value {value!r} for write option "
+                f"'{DeltaEngine.DELTA_ENABLE_CHANGE_DATA_FEED}': use true or false."
+            )
+        return cdf
+
+    @staticmethod
+    def _reconcile_type(source, target):
+        """Return *source* with its decimals and timestamps set to the types of *target*.
+
+        Only decimal to decimal and timestamp to timestamp take the table's
+        type (unit and time zone), at the top level and inside lists and
+        structs. Every other pair, and every extra or missing struct field,
+        keeps the batch type so delta-rs reports it as before. delta-rs
+        reports every list as `list` and accepts `large_list` and
+        `fixed_size_list` batches, so a list keeps the batch's container type.
+        """
+        import pyarrow as pa
+
+        def is_any_list(t):
+            return (
+                pa.types.is_list(t)
+                or pa.types.is_large_list(t)
+                or pa.types.is_fixed_size_list(t)
+            )
+
+        if pa.types.is_decimal(source) and pa.types.is_decimal(target):
+            return target
+        if pa.types.is_timestamp(source) and pa.types.is_timestamp(target):
+            return target
+        if is_any_list(source) and is_any_list(target):
+            value_field = source.value_field.with_type(
+                DeltaEngine._reconcile_type(source.value_type, target.value_type)
+            )
+            if pa.types.is_large_list(source):
+                return pa.large_list(value_field)
+            if pa.types.is_fixed_size_list(source):
+                return pa.list_(value_field, source.list_size)
+            return pa.list_(value_field)
+        if pa.types.is_struct(source) and pa.types.is_struct(target):
+            fields = []
+            for field in source:
+                index = target.get_field_index(field.name)
+                if index >= 0:
+                    field = field.with_type(
+                        DeltaEngine._reconcile_type(
+                            field.type, target.field(index).type
+                        )
+                    )
+                fields.append(field)
+            return pa.struct(fields)
+        return source
+
+    @staticmethod
+    def _cast_to_declared_decimals(dataset, feature_group):
+        """Safe-cast the decimal columns of *dataset* to the feature group's declared decimal types.
+
+        A new Delta table takes the batch's types, which follow the values, so
+        a decimal(7) feature would otherwise land as decimal(2,1) for 1.5.
+        """
+        import pyarrow as pa
+
+        schema = pa.schema(
+            [
+                pa.field(f.name, _convert_offline_type_to_pyarrow_type(f.type))
+                for f in feature_group.columns
+                if (f.type or "").lower().startswith("decimal")
+            ]
+        )
+        return DeltaEngine._cast_to_schema(dataset, schema)
+
+    @staticmethod
+    def _cast_to_schema(dataset, table_schema):
+        """Safe-cast the decimals and timestamps of *dataset* to the types of *table_schema*.
+
+        Decimal precision of the batch follows its values, and naive timestamps
+        are UTC after `_prepare_df_for_delta`. A table written by the backend
+        holds decimal(p,0) and may hold UTC timestamps, which delta-rs does not
+        cast to. The cast is safe, so an out-of-range or fractional decimal
+        raises `ArrowInvalid` instead of being truncated.
+        """
+        import pyarrow as pa
+
+        if not isinstance(dataset, pa.Table):
+            return dataset
+        table_schema = pa.schema(table_schema)
+        columns = []
+        for name, column in zip(dataset.column_names, dataset.columns, strict=True):
+            index = table_schema.get_field_index(name)
+            if index >= 0:
+                target = DeltaEngine._reconcile_type(
+                    column.type, table_schema.field(index).type
+                )
+                if target != column.type:
+                    column = column.cast(target, safe=True)
+            columns.append(column)
+        return pa.Table.from_arrays(columns, names=dataset.column_names)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
