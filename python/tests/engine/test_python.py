@@ -5396,6 +5396,54 @@ class TestPython:
 
             caplog.clear()
 
+    def test_get_feature_logging_df_missing_columns_create_the_delta_table(
+        self, monkeypatch, tmp_path, logging_features, logging_test_dataframe
+    ):
+        # Prepare: fv.log with the job transport creates the logging table on its first write.
+        from tests.core.test_delta_engine import _real_local_engine
+
+        logging_features, meta_data_logging_columns, column_names = logging_features
+        logging_feature_group_features = meta_data_logging_columns + logging_features
+        location = str(tmp_path / "log_fg")
+        writer = _real_local_engine(
+            monkeypatch,
+            location,
+            logging_feature_group_features,
+            partition_key=[
+                constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
+            ],
+        )
+        args = TestPython.get_logging_arguments(
+            logging_data=logging_test_dataframe.drop(
+                columns=["request_id", "rp_1", "rp_2", "extra_1", "extra_2"]
+            ),
+            logging_feature_group_features=logging_feature_group_features,
+            column_names=column_names,
+        )
+        args["model_name"] = None
+        args["model_version"] = None
+        from deltalake import DeltaTable
+
+        # Act
+        logging_dataframe, _, _ = python.Engine()._get_feature_logging_df(**args)
+        writer._write_delta_rs_dataset(logging_dataframe, operation="insert")
+
+        # Assert
+        table = DeltaTable(location).to_pyarrow_table()
+        assert table.num_rows == len(logging_test_dataframe)
+        for name in [
+            constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
+            constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME,
+            "extra_1",
+        ]:
+            assert table.schema.field(name).type == pa.string(), name
+            assert table.column(name).null_count == table.num_rows, name
+        for name in ["rp_1", "rp_2", "extra_2"]:
+            assert table.schema.field(name).type == pa.int32(), name
+            assert table.column(name).null_count == table.num_rows, name
+
     def test_get_feature_logging_df_logging_data_missing_columns_and_additional_dict(
         self, mocker, caplog, logging_features, logging_test_dataframe
     ):
