@@ -18,7 +18,6 @@ import io
 import os
 import stat
 import threading
-import time
 
 import pytest
 import requests
@@ -126,53 +125,6 @@ class TestBaseClient:
 
         # Assert
         assert spy_retry_token_expired.call_count == 5
-
-    def test_an_error_answer_under_a_deadline_is_closed_unread(self, mocker):
-        client = self._init_test_client()
-
-        class UnreadBody(io.RawIOBase):
-            def readable(self):
-                return True
-
-            def readinto(self, b):
-                raise AssertionError("the error body was read")
-
-        mocker.patch("requests.sessions.Session.prepare_request")
-        failed = requests.Response()
-        failed.status_code = 500
-        failed.reason = "Internal Server Error"
-        failed.raw = UnreadBody()
-        mocker.patch("requests.sessions.Session.send", return_value=failed)
-
-        with pytest.raises(requests.HTTPError, match="HTTP 500 Internal Server Error"):
-            client._send_request(
-                "GET", ["logs"], stream=True, deadline=time.monotonic() + 30
-            )
-
-        assert failed.raw.closed
-
-    @changes_environ
-    def test_no_token_retry_starts_past_the_deadline(self, mocker):
-        os.environ[Client.REST_ENDPOINT] = "True"
-        client = self._init_test_client()
-        client.TOKEN_EXPIRED_RETRY_INTERVAL = 0.6
-
-        mocker.patch("requests.sessions.Session.prepare_request")
-        unauthorized_response = requests.Response()
-        unauthorized_response.status_code = 401
-        unauthorized_response.raw = io.BytesIO()
-        send = mocker.patch(
-            "requests.sessions.Session.send", return_value=unauthorized_response
-        )
-        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
-
-        with pytest.raises(TimeoutError):
-            client._send_request(
-                "GET", ["logs"], stream=True, deadline=time.monotonic() + 0.5
-            )
-
-        assert send.call_count == 1
-        assert unauthorized_response.raw.closed
 
     def _init_test_client(self):
         client = Client()

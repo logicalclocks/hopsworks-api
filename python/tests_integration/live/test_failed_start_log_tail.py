@@ -48,7 +48,6 @@ STARTS = 5
 REQUEST_TIMEOUT_SECONDS = 120
 START_TIMEOUT_SECONDS = 600
 CLEANUP_BUDGET_SECONDS = 600
-LOOKUP_ATTEMPTS = 3
 MARKER = "boom-hable-135"
 RAISING_PREDICTOR = (
     "class Predict:\n"
@@ -120,20 +119,27 @@ def raising_deployment(project):
         script = os.path.join(work, "predict_raises.py")
         with open(script, "w") as f:
             f.write(RAISING_PREDICTOR)
+        # "unknown" while a create's call may have taken effect, "created" once it returned.
+        creates = {}
         try:
             model = registry.python.create_model(name)
+            creates["model"] = "unknown"
             model.save(model_dir)
-            yield model.deploy(name=name, script_file=script)
+            creates["model"] = "created"
+            creates["deployment"] = "unknown"
+            deployment = model.deploy(name=name, script_file=script)
+            creates["deployment"] = "created"
+            yield deployment
         finally:
-            _delete_named(project, name)
+            _delete_named(project, name, creates)
 
 
-def _delete_named(project, name):
+def _delete_named(project, name, creates):
     """Delete the deployment and every model version named `name` (free before the test), deployment first.
 
-    The name is planned before any create, so a create whose reply was lost is found by it too. Each
-    lookup is retried within one budget, each resource is deleted on its own (404 counts as deleted),
-    and the test fails naming everything left.
+    The name is planned before any create, so a create whose reply was lost is found by it too: one
+    with an unknown outcome is looked up until it shows or the budget is spent. Each resource is
+    deleted on its own (404 counts as deleted), and the test fails naming everything left.
     """
     deadline = time.monotonic() + CLEANUP_BUDGET_SECONDS
     _client = client._get_instance()
@@ -153,46 +159,53 @@ def _delete_named(project, name):
                 return None
             raise
 
-    def lookup(path, query):
-        for attempt in range(LOOKUP_ATTEMPTS):
-            try:
-                return send("GET", path, query)
-            except Exception:
-                if attempt + 1 == LOOKUP_ATTEMPTS:
-                    raise
-                time.sleep(min(2, remaining()))
-        return None
-
     serving = ["project", project.id, "serving"]
     models = ["project", project.id, "modelregistries", project.id, "models"]
-    left = []
-    targets = []
-    try:
-        found = lookup(serving, {"name": name})
-        found = found if isinstance(found, list) else [found] if found else []
-        targets += [serving + [d["id"]] for d in found if d.get("name") == name]
-    except Exception as err:
-        left.append(("deployment", name, repr(err)))
-    try:
-        found = lookup(models, {"filter_by": f"name_eq:{name}"}) or {}
-        targets += [
+
+    def find(kind):
+        if kind == "deployment":
+            found = send("GET", serving, {"name": name})
+            found = found if isinstance(found, list) else [found] if found else []
+            return [serving + [d["id"]] for d in found if d.get("name") == name]
+        found = send("GET", models, {"filter_by": f"name_eq:{name}"}) or {}
+        return [
             models + [f"{m['name']}_{m['version']}"]
             for m in found.get("items", [])
             if m.get("name") == name
         ]
-    except Exception as err:
-        left.append(("model", name, repr(err)))
-    for path in targets:
-        try:
-            if path[2] == "serving":
-                # An already stopped or failed deployment refuses the stop; the delete follows either way.
-                with contextlib.suppress(RestAPIError):
-                    send("POST", path, {"action": "stop"})
-            send("DELETE", path)
-            while send("GET", path) is not None:
+
+    left = []
+    for kind in ("deployment", "model"):
+        if kind not in creates:
+            continue
+        paths, why = None, None
+        while True:
+            try:
+                paths = find(kind)
+                if paths or creates[kind] == "created":
+                    break
+                why = "not found: its create's outcome is unknown"
+            except Exception as err:
+                why = repr(err)
+            try:
                 time.sleep(min(2, remaining()))
-        except Exception as err:
-            left.append((path[-2], path[-1], repr(err)))
+            except TimeoutError:
+                break
+        if not paths:
+            if paths is None or creates[kind] == "unknown":
+                left.append((kind, name, why))
+            continue
+        for path in paths:
+            try:
+                if kind == "deployment":
+                    # An already stopped or failed deployment refuses the stop; the delete follows either way.
+                    with contextlib.suppress(RestAPIError):
+                        send("POST", path, {"action": "stop"})
+                send("DELETE", path)
+                while send("GET", path) is not None:
+                    time.sleep(min(2, remaining()))
+            except Exception as err:
+                left.append((kind, path[-1], repr(err)))
     if left:
         pytest.fail(f"cleanup left these resources: {left}")
 
