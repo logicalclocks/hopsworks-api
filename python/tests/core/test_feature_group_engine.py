@@ -2673,11 +2673,11 @@ class TestFeatureGroupEngine:
         """
         import json
 
-        from hsfs import engine
+        from hsfs.engine import spark as spark_engine
 
         mocker.patch("hsfs.engine._get_type", return_value=engine_type)
         engine_instance = (
-            mocker.MagicMock(spec=engine.spark.Engine)
+            mocker.MagicMock(spec=spark_engine.Engine)
             if engine_type == "spark"
             else mocker.MagicMock()
         )
