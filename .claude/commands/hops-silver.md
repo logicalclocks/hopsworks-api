@@ -79,7 +79,7 @@ Write unit tests in `tests/` (DuckDB over sample rows for the dbt SQL, pandas or
 
 ### backfill
 
-Deploy one job per cadence (`hops job deploy <slug>-silver-<cadence> run_silver.py --env dbt-pipeline --args "--cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`), run each once without a window, slowest cadence first (`hops job run <slug>-silver-<cadence> --wait`; before it is scheduled the run gets no window), and check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
+Deploy one job per cadence (`hops job deploy <slug>-silver-<cadence> run_silver.py --env dbt-pipeline --args "--cadence <cadence>"`, putting the dbt project in HopsFS as the **hops** skill's *Project files* rule (in a Hopsable sandbox, `$HOPS_TEMPLATES/SKILL.md`) says: a copy in the mount, else `hops files upload --overwrite`), run each once without a window, slowest cadence first (`hops job run <slug>-silver-<cadence> --wait`; before it is scheduled the run gets no window), and check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
 Fix and rerun until the checks pass; record the counts in `outputs`.
 
 ### schedule
