@@ -37,7 +37,7 @@ from .models import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
 
     from .client import AgentServing
     from .models import EvalJob, ReviewJob, Task
@@ -46,6 +46,8 @@ VERDICTS = ("positive", "negative", "false_alarm")
 MANIFEST_PATH = ".well-known/hopsworks-agent.json"
 DEFAULT_CHAT_PATH = "/v1/chat"
 DEFAULT_STREAM_PATH = "/v1/chat/stream"
+DEFAULT_CONVERSATIONS_PATH = "/v1/conversations"
+DEFAULT_SUBJECTS_PATH = "/v1/subjects"
 
 
 @public
@@ -418,6 +420,175 @@ class Agent:
             )
             previous = messages
         return turns
+
+    # ── what the agent's memory holds ────────────────────────────────────────
+
+    @public
+    def memory_conversations(
+        self, *, subject: str | None = None, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """The conversations the agent's memory holds, most recently active first.
+
+        Read from the agent's own memory store rather than from its traces, so it lists what the agent will remember, filed under the person it was filed under.
+        `conversation` reconstructs what was said from the traces instead, which exist whether or not the agent keeps memory.
+
+        Example:
+            ```python
+            for c in agent.memory_conversations(subject="marcus@example.com"):
+                print(c["conversation_id"], c["message_count"], c["last_active_at"])
+            ```
+
+        Parameters:
+            subject: Only the conversations filed under this person.
+            limit: How many to return, at most 500.
+
+        Returns:
+            One entry per conversation, with `conversation_id`, `subject`, `message_count` and `last_active_at`, and the rolling `summary` when the agent keeps one.
+
+        Raises:
+            `AgentServingError`: If the agent serves no memory routes, or refuses the request.
+        """
+        params: dict[str, Any] = {"limit": limit}
+        if subject:
+            params["subject"] = subject
+        body = self._http.agent_request(
+            "GET",
+            self._segments(self._endpoint("conversations", DEFAULT_CONVERSATIONS_PATH)),
+            params=params,
+        )
+        return list((body or {}).get("conversations") or [])
+
+    @public
+    def memory_transcript(
+        self, conversation_id: str, *, include_events: bool = False
+    ) -> dict[str, Any]:
+        """One conversation as the agent's memory stored it.
+
+        The stored record differs from what the model reads on its next turn.
+        Once a conversation grows past the summarizer's limit, older turns are folded into `summary` and leave the model's history, but they stay in `messages`; `summarized_through` marks where the two diverge.
+
+        Example:
+            ```python
+            stored = agent.memory_transcript(reply.conversation_id)
+            print(stored["subject"], stored["summary"])
+            for message in stored["messages"]:
+                print(message["role"], message["content"])
+            ```
+
+        Parameters:
+            conversation_id: The conversation, as `ChatReply.conversation_id` or `memory_conversations` gives it.
+            include_events: Include the turns' tool events and the turns the agent abandoned, not only the messages.
+
+        Returns:
+            The `conversation_id`, the `messages` (each with `role`, `content`, `turn_id`, `status` and `created_at`), the rolling `summary`, `summarized_through`, and the `subject` the conversation is filed under, which may be one the agent bound mid-conversation and the client was never told.
+
+        Raises:
+            `AgentServingError`: If the agent serves no memory routes, or refuses the request.
+        """
+        path = self._endpoint("conversations", DEFAULT_CONVERSATIONS_PATH)
+        return (
+            self._http.agent_request(
+                "GET",
+                [*self._segments(path), conversation_id, "messages"],
+                params={"include": "events"} if include_events else None,
+            )
+            or {}
+        )
+
+    @public
+    def memory_facts(self, subject: str) -> list[dict[str, Any]]:
+        """What the agent remembers about one person: their `user`-scope facts.
+
+        These are the facts the agent stored with `remember` for this subject, which load into every later conversation with them; expired ones are left out.
+        Worth reading after a conversation, because a person can talk an agent into remembering something false about them.
+
+        Example:
+            ```python
+            for fact in agent.memory_facts("marcus@example.com"):
+                print(fact["key"], fact["value"], fact["updated_at"])
+            ```
+
+        Parameters:
+            subject: The person as the agent identified them, either the `subject` asserted on the request or the one the agent bound.
+
+        Returns:
+            One entry per fact, most recently updated first, with `key`, `value`, `written_by`, `source_ref` (the turn it came from), `updated_at` and `expires_at`.
+
+        Raises:
+            `AgentServingError`: If the agent serves no memory routes, or refuses the request.
+        """
+        path = self._endpoint("subjects", DEFAULT_SUBJECTS_PATH)
+        body = self._http.agent_request(
+            "GET", [*self._segments(path), subject, "state"]
+        )
+        return list((body or {}).get("state") or [])
+
+    @public
+    def memory_search(
+        self,
+        query: str,
+        *,
+        subject: str | None = None,
+        conversation_id: str | None = None,
+        k: int = 5,
+        embedder: Callable[[str], list[float]] | None = None,
+        feature_store: Any = None,
+    ) -> list[dict[str, Any]]:
+        """Messages from the agent's earlier conversations nearest in meaning to `query`.
+
+        A similarity search over the agent's memory feature group, `agent_memory_<deployment id>`, which holds an embedding of every message the agent ingested.
+        It is the search the agent itself runs with its `search` tool, done from outside: the same feature group, the same subject and conversation filters, and no running agent needed.
+
+        The query has to be embedded by the model that embedded the messages, or the distances mean nothing.
+        That model is recorded in the feature group's description; by default it is loaded as a sentence-transformers model, which needs `sentence-transformers` installed.
+        Pass `embedder` for any other model.
+
+        Example:
+            ```python
+            for hit in agent.memory_search("vegetarian", subject="dana@example.com"):
+                print(hit["score"], hit["role"], hit["content"])
+            ```
+
+        Parameters:
+            query: What to look for, in natural language.
+            subject: Only that person's messages.
+            conversation_id: Only one conversation's messages.
+            k: How many messages to return.
+            embedder: Embeds the query; it must be the model that embedded the messages, and when it carries a `model_id`, that is checked against the one recorded.
+            feature_store: The feature store holding the agent's memory; the logged-in project's when omitted.
+
+        Returns:
+            The nearest messages, most similar first, each with `conversation_id`, `subject`, `role`, `content`, `created_at` and `score`.
+            Empty when the agent keeps no embeddings or nothing matches.
+
+        Raises:
+            `ValueError`: If `embedder` was made with a different model than the one recorded on the feature group.
+        """
+        from hopsworks_agents.protocol.vectorstore import HopsworksVectorStore
+
+        if feature_store is None:
+            import hopsworks
+
+            feature_store = hopsworks.get_current_project().get_feature_store()
+        store = HopsworksVectorStore._existing(feature_store, str(self.id))
+        if store is None:
+            return []
+        if embedder is None:
+            from hopsworks_agents.protocol.summarizers import (
+                sentence_transformer_embedder,
+            )
+
+            embedder = sentence_transformer_embedder(store._embedder_id)
+        recorded = store._embedder_id
+        given = getattr(embedder, "model_id", None)
+        if given is not None and given != recorded:
+            raise ValueError(
+                f"the agent's memory was embedded with {recorded!r}; an embedder for "
+                f"{given!r} would return distances that mean nothing"
+            )
+        return store.search(
+            embedder(query), k=k, subject=subject, conversation_id=conversation_id
+        )
 
     # ── feedback ───────────────────────────────────────────────────────────
 

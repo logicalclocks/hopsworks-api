@@ -1664,6 +1664,104 @@ class TestAgents:
         # and nothing was invented for what the caller left out
         assert params == {"subject": "alice@example.com"}
 
+    def test_what_the_agents_memory_holds_is_read_from_its_own_routes(self):
+        manifest = Reply(
+            {
+                "endpoints": {
+                    "conversations": "/v1/conversations",
+                    "subjects": "/v1/subjects",
+                }
+            }
+        )
+        _, agent7, session = agent(
+            manifest,
+            Reply({"conversations": [{"conversation_id": "c1", "message_count": 4}]}),
+            Reply(
+                {"conversation_id": "c1", "messages": [], "subject": "dana@example.com"}
+            ),
+            Reply(
+                {
+                    "subject": "dana@example.com",
+                    "state": [{"key": "diet", "value": "vegetarian"}],
+                }
+            ),
+        )
+
+        assert agent7.memory_conversations(subject="dana@example.com", limit=10) == [
+            {"conversation_id": "c1", "message_count": 4}
+        ]
+        assert agent7.memory_transcript("c1", include_events=True)["subject"] == (
+            "dana@example.com"
+        )
+        assert agent7.memory_facts("dana@example.com") == [
+            {"key": "diet", "value": "vegetarian"}
+        ]
+
+        calls = [(m, u, p) for m, u, p, _ in session.sent[1:]]
+        assert calls == [
+            (
+                "GET",
+                "https://gw/v1/g1/support/v1/conversations",
+                {"limit": 10, "subject": "dana@example.com"},
+            ),
+            (
+                "GET",
+                "https://gw/v1/g1/support/v1/conversations/c1/messages",
+                {"include": "events"},
+            ),
+            (
+                "GET",
+                "https://gw/v1/g1/support/v1/subjects/dana@example.com/state",
+                None,
+            ),
+        ]
+
+    def test_a_memory_search_embeds_the_query_with_the_model_that_embedded_the_memory(
+        self,
+    ):
+        _, agent7, _ = agent()
+        asked = []
+
+        class Group:
+            description = "Hopsworks agent memory (all-MiniLM-L6-v2, 3d, cosine)"
+            features = []
+
+            def find_neighbors(self, vector, col, k, filter=None):
+                asked.append((vector, k))
+                return []
+
+        class Store:
+            def get_feature_group(self, name, version):
+                assert (name, version) == ("agent_memory_7", 1)
+                return Group()
+
+        def embed(text):
+            return [1.0, 0.0, 0.0]
+
+        embed.model_id = "all-MiniLM-L6-v2"
+        agent7.memory_search("vegetarian", k=3, embedder=embed, feature_store=Store())
+        assert asked and asked[0][0] == [1.0, 0.0, 0.0]
+
+        # another model's vectors would answer, and mean nothing
+        embed.model_id = "text-embedding-3-small"
+        with pytest.raises(ValueError, match="all-MiniLM-L6-v2"):
+            agent7.memory_search("vegetarian", embedder=embed, feature_store=Store())
+
+    def test_an_agent_with_no_memory_feature_group_finds_nothing_and_creates_none(self):
+        _, agent7, _ = agent()
+
+        class Store:
+            def get_feature_group(self, name, version):
+                return None
+
+            def get_or_create_feature_group(self, **kwargs):
+                raise AssertionError("a read created a memory feature group")
+
+        assert (
+            agent7.memory_search("x", embedder=lambda t: [0.0], feature_store=Store())
+            == []
+        )
+
     def test_chat_speaks_the_protocol_and_threads_a_conversation(self):
         _, agent7, session = agent(
             Reply({"endpoints": {"chat": "/v1/chat"}, "capabilities": ["tracing"]}),
