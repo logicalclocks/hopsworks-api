@@ -21,8 +21,9 @@ Not part of the unit suite (`pytest tests`). Run from the python directory:
         pytest tests_integration/live/test_failed_start_log_tail.py
 
 The project must exist and the key's user must be allowed to deploy in it; login selects it by name,
-so it never prompts, and the id must match. The test creates one model and one deployment named
-hopsable_test_<time>, deletes exactly those at the end, and polls until they answer 404. A crashing
+so it never prompts, and the id must match. The test refuses a name that already exists,
+creates one model and one deployment named hopsable_test_<time>, deletes by id exactly the model version and
+the deployment it created, and polls until they answer 404. A crashing
 predictor is restarted, so the start is repeated to catch a failure seen right after a restart.
 
 A missing environment variable or an unreachable cluster fails the run: there is no skip.
@@ -105,67 +106,68 @@ def project():
 @pytest.fixture
 def raising_deployment(project):
     name = f"hopsable_test_{int(time.time() * 1000)}"
-    work = tempfile.mkdtemp(prefix="hable135-")
-    model_dir = os.path.join(work, "model")
-    os.makedirs(model_dir)
-    with open(os.path.join(model_dir, "weights.txt"), "w") as f:
-        f.write("1\n")
-    script = os.path.join(work, "predict_raises.py")
-    with open(script, "w") as f:
-        f.write(RAISING_PREDICTOR)
-    try:
-        model = project.get_model_registry().python.create_model(name)
-        model.save(model_dir)
-        yield model.deploy(name=name, script_file=script)
-    finally:
-        _delete_by_name(project, name)
+    registry = project.get_model_registry()
+    serving = project.get_model_serving()
+    assert serving.get_deployment(name) is None, f"deployment {name} already exists"
+    assert not registry.get_models(name), f"model {name} already exists"
+    created = {}
+    with tempfile.TemporaryDirectory(prefix="hable135-") as work:
+        model_dir = os.path.join(work, "model")
+        os.makedirs(model_dir)
+        with open(os.path.join(model_dir, "weights.txt"), "w") as f:
+            f.write("1\n")
+        script = os.path.join(work, "predict_raises.py")
+        with open(script, "w") as f:
+            f.write(RAISING_PREDICTOR)
+        try:
+            model = registry.python.create_model(name)
+            model.save(model_dir)
+            created["model"] = f"{model.name}_{model.version}"
+            deployment = model.deploy(name=name, script_file=script)
+            created["deployment"] = deployment.id
+            yield deployment
+        finally:
+            _delete_created(project, created)
 
 
-def _delete_by_name(project, name):
-    """Delete exactly deployment `name` and model `name` version 1, then poll until both answer 404, within one budget."""
+def _delete_created(project, created):
+    """Delete the deployment id and model version this test created, then poll until both answer 404, within one budget."""
     deadline = time.monotonic() + CLEANUP_BUDGET_SECONDS
     _client = client._get_instance()
 
     def remaining():
         left = deadline - time.monotonic()
         if left <= 0:
-            pytest.fail(f"cleanup of {name} exceeded {CLEANUP_BUDGET_SECONDS}s")
+            pytest.fail(f"cleanup of {created} exceeded {CLEANUP_BUDGET_SECONDS}s")
         return min(REQUEST_TIMEOUT_SECONDS, left)
 
-    def get(path, query=None):
+    def get(path):
         try:
-            return _client._send_request("GET", path, query, timeout=remaining())
+            return _client._send_request("GET", path, timeout=remaining())
         except RestAPIError as err:
             if err.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND:
                 return None
             raise
 
-    serving = ["project", project.id, "serving"]
-    found = get(serving, {"name": name})
-    for item in found if isinstance(found, list) else [found] if found else []:
-        if item.get("name") == name:
-            # An already stopped or failed deployment refuses the stop; the delete follows either way.
-            with contextlib.suppress(RestAPIError):
-                _client._send_request(
-                    "POST",
-                    serving + [item["id"]],
-                    {"action": "stop"},
-                    timeout=remaining(),
-                )
-            _client._send_request("DELETE", serving + [item["id"]], timeout=remaining())
-            while get(serving + [item["id"]]):
-                time.sleep(min(2, remaining()))
-    model_path = [
-        "project",
-        project.id,
-        "modelregistries",
-        project.id,
-        "models",
-        f"{name}_1",
-    ]
-    if get(model_path):
-        _client._send_request("DELETE", model_path, timeout=remaining())
-        while get(model_path):
+    if "deployment" in created:
+        path = ["project", project.id, "serving", created["deployment"]]
+        # An already stopped or failed deployment refuses the stop; the delete follows either way.
+        with contextlib.suppress(RestAPIError):
+            _client._send_request("POST", path, {"action": "stop"}, timeout=remaining())
+        _client._send_request("DELETE", path, timeout=remaining())
+        while get(path):
+            time.sleep(min(2, remaining()))
+    if "model" in created:
+        path = [
+            "project",
+            project.id,
+            "modelregistries",
+            project.id,
+            "models",
+            created["model"],
+        ]
+        _client._send_request("DELETE", path, timeout=remaining())
+        while get(path):
             time.sleep(min(2, remaining()))
 
 

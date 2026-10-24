@@ -109,26 +109,40 @@ def _no_reason(reason: str | None) -> bool:
     return reason in ("", "null") or reason.endswith(". null")
 
 
-def _predictor_log_tail(deployment_instance) -> str:
-    """The last predictor log lines for a failed start, or "" when they cannot be read.
+# The failed-start log reads share this budget, so a stalled log endpoint cannot hold back the deployment's own error.
+_FAILED_START_LOG_SECONDS = 30
 
-    A predictor that fails while starting is restarted, so the live container can be
-    empty at the moment the failure is seen; the crash is then in the previous one.
+
+def _predictor_log_tail(serving, deployment_instance) -> str:
+    """The last predictor log lines of the running and of the previous container, or "" when none can be read.
+
+    A predictor that fails while starting is restarted, so the running container can hold nothing or only
+    startup lines when the failure is seen, and the traceback is then in the previous one. Both are shown.
     """
-    for previous in (False, True):
+    deadline = time.monotonic() + _FAILED_START_LOG_SECONDS
+    parts = []
+    for previous, label in ((False, "running"), (True, "previous")):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            logs = deployment_instance.read_logs(
-                component="predictor", tail=30, previous=previous
+            chunks = serving._serving_api._get_logs(
+                deployment_instance,
+                "predictor",
+                30,
+                source="kubernetes",
+                previous=previous,
+                timeout=remaining,
             )
         except Exception:  # noqa: BLE001
             continue
-        logs = (
-            "\n".join(logs.strip().splitlines()[-30:]) if isinstance(logs, str) else ""
+        if not any((c.content or "").strip() for c in chunks or []):
+            continue
+        lines = serving._format_log_chunks(chunks).strip().splitlines()[-30:]
+        parts.append(
+            f"\nLast predictor log lines ({label} container):\n" + "\n".join(lines)
         )
-        if logs:
-            label = " (previous container)" if previous else ""
-            return f"\nLast predictor log lines{label}:\n{logs}"
-    return ""
+    return "".join(parts)
 
 
 # The scaling fields a backend older than 5.2 does not know and silently drops (HWORKS-3106, HWORKS-3113).
@@ -261,7 +275,7 @@ class ServingEngine:
                             + "')`"
                         )
                     raise ModelServingException(
-                        error_msg + _predictor_log_tail(deployment_instance)
+                        error_msg + _predictor_log_tail(self, deployment_instance)
                     )
             raise ModelServingException(
                 "Deployment has not reached the desired status within the expected awaiting time. Check the current status by using `.get_state()`, "

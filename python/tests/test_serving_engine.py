@@ -22,6 +22,7 @@ import time
 import pytest
 from hopsworks_common.client.exceptions import ModelServingException
 from hsml.constants import PREDICTOR_STATE
+from hsml.deployable_component_logs import DeployableComponentLogs
 from hsml.engine import serving_engine
 
 
@@ -456,6 +457,7 @@ class TestPollDeploymentStatus:
         eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
         mocker.patch("time.sleep")
         eng._get_available_instances = mocker.Mock(return_value=0)
+        eng._serving_api = mocker.Mock()
         deployment = mocker.Mock()
         deployment.get_state.return_value = mocker.Mock(
             status=PREDICTOR_STATE.STATUS_FAILED,
@@ -465,6 +467,25 @@ class TestPollDeploymentStatus:
         )
         return eng, deployment
 
+    @staticmethod
+    def _logs(running, previous):
+        """Answer the running and the previous container's log reads with these chunk lists."""
+
+        def get_logs(deployment, component, tail, previous=False, **kwargs):
+            answer = by_container[previous]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        by_container = {False: running, True: previous}
+        return get_logs
+
+    @staticmethod
+    def _message(eng, deployment):
+        with pytest.raises(ModelServingException) as e_info:
+            eng._poll_deployment_status(deployment, PREDICTOR_STATE.STATUS_RUNNING, 5)
+        return str(e_info.value)
+
     @pytest.mark.parametrize(
         "reason",
         [None, "", "null", "Failed to run: predictor terminated unsuccessfully. null"],
@@ -473,41 +494,90 @@ class TestPollDeploymentStatus:
         self, mocker, reason
     ):
         eng, deployment = self._failed(mocker, reason)
-        deployment.read_logs.return_value = (
-            "Traceback\nValueError: Predict class constructor contains one or "
-            "more unsupported parameters"
+        eng._serving_api._get_logs.side_effect = self._logs(
+            [
+                DeployableComponentLogs(
+                    "p-1",
+                    "Traceback\nValueError: Predict class constructor contains one or "
+                    "more unsupported parameters",
+                )
+            ],
+            [],
         )
 
-        with pytest.raises(ModelServingException) as e_info:
-            eng._poll_deployment_status(deployment, PREDICTOR_STATE.STATUS_RUNNING, 5)
+        message = self._message(eng, deployment)
 
-        message = str(e_info.value)
         assert message.startswith("deployment failed (condition STARTED)")
+        assert "(running container):" in message
         assert "unsupported parameters" in message
-        deployment.read_logs.assert_called_once_with(
-            component="predictor", tail=30, previous=False
-        )
+        assert "(previous container)" not in message
 
     def test_failed_with_a_reason_keeps_it_and_adds_the_log_tail(self, mocker):
         eng, deployment = self._failed(mocker, "Failed to run: out of memory")
-        deployment.read_logs.return_value = "OOMKilled"
+        eng._serving_api._get_logs.side_effect = self._logs(
+            [DeployableComponentLogs("p-1", "OOMKilled")], []
+        )
 
-        with pytest.raises(ModelServingException) as e_info:
-            eng._poll_deployment_status(deployment, PREDICTOR_STATE.STATUS_RUNNING, 5)
+        message = self._message(eng, deployment)
 
-        message = str(e_info.value)
         assert message.startswith("Failed to run: out of memory")
         assert "OOMKilled" in message
 
+    def test_failed_shows_the_previous_traceback_behind_startup_lines(self, mocker):
+        eng, deployment = self._failed(mocker, None)
+        eng._serving_api._get_logs.side_effect = self._logs(
+            [DeployableComponentLogs("p-1", "INFO Starting predictor")],
+            [DeployableComponentLogs("p-1", "Traceback\nRuntimeError: boom")],
+        )
+
+        message = self._message(eng, deployment)
+
+        assert "(running container):\nINFO Starting predictor" in message
+        assert "(previous container):\nTraceback\nRuntimeError: boom" in message
+
+    def test_failed_skips_empty_instances_and_reads_the_previous_container(
+        self, mocker
+    ):
+        eng, deployment = self._failed(mocker, None)
+        eng._serving_api._get_logs.side_effect = self._logs(
+            [DeployableComponentLogs("p-1", ""), DeployableComponentLogs("p-2", "\n")],
+            [DeployableComponentLogs("p-1", "RuntimeError: boom")],
+        )
+
+        message = self._message(eng, deployment)
+
+        assert "running container" not in message
+        assert "==>" not in message
+        assert "(previous container):\nRuntimeError: boom" in message
+
+    def test_failed_bounds_each_log_read_by_one_deadline(self, mocker):
+        eng, deployment = self._failed(mocker, None)
+        eng._serving_api._get_logs.return_value = []
+
+        self._message(eng, deployment)
+
+        timeouts = [
+            call.kwargs["timeout"] for call in eng._serving_api._get_logs.call_args_list
+        ]
+        assert [
+            c.kwargs["previous"] for c in eng._serving_api._get_logs.call_args_list
+        ] == [
+            False,
+            True,
+        ]
+        assert all(0 < t <= serving_engine._FAILED_START_LOG_SECONDS for t in timeouts)
+
     def test_failed_keeps_the_original_error_when_the_logs_fail(self, mocker):
         eng, deployment = self._failed(mocker, "Failed to run: out of memory")
-        deployment.read_logs.side_effect = RuntimeError("logs unavailable")
+        eng._serving_api._get_logs.side_effect = self._logs(
+            RuntimeError("logs unavailable"), TimeoutError("read timed out")
+        )
 
-        with pytest.raises(ModelServingException) as e_info:
-            eng._poll_deployment_status(deployment, PREDICTOR_STATE.STATUS_RUNNING, 5)
+        message = self._message(eng, deployment)
 
-        assert str(e_info.value).startswith("Failed to run: out of memory")
-        assert "logs unavailable" not in str(e_info.value)
+        assert message.startswith("Failed to run: out of memory")
+        assert "logs unavailable" not in message
+        assert "Last predictor log lines" not in message
 
 
 class TestSchemaPublishing:

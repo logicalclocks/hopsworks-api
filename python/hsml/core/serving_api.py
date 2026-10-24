@@ -715,6 +715,7 @@ class ServingApi:
         pod: str | None = None,
         timestamps: bool = False,
         previous: bool = False,
+        timeout: float | None = None,
     ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 
@@ -740,6 +741,7 @@ class ServingApi:
                 is what a caller needs to build a resume cursor.
             previous: Read the previous, terminated container instead of
                 the running one, for a crashed or restarted predictor.
+            timeout: Seconds to wait for the connection and for each block of the answer; ``None`` waits indefinitely.
 
         Returns:
             Deployment logs.
@@ -770,7 +772,9 @@ class ServingApi:
         if previous:
             query_params["previous"] = "true"
         return deployable_component_logs.DeployableComponentLogs.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
+            _client._send_request(
+                "GET", path_params, query_params=query_params, timeout=timeout
+            )
         )
 
     def _get_hopsworks_inference_path(
