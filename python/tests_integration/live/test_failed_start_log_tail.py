@@ -22,7 +22,7 @@ Not part of the unit suite (`pytest tests`). Run from the python directory:
 
 The project must exist and the key's user must be allowed to deploy in it; login selects it by name,
 so it never prompts, and the id must match. The test refuses a name that already exists,
-creates one model and one deployment named hopsable_test_<time>, finds by that exact name, deletes the deployment and
+creates one model and one deployment named hopsabletest<time>, finds by that exact name, deletes the deployment and
 model versions it created, polls until they answer 404, and fails naming any it could not delete. A crashing
 predictor is restarted, so the start is repeated to catch a failure seen right after a restart.
 
@@ -106,7 +106,8 @@ def project():
 
 @pytest.fixture(scope="module")
 def raising_deployment(project):
-    name = f"hopsable_test_{int(time.time() * 1000)}"
+    # Serving names are letters and digits only.
+    name = f"hopsabletest{int(time.time() * 1000)}"
     registry = project.get_model_registry()
     serving = project.get_model_serving()
     assert serving.get_deployment(name) is None, f"deployment {name} already exists"
@@ -138,10 +139,11 @@ def _delete_named(project, name, creates):
     """Delete the deployment and every model version named `name` (free before the test), deployment first.
 
     The name is planned before any create, so a create whose reply was lost is found by it too: one
-    with an unknown outcome is looked up until it shows or the budget is spent. Each resource is
-    deleted on its own (404 counts as deleted), and the test fails naming everything left.
+    with an unknown outcome is looked up until it shows or its kind's budget is spent, so one stuck
+    lookup leaves the other kind its own. Each resource is deleted on its own (404 counts as
+    deleted), and the test fails naming everything left.
     """
-    deadline = time.monotonic() + CLEANUP_BUDGET_SECONDS
+    deadline = 0.0
     _client = client._get_instance()
 
     def remaining():
@@ -178,6 +180,7 @@ def _delete_named(project, name, creates):
     for kind in ("deployment", "model"):
         if kind not in creates:
             continue
+        deadline = time.monotonic() + CLEANUP_BUDGET_SECONDS
         paths, why = None, None
         while True:
             try:
