@@ -550,22 +550,33 @@ class TestPollDeploymentStatus:
         assert "==>" not in message
         assert "(previous container):\nRuntimeError: boom" in message
 
-    def test_failed_bounds_each_log_read_by_one_deadline(self, mocker):
+    def test_failed_reads_both_containers_by_one_deadline(self, mocker):
         eng, deployment = self._failed(mocker, None)
         eng._serving_api._get_logs.return_value = []
 
         self._message(eng, deployment)
 
-        timeouts = [
-            call.kwargs["timeout"] for call in eng._serving_api._get_logs.call_args_list
-        ]
-        assert [
-            c.kwargs["previous"] for c in eng._serving_api._get_logs.call_args_list
-        ] == [
-            False,
-            True,
-        ]
-        assert all(0 < t <= serving_engine._FAILED_START_LOG_SECONDS for t in timeouts)
+        calls = eng._serving_api._get_logs.call_args_list
+        assert [c.kwargs["previous"] for c in calls] == [False, True]
+        assert calls[0].kwargs["deadline"] == calls[1].kwargs["deadline"]
+
+    def test_failed_shows_no_partial_log_once_the_deadline_passed(self, mocker):
+        eng, deployment = self._failed(mocker, "Failed to run: out of memory")
+        mocker.patch.object(serving_engine, "_FAILED_START_LOG_SECONDS", 0.05)
+
+        def get_logs(deployment, component, tail, previous=False, deadline=None, **kw):
+            if not previous:
+                return [DeployableComponentLogs("p-1", "INFO Starting predictor")]
+            while time.monotonic() < deadline:  # time.sleep is patched out here
+                pass
+            raise TimeoutError("the deadline passed")
+
+        eng._serving_api._get_logs.side_effect = get_logs
+
+        assert self._message(eng, deployment) == (
+            "Failed to run: out of memory. Please, check the server logs using "
+            "`.get_logs(component='predictor')`"
+        )
 
     def test_failed_keeps_the_original_error_when_the_logs_fail(self, mocker):
         eng, deployment = self._failed(mocker, "Failed to run: out of memory")

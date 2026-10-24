@@ -118,13 +118,11 @@ def _predictor_log_tail(serving, deployment_instance) -> str:
 
     A predictor that fails while starting is restarted, so the running container can hold nothing or only
     startup lines when the failure is seen, and the traceback is then in the previous one. Both are shown.
+    Once the budget is spent nothing is shown, so the deployment's error goes out whole and on time.
     """
     deadline = time.monotonic() + _FAILED_START_LOG_SECONDS
     parts = []
     for previous, label in ((False, "running"), (True, "previous")):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
         try:
             chunks = serving._serving_api._get_logs(
                 deployment_instance,
@@ -132,9 +130,11 @@ def _predictor_log_tail(serving, deployment_instance) -> str:
                 30,
                 source="kubernetes",
                 previous=previous,
-                timeout=remaining,
+                deadline=deadline,
             )
         except Exception:  # noqa: BLE001
+            if time.monotonic() >= deadline:
+                return ""
             continue
         if not any((c.content or "").strip() for c in chunks or []):
             continue

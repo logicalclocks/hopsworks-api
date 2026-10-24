@@ -22,8 +22,8 @@ Not part of the unit suite (`pytest tests`). Run from the python directory:
 
 The project must exist and the key's user must be allowed to deploy in it; login selects it by name,
 so it never prompts, and the id must match. The test refuses a name that already exists,
-creates one model and one deployment named hopsable_test_<time>, deletes by id exactly the model version and
-the deployment it created, and polls until they answer 404. A crashing
+creates one model and one deployment named hopsable_test_<time>, deletes exactly the model versions and
+the deployment it created, polls until they answer 404, and fails naming any it could not delete. A crashing
 predictor is restarted, so the start is repeated to catch a failure seen right after a restart.
 
 A missing environment variable or an unreachable cluster fails the run: there is no skip.
@@ -41,6 +41,7 @@ import requests
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
 from hsml.client.exceptions import ModelServingException
+from hsml.engine import serving_engine
 
 
 STARTS = 5
@@ -103,14 +104,16 @@ def project():
             requests.Session.send = send
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def raising_deployment(project):
     name = f"hopsable_test_{int(time.time() * 1000)}"
     registry = project.get_model_registry()
     serving = project.get_model_serving()
     assert serving.get_deployment(name) is None, f"deployment {name} already exists"
     assert not registry.get_models(name), f"model {name} already exists"
-    created = {}
+    # Each identity is recorded as soon as its create can have taken effect. The name was free
+    # before, so whatever answers to it after a failed save or deploy is this test's too.
+    created = []
     with tempfile.TemporaryDirectory(prefix="hable135-") as work:
         model_dir = os.path.join(work, "model")
         os.makedirs(model_dir)
@@ -121,54 +124,73 @@ def raising_deployment(project):
             f.write(RAISING_PREDICTOR)
         try:
             model = registry.python.create_model(name)
-            model.save(model_dir)
-            created["model"] = f"{model.name}_{model.version}"
-            deployment = model.deploy(name=name, script_file=script)
-            created["deployment"] = deployment.id
+            try:
+                model.save(model_dir)
+            finally:
+                created += [
+                    ("model", f"{m.name}_{m.version}")
+                    for m in registry.get_models(name)
+                ]
+            try:
+                deployment = model.deploy(name=name, script_file=script)
+            finally:
+                found = serving.get_deployment(name)
+                if found is not None:
+                    created.insert(0, ("deployment", found.id))
             yield deployment
         finally:
             _delete_created(project, created)
 
 
 def _delete_created(project, created):
-    """Delete the deployment id and model version this test created, then poll until both answer 404, within one budget."""
+    """Delete every identity in `created` (deployments first) within one budget; 404 counts as deleted.
+
+    Each one is tried even when another fails, and the test fails naming every one left.
+    """
     deadline = time.monotonic() + CLEANUP_BUDGET_SECONDS
     _client = client._get_instance()
 
     def remaining():
         left = deadline - time.monotonic()
         if left <= 0:
-            pytest.fail(f"cleanup of {created} exceeded {CLEANUP_BUDGET_SECONDS}s")
+            raise TimeoutError(f"cleanup budget of {CLEANUP_BUDGET_SECONDS}s spent")
         return min(REQUEST_TIMEOUT_SECONDS, left)
 
-    def get(path):
+    def gone(method, path, query=None):
+        """Send the request; True when the resource answers 404."""
         try:
-            return _client._send_request("GET", path, timeout=remaining())
+            _client._send_request(method, path, query, timeout=remaining())
         except RestAPIError as err:
             if err.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND:
-                return None
+                return True
             raise
+        return False
 
-    if "deployment" in created:
-        path = ["project", project.id, "serving", created["deployment"]]
-        # An already stopped or failed deployment refuses the stop; the delete follows either way.
-        with contextlib.suppress(RestAPIError):
-            _client._send_request("POST", path, {"action": "stop"}, timeout=remaining())
-        _client._send_request("DELETE", path, timeout=remaining())
-        while get(path):
-            time.sleep(min(2, remaining()))
-    if "model" in created:
-        path = [
-            "project",
-            project.id,
-            "modelregistries",
-            project.id,
-            "models",
-            created["model"],
-        ]
-        _client._send_request("DELETE", path, timeout=remaining())
-        while get(path):
-            time.sleep(min(2, remaining()))
+    left = []
+    for kind, identity in created:
+        if kind == "deployment":
+            path = ["project", project.id, "serving", identity]
+        else:
+            path = [
+                "project",
+                project.id,
+                "modelregistries",
+                project.id,
+                "models",
+                identity,
+            ]
+        try:
+            if kind == "deployment":
+                # An already stopped or failed deployment refuses the stop; the delete follows either way.
+                with contextlib.suppress(RestAPIError):
+                    gone("POST", path, {"action": "stop"})
+            if not gone("DELETE", path):
+                while not gone("GET", path):
+                    time.sleep(min(2, remaining()))
+        except Exception as err:  # noqa: BLE001
+            left.append((kind, identity, repr(err)))
+    if left:
+        pytest.fail(f"cleanup left these resources: {left}")
 
 
 def test_each_failed_start_carries_the_predictor_traceback(raising_deployment):
@@ -180,3 +202,28 @@ def test_each_failed_start_carries_the_predictor_traceback(raising_deployment):
             missing.append((attempt, str(failed.value)[-300:]))
         raising_deployment.stop(await_stopped=START_TIMEOUT_SECONDS)
     assert not missing, f"starts without the traceback in the error: {missing}"
+
+
+def test_the_log_budget_bounds_the_diagnosis(raising_deployment, monkeypatch):
+    budget = 0.5
+    tails = []
+    tail = serving_engine._predictor_log_tail
+
+    def timed(serving, deployment_instance):
+        started = time.monotonic()
+        result = tail(serving, deployment_instance)
+        tails.append((time.monotonic() - started, result))
+        return result
+
+    monkeypatch.setattr(serving_engine, "_FAILED_START_LOG_SECONDS", budget)
+    monkeypatch.setattr(serving_engine, "_predictor_log_tail", timed)
+    with pytest.raises(ModelServingException) as failed:
+        raising_deployment.start(await_running=START_TIMEOUT_SECONDS)
+    raising_deployment.stop(await_stopped=START_TIMEOUT_SECONDS)
+
+    assert len(tails) == 1
+    elapsed, result = tails[0]
+    # The step bounds each socket wait at 5 s, so the deadline is checked at least that often.
+    assert elapsed < budget + 5, f"the diagnosis took {elapsed:.1f}s"
+    assert result == "" or result.startswith("\nLast predictor log lines (")
+    assert str(failed.value).endswith(result)

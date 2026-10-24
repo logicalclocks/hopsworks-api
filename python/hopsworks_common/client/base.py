@@ -132,6 +132,7 @@ class Client:
         files: dict | None = None,
         with_base_path_params: bool = True,
         timeout: float | tuple[float, float] | None = None,
+        deadline: float | None = None,
     ) -> dict:
         """Send REST request to Hopsworks.
 
@@ -148,6 +149,7 @@ class Client:
             with_base_path_params: Whether to include the base path parameters (hopsworks-api/api) in the request URL.
             timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
                 Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
+            deadline: A `time.monotonic()` value after which no retry of an expired token starts.
 
         Returns:
             Response json
@@ -183,7 +185,7 @@ class Client:
         if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
             # refresh token and retry request - only on hopsworks
             response = self._retry_token_expired(
-                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1, timeout
+                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1, timeout, deadline
             )
 
         if response.status_code // 100 != 2:
@@ -196,11 +198,15 @@ class Client:
             return None
         return response.json()
 
-    def _retry_token_expired(self, request, stream, wait, retries, timeout=None):
+    def _retry_token_expired(
+        self, request, stream, wait, retries, timeout=None, deadline=None
+    ):
         """Refresh the JWT token and retry the request. Only on Hopsworks.
 
-        As the token might take a while to get refreshed. Keep trying.
+        As the token might take a while to get refreshed. Keep trying, until `deadline` if one is given.
         """
+        if deadline is not None and time.monotonic() + wait >= deadline:
+            raise TimeoutError("the deadline passes before the token can be retried")
         # Sleep the waited time before re-issuing the request
         time.sleep(wait)
 
@@ -215,7 +221,7 @@ class Client:
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
             # Try again.
             return self._retry_token_expired(
-                request, stream, wait * 2, retries + 1, timeout
+                request, stream, wait * 2, retries + 1, timeout, deadline
             )
         # If the number of retries have expired, the _send_request method
         # will throw an exception to the user as part of the status_code validation.
