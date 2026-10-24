@@ -120,17 +120,27 @@ def raising_deployment(project):
         script = os.path.join(work, "predict_raises.py")
         with open(script, "w") as f:
             f.write(RAISING_PREDICTOR)
-        # "unknown" while a create's call may have taken effect, "created" once it returned.
+        # "unknown" while a create's call may have taken effect, "created" once it returned,
+        # "refused" when it answered 4xx: nothing was created.
         creates = {}
+
+        def attempt(kind, create):
+            creates[kind] = "unknown"
+            try:
+                result = create()
+            except RestAPIError as err:
+                if 400 <= err.response.status_code < 500:
+                    creates[kind] = "refused"
+                raise
+            creates[kind] = "created"
+            return result
+
         try:
             model = registry.python.create_model(name)
-            creates["model"] = "unknown"
-            model.save(model_dir)
-            creates["model"] = "created"
-            creates["deployment"] = "unknown"
-            deployment = model.deploy(name=name, script_file=script)
-            creates["deployment"] = "created"
-            yield deployment
+            attempt("model", lambda: model.save(model_dir))
+            yield attempt(
+                "deployment", lambda: model.deploy(name=name, script_file=script)
+            )
         finally:
             _delete_named(project, name, creates)
 
@@ -178,7 +188,7 @@ def _delete_named(project, name, creates):
 
     left = []
     for kind in ("deployment", "model"):
-        if kind not in creates:
+        if creates.get(kind, "refused") == "refused":
             continue
         deadline = time.monotonic() + CLEANUP_BUDGET_SECONDS
         paths, why = None, None
