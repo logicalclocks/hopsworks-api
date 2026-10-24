@@ -110,6 +110,7 @@ if TYPE_CHECKING:
     from hopsworks_common.alert import FeatureGroupAlert
     from hsfs.constructor.filter import Filter, Logic
     from hsfs.core.job import Job
+    from hsfs.feature_group_commit import FeatureGroupCommit
     from hsfs.ge_validation_result import ValidationResult
     from hsfs.hopsworks_udf import HopsworksUdf
     from hsfs.statistics import Statistics
@@ -5369,6 +5370,67 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._feature_group_engine._delta_vacuum(self, retention_hours)
+
+    @public
+    def delete_partitions(
+        self, partitions: dict[str, list[Any]]
+    ) -> FeatureGroupCommit | None:
+        """Delete whole partitions from the offline feature store.
+
+        Only partition columns can be named, so the delete drops whole data files from the table's metadata without reading or rewriting any of them.
+        That makes it the cheap way to remove a day of data from a table partitioned by day, where [`remove_rows`][hsfs.feature_group.FeatureGroup.remove_rows] would have to find every row by primary key.
+
+        The values of one column select any of them, and columns are combined with AND, so `{"region": ["eu", "us"], "day": [1, 2]}` selects all four combinations.
+        A partition column left out is not restricted.
+        `None` selects the partition holding null values.
+
+        Example: Reload two days of data
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            fg.delete_partitions({"snapshot_date": ["2026-09-02", "2026-09-03"]})
+            fg.insert(reloaded_df, operation="insert")
+            ```
+
+        Warning: Delete and reload are two commits
+            Readers between the two commits see the partitions missing, and if the insert fails the partitions stay deleted.
+            Time travel to a point before the delete still returns the old data.
+
+        Warning: Stream feature groups
+            On a stream feature group, inserts reach the offline table through the materialization job.
+            Run the materialization job before deleting, or rows of those partitions that were not yet materialized are written back after the delete.
+
+        Note: Supported formats and partition columns
+            - DELTA: the columns of `partition_key`, from the Spark or the Python engine.
+            - ICEBERG: the columns of `partition_key`, or the identity transforms of `partitioned_by`, from classic Spark or the Python engine.
+              On a feature group stored on HopsFS, the Python engine must run inside the Hopsworks cluster, because pyiceberg reaches HopsFS through libhdfs.
+              A partition of a `day(...)` or `bucket(...)` transform cannot be named by a column value.
+            - HUDI: the columns of `partition_key`, or the identity transforms of `partitioned_by`, from classic Spark only.
+
+            Partition columns of type string, the integer types, boolean and date are supported.
+
+        Note: The online store is not changed
+            Rows of the deleted partitions are still served online.
+            Use [`remove_rows`][hsfs.feature_group.FeatureGroup.remove_rows] with `storage="online"` to delete them there.
+
+        Note: Storage is reclaimed later
+            The deleted files stay on storage for time travel until [`delta_vacuum`][hsfs.feature_group.FeatureGroup.delta_vacuum] (DELTA), snapshot expiry (ICEBERG) or the cleaner (HUDI) removes them.
+
+        Parameters:
+            partitions:
+                Maps each partition column to the list of its values to delete.
+                Strings for string columns, `int` for integer columns, `bool` for boolean columns, and `datetime.date` or `"YYYY-MM-DD"` for date columns.
+
+        Returns:
+            The commit of the delete, or `None` when no existing partition was selected.
+            Its `rows_deleted` is `None` where the delete does not report how many rows the dropped files held: always on HUDI, and on DELTA with the Python engine.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException:
+                If the feature group is not partitioned, a key is not a partition column that can be deleted by, a value does not fit its column type, or the format is not supported on this engine.
+                Also if the partitions were deleted but the commit could not be registered with Hopsworks; the message names the committed version.
+        """
+        return self._feature_group_engine._delete_partitions(self, partitions)
 
     def _require_time_travel_format(self, expected: str, operation: str) -> None:
         """Reject a format-specific layout operation on the wrong format.
