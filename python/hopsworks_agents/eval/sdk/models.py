@@ -47,7 +47,6 @@ def as_datetime(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-@public
 def _tag_list(value: Any) -> list[str]:
     """Tags as a list, whether they arrived as JSON text, a list, or nothing."""
     parsed = as_json(value, [])
@@ -56,6 +55,7 @@ def _tag_list(value: Any) -> list[str]:
     return [str(tag) for tag in parsed or []]
 
 
+@public
 def as_json(value: Any, default: Any) -> Any:
     """A JSON-as-text column parsed, or the default when empty or malformed."""
     if value in (None, ""):
