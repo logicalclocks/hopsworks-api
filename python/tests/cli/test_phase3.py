@@ -8,6 +8,9 @@ it for raw REST calls (connector create/delete).
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from unittest import mock
 
 from click.testing import CliRunner
@@ -157,29 +160,35 @@ def test_deployment_create_sets_the_cores_and_memory_it_is_given(mock_project):
     assert model.deploy.call_args.kwargs["resources"] is None
 
 
-def test_deployment_create_refuses_an_unsupported_predict_init_before_upload(
-    mock_project, tmp_path
-):
+def test_deployment_create_refuses_an_unsupported_predict_init_before_upload(tmp_path):
+    # A fresh interpreter, as `hops` runs: nothing of hsml is imported before the check. No host is
+    # configured, so a request would fail differently.
     script = tmp_path / "bad.py"
     script.write_text("class Predict:\n    def __init__(self, config):\n        pass\n")
-    mr = mock.MagicMock()
-    model = mock.MagicMock()
-    model.version = 1
-    mr.get_models.return_value = [model]
-    mock_project.get_model_registry.return_value = mr
-    dataset = mock.MagicMock()
-    mock_project.get_dataset_api.return_value = dataset
-
-    result = CliRunner().invoke(
-        cli, ["deployment", "create", "fraud", "--script", str(script)]
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("HOPSWORKS_", "REST_ENDPOINT", "PROJECT_NAME"))
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from hopsworks.cli.main import main; main()",
+            "deployment",
+            "create",
+            "fraud",
+            "--script",
+            str(script),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**env, "HOME": str(tmp_path)},
     )
 
-    assert result.exit_code != 0
-    assert f"{script}:2" in result.output
-    assert "config" in result.output
-    dataset.upload.assert_not_called()
-    dataset.mkdir.assert_not_called()
-    model.deploy.assert_not_called()
+    assert result.returncode != 0
+    assert f"{script}:2: Predict.__init__ takes config" in result.stderr + result.stdout
 
 
 def test_deployment_create_deploys_the_latest_version_whatever_the_order(mock_project):

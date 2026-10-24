@@ -353,10 +353,10 @@ def deployment_create(
     """
     if script_file and Path(script_file).is_file():
         # model.deploy only sees the uploaded path, so check the local file here.
-        from hsml.predictor import _check_predict_init
+        from hsml.utils.predict_init import check_predict_init
 
         try:
-            _check_predict_init(script_file)
+            check_predict_init(script_file)
         except ValueError as exc:
             raise click.ClickException(str(exc)) from exc
     project = session.get_project(ctx)
