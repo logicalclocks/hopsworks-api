@@ -451,6 +451,62 @@ class TestPollDeploymentStatus:
             )
         assert deployment.get_state.call_count == 1
 
+    @staticmethod
+    def _failed(mocker, reason):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        mocker.patch("time.sleep")
+        eng._get_available_instances = mocker.Mock(return_value=0)
+        deployment = mocker.Mock()
+        deployment.get_state.return_value = mocker.Mock(
+            status=PREDICTOR_STATE.STATUS_FAILED,
+            condition=mocker.Mock(
+                type=PREDICTOR_STATE.CONDITION_TYPE_STARTED, reason=reason
+            ),
+        )
+        return eng, deployment
+
+    @pytest.mark.parametrize(
+        "reason",
+        [None, "", "null", "Failed to run: predictor terminated unsuccessfully. null"],
+    )
+    def test_failed_without_a_reason_names_the_condition_and_the_log_tail(
+        self, mocker, reason
+    ):
+        eng, deployment = self._failed(mocker, reason)
+        deployment.read_logs.return_value = (
+            "Traceback\nValueError: Predict class constructor contains one or "
+            "more unsupported parameters"
+        )
+
+        with pytest.raises(ModelServingException) as e_info:
+            eng._poll_deployment_status(deployment, PREDICTOR_STATE.STATUS_RUNNING, 5)
+
+        message = str(e_info.value)
+        assert message.startswith("deployment failed (condition STARTED)")
+        assert "unsupported parameters" in message
+        deployment.read_logs.assert_called_once_with(component="predictor", tail=30)
+
+    def test_failed_with_a_reason_keeps_it_and_adds_the_log_tail(self, mocker):
+        eng, deployment = self._failed(mocker, "Failed to run: out of memory")
+        deployment.read_logs.return_value = "OOMKilled"
+
+        with pytest.raises(ModelServingException) as e_info:
+            eng._poll_deployment_status(deployment, PREDICTOR_STATE.STATUS_RUNNING, 5)
+
+        message = str(e_info.value)
+        assert message.startswith("Failed to run: out of memory")
+        assert "OOMKilled" in message
+
+    def test_failed_keeps_the_original_error_when_the_logs_fail(self, mocker):
+        eng, deployment = self._failed(mocker, "Failed to run: out of memory")
+        deployment.read_logs.side_effect = RuntimeError("logs unavailable")
+
+        with pytest.raises(ModelServingException) as e_info:
+            eng._poll_deployment_status(deployment, PREDICTOR_STATE.STATUS_RUNNING, 5)
+
+        assert str(e_info.value).startswith("Failed to run: out of memory")
+        assert "logs unavailable" not in str(e_info.value)
+
 
 class TestSchemaPublishing:
     """The stub and the content-addressed schema file are in place before the PUT."""

@@ -351,6 +351,14 @@ def deployment_create(
         cores: CPU cores per instance; None keeps the backend's default resources.
         memory: Memory per instance in MB; None keeps the backend's default resources.
     """
+    if script_file and Path(script_file).is_file():
+        # model.deploy only sees the uploaded path, so check the local file here.
+        from hsml.predictor import _check_predict_init
+
+        try:
+            _check_predict_init(script_file)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
     project = session.get_project(ctx)
     mr = project.get_model_registry()
     try:

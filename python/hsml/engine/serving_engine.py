@@ -103,6 +103,22 @@ def _render_chunk(chunk) -> str:
 _SCHEMA_NOT_FOUND = 240037
 
 
+def _no_reason(reason: str | None) -> bool:
+    """True for a failure reason that names no cause: none, empty, or ending in "null"."""
+    reason = (reason or "").strip()
+    return reason in ("", "null") or reason.endswith(". null")
+
+
+def _predictor_log_tail(deployment_instance) -> str:
+    """The last predictor log lines for a failed start, or "" when they cannot be read."""
+    try:
+        logs = deployment_instance.read_logs(component="predictor", tail=30)
+    except Exception:  # noqa: BLE001
+        return ""
+    logs = "\n".join(logs.strip().splitlines()[-30:]) if isinstance(logs, str) else ""
+    return f"\nLast predictor log lines:\n{logs}" if logs else ""
+
+
 # The scaling fields a backend older than 5.2 does not know and silently drops (HWORKS-3106, HWORKS-3113).
 _SCALING_FIELDS_5_2 = (
     "autoscaler",
@@ -211,7 +227,13 @@ class ServingEngine:
                     status == PREDICTOR_STATE.STATUS_RUNNING
                     and state.status == PREDICTOR_STATE.STATUS_FAILED
                 ):
-                    error_msg = state.condition.reason
+                    reason = (state.condition.reason or "").strip()
+                    if _no_reason(reason):
+                        error_msg = (
+                            f"deployment failed (condition {state.condition.type})"
+                        )
+                    else:
+                        error_msg = reason
                     if (
                         state.condition.type
                         == PREDICTOR_STATE.CONDITION_TYPE_INITIALIZED
@@ -219,16 +241,16 @@ class ServingEngine:
                         == PREDICTOR_STATE.CONDITION_TYPE_STARTED
                     ):
                         component = (
-                            "transformer"
-                            if "transformer" in state.condition.reason
-                            else "predictor"
+                            "transformer" if "transformer" in reason else "predictor"
                         )
                         error_msg += (
                             ". Please, check the server logs using `.get_logs(component='"
                             + component
                             + "')`"
                         )
-                    raise ModelServingException(error_msg)
+                    raise ModelServingException(
+                        error_msg + _predictor_log_tail(deployment_instance)
+                    )
             raise ModelServingException(
                 "Deployment has not reached the desired status within the expected awaiting time. Check the current status by using `.get_state()`, "
                 "explore the server logs using `.get_logs()` or set a higher value for await_"
@@ -398,7 +420,7 @@ class ServingEngine:
                 print("Deployments is already running and updating")
                 return (True, state)
             if state.status == PREDICTOR_STATE.STATUS_FAILED:
-                print("Deployment is in failed state. " + state.condition.reason)
+                print(f"Deployment is in failed state. {state.condition.reason}")
                 return (True, state)
             if state.status == PREDICTOR_STATE.STATUS_STOPPING:
                 raise ModelServingException(

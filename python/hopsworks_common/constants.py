@@ -199,6 +199,9 @@ class MODEL_SERVING:
     # class to run under the KServe wrapper, not a server to start with python.
     SCRIPT_KIND_ENV_VAR = "SERVING_SCRIPT_KIND"
     SCRIPT_KIND_PREDICTOR = "predictor"
+    # Keyword arguments the serving runtime may pass to Predict.__init__; it
+    # refuses any other parameter (SUPPORTED_INIT_ARGS in kserve_models.py).
+    PREDICT_INIT_ARGS = ("project", "deployment", "model", "async_logger")
     # which component of the revision validates requests against the schema
     SCHEMA_ENFORCER_ENV_VAR = "SERVING_SCHEMA_ENFORCER"
     SCHEMA_ENFORCER_PREDICTOR = "predictor"
