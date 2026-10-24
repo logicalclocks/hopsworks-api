@@ -346,8 +346,20 @@ public class SparkEngine extends EngineBase {
         return timeSeriesSplit(trainingDataset, query, readOptions, false);
       }
     } else {
-      return HashSplit.split((Dataset<Row>) query.read(false, readOptions), trainingDataset, features);
+      return randomSplit((Dataset<Row>) query.read(false, readOptions), trainingDataset, features);
     }
+  }
+
+  static Dataset<Row>[] randomSplit(Dataset<Row> dataset, TrainingDataset trainingDataset,
+                                    List<TrainingDatasetFeature> features) {
+    if (HashSplit.METHOD.equals(trainingDataset.getSplitMethod())) {
+      return HashSplit.split(dataset, trainingDataset, features);
+    }
+    // Created before split methods: keep the split it was created with.
+    double[] weights = trainingDataset.getSplits().stream().mapToDouble(s -> s.getPercentage()).toArray();
+    return trainingDataset.getSeed() != null
+        ? dataset.randomSplit(weights, trainingDataset.getSeed())
+        : dataset.randomSplit(weights);
   }
 
   private Dataset<Row>[] timeSeriesSplit(TrainingDataset trainingDataset, Query query,

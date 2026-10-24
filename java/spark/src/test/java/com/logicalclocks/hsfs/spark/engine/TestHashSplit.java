@@ -19,6 +19,7 @@ package com.logicalclocks.hsfs.spark.engine;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.logicalclocks.hsfs.Split;
 import com.logicalclocks.hsfs.TrainingDatasetFeature;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
@@ -35,9 +36,11 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,13 +60,24 @@ public class TestHashSplit {
     }
     switch (type.kind) {
       case "int":
-        return node.longValue();
+        switch (type.name) {
+          case "tinyint":
+            return (byte) node.intValue();
+          case "smallint":
+            return (short) node.intValue();
+          case "int":
+          case "integer":
+            return node.intValue();
+          default:
+            return node.longValue();
+        }
       case "double":
         return node.isTextual() ? Double.parseDouble(node.asText()) : node.doubleValue();
       case "float":
         return (float) (node.isTextual() ? Double.parseDouble(node.asText()) : node.doubleValue());
       case "timestamp":
-        return Instant.parse(node.asText());
+        return "timestamp_ntz".equals(type.name)
+            ? LocalDateTime.parse(node.asText()) : Instant.parse(node.asText());
       case "date":
         return LocalDate.parse(node.asText());
       case "decimal":
@@ -79,7 +93,15 @@ public class TestHashSplit {
       case "struct": {
         Object[] fields = new Object[type.fieldNames.size()];
         for (int i = 0; i < fields.length; i++) {
-          fields[i] = decode(node.get(type.fieldNames.get(i)), type.fieldTypes.get(i));
+          // The frame's field names may differ in case from the declared ones.
+          JsonNode field = null;
+          for (Iterator<String> names = node.fieldNames(); names.hasNext(); ) {
+            String name = names.next();
+            if (name.equalsIgnoreCase(type.fieldNames.get(i))) {
+              field = node.get(name);
+            }
+          }
+          fields[i] = decode(field, type.fieldTypes.get(i));
         }
         return RowFactory.create(fields);
       }
@@ -90,7 +112,8 @@ public class TestHashSplit {
       }
       case "map": {
         Map<Object, Object> entries = new HashMap<>();
-        node.fields().forEachRemaining(e -> entries.put(e.getKey(), decode(e.getValue(), type.element)));
+        node.fields().forEachRemaining(e -> entries.put(
+            decode(new TextNode(e.getKey()), type.key), decode(e.getValue(), type.element)));
         return entries;
       }
       case "boolean":
@@ -156,9 +179,11 @@ public class TestHashSplit {
     List<TrainingDatasetFeature> features = new ArrayList<>();
     StringBuilder ddl = new StringBuilder();
     for (int i = 0; i < types.size(); i++) {
-      String name = golden.get("columns").get(i).get(0).asText();
+      JsonNode column = golden.get("columns").get(i);
+      String name = column.get(0).asText();
       features.add(new TrainingDatasetFeature(name, types.get(i)));
-      ddl.append(i == 0 ? "" : ", ").append(name).append(' ').append(types.get(i));
+      // The frame's type, where it differs from the declared one.
+      ddl.append(i == 0 ? "" : ", ").append(name).append(' ').append(column.get(column.size() - 1).asText());
     }
     List<Split> splits = new ArrayList<>();
     golden.get("splits").forEach(s -> splits.add(new Split(s.get(0).asText(), (float) s.get(1).doubleValue())));
@@ -167,6 +192,7 @@ public class TestHashSplit {
     trainingDataset.setId(golden.get("legacy").get("id").intValue());
     trainingDataset.setVersion(golden.get("legacy").get("version").intValue());
     trainingDataset.setSeed(legacy ? null : golden.get("seed").longValue());
+    trainingDataset.setSplitMethod(HashSplit.METHOD);
     JsonNode buckets = golden.get("expected").get(legacy ? "legacy_buckets" : "buckets");
 
     SparkSession session = SparkEngine.getInstance().getSparkSession();
@@ -201,6 +227,27 @@ public class TestHashSplit {
     } finally {
       session.conf().set("spark.sql.session.timeZone", zone);
       session.conf().set("spark.sql.datetime.java8API.enabled", java8Api);
+    }
+  }
+
+  @Test
+  public void testTrainingDatasetWithoutSplitMethodKeepsTheLegacySplit() {
+    // Arrange
+    Dataset<Row> dataset = SparkEngine.getInstance().getSparkSession().range(200).toDF().coalesce(1);
+    TrainingDataset trainingDataset = new TrainingDataset();
+    List<Split> splits = new ArrayList<>();
+    splits.add(new Split("train", 0.7f));
+    splits.add(new Split("test", 0.3f));
+    trainingDataset.setSplits(splits);
+    trainingDataset.setSeed(7L);
+    Dataset<Row>[] legacy = dataset.randomSplit(new double[] {0.7f, 0.3f}, 7L);
+
+    // Act
+    Dataset<Row>[] result = SparkEngine.randomSplit(dataset, trainingDataset, null);
+
+    // Assert
+    for (int i = 0; i < result.length; i++) {
+      Assertions.assertEquals(legacy[i].collectAsList(), result[i].collectAsList());
     }
   }
 }

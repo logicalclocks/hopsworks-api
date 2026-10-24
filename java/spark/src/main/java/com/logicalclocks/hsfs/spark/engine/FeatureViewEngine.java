@@ -86,6 +86,9 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
     Dataset<Row>[] datasets = SparkEngine.getInstance().write(trainingDataset, query, Maps.newHashMap(),
         writeOptions, SaveMode.Overwrite, featureView.getFeatures());
     computeStatistics(featureView, trainingDataset, datasets);
+    for (Dataset<Row> dataset : datasets) {
+      dataset.unpersist();
+    }
   }
 
   public TrainingDatasetBundle getTrainingDataset(
@@ -190,8 +193,13 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
     }
   }
 
-  // The seed salts the hash split, so every read of the version gives the same split.
+  // A new training dataset with random splits is split by the keyed hash of each row, which the seed salts, so
+  // every read of the version gives the same split.
   static void assignSeed(TrainingDataset trainingDataset) throws FeatureStoreException {
+    if (trainingDataset.getSplits() != null && trainingDataset.getSplits().stream()
+        .anyMatch(split -> !Split.SplitType.TIME_SERIES_SPLIT.equals(split.getSplitType()))) {
+      trainingDataset.setSplitMethod(HashSplit.METHOD);
+    }
     if (trainingDataset.getSeed() != null) {
       if (trainingDataset.getSeed() < 0) {
         throw new FeatureStoreException(
