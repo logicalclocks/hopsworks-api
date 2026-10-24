@@ -798,7 +798,11 @@ class DeltaEngine:
                         "The datanode and namenode load balancers may not be enabled on this cluster; "
                         "contact your system administrator."
                     )
-                deltars_loc = f"hdfs://{namenode}:{parsed_url.port}{parsed_url.path}"
+                port = self._variable_api._get_loadbalancer_external_port("namenode")
+                if port is None:
+                    # Clusters older than the port variable expose the namenode on the location's port.
+                    port = parsed_url.port
+                deltars_loc = f"hdfs://{namenode}:{port}{parsed_url.path}"
                 _logger.debug(
                     f"External client, using namenode url + delta-rs location: {deltars_loc}"
                 )

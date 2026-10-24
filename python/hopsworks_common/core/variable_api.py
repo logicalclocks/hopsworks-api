@@ -158,6 +158,35 @@ class VariableApi:
                 ) from err
             raise err
 
+    def _get_loadbalancer_external_port(
+        self, service: Literal["datanode", "namenode"]
+    ) -> int | None:
+        """Get the port of the external loadbalancer for a service.
+
+        Parameters:
+            service: Name of the service.
+
+        Returns:
+            The port of the external loadbalancer for the service, or `None` if the variable does not exist on this cluster.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the variable is not a port number.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        variable = f"loadbalancer_external_port_{service}"
+        try:
+            port = self._get_variable(variable)
+        except RestAPIError as err:
+            if err.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND:
+                return None
+            raise
+        try:
+            return int(port)
+        except (TypeError, ValueError) as err:
+            raise FeatureStoreException(
+                f"Variable {variable} is not a port number: {port!r}."
+            ) from err
+
     def _get_upload_policy(self) -> str | None:
         """Get the cluster policy governing who may upload files.
 
