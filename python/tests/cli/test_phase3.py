@@ -59,7 +59,12 @@ def test_deployment_logs_defaults_to_kubernetes_source(mock_project):
     result = CliRunner().invoke(cli, ["deployment", "logs", "fraud", "--tail", "5"])
     assert result.exit_code == 0, result.output
     deployment.read_logs.assert_called_with(
-        component="predictor", tail=5, source="kubernetes", since=None, until=None
+        component="predictor",
+        tail=5,
+        source="kubernetes",
+        since=None,
+        until=None,
+        previous=False,
     )
     assert "line1" in result.output
 

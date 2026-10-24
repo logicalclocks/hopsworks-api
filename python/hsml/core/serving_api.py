@@ -714,6 +714,7 @@ class ServingApi:
         until: str | None = None,
         pod: str | None = None,
         timestamps: bool = False,
+        previous: bool = False,
     ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 
@@ -737,6 +738,8 @@ class ServingApi:
             pod: Restrict to a single instance / container name.
             timestamps: Prefix each line with the kubelet timestamp, which
                 is what a caller needs to build a resume cursor.
+            previous: Read the previous, terminated container instead of
+                the running one, for a crashed or restarted predictor.
 
         Returns:
             Deployment logs.
@@ -764,6 +767,8 @@ class ServingApi:
             query_params["pod"] = pod
         if timestamps:
             query_params["timestamps"] = "true"
+        if previous:
+            query_params["previous"] = "true"
         return deployable_component_logs.DeployableComponentLogs.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)
         )

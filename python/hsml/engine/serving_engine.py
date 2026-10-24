@@ -110,13 +110,25 @@ def _no_reason(reason: str | None) -> bool:
 
 
 def _predictor_log_tail(deployment_instance) -> str:
-    """The last predictor log lines for a failed start, or "" when they cannot be read."""
-    try:
-        logs = deployment_instance.read_logs(component="predictor", tail=30)
-    except Exception:  # noqa: BLE001
-        return ""
-    logs = "\n".join(logs.strip().splitlines()[-30:]) if isinstance(logs, str) else ""
-    return f"\nLast predictor log lines:\n{logs}" if logs else ""
+    """The last predictor log lines for a failed start, or "" when they cannot be read.
+
+    A predictor that fails while starting is restarted, so the live container can be
+    empty at the moment the failure is seen; the crash is then in the previous one.
+    """
+    for previous in (False, True):
+        try:
+            logs = deployment_instance.read_logs(
+                component="predictor", tail=30, previous=previous
+            )
+        except Exception:  # noqa: BLE001
+            continue
+        logs = (
+            "\n".join(logs.strip().splitlines()[-30:]) if isinstance(logs, str) else ""
+        )
+        if logs:
+            label = " (previous container)" if previous else ""
+            return f"\nLast predictor log lines{label}:\n{logs}"
+    return ""
 
 
 # The scaling fields a backend older than 5.2 does not know and silently drops (HWORKS-3106, HWORKS-3113).
@@ -1126,6 +1138,7 @@ class ServingEngine:
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
+        previous: bool = False,
     ) -> str:
         """Return deployment logs as a single plain-text string.
 
@@ -1140,6 +1153,7 @@ class ServingEngine:
             since: ISO-8601 lower bound for log timestamps, if any.
             until: ISO-8601 upper bound for log timestamps, if any.
             pod: Specific pod name to read logs for, if any.
+            previous: Read the previous, terminated container instead of the running one, for a crashed or restarted predictor.
 
         Returns:
             All matching log chunks concatenated into a single string.
@@ -1152,6 +1166,7 @@ class ServingEngine:
             since=since,
             until=until,
             pod=pod,
+            previous=previous,
         )
         return self._format_log_chunks(chunks or [])
 

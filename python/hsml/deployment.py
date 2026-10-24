@@ -834,6 +834,7 @@ class Deployment:
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
+        previous: bool = False,
     ) -> str:
         r"""Return deployment logs as a single plain-text string.
 
@@ -855,6 +856,7 @@ class Deployment:
             until: ISO-8601 upper bound on log timestamp. Ignored on the
                 Kubernetes path.
             pod: Restrict to one instance / container name.
+            previous: Read the previous, terminated container instead of the running one, for a crashed or restarted predictor.
 
         Returns:
             The joined logs as plain text. Empty string when there are no
@@ -878,6 +880,7 @@ class Deployment:
             since=since,
             until=until,
             pod=pod,
+            previous=previous,
         )
 
     @public

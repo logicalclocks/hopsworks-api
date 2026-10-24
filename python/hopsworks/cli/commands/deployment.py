@@ -581,6 +581,11 @@ def deployment_predict(
 @click.option("--since", help="ISO-8601 lower bound on log timestamp.")
 @click.option("--until", help="ISO-8601 upper bound on log timestamp.")
 @click.option(
+    "--previous",
+    is_flag=True,
+    help="Read the previous, terminated container: the crash of a predictor that restarted.",
+)
+@click.option(
     "-f",
     "--follow",
     is_flag=True,
@@ -619,6 +624,7 @@ def deployment_logs(
     source: str,
     since: str | None,
     until: str | None,
+    previous: bool,
     follow: bool,
     interval: float,
     download: bool,
@@ -640,6 +646,7 @@ def deployment_logs(
         source: ``kubernetes`` or ``opensearch`` (deprecated).
         since: ISO-8601 lower bound on log timestamp.
         until: ISO-8601 upper bound on log timestamp.
+        previous: Read the previous, terminated container.
         follow: Stream new lines instead of returning a one-shot tail.
         interval: Seconds between polls when following.
         download: Download the HopsFS log archives instead of reading pods.
@@ -670,6 +677,8 @@ def deployment_logs(
             click.echo(local_path)
         return
 
+    if follow and previous:
+        raise click.UsageError("--previous cannot be combined with --follow.")
     if follow:
         try:
             for chunk in deployment.tail_logs(
@@ -696,11 +705,17 @@ def deployment_logs(
             source=source,
             since=since,
             until=until,
+            previous=previous,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Log fetch failed: {exc}") from exc
     if output.JSON_MODE:
         output.print_json({"component": component, "logs": text})
+        return
+    if not text and not previous:
+        click.echo(
+            "<no logs> (a restarted container starts empty: --previous reads the last one)"
+        )
         return
     click.echo(text or "<no logs>")
 

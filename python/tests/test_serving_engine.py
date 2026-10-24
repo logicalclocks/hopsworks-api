@@ -484,7 +484,9 @@ class TestPollDeploymentStatus:
         message = str(e_info.value)
         assert message.startswith("deployment failed (condition STARTED)")
         assert "unsupported parameters" in message
-        deployment.read_logs.assert_called_once_with(component="predictor", tail=30)
+        deployment.read_logs.assert_called_once_with(
+            component="predictor", tail=30, previous=False
+        )
 
     def test_failed_with_a_reason_keeps_it_and_adds_the_log_tail(self, mocker):
         eng, deployment = self._failed(mocker, "Failed to run: out of memory")
