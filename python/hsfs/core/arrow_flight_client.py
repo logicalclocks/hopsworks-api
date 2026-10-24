@@ -38,7 +38,7 @@ import pyarrow.flight
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hsfs import feature_group
+from hsfs import feature_group, training_dataset_split
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
 from pyarrow.flight import FlightServerError
@@ -57,28 +57,43 @@ if HAS_POLARS:
 _logger = logging.getLogger(__name__)
 
 
-def _to_pandas_exact_integers(table: pyarrow.Table):
-    """Convert to pandas without rounding integers above 2^53.
+def _holds_integers(data_type) -> bool:
+    if pyarrow.types.is_integer(data_type):
+        return True
+    if (
+        pyarrow.types.is_list(data_type)
+        or pyarrow.types.is_large_list(data_type)
+        or pyarrow.types.is_fixed_size_list(data_type)
+    ):
+        return _holds_integers(data_type.value_type)
+    if pyarrow.types.is_map(data_type):
+        return _holds_integers(data_type.key_type) or _holds_integers(
+            data_type.item_type
+        )
+    if pyarrow.types.is_struct(data_type):
+        return any(_holds_integers(field.type) for field in data_type)
+    return False
 
-    By default an integer holding a null becomes float64, also inside lists and structs.
-    A top-level integer column with a null becomes a pandas nullable integer instead.
+
+def _to_pandas_with_exact_integers(table: pyarrow.Table):
+    """The plain pandas conversion, with the exact values of the integers it rounds.
+
+    The plain conversion turns an integer holding a null into float64, also inside lists and
+    structs, which rounds values above 2^53. Those columns are kept exactly in `frame.attrs`
+    for the split hash; the frame itself is what a plain read returns.
     """
-    import pandas as pd
-
-    nullable = {
-        pyarrow.int8(): pd.Int8Dtype(),
-        pyarrow.int16(): pd.Int16Dtype(),
-        pyarrow.int32(): pd.Int32Dtype(),
-        pyarrow.int64(): pd.Int64Dtype(),
-        pyarrow.uint8(): pd.UInt8Dtype(),
-        pyarrow.uint16(): pd.UInt16Dtype(),
-        pyarrow.uint32(): pd.UInt32Dtype(),
-        pyarrow.uint64(): pd.UInt64Dtype(),
-    }
-    frame = table.to_pandas(integer_object_nulls=True)
-    for field, column in zip(table.schema, table.columns, strict=True):
-        if field.type in nullable and column.null_count:
-            frame[field.name] = column.to_pandas(types_mapper=nullable.get)
+    frame = table.to_pandas()
+    rounded = [
+        field.name
+        for field, column in zip(table.schema, table.columns, strict=True)
+        if _holds_integers(field.type)
+        and (column.null_count or not pyarrow.types.is_integer(field.type))
+    ]
+    if rounded:
+        exact = table.select(rounded).to_pandas(integer_object_nulls=True)
+        frame.attrs[training_dataset_split.EXACT_COLUMNS_ATTR] = {
+            name: exact[name].tolist() for name in rounded
+        }
     return frame
 
 
@@ -589,7 +604,7 @@ class ArrowFlightClient:
                 raise ModuleNotFoundError(polars_not_installed_message)
             return pl.from_arrow(reader.read_all())
         if exact_integers:
-            return _to_pandas_exact_integers(reader.read_all())
+            return _to_pandas_with_exact_integers(reader.read_all())
         return reader.read_pandas()
 
     @_handle_afs_exception(user_message=READ_ERROR)

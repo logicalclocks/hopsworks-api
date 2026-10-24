@@ -792,6 +792,48 @@ class TestFeatureViewEngine:
             assert body["seed"] < 2**31
         else:
             assert body["seed"] == user_seed
+        assert body["splitMethod"] == "hash"
+
+    @pytest.mark.parametrize(
+        ("response_split_method", "expected"), [("hash", "hash"), (None, None)]
+    )
+    def test_create_training_data_metadata_takes_split_method_from_backend(
+        self, mocker, response_split_method, expected
+    ):
+        # A backend without split methods stores none: the version keeps the legacy split.
+        # Arrange
+        mock_client = mocker.patch("hopsworks_common.client._get_instance").return_value
+        mock_client._project_id = 50
+        mock_client._project_name = "p"
+        response = {
+            "type": "trainingDatasetDTO",
+            "id": 1,
+            "name": "fv_name",
+            "version": 1,
+            "featurestoreId": 99,
+            "dataFormat": "tsv",
+            "seed": 7,
+        }
+        if response_split_method:
+            response["splitMethod"] = response_split_method
+        mock_client._send_request.return_value = response
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        fv = MagicMock()
+        td = training_dataset.TrainingDataset(
+            name="fv_name",
+            version=None,
+            data_format="tsv",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            seed=7,
+            training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
+        )
+
+        # Act
+        created = fv_engine._create_training_data_metadata(fv, td)
+
+        # Assert
+        assert created.split_method == expected
 
     @pytest.mark.parametrize("seed", [2**63, -1, 1.5, "7", True])
     def test_create_training_data_metadata_rejects_invalid_seed(self, mocker, seed):

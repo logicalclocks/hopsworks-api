@@ -3688,6 +3688,31 @@ class TestSpark:
             sum_rows += result[column].count()
         assert sum_rows == 6
 
+    def test_random_split_without_split_method_keeps_the_legacy_split(self, mocker):
+        # A training dataset created before split methods reads the rows it was created with.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.7, "test": 0.3},
+            seed=7,
+        )
+        spark_df = spark_engine._spark_session.range(200).coalesce(1)
+        legacy = spark_df.randomSplit([0.7, 0.3], 7)
+
+        # Act
+        result = spark_engine._random_split(spark_df, td)
+
+        # Assert
+        for name, expected in zip(["train", "test"], legacy, strict=True):
+            assert sorted(r["id"] for r in result[name].collect()) == sorted(
+                r["id"] for r in expected.collect()
+            )
+
     def test_random_split_is_reproducible_with_seed(self, mocker):
         # The split is the keyed hash of each row, salted by the seed, so every
         # run gives the rows the hash assigns.
@@ -3704,6 +3729,7 @@ class TestSpark:
             featurestore_id=99,
             splits={"test_split1": 0.5, "test_split2": 0.5},
             seed=1,
+            split_method="hash",
         )
 
         df = pd.DataFrame({"col_0": list(range(100))})
@@ -3809,6 +3835,7 @@ class TestSpark:
             splits={"train": 0.6, "validation": 0.2, "test": 0.2},
             seed=seed,
             id=10,
+            split_method="hash",
         )
 
     @staticmethod
@@ -4008,6 +4035,7 @@ class TestSpark:
             splits=dict(golden["splits"]),
             seed=None if legacy else golden["seed"],
             id=golden["legacy"]["id"],
+            split_method="hash",
         )
         expected_buckets = golden["expected"]["legacy_buckets" if legacy else "buckets"]
         expected = {
@@ -4031,7 +4059,8 @@ class TestSpark:
         try:
             spark_df = session.createDataFrame(
                 rows,
-                ", ".join(f"{n} {t}" for n, t in zip(names, types_, strict=True)),
+                # The frame's type, where it differs from the declared one.
+                ", ".join(f"{c[0]} {c[-1]}" for c in golden["columns"]),
             )
 
             # Act

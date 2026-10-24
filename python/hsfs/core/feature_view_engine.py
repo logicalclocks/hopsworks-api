@@ -34,6 +34,7 @@ from hsfs import (
     feature_group,
     feature_view,
     training_dataset_feature,
+    training_dataset_split,
     util,
 )
 from hsfs.constructor.filter import Filter, Logic
@@ -1099,6 +1100,7 @@ class FeatureViewEngine:
         return [super(td.__class__, td) for td in tds]
 
     def _create_training_data_metadata(self, feature_view_obj, training_dataset_obj):
+        training_dataset_split._set_split_method(training_dataset_obj)
         # The seed salts the hash split, so every read of the version gives the same split.
         seed = training_dataset_obj.seed
         if seed is not None:

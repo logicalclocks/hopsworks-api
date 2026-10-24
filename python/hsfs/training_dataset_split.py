@@ -122,6 +122,12 @@ class TrainingDatasetSplit:
         )
 
 
+# A training dataset's split method: random splits by a keyed hash of each row. Training datasets
+# without one were created before split methods and keep their original split.
+HASH_SPLIT_METHOD = "hash"
+# DataFrame.attrs key of the exact values of the integer columns a pandas read rounds.
+EXACT_COLUMNS_ATTR = "hopsworks_exact_split_columns"
+
 _EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
 _EPOCH_ORDINAL = datetime.date(1970, 1, 1).toordinal()
 _MICROSECOND = datetime.timedelta(microseconds=1)
@@ -215,7 +221,9 @@ def _encode_int(value, out):
     if -(2**63) <= value < 2**63:
         out += b"I" + struct.pack(">q", value)
     else:
-        raw = value.to_bytes((value.bit_length() + 8) // 8, "big", signed=True)
+        # Shortest two's complement, as Java's BigInteger.toByteArray.
+        length = ((value if value >= 0 else ~value).bit_length() + 8) // 8
+        raw = value.to_bytes(length, "big", signed=True)
         out += b"J" + struct.pack(">I", len(raw)) + raw
 
 
@@ -417,6 +425,15 @@ def _split_indexes(columns, types, salt: bytes, fractions) -> list[int]:
         )
         for row in zip(*columns, strict=True)
     ]
+
+
+def _set_split_method(training_dataset) -> None:
+    """A new training dataset with random splits is split by the keyed hash of each row."""
+    if any(
+        split.split_type == TrainingDatasetSplit.RANDOM_SPLIT
+        for split in training_dataset.splits
+    ):
+        training_dataset.split_method = HASH_SPLIT_METHOD
 
 
 def _split_salt(training_dataset) -> bytes:

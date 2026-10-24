@@ -2500,7 +2500,8 @@ class TestPython:
 
     def test_random_split_reads_large_bigints_exactly(self, mocker):
         # The Query Service read turns an integer column holding a null into
-        # float64, which rounds values above 2^53 before they are hashed.
+        # float64, which rounds values above 2^53. The hash uses the stored
+        # values; the splits are what the plain read returns.
         # Arrange
         import pyarrow.flight as flight
         from hsfs.constructor.fs_query import FsQuery
@@ -2566,9 +2567,7 @@ class TestPython:
 
         # Act
         try:
-            result = python_engine._prepare_transform_split_df(
-                query_obj, td, view, {}, "default"
-            )
+            result = python_engine._get_training_data(td, view, query_obj, {}, "numpy")
         finally:
             server.shutdown()
 
@@ -2583,9 +2582,16 @@ class TestPython:
             split.name: {k for k in range(60) if indexes[k] == i}
             for i, split in enumerate(td.splits)
         }
-        assert sorted(
-            b for df in result.values() for b in df["big"] if not pd.isna(b)
-        ) == sorted(b for b in big if b is not None)
+        plain = table.to_pandas()
+        for split_df in result.values():
+            assert training_dataset_split.EXACT_COLUMNS_ATTR not in split_df.attrs
+            assert split_df.dtypes.equals(plain.dtypes)
+            expected = plain.loc[split_df.index]
+            assert split_df["big"].equals(expected["big"])
+            assert repr(split_df["arr"].tolist()) == repr(expected["arr"].tolist())
+            features, labels = python_engine._split_labels(split_df, ["big"], "numpy")
+            assert labels.dtype == np.float64
+            np.testing.assert_array_equal(labels[:, 0], expected["big"].to_numpy())
 
     @staticmethod
     def _hash_split_td(seed=42, version=1):
@@ -2598,6 +2604,7 @@ class TestPython:
             train_split="train",
             seed=seed,
             id=10,
+            split_method="hash",
         )
 
     @staticmethod
@@ -2630,6 +2637,32 @@ class TestPython:
         for name, fraction in {"train": 0.6, "validation": 0.2, "test": 0.2}.items():
             assert abs(len(keys[name]) / n - fraction) < tolerance
 
+    def test_random_split_without_split_method_keeps_the_legacy_split(self, mocker):
+        # A training dataset created before split methods reads the rows it was created with:
+        # the split of the release before split methods, written out here.
+        # Arrange
+        import random
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.7, "test": 0.3},
+            seed=7,
+        )
+        df = pd.DataFrame({"k": range(50)})
+        groups = [0] * 35 + [1] * 15
+        random.Random(7).shuffle(groups)
+
+        # Act
+        result = python.Engine()._random_split(df, td)
+
+        # Assert
+        assert list(result["train"]["k"]) == [k for k in range(50) if groups[k] == 0]
+        assert list(result["test"]["k"]) == [k for k in range(50) if groups[k] == 1]
+
     def test_random_split_is_reproducible_with_seed(self, mocker):
         # Same rows and seed give the same split, whatever the read order.
         # Arrange
@@ -2645,6 +2678,7 @@ class TestPython:
             train_split="train",
             seed=123,
             id=10,
+            split_method="hash",
         )
 
         # Act
@@ -2671,6 +2705,7 @@ class TestPython:
             train_split="train",
             seed=42,
             id=10,
+            split_method="hash",
         )
 
         # Act
@@ -2862,6 +2897,7 @@ class TestPython:
             splits={"train": 0.8, "validation": 0.1, "test": 0.1},
             seed=42,
             id=10,
+            split_method="hash",
         )
 
         # Act

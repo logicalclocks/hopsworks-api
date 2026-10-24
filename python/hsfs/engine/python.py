@@ -21,6 +21,7 @@ import logging
 import math
 import numbers
 import os
+import random
 import re
 import sys
 import uuid
@@ -1618,12 +1619,16 @@ class Engine:
                     event_time,
                 )
         else:
-            # The hash needs integers above 2^53 exactly as stored.
-            read_option = dict(read_option or {})
-            read_option["arrow_flight_config"] = {
-                **(read_option.get("arrow_flight_config") or {}),
-                "exact_integers": True,
-            }
+            if (
+                training_dataset_obj.split_method
+                == training_dataset_split.HASH_SPLIT_METHOD
+            ):
+                # The hash needs integers above 2^53 exactly as stored.
+                read_option = dict(read_option or {})
+                read_option["arrow_flight_config"] = {
+                    **(read_option.get("arrow_flight_config") or {}),
+                    "exact_integers": True,
+                }
             result_dfs = self._random_split(
                 query_obj.read(read_options=read_option, dataframe_type=dataframe_type),
                 training_dataset_obj,
@@ -1663,18 +1668,39 @@ class Engine:
         is_polars = HAS_POLARS and isinstance(
             df, (pl.DataFrame, pl.dataframe.frame.DataFrame)
         )
-        columns = training_dataset_split._split_columns(
-            feature_view_obj, list(df.columns)
+        # Integer columns the pandas read rounded, as stored; never part of the returned splits.
+        exact = (
+            {}
+            if is_polars
+            else df.attrs.pop(training_dataset_split.EXACT_COLUMNS_ATTR, {})
         )
-        groups = training_dataset_split._split_indexes(
-            [
-                df.get_column(name).to_list() if is_polars else df[name].tolist()
-                for name, _ in columns
-            ],
-            [offline_type for _, offline_type in columns],
-            training_dataset_split._split_salt(training_dataset_obj),
-            [split.percentage for split in splits],
-        )
+        if (
+            training_dataset_obj.split_method
+            == training_dataset_split.HASH_SPLIT_METHOD
+        ):
+            columns = training_dataset_split._split_columns(
+                feature_view_obj, list(df.columns)
+            )
+            groups = training_dataset_split._split_indexes(
+                [
+                    exact[name]
+                    if name in exact
+                    else df.get_column(name).to_list()
+                    if is_polars
+                    else df[name].tolist()
+                    for name, _ in columns
+                ],
+                [offline_type for _, offline_type in columns],
+                training_dataset_split._split_salt(training_dataset_obj),
+                [split.percentage for split in splits],
+            )
+        else:
+            # Created before split methods: keep the split it was created with.
+            groups = []
+            for i, split in enumerate(splits):
+                groups += [i] * int(len(df) * split.percentage)
+            groups += [len(splits) - 1] * (len(df) - len(groups))
+            random.Random(training_dataset_obj.seed).shuffle(groups)
         if is_polars:
             df = df.with_columns(
                 pl.Series(name=split_column, values=groups, dtype=pl.Int64)

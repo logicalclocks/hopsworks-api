@@ -61,20 +61,25 @@ try:
         col,
         concat,
         current_timestamp,
+        date_part,
         datediff,
         expr,
         from_json,
+        hour,
         length,
         lit,
+        minute,
         monotonically_increasing_id,
         pandas_udf,
         regexp_replace,
         row_number,
         struct,
+        to_date,
         transform,
         transform_keys,
         transform_values,
         udf,
+        unix_date,
         unix_micros,
         unix_millis,
         when,
@@ -153,7 +158,7 @@ _logger = logging.getLogger(__name__)
 
 
 def _needs_hash_prep(data_type) -> bool:
-    if isinstance(data_type, (TimestampType, LongType)):
+    if isinstance(data_type, (TimestampType, TimestampNTZType, LongType)):
         return True
     if isinstance(data_type, ArrayType):
         return _needs_hash_prep(data_type.elementType)
@@ -167,13 +172,23 @@ def _needs_hash_prep(data_type) -> bool:
 
 
 def _hash_prep(column, data_type):
-    """Make `column` exact in pandas: TimestampType as UTC epoch micros, bigints as decimals.
+    """Make `column` exact in pandas: timestamps as UTC epoch micros, bigints as decimals.
 
     Spark hands timestamps to Python as wall time in the session zone, and pandas turns a
     bigint column holding a null into float64, which rounds values above 2^53.
     """
     if isinstance(data_type, TimestampType):
         return unix_micros(column).cast(DecimalType(20, 0))
+    if isinstance(data_type, TimestampNTZType):
+        # Wall time as UTC, from zone-free parts: pandas holds it in nanoseconds, which
+        # cannot reach years such as 0001.
+        exact = DecimalType(20, 0)
+        return (
+            unix_date(to_date(column)).cast(exact) * 86_400_000_000
+            + hour(column).cast(exact) * 3_600_000_000
+            + minute(column).cast(exact) * 60_000_000
+            + date_part(lit("SECOND"), column) * 1_000_000
+        ).cast(exact)
     if isinstance(data_type, LongType):
         return column.cast(DecimalType(20, 0))
     if not _needs_hash_prep(data_type):
@@ -1392,6 +1407,16 @@ class Engine:
         With a `release` list, the frame carrying the bucket is persisted so each row is hashed
         once, and appended to `release` for the caller to unpersist at the end of the read.
         """
+        if training_dataset.split_method != training_dataset_split.HASH_SPLIT_METHOD:
+            # Created before split methods: keep the split it was created with.
+            frames = dataset.randomSplit(
+                [split.percentage for split in training_dataset.splits],
+                training_dataset.seed,
+            )
+            return {
+                split.name: frames[index]
+                for index, split in enumerate(training_dataset.splits)
+            }
         split_column = f"_SPLIT_INDEX_{uuid.uuid4().hex}"
         hashed, offline_types = [], []
         for index, (name, declared) in enumerate(

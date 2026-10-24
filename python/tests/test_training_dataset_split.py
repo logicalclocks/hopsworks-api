@@ -49,7 +49,14 @@ def _decode_golden(value, declared):
     if kind == "binary":
         return bytes.fromhex(value)
     if kind == "struct":
-        return {name: _decode_golden(value.get(name), t) for name, t in declared[1]}
+        # Keys as the frame holds them, which may differ in case from the declared type.
+        keys = {key.lower(): key for key in value}
+        return {
+            keys.get(name.lower(), name): _decode_golden(
+                value.get(keys.get(name.lower(), name)), t
+            )
+            for name, t in declared[1]
+        }
     if kind == "array":
         return [_decode_golden(item, declared[1]) for item in value]
     if kind == "map":
@@ -66,8 +73,8 @@ def _golden():
         os.path.join(os.path.dirname(__file__), "fixtures", "hash_split_golden.json")
     ) as f:
         golden = json.load(f)
-    names = [name for name, _ in golden["columns"]]
-    types = [offline_type for _, offline_type in golden["columns"]]
+    names = [column[0] for column in golden["columns"]]
+    types = [column[1] for column in golden["columns"]]
     parsed = [training_dataset_split._parse_type(t) for t in types]
     rows = [
         [_decode_golden(v, d) for v, d in zip(row, parsed, strict=True)]
