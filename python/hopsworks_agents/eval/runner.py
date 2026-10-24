@@ -94,7 +94,10 @@ class AgentClient(Protocol):
 @dataclass
 class RunnerConfig:
     n_trials: int = 1
-    timeout_s: float = 120.0
+    #: How long one turn may take before the trial is TIMEOUT. Ten minutes: two
+    #: minutes lost the trials of an agent whose turn runs an analyst pipeline
+    #: with web search, which takes one to two minutes as a matter of course.
+    timeout_s: float = 600.0
     max_concurrency: int = 4
     #: How many finished trials to hand `on_progress` at a time. One insert per
     #: trial would be one feature-store write per trial; one per suite is what

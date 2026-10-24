@@ -216,6 +216,15 @@ def _run_metrics(
             if trials
             else 0.0
         ),
+        # Its sibling: the agent did not answer within the trial's time. Also a
+        # failure -- the person waited and got nothing -- and also worth telling
+        # apart from a wrong answer, since the remedy is the timeout or the agent's
+        # speed, not its reasoning.
+        "timeout_rate": (
+            sum(1 for t in trials if t.status is TrialStatus.TIMEOUT) / len(trials)
+            if trials
+            else 0.0
+        ),
         "p50_latency_ms": _percentile(latencies, 50),
         "p95_latency_ms": _percentile(latencies, 95),
         "p99_latency_ms": _percentile(latencies, 99),

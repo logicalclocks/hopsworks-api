@@ -1265,6 +1265,7 @@ class Jobs:
         sample_strategy: str | None = None,
         shared_sample: bool | None = None,
         parallel_runs: int | None = None,
+        trial_timeout_s: int | None = None,
         analyse_failures: bool | None = None,
         analysis_budget_calls: int | None = None,
         judge_provider: str | None = None,
@@ -1282,6 +1283,10 @@ class Jobs:
         deployment and nothing else returns it unchanged. It runs one execution at a time --
         a run asked for while one is going is queued -- unless ``parallel_runs`` says
         otherwise.
+
+        ``trial_timeout_s`` is how long one turn of a trial may take before it is recorded
+        as TIMEOUT: ten minutes when unset. Raise it for an agent whose turn runs for longer,
+        such as an analyst pipeline with web search.
 
         ``analyse_failures`` is on for a new job: a run that breaks something has it
         explained, by the deployment's analysis job, which this creates alongside. A failure
@@ -1309,6 +1314,7 @@ class Jobs:
             "sampleStrategy": sample_strategy,
             "sharedSample": shared_sample,
             "parallelRuns": parallel_runs,
+            "trialTimeoutS": trial_timeout_s,
             "analyseFailures": analyse_failures,
             "analysisBudgetCalls": analysis_budget_calls,
             "judgeProvider": judge_provider,
@@ -1339,6 +1345,7 @@ class Jobs:
         sample_strategy: str | None = None,
         shared_sample: bool | None = None,
         parallel_runs: int | None = None,
+        trial_timeout_s: int | None = None,
         analyse_failures: bool | None = None,
         analysis_budget_calls: int | None = None,
         judge_provider: str | None = None,
@@ -1365,6 +1372,7 @@ class Jobs:
             ("sampleStrategy", sample_strategy),
             ("sharedSample", shared_sample),
             ("parallelRuns", parallel_runs),
+            ("trialTimeoutS", trial_timeout_s),
             ("analyseFailures", analyse_failures),
             ("analysisBudgetCalls", analysis_budget_calls),
             ("judgeProvider", judge_provider),

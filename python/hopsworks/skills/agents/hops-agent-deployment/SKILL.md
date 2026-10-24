@@ -243,6 +243,10 @@ agent.url                                      # https://<gateway>/v1/<namespace
 agent.manifest()                               # what the agent advertises
 ```
 
+**A turn that takes minutes needs a longer client timeout.** `chat()` and `chat_stream()` wait 120 s by default (`timeout=`). An agent that runs analysts with web search can take longer, and a request that times out is not cancelled: the turn finishes in the pod and is traced, but the client never sees the reply. Pass `timeout=600` for such an agent, or use `chat_stream`, whose first delta arrives early.
+
+**A turn the application answers itself has no model call.** When the app replies without running the model (an agent that asks who you are before doing anything else, say), the trace is one agent span: no LLM span, zero tokens, no cost, and `trace(wait=)` returns as soon as the turn closes.
+
 **What `manifest()` returns** is the protocol document, not a flat summary: the agent's own fields are under `agent` (`name`, `description`, `version`, `framework`), the routes under `endpoints`, and the rest under `capabilities` and `ui`. `manifest()["agent"]["framework"]`, not `manifest()["framework"]` — the latter is `None` for every agent.
 
 **Tool events pair by id.** Each tool call yields more than one event, `status` going `running` then `done`, matched on the id. The closing event is named for the event, not for the tool — an agent that emits `ctx.emit_event("tool", status="done")` ends with `name == "tool"` — so follow the id rather than the name.

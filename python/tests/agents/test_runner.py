@@ -334,6 +334,22 @@ class TestFailureClassification:
         assert metrics["pass_rate"] == 0.0
         assert metrics["agent_error_rate"] == 1.0
 
+    def test_a_turn_that_ran_out_of_time_is_said_as_such(self):
+        # gpt-6 with web search runs one to two minutes a turn; trials lost to the
+        # clock read only as a pass rate, indistinguishable from wrong answers.
+        result = go(FakeClient(error="request timeout after 600s"))
+        metrics = {
+            m["metric_name"]: m["metric_value"]
+            for m in _run_metrics("r", "s", 7, result.trials)
+        }
+        assert metrics["timeout_rate"] == 1.0
+        assert metrics["agent_error_rate"] == 0.0
+
+    def test_the_default_trial_timeout_lets_a_slow_agent_answer(self):
+        from hopsworks_agents.eval.runner import RunnerConfig
+
+        assert RunnerConfig().timeout_s >= 600
+
 
 class TestWhenTheHarnessItselfBreaks:
     def test_one_broken_trial_does_not_throw_away_the_run(self, monkeypatch):

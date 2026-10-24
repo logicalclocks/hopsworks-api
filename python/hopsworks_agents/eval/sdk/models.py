@@ -558,6 +558,8 @@ class EvalJob(ApiModel):
     #: How many of this job's executions may run at once. None or 1 queues the
     #: second rather than running it beside the first.
     parallel_runs: int | None = None
+    #: How long one turn of a trial may take before it is TIMEOUT; None is ten minutes.
+    trial_timeout_s: int | None = None
     #: Whether a run that broke something is analysed as soon as it finishes.
     #: The analysis job is configured from here and triggered by this one.
     analyse_failures: bool | None = None

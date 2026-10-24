@@ -534,6 +534,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
             ),
             config=RunnerConfig(
                 n_trials=_run_trials(run, 1),
+                **({"timeout_s": args.trial_timeout_s} if args.trial_timeout_s else {}),
                 readiness_timeout_s=args.readiness_timeout_s,
                 max_concurrency=args.max_concurrency,
                 input_token_price_per_million=run.get("inputTokenPricePerMillion"),
@@ -579,6 +580,14 @@ def main() -> None:
         "p95 rather than accepting this default",
     )
     parser.add_argument("--max-concurrency", type=int, default=4)
+    parser.add_argument(
+        "--trial-timeout-s",
+        type=float,
+        default=None,
+        help="how long one turn of a trial may take before it is TIMEOUT; the "
+        "evaluation job's trial_timeout_s, passed by the backend. Ten minutes "
+        "when unset",
+    )
     parser.add_argument(
         "--judge-provider",
         default=None,
