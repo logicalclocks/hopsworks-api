@@ -5397,25 +5397,23 @@ class TestPython:
             caplog.clear()
 
     def test_get_feature_logging_df_missing_columns_create_the_delta_table(
-        self, mocker, monkeypatch, tmp_path, logging_features, logging_test_dataframe
+        self, monkeypatch, tmp_path, logging_features, logging_test_dataframe
     ):
         # Prepare: fv.log with the job transport creates the logging table on its first write.
-        import sys
-
-        monkeypatch.delitem(sys.modules, "deltalake", raising=False)
-        monkeypatch.delitem(sys.modules, "deltalake.exceptions", raising=False)
-        pytest.importorskip("deltalake")
-        from deltalake import DeltaTable
-        from hsfs.core.delta_engine import DeltaEngine
-
-        mocker.patch(
-            "hopsworks_common.client._get_instance"
-        ).return_value._is_external.return_value = False
-        mocker.patch("hsfs.engine._get_type", return_value="python")
-        python_engine = python.Engine()
+        from tests.core.test_delta_engine import _real_local_engine
 
         logging_features, meta_data_logging_columns, column_names = logging_features
         logging_feature_group_features = meta_data_logging_columns + logging_features
+        location = str(tmp_path / "log_fg")
+        writer = _real_local_engine(
+            monkeypatch,
+            location,
+            logging_feature_group_features,
+            partition_key=[
+                constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
+            ],
+        )
         args = TestPython.get_logging_arguments(
             logging_data=logging_test_dataframe.drop(
                 columns=["request_id", "rp_1", "rp_2", "extra_1", "extra_2"]
@@ -5425,24 +5423,10 @@ class TestPython:
         )
         args["model_name"] = None
         args["model_version"] = None
-
-        location = str(tmp_path / "log_fg")
-        fg = mocker.MagicMock()
-        fg.name = "log_fg"
-        fg.version = 1
-        fg.partitioned_by = None
-        fg.clustered_by = None
-        fg.columns = logging_feature_group_features
-        fg.partition_key = [
-            constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
-        ]
-        writer = DeltaEngine(99, "fs", fg, None, None)
-        mocker.patch.object(writer, "_get_delta_rs_location", return_value=location)
-        mocker.patch.object(writer, "_get_delta_rs_storage_options", return_value={})
+        from deltalake import DeltaTable
 
         # Act
-        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
+        logging_dataframe, _, _ = python.Engine()._get_feature_logging_df(**args)
         writer._write_delta_rs_dataset(logging_dataframe, operation="insert")
 
         # Assert

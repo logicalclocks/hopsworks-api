@@ -3265,19 +3265,57 @@ def test_new_table_write_keeps_partition_by(mocker, monkeypatch, tmp_path):
     assert DeltaTable(location).metadata().partition_columns == ["p", "i"]
 
 
+def _real_local_engine(monkeypatch, location, features, partition_key=None):
+    """A real feature group and DeltaEngine that write a local directory through real delta-rs.
+
+    The group has no storage connector, so it resolves as HopsFS storage, and the
+    in-cluster client hands delta-rs its location unchanged. The client is the real
+    in-cluster class with its constructor skipped: the constructor reads the pod's
+    JKS stores and token and fetches the project credentials from Hopsworks over REST.
+    """
+    monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+    monkeypatch.delitem(sys.modules, "deltalake.exceptions", raising=False)
+    pytest.importorskip("deltalake")
+    import hopsworks_common.connection
+    from hopsworks_common import client
+    from hopsworks_common.client import hopsworks as hopsworks_client
+    from hsfs import engine, feature_group
+    from hsfs.engine import python
+
+    monkeypatch.setattr(client, "_client", object.__new__(hopsworks_client.Client))
+    monkeypatch.setattr(hopsworks_common.connection, "_hsfs_engine_type", "python")
+    monkeypatch.setattr(engine, "_engine", python.Engine())
+    monkeypatch.setattr(engine, "_engine_type", "python")
+    fg = feature_group.FeatureGroup(
+        name="fg",
+        version=1,
+        featurestore_id=99,
+        primary_key=[features[0].name],
+        partition_key=partition_key or [],
+        time_travel_format="DELTA",
+        location=location,
+        features=features,
+    )
+    return DeltaEngine(99, "fs", fg, None, None)
+
+
 def test_new_table_write_casts_all_none_columns_to_declared_types(
-    mocker, monkeypatch, tmp_path
+    monkeypatch, tmp_path
 ):
     from hsfs import feature
 
     location = str(tmp_path / "fg")
-    engine = _local_rs_engine(mocker, monkeypatch, location, partition_key=["s"])
-    engine._feature_group.columns = [
-        feature.Feature(name="id", type="bigint"),
-        feature.Feature(name="s", type="string"),
-        feature.Feature(name="n", type="bigint"),
-        feature.Feature(name="amount", type="decimal(7)"),
-    ]
+    engine = _real_local_engine(
+        monkeypatch,
+        location,
+        [
+            feature.Feature(name="id", type="bigint", primary=True),
+            feature.Feature(name="s", type="string", partition=True),
+            feature.Feature(name="n", type="bigint"),
+            feature.Feature(name="amount", type="decimal(7)"),
+        ],
+        partition_key=["s"],
+    )
     from deltalake import DeltaTable
 
     # All-None object columns reach pyarrow as null, which delta-rs refuses.
@@ -3288,6 +3326,7 @@ def test_new_table_write_casts_all_none_columns_to_declared_types(
     engine._write_delta_rs_dataset(df, operation="insert")
 
     table = DeltaTable(location).to_pyarrow_table()
+    assert DeltaTable(location).metadata().partition_columns == ["s"]
     assert table.schema.field("s").type == pa.string()
     assert table.schema.field("n").type == pa.int64()
     assert table.schema.field("amount").type == pa.decimal128(7, 0)

@@ -452,18 +452,74 @@ class TestRealBuilder:
         (frame_out, _, _) = fg.inserts[0]
         assert set(frame_out.columns) == group_columns
 
-    def test_a_model_less_deployment_writes_the_none_version_marker(self):
-        from tests.core import test_feature_logging_arrow as parity
+    def test_a_model_less_deployment_commits_a_null_model_version(
+        self, tmp_path, monkeypatch
+    ):
+        # The predictor's chunk for the commit job carries what the inference logger
+        # would read from the event headers. Without a model there is no model
+        # version header, so the column has to be null, as fv.log writes it.
+        from hopsworks_common.constants import FEATURE_LOGGING
+        from hsfs import feature
+        from hsml import default_predictor as dp
+        from hsml import deployment, predictor
+        from hsml.constants import PREDICTOR
+        from hsml.deployment_schema import DeploymentSchema
 
+        from tests.core import test_feature_logging_arrow as parity
+        from tests.core.test_delta_engine import _real_local_engine
+
+        monkeypatch.delenv("DEPLOYMENT_NAME", raising=False)
+        monkeypatch.delenv("DEPLOYMENT_VERSION", raising=False)
         fixture, rows = parity._fixture()
         builder, frame, predictions, extra = fixture["_inputs"]
-        batch = builder._build_batch(frame, predictions, extra, "r", parity._TIME)
-        completed = builder._complete(
-            batch, {"model_version": "None", "td_version": None}
+        # A real predictor without its constructor: the constructor fetches the
+        # deployment's model and feature view from Hopsworks over REST. These are
+        # the fields it sets for a model-less deployment.
+        model_less = object.__new__(dp.DefaultPredict)
+        model_less.hopsworks_model = None
+        model_less.training_dataset_version = 3
+        model_less.schema = DeploymentSchema(
+            serving_keys=[{"name": "id", "type": "bigint"}],
+            feature_view={"name": "fv", "version": 1},
+            training_dataset_version=3,
         )
-        assert completed.column("model_version").to_pylist() == ["None"] * len(rows)
-        assert completed.column("td_version").null_count == len(rows)
-        assert completed.column("model_name").null_count == len(rows)
+        model_less.deployment = deployment.Deployment(
+            predictor=predictor.Predictor(
+                name="dep", model_server=PREDICTOR.MODEL_SERVER_PYTHON
+            )
+        )
+        batch = builder._build_batch(frame, predictions, extra, "r", parity._TIME)
+        completed = builder._complete(batch, model_less._file_column_values())
+        path = tmp_path / "chunk.arrow"
+        path.write_bytes(builder._serialize(completed))
+
+        location = str(tmp_path / "log_fg")
+        declared = sorted(builder._features, key=lambda f: f.name != "log_id")
+        writer = _real_local_engine(
+            monkeypatch,
+            location,
+            [feature.Feature(f.name, type=f.type) for f in declared],
+            partition_key=[
+                FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
+            ],
+        )
+        from deltalake import DeltaTable
+
+        # What _commit_part hands the feature group's insert.
+        table, truncated = job._read_chunk(path)
+        assert not truncated
+        writer._write_delta_rs_dataset(
+            job._frame(job._with_log_ids(table, "chunk")), operation="insert"
+        )
+
+        written = DeltaTable(location).to_pyarrow_table()
+        assert written.num_rows == len(rows)
+        for name in ("model_name", "model_version"):
+            assert written.schema.field(name).type == pa.string(), name
+            assert written.column(name).null_count == len(rows), name
+        assert written.column("deployment_name").to_pylist() == ["dep"] * len(rows)
+        assert written.column("td_version").to_pylist() == [3] * len(rows)
 
 
 def test_the_deployment_version_reaches_the_batch_as_an_integer():
