@@ -80,7 +80,7 @@ Without `api_key_env` the provider's conventional variable is read (`ANTHROPIC_A
 
 ## Built-in judge templates
 
-`agents.evaluators.install_defaults()` puts these in the project's library (rename, retune or delete as needed): **Faithfulness**, **Hallucination**, **User frustration**, **Toxicity**, **Profanity**, **Bias and fairness**, **Answer relevance**, **Safety**. Each is an `llm_judge` check with a rubric; save your own with `agents.evaluators.save(name, checks, description, tags=[...])`; tags are how an entry is found once the library is long (the agent it was written for, say), and `agents.evaluators.update(entry, tags=[...])` changes them.
+`agents.evaluators.install_defaults()` puts these in the project's library (rename, retune or delete as needed): **Faithfulness**, **Hallucination**, **User frustration**, **Toxicity**, **Profanity**, **Bias and fairness**, **Answer relevance**, **Safety**. Each is an `llm_judge` check with a rubric; save your own with `agents.evaluators.save(name, checks, description, tags=[agent.name, ...])`; tags are how an entry is found once the library is long, so give it the name of the agent it was written for, and `agents.evaluators.update(entry, tags=[...])` changes them.
 
 ## Failure-analysis job settings
 

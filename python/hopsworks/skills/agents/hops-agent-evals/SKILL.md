@@ -38,6 +38,8 @@ agents.suites.list(); agents.runs.list(agent.id)
 ```python
 from hopsworks_agents.eval.sdk import check
 
+agent = agents.get_agent("refunds_agent")     # the deployment these are written for
+
 suite = agents.suites.create(
     "Refunds",
     checks=[
@@ -47,7 +49,7 @@ suite = agents.suites.create(
         check("tool_call"),                 # each task names the tool it expects
         check("no_tool_error"),
     ],
-    tags=["regression"],
+    tags=[agent.name, "regression"],         # the agent's name first: see "Tag with the agent" below
     execution_mode="read_only",             # or "sandboxed" for tasks that make the agent write
                                             # (see "Sandboxed suites" below for what accepts one)
     gate_metric="pass_rate", gate_threshold=0.9,
@@ -75,6 +77,8 @@ for result in run.results():                 # result.trial_id, not trace_id -- 
 run.metrics()                               # pass rate per check and overall
 agent.gates()                               # do the published suites' gates pass for this agent?
 ```
+
+**Tag with the agent.** Suites and evaluators belong to the project, not to an agent, so once a project has several agents the only way to find one agent's suites and evaluators is by tag. Give every suite and every evaluator you create for an agent its name as a tag, `tags=[agent.name, ...]`, beside what it covers (`regression`, `safety`, `red-team`): the Evals page filters both lists by tag, and `agents.evaluators.list()` entries carry them. For ones that exist already, `agents.suites.update(suite, tags=[...])` and `agents.evaluators.update(entry, tags=[...])` change the tags without a new version.
 
 **A result says which trial, not which conversation.** `EvaluatorResult` carries `trial_id`; the trace is on the trial. A `Trial` has no transcript of its own: the conversation a multi-turn trial had is `agent.conversation(trial.trial_id)` (its session id is its trial id). A single-turn trial has no session, so that is `[]`: open it by `trial.trace_id`. Printing results alone leaves you with a page of verdicts and no way to open the conversation behind one, so join them:
 
@@ -145,7 +149,7 @@ agents.jobs.run_eval_job(job.name, since=..., until=..., sample=20)   # one run 
 agents.evaluators.save("answered the question", checks=[check(
     "llm_judge", "answered", inputs=["user_request", "agent_response", "tool_calls", "tool_results"],
     criteria={"answered": {"weight": 1, "description": "Does the reply answer what was asked?"}},
-)])
+)], tags=[agent.name])
 ```
 
 Every offending evaluator is named at once when the job is configured, so you do not find them one failed call at a time.
