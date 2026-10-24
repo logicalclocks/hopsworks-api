@@ -152,6 +152,31 @@ def test_deployment_create_sets_the_cores_and_memory_it_is_given(mock_project):
     assert model.deploy.call_args.kwargs["resources"] is None
 
 
+def test_deployment_create_refuses_an_unsupported_predict_init_before_upload(
+    mock_project, tmp_path
+):
+    script = tmp_path / "bad.py"
+    script.write_text("class Predict:\n    def __init__(self, config):\n        pass\n")
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.version = 1
+    mr.get_models.return_value = [model]
+    mock_project.get_model_registry.return_value = mr
+    dataset = mock.MagicMock()
+    mock_project.get_dataset_api.return_value = dataset
+
+    result = CliRunner().invoke(
+        cli, ["deployment", "create", "fraud", "--script", str(script)]
+    )
+
+    assert result.exit_code != 0
+    assert f"{script}:2" in result.output
+    assert "config" in result.output
+    dataset.upload.assert_not_called()
+    dataset.mkdir.assert_not_called()
+    model.deploy.assert_not_called()
+
+
 def test_deployment_create_deploys_the_latest_version_whatever_the_order(mock_project):
     # The registry lists versions newest first, so the last one is version 1.
     versions = []
