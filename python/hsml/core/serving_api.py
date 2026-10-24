@@ -38,6 +38,7 @@ from hsml.client.istio.utils.infer_type import (
     InferRequest,
 )
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hsml.constants import PREDICTOR
 
 
 _logger = logging.getLogger(__name__)
@@ -251,6 +252,16 @@ class ServingApi:
         """
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving", "vllmImageTags"]
+        return _client._send_request("GET", path_params)
+
+    def _get_triton_image_tags(self) -> dict[str, Any]:
+        """Get the Triton Inference Server image tags the cluster advertises.
+
+        Returns:
+            The advertised tags and the default tag; no tags and no default when Triton is not enabled on the cluster.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "tritonImageTags"]
         return _client._send_request("GET", path_params)
 
     def _get_schema(
@@ -630,8 +641,13 @@ class ServingApi:
         return True
 
     def _get_istio_model_metadata_path(self, deployment_instance) -> list[str]:
+        protocol = (
+            "v2"
+            if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON
+            else "v1"
+        )
         return self._get_istio_inference_path(deployment_instance, base_only=True) + [
-            "v1",
+            protocol,
             "models",
             deployment_instance.name,
         ]
@@ -782,6 +798,14 @@ class ServingApi:
         Returns:
             List of path segments.
         """
+        if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON:
+            return [
+                "project",
+                project_id,
+                "inference",
+                "serving",
+                deployment_instance.name + ":infer",
+            ]
         return [
             "project",
             project_id,
@@ -809,4 +833,6 @@ class ServingApi:
         ]
         if base_only:
             return base_path
+        if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON:
+            return base_path + ["v2", "models", deployment_instance.name, "infer"]
         return base_path + ["v1", "models", deployment_instance.name + ":predict"]

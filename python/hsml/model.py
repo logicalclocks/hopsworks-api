@@ -390,6 +390,7 @@ class Model:
         default_predictor: bool | None = None,
         feature_logging: DeploymentLoggingConfig | dict | None = None,
         knative_mode: bool | None = None,
+        triton_image_tag: str | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -476,6 +477,12 @@ class Model:
                 Standard mode keeps at least one instance while active and autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum; the vLLM engine metrics are available under KEDA).
                 A predictor without a transformer may also scale on `concurrency` or `rps` (measured by the KEDA HTTP add-on, not for vLLM) and scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed), and with a transformer, or without KEDA, the minimum is 1.
                 A fixed replica count without autoscaler runs when `min_instances == max_instances` (the default for LLM deployments).
+            triton_image_tag: Triton Inference Server image tag for Triton deployments.
+                If set, it must be one of the tags `ModelServing.get_triton_image_tags` returns.
+                On a new deployment, `None` selects the default tag of the cluster.
+                On an update, `None` means "unchanged": the deployment keeps its current tag, so moving it to the cluster default takes naming that tag explicitly.
+                A deployment also keeps its tag after an admin stops advertising it.
+                Ignored for non-Triton model servers.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -509,6 +516,7 @@ class Model:
             default_predictor=default_predictor,
             feature_logging=feature_logging,
             knative_mode=knative_mode,
+            triton_image_tag=triton_image_tag,
         )
 
         return predictor.deploy()

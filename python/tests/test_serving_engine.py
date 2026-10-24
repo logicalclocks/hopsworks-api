@@ -59,10 +59,11 @@ class _FakeTransformer:
 
 
 class _FakeDeployment:
-    def __init__(self, predictor, name, id=None):
+    def __init__(self, predictor, name, id=None, model_server="PYTHON"):
         self._predictor = predictor
         self.name = name
         self.id = id
+        self.model_server = model_server
 
 
 class TestUploadLocalServingFiles:
@@ -318,6 +319,69 @@ class TestSave:
         mock_upload.assert_not_called()
         mock_publish.assert_not_called()
         eng._create.assert_not_called()
+
+
+class TestTritonSave:
+    """A new Triton deployment is refused before any write when the cluster advertises no Triton image."""
+
+    def _engine(self, mocker, tags):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._engine = mocker.Mock()
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._get_triton_image_tags.return_value = {
+            "tags": tags,
+            "defaultTag": tags[0] if tags else None,
+        }
+        eng._update = mocker.Mock()
+        eng._create = mocker.Mock()
+        return eng
+
+    def test_not_enabled_is_refused_before_anything_is_written(self, mocker):
+        eng = self._engine(mocker, tags=[])
+        mock_upload = mocker.patch.object(eng, "_upload_local_serving_files")
+        mock_publish = mocker.patch.object(eng, "_publish_schema")
+        deployment = _FakeDeployment(
+            _FakePredictor(), name="dep", model_server="TRITON"
+        )
+
+        with pytest.raises(ModelServingException, match="Triton .* is not enabled"):
+            eng._save(deployment, await_update=0)
+        mock_upload.assert_not_called()
+        mock_publish.assert_not_called()
+        eng._create.assert_not_called()
+
+    def test_enabled_is_created(self, mocker):
+        eng = self._engine(mocker, tags=["26.09-py3"])
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        deployment = _FakeDeployment(
+            _FakePredictor(), name="dep", model_server="TRITON"
+        )
+
+        eng._save(deployment, await_update=0)
+
+        eng._create.assert_called_once_with(deployment)
+
+    def test_update_of_an_existing_deployment_does_not_ask(self, mocker):
+        eng = self._engine(mocker, tags=[])
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        deployment = _FakeDeployment(
+            _FakePredictor(), name="dep", id=7, model_server="TRITON"
+        )
+
+        eng._save(deployment, await_update=0)
+
+        eng._serving_api._get_triton_image_tags.assert_not_called()
+        eng._update.assert_called_once_with(deployment, 0, False)
+
+    def test_other_model_servers_do_not_ask(self, mocker):
+        eng = self._engine(mocker, tags=[])
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        deployment = _FakeDeployment(_FakePredictor(script_file="/p.py"), name="dep")
+
+        eng._save(deployment, await_update=0)
+
+        eng._serving_api._get_triton_image_tags.assert_not_called()
+        eng._create.assert_called_once_with(deployment)
 
 
 class TestVersionedSave:
@@ -885,6 +949,163 @@ class TestPredictValidation:
         assert eng._parse_inference_inputs("REST", [1, 2]) == {"instances": [[1, 2]]}
 
 
+class TestPredictTriton:
+    """Triton speaks Open Inference Protocol v2 over REST; every other model server keeps the v1 body."""
+
+    def _engine(self, mocker):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._send_inference_request.return_value = {"outputs": []}
+        return eng
+
+    def _deployment(self, mocker, model_server="TRITON", api_protocol="REST"):
+        d = mocker.Mock()
+        d.name = "dep"
+        d.model_server = model_server
+        d.api_protocol = api_protocol
+        d.predictor.serving_tool = "KSERVE"
+        d.schema = None
+        return d
+
+    def _sent(self, eng):
+        return eng._serving_api._send_inference_request.call_args.args[1]
+
+    def test_data_is_a_v2_body_sent_as_given(self, mocker):
+        eng = self._engine(mocker)
+        body = {
+            "id": "req-1",
+            "parameters": {"priority": 1},
+            "inputs": [
+                {
+                    "name": "x",
+                    "shape": [1, 2],
+                    "datatype": "FP32",
+                    "data": [1.0, 2.0],
+                    "parameters": {"binary_data": False},
+                }
+            ],
+            "outputs": [{"name": "y"}],
+        }
+
+        eng._predict(self._deployment(mocker), body, None)
+
+        assert self._sent(eng) is body
+
+    def test_inputs_are_v2_tensors_keeping_their_parameters(self, mocker):
+        import numpy as np
+
+        eng = self._engine(mocker)
+        tensor = {
+            "name": "x",
+            "shape": [1, 2],
+            "datatype": "FP32",
+            "data": np.array([[1.0, 2.0]]),
+            "parameters": {"binary_data": False},
+        }
+
+        eng._predict(
+            self._deployment(mocker),
+            None,
+            tensor,
+            outputs=["y", {"name": "z", "parameters": {"classification": 2}}],
+        )
+
+        assert self._sent(eng) == {
+            "inputs": [
+                {
+                    "name": "x",
+                    "shape": [1, 2],
+                    "datatype": "FP32",
+                    "data": [[1.0, 2.0]],
+                    "parameters": {"binary_data": False},
+                }
+            ],
+            "outputs": [
+                {"name": "y"},
+                {"name": "z", "parameters": {"classification": 2}},
+            ],
+        }
+
+    def test_schema_is_not_applied_to_v2_tensors(self, mocker):
+        eng = self._engine(mocker)
+        d = self._deployment(mocker)
+        d.schema = mocker.Mock()
+        tensors = [{"name": "x", "shape": [1], "datatype": "INT64", "data": [1]}]
+
+        eng._predict(d, None, tensors)
+
+        assert self._sent(eng) == {"inputs": tensors}
+        d.schema._raise_if_invalid.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("data", "inputs", "outputs", "message"),
+        [
+            ({"instances": [[1]]}, None, None, "Open Inference Protocol v2"),
+            ({"inputs": []}, None, None, "Open Inference Protocol v2"),
+            ({"inputs": [{"name": "x"}]}, None, ["y"], "data\\['outputs'\\]"),
+            (None, [[1, 2]], None, "one or more tensors"),
+            (None, {"name": "x", "data": [1]}, None, "one or more tensors"),
+            (None, [], None, "one or more tensors"),
+            (None, None, None, "one or more tensors"),
+            (
+                None,
+                {"name": "x", "shape": [1], "datatype": "FP32", "data": [1.0]},
+                "y",
+                "list of output names",
+            ),
+        ],
+    )
+    def test_invalid_v2_payloads_are_refused(
+        self, mocker, data, inputs, outputs, message
+    ):
+        eng = self._engine(mocker)
+
+        with pytest.raises(ModelServingException, match=message):
+            eng._predict(self._deployment(mocker), data, inputs, outputs=outputs)
+        eng._serving_api._send_inference_request.assert_not_called()
+
+    def test_grpc_takes_the_existing_tensor_path(self, mocker):
+        eng = self._engine(mocker)
+        d = self._deployment(mocker, api_protocol="GRPC")
+
+        eng._predict(
+            d, None, {"name": "x", "shape": [1], "datatype": "FP32", "data": [1.0]}
+        )
+
+        (tensor,) = self._sent(eng)
+        assert (tensor.name, tensor.shape, tensor.datatype, tensor.data) == (
+            "x",
+            [1],
+            "FP32",
+            [1.0],
+        )
+
+    @pytest.mark.parametrize(
+        ("model_server", "api_protocol"),
+        [("PYTHON", "REST"), ("TENSORFLOW_SERVING", "REST"), ("TRITON", "GRPC")],
+    )
+    def test_requested_outputs_need_triton_over_rest(
+        self, mocker, model_server, api_protocol
+    ):
+        eng = self._engine(mocker)
+        d = self._deployment(mocker, model_server, api_protocol)
+
+        with pytest.raises(ModelServingException, match="Requested outputs"):
+            eng._predict(d, None, [[1]], outputs=["y"])
+        eng._serving_api._send_inference_request.assert_not_called()
+
+    def test_other_model_servers_keep_the_v1_body(self, mocker):
+        eng = self._engine(mocker)
+        d = self._deployment(mocker, model_server="PYTHON")
+
+        eng._predict(d, None, [[1, 2]])
+        assert self._sent(eng) == {"instances": [[1, 2]]}
+
+        body = {"inputs": [[1, 2]]}
+        eng._predict(d, body, None)
+        assert self._sent(eng) is body
+
+
 class TestPredictErrorMapping:
     def _engine_raising(self, mocker, status, body):
         from hopsworks_common.client.exceptions import RestAPIError
@@ -1320,6 +1541,23 @@ class TestWarmRestTransport:
         istio.return_value._send_request.assert_called_once_with(
             "GET",
             ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
+        )
+
+    def test_a_triton_deployment_is_warmed_on_the_v2_metadata_path(self, mocker):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        deployment = mocker.Mock()
+        deployment.name = "triton"
+        deployment.project_namespace = "proj"
+        deployment.model_server = "TRITON"
+
+        serving_api.ServingApi()._warm_rest_transport(deployment)
+
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "triton", "v2", "models", "triton"],
             with_base_path_params=False,
         )
 
