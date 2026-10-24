@@ -2541,7 +2541,8 @@ class Engine:
         # hsml_model value and have no model_version column to receive it.
         if model_col_name != constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME:
             metadata[constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME] = [
-                str(model_version) for _ in range(size)
+                str(model_version) if model_version is not None else None
+                for _ in range(size)
             ]
 
         if not batch:
