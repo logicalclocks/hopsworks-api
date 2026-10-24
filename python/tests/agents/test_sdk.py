@@ -667,6 +667,46 @@ class TestRuns:
         assert diff.unchanged[0].question == "Analyze TSLA."
         assert "1 regressed" in str(diff) and "1 added" in str(diff)
 
+    def test_the_same_question_asked_as_two_people_is_two_cases(self):
+        # Keyed on the turns alone, the two overwrote each other: one newly
+        # failing task beside a passing one compared as "0 regressed, 1 unchanged".
+        question = json.dumps([{"role": "user", "content": "What do you remember?"}])
+        tasks = [
+            {
+                "taskId": "dana",
+                "inputMessages": question,
+                "subject": "dana@example.com",
+            },
+            {
+                "taskId": "marcus",
+                "inputMessages": question,
+                "subject": "marcus@example.com",
+            },
+        ]
+        evals, _ = client(
+            Reply({"runId": "old", "suiteId": "s", "suiteVersion": 1}),
+            Reply({"runId": "new", "suiteId": "s", "suiteVersion": 1}),
+            Reply(
+                [
+                    {"taskId": "dana", "status": "PASSED"},
+                    {"taskId": "marcus", "status": "PASSED"},
+                ]
+            ),
+            Reply(
+                [
+                    {"taskId": "dana", "status": "FAILED"},
+                    {"taskId": "marcus", "status": "PASSED"},
+                ]
+            ),
+            Reply(tasks),
+            Reply(tasks),
+        )
+
+        diff = evals.runs.compare("old", "new")
+
+        assert [t.task_id for t in diff.regressed] == ["dana"]
+        assert [t.task_id for t in diff.unchanged] == ["marcus"]
+
     def test_the_failure_history_says_which_failures_are_new(self):
         # "seventeen failed" is not something anyone can act on; "one of them
         # is new, one is a regression, and that one has been failing for seven

@@ -1052,7 +1052,7 @@ class Runs:
         for task in tasks:
             turns = [turn for turn in _user_turns(task.input_messages) if turn]
             if turns:
-                index[task.task_id] = (turns[0], "\n\u241f".join(turns))
+                index[task.task_id] = (turns[0], _case_key(task, turns))
         return index
 
     @public
@@ -1533,3 +1533,21 @@ def _review_body(settings: dict[str, Any]) -> dict[str, Any]:
             "".join(p.capitalize() if i else p for i, p in enumerate(key.split("_")))
         ] = value
     return body
+
+
+def _case_key(task: Task, turns: list[str]) -> str:
+    """What makes a task the case it is: what it asks, and as whom.
+
+    The subject and the request context are part of a task's identity, as they
+    are in the backend's case digest: the same question asked as two people is
+    two cases. Keyed on the turns alone, two subjects asking the same question
+    overwrote each other's results, so one newly failing task beside a passing
+    one compared as a single unchanged case.
+    """
+    key = "\n\u241f".join(turns)
+    if task.subject:
+        key += "\n\u241esubject:" + task.subject
+    context = task.request_context
+    if context:
+        key += "\n\u241econtext:" + json.dumps(context, sort_keys=True)
+    return key

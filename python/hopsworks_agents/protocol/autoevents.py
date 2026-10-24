@@ -178,9 +178,11 @@ def install_auto_tool_events(tracer_provider: Any) -> bool:
                 return
             span_id = format(span.get_span_context().span_id, "016x")
             name = _tool_name(span, kind)
-            if span_id in ctx._auto_suppressed or name in ctx._handler_emitted:
-                # Whether the handler claimed this tool before the span opened or
-                # while it was open, the close goes the same way as the open did.
+            if span_id in ctx._auto_suppressed:
+                # The open was suppressed, so the close is too. Only the open decides:
+                # a handler that starts reporting this tool while its span is already
+                # open came after the automatic "running" was sent, and suppressing
+                # the close then left that chip running for good.
                 ctx._auto_suppressed.discard(span_id)
                 return
             status = getattr(getattr(span, "status", None), "status_code", None)

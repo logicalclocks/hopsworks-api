@@ -4697,6 +4697,34 @@ class TestOneChipPerToolCall:
             ("identify", "done"),
         ]
 
+    def test_an_automatic_running_event_is_always_closed(self):
+        # A tool that reports itself from inside its own span: the automatic
+        # "running" went out when the span opened, so its close must go out too.
+        # Suppressed because the handler had reported the tool by then, the chip
+        # stayed running for good beside the handler's own pair.
+        app = self._traced_app()
+
+        async def chat(request):
+            from hopsworks_agents.protocol.autoevents import current_context
+
+            handler_ctx = current_context.get(None)
+            tracer = app.tracer_provider.get_tracer("framework")
+            with tracer.start_as_current_span(
+                "lookup",
+                attributes={"openinference.span.kind": "TOOL", "tool.name": "lookup"},
+            ):
+                await handler_ctx.emit_event("lookup", "running", event_id="call_1")
+                await handler_ctx.emit_event("lookup", "done", event_id="call_1")
+            return AgentResponse.text(text="ok")
+
+        events = self._events(app, chat)
+        statuses: dict[str, list[str]] = {}
+        for event in events:
+            statuses.setdefault(event.get("id"), []).append(event["status"])
+        assert all(s[-1] in ("done", "failed") for s in statuses.values()), (
+            f"an event was left running: {statuses}"
+        )
+
     def test_the_handlers_own_events_suppress_the_automatic_ones(self):
         app = self._traced_app()
 
