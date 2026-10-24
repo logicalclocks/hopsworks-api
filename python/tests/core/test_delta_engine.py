@@ -3265,6 +3265,36 @@ def test_new_table_write_keeps_partition_by(mocker, monkeypatch, tmp_path):
     assert DeltaTable(location).metadata().partition_columns == ["p", "i"]
 
 
+def test_new_table_write_casts_all_none_columns_to_declared_types(
+    mocker, monkeypatch, tmp_path
+):
+    from hsfs import feature
+
+    location = str(tmp_path / "fg")
+    engine = _local_rs_engine(mocker, monkeypatch, location, partition_key=["s"])
+    engine._feature_group.columns = [
+        feature.Feature(name="id", type="bigint"),
+        feature.Feature(name="s", type="string"),
+        feature.Feature(name="n", type="bigint"),
+        feature.Feature(name="amount", type="decimal(7)"),
+    ]
+    from deltalake import DeltaTable
+
+    # All-None object columns reach pyarrow as null, which delta-rs refuses.
+    df = pd.DataFrame(
+        {"id": [1, 2], "s": [None, None], "n": [None, None], "amount": [None, None]}
+    )
+
+    engine._write_delta_rs_dataset(df, operation="insert")
+
+    table = DeltaTable(location).to_pyarrow_table()
+    assert table.schema.field("s").type == pa.string()
+    assert table.schema.field("n").type == pa.int64()
+    assert table.schema.field("amount").type == pa.decimal128(7, 0)
+    assert table.column("s").null_count == 2
+    assert table.column("n").null_count == 2
+
+
 @pytest.mark.parametrize(
     "delta_type, value",
     [

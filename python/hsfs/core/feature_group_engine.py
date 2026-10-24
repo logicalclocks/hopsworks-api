@@ -409,7 +409,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             batch = pa.Table.from_pandas(feature_dataframe[names], preserve_index=False)
         else:
             batch = feature_dataframe.select(names).to_arrow()
-        delta_engine.DeltaEngine._cast_to_declared_decimals(batch, feature_group)
+        delta_engine.DeltaEngine._cast_to_declared_types(batch, feature_group)
 
     @staticmethod
     def _get_spark_session_and_context():

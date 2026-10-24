@@ -984,7 +984,7 @@ class DeltaEngine:
             is_delta_table = False
 
         if not is_delta_table:
-            dataset = self._cast_to_declared_decimals(dataset, self._feature_group)
+            dataset = self._cast_to_declared_types(dataset, self._feature_group)
             configuration = {
                 self.DELTA_ENABLE_CHANGE_DATA_FEED: self.change_data_feed_value(
                     (write_options or {}).get(
@@ -1146,22 +1146,33 @@ class DeltaEngine:
         return source
 
     @staticmethod
-    def _cast_to_declared_decimals(dataset, feature_group):
-        """Safe-cast the decimal columns of *dataset* to the feature group's declared decimal types.
+    def _cast_to_declared_types(dataset, feature_group):
+        """Safe-cast the decimal and null-typed columns of *dataset* to the feature group's declared types.
 
-        A new Delta table takes the batch's types, which follow the values, so
-        a decimal(7) feature would otherwise land as decimal(2,1) for 1.5.
+        A new Delta table takes the batch's types, which follow the values: a
+        decimal(7) feature would otherwise land as decimal(2,1) for 1.5, and an
+        all-None column is typed null, which delta-rs refuses.
         """
         import pyarrow as pa
 
-        schema = pa.schema(
-            [
-                pa.field(f.name, _convert_offline_type_to_pyarrow_type(f.type))
-                for f in feature_group.columns
-                if (f.type or "").lower().startswith("decimal")
-            ]
-        )
-        return DeltaEngine._cast_to_schema(dataset, schema)
+        if not isinstance(dataset, pa.Table):
+            return dataset
+        declared = {f.name: f.type for f in feature_group.columns if f.type}
+        columns = []
+        for name, column in zip(dataset.column_names, dataset.columns, strict=True):
+            offline_type = declared.get(name)
+            if offline_type and (
+                pa.types.is_null(column.type)
+                or (
+                    pa.types.is_decimal(column.type)
+                    and offline_type.lower().startswith("decimal")
+                )
+            ):
+                column = column.cast(
+                    _convert_offline_type_to_pyarrow_type(offline_type), safe=True
+                )
+            columns.append(column)
+        return pa.Table.from_arrays(columns, names=dataset.column_names)
 
     @staticmethod
     def _cast_to_schema(dataset, table_schema):
