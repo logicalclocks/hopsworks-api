@@ -206,7 +206,12 @@ def recall(key: str, scope: str = "user") -> str:
     # same normalization as remember, or a key the model stored is unreachable
     # by the spelling it used to store it
     key = _normalize_key(key)
-    value = memory.get_state(scope, _owner(ctx, scope), key)
+    # Through the context, not the store: the context knows when a read must
+    # look at what this evaluation trial wrote before the person's own facts.
+    try:
+        value = ctx.recall(key, scope=scope)
+    except ValueError as err:
+        return str(err)
     if value is None:
         return f"Nothing stored under {key!r} in {scope} memory."
     return value
@@ -227,7 +232,9 @@ def forget(key: str, scope: str = "user") -> str:
     if problem:
         return problem
     key = _normalize_key(key)
-    removed = memory.delete_state(scope, _owner(ctx, scope), key)
+    # Through the context, for the same reason as recall: in a trial it may only
+    # erase what the trial wrote.
+    removed = ctx.forget(key, scope=scope)
     if not removed:
         return f"Nothing stored under {key!r} in {scope} memory."
     return f"Forgot {key!r}."
@@ -272,7 +279,10 @@ def identify(subject: str) -> str:
     Call this when the user gives you the identifier your instructions say to
     ask for — a customer key, an account number, a reference. It only labels
     the conversation so a support engineer can find it later; it does not look
-    anything up and does not change what you can remember or recall.
+    anything up and does not change what you can remember or recall. In
+    particular it does not make long-term memory follow the person: that is
+    `ctx.rebind_subject`, which an application calls after its own verification,
+    and is deliberately not something a model may do on typed text.
 
     Args:
         subject: the identifier exactly as the user gave it.
@@ -283,6 +293,14 @@ def identify(subject: str) -> str:
     subject = (subject or "").strip()
     if not subject:
         return "No identifier was given, so nothing was recorded."
+    if ctx.has_subject:
+        # Said plainly, because the model asked again only because it did not
+        # know: a conversation the application already identified does not need,
+        # and must not get, a model's label over the top of it.
+        return (
+            f"This conversation is already identified as {ctx.subject}, and memory "
+            "follows them. Nothing to record; do not call `identify` again."
+        )
     # deliberately record_subject and not rebind_subject: rebinding decides
     # whose durable memory this conversation may read, and the caller here is a
     # model acting on text a user typed. See context.record_subject.
@@ -291,7 +309,16 @@ def identify(subject: str) -> str:
             "The identifier could not be recorded. Continue with the "
             "conversation and do not retry."
         )
-    return f"Recorded this conversation as being with {subject}."
+    # Says what it did and what it did not do. "Recorded this conversation as
+    # being with X" read as "memory now follows X", so the model told users it
+    # would remember them across conversations, and then did not: user-scope
+    # facts stay keyed by the conversation unless the application rebinds.
+    return (
+        f"Labelled this conversation as being with {subject}, for traces and "
+        "analysis. Memory stays with this conversation: what you remember now "
+        "will not be there in their next one unless the application identifies "
+        "them. Do not tell the user you will remember them."
+    )
 
 
 #: Registered separately from the memory tools. Identity is the one thing in

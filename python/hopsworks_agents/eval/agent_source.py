@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -68,8 +69,12 @@ SKIPPED_DIRS = {
 MAX_FILE_BYTES = 200 * 1024
 #: Total text kept from one repository. Enough for an agent; not a monorepo.
 MAX_BUNDLE_BYTES = 5 * 1024 * 1024
-#: Characters of source shown per triage call by default. Roughly 6k tokens.
-DEFAULT_SOURCE_CHARS = 24_000
+#: Characters of source shown per triage call by default. Roughly 15k tokens.
+#: 24k was less than an entry script and one module it imports: the reference
+#: financial advisor's agent file and its memory module were 27k between them,
+#: so its prompts -- where a coordinator's behaviour actually lives -- were never
+#: shown, and every triage said the cause was "not identifiable in the shown files".
+DEFAULT_SOURCE_CHARS = 60_000
 
 
 @dataclass
@@ -101,14 +106,25 @@ class CodeLocation:
     @classmethod
     def _from_serving(cls, view: dict[str, Any] | None) -> CodeLocation:
         view = view or {}
+        script_file = str(view.get("predictor") or "").strip()
+        model_path = str(view.get("modelPath") or "").strip()
+        if not model_path and not view.get("gitUrl") and script_file.startswith("/"):
+            # An agent deployed from a local directory is neither git-backed nor
+            # a model: it has no gitUrl and no modelPath, and the only thing
+            # saying where its code is is the entry script's own path. Without
+            # this the location was unknown for every such agent, so failure
+            # analysis read no source at all -- every triage came back
+            # suspected_code_bug false with no findings, including for a failure
+            # that was a line of the prompt.
+            model_path = posixpath.dirname(script_file)
         return cls(
             git_url=str(view.get("gitUrl") or "").strip(),
             git_branch=str(
                 view.get("gitResolvedBranch") or view.get("gitBranch") or ""
             ).strip(),
             git_commit=str(view.get("gitCurrentCommit") or "").strip(),
-            model_path=str(view.get("modelPath") or "").strip(),
-            script_file=str(view.get("predictor") or "").strip(),
+            model_path=model_path,
+            script_file=script_file,
         )
 
     @classmethod
@@ -503,7 +519,34 @@ def _relevant_files(
     for clue in clues:
         terms.update(word for word in _WORD.findall(clue or "") if len(word) > 3)
     ordered = _imported_files(bundle.files, bundle.entry)
-    rest = [path for path in bundle.files if path not in ordered]
+    # The entry first, then what it imports by relevance to this failure rather than
+    # by import order: the first module imported is rarely the one at fault, and in
+    # import order a large early module used up the budget before the prompt file the
+    # failure was about could be shown.
+    if len(ordered) > 1:
+        position = {path: i for i, path in enumerate(ordered)}
+        ordered = [
+            ordered[0],
+            *sorted(
+                ordered[1:],
+                key=lambda path: (
+                    -_mentions(bundle.files[path], terms),
+                    position[path],
+                ),
+            ),
+        ]
+    # Beyond what the entry imports, only its own part of the repository. A repository of
+    # several agents gave the analysis every one of them -- 94 files, the advisor among a
+    # concierge, a shopping agent and a benchmark -- and a file that merely mentions a tool
+    # name in another agent's folder is not evidence about this one. Files at the root stay:
+    # in a repository of one agent, its README is there.
+    home = posixpath.dirname(bundle.entry) if bundle.entry else ""
+    rest = [
+        path
+        for path in bundle.files
+        if path not in ordered
+        and (not home or path.startswith(home + "/") or "/" not in path)
+    ]
     mentioned = sorted(
         (path for path in rest if _mentions(bundle.files[path], terms) > 0),
         key=lambda path: (-_mentions(bundle.files[path], terms), path),

@@ -188,9 +188,43 @@ def _run_metrics(
     task_count = len({t.task_id for t in trials})
 
     values: dict[str, float] = {
-        "pass_rate": passed / len(gradable) if gradable else 0.0,
-        "pass_at_k": _pass_at_k(trials),
-        "pass_all_k": _pass_all_k(trials),
+        # Over the trials whose outcome says something about the agent, and left out
+        # when there were none. A run whose judge could not be called (a provider out
+        # of credits) graded nothing, and recorded as 0.0 it read in the trend and the
+        # gates as an agent that got every answer wrong. Absent, a gate reports the
+        # evidence missing, which is what it is.
+        **(
+            {
+                "pass_rate": passed / len(gradable),
+                "pass_at_k": _pass_at_k(gradable),
+                "pass_all_k": _pass_all_k(gradable),
+            }
+            if gradable
+            else {}
+        ),
+        # How much of the run is behind the pass rate. Kept beside it at run scope:
+        # per evaluator only, a window in which nothing was graded showed nothing at
+        # the scope the dashboards read.
+        "ungradable_rate": (
+            (len(trials) - len(gradable)) / len(trials) if trials else 0.0
+        ),
+        # The agent not answering at all -- a 500, a crash, a model refusing every
+        # request. These count as failures, since a user got no answer, but a pass
+        # rate of 0.0 with this at 1.0 is an outage, not an agent giving wrong answers.
+        "agent_error_rate": (
+            sum(1 for t in trials if t.status is TrialStatus.AGENT_ERROR) / len(trials)
+            if trials
+            else 0.0
+        ),
+        # Its sibling: the agent did not answer within the trial's time. Also a
+        # failure -- the person waited and got nothing -- and also worth telling
+        # apart from a wrong answer, since the remedy is the timeout or the agent's
+        # speed, not its reasoning.
+        "timeout_rate": (
+            sum(1 for t in trials if t.status is TrialStatus.TIMEOUT) / len(trials)
+            if trials
+            else 0.0
+        ),
         "p50_latency_ms": _percentile(latencies, 50),
         "p95_latency_ms": _percentile(latencies, 95),
         "p99_latency_ms": _percentile(latencies, 99),

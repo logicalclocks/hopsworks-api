@@ -26,12 +26,18 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import threading
 import time
 from abc import ABC, abstractmethod
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
+
+
+if TYPE_CHECKING:
+    from typing import Any
 
 
 log = logging.getLogger(__name__)
@@ -174,6 +180,12 @@ class InMemoryVectorStore(VectorStore):
             return before - len(self._rows)
 
 
+#: The description a memory feature group carries, which names the model that embedded it.
+_DESCRIPTION = re.compile(
+    r"^Hopsworks agent memory \((?P<model>.+), (?P<dimension>\d+)d, cosine\)$"
+)
+
+
 class HopsworksVectorStore(VectorStore):
     """Per-deployment embedding feature group, created lazily once.
 
@@ -216,6 +228,40 @@ class HopsworksVectorStore(VectorStore):
         return (
             f"Hopsworks agent memory ({self._embedder_id}, {self._dimension}d, cosine)"
         )
+
+    @classmethod
+    def _existing(
+        cls, feature_store: Any, deployment_id: str, *, version: int = 1
+    ) -> HopsworksVectorStore | None:
+        """The deployment's memory vector store, if it has one, opened for reading.
+
+        Never creates the feature group, unlike the path the agent itself takes on
+        first write: something reading memory from outside must not leave an empty
+        one behind for an agent that keeps none. The embedding model and dimension
+        are read off the description the agent wrote, so a caller can embed its
+        query with the same model.
+        """
+        try:
+            fg = feature_store.get_feature_group(
+                f"agent_memory_{deployment_id}", version
+            )
+        except Exception:  # noqa: BLE001 -- hsfs raises its own types for "no such group"
+            return None
+        if fg is None:
+            return None
+        found = _DESCRIPTION.match((getattr(fg, "description", "") or "").strip())
+        if found is None:
+            return None
+        store = cls(
+            deployment_id,
+            int(found.group("dimension")),
+            embedder_id=found.group("model"),
+            version=version,
+            feature_store=feature_store,
+        )
+        store._fg = fg
+        store._features = [f.name for f in fg.features]
+        return store
 
     def _ensure_fg(self):
         if self._fg is not None or self._failed:

@@ -95,7 +95,9 @@ class TestSqlStateEvaluator:
     def test_no_query_function_is_ungradable_not_a_pass(self):
         # "I could not check" must never read as "the state was right"
         result = SqlStateEvaluator("SELECT 1", expect=1)._grade(task(), trial(), None)
-        assert result.ungradable and result.passed is False
+        # No verdict at all, not a failing one: a row that says both is read as
+        # a failure by anything that looks at `passed` alone.
+        assert result.ungradable and result.passed is None and result.score is None
 
     def test_a_failing_query_is_ungradable_not_a_failure(self):
         def boom(_sql: str):
@@ -195,7 +197,7 @@ class TestPairwiseEvaluator:
         # whole family of evaluators is most prone to
         evaluator = PairwiseEvaluator(lambda _p: "I think B is nicer", reference="ref")
         result = evaluator._grade(task(), trial(), None)
-        assert result.ungradable and result.passed is False
+        assert result.ungradable and result.passed is None and result.score is None
 
     def test_the_judge_model_is_recorded(self):
         evaluator = PairwiseEvaluator(

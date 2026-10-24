@@ -56,7 +56,10 @@ class TestWritingTrialsAsTheyFinish:
             self.frames = []
             self.features = []
 
-        def insert(self, frame, write_options=None):  # noqa: ARG002
+        def insert(self, frame, storage=None, write_options=None):  # noqa: ARG002
+            # Online only, or the write starts a Spark materialization job per
+            # insert against the nodes the agent is running on.
+            assert storage == "online", f"not an online-only write: storage={storage!r}"
             self.frames.append(frame)
 
     class FakeStore:
@@ -395,3 +398,26 @@ class TestOneExecutionManyRuns:
             run_job.main()
         # Every run was attempted, and the job still exits non-zero so an alert fires.
         assert seen == ["good", "bad", "also-good"]
+
+
+class TestTheJobAsksATaskAsItsSubject:
+    """The API's subject and context reach the runner's task, as sent."""
+
+    def test_subject_and_a_context_given_as_json_text(self):
+        suite = _to_suite(
+            run(), [task(subject="marcus@example.com", context='{"plan": "pro"}')]
+        )
+        assert suite.tasks[0].subject == "marcus@example.com"
+        assert suite.tasks[0].context == {"plan": "pro"}
+
+    def test_a_context_given_as_an_object(self):
+        suite = _to_suite(run(), [task(context={"seats": 3})])
+        assert suite.tasks[0].context == {"seats": 3}
+
+    def test_none_is_anonymous(self):
+        suite = _to_suite(run(), [task()])
+        assert suite.tasks[0].subject == "" and suite.tasks[0].context == {}
+
+    def test_a_context_that_is_not_an_object_is_dropped(self):
+        suite = _to_suite(run(), [task(context="[1, 2]")])
+        assert suite.tasks[0].context == {}
