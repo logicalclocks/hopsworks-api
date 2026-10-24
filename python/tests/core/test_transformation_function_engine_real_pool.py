@@ -470,3 +470,105 @@ class TestRealPoolExecution:
         # Pool was reset so the next call lazily builds a fresh one.
         assert cls._TransformationFunctionEngine__process_pool is None
         assert cls._TransformationFunctionEngine__process_pool_n_processes is None
+
+
+class TestRealPoolTelemetry:
+    def test_pooled_functions_are_timed_and_traced(self, span_exporter, mocker):
+        prometheus_client = pytest.importorskip("prometheus_client")
+        trace = pytest.importorskip("opentelemetry.trace")
+        from hopsworks_common import tracing
+        from hsfs.core import transformation_telemetry
+
+        mocker.patch.dict(transformation_telemetry._telemetries, clear=True)
+        dag = transformation_execution_dag.TransformationExecutionDAG(
+            [_make_tf(_add_one_sleep), _make_tf(_add_two_sleep)]
+        )
+        telemetry = transformation_telemetry._Telemetry(
+            "fv", 1, {transformation_telemetry.KIND_MODEL_DEPENDENT: dag}
+        )
+
+        with (
+            trace.get_tracer("test").start_as_current_span("predict"),
+            tracing._request_scope(1),
+            telemetry._row(dag) as traced,
+            telemetry._phase(
+                transformation_telemetry.KIND_MODEL_DEPENDENT, dag, traced
+            ) as observer,
+        ):
+            transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+                execution_graph=dag,
+                data={"col1": 1},
+                online=True,
+                n_processes=2,
+                observer=observer,
+            )
+
+        function_spans = [
+            s for s in span_exporter.get_finished_spans() if s.name.startswith("_add_")
+        ]
+        assert {s.name for s in function_spans} == {"_add_one_sleep", "_add_two_sleep"}
+        for span in function_spans:
+            assert span.end_time - span.start_time >= 500_000_000
+        registry = prometheus_client.CollectorRegistry()
+        registry.register(transformation_telemetry._Collector())
+        assert (
+            registry.get_sample_value(
+                "hopsworks_transformation_function_calls_total",
+                {
+                    "feature_view": "fv",
+                    "feature_view_version": "1",
+                    "kind": "model_dependent",
+                    "transformation": "_add_one_sleep",
+                    "outputs": "_add_one_sleep_col1_",
+                },
+            )
+            == 1
+        )
+
+    def test_a_pooled_failure_is_counted_as_an_error(self, span_exporter, mocker):
+        prometheus_client = pytest.importorskip("prometheus_client")
+        from hsfs.core import transformation_telemetry
+
+        mocker.patch.dict(transformation_telemetry._telemetries, clear=True)
+        dag = transformation_execution_dag.TransformationExecutionDAG(
+            [_make_tf(_add_one), _make_tf(_raise_in_worker)]
+        )
+        telemetry = transformation_telemetry._Telemetry(
+            "fv", 1, {transformation_telemetry.KIND_MODEL_DEPENDENT: dag}
+        )
+
+        with (
+            pytest.raises(Exception, match="UDF intentional failure"),
+            telemetry._phase(
+                transformation_telemetry.KIND_MODEL_DEPENDENT, dag, False
+            ) as observer,
+        ):
+            transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+                execution_graph=dag,
+                data={"col1": 1},
+                online=True,
+                n_processes=2,
+                observer=observer,
+            )
+
+        registry = prometheus_client.CollectorRegistry()
+        registry.register(transformation_telemetry._Collector())
+        labels = {
+            "feature_view": "fv",
+            "feature_view_version": "1",
+            "kind": "model_dependent",
+            "transformation": "_raise_in_worker",
+            "outputs": "_raise_in_worker_col1_",
+        }
+        assert (
+            registry.get_sample_value(
+                "hopsworks_transformation_function_errors_total", labels
+            )
+            == 1
+        )
+        assert (
+            registry.get_sample_value(
+                "hopsworks_transformation_function_calls_total", labels
+            )
+            == 1
+        )

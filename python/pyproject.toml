@@ -130,6 +130,9 @@ dev = [
     # The app skeleton shipped under hopsworks/skills is exercised by the unit
     # tests; FastAPI is a dependency of the app, not of this package.
     "fastapi",
+    # Serving metrics and spans are recorded only when the deployment image provides these.
+    "prometheus-client==0.26.0",
+    "opentelemetry-sdk==1.45.1",
 ]
 polars = [
     "polars>=0.20.31,<=1.40.1",

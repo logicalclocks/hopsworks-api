@@ -475,6 +475,38 @@ class TestDeployment:
 
         mock_rollback.assert_called_once_with(d, 3, 5)
 
+    # set_tracing
+
+    def test_set_tracing_puts_the_change_and_keeps_the_stored_config(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        # The dummy predictor stubs the JSON-to-object helper the tracing setter uses.
+        mocker.stopall()
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._set_tracing",
+            return_value={"enabled": True, "active": False, "samplingPercentage": 50},
+        )
+
+        d.set_tracing(active=False, sampling_percentage=50)
+
+        send.assert_called_once_with(d, False, 50)
+        assert d.tracing.enabled is True
+        assert d.tracing.active is False
+        assert d.tracing.sampling_percentage == 50
+
+    def test_set_tracing_refuses_a_percentage_out_of_range(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._set_tracing")
+
+        with pytest.raises(ValueError):
+            d.set_tracing(sampling_percentage=101)
+        send.assert_not_called()
+
     # start
 
     def test_start_default(self, mocker, backend_fixtures):

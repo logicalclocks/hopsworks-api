@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from hsml import deployment
     from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
+    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.resources import PredictorResources
@@ -390,6 +391,7 @@ class Model:
         default_predictor: bool | None = None,
         feature_logging: DeploymentLoggingConfig | dict | None = None,
         knative_mode: bool | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -476,6 +478,9 @@ class Model:
                 Standard mode keeps at least one instance while active and autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum; the vLLM engine metrics are available under KEDA).
                 A predictor without a transformer may also scale on `concurrency` or `rps` (measured by the KEDA HTTP add-on, not for vLLM) and scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed), and with a transformer, or without KEDA, the minimum is 1.
                 A fixed replica count without autoscaler runs when `min_instances == max_instances` (the default for LLM deployments).
+            tracing: Tracing configuration; see [`DeploymentTracingConfig`][hsml.deployment_tracing_config.DeploymentTracingConfig].
+                Off by default for model deployments, and then the deployment carries no tracing or timing code.
+                With `{"enabled": True}` the predictor exports, for every request, the count and duration of each on-demand and model-dependent transformation of the feature view as Prometheus metrics, and traces a sample of the requests (10% unless `sampling_percentage` sets it): the feature lookup, the transformations of the first row, the model prediction and the feature log write, shown under Transformations on the deployment's page.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -509,6 +514,7 @@ class Model:
             default_predictor=default_predictor,
             feature_logging=feature_logging,
             knative_mode=knative_mode,
+            tracing=tracing,
         )
 
         return predictor.deploy()

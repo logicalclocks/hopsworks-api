@@ -122,6 +122,19 @@ def _as_gateway_authority(segment: str) -> str:
 
 
 class TestServingApi:
+    def test_set_tracing_sends_only_the_fields_it_changes(self, mocker):
+        api = ServingApi()
+        client_instance = _patch_client(mocker, {"enabled": True, "active": False})
+
+        api._set_tracing(_deployment(), False, None)
+
+        method, path_params = client_instance._send_request.call_args.args
+        assert method == "PUT"
+        assert path_params[-1] == "tracing"
+        assert json.loads(client_instance._send_request.call_args.kwargs["data"]) == {
+            "active": False
+        }
+
     def test_get_tag_returns_value_for_name(self, mocker):
         # Arrange
         api = ServingApi()

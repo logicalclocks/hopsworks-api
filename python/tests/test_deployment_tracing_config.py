@@ -55,3 +55,16 @@ class TestDeploymentTracingConfig:
     def test_rejects_invalid_storage(self):
         with pytest.raises(ValueError, match="Possible values"):
             DeploymentTracingConfig(otel_tracing_storage="invalid")
+
+    def test_round_trip_with_sampling_percentage(self):
+        config = DeploymentTracingConfig(enabled=True, sampling_percentage=25)
+
+        assert config.to_dict()["samplingPercentage"] == 25
+        restored = DeploymentTracingConfig.from_response_json(config.to_dict())
+
+        assert restored.sampling_percentage == 25
+
+    @pytest.mark.parametrize("percentage", [-1, 101])
+    def test_rejects_sampling_percentage_out_of_range(self, percentage):
+        with pytest.raises(ValueError, match="between 0 and 100"):
+            DeploymentTracingConfig(sampling_percentage=percentage)

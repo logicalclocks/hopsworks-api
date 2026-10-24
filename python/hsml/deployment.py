@@ -24,6 +24,7 @@ from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
 from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
+from hsml.deployment_tracing_config import DeploymentTracingConfig
 from hsml.engine import serving_engine
 
 
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
-    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.deployment_version import DeploymentVersion
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -191,6 +191,35 @@ class Deployment:
         if not isinstance(version, int):
             version = version.version
         self._serving_engine._rollback(self, version, await_update)
+
+    @public
+    @usage._method_logger
+    def set_tracing(
+        self, active: bool | None = None, sampling_percentage: int | None = None
+    ) -> None:
+        """Switch tracing on or off, or change the share of requests it traces, without restarting the deployment.
+
+        Works on a model or feature view deployment created with tracing enabled, for example `model.deploy(tracing={"enabled": True})`.
+        Turned off, the deployment records no transformation metrics and no traces, and runs no timing code.
+        The running instances apply the change within about a minute; new instances start with it.
+
+        ```python
+        deployment.set_tracing(active=False)
+        deployment.set_tracing(active=True, sampling_percentage=50)
+        ```
+
+        Parameters:
+            active: Whether to record traces and transformation metrics; `None` keeps the current value.
+            sampling_percentage: Percentage of requests to trace, from 0 to 100; `None` keeps the current value.
+
+        Raises:
+            ValueError: If `sampling_percentage` is outside 0 to 100.
+            hopsworks.client.exceptions.RestAPIError: If the deployment was not created with tracing enabled, which a running deployment cannot gain: update it with tracing enabled, which restarts it.
+        """
+        DeploymentTracingConfig._validate_sampling_percentage(sampling_percentage)
+        self._predictor.tracing = DeploymentTracingConfig.from_response_json(
+            self._serving_api._set_tracing(self, active, sampling_percentage)
+        )
 
     @public
     @usage._method_logger
