@@ -420,6 +420,7 @@ class Query:
         if online and self._left_feature_group.embedding_index:
             return engine._get_instance()._read_vector_db(
                 self._left_feature_group,
+                n=self._limit,
                 dataframe_type=dataframe_type,
                 filter=self._filter,
             )
@@ -454,14 +455,33 @@ class Query:
                     "Pandas types casting only supported for feature_group.read()/query.select_all()"
                 )
 
-        return engine._get_instance()._sql(
+        # Spark limits the DataFrame before it converts it to the requested type: converting first would
+        # collect every row on the driver.
+        limit_in_spark = self._limit is not None and engine._get_type().startswith(
+            "spark"
+        )
+        result = engine._get_instance()._sql(
             sql_query,
             self._feature_store_name,
             online_conn,
-            dataframe_type,
+            "default" if limit_in_spark else dataframe_type,
             read_options,
             schema,
         )
+        if limit_in_spark:
+            return engine._get_instance()._return_dataframe_type(
+                result.limit(self._limit), dataframe_type
+            )
+        return self._apply_limit(result)
+
+    def _apply_limit(self, result):
+        # The query service stops at the limit itself; the Python engine, when it falls back from the query
+        # service, runs the backend's SQL, which carries no limit.
+        if self._limit is None or result is None:
+            return result
+        if hasattr(result, "head"):
+            return result.head(self._limit)
+        return result[: self._limit]
 
     @public
     @contextlib.contextmanager

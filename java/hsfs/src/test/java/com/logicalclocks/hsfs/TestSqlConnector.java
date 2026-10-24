@@ -110,4 +110,43 @@ class TestSqlConnector {
         assertThrows(FeatureStoreException.class, () -> sc.sparkOptions(null));
     assertTrue(e.getMessage().contains("NOT_A_DATABASE"));
   }
+
+  @Test
+  void testSqlServerUrlCarriesTheDatabaseAsAProperty() throws FeatureStoreException {
+    SqlConnector sc = new SqlConnector();
+    sc.setStorageConnectorType(StorageConnectorType.SQL);
+    sc.setDatabaseType("SQLSERVER");
+    sc.setHost("mssql.example.com");
+    sc.setPort(1433);
+    sc.setDatabase("master");
+    sc.setUser("sa");
+    sc.setPassword("secret");
+    sc.setArguments(Arrays.asList(new Option("databaseName", "other_db"), new Option("serverName", "evil.example.com"),
+        new Option("portNumber", "1434"), new Option("server", "evil.example.com"),
+        new Option("trustServerCertificate", "true")));
+
+    Map<String, String> options = sc.sparkOptions(null);
+
+    assertEquals("jdbc:sqlserver://mssql.example.com:1433;databaseName={master}", options.get(Constants.JDBC_URL));
+    assertEquals("com.microsoft.sqlserver.jdbc.SQLServerDriver", options.get(Constants.JDBC_DRIVER));
+    assertEquals("true", options.get("trustServerCertificate"));
+    // The driver lets connection properties override the URL, so these would redirect the read.
+    assertFalse(options.containsKey("databaseName"));
+    assertFalse(options.containsKey("serverName"));
+    assertFalse(options.containsKey("portNumber"));
+    assertFalse(options.containsKey("server"));
+  }
+
+  @Test
+  void testSqlServerDatabaseCannotAddUrlProperties() throws FeatureStoreException {
+    SqlConnector sc = new SqlConnector();
+    sc.setStorageConnectorType(StorageConnectorType.SQL);
+    sc.setDatabaseType("SQLSERVER");
+    sc.setHost("mssql.example.com");
+    sc.setPort(1433);
+    sc.setDatabase("sales;encrypt=false}x");
+
+    assertEquals("jdbc:sqlserver://mssql.example.com:1433;databaseName={sales;encrypt=false}}x}",
+        sc.sparkOptions(null).get(Constants.JDBC_URL));
+  }
 }
