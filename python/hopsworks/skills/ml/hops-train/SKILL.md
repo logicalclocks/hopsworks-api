@@ -119,6 +119,7 @@ land in the registry, in the **hops-design** look: the accent for the model's
 series, greys for references and baselines, no top or right spine, a light grid,
 axis labels with units. An ML system's `charts.py` (**hops-reqs** template) draws
 them that way.
+No frame or border around a figure; the panel draws the card.
 
 Evaluation (metrics on the test set) is distinct from **model validation**:
 checking the model on slices of the data at risk of bias before it ships. Use
