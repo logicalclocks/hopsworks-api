@@ -45,6 +45,7 @@ import random
 import re
 import shutil
 import time
+import unicodedata
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -86,6 +87,7 @@ MAX_RETRY_AFTER_S = 300.0
 MAX_ATTEMPTS = 8
 # A lease whose holder cannot be checked is taken over after this long; no sync runs for a day.
 UNVERIFIABLE_LEASE_MS = 24 * 3600_000
+# UTF-8 bytes; HopsFS names hold 255, and a write first goes to the name plus a 37-byte temporary suffix.
 MAX_FILENAME_LENGTH = 200
 
 # The feature group's columns, in order, with their feature types.
@@ -354,6 +356,8 @@ _TAG = re.compile(r"<[^>]+>")
 _SCRIPT = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
 _BLANK_LINES = re.compile(r"\n\s*\n\s*\n+")
 _UNSAFE_NAME = re.compile(r"[\x00-\x1f\x7f/\\:*?\"<>|]+")
+# HopsFS keeps inode names in a latin1 column (hops.hdfs_inodes.name), and its mount answers EIO for any other character.
+_NOT_LATIN1 = re.compile(r"[^\x00-\xff]+")
 
 
 def _body_text(parsed: email.message.EmailMessage) -> str:
@@ -387,17 +391,27 @@ def _payload(part: email.message.EmailMessage) -> bytes:
 
 
 def _safe_name(name: str) -> str:
-    """A file name that stays inside its directory, whatever the sender called the attachment."""
-    name = _UNSAFE_NAME.sub("_", name).strip(" .")
+    """A file name that stays inside its directory and that HopsFS can store, whatever the sender called the attachment."""
+    # Mail clients on macOS send decomposed accents (o + U+0308); composed, most of them are latin1.
+    name = unicodedata.normalize("NFC", name)
+    name = _UNSAFE_NAME.sub("_", _NOT_LATIN1.sub("_", name)).strip(" .")
     if not name:
         name = "attachment"
-    if len(name) > MAX_FILENAME_LENGTH:
+    if len(name.encode()) > MAX_FILENAME_LENGTH:
         stem, dot, ext = name.rpartition(".")
         if dot and len(ext) < 16:
-            name = stem[: MAX_FILENAME_LENGTH - len(ext) - 1] + "." + ext
+            name = (
+                _utf8_prefix(stem, MAX_FILENAME_LENGTH - len(ext.encode()) - 1)
+                + "."
+                + ext
+            )
         else:
-            name = name[:MAX_FILENAME_LENGTH]
+            name = _utf8_prefix(name, MAX_FILENAME_LENGTH)
     return name
+
+
+def _utf8_prefix(text: str, max_bytes: int) -> str:
+    return text.encode()[:max_bytes].decode(errors="ignore")
 
 
 def _unique(name: str, taken: set[str]) -> str:

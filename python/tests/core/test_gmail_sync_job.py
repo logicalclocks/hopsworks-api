@@ -203,6 +203,9 @@ class TestParseMessage:
             ("a/b\\c.txt", "a_b_c.txt"),
             ("..", "attachment"),
             ("x" * 300 + ".pdf", "x" * 196 + ".pdf"),
+            ("Fo\u0308rening.pdf", "F\u00f6rening.pdf"),
+            ("\u6587\u4ef6 report \U0001f600.pdf", "_ report _.pdf"),
+            ("\u00f6" * 150 + ".pdf", "\u00f6" * 98 + ".pdf"),
         ],
     )
     def test_attachment_names_stay_inside_their_directory(self, sent, stored):
