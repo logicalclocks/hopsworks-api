@@ -632,6 +632,78 @@ def test_the_finetune_factory_writes_its_lora_requirements(
     assert registered == [("support-qwen", "support-qwen", "ml-finetune")]
 
 
+def test_the_rag_factory_writes_its_directories_and_retrieval(
+    tmp_path, monkeypatch, logged_in
+):
+    resources = (
+        Path(__file__).resolve().parents[4]
+        / "hopsworks-ee/hopsworks-common/src/main/resources/factories"
+    )
+    if not resources.is_dir():
+        pytest.skip("hopsworks-ee is not beside this checkout")
+    registered, launched = _recording(monkeypatch, tmp_path)
+    text = (resources / "ml-rag.yaml").read_text()
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(text, version=1)
+    )
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "slug": "policy-search",
+                "description": "answer staff questions about our HR policies",
+                "documents": {"directories": ["Resources/policies", "Resources/hr"]},
+                "embedding": {"model": "BAAI/bge-m3"},
+                "retrieval": {"k": "auto"},
+                "serving": {"architecture": "one_app"},
+            }
+        )
+    )
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "ml-rag", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "policy-search" / "system.yaml").read_text())
+    requirements = doc["requirements"]
+    assert requirements["documents"]["directories"] == [
+        "Resources/policies",
+        "Resources/hr",
+    ]
+    assert requirements["embedding"]["model"] == "BAAI/bge-m3"
+    assert requirements["serving"]["architecture"] == "one_app"
+    assert [p["key"] for p in doc["factory"]["phases"]] == [
+        "reqs",
+        "survey",
+        "index",
+        "retrieval",
+        "agent",
+        "app",
+        "verify",
+    ]
+    command = (
+        tmp_path / "policy-search" / ".claude" / "commands" / "hops-factory-ml-rag.md"
+    ).read_text()
+    assert "**hops-agent-deployment**" in command
+    assert "find_neighbors" in command
+    assert launched == ["/hops-factory-ml-rag policy-search"]
+    assert registered == [("policy-search", "policy-search", "ml-rag")]
+
+
+@pytest.mark.parametrize(
+    ("value", "ok"),
+    [
+        (["Resources/docs", "Jupyter/papers/"], True),
+        (["/Projects/p/Resources/docs"], False),
+        (["Resources/../../etc"], False),
+        (["/"], False),
+        ("Resources/docs", False),
+    ],
+)
+def test_a_directories_answer_names_directories_in_the_project(value, ok):
+    field = {"id": "dirs", "type": "directories", "label": "Directories"}
+    assert (factory_spec._field_problems(field, value, "Directories") == []) == ok
+
+
 def test_rerunning_the_answers_resumes_with_the_recorded_version(
     tmp_path, monkeypatch, logged_in
 ):

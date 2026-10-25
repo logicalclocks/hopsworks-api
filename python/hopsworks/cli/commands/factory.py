@@ -1,8 +1,9 @@
 """``hops factory``: the software factories of this project, and the systems they build.
 
-Ten are built in, as YAML definitions the cluster ships: ``ml-batch``,
+Eleven are built in, as YAML definitions the cluster ships: ``ml-batch``,
 ``ml-realtime``, ``ml-streaming`` and ``ml-agent`` build ML systems, ``ml-finetune``
-fine-tunes a foundation model with LoRA, ``analytics-bronze``,
+fine-tunes a foundation model with LoRA, ``ml-rag`` indexes documents and answers
+questions over them, ``analytics-bronze``,
 ``analytics-silver`` and ``analytics-gold`` build analytics layers,
 ``analytics-pipeline`` builds a data pipeline and ``analytics-ingestion`` the
 ingestion of data sources into feature groups, each from its written instructions. A
@@ -580,6 +581,7 @@ def _prompt(field: dict, default: Any, label: str) -> Any:
         "multichoice": f" ({', '.join(options)}; comma-separated)",
         "feature_group": " (name or name:version)",
         "feature_groups": " (name or name:version, comma-separated)",
+        "directories": " (in the project, such as Resources/docs; comma-separated)",
         "datetime": " (UTC, such as 2025-01-01 or 2025-01-01T06:00Z)",
     }.get(kind, "")
     raw = click.prompt(
@@ -599,6 +601,8 @@ def _prompt(field: dict, default: Any, label: str) -> Any:
         return _feature_group(raw) if raw else None
     if kind == "feature_groups":
         return [_feature_group(v.strip()) for v in raw.split(",") if v.strip()]
+    if kind == "directories":
+        return [v.strip().rstrip("/") for v in raw.split(",") if v.strip()]
     return raw
 
 
@@ -606,7 +610,7 @@ def _shown(kind: str, default: Any) -> str:
     """A default as the prompt shows it and takes it back."""
     if default is None:
         return ""
-    if kind == "multichoice" and isinstance(default, list):
+    if kind in ("multichoice", "directories") and isinstance(default, list):
         return ",".join(map(str, default))
     if kind in ("feature_group", "feature_groups"):
         groups = default if isinstance(default, list) else [default]
