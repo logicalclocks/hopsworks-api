@@ -633,6 +633,20 @@ def _check_hopsworks(v: dict[str, Any]) -> str | None:
     return None
 
 
+_GMAIL_AUTH_NEEDS = {
+    "OAUTH": ("--client-id", "--client-secret", "--refresh-token"),
+    "SERVICE_ACCOUNT": ("--key-path",),
+}
+
+
+def _check_gmail(v: dict[str, Any]) -> str | None:
+    auth = v["auth_type"]
+    others = [f for a, flags in _GMAIL_AUTH_NEEDS.items() if a != auth for f in flags]
+    return _needs(v, f"--auth-type {auth}", *_GMAIL_AUTH_NEEDS[auth]) or _refuses(
+        v, f"--auth-type {auth}", *others
+    )
+
+
 def _check_bigquery(v: dict[str, Any]) -> str | None:
     if (
         _given(v, "--project-id")
@@ -1319,6 +1333,44 @@ _SPECS: dict[str, _Spec] = {
         ),
         check=_check_hopsworks,
     ),
+    "gmail": _Spec(
+        "featurestoreGmailConnectorDTO",
+        "GMAIL",
+        "Register a Gmail mailbox. Copy it into a feature group with `hops datasource sync`.",
+        (
+            _Opt(
+                "--mailbox", "mailbox", "Email address of the mailbox.", required=True
+            ),
+            _Opt(
+                "--auth-type",
+                "authType",
+                "OAUTH for a refresh token granted by the mailbox owner, SERVICE_ACCOUNT for "
+                "a Workspace service account with domain-wide delegation.",
+                required=True,
+                choices=tuple(_GMAIL_AUTH_NEEDS),
+            ),
+            _Opt("--client-id", "clientId", "OAuth client id, for --auth-type OAUTH."),
+            _Opt(
+                "--client-secret",
+                "clientSecret",
+                "OAuth client secret, for --auth-type OAUTH.",
+                secret=True,
+            ),
+            _Opt(
+                "--refresh-token",
+                "refreshToken",
+                "OAuth refresh token with the gmail.readonly scope, for --auth-type OAUTH.",
+                secret=True,
+            ),
+            _Opt(
+                "--key-path",
+                "keyPath",
+                "HopsFS path of the service account's JSON key, for --auth-type SERVICE_ACCOUNT. "
+                "Hopsworks stores its contents, so the file can be deleted afterwards.",
+            ),
+        ),
+        check=_check_gmail,
+    ),
     "bigquery": _Spec(
         "featurestoreBigqueryConnectorDTO",
         "BIGQUERY",
@@ -1836,6 +1888,136 @@ def connector_databases(ctx: click.Context, name: str) -> None:
         output.print_json(databases)
         return
     output.print_table(["DATABASE"], [[db] for db in databases or []])
+
+
+@datasource_group.command("sync")
+@click.argument("name")
+@click.option(
+    "--feature-group",
+    help="Feature group to upsert the emails into; defaults to one named after the mailbox, "
+    "e.g. dowling_jim_gmails for dowling.jim@gmail.com.",
+)
+@click.option(
+    "--attachments-path",
+    help="Directory inside a dataset for attachment files; defaults to Resources/gmail/<feature group>.",
+)
+@click.option("--query", help="Gmail search query, as typed in the Gmail search box.")
+@click.option(
+    "--label",
+    "labels",
+    multiple=True,
+    help="Gmail label id a message must carry; repeatable.",
+)
+@click.option(
+    "--strategy",
+    type=click.Choice(["INCREMENTAL_TIMESTAMP", "FULL_LOAD"], case_sensitive=False),
+    default="INCREMENTAL_TIMESTAMP",
+    show_default=True,
+    help="INCREMENTAL_TIMESTAMP adds new messages; FULL_LOAD overwrites the feature group.",
+)
+@click.option("--start-date", help="Earliest receive time to copy, e.g. 2026-01-01.")
+@click.option(
+    "--schedule",
+    type=click.Choice(["hourly", "daily"], case_sensitive=False),
+    help="Run at the top of every hour, or daily at 00:00 UTC.",
+)
+@click.option("--job-name", help="Job name; defaults to <data source>_gmail_sync.")
+@click.option("--environment", help="Python environment for the job.")
+@click.option(
+    "--start/--no-start", default=True, show_default=True, help="Start a run now."
+)
+@click.pass_context
+def connector_sync(
+    ctx: click.Context,
+    name: str,
+    feature_group: str | None,
+    attachments_path: str | None,
+    query: str | None,
+    labels: tuple[str, ...],
+    strategy: str,
+    start_date: str | None,
+    schedule: str | None,
+    job_name: str | None,
+    environment: str | None,
+    start: bool,
+) -> None:
+    """Create or update a job that copies a Gmail data source into a Delta feature group.
+
+    Args:
+        ctx: Click context.
+        name: Gmail data source name.
+        feature_group: Feature group name.
+        attachments_path: Directory for attachment files.
+        query: Gmail search query.
+        labels: Gmail label ids a message must carry.
+        strategy: INCREMENTAL_TIMESTAMP or FULL_LOAD.
+        start_date: Earliest receive time to copy.
+        schedule: hourly or daily.
+        job_name: Job name.
+        environment: Python environment for the job.
+        start: Start a run now when True.
+    """
+    fs = session.get_feature_store(ctx)
+    try:
+        job = fs.get_data_source(name).sync(
+            feature_group_name=feature_group,
+            attachments_path=attachments_path,
+            query=query,
+            labels=list(labels),
+            loading_strategy=strategy.upper(),
+            initial_value=start_date,
+            schedule=schedule,
+            job_name=job_name,
+            environment=environment,
+            start=start,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not set up the sync job: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json({"job": job.name, "started": start, "schedule": schedule})
+        return
+    output.success(
+        f"Sync job {job.name} saved"
+        + (" and running" if start else "")
+        + (f", scheduled {schedule}" if schedule else "")
+    )
+
+
+@datasource_group.command("sync-jobs")
+@click.argument("name")
+@click.pass_context
+def connector_sync_jobs(ctx: click.Context, name: str) -> None:
+    """List the sync jobs of a Gmail data source.
+
+    Args:
+        ctx: Click context.
+        name: Gmail data source name.
+    """
+    fs = session.get_feature_store(ctx)
+    try:
+        sc = fs.get_data_source(name).storage_connector
+        jobs = sc.list_sync_jobs()
+    except AttributeError as exc:
+        raise click.ClickException(f"{name} is not a Gmail data source") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not list sync jobs: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json(
+            [
+                {
+                    "job": j.job_name,
+                    "featureGroup": j.feature_group_name,
+                    "attachments": j.path,
+                    "strategy": j.loading_strategy,
+                }
+                for j in jobs
+            ]
+        )
+        return
+    output.print_table(
+        ["JOB", "FEATURE GROUP", "ATTACHMENTS", "STRATEGY"],
+        [[j.job_name, j.feature_group_name, j.path, j.loading_strategy] for j in jobs],
+    )
 
 
 @datasource_group.command("tables")

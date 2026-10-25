@@ -11,6 +11,7 @@ into bucket folders:
 - [hops-airflow](data/hops-airflow/SKILL.md) — orchestrate Hopsworks jobs with Airflow DAGs.
 - [hops-data-discovery](data/hops-data-discovery/SKILL.md) — find FGs, data sources, search, files.
 - [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion.
+- [hops-email-search](data/hops-email-search/SKILL.md) — Search emails a Gmail data source copied into a feature group, with DuckDB.
 - [hops-delta](data/hops-delta/SKILL.md) — maintain Delta feature groups: optimize, vacuum, write modes and layout.
 - [hops-partitioning](data/hops-partitioning/SKILL.md) — Whether a derived feature group should be partitioned by time, from the source table's files.
 - [hops-analytics](data/hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.

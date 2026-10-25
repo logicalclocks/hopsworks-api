@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs).
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs, Gmail). For searching copied emails use hops-email-search.
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -429,6 +429,28 @@ df = ext_fg.read()   # Python engine: via the remote Hopsworks Query Service
 
 The remote cluster must have its Hopsworks Query Service reachable from this one, through its `feature_query` load balancer.
 There is no SQL query and no Trino catalog for this data source type.
+
+## Copy a Gmail mailbox into a feature group
+
+A `gmail` data source is a mailbox, read with an OAuth refresh token or a Workspace service account with domain-wide delegation, both with the `gmail.readonly` scope.
+Its credentials are write-only; code that calls Gmail itself asks for a short-lived token with `get_access_token()`.
+It is not browsed or mounted: a sync job upserts its emails into a Delta feature group named after the mailbox (`dowling.jim@gmail.com` → `dowling_jim_gmails`), partitioned by the `day` of the UTC receive time (an hourly job adds a file per run, and the first run after midnight compacts the finished day), and writes attachments as files whose paths the `attachments` column lists.
+
+```bash
+hops datasource create gmail support_inbox --mailbox support@example.com --auth-type OAUTH --client-id CID --client-secret - --refresh-token - < secrets.txt
+hops datasource sync support_inbox --start-date 2026-01-01 --schedule hourly
+hops datasource sync-jobs support_inbox
+```
+
+```python
+fs.get_data_source("support_inbox").sync(query="-category:promotions", schedule="daily")
+emails = fs.get_feature_group("support_examples", version=1)
+```
+
+`INCREMENTAL_TIMESTAMP` (the default) upserts messages received since the previous run, and its first run backfills from `initial_value`; `FULL_LOAD` overwrites the feature group on every run.
+The copy is an archive: deletions and label changes in Gmail after a message was copied do not reach it until a full load.
+A sync job is a Python job; schedule it `hourly` or `daily`, and monitor it like any job.
+To search the emails, use **hops-email-search**.
 
 ## Next Steps
 

@@ -94,6 +94,14 @@ _MINIMAL: dict[str, list[str]] = {
     "hopsworks": ["--host", "h", "--project", "p", "--api-key", "k"],
     "glue": ["--database", "d", "--region", "eu-north-1"],
     "google-sheets": ["--key-path", "/Projects/p/k.json"],
+    "gmail": [
+        "--mailbox",
+        "a@example.com",
+        "--auth-type",
+        "SERVICE_ACCOUNT",
+        "--key-path",
+        "/Projects/p/sa.json",
+    ],
 }
 
 # The Jackson subtype name and the FeaturestoreConnectorType each command sends.
@@ -118,6 +126,7 @@ _DTOS: dict[str, tuple[str, str]] = {
     "hopsworks": ("featurestoreHopsworksConnectorDTO", "HOPSWORKS"),
     "glue": ("featurestoreGlueConnectorDTO", "GLUE"),
     "google-sheets": ("featurestoreGoogleSheetsConnectorDTO", "GOOGLE_SHEETS"),
+    "gmail": ("featurestoreGmailConnectorDTO", "GMAIL"),
 }
 
 
@@ -948,6 +957,53 @@ def test_hopsworks_sends_the_remote_project_and_api_key():
         "from-env",
     )
     assert body["verify"] is False
+
+
+def test_gmail_oauth_reads_its_secrets_from_the_environment():
+    body = _create(
+        [
+            "gmail",
+            "n",
+            "--mailbox",
+            "a@example.com",
+            "--auth-type",
+            "OAUTH",
+            "--client-id",
+            "cid",
+        ],
+        env={
+            "HOPSWORKS_DS_GMAIL_CLIENT_SECRET": "cs",
+            "HOPSWORKS_DS_GMAIL_REFRESH_TOKEN": "rt",
+        },
+    )
+    assert (
+        body["authType"],
+        body["clientId"],
+        body["clientSecret"],
+        body["refreshToken"],
+    ) == (
+        "OAUTH",
+        "cid",
+        "cs",
+        "rt",
+    )
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (
+            ["--auth-type", "OAUTH", "--client-id", "c"],
+            "--auth-type OAUTH needs --client-secret",
+        ),
+        (
+            ["--auth-type", "SERVICE_ACCOUNT", "--key-path", "k", "--client-id", "c"],
+            "--auth-type SERVICE_ACCOUNT does not take --client-id",
+        ),
+    ],
+)
+def test_gmail_credentials_follow_the_auth_type(argv, message):
+    assert message in _refused(["gmail", "n", "--mailbox", "a@example.com", *argv])
 
 
 @pytest.mark.parametrize(
