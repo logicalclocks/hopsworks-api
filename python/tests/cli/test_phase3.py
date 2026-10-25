@@ -8,6 +8,7 @@ it for raw REST calls (connector create/delete).
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from unittest import mock
 
 from click.testing import CliRunner
@@ -188,6 +189,31 @@ def test_job_run_with_wait(mock_project):
     job.run.assert_called_with(
         args=None, await_termination=True, start_time=None, end_time=None
     )
+
+
+def test_job_backfill_reads_a_timestamp_without_offset_as_utc(mock_project):
+    api = mock.MagicMock()
+    job = mock.MagicMock()
+    job.run.return_value = mock.MagicMock(id=7, state="INITIALIZING")
+    api.get_job.return_value = job
+    mock_project.get_job_api.return_value = api
+    result = CliRunner().invoke(
+        cli,
+        [
+            "job",
+            "backfill",
+            "etl",
+            "--start-time",
+            "2026-03-26",
+            "--end-time",
+            "2026-10-24T09:08:33+0000",
+            "--no-wait",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = job.run.call_args.kwargs
+    assert kwargs["start_time"] == datetime(2026, 3, 26, tzinfo=timezone.utc)
+    assert kwargs["end_time"] == datetime(2026, 10, 24, 9, 8, 33, tzinfo=timezone.utc)
 
 
 def test_job_schedule(mock_project):

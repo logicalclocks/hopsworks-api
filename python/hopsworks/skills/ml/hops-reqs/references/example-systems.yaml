@@ -37,7 +37,7 @@ churn-example:
           on both keys. A scheduled snapshot job writes exactly the snapshots on the Monday grid
           inside its window, so a weekly fire never writes seven
       writes:
-        feature_group: customers
+        feature_group: churn_example_customers
         version: 1
         online: false
         time_travel_format: DELTA
@@ -49,7 +49,7 @@ churn-example:
           daily calls, data use and top-ups per customer; churners' usage decays over their last
           60 days. Backfill only: a batch system has no live stream
       writes:
-        feature_group: usage_events
+        feature_group: churn_example_usage_events
         version: 1
         online: false
         time_travel_format: DELTA

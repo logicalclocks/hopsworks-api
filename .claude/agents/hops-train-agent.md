@@ -52,8 +52,10 @@ Load these skills before you start (from `.claude/skills/<name>/` in the reposit
    feature groups at their own grain: with an `event_time` on every group the view's training data
    is a point-in-time join, so never create a feature group of snapshots or pre-joined features and
    labels to get that. Then create the
-   training dataset version with the three parts (`fv.create_train_validation_test_split`, with
-   the boundaries of step 2 for a time split, or `fv.create_training_data` for a grouped split).
+   training dataset version with the three parts, in memory: `fv.train_validation_test_split`
+   with the boundaries of step 2 for a time split, `fv.training_data` for a grouped split, the
+   version from `fv.get_last_accessed_training_dataset()`. Never materialize a time or grouped
+   split (`fv.create_*`): that is a Spark job of minutes, and every read of it is slower too.
 5. **Shortlist pretrained candidates** when public models cover the task (see "Pretrained first"
    in hops-train): at most three, licence in `requirements.models.licences`, the revision
    recorded. None fit, or no egress: `searched: true, chosen: none` with the reason.

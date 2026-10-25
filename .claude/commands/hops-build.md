@@ -349,6 +349,7 @@ instruction: <the phase instruction, or "none">
 On `unmet`, ask with the measured table: change the SLA, change the design (realtime to batch),
 or accept as is (`inference.status: accepted` and a `decisions` line).
 When the agent's `recommendation.detail` reports monitoring it could not build (no alert receiver, feature monitoring off on the cluster), print it with what `inference.monitoring.unavailable` records and ask once whether to create the receiver (`hops alert receiver create`) and finish it.
+An example system never asks: it leaves the gap in `unavailable` and names it in the final summary.
 
 ### app
 
@@ -362,6 +363,14 @@ the deployment for realtime; the entity, the consumers), and spawn **hops-dashbo
 `program: <slug>/dashboards/<slug>.py`) or **hops-app-builder** (`action: create`, the source under
 `<slug>/app/`) with the prompt `/hops` gives them, so the program or source is committed with the
 system. Record `app`. On no, `app: {wanted: false, status: skipped}`.
+
+When `app.wanted` is recorded and `training` is satisfied, spawn the builder in the same turn as the
+**hops-infer-agent**, not after it: the app takes as long as an inference round's jobs, and the
+two only meet at the prediction feature group or deployment the inference design names. Add to the
+builder's prompt: smoke-test the reads only once that feature group or deployment exists, polling
+`hops fg info` or `hops deployment status` meanwhile; commit only paths under `<slug>/app/` (or
+the dashboard program), never `git add -A`, since the infer agent commits in the same tree. Record
+`app` after both return. When inference ends `unmet`, the app waits with it for the user's answer.
 
 ### verify
 

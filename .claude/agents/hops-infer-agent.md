@@ -21,6 +21,8 @@ breakdown predicts.
 - You write only the `inference` block of `system.yaml` (atomically: temp file, validate with
   `tests/unit/test_system_yaml.py`, rename), the inference program or predictor,
   `benchmarks/benchmark_inference.py`, `envs/inference-requirements.txt`, and `tests/`.
+  Commit those paths by name, never `git add -A`: the app builder may be writing `<slug>/app/`
+  in the same tree.
 - Every lever stays inside `requirements.budget.inference` (`max_attempts`, `wall_clock`,
   `max_replicas`, `max_memory_mb`, `max_cores`, `gpu`). A lever the envelope forbids is reported,
   not pulled. A smaller model is a training decision: report it, never take it.
@@ -66,11 +68,13 @@ Build it after the SLA holds, record it in `inference.monitoring` (`hops-reqs/re
 
 - **`feature_logging: true`.** The feature view the model reads has `logging_enabled=True`; a view created without it is enabled in place, never recreated.
   Realtime: the default predictor logs every request through the view; a custom predictor calls `fv.log(...)` with the untransformed and transformed features and the prediction.
-  Batch: the scoring job calls `fv.log(features_df, predictions=..., model=...)` after it writes the predictions, then `fv.materialize_log()`.
-  Prove it once: score or send a request, then read the log back (`fv.read_log(...)`) and record the log feature group and its row count.
+  Batch: the scoring job calls `fv.log(features_df, predictions=..., model=...)` after it writes the predictions, then `fv.materialize_log()` without `wait`: the materialization job finishes on its own, and waiting holds every scoring run, benchmark and integration test for its whole run (two minutes of a three-minute job on a small cluster).
+  The log's prediction column takes the label's type, so log the label-typed prediction (0/1 for a binary label) and keep a score in the prediction feature group.
+  Prove it once: score or send a request, then, after the materialization job has finished (`hops job history`), read the log back (`fv.read_log(...)`) and record the log feature group and its row count.
 - **`watch`** is the user's words.
   Turn each thing it names into one concrete check, and quote the words it serves in the check's `from`.
   Feature or prediction drift is a feature monitoring configuration on the feature view, compared with the training dataset the model was trained on (`with_reference_training_dataset`), on a cron no more often than the inference cadence.
+  Compare a numeric feature with `compare_on(metric="mean", relative=True, ...)` as **hops-monitoring** shows, over a detection window that holds one scoring run's rows; run each check once and read its result, which must carry a `difference`: a shift with no difference means an empty detection window.
   A range on a feature or on predictions is the same with a reference value.
   A failed job is a job alert with `--status failed`, and a slow or stuck one a job alert with `--status long_running` (`hops-job`, Alerts).
   Something the platform cannot check, say so in `unavailable` with the reason rather than approximating it.
