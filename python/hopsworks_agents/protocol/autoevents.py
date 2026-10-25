@@ -156,8 +156,16 @@ def install_auto_tool_events(tracer_provider: Any) -> bool:
             if kind not in _TOOL_KINDS:
                 return
             span_id = format(span.get_span_context().span_id, "016x")
+            name = _tool_name(span, kind)
+            if name in ctx._handler_emitted:
+                # The handler reports this tool itself. Emitting here as well gave
+                # two chips for one call under two id spaces -- the framework's call
+                # id and this span id -- one of them closing under the event's name
+                # rather than the tool's.
+                ctx._auto_suppressed.add(span_id)
+                return
             try:
-                ctx._emit_sync(_tool_name(span, kind), "running", None, None, span_id)
+                ctx._emit_sync(name, "running", None, None, span_id)
             except Exception:  # noqa: BLE001 — never disturb the span
                 log.debug("auto tool-event on_start failed", exc_info=True)
 
@@ -169,11 +177,19 @@ def install_auto_tool_events(tracer_provider: Any) -> bool:
             if kind not in _TOOL_KINDS:
                 return
             span_id = format(span.get_span_context().span_id, "016x")
+            name = _tool_name(span, kind)
+            if span_id in ctx._auto_suppressed:
+                # The open was suppressed, so the close is too. Only the open decides:
+                # a handler that starts reporting this tool while its span is already
+                # open came after the automatic "running" was sent, and suppressing
+                # the close then left that chip running for good.
+                ctx._auto_suppressed.discard(span_id)
+                return
             status = getattr(getattr(span, "status", None), "status_code", None)
             failed = status is not None and getattr(status, "name", "") == "ERROR"
             try:
                 ctx._emit_sync(
-                    _tool_name(span, kind),
+                    name,
                     "failed" if failed else "done",
                     None,
                     None,

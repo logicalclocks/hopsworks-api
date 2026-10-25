@@ -34,6 +34,7 @@ from .agent_source import (
 from .api import _hopsworks_session
 from .client import HopsworksAgentClient
 from .clusters import (
+    KNOWN_SIGNATURES_LIMIT,
     Cluster,
     _assign_clusters,
     _from_api,
@@ -171,6 +172,10 @@ def _code_location(
     return described
 
 
+#: Output budget of an analysis call, grown further when a model runs out of it.
+ANALYSIS_MAX_TOKENS = 8_000
+
+
 def _completer_from(
     settings: dict[str, Any],
 ) -> tuple[Callable[[str], str] | None, str]:
@@ -182,6 +187,10 @@ def _completer_from(
         api_key_env=settings["api_key_env"],
         base_url=settings.get("base_url", ""),
         headers=dict(settings.get("headers") or {}),
+        # A triage answers with findings and patches, against a prompt carrying the
+        # agent's source; a reasoning model thinks inside the same budget. The judge
+        # default of 1,500 ran out before the JSON was finished.
+        max_tokens=ANALYSIS_MAX_TOKENS,
     )
     if config.provider == "custom" and not config.base_url:
         return (
@@ -354,6 +363,13 @@ def _review_feedback(
                 source,
             )
         )
+        # Offered to the triages after it in this run, first. Only the clusters of
+        # earlier runs were, so the same failure triaged twice in one run -- an
+        # agent crashing on every turn -- was named twice in slightly different
+        # words and became two clusters that a reviewer had to merge by hand.
+        signature = str(rows[-1].get("failure_signature") or "").strip()
+        if signature and signature not in signatures:
+            signatures = [signature, *signatures][:KNOWN_SIGNATURES_LIMIT]
 
     processed_through = (
         _ms(chosen[-1].get("createdAt")) if len(chosen) < len(pending) else None
@@ -412,6 +428,23 @@ def _review_one(
             ],
             budget_chars=int(settings.get("source_chars") or DEFAULT_SOURCE_CHARS),
         )
+        # Which files the model was shown, and which were cut: when a triage cites
+        # no code, this says whether it looked and found nothing or never saw it.
+        shown = {path for path, _ in source_files}
+        log.info(
+            "trace %s: showing %s; clipped %s; not shown %s",
+            feedback.get("traceId"),
+            ", ".join(
+                path for path, text in source_files if "[clipped" not in text[-60:]
+            )
+            or "nothing",
+            ", ".join(path for path, text in source_files if "[clipped" in text[-60:])
+            or "nothing",
+            ", ".join(
+                sorted(p for p in source.files if p not in shown and p.endswith(".py"))
+            )[:500]
+            or "nothing",
+        )
     result, why = _triage(
         complete,
         TriageInput(
@@ -448,7 +481,10 @@ def _write_clusters(feature_store: Any, clusters: Sequence[Cluster]) -> None:
             "that failed, then run the review again"
         )
     frame = pd.DataFrame([c._to_row(now) for c in clusters])
-    group.insert(_match_schema(group, frame), write_options={"mode": "append"})
+    # Online only: an insert that is not starts this group's offline
+    # materialization job, a Spark driver and executors per write, and the
+    # clusters are read back from the online store.
+    group.insert(_match_schema(group, frame), storage="online")
     log.info("wrote %d clusters to %s", len(clusters), CLUSTERS_FG)
 
 
@@ -467,9 +503,8 @@ def _write_triage(feature_store: Any, rows: Sequence[dict[str, Any]]) -> None:
             "Hopsworks provisions it when a review job is started -- check the server log for "
             "why that failed, then run the review again"
         )
-    group.insert(
-        _match_schema(group, pd.DataFrame(list(rows))), write_options={"mode": "append"}
-    )
+    # Online only, as for the clusters above.
+    group.insert(_match_schema(group, pd.DataFrame(list(rows))), storage="online")
     log.info("wrote %d rows to %s", len(rows), TRIAGE_FG)
 
 
@@ -567,8 +602,15 @@ def _execute(run_id: str, session: Any, base: str, project: Any, host: str) -> b
         # back, so a dismiss, promotion or rename made while it was going was undone by it.
         changed = _merge_decisions(changed, _existing_clusters(session, otel_base))
         feature_store = project.get_feature_store()
-        _write_triage(feature_store, rows)
+        # Clusters first, and not the other way round. Either write can fail -- a full
+        # tablespace is how we found this -- and the run then fails without moving the
+        # watermark, so the next one sees the same feedback again. A cluster written
+        # without its members is refilled by that run, because the members are filed by
+        # signature and land in the same cluster. A triage row written with a cluster_id
+        # that was never created is not: the re-triage gets a new run id, so a new row,
+        # and the orphan stays pointing at nothing for good.
         _write_clusters(feature_store, changed)
+        _write_triage(feature_store, rows)
         if rows and all(row.get("ungradable") for row in rows):
             # Every model call failed -- an expired key, an exhausted quota, a
             # provider outage. Reported SUCCEEDED this moved the watermark to

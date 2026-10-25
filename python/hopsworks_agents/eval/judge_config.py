@@ -345,8 +345,8 @@ def _parse_judge_config(entry: dict[str, Any]) -> JudgeConfig:
     elif "pass_score" in entry:
         config.pass_score = _as_float(entry["pass_score"], "pass_score")
     else:
-        # 80% of the scale, so a default judge is demanding without being
-        # unreachable — 4 of 5 on the default range.
+        # Three quarters of the way up the scale, so a default judge is
+        # demanding without being unreachable — 4 of 5 on the default range.
         config.pass_score = config.score_min + 0.75 * (
             config.score_max - config.score_min
         )
@@ -482,15 +482,38 @@ def _render_prompt(
     tool_calls: str = "",
     tool_results: str = "",
     transcript: str = "",
+    subject: str = "",
 ) -> str:
     """The prompt for one trial, showing only what `inputs` allows."""
     sections = []
+    if subject:
+        # Who the request was for, when the application said. Without it a judge
+        # read an agent that rightly did not ask who it was talking to as one that
+        # skipped the question, and a fact it remembered about the person as one
+        # it invented -- the judge had no input that said who the person was.
+        sections.append(
+            f"\n<user>\nThis request was made on behalf of {subject}, identified by "
+            "the application rather than in the conversation. The agent may already "
+            "know them: it need not ask who they are, and what it says about them "
+            "from its memory of earlier conversations is not invented.\n</user>\n"
+        )
     if transcript:
         # Not behind an `inputs` flag: a transcript exists only for a task that
         # had several turns, and a judge grading one of those without seeing the
         # conversation is grading the last answer and calling it the whole
         # exchange. There is nothing to opt out of.
-        sections.append(f"\n<conversation>\n{transcript}\n</conversation>\n")
+        #
+        # Said which reply is graded, because criteria are written as "the
+        # reply ...": an introduction given on the first turn was failed on the
+        # last one, which had no reason to repeat it. A criterion that is about
+        # the whole exchange says so, and is then graded on it.
+        sections.append(
+            f"\n<conversation>\n{transcript}\n</conversation>\n"
+            "<agent_answer> below is the final reply of this conversation. Grade "
+            "each criterion on that reply; earlier replies are context, except where "
+            "a criterion says it is about the conversation, which is then graded on "
+            "every reply in it.\n"
+        )
     if "expected_result" in config.inputs and expected:
         sections.append(f"\n<expected>\n{expected}\n</expected>\n")
     if "rubric" in config.inputs and rubric:
@@ -515,6 +538,7 @@ def _render_prompt(
             tool_results=tool_results,
             context=context,
             transcript=transcript,
+            subject=subject,
             criteria=_criteria_block(config),
             score_min=_number(config.score_min),
             score_max=_number(config.score_max),
@@ -636,14 +660,17 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
                     messages=[{"role": "user", "content": prompt}],
                     **extra,
                 )
-                return _message_text(response.choices[0].message.content)
+                choice = response.choices[0]
+                if getattr(choice, "finish_reason", None) == "length":
+                    raise _OutOfTokens(extra.get(parameters._token_limit))
+                return _message_text(choice.message.content)
 
             return parameters._send(call)
 
         return complete_openai
 
     parameters = _AnthropicMessagesParameters(
-        model, config.temperature, config.reasoning_effort
+        model, config.temperature, config.max_tokens, config.reasoning_effort
     )
 
     def complete_anthropic(prompt: str) -> str:
@@ -654,10 +681,11 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
         def call(**extra: Any) -> str:
             response = client.messages.create(
                 model=model or "claude-sonnet-5",
-                max_tokens=config.max_tokens,
                 messages=[{"role": "user", "content": prompt}],
                 **extra,
             )
+            if getattr(response, "stop_reason", None) == "max_tokens":
+                raise _OutOfTokens(extra.get("max_tokens"))
             return "".join(
                 block.text
                 for block in response.content
@@ -787,10 +815,55 @@ class _ReasoningEffortParameter:
         return True
 
 
+#: Requests per call: the parameter probes above, plus doubling a token budget the
+#: model ran out of from 1,500 up to the ceiling.
+_ATTEMPTS = 8
+
+#: The most output a call is allowed to grow to after running out.
+_TOKEN_CEILING = 32_000
+
+
+class _OutOfTokens(Exception):
+    """The model stopped at the token limit, so its reply is cut short."""
+
+    def __init__(self, limit: Any):
+        super().__init__(
+            f"the model ran out of output tokens at {limit} before finishing its reply"
+        )
+
+
+def _more_tokens(parameters: Any) -> bool:
+    """Double a budget the model ran out of; false once it is at the ceiling.
+
+    A reasoning model counts its thinking against the same limit as its answer, and
+    on a long prompt -- a triage with the agent's source in it -- it can spend the
+    whole of 1,500 thinking and return nothing, or half a JSON object. That read
+    as "reply was not a JSON object" twice in a row and the analysis parked the
+    window. The larger budget is kept for the calls after it.
+    """
+    if parameters.max_tokens >= _TOKEN_CEILING:
+        return False
+    grown = min(_TOKEN_CEILING, parameters.max_tokens * 2)
+    log.info(
+        "the model ran out of output tokens at %d; asking again with %d",
+        parameters.max_tokens,
+        grown,
+    )
+    parameters.max_tokens = grown
+    return True
+
+
 class _AnthropicMessagesParameters:
     """Keyword arguments for Anthropic Messages requests."""
 
-    def __init__(self, model: str, temperature: float, reasoning_effort: str):
+    def __init__(
+        self,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        reasoning_effort: str = "",
+    ):
+        self.max_tokens = max_tokens
         self._temperature = _TemperatureParameter._for_model(
             "anthropic", model, temperature
         )
@@ -807,12 +880,17 @@ class _AnthropicMessagesParameters:
 
     def _retrying(self, send: Any) -> str:
         last: Exception | None = None
-        for _attempt in range(3):
-            extra: dict[str, Any] = {}
+        for _attempt in range(_ATTEMPTS):
+            extra: dict[str, Any] = {"max_tokens": self.max_tokens}
             extra.update(self._temperature._extra_args())
             extra.update(self._reasoning_effort._extra_args())
             try:
                 result = send(**extra)
+            except _OutOfTokens as err:
+                last = err
+                if not _more_tokens(self):
+                    raise
+                continue
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
                 last = err
                 if self._temperature._rejected(err):
@@ -856,12 +934,17 @@ class _ChatCompletionParameters:
 
     def _retrying(self, send: Any) -> str:
         last: Exception | None = None
-        for _attempt in range(3):
+        for _attempt in range(_ATTEMPTS):
             extra: dict[str, Any] = {self._token_limit: self.max_tokens}
             extra.update(self._temperature._extra_args())
             extra.update(self._reasoning_effort._extra_args())
             try:
                 result = send(**extra)
+            except _OutOfTokens as err:
+                last = err
+                if not _more_tokens(self):
+                    raise
+                continue
             except Exception as err:  # noqa: BLE001 — SDK-specific error types
                 last = err
                 replacement = _replacement_token_limit(err, self._token_limit)
