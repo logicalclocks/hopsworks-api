@@ -616,6 +616,20 @@ class TestFeatureGroup:
         assert frame["to_addresses"][0] == ["alice@example.com"]
         assert (overwrite, wait) == (True, True)
 
+    def test_a_batch_without_any_cc_or_bcc_keeps_the_feature_group_types(self):
+        from hsfs.engine import python
+
+        fg = _FakeFeatureGroup(1)
+        rows = [g._parse_message(_message(i, DAY1), None, PROJECT_ROOT) for i in "ab"]
+        assert all(r["bcc_addresses"] == [] for r in rows)
+        for row in rows:
+            row["date_header"] = None
+        g._FeatureGroupWriter(fg)._upsert(rows, overwrite=False)
+        features = python.Engine._parse_schema_feature_group(
+            None, fg.inserts[0][0], "DELTA"
+        )
+        assert {f.name: f.type for f in features} == dict(g.COLUMNS)
+
     def test_a_new_feature_group_is_created_with_the_full_schema(self, mocker):
         fg = _FakeFeatureGroup()
         fs = mocker.MagicMock()

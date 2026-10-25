@@ -479,8 +479,16 @@ class _FeatureGroupWriter:
 
     def _upsert(self, rows: list[dict], overwrite: bool) -> None:
         import pandas as pd
+        import pyarrow as pa
 
         frame = pd.DataFrame(rows, columns=[name for name, _ in COLUMNS])
+        # Typed explicitly: inferred, a batch without any Bcc becomes list<null>, which the feature group refuses.
+        arrow_types = {"string": pa.string(), "array<string>": pa.list_(pa.string())}
+        for name, offline_type in COLUMNS:
+            if offline_type in arrow_types:
+                frame[name] = frame[name].astype(
+                    pd.ArrowDtype(arrow_types[offline_type])
+                )
         frame["internal_date"] = pd.to_datetime(
             frame["internal_date"], unit="ms", utc=True
         )
