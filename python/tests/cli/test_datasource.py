@@ -1100,6 +1100,7 @@ def test_sharepoint_copy_is_a_copy_folder():
         folder_path="Reports",
         dataset_name="sharepoint",
         alert_receiver=None,
+        index_files=False,
     )
 
 
@@ -1118,6 +1119,8 @@ def test_sharepoint_sync_create_defaults_to_an_hourly_mirror_run_now():
         mirror_deletions=True,
         alert_receiver=None,
         run_now=True,
+        index_files=False,
+        index_feature_group=None,
     )
 
 
@@ -1147,6 +1150,8 @@ def test_sharepoint_sync_create_passes_every_option():
             "--alert-receiver",
             "ops",
             "--no-run-now",
+            "--index-feature-group",
+            "reports_index",
         ]
     )
 
@@ -1159,6 +1164,7 @@ def test_sharepoint_sync_create_passes_every_option():
     assert kwargs["mirror_deletions"] is False
     assert kwargs["alert_receiver"] == "ops"
     assert kwargs["run_now"] is False
+    assert kwargs["index_feature_group"] == "reports_index"
 
 
 def test_sharepoint_sync_list():
@@ -1268,6 +1274,28 @@ def test_sharepoint_sync_set_folder():
 
     assert result.exit_code == 0, result.output
     sync.set_folder.assert_called_once_with("R")
+
+
+@pytest.mark.parametrize(
+    "argv,fields",
+    [
+        (["--on"], {"index_files": True}),
+        (
+            ["--on", "--feature-group", "docs"],
+            {"index_files": True, "index_feature_group": "docs"},
+        ),
+        (["--off"], {"index_files": False}),
+    ],
+)
+def test_sharepoint_sync_index(argv, fields):
+    sync = _a_sync()
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli, ["datasource", "sharepoint", "sync", "index", "n", "5", *argv]
+        )
+
+    assert result.exit_code == 0, result.output
+    sync.update.assert_called_once_with(**fields)
 
 
 def test_sharepoint_sync_delete_confirms_and_passes_its_flags():

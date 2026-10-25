@@ -28,6 +28,7 @@ from hsfs.core import sharepoint_api
 
 if TYPE_CHECKING:
     from hopsworks_common.execution import Execution
+    from hsfs.feature_group import FeatureGroup
 
 
 # Fields of SharePointSyncDTO that PUT /syncs/{id} accepts; driveId and datasetName are fixed at creation.
@@ -39,6 +40,8 @@ _UPDATABLE = (
     "verify_checksums",
     "checksum_every",
     "transfers",
+    "index_files",
+    "index_feature_group",
     "cron_expression",
     "folder_path",
     "take_ownership",
@@ -101,6 +104,8 @@ class SharePointSync:
         verify_checksums: bool | None = None,
         checksum_every: int | None = None,
         transfers: int | None = None,
+        index_files: bool | None = None,
+        index_feature_group: str | None = None,
         state: str | None = None,
         active_execution_id: int | None = None,
         resync_requested_at: Any = None,
@@ -139,6 +144,8 @@ class SharePointSync:
         self._verify_checksums = verify_checksums
         self._checksum_every = checksum_every
         self._transfers = transfers
+        self._index_files = index_files
+        self._index_feature_group = index_feature_group
         self._state = state
         self._active_execution_id = active_execution_id
         self._resync_requested_at = resync_requested_at
@@ -198,6 +205,8 @@ class SharePointSync:
             "verifyChecksums": self._verify_checksums,
             "checksumEvery": self._checksum_every,
             "transfers": self._transfers,
+            "indexFiles": self._index_files,
+            "indexFeatureGroup": self._index_feature_group,
             "state": self._state,
             "activeExecutionId": self._active_execution_id,
             "resyncRequestedAt": self._resync_requested_at,
@@ -341,7 +350,8 @@ class SharePointSync:
 
         Parameters:
             **fields:
-                Any of `include_patterns`, `exclude_patterns`, `max_file_size_mb`, `mirror_deletions`, `verify_checksums`, `checksum_every`, `transfers`, `cron_expression` (`None` removes the schedule), `folder_path` and `take_ownership`.
+                Any of `include_patterns`, `exclude_patterns`, `max_file_size_mb`, `mirror_deletions`, `verify_checksums`, `checksum_every`, `transfers`, `index_files`, `index_feature_group`, `cron_expression` (`None` removes the schedule), `folder_path` and `take_ownership`.
+                `index_files=False` stops indexing and keeps the feature group; a new `index_feature_group` starts a new one, which the next run fills with every copied file still in the folder.
                 `take_ownership=True` re-creates the schedule as the caller, so scheduled runs run as the caller, which adopts a sync whose creator left the project.
 
         Returns:
@@ -587,6 +597,41 @@ class SharePointSync:
     def transfers(self) -> int | None:
         """Number of files downloaded in parallel; the cluster default when `None`."""
         return self._transfers
+
+    @public
+    @property
+    def index_files(self) -> bool | None:
+        """Whether each run indexes the dataset's files in a feature group."""
+        return self._index_files
+
+    @public
+    @property
+    def index_feature_group(self) -> str | None:
+        """Name of the index feature group (version 1), or `None` when the sync does not index."""
+        return self._index_feature_group
+
+    @public
+    def get_index_feature_group(self) -> FeatureGroup | None:
+        """Get the feature group that indexes the sync's files.
+
+        It holds one row per file in the dataset: SharePoint id, path, link, type, size, times, authors, quickXorHash and path in HopsFS, partitioned by `ingestion_date`, the day the file was first copied in.
+        The first run after indexing is turned on creates it.
+
+        Returns:
+            The index feature group, or `None` until a run has created it.
+
+        Raises:
+            ValueError: If the sync does not index its files.
+        """
+        if not self._index_feature_group:
+            raise ValueError(f"SharePoint sync {self._id} does not index its files.")
+        from hsfs.core import feature_store_api
+
+        return (
+            feature_store_api.FeatureStoreApi()
+            ._get(self._featurestore_id)
+            .get_feature_group(self._index_feature_group, 1)
+        )
 
     @public
     @property

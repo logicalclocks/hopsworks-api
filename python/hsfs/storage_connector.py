@@ -5368,6 +5368,8 @@ class SharePointConnector(StorageConnector):
         transfers: int | None = None,
         alert_receiver: str | None = None,
         run_now: bool = True,
+        index_files: bool = False,
+        index_feature_group: str | None = None,
     ) -> sharepoint_sync.SharePointSync:
         """Create a sync that copies a library folder into a new dataset of the project.
 
@@ -5394,6 +5396,10 @@ class SharePointConnector(StorageConnector):
             transfers: Number of files downloaded in parallel; the cluster default when `None`.
             alert_receiver: Alert receiver notified when a run fails or is killed.
             run_now: Start the first run as soon as the sync is created.
+            index_files:
+                Index the dataset's files in a Delta feature group, one row per file, partitioned by the day the file was first copied in.
+                Each run updates it; see [`SharePointSync.get_index_feature_group`][hsfs.core.sharepoint_sync.SharePointSync.get_index_feature_group].
+            index_feature_group: Name of the index feature group; `sharepoint_<dataset_name>` when `None`.
 
         Returns:
             The created sync.
@@ -5417,6 +5423,8 @@ class SharePointConnector(StorageConnector):
             "transfers": transfers,
             "alertReceiver": alert_receiver,
             "runNow": run_now,
+            "indexFiles": index_files or index_feature_group is not None,
+            "indexFeatureGroup": index_feature_group,
         }
         return self._sync(
             self._sharepoint_api._create_sync(self._featurestore_id, self._name, body)
@@ -5429,6 +5437,7 @@ class SharePointConnector(StorageConnector):
         folder_path: str = "",
         dataset_name: str = "sharepoint",
         alert_receiver: str | None = None,
+        index_files: bool = False,
     ) -> sharepoint_sync.SharePointSync:
         """Copy a library folder into a new dataset now, without a schedule.
 
@@ -5440,6 +5449,7 @@ class SharePointConnector(StorageConnector):
             folder_path: Folder path inside the library, `""` for the library root.
             dataset_name: Name of the top-level dataset to create; it must not exist.
             alert_receiver: Alert receiver notified when the copy fails or is killed.
+            index_files: Index the copied files in a feature group, as [`create_sync`][hsfs.storage_connector.SharePointConnector.create_sync] does.
 
         Returns:
             The created sync.
@@ -5452,6 +5462,7 @@ class SharePointConnector(StorageConnector):
             mirror_deletions=False,
             alert_receiver=alert_receiver,
             run_now=True,
+            index_files=index_files,
         )
 
     @public

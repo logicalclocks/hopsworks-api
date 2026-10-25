@@ -2039,6 +2039,7 @@ def _sync_rows(syncs: list[Any]) -> list[list[Any]]:
             output.format_ts(s.last_run_finished),
             s.files_total,
             s.bytes_total,
+            s.index_feature_group or "-",
         ]
         for s in syncs
     ]
@@ -2053,6 +2054,7 @@ _SYNC_HEADERS = [
     "LAST RUN",
     "FILES",
     "BYTES",
+    "INDEX",
 ]
 
 
@@ -2126,6 +2128,11 @@ def sharepoint_folders(ctx: click.Context, name: str, drive_id: str, path: str) 
     "--dataset", default="sharepoint", show_default=True, help="Dataset to create."
 )
 @click.option("--alert-receiver", help="Alert receiver notified when the copy fails.")
+@click.option(
+    "--index-files",
+    is_flag=True,
+    help="Index the files in a Delta feature group, one row per file, partitioned by first ingestion date.",
+)
 @click.pass_context
 def sharepoint_copy(
     ctx: click.Context,
@@ -2134,6 +2141,7 @@ def sharepoint_copy(
     folder: str,
     dataset: str,
     alert_receiver: str | None,
+    index_files: bool,
 ) -> None:
     """Copy a library folder into a new dataset once, now, without a schedule.
 
@@ -2144,6 +2152,7 @@ def sharepoint_copy(
         folder: Folder path inside the library.
         dataset: Dataset to create.
         alert_receiver: Alert receiver for failed runs.
+        index_files: Whether to index the files in a feature group.
     """
     sc = _sharepoint(ctx, name)
     sync = _call(
@@ -2153,6 +2162,7 @@ def sharepoint_copy(
             folder_path=folder,
             dataset_name=dataset,
             alert_receiver=alert_receiver,
+            index_files=index_files,
         ),
     )
     _print_sync(sync)
@@ -2231,6 +2241,15 @@ def sharepoint_sync_group() -> None:
     show_default=True,
     help="Start the first run now.",
 )
+@click.option(
+    "--index-files",
+    is_flag=True,
+    help="Index the files in a Delta feature group, one row per file, partitioned by first ingestion date.",
+)
+@click.option(
+    "--index-feature-group",
+    help="Name of the index feature group; sharepoint_<dataset> when unset. Implies --index-files.",
+)
 @click.pass_context
 def sharepoint_sync_create(
     ctx: click.Context,
@@ -2245,6 +2264,8 @@ def sharepoint_sync_create(
     mirror_deletions: bool,
     alert_receiver: str | None,
     run_now: bool,
+    index_files: bool,
+    index_feature_group: str | None,
 ) -> None:
     """Create a scheduled sync of a library folder into a new dataset.
 
@@ -2261,6 +2282,8 @@ def sharepoint_sync_create(
         mirror_deletions: Whether deletions are mirrored.
         alert_receiver: Alert receiver for failed runs.
         run_now: Whether to start the first run now.
+        index_files: Whether to index the files in a feature group.
+        index_feature_group: Name of the index feature group.
     """
     sc = _sharepoint(ctx, name)
     sync = _call(
@@ -2276,6 +2299,8 @@ def sharepoint_sync_create(
             mirror_deletions=mirror_deletions,
             alert_receiver=alert_receiver,
             run_now=run_now,
+            index_files=index_files,
+            index_feature_group=index_feature_group,
         ),
     )
     _print_sync(sync)
@@ -2320,7 +2345,8 @@ def sharepoint_sync_status(ctx: click.Context, name: str, sync_id: int) -> None:
     output.print_table(
         ["FIELD", "VALUE"],
         [[k, "-" if v is None else v] for k, v in status.items()]
-        + [["audit_path", sync.audit_path or "-"]],
+        + [["audit_path", sync.audit_path or "-"]]
+        + [["index_feature_group", sync.index_feature_group or "-"]],
     )
 
 
@@ -2423,6 +2449,44 @@ def sharepoint_sync_set_folder(
     """
     sync = _sync(ctx, name, sync_id)
     _call("Set folder", lambda: sync.set_folder(folder))
+    _print_sync(sync)
+
+
+@sharepoint_sync_group.command("index")
+@click.argument("name")
+@click.argument("sync_id", type=int)
+@click.option(
+    "--on/--off",
+    "enabled",
+    required=True,
+    help="Start or stop indexing; --off keeps the feature group.",
+)
+@click.option(
+    "--feature-group",
+    help="Name of the index feature group; sharepoint_<dataset> when unset.",
+)
+@click.pass_context
+def sharepoint_sync_index(
+    ctx: click.Context,
+    name: str,
+    sync_id: int,
+    enabled: bool,
+    feature_group: str | None,
+) -> None:
+    """Turn indexing of a sync's files in a feature group on or off; the next run brings it up to date.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        sync_id: Sync id.
+        enabled: Whether to index.
+        feature_group: Name of the index feature group.
+    """
+    sync = _sync(ctx, name, sync_id)
+    fields: dict[str, Any] = {"index_files": enabled}
+    if enabled and feature_group:
+        fields["index_feature_group"] = feature_group
+    _call("Index", lambda: sync.update(**fields))
     _print_sync(sync)
 
 

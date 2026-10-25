@@ -241,6 +241,22 @@ def test_update_sends_only_the_given_fields(mocker):
     }
 
 
+def test_update_sends_the_index_fields(mocker):
+    client = _client(mocker, _DTO)
+
+    _sync().update(index_files=True, index_feature_group="docs")
+
+    assert json.loads(client._send_request.call_args.kwargs["data"]) == {
+        "indexFiles": True,
+        "indexFeatureGroup": "docs",
+    }
+
+
+def test_get_index_feature_group_needs_indexing():
+    with pytest.raises(ValueError, match="does not index"):
+        _sync().get_index_feature_group()
+
+
 def test_update_refuses_immutable_fields(mocker):
     client = _client(mocker, _DTO)
 

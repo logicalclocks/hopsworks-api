@@ -4054,6 +4054,8 @@ class TestSharePointConnector:
             "transfers": None,
             "alertReceiver": "ops",
             "runNow": True,
+            "indexFiles": False,
+            "indexFeatureGroup": None,
         }
         assert sync.id == 5
         assert sync.connector_name == "test_sharepoint"
