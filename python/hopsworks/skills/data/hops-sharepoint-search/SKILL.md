@@ -40,7 +40,7 @@ The `duckdb` command in the terminal has the `delta` extension pre-installed.
 | `created_at`, `modified_at`, `created_by`, `modified_by` | SharePoint times (UTC) and display names of the author and last editor |
 | `content_hash` | SharePoint quickXorHash; equal hashes mean equal content |
 | `sync_id`, `execution_id`, `indexed_at` | the sync and run that last wrote the row, and when |
-| `ingestion_date` | partition: the day (UTC) the file was first copied in, not its modification date |
+| `ingestion_date` | partition: the day (UTC) the file was first indexed, which is the day it was copied in, or for a file already in the dataset, the day indexing was turned on; not its modification date |
 
 There is one current row per file, so no version deduplication is needed.
 A file deleted in SharePoint loses its row once the sync deletes its copy (mirror deletions); a copy-only sync keeps both.
@@ -101,7 +101,7 @@ GROUP BY content_hash HAVING count(*) > 1 ORDER BY copies DESC LIMIT 20;"
 
 - `ILIKE '%term%'` scans the selected columns of every file in the table; there is no inverted index.
   Narrow by `file_type`, path prefix or dates first on large libraries.
-- The index lags SharePoint by up to one sync interval, and a run cut short by its time budget leaves it to the next run.
+- The index is as of the sync's last run that updated it: it lags SharePoint by at least one sync interval, and longer when runs fail or stop at their time budget, the sync is paused, or it has no schedule.
 - Project members can read the index and the files, whatever their own SharePoint permissions; do not treat what you can read as what the user may see in SharePoint.
 
 ## Next Steps

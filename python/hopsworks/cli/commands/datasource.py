@@ -2496,7 +2496,7 @@ def sharepoint_sync_index(
 @click.option(
     "--keep-files",
     is_flag=True,
-    help="Keep the dataset and audit log as ordinary files.",
+    help="Keep the dataset, audit log and index feature group.",
 )
 @click.option(
     "--force", is_flag=True, help="Stop a run in progress instead of refusing."
@@ -2524,8 +2524,14 @@ def sharepoint_sync_delete(
     sync = _sync(ctx, name, sync_id)
     if not yes and not output.JSON_MODE:
         what = "keeping" if keep_files else "and DELETE"
+        index = (
+            f" and index feature group '{sync.index_feature_group}'"
+            if sync.index_feature_group
+            else ""
+        )
         click.confirm(
-            f"Delete sync {sync_id} {what} dataset '{sync.dataset_name}'?", abort=True
+            f"Delete sync {sync_id} {what} dataset '{sync.dataset_name}'{index}?",
+            abort=True,
         )
     deleted = _call("Delete", lambda: sync.delete(keep_files=keep_files, force=force))
     if output.JSON_MODE:

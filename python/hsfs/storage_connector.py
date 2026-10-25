@@ -5397,7 +5397,7 @@ class SharePointConnector(StorageConnector):
             alert_receiver: Alert receiver notified when a run fails or is killed.
             run_now: Start the first run as soon as the sync is created.
             index_files:
-                Index the dataset's files in a Delta feature group, one row per file, partitioned by the day the file was first copied in.
+                Index the dataset's files in a Delta feature group, one row per file, partitioned by the day the file was first indexed.
                 Each run updates it; see [`SharePointSync.get_index_feature_group`][hsfs.core.sharepoint_sync.SharePointSync.get_index_feature_group].
             index_feature_group: Name of the index feature group; `sharepoint_<dataset_name>` when `None`.
 

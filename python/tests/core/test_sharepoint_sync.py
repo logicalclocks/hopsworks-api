@@ -58,6 +58,9 @@ _DTO = {
     "verifyChecksums": False,
     "checksumEvery": 24,
     "transfers": None,
+    "indexFiles": True,
+    "indexFeatureGroup": "sharepoint_sharepoint",
+    "indexFeatureGroupId": 31,
     "state": "IDLE",
     "activeExecutionId": None,
     "lastRunExecutionId": 812,
@@ -97,6 +100,8 @@ def test_from_response_json():
     assert sync.audit_path.endswith("/audit/sharepoint")
     assert sync.files_total == 996
     assert sync.to_dict()["lastAuditFile"] == _DTO["lastAuditFile"]
+    assert sync.index_feature_group_id == 31
+    assert sync.to_dict()["indexFeatureGroupId"] == 31
 
 
 def test_status_reloads_the_sync(mocker):
@@ -253,8 +258,12 @@ def test_update_sends_the_index_fields(mocker):
 
 
 def test_get_index_feature_group_needs_indexing():
+    sync = sharepoint_sync.SharePointSync.from_response_json(
+        dict(_DTO, indexFiles=False, indexFeatureGroup=None, indexFeatureGroupId=None),
+        67,
+    )
     with pytest.raises(ValueError, match="does not index"):
-        _sync().get_index_feature_group()
+        sync.get_index_feature_group()
 
 
 def test_update_refuses_immutable_fields(mocker):

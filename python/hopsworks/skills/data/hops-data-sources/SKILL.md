@@ -504,7 +504,7 @@ hops datasource sharepoint sync list|status|run|pause|resume|resync|schedule|set
 hops datasource sharepoint reset-script <name>
 ```
 
-The index feature group is partitioned by `ingestion_date`, the day a file was first copied in, and keyed by the SharePoint item id; its columns are listed in **hops-sharepoint-search**.
+The index feature group is partitioned by `ingestion_date`, the day a file was first indexed, and keyed by the SharePoint item id; its columns are listed in **hops-sharepoint-search**.
 Each run writes the rows of new, changed, renamed and removed files with delta-rs, and compacts each earlier day that holds more than one file into files of about 200 MB.
 Deleting a sync deletes its index feature group unless `keep_files=True`.
 

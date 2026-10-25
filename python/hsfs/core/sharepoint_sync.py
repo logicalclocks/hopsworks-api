@@ -106,6 +106,7 @@ class SharePointSync:
         transfers: int | None = None,
         index_files: bool | None = None,
         index_feature_group: str | None = None,
+        index_feature_group_id: int | None = None,
         state: str | None = None,
         active_execution_id: int | None = None,
         resync_requested_at: Any = None,
@@ -146,6 +147,7 @@ class SharePointSync:
         self._transfers = transfers
         self._index_files = index_files
         self._index_feature_group = index_feature_group
+        self._index_feature_group_id = index_feature_group_id
         self._state = state
         self._active_execution_id = active_execution_id
         self._resync_requested_at = resync_requested_at
@@ -207,6 +209,7 @@ class SharePointSync:
             "transfers": self._transfers,
             "indexFiles": self._index_files,
             "indexFeatureGroup": self._index_feature_group,
+            "indexFeatureGroupId": self._index_feature_group_id,
             "state": self._state,
             "activeExecutionId": self._active_execution_id,
             "resyncRequestedAt": self._resync_requested_at,
@@ -412,11 +415,11 @@ class SharePointSync:
         A pending delete keeps the sync in state `DELETING`, and [`retry`][hsfs.core.sharepoint_sync.SharePointSync.retry] or another `delete` finishes it.
 
         Danger: Deletes the synced dataset unless `keep_files` is set
-            Without `keep_files`, the dataset and the sync's audit log are deleted with every file in them.
+            Without `keep_files`, the dataset and the sync's audit log are deleted with every file in them, and so is the index feature group of a sync that indexes its files.
             Files are not recoverable from Hopsworks afterwards; only SharePoint still has them.
 
         Parameters:
-            keep_files: Keep the dataset and the audit log as ordinary files; the audit log is then no longer rotated.
+            keep_files: Keep the dataset, the audit log and the index feature group; the audit log is then no longer rotated.
             force: Stop a run in progress instead of refusing the delete.
 
         Returns:
@@ -611,10 +614,16 @@ class SharePointSync:
         return self._index_feature_group
 
     @public
+    @property
+    def index_feature_group_id(self) -> int | None:
+        """Id of the index feature group, or `None` until a run has created it."""
+        return self._index_feature_group_id
+
+    @public
     def get_index_feature_group(self) -> FeatureGroup | None:
         """Get the feature group that indexes the sync's files.
 
-        It holds one row per file in the dataset: SharePoint id, path, link, type, size, times, authors, quickXorHash and path in HopsFS, partitioned by `ingestion_date`, the day the file was first copied in.
+        It holds one row per file in the dataset: SharePoint id, path, link, type, size, times, authors, quickXorHash and path in HopsFS, partitioned by `ingestion_date`, the day the file was first indexed.
         The first run after indexing is turned on creates it.
 
         Returns:
