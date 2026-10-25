@@ -43,10 +43,19 @@ def _job_execution_id() -> int | None:
     None outside a job, and for an empty or malformed value: the commit is then sent without it.
     """
     value = os.environ.get("HOPSWORKS_JOB_EXECUTION_ID", "")
-    if not (value.isascii() and value.isdigit()):
+    if not (0 < len(value) <= 10 and value.isascii() and value.isdigit()):
         return None
     execution_id = int(value)
     return execution_id if 0 < execution_id <= _MAX_EXECUTION_ID else None
+
+
+def _commit_payload(commit: feature_group_commit.FeatureGroupCommit) -> dict:
+    """The commit POST's body: the commit, and the job execution that wrote it when there is one."""
+    payload = commit.to_dict()
+    execution_id = _job_execution_id()
+    if execution_id is not None:
+        payload["executionId"] = execution_id
+    return payload
 
 
 class FeatureGroupApi:
@@ -449,10 +458,7 @@ class FeatureGroupApi:
             "commits",
         ]
         headers = {"content-type": "application/json"}
-        payload = feature_group_commit_instance.to_dict()
-        execution_id = _job_execution_id()
-        if execution_id is not None:
-            payload["executionId"] = execution_id
+        payload = _commit_payload(feature_group_commit_instance)
         return feature_group_commit_instance.update_from_response_json(
             _client._send_request(
                 "POST",

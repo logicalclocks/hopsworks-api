@@ -179,34 +179,30 @@ class TestFeatureGroupApi:
             timeout=60,
         )
 
-    def _sent_commit(self, mocker, monkeypatch, env_value):
-        if env_value is None:
-            monkeypatch.delenv("HOPSWORKS_JOB_EXECUTION_ID", raising=False)
-        else:
-            monkeypatch.setenv("HOPSWORKS_JOB_EXECUTION_ID", env_value)
-        client_mock = Mock()
-        client_mock.configure_mock(
-            **{"_send_request.return_value": {"href": "h", "commitID": 1}}
-        )
-        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
-        fg = Mock(feature_store_id=99, id=7)
+    def test_commit_payload_names_the_job_execution(self, monkeypatch):
+        monkeypatch.setenv("HOPSWORKS_JOB_EXECUTION_ID", "42")
         commit = feature_group_commit.FeatureGroupCommit(
             commit_time=11, rows_inserted=1
         )
 
-        feature_group_api.FeatureGroupApi()._commit(fg, commit)
+        payload = feature_group_api._commit_payload(commit)
 
-        return json.loads(client_mock._send_request.call_args.kwargs["data"])
+        assert payload["executionId"] == 42
+        assert payload["commitTime"] == 11
+        assert json.loads(json.dumps(payload))["executionId"] == 42
 
-    def test_commit_names_the_job_execution(self, mocker, monkeypatch):
-        sent = self._sent_commit(mocker, monkeypatch, "42")
-        assert sent["executionId"] == 42
-        assert sent["commitTime"] == 11
-
-    def test_commit_outside_a_job_or_with_a_malformed_execution_names_none(
-        self, mocker, monkeypatch
+    def test_commit_payload_outside_a_job_or_with_a_malformed_execution_names_none(
+        self, monkeypatch
     ):
-        for value in [None, "", "abc", "-1", "0", "4.2", "²", str(2**31)]:
-            sent = self._sent_commit(mocker, monkeypatch, value)
-            assert "executionId" not in sent, value
-            assert sent["commitTime"] == 11
+        commit = feature_group_commit.FeatureGroupCommit(
+            commit_time=11, rows_inserted=1
+        )
+        malformed = ["", "abc", "-1", "0", "4.2", " 42", "\u0664\u0662", "\u00b2"]
+        malformed += [str(2**31), "9" * 11, "1" * 5000]
+        monkeypatch.delenv("HOPSWORKS_JOB_EXECUTION_ID", raising=False)
+        assert "executionId" not in feature_group_api._commit_payload(commit)
+        for value in malformed:
+            monkeypatch.setenv("HOPSWORKS_JOB_EXECUTION_ID", value)
+            payload = feature_group_api._commit_payload(commit)
+            assert "executionId" not in payload, value[:20]
+            assert payload["commitTime"] == 11
