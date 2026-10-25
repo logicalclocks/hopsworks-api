@@ -450,6 +450,28 @@ def new_notebook(kernelspec: dict) -> dict:
     }
 
 
+def rewrite_cell(old: dict, cell_type: str, source: str) -> dict:
+    """The cell ``old`` with new text: only what the edit changes.
+
+    Its id and metadata carry over, and so do a markdown or raw cell's attachments while it stays
+    that type. A code cell starts unrun: no outputs, no run count, no run timing in its metadata.
+    """
+    new = new_cell(cell_type, source)
+    new["id"] = old.get("id", new["id"])
+    new["metadata"] = {
+        k: v
+        for k, v in old.get("metadata", {}).items()
+        if not (cell_type == "code" and k == "execution")
+    }
+    if (
+        cell_type in ("markdown", "raw")
+        and old.get("cell_type") == cell_type
+        and "attachments" in old
+    ):
+        new["attachments"] = old["attachments"]
+    return new
+
+
 def new_cell(cell_type: str, source: str) -> dict:
     cell: dict[str, Any] = {
         "id": uuid.uuid4().hex[:8],

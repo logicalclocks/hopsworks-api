@@ -164,7 +164,7 @@ def notebook_run(
             )
         else:
             # The same cell, rewritten: an open notebook view keeps it where it is.
-            new["id"] = cells[cell - 1].get("id", new["id"])
+            new = notebook_api.rewrite_cell(cells[cell - 1], new["cell_type"], text)
             cells[cell - 1] = new
             index = cell
         jupyter.write(path, notebook)
@@ -220,7 +220,7 @@ def notebook_update(ctx: click.Context, path: str) -> None:
      {"cell": 4, "code": "df.groupby('plan').churned.mean()"}]
     EOF
 
-    A cell keeps its id and its place. A code cell loses its outputs: run it with
+    A cell keeps its id, its place, its metadata and its attachments. A code cell loses its outputs: run it with
     `hops notebook run PATH --cell N --code -`. A cell the user edited in Hopsable is refused, and
     then no cell changes.
 
@@ -256,10 +256,8 @@ def notebook_update(ctx: click.Context, path: str) -> None:
             "no cell was changed. Ask the user before replacing them, or leave them out."
         )
     for n, kind, text in edits:
-        new = notebook_api.new_cell(kind, text)
         # The same cell, rewritten: an open notebook view keeps it where it is.
-        new["id"] = cells[n - 1].get("id", new["id"])
-        cells[n - 1] = new
+        cells[n - 1] = notebook_api.rewrite_cell(cells[n - 1], kind, text)
     try:
         jupyter.write(path, notebook)
     except Exception as exc:  # noqa: BLE001

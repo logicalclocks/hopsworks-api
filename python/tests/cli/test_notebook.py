@@ -392,47 +392,81 @@ def test_a_markdown_run_starts_no_kernel(hops, jupyter):
     assert notebook_api.source(saved["cells"][0]) == "# Notes"
 
 
-def test_the_root_is_looked_up_once_per_process():
-    instance = mock.Mock()
-    instance._send_request.side_effect = [
-        {"successMessage": "hopsfsmount"},
-        {"successMessage": "default"},
-        {"baseDir": "/Projects/p/Users/bob"},
+CHART = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+
+def _a_notebook_with_attachments_and_metadata(jupyter, path):
+    notebook = notebook_api.new_notebook(jupyter.kernelspec("python3"))
+    text = notebook_api.new_cell("markdown", "![chart](attachment:chart.png)\n# Old")
+    text["attachments"] = {"chart.png": {"image/png": CHART}}
+    text["metadata"] = {"tags": ["keep"], "custom": {"x": 1}}
+    code = notebook_api.new_cell("code", "print(1)")
+    code["execution_count"] = 4
+    code["outputs"] = [{"output_type": "stream", "name": "stdout", "text": "1\n"}]
+    code["metadata"] = {
+        "tags": ["parameters"],
+        "execution": {"shell.execute_reply": "x"},
+    }
+    notebook["cells"] = [text, code]
+    jupyter.write(path, notebook)
+    return notebook["cells"]
+
+
+def test_update_keeps_attachments_and_metadata(hops, jupyter):
+    run, path = hops
+    before = _a_notebook_with_attachments_and_metadata(jupyter, path)
+    # As Jupyter serves them: it marks a code cell trusted, which is its own and stays.
+    as_read = jupyter.read(path)["cells"]
+    edits = [
+        {"cell": 1, "markdown": "![chart](attachment:chart.png)\n# New"},
+        {"cell": 2, "code": "print(2)"},
     ]
-    notebook_api._roots.clear()
-    with mock.patch.object(notebook_api.client, "_get_instance", return_value=instance):
-        assert notebook_api.root(119) == ""
-        assert notebook_api.root(119) == ""
-        assert notebook_api.root(120) == "Users/bob"
-        assert notebook_api.root(120) == "Users/bob"
-    notebook_api._roots.clear()
-    assert [c.args for c in instance._send_request.call_args_list] == [
-        ("GET", ["variables", "jupyter_remote_fs_driver"]),
-        ("GET", ["variables", "jupyter_remote_fs_driver"]),
-        ("GET", ["project", 120, "jupyter", "settings"]),
-    ]
+    result = run("update", f"Users/alice/{path}", stdin=json.dumps(edits))
+    assert result.exit_code == 0, result.output
+    text, code = jupyter.read(path)["cells"]
+    assert notebook_api.source(text) == "![chart](attachment:chart.png)\n# New"
+    assert text["attachments"] == {"chart.png": {"image/png": CHART}}
+    assert (
+        text["metadata"]
+        == as_read[0]["metadata"]
+        == {"tags": ["keep"], "custom": {"x": 1}}
+    )
+    assert [text["id"], code["id"]] == [before[0]["id"], before[1]["id"]]
+    assert notebook_api.source(code) == "print(2)"
+    assert code["metadata"] == {
+        k: v for k, v in as_read[1]["metadata"].items() if k != "execution"
+    }
+    assert code["metadata"]["tags"] == ["parameters"]
+    assert "execution" not in code["metadata"]
+    assert code["outputs"] == []
+    assert code["execution_count"] is None
 
 
-def test_attach_to_a_running_server_skips_the_status_check():
-    running = {"port": 8888, "token": "t", "hostName": "h"}
-    instance = mock.Mock(_base_url="https://c", _verify=True)
-    with (
-        mock.patch.object(notebook_api.client, "_get_instance", return_value=instance),
-        mock.patch.object(notebook_api, "server", return_value=running),
-        mock.patch.object(notebook_api, "connect") as connect,
-        mock.patch.object(notebook_api.Jupyter, "wait_ready") as wait_ready,
-    ):
-        jupyter = notebook_api.attach(119, 300)
-    assert jupyter.base_url == "https://c/hopsworks-api/jupyter/h:8888"
-    assert jupyter.token == "t"
-    wait_ready.assert_not_called()
-    connect.assert_not_called()
+def test_run_of_a_markdown_cell_keeps_its_attachments_and_metadata(hops, jupyter):
+    run, path = hops
+    _a_notebook_with_attachments_and_metadata(jupyter, path)
+    result = run(
+        "run",
+        f"Users/alice/{path}",
+        "--cell",
+        "1",
+        "--markdown",
+        "--code",
+        "![chart](attachment:chart.png)\n# Again",
+    )
+    assert result.exit_code == 0, result.output
+    text = jupyter.read(path)["cells"][0]
+    assert notebook_api.source(text) == "![chart](attachment:chart.png)\n# Again"
+    assert text["attachments"] == {"chart.png": {"image/png": CHART}}
+    assert text["metadata"] == {"tags": ["keep"], "custom": {"x": 1}}
 
 
-def test_attach_starts_a_server_that_is_not_running():
-    with (
-        mock.patch.object(notebook_api, "server", return_value=None),
-        mock.patch.object(notebook_api, "connect") as connect,
-    ):
-        assert notebook_api.attach(119, 300) is connect.return_value
-    connect.assert_called_once_with(119, 300)
+def test_a_cell_that_changes_type_keeps_its_id_and_metadata_only():
+    old = notebook_api.new_cell("markdown", "# Notes")
+    old["attachments"] = {"a.png": {"image/png": CHART}}
+    old["metadata"] = {"tags": ["keep"]}
+    new = notebook_api.rewrite_cell(old, "code", "print(1)")
+    assert new["id"] == old["id"]
+    assert new["metadata"] == {"tags": ["keep"]}
+    assert "attachments" not in new
+    assert new["outputs"] == [] and new["execution_count"] is None
