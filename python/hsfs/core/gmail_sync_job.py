@@ -697,6 +697,7 @@ class _SyncRun:
         self._client = client
         self._writer = writer
         self._target = fs_root / config.path
+        self._dataset = fs_root / config.path.split("/", 1)[0]
         self._prefix = f"{project_root.rstrip('/')}/{config.path}"
         self._execution_id = execution_id
         self._is_running = is_running
@@ -704,10 +705,10 @@ class _SyncRun:
         self._scratch = scratch
 
     def _run(self) -> _RunResult:
-        if not self._target.parent.is_dir():
-            raise _GmailSyncError(
-                f"The parent directory of {self._config.path} does not exist"
-            )
+        # A missing dataset means the HopsFS mount is absent or the path is wrong; directories below it are ours.
+        if not self._dataset.is_dir():
+            raise _GmailSyncError(f"The dataset {self._dataset.name} does not exist")
+        self._target.parent.mkdir(parents=True, exist_ok=True)
         with _Lease(self._target, self._execution_id, self._is_running, self._clock):
             self._recover_publication()
             if self._config.loading_strategy == "FULL_LOAD":

@@ -229,6 +229,22 @@ class TestParseMessage:
 
 
 class TestIncremental:
+    @pytest.mark.parametrize("strategy", ["INCREMENTAL_TIMESTAMP", "FULL_LOAD"])
+    def test_directories_below_the_dataset_are_created(self, tmp_path, strategy):
+        config = _config(strategy, path="Resources/gmail/alice_examples")
+        _run(tmp_path, FakeGmail([_message("a", DAY1)]), config, FakeWriter())
+        assert (tmp_path / "Resources" / "gmail" / "alice_examples").is_dir()
+
+    def test_a_missing_dataset_is_refused(self, tmp_path):
+        with pytest.raises(g._GmailSyncError, match="dataset Mail does not exist"):
+            _run(
+                tmp_path,
+                FakeGmail([_message("a", DAY1)]),
+                _config(path="Mail/alice"),
+                FakeWriter(),
+            )
+        assert not (tmp_path / "Mail").exists()
+
     def test_later_runs_upsert_only_new_messages(self, tmp_path):
         client, writer = (
             FakeGmail([_message("a", DAY1), _message("b", DAY2)]),
