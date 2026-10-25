@@ -222,6 +222,7 @@ training:                             # owner: train (the training agent); budge
           note: event_time present and generalises_to new_periods, so time-ordered with test last}
   harness: {evaluate: src/telco_churn/evaluate.py, commit: 3f9e2a1, training_dataset_version: 1}   # frozen before the first run; travels in every run bundle
   runs:                               # research mode: every run registers a version of telco_churn_research; the row exists before the job is submitted
+                                      # a run in the Terminal has ran_in: terminal and elapsed_s in place of execution
     - {run_id: train-1-1, n: 1, attempt: 1, commit: 8c1d0e4, bundle: runs/train-1-1, execution: 1101, state: finished,
        model: {name: telco_churn_research, version: 1}, algorithm: xgboost, changed: baseline, pr_auc_validation: 0.58, status: keep, met: false}
     - {run_id: train-2-1, n: 2, attempt: 1, commit: b72f9aa, bundle: runs/train-2-1, execution: 1104, state: finished,

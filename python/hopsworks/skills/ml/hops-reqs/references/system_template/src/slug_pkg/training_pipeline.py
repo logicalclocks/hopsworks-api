@@ -165,15 +165,19 @@ def train(x_train: Any, y_train: Any, system: dict, deadline: float) -> Any:
     The baseline is the simplest model that fits the task. Respect `deadline`
     (a time.monotonic() value) so runs stay comparable within `per_run`.
     """
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
     task = system["requirements"]["problem"]["task"]
     if task == "classification":
         from sklearn.linear_model import LogisticRegression
 
-        model = LogisticRegression(max_iter=1000)
+        # Unscaled, lbfgs can run for minutes on one CPU without converging.
+        model = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))
     else:
         from sklearn.linear_model import Ridge
 
-        model = Ridge()
+        model = make_pipeline(StandardScaler(), Ridge())
     model.fit(x_train, y_train.values.ravel() if hasattr(y_train, "values") else y_train)
     if time.monotonic() > deadline:
         raise TimeoutError("training exceeded per_run")

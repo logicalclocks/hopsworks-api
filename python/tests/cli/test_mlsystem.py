@@ -386,6 +386,35 @@ def test_prefixed_jobs_leave_a_longer_slug_alone():
     assert deleted == ["churn-example-eda"]
 
 
+def test_a_monitoring_job_goes_with_its_configuration():
+    from hopsworks.cli import teardown
+
+    deleted = []
+    config = SimpleNamespace(
+        name="calls_30d_drift", delete=lambda: deleted.append("config")
+    )
+
+    def view(name, version):
+        assert (name, version) == ("churn_example_fv", 1)
+        return SimpleNamespace(
+            get_feature_monitoring_configs=lambda name: (
+                config if name == "calls_30d_drift" else None
+            )
+        )
+
+    fs = SimpleNamespace(get_feature_view=view, get_feature_group=view)
+    project = SimpleNamespace(
+        get_feature_store=lambda: fs,
+        get_job_api=lambda: pytest.fail("a monitoring job is never deleted directly"),
+    )
+    deleter = teardown.Deleter(project)
+    job = teardown.Asset("job", "churn_example_fv_1_run_fm_calls_30d_drift")
+    assert deleter.delete(job) == "deleted"
+    assert deleted == ["config"]
+    other = teardown.Asset("job", "churn_example_fv_1_run_fm_gone_drift")
+    assert deleter.delete(other) == "gone"
+
+
 def test_delete_removes_the_code_last_and_a_retry_after_it_finishes(
     monkeypatch, logged_in, system_dir
 ):

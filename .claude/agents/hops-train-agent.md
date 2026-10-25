@@ -27,12 +27,15 @@ Load these skills before you start (from `.claude/skills/<name>/` in the reposit
   `hops job stop` at twice `per_run`), `wall_clock` for the round, `import_timeout` for a
   pretrained import.
 - The test part is scored at most once per candidate presented for acceptance.
-- Nothing runs on the laptop but unit tests. You delete nothing you did not create.
+- EDA, research runs and the integration suite run in the Terminal when they fit, as
+  `/hops-build` says ("one-off programs run where they finish first"); acceptance and retraining
+  run as the `<slug>-train` job. You delete nothing you did not create.
 
 ## Contract, in order
 
 1. **First round only: EDA.** Materialize training data from the candidate features, run the
-   hops-eda profiler and the leakage check before anything else, write `eda.md`, and record the
+   hops-eda profiler and the leakage check before anything else (in the Terminal when they fit),
+   write `eda.md`, and record the
    leaky column names in `training.leakage`. Later rounds and retrains run the short checks only.
 2. **Decide the split, once per dataset.** Train, validation and test (`validation_fraction` and
    `test_fraction`, 15% each by default). `generalises_to: new_periods` gives a time-ordered split
@@ -71,15 +74,20 @@ Load these skills before you start (from `.claude/skills/<name>/` in the reposit
    `runs` row counting against `max_runs`.
 7. **The experiment loop.** Follow the protocol file the prompt names (`training.autoresearch`
    when set, else `hops-train/references/autoresearch.md`) until the target is met on validation
-   or the budget is spent. Commit before running, build and upload the bundle, submit
-   `--mode research`, poll `hops job history` (one line per poll, and update
-   `system.progress.now`), read the result, keep or `git revert --no-edit <code commit>`, commit
-   the result. Unit tests every run; the integration suite only on the run you would declare met.
+   or the budget is spent. Commit before running and build the bundle. When the run fits the
+   Terminal, run the entrypoint on the local bundle (`HOPS_RESULT_DIR=runs/<run_id> python
+   src/<slug_pkg>/training_pipeline.py --mode research --bundle runs/<run_id>/bundle.tar.gz`,
+   which writes `result.json` there);
+   otherwise upload it, submit `--mode research` and poll `hops job history` (one line per poll,
+   and update `system.progress.now`). Read the result, keep or `git revert --no-edit <code
+   commit>`, commit the result. Unit tests every run; the integration suite (`pytest
+   tests/integration` in the Terminal when it fits) only on the run you would declare met, while
+   the acceptance job runs.
 8. **Acceptance.** On the best kept run's commit, `--mode accept` (train + validation, test
    scored once, `<ident>_model` registered only if the target holds). Record the `acceptance` row
    with both numbers. Every registered model carries its performance charts as PNG files in
    `images/` inside the model directory (the template's `charts.py`; **hops-train**): check the
-   accepted version's files list them, and add them if a hand-written pipeline skipped them. If test holds: set `training.model`, write and run the training unit and
+   accepted version's files list them (`ls /hopsfs/Models/<ident>_model/<version>/Files/images`), and add them if a hand-written pipeline skipped them. If test holds: set `training.model`, write and run the training unit and
    integration tests and record `training.tests.last_run`, deploy the retraining job
    (`<slug>-train`, `--mode retrain`, on `requirements.operations.training.cadence`, with its
    failure alert), set `status: met`, commit `[<slug>] train: <model> v<version>, <metric>_test

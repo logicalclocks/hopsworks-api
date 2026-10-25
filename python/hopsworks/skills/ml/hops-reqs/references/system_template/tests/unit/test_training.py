@@ -144,3 +144,19 @@ def test_charts_are_written_under_images_for_the_task(tmp_path, task, expected):
     written = charts.save_charts(tmp_path, task, Model(), ["a", "b"], y, scored)
     assert set(written) == expected | {"feature_importance.png"}
     assert all((tmp_path / "images" / name).stat().st_size > 0 for name in written)
+
+
+def test_the_baseline_scales_and_charts_its_coefficients(tmp_path):
+    pytest.importorskip("matplotlib")
+    pytest.importorskip("sklearn")
+    rng = np.random.default_rng(0)
+    # One feature in the thousands: unscaled, lbfgs needs far more iterations.
+    x = np.c_[rng.normal(size=500), rng.normal(size=500) * 5000]
+    y = (x[:, 0] + x[:, 1] / 5000 + rng.normal(size=500) > 0).astype(int)
+    system = {"requirements": {"problem": {"task": "classification"}}}
+    model = training_pipeline.train(x, y, system, deadline=float("inf"))
+    assert model.steps[0][0] == "standardscaler"
+    written = charts.save_charts(
+        tmp_path, "classification", model, ["a", "b"], y, model.predict_proba(x)[:, 1]
+    )
+    assert "feature_importance.png" in written

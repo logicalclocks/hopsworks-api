@@ -23,14 +23,19 @@ The [system template](system_template/) carries the harness; copy it once per sy
 ```bash
 ruff format . && ruff check --fix .     # before every phase's tests (uv tool run ruff@0.15.6 without ruff)
 pytest                                  # unit tests, offline, seconds
-pytest tests/integration                # from a connected terminal; fails, never skips, without one
+uv pip install -q pytest                # once per Terminal, when its Python has no pytest
+hops env libraries <environment> --diff # empty for what the tests import: run them here
+pytest tests/integration                # from the Terminal; fails, never skips, without a connection
+# otherwise, the same suite as the <slug>-tests job:
 python <slug>/bundle.py make tests-features-1 --with-tests
 hops files upload <slug>/runs/tests-features-1/bundle.tar.gz Resources/<slug>/runs/tests-features-1/
 hops job deploy <slug>-tests <slug>/tests/run_integration.py --env <environment> \
   --args "--bundle Resources/<slug>/runs/tests-features-1/bundle.tar.gz tests/integration/test_feature_pipeline.py" --run --wait --overwrite
 ```
 
-The tests job runs in the environment of the pipeline under test when it has
+The integration suite runs in the Terminal when it fits, as `/hops-build` says ("one-off
+programs run where they finish first"): seconds instead of a job's start-up. The tests job
+runs in the environment of the pipeline under test when it has
 `pytest` (every base built on `python-feature-pipeline` does). Otherwise it runs
 in `<env>-tests`, a clone of that exact environment with only `pytest` added:
 one per environment the system uses, never one shared clone.
@@ -114,5 +119,7 @@ inference:
   attempt's identity (commit, model version, deployment configuration hash).
   `--duration` is a one-off check, labelled `sample` and never recorded.
 - Batch mode scores into a throwaway `<ident>_predictions_test_<run_id>` group
-  it deletes, and `met` needs a `full_window` run whose time fits between the
+  it deletes, for `verify benchmark`; during the build the inference job's first
+  run over a full scheduled window writes the same verdict (`batch_verdict`) in its
+  result.json and is the measurement. `met` needs a `full_window` run whose time fits between the
   inference cron fire and `sla.batch.must_finish_by`, less the measured feature job.

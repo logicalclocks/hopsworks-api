@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 _CREATED_FG = {"writes", "mounted_as", "ingested"}
 _NAMED_VERSION = re.compile(r"^(\S+) v(\d+)\b")
 _MENTION = re.compile(r"\b([A-Za-z_][\w]*) v(\d+)\b")
+# `<feature view or group>_<version>_run_fm_<config>`, the job of a feature monitoring configuration.
+_MONITORING_JOB = re.compile(r"^(\w+)_(\d+)_run_fm_(\w+)$")
 
 
 @dataclass(frozen=True)
@@ -399,7 +401,32 @@ class Deleter:
     def _job(self, asset: Asset) -> str:
         if asset.name.endswith("-*"):
             return self._jobs_named(asset.name[:-1])
+        monitoring = _MONITORING_JOB.match(asset.name)
+        if monitoring:
+            return self._monitoring_config(asset, *monitoring.groups())
         return self._each(asset, [self.project.get_job_api().get_job(asset.name)])
+
+    def _monitoring_config(
+        self, asset: Asset, entity: str, version: str, config: str
+    ) -> str:
+        # The backend refuses to delete a feature monitoring job; deleting its configuration
+        # deletes the job too.
+        for getter in (self.fs.get_feature_view, self.fs.get_feature_group):
+            try:
+                owner = getter(entity, int(version))
+            except Exception as exc:
+                if _missing(exc):
+                    continue
+                raise
+            try:
+                found = owner.get_feature_monitoring_configs(name=config)
+            except Exception as exc:
+                if _missing(exc):
+                    continue
+                raise
+            if found is not None:
+                return self._each(asset, [found])
+        return "gone"
 
     def _jobs_named(self, prefix: str) -> str:
         jobs = [

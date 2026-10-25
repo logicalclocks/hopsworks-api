@@ -66,10 +66,23 @@ def test_a_failed_request_counts_as_an_error_at_the_timeout():
 
 
 def test_batch_budget_runs_from_the_cron_fire_to_the_deadline():
-    bench = _benchmark()
-    assert bench.batch_budget_s("0 0 4 1 * ?", "06:00 UTC") == 7200
-    assert bench.batch_budget_s("0 0 4 1 * ?", "06:00 UTC", features_s=41) == 7159
-    assert bench.batch_budget_s("0 */5 * * * ?", "06:00 UTC") is None
+    budget = inference_pipeline.batch_budget_s
+    assert budget("0 0 4 1 * ?", "06:00 UTC") == 7200
+    assert budget("0 0 4 1 * ?", "06:00 UTC", features_s=41) == 7159
+    assert budget("0 */5 * * * ?", "06:00 UTC") is None
+
+
+def test_only_a_full_window_that_fits_the_budget_is_met():
+    system = {
+        "requirements": {"sla": {"batch": {"must_finish_by": "06:00 UTC"}}},
+        "inference": {"batch": {"job": {"schedule": {"cron": "0 0 4 1 * ?"}}}},
+        "features": {"pipelines": [{"benchmark": {"last_run": {"full_window_s": 200}}}]},
+    }
+    verdict = inference_pipeline.batch_verdict(system, 4486, 147.0)
+    assert verdict["budget_s"] == 7000 and verdict["met"] is True
+    assert verdict["rows_per_s"] == 30.5
+    assert inference_pipeline.batch_verdict(system, 10, 7001.0)["met"] is False
+    assert inference_pipeline.batch_verdict(system, 10, 1.0, kind="sample")["met"] is False
 
 
 def test_the_predictor_serves_scores_in_the_model_input_order():

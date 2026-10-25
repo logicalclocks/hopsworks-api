@@ -52,20 +52,31 @@ Until the target is met on validation or the budget is spent:
 3. **Edit `training_pipeline.py`**, nothing else. Keep training inside
    `per_run` by the program's own clock. Run the unit tests (`pytest`).
 4. **Commit before running:** `[<slug>] train run <n>: <what changed>`. Build
-   and upload the bundle for run id `train-<n>-<attempt>`, and write the row
+   the bundle for run id `train-<n>-<attempt>`, and write the row
    with `state: submitted`, the commit and the bundle.
-5. **Run it:**
+5. **Run it** in the Terminal when it fits (no GPU, the training data under a third of the
+   Terminal's memory, `hops env libraries <training.environment.name> --diff` empty for what it
+   imports), on the local bundle, which skips the upload and a job's start-up:
+
+   ```bash
+   HOPS_RESULT_DIR=runs/<run_id> python src/<slug_pkg>/training_pipeline.py --mode research \
+     --bundle runs/<run_id>/bundle.tar.gz --description run<n>_<commit>_<what_changed>
+   ```
+
+   Record `ran_in: terminal` (`state: running`), and stop it at twice `per_run`: the run is a
+   crash. Otherwise upload the bundle and run it as the job:
 
    ```bash
    hops job deploy <slug>-train src/<slug_pkg>/training_pipeline.py --env <training.environment.name> \
-     --args "--mode research --bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz --description 'run <n>, <commit>: <what changed>'" \
+     --args "--mode research --bundle Resources/<slug>/runs/<run_id>/bundle.tar.gz --description run<n>_<commit>_<what_changed>" \
      --run --overwrite
    ```
 
-   Record the execution id (`state: running`) and poll `hops job history <slug>-train`,
+   Job arguments are split on whitespace and quotes are passed through, so no value may contain a
+   space. Record the execution id (`state: running`) and poll `hops job history <slug>-train`,
    one line per poll with the elapsed time against `per_run`, updating
    `system.progress.now`. At twice `per_run`, `hops job stop <slug>-train`: the run is a crash.
-6. **Read the result.** Download `result.json`, check its run id and commit
+6. **Read the result.** Read `result.json` (beside the local bundle, or downloaded), check its run id and commit
    against the row, and read the metrics from
    `hops model info <ident>_research --version <v>` with the version the result
    names (never `n`, which is not a registry version). Complete the row.
