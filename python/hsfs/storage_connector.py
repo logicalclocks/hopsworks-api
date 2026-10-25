@@ -6788,7 +6788,7 @@ class GmailConnector(StorageConnector):
             initial_value: Earliest receive time to copy, as a date or datetime, a date string, or epoch milliseconds.
             schedule: `hourly`, at the top of every hour, or `daily`, at 00:00 UTC; `None` leaves the job's schedule as it is.
             job_name: Name of the job; defaults to `<data source name>_gmail_sync`.
-            environment: Python environment for the job; defaults to the project's default for Python jobs.
+            environment: Python environment for a new job; defaults to `python-feature-pipeline`, and an update without it keeps the job's environment.
             start: Whether to start a run now, without waiting for it.
 
         Returns:
