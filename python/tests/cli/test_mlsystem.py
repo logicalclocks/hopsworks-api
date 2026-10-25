@@ -192,6 +192,35 @@ INGESTION = {
 }
 
 
+def test_the_inventory_of_a_recommender_takes_its_views_models_and_embeddings():
+    from hopsworks.cli import teardown
+
+    recs = {
+        "training": {
+            "models": [
+                {
+                    "name": "query_model",
+                    "writes": {"feature_group": "candidate_embeddings", "version": 1},
+                },
+                {"name": "ranking_model"},
+            ],
+            "feature_views": [
+                {"name": "retrieval", "version": 1},
+                {"name": "customers", "version": 1},
+            ],
+        }
+    }
+    plan = [str(a) for a in teardown.inventory(recs, "recs-example")]
+    assert plan.index("feature view retrieval") < plan.index(
+        "feature group candidate_embeddings v1"
+    )
+    assert {
+        "model query_model",
+        "model ranking_model",
+        "feature view customers",
+    } <= set(plan)
+
+
 def test_the_inventory_of_an_ingestion_keeps_the_data_sources_it_reused():
     from hopsworks.cli import teardown
 

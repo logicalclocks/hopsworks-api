@@ -356,7 +356,9 @@ instruction: <the phase instruction, or "none">
 ```
 
 On `unmet`, ask with the measured table: change the SLA, change the design (realtime to batch),
-or accept as is (`inference.status: accepted` and a `decisions` line).
+or accept as is (`inference.status: accepted` and a `decisions` line). An example system asks
+neither this nor for a larger budget mid-round: it records `accepted` with the table, and the
+summary names the gap, which is a defect of the example's reference code to fix.
 When the agent's `recommendation.detail` reports monitoring it could not build (no alert receiver, feature monitoring off on the cluster), print it with what `inference.monitoring.unavailable` records and ask once whether to create the receiver (`hops alert receiver create`) and finish it.
 An example system never asks: it leaves the gap in `unavailable` and names it in the final summary.
 

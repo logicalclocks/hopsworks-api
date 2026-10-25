@@ -7,7 +7,8 @@ The requirements interview records each answer the moment it is given:
         requirements.system_type=batch 'requirements.sla.batch={"cadence": "daily"}'
 
 A value is parsed as YAML, so `3`, `true`, `[a, b]` and `{k: v}` keep their types; anything
-else is a string. `key+=value` appends to a list. The result is checked by
+else is a string. `key+=value` appends to a list, and `runs[0].state=finished` sets a field
+of an existing list item. The result is checked by
 tests/unit/test_system_yaml.py (draft rules while `requirements.status` is `pending`) and
 renamed into place only when it passes, so an invalid write never replaces a valid file. With
 the hops CLI installed the write also takes the system's write lock and is redone on the newer
@@ -17,6 +18,7 @@ file when another writer changed it meanwhile (hopsworks.cli.system_doc).
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -24,6 +26,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent
+PART = re.compile(r"^([^\[\]]+)(?:\[(-?\d+)\])?$")
 
 
 def _validator():
@@ -34,6 +37,22 @@ def _validator():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _step(node: dict, part: str, key: str, want: type = dict):
+    """The child `part` (`name` or `name[i]`) of `node`, a new mapping when a name is absent."""
+    found = PART.match(part)
+    if not found:
+        raise SystemExit(f"{key}: {part!r} is not a name or name[index]")
+    name, index = found.group(1), found.group(2)
+    child = node.setdefault(name, {} if index is None and want is dict else [])
+    if index is not None:
+        if not isinstance(child, list) or not -len(child) <= int(index) < len(child):
+            raise SystemExit(f"{key}: {name} has no item {index}")
+        child = child[int(index)]
+    if not isinstance(child, want):
+        raise SystemExit(f"{key}: {part} is not a {'list' if want is list else 'mapping'}")
+    return child
 
 
 def apply(doc: dict, assignment: str) -> None:
@@ -47,10 +66,14 @@ def apply(doc: dict, assignment: str) -> None:
     parts = key.split(".")
     node = doc
     for part in parts[:-1]:
-        node = node.setdefault(part, {})
-        if not isinstance(node, dict):
-            raise SystemExit(f"{key}: {part} is not a mapping")
+        node = _step(node, part, key)
     last = parts[-1]
+    found = PART.match(last)
+    if found and found.group(2) is not None:
+        node = _step(node, found.group(1), key, want=list)
+        last = int(found.group(2))
+        if not -len(node) <= last < len(node):
+            raise SystemExit(f"{key}: no item {last}")
     if append:
         node.setdefault(last, [])
         if not isinstance(node[last], list):

@@ -124,9 +124,11 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
             found.append(asset)
 
     training = doc.get("training") or {}
-    fv = training.get("feature_view") or {}
-    if isinstance(fv, dict) and fv.get("name"):
-        add(Asset("feature view", str(fv["name"])))
+    # One view, or a list of them for a system with several models (a recommender).
+    views = [training.get("feature_view")] + list(training.get("feature_views") or [])
+    for fv in views:
+        if isinstance(fv, dict) and fv.get("name"):
+            add(Asset("feature view", str(fv["name"])))
     app = doc.get("app") or {}
     if app.get("name") and app.get("wanted") is not False:
         add(Asset("app", str(app["name"])))
@@ -155,6 +157,8 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
         model = node.get("model")
         if isinstance(model, dict) and isinstance(model.get("name"), str):
             add(Asset("model", model["name"]))
+        if path == ("training", "models") and isinstance(node.get("name"), str):
+            add(Asset("model", node["name"]))
         # A RAG system's embedding model, registered from Hugging Face.
         embedder = node.get("embedding_model")
         if isinstance(embedder, dict) and isinstance(embedder.get("name"), str):
