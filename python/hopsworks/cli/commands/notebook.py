@@ -220,7 +220,8 @@ def notebook_update(ctx: click.Context, path: str) -> None:
      {"cell": 4, "code": "df.groupby('plan').churned.mean()"}]
     EOF
 
-    A cell keeps its id, its place, its metadata and its attachments. A code cell loses its outputs: run it with
+    A cell keeps its id, its place and its metadata, and a markdown or raw cell that stays that type
+    keeps its attachments. A code cell loses its outputs, run count and run timing: run it with
     `hops notebook run PATH --cell N --code -`. A cell the user edited in Hopsable is refused, and
     then no cell changes.
 
