@@ -338,6 +338,28 @@ class TestIncremental:
         assert len(writer.calls) == upserts_before + 1
         assert sorted(writer.table) == ["0", "1", "2", "3", "4"]
 
+    def test_a_backfill_upserts_as_it_reads_its_windows(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(g, "UPSERT_BATCH", 2)
+        weeks_ago = [5, 4, 3, 2, 1]
+        client = FakeGmail(
+            [_message(str(w), NOW_MS - w * g.WINDOW_MS) for w in weeks_ago]
+        )
+        writer = FakeWriter()
+        result = _run(tmp_path, client, _config(), writer)
+        assert result.copied == 5
+        assert writer.calls == [(2, False), (2, False), (1, False)]
+        assert list(writer.table) == ["5", "4", "3", "2", "1"]
+        state, _ = g._read_state(tmp_path / "Resources" / "mail")
+        assert state.cursor_ms == NOW_MS - g.WINDOW_MS
+        assert writer.compacted == result.days
+
+    def test_without_a_start_date_the_oldest_message_is_copied(self, tmp_path):
+        years_ago = NOW_MS - 2 * 365 * 24 * HOUR
+        client = FakeGmail([_message("old", years_ago), _message("new", DAY1)])
+        writer = FakeWriter()
+        assert _run(tmp_path, client, _config(), writer).copied == 2
+        assert list(writer.table) == ["old", "new"]
+
     def test_a_crash_after_an_upsert_is_repaired_by_the_retrys_upsert(
         self, tmp_path, monkeypatch
     ):
@@ -664,6 +686,19 @@ class TestGmailClient:
         assert sleeps[1] == 7.0
         assert len(sleeps) == 3
 
+    def test_throttling_is_logged_once_per_interval(self, caplog):
+        caplog.set_level(logging.INFO)
+        client, _, _ = self._client(
+            [_rate_limited("rateLimitExceeded")] * 3 + [_Response(200, {"id": "a"})]
+        )
+        client._get_raw_message("a")
+        lines = [
+            r.getMessage() for r in caplog.records if "throttling" in r.getMessage()
+        ]
+        assert lines == [
+            "Gmail is throttling the sync (HTTP 403 rateLimitExceeded); 1 retries so far"
+        ]
+
     def test_a_forbidden_mailbox_is_not_retried(self):
         client, _, sleeps = self._client([_rate_limited("insufficientPermissions")])
         with pytest.raises(g._GmailSyncError, match="403: insufficientPermissions"):
@@ -710,6 +745,42 @@ def test_the_scheduler_argument_is_ignored(tmp_path, monkeypatch):
                 "2026-10-25T12:00:00Z",
             ]
         )
+
+
+def test_a_run_that_finds_another_one_syncing_does_nothing(tmp_path, monkeypatch):
+    import hopsworks
+
+    config = tmp_path / "Resources" / "jobs" / "x" / "gmail_sync.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "jobName": "x",
+                "connectorId": 42,
+                "connectorName": "inbox",
+                "featureGroupName": "alice_examples",
+                "path": "Resources/mail",
+            }
+        )
+    )
+    monkeypatch.setenv("HOPSFS_MOUNT", str(tmp_path))
+    connector = type("C", (), {"id": 42, "type": "GMAIL", "mailbox": "a@b.c"})()
+    data_source = type("D", (), {"storage_connector": connector})()
+    fs = type("F", (), {"get_data_source": lambda self, name: data_source})()
+    project = type("P", (), {"name": "mail", "get_feature_store": lambda self: fs})()
+    monkeypatch.setattr(hopsworks, "login", lambda: project)
+    monkeypatch.setattr(g, "_feature_group", lambda *a: None)
+
+    class HeldRun:
+        def __init__(self, *a):
+            pass
+
+        def _run(self):
+            raise g._LeaseHeld("Another sync of this mailbox is running")
+
+    monkeypatch.setattr(g, "_SyncRun", HeldRun)
+    g._main(["--config", "Resources/jobs/x/gmail_sync.json"])
 
 
 def test_configs_from_before_the_feature_group_are_refused():

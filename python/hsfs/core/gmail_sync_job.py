@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import collections
 import email
 import email.policy
 import email.utils
@@ -76,6 +77,10 @@ FETCH_WORKERS = 4
 FETCH_BATCH = 64
 # Messages per feature group upsert, and so per cursor checkpoint.
 UPSERT_BATCH = 5000
+# A run reads its range in windows this long, oldest first, so a backfill upserts as it goes.
+WINDOW_MS = 7 * 24 * 3600_000
+# Rate-limit retries are logged at most this often.
+THROTTLE_LOG_INTERVAL_S = 60.0
 # Longest wait honoured from a Retry-After header.
 MAX_RETRY_AFTER_S = 300.0
 MAX_ATTEMPTS = 8
@@ -115,6 +120,10 @@ class _GmailSyncError(Exception):
     """A sync run that cannot continue; its message is shown in the job log."""
 
 
+class _LeaseHeld(_GmailSyncError):
+    """Another execution is syncing the same attachments directory."""
+
+
 # region Gmail client
 
 
@@ -143,6 +152,8 @@ class _GmailClient:
         self._clock = clock
         self._token: str | None = None
         self._expires_at_ms: int | None = None
+        self._throttled = 0
+        self._throttle_logged_at: float | None = None
 
     def _access_token(self, renew: bool = False) -> str:
         now_ms = int(self._clock() * 1000)
@@ -187,12 +198,29 @@ class _GmailClient:
                 continue
             retry_after = _retry_after(response)
             if _is_retryable(status, response) and attempt < MAX_ATTEMPTS - 1:
+                self._log_throttle(status, response)
                 self._backoff(attempt, retry_after)
                 continue
             raise _GmailSyncError(
                 f"Gmail returned HTTP {status}: {_error_reason(response)}"
             )
         raise _GmailSyncError("Gmail kept refusing the request after retries")
+
+    def _log_throttle(self, status: int, response: Any) -> None:
+        # Unlocked across fetch workers: a lost count or an extra line is harmless.
+        self._throttled += 1
+        now = self._clock()
+        if (
+            self._throttle_logged_at is None
+            or now - self._throttle_logged_at >= THROTTLE_LOG_INTERVAL_S
+        ):
+            _logger.info(
+                "Gmail is throttling the sync (HTTP %d %s); %d retries so far",
+                status,
+                _error_reason(response),
+                self._throttled,
+            )
+            self._throttle_logged_at = now
 
     def _backoff(self, attempt: int, retry_after: float | None) -> None:
         delay = (
@@ -637,7 +665,7 @@ class _Lease:
             except FileExistsError:
                 if self._take_over_stale():
                     continue
-                raise _GmailSyncError(
+                raise _LeaseHeld(
                     f"Another sync of this mailbox is running; remove {self._path} only if it is not"
                 ) from None
             with os.fdopen(fd, "w") as f:
@@ -738,16 +766,16 @@ class _SyncRun:
             lower, inclusive, seen = state.cursor_ms, False, set(state.cursor_ids)
         else:
             lower, inclusive, seen = self._config.initial_value, True, set()
-        rows, skipped = self._fetch(lower, inclusive, seen, self._target)
-        for batch in _batches(rows):
+        result = _RunResult(0, [], 0, state.cursor_ms)
+        for batch in self._windows(lower, inclusive, seen, self._target, result):
             self._writer._upsert(batch, overwrite=False)
             _advance(state, batch)
             seq += 1
             _write_state(self._target, state, seq)
+            self._log_progress(result, state)
         self._compact_ended_days(state, seq)
-        return _RunResult(
-            sum(len(r) for r in rows.values()), sorted(rows), skipped, state.cursor_ms
-        )
+        result.cursor_ms = state.cursor_ms
+        return result
 
     def _full_load(self) -> _RunResult:
         state = self._expected_state()
@@ -755,17 +783,84 @@ class _SyncRun:
         if staging.exists():
             shutil.rmtree(staging)
         staging.mkdir(parents=True)
-        rows, skipped = self._fetch(self._config.initial_value, True, set(), staging)
-        for i, batch in enumerate(_batches(rows)):
+        result = _RunResult(0, [], 0, None)
+        batches = self._windows(
+            self._config.initial_value, True, set(), staging, result
+        )
+        for i, batch in enumerate(batches):
             self._writer._upsert(batch, overwrite=i == 0)
             _advance(state, batch)
-        if not rows:
+            self._log_progress(result, state)
+        if not result.copied:
             _logger.info("No messages matched; the feature group is left as it was")
         _write_state(staging, state, 1)
         self._publish(staging)
         self._compact_ended_days(state, 1)
-        return _RunResult(
-            sum(len(r) for r in rows.values()), sorted(rows), skipped, state.cursor_ms
+        result.cursor_ms = state.cursor_ms
+        return result
+
+    def _windows(
+        self,
+        lower_ms: int | None,
+        inclusive: bool,
+        seen: set[str],
+        attachments_root: Path,
+        result: _RunResult,
+    ) -> Iterator[list[dict]]:
+        """Upsert batches, oldest first, of the messages from `lower_ms` up to the run horizon.
+
+        The range is read in `WINDOW_MS` windows and a batch is only cut from fully read windows, so every batch ends at a point the cursor can safely move to.
+        Without a lower bound the first window reaches back to the oldest message Gmail lists.
+        """
+        upper_ms = int(self._clock() * 1000) - RUN_HORIZON_MS
+        start = lower_ms if lower_ms is not None else self._oldest(upper_ms)
+        edges = (
+            list(range(start + WINDOW_MS, upper_ms, WINDOW_MS))
+            if start is not None
+            else []
+        )
+        pending: list[dict] = []
+        window_lower = lower_ms
+        for window_upper in [*edges, upper_ms]:
+            rows, skipped = self._fetch(
+                window_lower, inclusive, seen, attachments_root, window_upper
+            )
+            result.skipped_deleted += skipped
+            for day in sorted(rows):
+                pending.extend(rows[day])
+                if day not in result.days:
+                    result.days.append(day)
+            while len(pending) >= UPSERT_BATCH:
+                batch, pending = pending[:UPSERT_BATCH], pending[UPSERT_BATCH:]
+                result.copied += len(batch)
+                yield batch
+            # A message on the edge belongs to this window; the next one skips it as a cursor would.
+            seen = {
+                row["message_id"]
+                for day_rows in rows.values()
+                for row in day_rows
+                if row["internal_date"] == window_upper
+            }
+            window_lower, inclusive = window_upper, False
+        if pending:
+            result.copied += len(pending)
+            yield pending
+        result.days.sort()
+
+    def _oldest(self, upper_ms: int) -> int | None:
+        """The receive time of the last message Gmail lists, which lists newest first, or None for no messages."""
+        ids = self._client._list_message_ids(
+            _gmail_query(self._config.query, None, upper_ms), self._config.labels
+        )
+        last = collections.deque(ids, maxlen=1)
+        message = self._client._get_raw_message(last[0]) if last else None
+        return int(message["internalDate"]) if message else None
+
+    def _log_progress(self, result: _RunResult, state: _SyncState) -> None:
+        _logger.info(
+            "Upserted %d messages so far, through %s",
+            result.copied,
+            _iso_utc(state.cursor_ms),
         )
 
     def _compact_ended_days(self, state: _SyncState, seq: int) -> None:
@@ -822,15 +917,20 @@ class _SyncRun:
         inclusive: bool,
         seen: set[str],
         attachments_root: Path,
+        upper_ms: int,
     ) -> tuple[dict[str, list[dict]], int]:
-        """The messages in (lower_ms, run horizon], or [lower_ms, ...] when inclusive, grouped by day and sorted.
+        """The messages in (lower_ms, upper_ms], or [lower_ms, upper_ms] when inclusive, grouped by day and sorted.
 
         Attachments are written under `attachments_root` as messages arrive, and rows are spilled to scratch files per day, so memory holds one message per worker.
         """
-        upper_ms = int(self._clock() * 1000) - RUN_HORIZON_MS
         query = _gmail_query(self._config.query, lower_ms, upper_ms)
         ids = list(self._client._list_message_ids(query, self._config.labels))
-        _logger.info("Gmail listed %d candidate messages", len(ids))
+        if ids:
+            _logger.info(
+                "Gmail listed %d candidate messages up to %s",
+                len(ids),
+                _iso_utc(upper_ms),
+            )
         scratch = (
             Path(self._scratch)
             if self._scratch
@@ -863,19 +963,6 @@ class _SyncRun:
             return rows, skipped
         finally:
             shutil.rmtree(spill_dir, ignore_errors=True)
-
-
-def _batches(rows: dict[str, list[dict]]) -> Iterator[list[dict]]:
-    """The rows oldest first, in upsert batches of at most UPSERT_BATCH messages."""
-    batch: list[dict] = []
-    for day in sorted(rows):
-        for row in rows[day]:
-            batch.append(row)
-            if len(batch) >= UPSERT_BATCH:
-                yield batch
-                batch = []
-    if batch:
-        yield batch
 
 
 def _advance(state: _SyncState, batch: list[dict]) -> None:
@@ -974,16 +1061,21 @@ def _main(argv: list[str] | None = None) -> None:
     execution_id = (
         os.environ.get("HOPSWORKS_JOB_EXECUTION_ID") or f"local-{uuid.uuid4().hex}"
     )
-    result = _SyncRun(
-        config,
-        connector.mailbox,
-        _GmailClient(connector.mailbox, _token_provider(connector)),
-        writer,
-        fs_root,
-        f"/Projects/{project.name}",
-        execution_id,
-        _execution_liveness(project, config.job_name),
-    )._run()
+    try:
+        result = _SyncRun(
+            config,
+            connector.mailbox,
+            _GmailClient(connector.mailbox, _token_provider(connector)),
+            writer,
+            fs_root,
+            f"/Projects/{project.name}",
+            execution_id,
+            _execution_liveness(project, config.job_name),
+        )._run()
+    except _LeaseHeld as e:
+        # A scheduled run that fires during a long backfill has nothing to do; it is not a failure.
+        _logger.info("%s; this run does nothing", e)
+        return
     _logger.info(
         "Upserted %d messages into %s across %d days (%d deleted while listed); cursor %s",
         result.copied,

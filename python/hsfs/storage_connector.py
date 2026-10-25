@@ -6766,7 +6766,8 @@ class GmailConnector(StorageConnector):
         Attachments are written as files under `<attachments_path>/day=YYYY-MM-DD/<message_id>/<filename>`, and `attachments` lists their full `/Projects/...` paths.
         Spam, trash and drafts are not copied.
 
-        `INCREMENTAL_TIMESTAMP` upserts the messages received since the previous run; its first run copies everything from `initial_value` on.
+        `INCREMENTAL_TIMESTAMP` upserts the messages received since the previous run; its first run copies everything from `initial_value` on, upserting every 5000 messages as it goes.
+        A scheduled run that starts while the previous one is still copying does nothing.
         `FULL_LOAD` overwrites the feature group on every run.
         The copy is an archive: an incremental run does not remove messages deleted from Gmail, nor follow label changes.
 
