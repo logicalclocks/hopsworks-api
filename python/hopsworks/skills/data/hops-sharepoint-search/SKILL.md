@@ -13,14 +13,14 @@ The index describes the copies in Hopsworks as of the sync's last run, not live 
 
 - The index is version 1 of a feature group, `sharepoint_<dataset>` unless the sync named it.
   `hops datasource sharepoint sync list <data source>` shows it in the INDEX column; `-` means the sync does not index.
-- In a terminal the project's feature store is mounted read-only at `/hopsfs/featurestore/` (`/hopsfs/__featurestore__/` when the project has a dataset named `featurestore`), and the index is the directory `<name>_1`.
-  Confirm it with `ls /hopsfs/featurestore/` before querying; never guess the path.
+- In a terminal the project's feature store is mounted read-only, and the index is the directory `/hopsfs/featurestore/<project>_featurestore.db/<name>_1` (`/hopsfs/__featurestore__/...` when the project has a dataset named `featurestore`).
+  Confirm it with `ls /hopsfs/featurestore/*_featurestore.db/` before querying; never guess the path.
 - Jupyter and job pods do not mount the feature store; there, read the feature group with the Python client instead (**hops-fg**).
 
 ## Always read it with `delta_scan`
 
 ```bash
-duckdb -c "DESCRIBE SELECT * FROM delta_scan('/hopsfs/featurestore/sharepoint_finance_1');"
+duckdb -c "DESCRIBE SELECT * FROM delta_scan('/hopsfs/featurestore/acme_featurestore.db/sharepoint_finance_1');"
 ```
 
 Never `read_parquet('.../*/*.parquet')` on the directory.
@@ -68,7 +68,7 @@ Files by name:
 
 ```bash
 duckdb -c "SELECT file_name, sharepoint_path, modified_at, web_url
-FROM delta_scan('/hopsfs/featurestore/sharepoint_finance_1')
+FROM delta_scan('/hopsfs/featurestore/acme_featurestore.db/sharepoint_finance_1')
 WHERE file_name ILIKE '%contract%' ORDER BY modified_at DESC LIMIT 20;"
 ```
 
@@ -76,7 +76,7 @@ PDFs changed since a date, by editor:
 
 ```bash
 duckdb -c "SELECT file_name, modified_by, modified_at, web_url
-FROM delta_scan('/hopsfs/featurestore/sharepoint_finance_1')
+FROM delta_scan('/hopsfs/featurestore/acme_featurestore.db/sharepoint_finance_1')
 WHERE file_type = 'pdf' AND modified_at >= TIMESTAMPTZ '2026-10-01 00:00:00+00'
 ORDER BY modified_at DESC LIMIT 20;"
 ```
@@ -85,7 +85,7 @@ What arrived today, and how much:
 
 ```bash
 duckdb -c "SELECT count(*) AS files, sum(size_bytes) AS bytes
-FROM delta_scan('/hopsfs/featurestore/sharepoint_finance_1')
+FROM delta_scan('/hopsfs/featurestore/acme_featurestore.db/sharepoint_finance_1')
 WHERE ingestion_date = current_date;"
 ```
 
@@ -93,7 +93,7 @@ Duplicate content under different names:
 
 ```bash
 duckdb -c "SELECT content_hash, count(*) AS copies, list(sharepoint_path) AS paths
-FROM delta_scan('/hopsfs/featurestore/sharepoint_finance_1')
+FROM delta_scan('/hopsfs/featurestore/acme_featurestore.db/sharepoint_finance_1')
 GROUP BY content_hash HAVING count(*) > 1 ORDER BY copies DESC LIMIT 20;"
 ```
 
