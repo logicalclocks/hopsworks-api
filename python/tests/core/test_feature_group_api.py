@@ -15,10 +15,12 @@
 #
 
 import copy
+import json
 import warnings
 from unittest.mock import Mock
 
 from hsfs import feature_group as fg_mod
+from hsfs import feature_group_commit
 from hsfs.core import feature_group_api
 
 
@@ -176,3 +178,35 @@ class TestFeatureGroupApi:
             ],
             timeout=60,
         )
+
+    def _sent_commit(self, mocker, monkeypatch, env_value):
+        if env_value is None:
+            monkeypatch.delenv("HOPSWORKS_JOB_EXECUTION_ID", raising=False)
+        else:
+            monkeypatch.setenv("HOPSWORKS_JOB_EXECUTION_ID", env_value)
+        client_mock = Mock()
+        client_mock.configure_mock(
+            **{"_send_request.return_value": {"href": "h", "commitID": 1}}
+        )
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        fg = Mock(feature_store_id=99, id=7)
+        commit = feature_group_commit.FeatureGroupCommit(
+            commit_time=11, rows_inserted=1
+        )
+
+        feature_group_api.FeatureGroupApi()._commit(fg, commit)
+
+        return json.loads(client_mock._send_request.call_args.kwargs["data"])
+
+    def test_commit_names_the_job_execution(self, mocker, monkeypatch):
+        sent = self._sent_commit(mocker, monkeypatch, "42")
+        assert sent["executionId"] == 42
+        assert sent["commitTime"] == 11
+
+    def test_commit_outside_a_job_or_with_a_malformed_execution_names_none(
+        self, mocker, monkeypatch
+    ):
+        for value in [None, "", "abc", "-1", "0", "4.2", "²", str(2**31)]:
+            sent = self._sent_commit(mocker, monkeypatch, value)
+            assert "executionId" not in sent, value
+            assert sent["commitTime"] == 11
