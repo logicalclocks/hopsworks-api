@@ -243,6 +243,44 @@ def test_the_lease_commands(tmp_path, monkeypatch):
     assert released.exit_code == 0 and not (target / ".hops.lock").exists()
 
 
+def test_a_new_system_takes_the_lease_before_its_first_write(tmp_path, monkeypatch):
+    new_system = _load(REFERENCES / "new_system.py", "new_system")
+    target = tmp_path / "churn"
+    new_system.create(target)
+    assert not (target / "system.yaml").exists()
+    monkeypatch.chdir(tmp_path)
+    taken = CliRunner().invoke(cli, ["factory", "system", "lease", "acquire", "churn"])
+    assert taken.exit_code == 0, taken.output
+    assert (
+        json.loads((target / ".hops.lock").read_text())["token"] == taken.output.strip()
+    )
+    shown = CliRunner().invoke(cli, ["factory", "system", "lease", "show", "churn"])
+    assert shown.exit_code == 0, shown.output
+    released = CliRunner().invoke(
+        cli,
+        [
+            "factory",
+            "system",
+            "lease",
+            "release",
+            "churn",
+            "--token",
+            taken.output.strip(),
+        ],
+    )
+    assert released.exit_code == 0 and not (target / ".hops.lock").exists()
+
+
+def test_no_lease_on_a_directory_that_does_not_exist(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    missing = CliRunner().invoke(
+        cli, ["factory", "system", "lease", "acquire", "churn"]
+    )
+    assert missing.exit_code == 1
+    assert "no system 'churn'" in missing.output.lower()
+    assert not (tmp_path / "churn").exists()
+
+
 # endregion
 
 # region Running and registering
