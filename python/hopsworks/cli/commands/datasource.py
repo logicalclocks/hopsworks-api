@@ -1912,27 +1912,99 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
     output.print_table(["TABLE", "DATABASE"], rows)
 
 
+def _resolve_table(ds, table: str, database: str | None):
+    """Return the data source of ``table`` as the source lists it.
+
+    The listing carries the schema a bare table name lacks, so a read by name
+    alone is looked up there first. A source that cannot list tables (REST,
+    CRM) or does not list this name is read with the name as given.
+    """
+    try:
+        listed = ds.get_tables(database=database)
+    except Exception:  # noqa: BLE001
+        listed = []
+    for entry in listed or []:
+        if getattr(entry, "table", None) == table:
+            return entry
+    ds.table = table
+    return ds
+
+
+def _preview_rows(preview) -> list[dict]:
+    """Flatten the backend's preview into one ``{column: value}`` dict per row.
+
+    The backend nests the rows as ``{"preview": [{"values": [{"value0": column,
+    "value1": value}, ...]}, ...]}``.
+    """
+    if isinstance(preview, dict):
+        preview = preview.get("preview")
+    return [
+        {cell["value0"]: cell["value1"] for cell in row.get("values", [])}
+        for row in preview or []
+        if isinstance(row, dict)
+    ]
+
+
 @datasource_group.command("preview")
 @click.argument("name")
+@click.option(
+    "--table",
+    help=(
+        "Table, sheet or collection to preview. Required for every connector "
+        "type unless the data source already names one; list them with "
+        "`hops datasource tables`."
+    ),
+)
+@click.option(
+    "--database",
+    help="Database the table lives in (connector-dependent, e.g. SQL, Snowflake).",
+)
 @click.pass_context
-def connector_preview(ctx: click.Context, name: str) -> None:
-    """Fetch a small data preview through a connector.
+def connector_preview(
+    ctx: click.Context, name: str, table: str | None, database: str | None
+) -> None:
+    """Fetch a small data preview of one table through a connector.
 
     Args:
         ctx: Click context.
         name: Connector name.
+        table: Table to read.
+        database: Database that contains the table.
     """
     fs = session.get_feature_store(ctx)
     try:
         ds = fs.get_data_source(name)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Preview failed: {exc}") from exc
+    if database is not None:
+        ds.database = database
+    if table is not None:
+        ds = _resolve_table(ds, table, database)
+    if not (ds.table or ds.query or ds.path):
+        raise click.UsageError(
+            f"Connector '{name}' needs a table to preview: pass --table "
+            f"(and --database where the type needs it). "
+            f"List them with `hops datasource tables {name}`."
+        )
+    try:
         data = ds.get_data()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Preview failed: {exc}") from exc
+    columns = [f.name for f in getattr(data, "features", None) or []]
+    rows = _preview_rows(getattr(data, "preview", None))
     if output.JSON_MODE:
-        to_dict = getattr(data, "to_dict", None)
-        output.print_json(to_dict() if callable(to_dict) else str(data))
+        output.print_json(
+            {
+                "features": [
+                    {"name": f.name, "type": f.type}
+                    for f in getattr(data, "features", None) or []
+                ],
+                "preview": rows,
+            }
+        )
         return
-    click.echo(str(data))
+    columns = columns or (list(rows[0]) if rows else [])
+    output.print_table(columns, [[row.get(c) for c in columns] for row in rows])
 
 
 @datasource_group.command("infer-metadata")

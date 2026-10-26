@@ -14,7 +14,7 @@ To find out about hopsworks-api, read its source code, installed at {{SDK_PATH}}
  - hsml/ - models, deployments, serving
 <!-- /hopsworks:only -->
 
-Use the hops cli when you are exploring - searching for data, previewing data, connecting to data sources, and sending SQL to Trino. Load the appropriate hops skill (the skill names all start with "hops-") for the user's task. Write Python programs and use hopsworks-api when you want to build feature, training, or inference pipelines or streamlit apps or create Superset dashboards.
+Use the hops cli when you are exploring - searching for data, previewing data, connecting to data sources, and sending SQL to Trino. Read a data source only through Hopsworks (`hops datasource preview --table`, or a mounted external feature group), never with a database driver and a credential copied from a secret; report a failed read instead of routing around it. Load the appropriate hops skill (the skill names all start with "hops-") for the user's task. Write Python programs and use hopsworks-api when you want to build feature, training, or inference pipelines or streamlit apps or create Superset dashboards.
 
 If the user refers to a table, assume they mean a 'feature group' (feature groups are tables in Hopsworks).
 

@@ -166,3 +166,95 @@ def test_create_external_fails_when_nothing_was_saved(mock_project):
     )
     assert result.exit_code == 1
     assert "Could not create external FG: bad schema" in result.output
+
+
+def test_create_external_no_statistics_turns_the_job_off(mock_project):
+    result, create = _create(mock_project, ["--query", "SELECT 1", "--no-statistics"])
+    assert result.exit_code == 0, result.output
+    assert create.call_args.kwargs["statistics_config"] is False
+
+
+def test_create_external_keeps_the_sdk_statistics_default(mock_project):
+    result, create = _create(mock_project, ["--query", "SELECT 1"])
+    assert result.exit_code == 0, result.output
+    assert create.call_args.kwargs["statistics_config"] is None
+
+
+def test_create_external_features_help_does_not_claim_it_is_required():
+    result = CliRunner().invoke(cli, ["fg", "create-external", "--help"])
+    flat = " ".join(result.output.split())
+    assert "Optional" in flat and "required outside Spark" not in flat
+
+
+def _preview(mock_project, args, source=None):
+    fs = mock_project.get_feature_store.return_value
+    data_source = DataSource(storage_connector=mock.MagicMock(), **(source or {}))
+    fs.get_data_source.return_value = data_source
+    result = CliRunner().invoke(cli, ["datasource", "preview", "pg", *args])
+    return result, data_source
+
+
+def test_datasource_preview_reads_the_given_table(mock_project):
+    result, source = _preview(
+        mock_project, ["--table", "rna", "--database", "pfmegrnargs"]
+    )
+    assert result.exit_code == 0, result.output
+    assert (source.table, source.database) == ("rna", "pfmegrnargs")
+    source.storage_connector.get_data.assert_called_once()
+    assert source.storage_connector.get_data.call_args.args[0] is source
+
+
+def test_datasource_preview_without_a_table_is_a_usage_error(mock_project):
+    result, source = _preview(mock_project, [])
+    assert result.exit_code == 2
+    assert "--table" in result.output and "hops datasource tables pg" in result.output
+    source.storage_connector.get_data.assert_not_called()
+
+
+def test_datasource_preview_accepts_a_source_that_names_its_own_table(mock_project):
+    result, source = _preview(mock_project, [], source={"table": "sheet1"})
+    assert result.exit_code == 0, result.output
+    source.storage_connector.get_data.assert_called_once()
+
+
+def test_datasource_preview_reads_the_table_as_the_source_lists_it(mock_project):
+    listed = DataSource(
+        storage_connector=mock.MagicMock(), database="db", group="rnacen", table="rna"
+    )
+    fs = mock_project.get_feature_store.return_value
+    data_source = DataSource(storage_connector=mock.MagicMock())
+    data_source.storage_connector.get_tables.return_value = [listed]
+    fs.get_data_source.return_value = data_source
+    result = CliRunner().invoke(
+        cli, ["datasource", "preview", "pg", "--table", "rna", "--database", "db"]
+    )
+    assert result.exit_code == 0, result.output
+    data_source.storage_connector.get_tables.assert_called_once_with("db")
+    sent = listed.storage_connector.get_data.call_args.args[0]
+    assert sent is listed and sent.group == "rnacen"
+
+
+def test_datasource_preview_prints_the_rows_the_backend_nests(mock_project):
+    data = mock.MagicMock()
+    data.features = [mock.MagicMock(), mock.MagicMock()]
+    data.features[0].name, data.features[0].type = "id", "bigint"
+    data.features[1].name, data.features[1].type = "city", "string"
+    data.preview = {
+        "preview": [
+            {
+                "values": [
+                    {"value0": "id", "value1": "387"},
+                    {"value0": "city", "value1": "Paris"},
+                ]
+            }
+        ]
+    }
+    fs = mock_project.get_feature_store.return_value
+    data_source = DataSource(storage_connector=mock.MagicMock(), table="t")
+    data_source.storage_connector.get_data.return_value = data
+    fs.get_data_source.return_value = data_source
+    result = CliRunner().invoke(cli, ["datasource", "preview", "pg"])
+    assert result.exit_code == 0, result.output
+    assert "387" in result.output and "Paris" in result.output
+    as_json = CliRunner().invoke(cli, ["--json", "datasource", "preview", "pg"])
+    assert json.loads(as_json.stdout)["preview"] == [{"id": "387", "city": "Paris"}]

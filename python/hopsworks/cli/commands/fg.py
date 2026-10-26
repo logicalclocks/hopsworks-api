@@ -585,8 +585,19 @@ def fg_create(
 @click.option(
     "--features",
     "features_spec",
-    help='Schema "name:type[:description]", comma-separated; required outside Spark, '
-    'e.g. "id:bigint,city:string,amount:double".',
+    help='Schema "name:type[:description]", comma-separated, e.g. '
+    '"id:bigint,city:string,amount:double". Optional: when omitted, the schema '
+    "is read from the source (--query, --table).",
+)
+@click.option(
+    "--statistics/--no-statistics",
+    "statistics",
+    default=None,
+    help=(
+        "Compute statistics on save (starts a statistics job that reads the "
+        "source). Default: the SDK default, which is on. Use --no-statistics "
+        "for a quick look at a large source."
+    ),
 )
 @click.option("--version", type=int, help="Feature group version.")
 @click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
@@ -608,6 +619,7 @@ def fg_create_external(
     database: str | None,
     table: str | None,
     features_spec: str | None,
+    statistics: bool | None,
     version: int | None,
     primary_key: str | None,
     event_time: str | None,
@@ -635,6 +647,7 @@ def fg_create_external(
         database: Database/collection-container override for the source.
         table: Table/collection override for the source.
         features_spec: Comma-separated ``name:type[:description]`` items.
+        statistics: False turns statistics computation off; None keeps the SDK default.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
         event_time: Event-time column.
@@ -682,6 +695,7 @@ def fg_create_external(
             event_time=event_time,
             online_enabled=online,
             features=_build_features(features_spec) or None,
+            statistics_config=False if statistics is False else None,
         )
         fg.save()
     except Exception as exc:  # noqa: BLE001
