@@ -1,4 +1,8 @@
-"""``hops notebook`` against a real Jupyter Server; only the Hopsworks lifecycle calls are patched."""
+"""``hops notebook``'s Jupyter side against a real Jupyter Server, with no Hopsworks calls.
+
+The commands' path from Hopsworks (start, connect, the project's root) to Jupyter runs end to end
+in Hopsable's live tests, against the dev cluster.
+"""
 
 from __future__ import annotations
 
@@ -8,18 +12,15 @@ import socket
 import subprocess
 import sys
 import time
-from unittest import mock
 
+import click
 import pytest
-from click.testing import CliRunner
 from hopsworks.cli import notebook_api
 from hopsworks.cli.commands import notebook
-from hopsworks.cli.main import cli
+from websockets.sync.client import connect
 
 
-pytest.importorskip("jupyter_server")
-pytest.importorskip("ipykernel")
-pytest.importorskip("websockets")
+CHART = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
 
 @pytest.fixture(scope="module")
@@ -52,126 +53,58 @@ def jupyter(tmp_path_factory):
 
 
 @pytest.fixture
-def hops(jupyter, mock_project, tmp_path):
-    """Run `hops notebook ...` on the local server, with Jupyter's root at Users/alice."""
-    name = f"nb_{secrets.token_hex(4)}.ipynb"
-    with (
-        mock.patch.object(notebook_api, "connect", return_value=jupyter),
-        mock.patch.object(notebook_api, "attach", return_value=jupyter),
-        mock.patch.object(notebook_api, "root", return_value="Users/alice"),
-        mock.patch.object(
-            notebook_api,
-            "setup",
-            return_value=notebook_api.Setup(
-                "Users/alice", "Users/alice", "python-feature-pipeline"
-            ),
-        ),
-        mock.patch.object(notebook, "_project_id", return_value=119),
-    ):
-
-        def run(*args, stdin=None):
-            return CliRunner().invoke(cli, ["notebook", *args], input=stdin)
-
-        yield run, name
+def path():
+    return f"nb_{secrets.token_hex(4)}.ipynb"
 
 
-def test_cells_share_one_kernel_and_save_their_outputs(hops, jupyter):
-    run, path = hops
-    first = run("run", f"Users/alice/{path}", "--code", "x = 21\nprint('half', x)")
-    assert first.exit_code == 0, first.output
-    assert f"Cell 1 of Users/alice/{path}" in first.output
-    assert "half 21" in first.output
-
-    second = run("run", f"Users/alice/{path}", "--code", "-", stdin="x * 2")
-    assert second.exit_code == 0, second.output
-    assert "42" in second.output
-
-    saved = jupyter.read(path)
-    assert saved["metadata"]["kernelspec"]["name"]
-    assert [c["cell_type"] for c in saved["cells"]] == ["code", "code"]
-    assert saved["cells"][0]["outputs"] == [
+def test_cells_share_one_kernel_and_keep_their_outputs(jupyter, path):
+    session = jupyter.session(path)
+    first = jupyter.execute(session, "c1", "x = 21\nprint('half', x)", 60)
+    second = jupyter.execute(jupyter.session(path), "c2", "x * 2", 60)
+    assert first.finished and second.finished
+    assert first.outputs == [
         {"output_type": "stream", "name": "stdout", "text": "half 21\n"}
     ]
-    result = saved["cells"][1]["outputs"][0]
-    assert result["output_type"] == "execute_result"
-    assert result["data"]["text/plain"] == "42"
-    assert (
-        saved["cells"][1]["execution_count"] == saved["cells"][0]["execution_count"] + 1
+    assert second.outputs[0]["output_type"] == "execute_result"
+    assert second.outputs[0]["data"]["text/plain"] == "42"
+    assert second.count == first.count + 1
+    assert {"shell.execute_reply.started", "shell.execute_reply"} <= set(
+        second.execution
     )
+    assert jupyter.find_session(path)["kernel"]["id"] == session["kernel"]["id"]
 
 
-def test_an_error_is_saved_and_fails_the_command(hops, jupyter):
-    run, path = hops
-    result = run("run", f"Users/alice/{path}", "--code", "1 / 0")
-    assert result.exit_code == 1
-    assert "ZeroDivisionError" in result.output
-    assert jupyter.read(path)["cells"][0]["outputs"][0]["ename"] == "ZeroDivisionError"
+def test_an_error_comes_back_as_an_error_output(jupyter, path):
+    run = jupyter.execute(jupyter.session(path), "c1", "1 / 0", 60)
+    assert run.finished
+    assert run.outputs[-1]["output_type"] == "error"
+    assert run.outputs[-1]["ename"] == "ZeroDivisionError"
+    assert "ZeroDivisionError" in notebook_api.describe(run.outputs, 2000)
 
 
-def test_replace_a_cell_and_add_markdown(hops, jupyter):
-    run, path = hops
-    assert run("run", f"Users/alice/{path}", "--code", "print('old')").exit_code == 0
-    assert (
-        run("run", f"Users/alice/{path}", "--markdown", "--code", "# Notes").exit_code
-        == 0
-    )
-    first_id = jupyter.read(path)["cells"][0]["id"]
-    replaced = run(
-        "run", f"Users/alice/{path}", "--cell", "1", "--code", "print('new')"
-    )
-    assert replaced.exit_code == 0, replaced.output
-    cells = jupyter.read(path)["cells"]
-    assert cells[0]["id"] == first_id
-    assert "shell.execute_reply" in cells[0]["metadata"]["execution"]
-    assert notebook_api.source(cells[0]) == "print('new')"
-    assert cells[0]["outputs"][0]["text"] == "new\n"
-    assert cells[1] == {**cells[1], "cell_type": "markdown", "source": "# Notes"}
-    assert "outputs" not in cells[1]
-
-    info = run("--json", "info", f"Users/alice/{path}")
-    rows = json.loads(info.output)
-    assert [(r["CELL"], r["TYPE"]) for r in rows] == [(1, "code"), (2, "markdown")]
-
-    beyond = run("run", f"Users/alice/{path}", "--cell", "5", "--code", "1")
-    assert beyond.exit_code == 2
-    assert "has 2 cells" in beyond.output
-
-
-def test_a_cell_past_its_timeout_is_interrupted(hops, jupyter):
-    run, path = hops
+def test_a_cell_past_its_timeout_is_interrupted_and_the_kernel_lives_on(jupyter, path):
+    session = jupyter.session(path)
     started = time.monotonic()
-    result = run(
-        "run",
-        f"Users/alice/{path}",
-        "--timeout",
-        "2",
-        "--code",
-        "import time\ntime.sleep(60)",
-    )
-    assert result.exit_code == 1
-    assert "interrupted" in result.output
+    run = jupyter.execute(session, "c1", "import time\ntime.sleep(60)", 2)
+    assert not run.finished
     assert time.monotonic() - started < 30
-    after = run("run", f"Users/alice/{path}", "--code", "print('still alive')")
-    assert after.exit_code == 0, after.output
-    assert "still alive" in after.output
+    after = jupyter.execute(session, "c2", "print('still alive')", 60)
+    assert after.finished
+    assert after.outputs[0]["text"] == "still alive\n"
 
 
-def test_another_client_of_the_kernel_sees_the_outputs_by_cell_id(jupyter):
+def test_another_client_of_the_kernel_sees_the_outputs_by_cell_id(jupyter, path):
     """A watcher on the kernel (Hopsable's notebook view) maps outputs to cells by message id."""
-    from websockets.sync.client import connect  # noqa: PLC0415
-
-    session = jupyter.session(f"ids_{secrets.token_hex(4)}.ipynb")
+    session = jupyter.session(path)
     url = (
         jupyter.base_url.replace("http", "ws", 1)
         + f"/api/kernels/{session['kernel']['id']}/channels?token={jupyter.token}"
     )
     with connect(url) as watcher:
-        outputs, count, finished, execution = jupyter.execute(
-            session, "abcd1234", "print(1)", 60
-        )
-        assert {"shell.execute_reply.started", "shell.execute_reply"} <= set(execution)
-        assert finished
-        assert outputs == [{"output_type": "stream", "name": "stdout", "text": "1\n"}]
+        run = jupyter.execute(session, "abcd1234", "print(1)", 60)
+        assert run.outputs == [
+            {"output_type": "stream", "name": "stdout", "text": "1\n"}
+        ]
         seen = []
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
@@ -182,221 +115,15 @@ def test_another_client_of_the_kernel_sees_the_outputs_by_cell_id(jupyter):
     assert seen and seen[0].startswith("hops:abcd1234:")
 
 
-def test_a_path_must_be_a_notebook(hops):
-    run, _ = hops
-    result = run("run", "notes.txt", "--code", "1")
-    assert result.exit_code == 2
-
-
-def test_a_project_path_names_a_notebook_in_jupyter():
-    assert notebook_api.in_jupyter("Users/alice/a.ipynb", "") == "Users/alice/a.ipynb"
-    assert notebook_api.in_jupyter("/Users/alice/a.ipynb", "Users/alice") == "a.ipynb"
-    with pytest.raises(ValueError, match="only Users/alice/"):
-        notebook_api.in_jupyter("Resources/a.ipynb", "Users/alice")
-
-
-def test_a_cell_the_user_edited_is_not_replaced(hops, jupyter):
-    run, path = hops
-    assert run("run", f"Users/alice/{path}", "--code", "print('agent')").exit_code == 0
-    notebook = jupyter.read(path)
-    notebook["cells"][0]["metadata"] = {"hopsable": {"editedBy": "user"}}
-    jupyter.write(path, notebook)
-    refused = run(
-        "run", f"Users/alice/{path}", "--cell", "1", "--code", "print('again')"
-    )
-    assert refused.exit_code == 1
-    assert "edited by the user" in refused.output
-    assert notebook_api.source(jupyter.read(path)["cells"][0]) == "print('agent')"
-
-
-def test_replacing_a_cell_of_a_missing_notebook_says_it_is_missing(hops):
-    run, path = hops
-    result = run("run", f"Users/alice/{path}", "--cell", "1", "--code", "1")
-    assert result.exit_code == 1
-    assert f"Notebook 'Users/alice/{path}' not found." in result.output
-
-
-def test_a_running_server_in_another_environment_is_left_alone():
-    running = {"port": 8888, "token": "t", "hostName": "h"}
-    with (
-        mock.patch.object(notebook_api, "server", return_value=running),
-        mock.patch.object(
-            notebook_api,
-            "settings",
-            return_value={"environment": {"name": "python-feature-pipeline"}},
-        ),
-        mock.patch.object(notebook_api, "start") as start,
-        pytest.raises(
-            ValueError, match="runs in the environment 'python-feature-pipeline'"
-        ),
-    ):
-        notebook_api.connect(119, 1, env="pandas-training-pipeline")
-    start.assert_not_called()
-
-
-def test_start_sends_the_environment_by_name():
-    instance = mock.Mock()
-    instance._send_request.side_effect = [
-        {"baseDir": "/Projects/p/Users/alice", "environment": {"name": "old", "id": 1}},
-        {"port": 8888, "token": "t"},
-    ]
-    with mock.patch.object(notebook_api.client, "_get_instance", return_value=instance):
-        notebook_api.start(119, "pandas-training-pipeline")
-    sent = json.loads(instance._send_request.call_args.kwargs["data"])
-    assert sent["environment"] == {"name": "pandas-training-pipeline"}
-    assert sent["baseDir"] == "/Projects/p/Users/alice"
-
-
-def _counted(jupyter):
-    """Count the notebook's reads and writes, and the kernel sessions asked for."""
-    return (
-        mock.patch.object(jupyter, "read", wraps=jupyter.read),
-        mock.patch.object(jupyter, "write", wraps=jupyter.write),
-        mock.patch.object(jupyter, "session", wraps=jupyter.session),
-    )
-
-
-def _seven_markdown_cells_and_code(jupyter, path):
-    notebook = notebook_api.new_notebook(jupyter.kernelspec("python3"))
-    cells = [notebook_api.new_cell("markdown", f"## Part {i}") for i in range(1, 8)]
-    code = notebook_api.new_cell("code", "print(1)")
-    code["execution_count"] = 4
-    code["outputs"] = [{"output_type": "stream", "name": "stdout", "text": "1\n"}]
-    notebook["cells"] = [*cells, code]
-    jupyter.write(path, notebook)
-    return notebook["cells"]
-
-
-def test_update_saves_several_cells_with_one_read_and_one_write(hops, jupyter):
-    run, path = hops
-    before = _seven_markdown_cells_and_code(jupyter, path)
-    edits = [
-        {
-            "cell": i,
-            "markdown": f'## Part {i} \U0001f389\nWith `code`, $HOME and "quotes"',
-        }
-        for i in range(1, 8)
-    ]
-    edits.append({"cell": 8, "code": "print(2)"})
-    read, write, session = _counted(jupyter)
-    with (
-        read as reads,
-        write as writes,
-        session as sessions,
-        mock.patch.object(notebook_api, "connect") as connect,
-    ):
-        result = run("update", f"Users/alice/{path}", stdin=json.dumps(edits))
-    assert result.exit_code == 0, result.output
-    assert reads.call_count == 1
-    assert writes.call_count == 1
-    sessions.assert_not_called()
-    connect.assert_not_called()
-    cells = jupyter.read(path)["cells"]
-    assert [c["id"] for c in cells] == [c["id"] for c in before]
-    assert (
-        notebook_api.source(cells[2])
-        == '## Part 3 \U0001f389\nWith `code`, $HOME and "quotes"'
-    )
-    assert cells[2]["cell_type"] == "markdown"
-    assert notebook_api.source(cells[7]) == "print(2)"
-    assert cells[7]["outputs"] == []
-    assert cells[7]["execution_count"] is None
+def test_a_missing_notebook_reads_as_none_and_has_no_session(jupyter, path):
+    assert jupyter.read(path) is None
     assert jupyter.find_session(path) is None
-    assert "not run" in result.output
 
 
-def test_update_refuses_every_cell_when_one_was_edited_by_the_user(hops, jupyter):
-    run, path = hops
-    _seven_markdown_cells_and_code(jupyter, path)
-    notebook = jupyter.read(path)
-    notebook["cells"][4]["metadata"] = {"hopsable": {"editedBy": "user"}}
-    jupyter.write(path, notebook)
-    edits = [{"cell": 1, "markdown": "# New"}, {"cell": 5, "markdown": "# Mine"}]
-    result = run("update", f"Users/alice/{path}", stdin=json.dumps(edits))
-    assert result.exit_code == 1
-    assert "Cell 5" in result.output and "edited by the user" in result.output
-    assert jupyter.read(path) == notebook
-
-
-@pytest.mark.parametrize(
-    ("stdin", "message"),
-    [
-        ("not json", "not JSON"),
-        ("[]", "at least one edit"),
-        ('[{"cell": 1}]', '"markdown"'),
-        ('[{"cell": 0, "markdown": "x"}]', '"markdown"'),
-        ('[{"cell": 1, "markdown": "x", "code": "y"}]', '"markdown"'),
-        ('[{"cell": 1, "markdown": "x"}, {"cell": 1, "code": "y"}]', "twice"),
-        ('[{"cell": 9, "markdown": "x"}]', "has 8 cells"),
-    ],
-)
-def test_update_rejects_a_bad_edit_list_and_saves_nothing(
-    hops, jupyter, stdin, message
+def test_a_rewritten_cell_keeps_its_id_metadata_and_attachments_through_jupyter(
+    jupyter, path
 ):
-    run, path = hops
-    _seven_markdown_cells_and_code(jupyter, path)
-    saved = jupyter.read(path)
-    result = run("update", f"Users/alice/{path}", stdin=stdin)
-    assert result.exit_code == 2, result.output
-    assert message in result.output
-    assert jupyter.read(path) == saved
-
-
-def test_update_of_a_missing_notebook_says_it_is_missing(hops):
-    run, path = hops
-    result = run(
-        "update", f"Users/alice/{path}", stdin='[{"cell": 1, "markdown": "x"}]'
-    )
-    assert result.exit_code == 1
-    assert f"Notebook 'Users/alice/{path}' not found." in result.output
-
-
-def test_info_source_prints_every_cell_in_full(hops, jupyter):
-    run, path = hops
-    cells = _seven_markdown_cells_and_code(jupyter, path)
-    cells[0]["source"] = "# Title\n\nA second paragraph."
-    notebook = jupyter.read(path)
-    notebook["cells"][0]["source"] = cells[0]["source"]
-    jupyter.write(path, notebook)
-    with (
-        mock.patch.object(notebook_api, "connect") as connect,
-        mock.patch.object(notebook_api, "setup") as setup,
-    ):
-        text = run("info", f"Users/alice/{path}", "--source")
-        listed = run("--json", "info", f"Users/alice/{path}", "--source")
-    connect.assert_not_called()
-    setup.assert_not_called()
-    assert text.exit_code == 0, text.output
-    assert (
-        f"[cell 1] markdown {cells[0]['id']}\n# Title\n\nA second paragraph.\n"
-        in text.output
-    )
-    assert f"[cell 8] code {cells[7]['id']}\nprint(1)\n" in text.output
-    assert json.loads(listed.output)[7] == {
-        "cell": 8,
-        "id": cells[7]["id"],
-        "type": "code",
-        "source": "print(1)",
-    }
-
-
-def test_a_markdown_run_starts_no_kernel(hops, jupyter):
-    run, path = hops
-    with mock.patch.object(notebook_api, "connect") as connect:
-        result = run("run", f"Users/alice/{path}", "--markdown", "--code", "# Notes")
-    assert result.exit_code == 0, result.output
-    connect.assert_not_called()
-    assert jupyter.find_session(path) is None
-    saved = jupyter.read(path)
-    assert saved["metadata"]["kernelspec"]["name"]
-    assert notebook_api.source(saved["cells"][0]) == "# Notes"
-
-
-CHART = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-
-
-def _a_notebook_with_attachments_and_metadata(jupyter, path):
-    notebook = notebook_api.new_notebook(jupyter.kernelspec("python3"))
+    notebook = notebook_api.new_notebook(jupyter.kernelspec())
     text = notebook_api.new_cell("markdown", "![chart](attachment:chart.png)\n# Old")
     text["attachments"] = {"chart.png": {"image/png": CHART}}
     text["metadata"] = {"tags": ["keep"], "custom": {"x": 1}}
@@ -409,56 +136,25 @@ def _a_notebook_with_attachments_and_metadata(jupyter, path):
     }
     notebook["cells"] = [text, code]
     jupyter.write(path, notebook)
-    return notebook["cells"]
 
-
-def test_update_keeps_attachments_and_metadata(hops, jupyter):
-    run, path = hops
-    before = _a_notebook_with_attachments_and_metadata(jupyter, path)
-    # As Jupyter serves them: it marks a code cell trusted, which is its own and stays.
-    as_read = jupyter.read(path)["cells"]
-    edits = [
-        {"cell": 1, "markdown": "![chart](attachment:chart.png)\n# New"},
-        {"cell": 2, "code": "print(2)"},
+    saved = jupyter.read(path)
+    saved["cells"] = [
+        notebook_api.rewrite_cell(
+            saved["cells"][0], "markdown", "![chart](attachment:chart.png)\n# New"
+        ),
+        notebook_api.rewrite_cell(saved["cells"][1], "code", "print(2)"),
     ]
-    result = run("update", f"Users/alice/{path}", stdin=json.dumps(edits))
-    assert result.exit_code == 0, result.output
+    jupyter.write(path, saved)
+
     text, code = jupyter.read(path)["cells"]
     assert notebook_api.source(text) == "![chart](attachment:chart.png)\n# New"
     assert text["attachments"] == {"chart.png": {"image/png": CHART}}
-    assert (
-        text["metadata"]
-        == as_read[0]["metadata"]
-        == {"tags": ["keep"], "custom": {"x": 1}}
-    )
-    assert [text["id"], code["id"]] == [before[0]["id"], before[1]["id"]]
+    assert text["metadata"] == {"tags": ["keep"], "custom": {"x": 1}}
+    assert [text["id"], code["id"]] == [c["id"] for c in notebook["cells"]]
     assert notebook_api.source(code) == "print(2)"
-    assert code["metadata"] == {
-        k: v for k, v in as_read[1]["metadata"].items() if k != "execution"
-    }
     assert code["metadata"]["tags"] == ["parameters"]
     assert "execution" not in code["metadata"]
-    assert code["outputs"] == []
-    assert code["execution_count"] is None
-
-
-def test_run_of_a_markdown_cell_keeps_its_attachments_and_metadata(hops, jupyter):
-    run, path = hops
-    _a_notebook_with_attachments_and_metadata(jupyter, path)
-    result = run(
-        "run",
-        f"Users/alice/{path}",
-        "--cell",
-        "1",
-        "--markdown",
-        "--code",
-        "![chart](attachment:chart.png)\n# Again",
-    )
-    assert result.exit_code == 0, result.output
-    text = jupyter.read(path)["cells"][0]
-    assert notebook_api.source(text) == "![chart](attachment:chart.png)\n# Again"
-    assert text["attachments"] == {"chart.png": {"image/png": CHART}}
-    assert text["metadata"] == {"tags": ["keep"], "custom": {"x": 1}}
+    assert code["outputs"] == [] and code["execution_count"] is None
 
 
 def test_a_cell_that_changes_type_keeps_its_id_and_metadata_only():
@@ -470,3 +166,35 @@ def test_a_cell_that_changes_type_keeps_its_id_and_metadata_only():
     assert new["metadata"] == {"tags": ["keep"]}
     assert "attachments" not in new
     assert new["outputs"] == [] and new["execution_count"] is None
+
+
+def test_a_project_path_names_a_notebook_in_jupyter():
+    assert notebook_api.in_jupyter("Users/alice/a.ipynb", "") == "Users/alice/a.ipynb"
+    assert notebook_api.in_jupyter("/Users/alice/a.ipynb", "Users/alice") == "a.ipynb"
+    with pytest.raises(ValueError, match="only Users/alice/"):
+        notebook_api.in_jupyter("Resources/a.ipynb", "Users/alice")
+
+
+def test_update_reads_its_edits_in_order():
+    edits = notebook._edits(
+        json.dumps(
+            [{"cell": 2, "markdown": "## Part 2 \U0001f389"}, {"cell": 8, "code": "x"}]
+        )
+    )
+    assert edits == [(2, "markdown", "## Part 2 \U0001f389"), (8, "code", "x")]
+
+
+@pytest.mark.parametrize(
+    ("stdin", "message"),
+    [
+        ("not json", "not JSON"),
+        ("[]", "at least one edit"),
+        ('[{"cell": 1}]', '"markdown"'),
+        ('[{"cell": 0, "markdown": "x"}]', '"markdown"'),
+        ('[{"cell": 1, "markdown": "x", "code": "y"}]', '"markdown"'),
+        ('[{"cell": 1, "markdown": "x"}, {"cell": 1, "code": "y"}]', "twice"),
+    ],
+)
+def test_update_rejects_a_bad_edit_list(stdin, message):
+    with pytest.raises(click.UsageError, match=message):
+        notebook._edits(stdin)
