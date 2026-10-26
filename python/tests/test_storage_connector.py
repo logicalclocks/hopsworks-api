@@ -15,6 +15,7 @@
 #
 
 import base64
+import json
 import os
 from pathlib import WindowsPath
 
@@ -3889,3 +3890,274 @@ class TestHopsworksConnector:
     def test_read_points_to_an_external_feature_group(self):
         with pytest.raises(NotImplementedError, match="external feature group"):
             self._connector().read()
+
+
+class TestSharePointConnector:
+    _BASE = [
+        "project",
+        119,
+        "featurestores",
+        67,
+        "storageconnectors",
+        "test_sharepoint",
+        "sharepoint",
+    ]
+
+    @staticmethod
+    def _client(mocker, response=None):
+        client_mock = mocker.Mock()
+        client_mock._project_id = 119
+        client_mock._send_request.return_value = response
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        return client_mock
+
+    @staticmethod
+    def _connector(backend_fixtures):
+        return storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sharepoint"]["response"]
+        )
+
+    def test_from_response_json(self, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+
+        assert isinstance(sc, storage_connector.SharePointConnector)
+        assert sc.cloud == "GLOBAL"
+        assert sc.auth_mode == "APP"
+        assert sc.tenant_id == "tenant-1"
+        assert sc.client_id == "client-1"
+        assert sc.client_secret is None
+        assert sc.client_secret_set is True
+        assert sc.site_url == "https://contoso.sharepoint.com/sites/Finance"
+        assert sc.site_id is None
+        assert sc.pinned is True
+        assert sc.script_path.endswith(
+            "/DataSources/test_sharepoint/sharepoint_sync.py"
+        )
+        assert sc.script_template_version == 1
+        assert sc.script_modified is False
+        assert sc.current_template_version == 1
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sharepoint_basic_info"][
+                "response"
+            ]
+        )
+
+        assert isinstance(sc, storage_connector.SharePointConnector)
+        assert sc.tenant_id is None
+        assert sc.script_path is None
+
+    def test_to_dict_sends_the_secret_and_the_backend_dto_name(self):
+        sc = storage_connector.SharePointConnector(
+            id=None,
+            name="sp",
+            featurestore_id=67,
+            tenant_id="t",
+            client_id="c",
+            site_url="https://contoso.sharepoint.com/sites/Finance",
+        )
+        sc.client_secret = "s3cret"
+
+        payload = sc.to_dict()
+
+        assert payload["type"] == "featurestoreSharePointConnectorDTO"
+        assert payload["storageConnectorType"] == "SHAREPOINT"
+        assert payload["tenantId"] == "t"
+        assert payload["clientId"] == "c"
+        assert payload["clientSecret"] == "s3cret"
+        assert payload["siteUrl"] == "https://contoso.sharepoint.com/sites/Finance"
+        assert "clientSecretSet" not in payload
+        assert "scriptPath" not in payload
+
+    def test_round_trip(self, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+
+        again = storage_connector.StorageConnector.from_response_json(sc.to_dict())
+
+        assert isinstance(again, storage_connector.SharePointConnector)
+        assert again.site_url == sc.site_url
+        assert again.tenant_id == sc.tenant_id
+
+    def test_is_not_read_through_spark(self, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.spark_options()
+        with pytest.raises(NotImplementedError):
+            sc.read()
+        with pytest.raises(ValueError, match="tables"):
+            sc.get_tables()
+        with pytest.raises(ValueError, match="databases"):
+            sc.get_databases()
+
+    def test_list_drives(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = self._client(
+            mocker,
+            {
+                "count": 1,
+                "items": [{"id": "b!1", "name": "Documents", "webUrl": "https://x"}],
+            },
+        )
+
+        drives = sc.list_drives()
+
+        assert drives == [{"id": "b!1", "name": "Documents", "web_url": "https://x"}]
+        assert client._send_request.call_args.args == ("GET", [*self._BASE, "drives"])
+
+    def test_list_folders(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = self._client(
+            mocker,
+            {
+                "count": 1,
+                "items": [{"id": "f1", "name": "2026", "path": "Reports/2026"}],
+            },
+        )
+
+        folders = sc.list_folders("b!1", "Reports")
+
+        assert folders == [{"id": "f1", "name": "2026", "path": "Reports/2026"}]
+        call = client._send_request.call_args
+        assert call.args == ("GET", [*self._BASE, "drives", "b!1", "folders"])
+        assert call.kwargs["query_params"] == {"path": "Reports"}
+
+    def test_create_sync_posts_the_sync_dto(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = self._client(
+            mocker, {"id": 5, "datasetName": "reports", "state": "IDLE"}
+        )
+
+        sync = sc.create_sync(
+            drive_id="b!1",
+            folder_path="Reports/2026",
+            dataset_name="reports",
+            include=["*.pdf"],
+            exclude=["drafts/**"],
+            alert_receiver="ops",
+        )
+
+        call = client._send_request.call_args
+        assert call.args == ("POST", [*self._BASE, "syncs"])
+        assert json.loads(call.kwargs["data"]) == {
+            "driveId": "b!1",
+            "folderPath": "Reports/2026",
+            "datasetName": "reports",
+            "cronExpression": "0 0 * ? * *",
+            "includePatterns": ["*.pdf"],
+            "excludePatterns": ["drafts/**"],
+            "maxFileSizeMb": 1024,
+            "mirrorDeletions": True,
+            "verifyChecksums": False,
+            "checksumEvery": 24,
+            "transfers": None,
+            "alertReceiver": "ops",
+            "runNow": True,
+            "indexFiles": False,
+            "indexFeatureGroup": None,
+        }
+        assert sync.id == 5
+        assert sync.connector_name == "test_sharepoint"
+        assert sync.dataset_name == "reports"
+
+    def test_an_unscheduled_sync_does_not_mirror_deletions_by_default(
+        self, mocker, backend_fixtures
+    ):
+        sc = self._connector(backend_fixtures)
+        client = self._client(mocker, {"id": 5})
+
+        sc.create_sync(drive_id="b!1", schedule=None)
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert body["cronExpression"] is None
+        assert body["mirrorDeletions"] is False
+
+    def test_copy_folder_is_an_unscheduled_copy_run_now(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = self._client(mocker, {"id": 6})
+
+        sc.copy_folder(drive_id="b!1", folder_path="Reports/2026")
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert body["cronExpression"] is None
+        assert body["mirrorDeletions"] is False
+        assert body["runNow"] is True
+        assert body["datasetName"] == "sharepoint"
+        assert body["folderPath"] == "Reports/2026"
+
+    def test_get_syncs(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = self._client(
+            mocker, {"count": 2, "items": [{"id": 1}, {"id": 2, "paused": True}]}
+        )
+
+        syncs = sc.get_syncs()
+
+        assert [s.id for s in syncs] == [1, 2]
+        assert syncs[1].paused is True
+        assert client._send_request.call_args.args == ("GET", [*self._BASE, "syncs"])
+
+    def test_get_sync(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = self._client(mocker, {"id": 3, "auditPath": "/Projects/p/a"})
+
+        sync = sc.get_sync(3)
+
+        assert sync.audit_path == "/Projects/p/a"
+        assert client._send_request.call_args.args == (
+            "GET",
+            [*self._BASE, "syncs", 3],
+        )
+
+    def test_reset_script_takes_the_returned_connector(self, mocker, backend_fixtures):
+        response = {
+            **backend_fixtures["storage_connector"]["get_sharepoint"]["response"],
+            "scriptTemplateVersion": 2,
+            "currentTemplateVersion": 2,
+        }
+        sc = self._connector(backend_fixtures)
+        client = self._client(mocker, response)
+
+        sc.reset_script()
+
+        assert client._send_request.call_args.args == (
+            "POST",
+            [*self._BASE, "script", "reset"],
+        )
+        assert sc.script_template_version == 2
+        assert sc.current_template_version == 2
+
+
+class TestStorageConnectorList:
+    def test_an_unknown_type_in_a_list_is_skipped_with_a_warning(
+        self, backend_fixtures
+    ):
+        sharepoint = backend_fixtures["storage_connector"]["get_sharepoint"]["response"]
+        unknown = {
+            "type": "featurestoreFutureConnectorDTO",
+            "storageConnectorType": "FUTURE",
+            "id": 9,
+            "name": "from_the_future",
+            "featurestoreId": 67,
+        }
+
+        with pytest.warns(UserWarning, match="from_the_future"):
+            connectors = storage_connector.StorageConnector.from_response_json(
+                {"count": 2, "items": [unknown, sharepoint]}
+            )
+
+        assert [type(c) for c in connectors] == [storage_connector.SharePointConnector]
+
+    def test_a_plain_list_is_accepted(self, backend_fixtures):
+        hopsfs = backend_fixtures["storage_connector"]["get_hopsfs"]["response"]
+
+        connectors = storage_connector.StorageConnector.from_response_json([hopsfs])
+
+        assert isinstance(connectors[0], storage_connector.HopsFSConnector)
+
+    def test_an_unknown_type_fetched_alone_still_raises(self):
+        with pytest.raises(ValueError, match="FUTURE"):
+            storage_connector.StorageConnector.from_response_json(
+                {"storageConnectorType": "FUTURE", "id": 9, "name": "x"}
+            )

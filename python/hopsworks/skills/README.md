@@ -10,7 +10,8 @@ into bucket folders:
 ## data/ — discovery, sources, SQL, Spark, table maintenance
 - [hops-airflow](data/hops-airflow/SKILL.md) — orchestrate Hopsworks jobs with Airflow DAGs.
 - [hops-data-discovery](data/hops-data-discovery/SKILL.md) — find FGs, data sources, search, files.
-- [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion.
+- [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion / copy or sync SharePoint folders into a dataset.
+- [hops-sharepoint-search](data/hops-sharepoint-search/SKILL.md) — search the files a SharePoint sync copied in, through its index feature group, with the DuckDB CLI.
 - [hops-delta](data/hops-delta/SKILL.md) — maintain Delta feature groups: optimize, vacuum, write modes and layout.
 - [hops-partitioning](data/hops-partitioning/SKILL.md) — Whether a derived feature group should be partitioned by time, from the source table's files.
 - [hops-analytics](data/hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.
