@@ -176,6 +176,21 @@ class TestParseMessage:
         assert row["snippet"] == "Snippet & more"
         assert (row["day"], row["hour"]) == ("2026-10-20", "23")
 
+    def test_non_ascii_addresses_stay_readable(self):
+        row = g._parse_message(
+            _message(
+                "m1",
+                DAY1,
+                to='=?utf-8?q?J=C3=B6ran?= <j\u00f6ran@example.se>, "Doe, John" <john@example.com>',
+            ),
+            None,
+            PROJECT_ROOT + "/Resources/mail",
+        )
+        assert row["to_addresses"] == [
+            "J\u00f6ran <j\u00f6ran@example.se>",
+            '"Doe, John" <john@example.com>',
+        ]
+
     def test_attachments_are_written_and_listed_by_full_path(self, tmp_path):
         root = tmp_path / "attachments"
         row = g._parse_message(
@@ -404,6 +419,32 @@ class TestIncremental:
         original = client._get_raw_message
         client._get_raw_message = lambda i: None if i == "a" else original(i)
         assert _run(tmp_path, client, _config(), writer).skipped_deleted == 1
+
+    def test_an_unparseable_message_is_left_out(self, tmp_path, monkeypatch, caplog):
+        client = FakeGmail([_message("a", DAY1), _message("b", DAY1 + 1000)])
+        writer = FakeWriter()
+        parse = g._parse_message
+
+        def fail_on_a(message, *args):
+            if message["id"] == "a":
+                raise ValueError("unusual header")
+            return parse(message, *args)
+
+        monkeypatch.setattr(g, "_parse_message", fail_on_a)
+        result = _run(tmp_path, client, _config(), writer)
+        assert (result.copied, result.skipped_unreadable) == (1, 1)
+        assert "Leaving out message a" in caplog.text
+
+    def test_a_filesystem_error_fails_the_run(self, tmp_path, monkeypatch):
+        client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()
+
+        def eio(*args):
+            raise OSError(5, "Input/output error")
+
+        monkeypatch.setattr(g, "_parse_message", eio)
+        with pytest.raises(OSError):
+            _run(tmp_path, client, _config(), writer)
+        assert writer.calls == []
 
     @pytest.mark.parametrize(
         "changed", [{"labels": ["INBOX", "IMPORTANT"]}, {"featureGroupName": "other"}]

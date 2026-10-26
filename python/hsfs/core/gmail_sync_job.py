@@ -346,10 +346,20 @@ def _addresses(parsed: email.message.Message, name: str) -> list[str]:
     except (ValueError, IndexError):
         return []
     return [
-        email.utils.formataddr(pair) if pair[0] else pair[1]
-        for pair in email.utils.getaddresses(values)
-        if pair[1]
+        _format_address(*pair) for pair in email.utils.getaddresses(values) if pair[1]
     ]
+
+
+_NAME_SPECIALS = re.compile(r'[][\\()<>@,:;".]')
+
+
+def _format_address(name: str, address: str) -> str:
+    # email.utils.formataddr refuses a non-ASCII address and encodes a non-ASCII name as =?utf-8?...?=, which no search matches.
+    if not name:
+        return address
+    if _NAME_SPECIALS.search(name):
+        name = '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return f"{name} <{address}>"
 
 
 _TAG = re.compile(r"<[^>]+>")
@@ -720,6 +730,7 @@ class _RunResult:
     copied: int
     days: list[str]
     skipped_deleted: int
+    skipped_unreadable: int
     cursor_ms: int | None
 
 
@@ -788,7 +799,7 @@ class _SyncRun:
             lower, inclusive, seen = state.cursor_ms, False, set(state.cursor_ids)
         else:
             lower, inclusive, seen = self._config.initial_value, True, set()
-        result = _RunResult(0, [], 0, state.cursor_ms)
+        result = _RunResult(0, [], 0, 0, state.cursor_ms)
         for batch in self._windows(lower, inclusive, seen, self._target, result):
             self._writer._upsert(batch, overwrite=False)
             _advance(state, batch)
@@ -805,7 +816,7 @@ class _SyncRun:
         if staging.exists():
             shutil.rmtree(staging)
         staging.mkdir(parents=True)
-        result = _RunResult(0, [], 0, None)
+        result = _RunResult(0, [], 0, 0, None)
         batches = self._windows(
             self._config.initial_value, True, set(), staging, result
         )
@@ -844,10 +855,11 @@ class _SyncRun:
         pending: list[dict] = []
         window_lower = lower_ms
         for window_upper in [*edges, upper_ms]:
-            rows, skipped = self._fetch(
+            rows, deleted, unreadable = self._fetch(
                 window_lower, inclusive, seen, attachments_root, window_upper
             )
-            result.skipped_deleted += skipped
+            result.skipped_deleted += deleted
+            result.skipped_unreadable += unreadable
             for day in sorted(rows):
                 pending.extend(rows[day])
                 if day not in result.days:
@@ -940,10 +952,11 @@ class _SyncRun:
         seen: set[str],
         attachments_root: Path,
         upper_ms: int,
-    ) -> tuple[dict[str, list[dict]], int]:
-        """The messages in (lower_ms, upper_ms], or [lower_ms, upper_ms] when inclusive, grouped by day and sorted.
+    ) -> tuple[dict[str, list[dict]], int, int]:
+        """The messages in (lower_ms, upper_ms], or [lower_ms, upper_ms] when inclusive, grouped by day and sorted, with the counts of messages deleted since listing and of messages that could not be parsed.
 
         Attachments are written under `attachments_root` as messages arrive, and rows are spilled to scratch files per day, so memory holds one message per worker.
+        A message that cannot be parsed is logged with its id and left out, so one unusual message does not stop every later run; a filesystem error still fails the run.
         """
         query = _gmail_query(self._config.query, lower_ms, upper_ms)
         ids = list(self._client._list_message_ids(query, self._config.labels))
@@ -960,18 +973,31 @@ class _SyncRun:
         )
         spill_dir = scratch / f"gmail_sync_{uuid.uuid4().hex}"
         spill_dir.mkdir(parents=True)
-        skipped = 0
+        deleted = unreadable = 0
         try:
             with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
                 for start in range(0, len(ids), FETCH_BATCH):
                     batch = ids[start : start + FETCH_BATCH]
                     for message in pool.map(self._client._get_raw_message, batch):
                         if message is None:
-                            skipped += 1
+                            deleted += 1
                             continue
                         if not _in_window(message, lower_ms, inclusive, seen, upper_ms):
                             continue
-                        row = _parse_message(message, attachments_root, self._prefix)
+                        try:
+                            row = _parse_message(
+                                message, attachments_root, self._prefix
+                            )
+                        except OSError:
+                            # The attachments directory failing is not the message's fault; the next run resumes here.
+                            raise
+                        except Exception:
+                            _logger.exception(
+                                "Leaving out message %s, which could not be parsed",
+                                message["id"],
+                            )
+                            unreadable += 1
+                            continue
                         with open(
                             spill_dir / f"{row['day']}.jsonl", "a", encoding="utf-8"
                         ) as f:
@@ -982,7 +1008,7 @@ class _SyncRun:
                     day_rows = [json.loads(line) for line in f]
                 day_rows.sort(key=lambda r: (r["internal_date"], r["message_id"]))
                 rows[spill.stem] = day_rows
-            return rows, skipped
+            return rows, deleted, unreadable
         finally:
             shutil.rmtree(spill_dir, ignore_errors=True)
 
@@ -1099,11 +1125,12 @@ def _main(argv: list[str] | None = None) -> None:
         _logger.info("%s; this run does nothing", e)
         return
     _logger.info(
-        "Upserted %d messages into %s across %d days (%d deleted while listed); cursor %s",
+        "Upserted %d messages into %s across %d days (%d deleted while listed, %d left out as unparseable); cursor %s",
         result.copied,
         config.feature_group_name,
         len(result.days),
         result.skipped_deleted,
+        result.skipped_unreadable,
         _iso_utc(result.cursor_ms) if result.cursor_ms is not None else "none",
     )
 
