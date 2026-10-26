@@ -343,7 +343,7 @@ class TestSourceCode:
             "line": 3,
             "fix": "g",
         }
-        assert row["prompt_version"] == "2"
+        assert row["prompt_version"] == t.PROMPT_VERSION
         empty = t._triage_row(
             feedback(), None, run_id="r", provider="p", model="m", error="x"
         )
@@ -456,3 +456,39 @@ class TestPatches:
         assert stored["original"] == "    return db.find(name=key)"
         assert stored["replacement"] == "    return db.find(key=key)"
         assert stored["verified"] is True
+
+
+class TestAnUnusableReplyIsAskedForAgain:
+    """A model that wrapped its object in prose usually answers properly when told.
+
+    Without a second ask the row was written ungradable -- "reply was not a JSON
+    object" -- and read in the queue as a triage with no category and no summary.
+    """
+
+    def test_a_second_ask_that_works_is_the_result(self):
+        replies = iter(["I think the agent was wrong here.", reply()])
+        prompts = []
+
+        def complete(prompt):
+            prompts.append(prompt)
+            return next(replies)
+
+        result, why = t._triage(
+            complete, t.TriageInput(feedback=feedback(), question="q", answer="a")
+        )
+        assert result is not None and why == ""
+        assert "JSON object only" in prompts[1]
+
+    def test_two_unusable_replies_are_ungradable_and_say_why(self):
+        result, why = t._triage(
+            lambda _prompt: "still prose",
+            t.TriageInput(feedback=feedback(), question="q", answer="a"),
+        )
+        assert result is None and why
+
+
+def test_a_prompt_instruction_is_a_finding_like_code():
+    # The triage found the behaviour and defended the Python ("the tool accepts empty
+    # preferences ... so the flagged inconsistency is not a bug"); the cause was one
+    # instruction in the prompts file, which it never attributed.
+    assert "prompts" in t.CODE_RULES and "instruction is the finding" in t.CODE_RULES

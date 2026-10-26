@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 
+from ._retry import _retrying
 from .api import _hopsworks_session
 from .evaluator_spec import SpecError, _evaluators_for_suite
 from .judges import LlmJudgeEvaluator
@@ -149,10 +150,25 @@ def _to_suite(run: dict[str, Any], tasks: list[dict[str, Any]]) -> Suite:
                     if value
                 },
                 category=t.get("category") or "",
+                subject=t.get("subject") or "",
+                context=_context(t.get("context")),
             )
             for t in tasks
         ],
     )
+
+
+def _context(raw: Any) -> dict[str, Any]:
+    """A task's request context: a JSON object as text, or already an object; anything else is none."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 #: How much of a failure's message is reported. It travels as a query parameter
@@ -181,7 +197,6 @@ def _write_trials(feature_store: Any, trials: Sequence[Any]) -> None:
     """
     if not trials:
         return
-    import pandas as pd
 
     now = datetime.now(tz=timezone.utc)
     rows = _trial_rows(trials, now)
@@ -192,10 +207,12 @@ def _write_trials(feature_store: Any, trials: Sequence[Any]) -> None:
     ):
         if not batch:
             continue
-        group = feature_store.get_feature_group(name, 1)
-        group.insert(
-            _match_schema(group, pd.DataFrame(batch)),
-            write_options={"mode": "append"},
+        # Online only, so no offline materialization job is started -- see the
+        # note on the run-metrics write below. Retried, because an online insert
+        # is an upsert and a 500 under load is the platform's, not the run's.
+        _retrying(
+            lambda name=name, batch=batch: _insert_online(feature_store, name, batch),
+            what=f"writing {len(batch)} rows to {name}",
         )
         log.info("wrote %d rows to %s", len(batch), name)
 
@@ -266,8 +283,6 @@ def _write_results(
     offline table appends, and a run would read as having run each of those trials
     twice.
     """
-    import pandas as pd
-
     now = datetime.now(tz=timezone.utc)
     pending = [t for t in result.trials if t.trial_id not in set(already_written)]
     trials = _trial_rows(pending, now)
@@ -299,12 +314,27 @@ def _write_results(
     ):
         if not rows:
             continue
-        group = feature_store.get_feature_group(name, 1)
-        group.insert(
-            _match_schema(group, pd.DataFrame(rows)),
-            write_options={"mode": "append"},
+        # Online only, and deliberately: an insert that is not online-only
+        # starts the feature group's offline materialization job, which is a
+        # Spark driver and its executors per write. These rows are read back
+        # over JDBC from the online store -- nothing reads the offline copy --
+        # so that was a cluster's worth of work per run for an output nobody
+        # looks at, scheduled against the same nodes as the agent pods it is
+        # recording. `mode: append` went with it: it configures the Delta
+        # writer, which an online-only write never reaches.
+        _retrying(
+            lambda name=name, rows=rows: _insert_online(feature_store, name, rows),
+            what=f"writing {len(rows)} rows to {name}",
         )
         log.info("wrote %d rows to %s", len(rows), name)
+
+
+def _insert_online(feature_store: Any, name: str, rows: Sequence[Any]) -> None:
+    """One upsert into a feature group's online store; safe to repeat."""
+    import pandas as pd
+
+    group = feature_store.get_feature_group(name, 1)
+    group.insert(_match_schema(group, pd.DataFrame(rows)), storage="online")
 
 
 # What pandas infers, against what a feature group declares. Two dtypes per
@@ -504,6 +534,7 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
             ),
             config=RunnerConfig(
                 n_trials=_run_trials(run, 1),
+                **({"timeout_s": args.trial_timeout_s} if args.trial_timeout_s else {}),
                 readiness_timeout_s=args.readiness_timeout_s,
                 max_concurrency=args.max_concurrency,
                 input_token_price_per_million=run.get("inputTokenPricePerMillion"),
@@ -549,6 +580,14 @@ def main() -> None:
         "p95 rather than accepting this default",
     )
     parser.add_argument("--max-concurrency", type=int, default=4)
+    parser.add_argument(
+        "--trial-timeout-s",
+        type=float,
+        default=None,
+        help="how long one turn of a trial may take before it is TIMEOUT; the "
+        "evaluation job's trial_timeout_s, passed by the backend. Ten minutes "
+        "when unset",
+    )
     parser.add_argument(
         "--judge-provider",
         default=None,

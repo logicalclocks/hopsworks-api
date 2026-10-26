@@ -34,7 +34,7 @@ variables, so code written for one works in the other.
 | `MYSQL_HOST` | internal DNS name of the online feature store MySQL server |
 | `MYSQL_PORT` | its port (normally `3306`) |
 | `MYSQL_DB` | the project database, `<project_name>` lowercased |
-| `MYSQL_USER` | the MySQL user of the person who **started** the app, `<project>_<username>` |
+| `MYSQL_USER` | the app's own MySQL user, `hopsapp_<app id>`; for an app created before table registration, the user of the person who **started** it, `<project>_<username>` |
 | `MYSQL_PASSWORD_SECRET_NAME` | name of the **Hopsworks secret** holding that user's password (same string as `MYSQL_USER`) |
 
 - The password is never put in the environment. Read the secret named by
@@ -97,29 +97,75 @@ runtimes pass `$LIBHDFS_ROOT_CA_BUNDLE` as the CA file. Do not point
 `SSL_CERT_FILE` or `REQUESTS_CA_BUNDLE` at it: those replace the system bundle
 and the app's calls to public HTTPS APIs stop verifying.
 
-### Privileges follow the project role of the user who starts the app
+### Hopsworks creates and alters the app's tables
 
-| Role of the starter | Grant on the project database |
-|---|---|
-| Data Owner | `ALL PRIVILEGES` — create tables, insert, update, delete |
-| Data Scientist | `SELECT` only — reads work, any `CREATE TABLE` / `INSERT` fails |
+An app connects as its own user, which can `SELECT` anything in the project
+database but cannot create or alter a table. Hopsworks does that for it, so
+every app table is stored on disk in RonDB: `app.create_table(name, definition)`
+registers the table and runs `CREATE TABLE <name> (<definition>)` with
+`ENGINE=NDBCLUSTER TABLESPACE <ts> STORAGE DISK` appended, and
+`app.alter_table(name, alteration)` runs `ALTER TABLE <name> <alteration>`. The
+app's user is granted `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP` and
+`REFERENCES` on its tables (not `CREATE`, `ALTER`, `INDEX`, `CREATE VIEW` or
+`TRIGGER`):
 
-An app that keeps state therefore has to be **started by a Data Owner**. If a
-Data Scientist restarts it, the app comes up with a read-only connection.
+```python
+import os, hopsworks
+project = hopsworks.login()
+app = project.get_app_api().get_app(os.environ["HOPSWORKS_JOB_NAME"])
+NOTES = app.create_table(                    # -> "app_reviews__notes"; a no-op if it exists
+    "notes", "id BIGINT AUTO_INCREMENT PRIMARY KEY, note TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+)
+app.alter_table("notes", "ADD COLUMN score DOUBLE")   # schema changes go through Hopsworks too
+```
+
+- Table names are `<app.table_prefix><name>`, the prefix being
+  `app_<app name, lowercased, other characters as _>__` (an app name longer than
+  24 characters is cut and ends in a hash, so read `app.table_prefix` or use the
+  name `create_table` returns), in lowercase `a-z`, `0-9` and `_`, at most 64
+  characters. `create_table` adds the prefix when it
+  is missing. A name that already exists as another table (a feature group
+  table, say) or belongs to another app is refused.
+- The definition is what goes inside the parentheses of `CREATE TABLE`: columns,
+  keys, indexes and foreign keys. One that sets `ENGINE`, `TABLESPACE` or
+  `STORAGE` is refused (error 130088); one the database refuses fails with its
+  MySQL error (130089). Call `create_table` on every start; it is idempotent.
+- `CREATE TABLE` or `ALTER TABLE` run by the app itself fails with MySQL error
+  1142 (`command denied`). `app.register_table(name)` reserves a name without
+  creating the table.
+- Deleting the app **drops its registered tables** (the project database stays).
+  Hopsworks only ever drops registered tables, and the app could create nothing
+  else.
+- The Apps page shows a database icon for an app with tables: each table's
+  columns and a preview of its rows. `app.get_tables()`, `app.get_table(name)`
+  and `app.preview_table(name)` return the same.
+- Who starts the app does not change what it can do; a Data Scientist can start
+  it and it still writes its own tables.
+- Project members reach the app tables with their own online feature store
+  credentials: a Data Scientist can `SELECT`, `INSERT`, `UPDATE` and `DELETE`
+  rows of every app table, but not create, alter or drop one; a Data Owner has
+  `ALL PRIVILEGES` on the project database.
+- Apps created before table registration (`app.managed_db` is False) keep
+  connecting as the user who started them: a Data Owner starter gets
+  `ALL PRIVILEGES` on the project database, a Data Scientist `SELECT` only. They
+  have no registered tables and none are dropped on delete.
 
 ### Table rules on RonDB
 
-- RonDB is MySQL Cluster: tables default to `ENGINE=NDBCLUSTER`. Declare it
-  explicitly so the table is never created as InnoDB by an unusual session default.
+- RonDB is MySQL Cluster: app tables are always `ENGINE=NDBCLUSTER`, with their
+  non-indexed columns on disk, because Hopsworks creates them. RonDB memory is
+  shared with every online feature group; primary-key and other indexed columns
+  stay in memory in any case, so index only what the app looks rows up by. The
+  Apps page table viewer shows which columns are in memory.
 - Always define a `PRIMARY KEY` (NDB adds a hidden one otherwise, which makes
   updates and replication slower).
 - Keep rows small: NDB stores at most ~30 000 bytes per row in-row; long
   `VARCHAR` columns count in full. Use `TEXT` / `JSON` / `BLOB` for large values,
   they are stored out of row.
-- Prefer creating tables complete; adding foreign keys with `ALTER TABLE`
+- Prefer creating tables complete; adding foreign keys with `alter_table`
   afterwards is where NDB most often refuses a schema change.
-- **Prefix app tables** (`app_<appname>_...`) so they cannot collide with feature
-  group tables, which are named `<fg_name>_<version>`.
+- App tables carry the app's prefix (see above), so they cannot collide with
+  feature group tables, which are named `<fg_name>_<version>`.
 - Never write into a feature group table directly. Insert through
   `fg.insert()` so the offline store, statistics and validation stay in sync.
   Reading them with SQL is fine and is the fastest way to serve a dashboard.
@@ -168,17 +214,16 @@ Plain PyMySQL:
 ```python
 from db import connect
 
+# app as above; create_table returns the full name and is a no-op once the table exists.
+NOTES = app.create_table("notes", """
+    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_email VARCHAR(255) NOT NULL,
+    note       TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+""")
 with connect() as conn, conn.cursor() as cur:
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS app_reviews_notes (
-          id         BIGINT AUTO_INCREMENT PRIMARY KEY,
-          user_email VARCHAR(255) NOT NULL,
-          note       TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=NDBCLUSTER DEFAULT CHARSET=utf8mb4
-    """)
-    cur.execute("INSERT INTO app_reviews_notes (user_email, note) VALUES (%s, %s)", (email, note))
-    cur.execute("SELECT * FROM app_reviews_notes ORDER BY created_at DESC LIMIT 20")
+    cur.execute(f"INSERT INTO {NOTES} (user_email, note) VALUES (%s, %s)", (email, note))
+    cur.execute(f"SELECT * FROM {NOTES} ORDER BY created_at DESC LIMIT 20")
     rows = cur.fetchall()
 ```
 
@@ -207,20 +252,17 @@ an app's own tables.
 
 ## SQL
 
-The statements the app runs. Anything a Data Scientist-started app runs must be
-read-only.
+The statements the app runs. Its tables are created through Hopsworks (see
+above), from a definition such as this one for `app_dashboard__settings`:
+`user_email VARCHAR(255) NOT NULL, settings JSON NOT NULL, updated_at TIMESTAMP NOT
+NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY
+(user_email)`. An app created before table registration and started by a Data
+Scientist can only read.
 
 ```sql
--- app state table: explicit engine, explicit primary key, app_ prefix
-CREATE TABLE IF NOT EXISTS app_dashboard_settings (
-  user_email VARCHAR(255) NOT NULL,
-  settings   JSON         NOT NULL,
-  updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (user_email)
-) ENGINE=NDBCLUSTER DEFAULT CHARSET=utf8mb4;
 
 -- upsert
-INSERT INTO app_dashboard_settings (user_email, settings) VALUES (?, ?)
+INSERT INTO app_dashboard__settings (user_email, settings) VALUES (?, ?)
   ON DUPLICATE KEY UPDATE settings = VALUES(settings);
 
 -- read an online feature group (table = <fg_name>_<version>); primary-key lookups are the fast path
@@ -267,9 +309,11 @@ node_app = apps.create_app(
 // server.js — mysql2 pool over the injected variables; bind to 0.0.0.0:$APP_PORT
 import express from "express";
 import mysql from "mysql2/promise";
-import { mysqlConfig } from "@hopsworks/app";   // throws a HopsworksEnvError naming the missing MYSQL_* variable
+import { mysqlConfig, createTable } from "@hopsworks/app";   // throws a HopsworksEnvError naming the missing MYSQL_* variable
 
 const pool = mysql.createPool({ ...(await mysqlConfig()), waitForConnections: true, connectionLimit: 5 });
+const NOTES = await createTable("notes",                            // "app_node_api__notes"; idempotent, on disk
+  "id BIGINT AUTO_INCREMENT PRIMARY KEY, note TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
 
 const app = express();
 app.use(express.json());
@@ -281,12 +325,8 @@ app.get("/api/transactions/:ccNum", async (req, res) => {          // online FG 
   res.json(rows);
 });
 
-app.post("/api/notes", async (req, res) => {                        // app-owned table (needs a Data Owner starter)
-  await pool.execute(
-    `CREATE TABLE IF NOT EXISTS app_node_api_notes (
-       id BIGINT AUTO_INCREMENT PRIMARY KEY, note TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-     ) ENGINE=NDBCLUSTER DEFAULT CHARSET=utf8mb4`);
-  await pool.execute("INSERT INTO app_node_api_notes (note) VALUES (?)", [req.body.note]);
+app.post("/api/notes", async (req, res) => {                        // the app's registered table
+  await pool.execute(`INSERT INTO ${NOTES} (note) VALUES (?)`, [req.body.note]);
   res.status(201).end();
 });
 

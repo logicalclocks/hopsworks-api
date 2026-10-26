@@ -132,6 +132,8 @@ class HopsworksAgentClient:
         baggage: str,
         timeout_s: float,
         conversation_id: str | None = None,
+        subject: str | None = None,
+        context: dict | None = None,
     ) -> AgentResponse:
         import time
 
@@ -146,6 +148,13 @@ class HopsworksAgentClient:
         # agent remembers what it was told would be testing nothing.
         if conversation_id:
             payload["conversation_id"] = conversation_id
+        # Asked as somebody, when the task says who. A promoted task replays the
+        # subject and context the original turn ran with; without them a memory
+        # failure is asked by a stranger the agent never had memory of.
+        if subject:
+            payload["subject"] = subject
+        if context:
+            payload["context"] = context
         started = time.monotonic()
         try:
             response = self._session.post(

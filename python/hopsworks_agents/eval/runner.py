@@ -75,8 +75,18 @@ class AgentClient(Protocol):
     def _fetch_manifest(self) -> dict[str, Any]: ...
 
     def _send_prompt(
-        self, prompt: str, *, traceparent: str, baggage: str, timeout_s: float
-    ) -> AgentResponse: ...
+        self,
+        prompt: str,
+        *,
+        traceparent: str,
+        baggage: str,
+        timeout_s: float,
+        conversation_id: str | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> AgentResponse:
+        """Send one turn; the optional arguments are passed only when the task sets them."""
+        ...
 
     def _fetch_trace(self, trace_id: str) -> Trace | None: ...
 
@@ -84,7 +94,10 @@ class AgentClient(Protocol):
 @dataclass
 class RunnerConfig:
     n_trials: int = 1
-    timeout_s: float = 120.0
+    #: How long one turn may take before the trial is TIMEOUT. Ten minutes: two
+    #: minutes lost the trials of an agent whose turn runs an analyst pipeline
+    #: with web search, which takes one to two minutes as a matter of course.
+    timeout_s: float = 600.0
     max_concurrency: int = 4
     #: How many finished trials to hand `on_progress` at a time. One insert per
     #: trial would be one feature-store write per trial; one per suite is what
@@ -361,6 +374,11 @@ def _run_trial(
         # did, so an AgentClient written against the old signature -- the tests'
         # stubs, and anyone else's -- keeps working.
         threaded = {"conversation_id": conversation_id} if conversation_id else {}
+        # Likewise only when the task names someone, for the same reason.
+        if task.subject:
+            threaded["subject"] = task.subject
+        if task.context:
+            threaded["context"] = task.context
         try:
             response = client._send_prompt(
                 text,
