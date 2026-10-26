@@ -521,16 +521,16 @@ def _require_path(slug_or_dir: str) -> Path:
 
 
 def _lease_path(slug_or_dir: str) -> Path:
-    """The directory of a system for its build lease, also before its first system.yaml write: new_system.py writes none without --example, and the lease is taken before that write."""
-    found = _system_path(slug_or_dir)
-    if found is not None:
-        return found
+    """The directory of a system for its build lease: SLUG_OR_DIR, ./SLUG or the current directory when it is SLUG, with or without a system.yaml yet, else an analytics layer's."""
     cwd = Path.cwd()
     here = [cwd] if cwd.name == slug_or_dir else []
     for candidate in (Path(slug_or_dir), cwd / slug_or_dir, *here):
         if candidate.is_dir():
             return candidate
-    raise click.ClickException(f"no system {slug_or_dir!r} under {cwd}")
+    found = _system_path(slug_or_dir)
+    if found is None:
+        raise click.ClickException(f"no system {slug_or_dir!r} under {cwd}")
+    return found
 
 
 @system_group.command("dir")

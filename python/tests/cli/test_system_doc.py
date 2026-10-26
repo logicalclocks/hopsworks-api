@@ -271,6 +271,33 @@ def test_a_new_system_takes_the_lease_before_its_first_write(tmp_path, monkeypat
     assert released.exit_code == 0 and not (target / ".hops.lock").exists()
 
 
+def test_a_new_system_keeps_its_lease_when_an_analytics_layer_has_its_slug(
+    tmp_path, monkeypatch
+):
+    layer = tmp_path / "hops-sales" / "churn"
+    layer.mkdir(parents=True)
+    (layer / "system.yaml").write_text("slug: churn\n")
+    new_system = _load(REFERENCES / "new_system.py", "new_system")
+    target = tmp_path / "churn"
+    new_system.create(target)
+    monkeypatch.chdir(tmp_path)
+    taken = CliRunner().invoke(cli, ["factory", "system", "lease", "acquire", "churn"])
+    assert taken.exit_code == 0, taken.output
+    token = taken.output.strip()
+    assert (target / ".hops.lock").exists() and not (layer / ".hops.lock").exists()
+    # The first write creates the system.yaml; the lease stays where it was taken.
+    (target / "system.yaml").write_text("slug: churn\n")
+    renewed = CliRunner().invoke(
+        cli, ["factory", "system", "lease", "renew", "churn", "--token", token]
+    )
+    assert renewed.exit_code == 0, renewed.output
+    released = CliRunner().invoke(
+        cli, ["factory", "system", "lease", "release", "churn", "--token", token]
+    )
+    assert released.exit_code == 0, released.output
+    assert not (target / ".hops.lock").exists() and not (layer / ".hops.lock").exists()
+
+
 def test_no_lease_on_a_directory_that_does_not_exist(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     missing = CliRunner().invoke(
