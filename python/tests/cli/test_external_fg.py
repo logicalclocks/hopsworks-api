@@ -6,6 +6,7 @@ import inspect
 import json
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
 from hsfs.core.data_source import DataSource
@@ -280,3 +281,25 @@ def test_datasource_tables_shows_the_schema_of_each_table(mock_project):
     assert json.loads(as_json.stdout) == [
         {"TABLE": "rna", "DATABASE": "db", "SCHEMA": "rnacen"}
     ]
+
+
+@pytest.mark.parametrize(
+    ("flags", "shown"),
+    [([], 10), (["--limit", "3"], 3), (["--n", "2"], 2), (["-n", "1"], 1)],
+)
+def test_datasource_preview_bounds_the_rows_it_prints(mock_project, flags, shown):
+    data = mock.MagicMock()
+    data.features = [mock.MagicMock()]
+    data.features[0].name, data.features[0].type = "id", "bigint"
+    data.preview = {
+        "preview": [{"values": [{"value0": "id", "value1": str(i)}]} for i in range(50)]
+    }
+    fs = mock_project.get_feature_store.return_value
+    data_source = DataSource(storage_connector=mock.MagicMock(), table="t")
+    data_source.storage_connector.get_data.return_value = data
+    fs.get_data_source.return_value = data_source
+    result = CliRunner().invoke(cli, ["--json", "datasource", "preview", "pg", *flags])
+    assert result.exit_code == 0, result.output
+    assert len(json.loads(result.stdout)["preview"]) == shown
+    plain = CliRunner().invoke(cli, ["datasource", "preview", "pg", *flags])
+    assert len(plain.output.strip().splitlines()) == shown + 2

@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 import click
 from click.core import ParameterSource
 from hopsworks.cli import output, session
+from hopsworks.cli.commands import fg as fg_cmd
 from hopsworks.cli.commands import job as job_cmd
 
 
@@ -1960,9 +1961,23 @@ def _preview_rows(preview) -> list[dict]:
     "--database",
     help="Database the table lives in (connector-dependent, e.g. SQL, Snowflake).",
 )
+@click.option(
+    "--limit",
+    "--n",
+    "-n",
+    "limit",
+    type=click.IntRange(min=1),
+    default=10,
+    show_default=True,
+    help="Number of rows to print.",
+)
 @click.pass_context
 def connector_preview(
-    ctx: click.Context, name: str, table: str | None, database: str | None
+    ctx: click.Context,
+    name: str,
+    table: str | None,
+    database: str | None,
+    limit: int,
 ) -> None:
     """Fetch a small data preview of one table through a connector.
 
@@ -1971,6 +1986,7 @@ def connector_preview(
         name: Connector name.
         table: Table to read.
         database: Database that contains the table.
+        limit: Rows to print; the backend sends its own sample (about 50 rows).
     """
     fs = session.get_feature_store(ctx)
     try:
@@ -1992,7 +2008,7 @@ def connector_preview(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Preview failed: {exc}") from exc
     columns = [f.name for f in getattr(data, "features", None) or []]
-    rows = _preview_rows(getattr(data, "preview", None))
+    rows = _preview_rows(getattr(data, "preview", None))[:limit]
     if output.JSON_MODE:
         output.print_json(
             {
@@ -2005,7 +2021,9 @@ def connector_preview(
         )
         return
     columns = columns or (list(rows[0]) if rows else [])
-    output.print_table(columns, [[row.get(c) for c in columns] for row in rows])
+    output.print_table(
+        columns, [[fg_cmd._truncate_cell(row.get(c)) for c in columns] for row in rows]
+    )
 
 
 @datasource_group.command("infer-metadata")

@@ -28,6 +28,7 @@ hudi.<project_name>_featurestore.<fg_name>_<fg_version>
 
 - The CLI's default catalog is `iceberg`, so always **fully-qualify** with
   `delta.`/`hudi.` (or pass `--catalog delta`) when reading feature groups.
+- An external feature group (a mounted data source) has no table in `delta`, `hudi`, `hive` or `iceberg`: `hops sql` fails with `TABLE_NOT_FOUND`. Read a mount with `hops fg preview <fg>` or `fg.read()`.
 - `--limit` caps rows (default soft cap; `--limit 0` = unlimited). `-f file.sql`
   runs a query from a file; `-i` reads from stdin.
 - **Do not query a Delta group before its first commit.** A stream feature group's
