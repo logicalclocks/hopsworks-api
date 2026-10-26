@@ -577,7 +577,7 @@ class App:
     @public
     @usage._method_logger
     def make_public(self) -> str | None:
-        """Make this Streamlit app reachable without a Hopsworks login.
+        """Make this app reachable without a Hopsworks login.
 
         Returns:
             `str`. The share URL to give out.
@@ -586,7 +586,7 @@ class App:
             Anyone with the link can use the app with the app's own credentials,
             data access, and secrets.
             This is not read-only access.
-            Only data owners can enable it, and only Streamlit apps are eligible.
+            Only data owners can enable it, and only when the administrator allows public apps.
         """
         _logger.info("Making app public: %s", self._name)
         response = self._app_api._set_public(self._name, True)
