@@ -105,7 +105,8 @@ _SCHEMA_NOT_FOUND = 240037
 
 def _no_reason(reason: str | None) -> bool:
     """True for a failure reason that names no cause: none, empty, or ending in "null"."""
-    reason = (reason or "").strip()
+    # The runtime may put blank lines before the null ("terminated unsuccessfully. \n\nnull").
+    reason = " ".join((reason or "").split())
     return reason in ("", "null") or reason.endswith(". null")
 
 
