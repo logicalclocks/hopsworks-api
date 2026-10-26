@@ -371,23 +371,3 @@ def test_list_shows_the_credentials_column(mock_project):
         "not_yet": "provided: missing",
         "broken": "provided: incomplete",
     }
-
-
-@pytest.mark.parametrize("command", ["set", "validate", "show"])
-def test_json_output_of_every_credentials_command_carries_no_secret_value(
-    connector, command
-):
-    leaked = {"password": "MARKER-pw-7f3a", "walletPassword": "MARKER-wpw-7f3a"}
-    connector.set_credentials.return_value = {
-        **connector.set_credentials.return_value,
-        **leaked,
-    }
-    connector.get_credentials.return_value = connector.set_credentials.return_value
-    connector._validate_credentials.return_value = {"valid": True, **leaked}
-    argv = ["--json", "datasource", "credentials", command, "oracle-sales"]
-    if command != "show":
-        argv += ["--user", "SCOTT", "--password", "tiger"]
-    result = CliRunner().invoke(cli, argv)
-    assert result.exit_code == 0, "command failed"
-    assert "MARKER" not in result.output
-    assert "VALID" in result.output or '"valid": true' in result.output

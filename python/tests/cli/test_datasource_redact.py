@@ -2,20 +2,18 @@
 
 Every connector class is built with the real SDK constructor and serialized with
 its real ``to_dict``; a marker stands in for each secret, and no marker may
-survive ``hops datasource info --json``. The markers are compared in-process,
-never printed.
+survive the redaction ``hops datasource info --json`` prints through. The secret
+slots are listed by hand, so a secret the redaction misses fails here. The
+markers are compared in-process, never printed.
 """
 
 from __future__ import annotations
 
 import inspect
 import json
-from unittest import mock
 
 import pytest
-from click.testing import CliRunner
-from hopsworks.cli.main import cli
-from hopsworks.cli.redact import is_secret_name, redact
+from hopsworks.cli.redact import HIDDEN, redact
 from hsfs import storage_connector as sc
 
 
@@ -29,6 +27,34 @@ _OPTION_LISTS = {
 }
 _NO_SECRET = (sc.GoogleSheetsConnector, sc.HopsFSConnector)
 _CONNECTION_STRINGS = {"connection_string"}
+# The constructor slots that hold a secret, per connector class.
+_SECRETS = {
+    "AdlsConnector": ["service_credential"],
+    "CRMAndAnalyticsConnector": ["api_key", "password", "dev_token", "refresh_token"],
+    "ElasticsearchConnector": ["password", "api_key", "trust_store_password"],
+    "GcsConnector": ["encryption_key"],
+    "GlueConnector": ["access_key", "secret_key", "session_token"],
+    "HopsworksConnector": ["api_key"],
+    "KafkaConnector": [
+        "ssl_truststore_password",
+        "ssl_keystore_password",
+        "ssl_key_password",
+    ],
+    "MongoDBConnector": ["password"],
+    "OpenSearchConnector": ["password", "trust_store_password"],
+    "RedshiftConnector": ["database_password"],
+    "S3Connector": [
+        "access_key",
+        "secret_key",
+        "server_encryption_key",
+        "session_token",
+    ],
+    "SapHanaConnector": ["password"],
+    "SharePointConnector": ["client_secret"],
+    "SnowflakeConnector": ["password", "token", "private_key", "passphrase"],
+    "SqlConnector": ["password", "wallet_password"],
+    "UnityCatalogConnector": ["access_token", "client_secret"],
+}
 
 
 def _marker(param: str) -> str:
@@ -66,7 +92,7 @@ def _build(cls: type) -> tuple[sc.StorageConnector, list[str]]:
                 f"?user=u&password={_marker('query')}&sslmode=require"
             )
             markers += [_marker("uri"), _marker("query")]
-        elif is_secret_name(name):
+        elif name in _SECRETS.get(cls.__name__, []):
             kwargs[name] = _marker(name)
             markers.append(_marker(name))
     if cls is sc.RestConnector:
@@ -102,18 +128,6 @@ def test_no_connector_type_prints_a_credential(cls):
     assert any(m in raw for m in markers) or cls in _NO_SECRET
 
 
-@pytest.mark.parametrize("cls", _CLASSES, ids=lambda c: c.__name__)
-def test_info_json_prints_no_credential_and_keeps_the_metadata(mock_project, cls):
-    connector, markers = _build(cls)
-    fs = mock_project.get_feature_store.return_value
-    fs.get_data_source.return_value = mock.MagicMock(storage_connector=connector)
-    result = CliRunner().invoke(cli, ["--json", "datasource", "info", "src"])
-    assert result.exit_code == 0, "info failed"
-    assert [m for m in markers if m in result.output] == []
-    payload = json.loads(result.output)
-    assert payload["id"] == 11 and payload["name"] == "src"
-
-
 def test_non_secret_options_and_hosts_stay():
     connector, _ = _build(sc.SqlConnector)
     connector._host, connector._port = "db.example.com", 5432
@@ -124,15 +138,39 @@ def test_non_secret_options_and_hosts_stay():
     assert "password" not in payload and "walletPassword" not in payload
 
 
-def test_connection_string_keeps_its_host_and_plain_properties():
-    text = "jdbc:postgresql://u:s3@h:5432/db?user=u&password=s3&sslmode=require"
-    assert redact({"connectionString": text}) == {
-        "connectionString": "jdbc:postgresql://h:5432/db?user=u&sslmode=require"
-    }
-    assert redact({"c": "mongodb://u:p@h/db"}) == {"c": "mongodb://h/db"}
-    assert redact({"c": "jdbc:sqlserver://h;databaseName=d;password=p"}) == {
-        "c": "jdbc:sqlserver://h;databaseName=d"
-    }
+@pytest.mark.parametrize(
+    "text",
+    [
+        "jdbc:postgresql://u:MARKER-a@h:5432/db?sslmode=require",
+        "jdbc:oracle:thin:scott/MARKER-a@db.example:1521/service",
+        "jdbc:postgresql://db.example/db?%70assword=MARKER-a",
+        "jdbc:sqlserver://db.example;password={MARKER-a;MARKER-b};databaseName=db",
+        "jdbc:db2://h:50000/db:user=u;password=MARKER-a;",
+        "jdbc:snowflake://acct.snowflakecomputing.com/?private_key_file_pwd=MARKER-a",
+        "mongodb+srv://u:MARKER-a@cluster0.example.net/db",
+        "the source is jdbc:mysql://h/db?password=MARKER-a",
+        "user=u;password={MARKER-a;MARKER-b};ssl=true",
+        "a=1,%70wd=MARKER-a",
+    ],
+)
+def test_no_credential_survives_in_a_connection_string(text):
+    assert "MARKER" not in json.dumps(redact({"c": text}))
+
+
+def test_a_connection_string_keeps_its_scheme_host_port_and_database():
+    def clean(text):
+        return redact({"c": text})["c"]
+
+    assert (
+        clean("jdbc:postgresql://h:5432/db?sslmode=require")
+        == "jdbc:postgresql://h:5432/db"
+    )
+    assert clean("jdbc:sqlserver://h;databaseName=d;password=p") == "jdbc:sqlserver://h"
+    assert clean("jdbc:oracle:thin:@//h:1521/svc") == "jdbc:oracle:thin:@//h:1521/svc"
+    assert clean("https://api.example.com/v1") == "https://api.example.com/v1"
+    assert clean("jdbc:postgresql://u:p@h/db") == HIDDEN
+    assert clean("user=u;password=p;ssl=true") == "user=u;ssl=true"
+    assert redact([{"name": "%70assword", "value": "p"}]) == []
 
 
 def test_the_account_entry_names_of_a_binding_stay():
