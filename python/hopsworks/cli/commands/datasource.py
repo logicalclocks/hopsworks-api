@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 import click
 from click.core import ParameterSource
 from hopsworks.cli import output, session
+from hopsworks.cli.commands import job as job_cmd
 
 
 if TYPE_CHECKING:
@@ -1344,6 +1345,50 @@ _SPECS: dict[str, _Spec] = {
         ),
         check=_check_bigquery,
     ),
+    "sharepoint": _Spec(
+        "featurestoreSharePointConnectorDTO",
+        "SHAREPOINT",
+        "Register a SharePoint Online site, to copy or sync its library folders into datasets.",
+        (
+            _Opt(
+                "--tenant-id",
+                "tenantId",
+                "Directory (tenant) id of the Microsoft Entra ID tenant.",
+                required=True,
+            ),
+            _Opt(
+                "--client-id",
+                "clientId",
+                "Application (client) id of the Entra ID app registration.",
+                required=True,
+            ),
+            _Opt(
+                "--client-secret",
+                "clientSecret",
+                "Client secret of the app registration.",
+                required=True,
+                secret=True,
+            ),
+            _Opt(
+                "--site-url",
+                "siteUrl",
+                "Site URL, e.g. https://contoso.sharepoint.com/sites/Finance.",
+                required=True,
+            ),
+            _Opt(
+                "--site-id",
+                "siteId",
+                "Graph site id, for an app granted Sites.Selected that cannot look the site up by URL.",
+            ),
+            _Opt(
+                "--cloud",
+                "cloud",
+                "Microsoft cloud of the tenant; GLOBAL when unset.",
+                choices=("GLOBAL", "US_GOV", "CHINA"),
+            ),
+        ),
+        epilog="Copy or sync folders with `hops datasource sharepoint`.",
+    ),
 }
 
 
@@ -1952,6 +1997,594 @@ def connector_infer_metadata(
         click.echo(f"Suggested event time: {inferred.suggested_event_time}")
     if inferred.suggested_description:
         click.echo(f"Suggested description: {inferred.suggested_description}")
+
+
+# region SharePoint
+#
+# A SharePoint data source is not read as tables: its syncs copy library folders
+# into datasets, so it gets its own command group.
+
+
+def _sharepoint(ctx: click.Context, name: str) -> Any:
+    fs = session.get_feature_store(ctx)
+    try:
+        sc = fs.get_data_source(name).storage_connector
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
+    if sc is None:
+        raise click.ClickException(f"Data source '{name}' not found.")
+    if getattr(sc, "type", None) != "SHAREPOINT":
+        raise click.ClickException(
+            f"Data source '{name}' is {getattr(sc, 'type', None)}, not SHAREPOINT."
+        )
+    return sc
+
+
+def _sync(ctx: click.Context, name: str, sync_id: int) -> Any:
+    sc = _sharepoint(ctx, name)
+    try:
+        return sc.get_sync(sync_id)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Sync {sync_id} of '{name}': {exc}") from exc
+
+
+def _sync_rows(syncs: list[Any]) -> list[list[Any]]:
+    return [
+        [
+            s.id,
+            s.dataset_name,
+            f"{s.drive_name or s.drive_id}/{s.folder_path or ''}",
+            (s.cron_expression or "once") + (" (paused)" if s.paused else ""),
+            s.state,
+            output.format_ts(s.last_run_finished),
+            s.files_total,
+            s.bytes_total,
+            s.index_feature_group or "-",
+        ]
+        for s in syncs
+    ]
+
+
+_SYNC_HEADERS = [
+    "ID",
+    "DATASET",
+    "SOURCE",
+    "SCHEDULE",
+    "STATE",
+    "LAST RUN",
+    "FILES",
+    "BYTES",
+    "INDEX",
+]
+
+
+def _print_sync(sync: Any) -> None:
+    if output.JSON_MODE:
+        output.print_json(sync.to_dict())
+        return
+    output.print_table(_SYNC_HEADERS, _sync_rows([sync]))
+
+
+def _call(what: str, fn: Callable[[], Any]) -> Any:
+    try:
+        return fn()
+    except click.ClickException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"{what} failed: {exc}") from exc
+
+
+@datasource_group.group("sharepoint")
+def sharepoint_group() -> None:
+    """Browse a SharePoint data source and copy or sync its folders into datasets."""
+
+
+@sharepoint_group.command("drives")
+@click.argument("name")
+@click.pass_context
+def sharepoint_drives(ctx: click.Context, name: str) -> None:
+    """List the document libraries of the site.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+    """
+    sc = _sharepoint(ctx, name)
+    drives = _call("Listing libraries", sc.list_drives)
+    output.print_table(
+        ["ID", "NAME", "WEB URL"],
+        [[d.get("id"), d.get("name"), d.get("web_url", "-")] for d in drives],
+    )
+
+
+@sharepoint_group.command("folders")
+@click.argument("name")
+@click.option("--drive", "drive_id", required=True, help="Library id, from `drives`.")
+@click.option(
+    "--path", default="", help="Folder inside the library; the root when unset."
+)
+@click.pass_context
+def sharepoint_folders(ctx: click.Context, name: str, drive_id: str, path: str) -> None:
+    """List the child folders of a folder in a document library.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        drive_id: Library id.
+        path: Folder path inside the library.
+    """
+    sc = _sharepoint(ctx, name)
+    folders = _call("Listing folders", lambda: sc.list_folders(drive_id, path))
+    output.print_table(["ID", "NAME"], [[f.get("id"), f.get("name")] for f in folders])
+
+
+@sharepoint_group.command("copy")
+@click.argument("name")
+@click.option("--drive", "drive_id", required=True, help="Library id, from `drives`.")
+@click.option(
+    "--folder", default="", help="Folder inside the library; the root when unset."
+)
+@click.option(
+    "--dataset", default="sharepoint", show_default=True, help="Dataset to create."
+)
+@click.option("--alert-receiver", help="Alert receiver notified when the copy fails.")
+@click.option(
+    "--index-files",
+    is_flag=True,
+    help="Index the files in a Delta feature group, one row per file, partitioned by first ingestion date.",
+)
+@click.pass_context
+def sharepoint_copy(
+    ctx: click.Context,
+    name: str,
+    drive_id: str,
+    folder: str,
+    dataset: str,
+    alert_receiver: str | None,
+    index_files: bool,
+) -> None:
+    """Copy a library folder into a new dataset once, now, without a schedule.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        drive_id: Library id.
+        folder: Folder path inside the library.
+        dataset: Dataset to create.
+        alert_receiver: Alert receiver for failed runs.
+        index_files: Whether to index the files in a feature group.
+    """
+    sc = _sharepoint(ctx, name)
+    sync = _call(
+        "Copy",
+        lambda: sc.copy_folder(
+            drive_id=drive_id,
+            folder_path=folder,
+            dataset_name=dataset,
+            alert_receiver=alert_receiver,
+            index_files=index_files,
+        ),
+    )
+    _print_sync(sync)
+    output.success("✓ Copying into dataset %s (sync %s)", sync.dataset_name, sync.id)
+
+
+@sharepoint_group.command("reset-script")
+@click.argument("name")
+@click.option("--yes", is_flag=True, help="Skip confirmation.")
+@click.pass_context
+def sharepoint_reset_script(ctx: click.Context, name: str, yes: bool) -> None:
+    """Overwrite the data source's sync script with the platform template.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        yes: Skip confirmation when True.
+    """
+    sc = _sharepoint(ctx, name)
+    if not yes and not output.JSON_MODE:
+        click.confirm(
+            f"Overwrite {sc.script_path or 'the sync script'}, discarding its edits?",
+            abort=True,
+        )
+    _call("Reset", sc.reset_script)
+    output.success("✓ Reset %s", sc.script_path or "the sync script")
+
+
+@sharepoint_group.group("sync")
+def sharepoint_sync_group() -> None:
+    """Syncs that copy a library folder into a dataset, once or on a schedule."""
+
+
+@sharepoint_sync_group.command("create")
+@click.argument("name")
+@click.option("--drive", "drive_id", required=True, help="Library id, from `drives`.")
+@click.option(
+    "--folder", default="", help="Folder inside the library; the root when unset."
+)
+@click.option(
+    "--dataset", default="sharepoint", show_default=True, help="Dataset to create."
+)
+@click.option(
+    "--cron",
+    default="0 0 * ? * *",
+    show_default=True,
+    help="Schedule, a Quartz cron expression in UTC, seconds first, e.g. '0 0 2 ? * *' for daily at 02:00.",
+)
+@click.option(
+    "--include",
+    multiple=True,
+    help="rclone pattern of files to copy. Repeat for several.",
+)
+@click.option(
+    "--exclude",
+    multiple=True,
+    help="rclone pattern of files to skip. Repeat for several.",
+)
+@click.option(
+    "--max-file-size-mb",
+    type=int,
+    default=1024,
+    show_default=True,
+    help="Skip larger files; 0 for no limit.",
+)
+@click.option(
+    "--mirror-deletions/--no-mirror-deletions",
+    default=True,
+    show_default=True,
+    help="Delete files from the dataset that are not in the folder.",
+)
+@click.option("--alert-receiver", help="Alert receiver notified when a run fails.")
+@click.option(
+    "--run-now/--no-run-now",
+    default=True,
+    show_default=True,
+    help="Start the first run now.",
+)
+@click.option(
+    "--index-files",
+    is_flag=True,
+    help="Index the files in a Delta feature group, one row per file, partitioned by first ingestion date.",
+)
+@click.option(
+    "--index-feature-group",
+    help="Name of the index feature group; sharepoint_<dataset> when unset. Implies --index-files.",
+)
+@click.pass_context
+def sharepoint_sync_create(
+    ctx: click.Context,
+    name: str,
+    drive_id: str,
+    folder: str,
+    dataset: str,
+    cron: str,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    max_file_size_mb: int,
+    mirror_deletions: bool,
+    alert_receiver: str | None,
+    run_now: bool,
+    index_files: bool,
+    index_feature_group: str | None,
+) -> None:
+    """Create a scheduled sync of a library folder into a new dataset.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        drive_id: Library id.
+        folder: Folder path inside the library.
+        dataset: Dataset to create.
+        cron: Cron expression of the schedule.
+        include: Include patterns.
+        exclude: Exclude patterns.
+        max_file_size_mb: File size cap in MB.
+        mirror_deletions: Whether deletions are mirrored.
+        alert_receiver: Alert receiver for failed runs.
+        run_now: Whether to start the first run now.
+        index_files: Whether to index the files in a feature group.
+        index_feature_group: Name of the index feature group.
+    """
+    sc = _sharepoint(ctx, name)
+    sync = _call(
+        "Create",
+        lambda: sc.create_sync(
+            drive_id=drive_id,
+            folder_path=folder,
+            dataset_name=dataset,
+            schedule=cron,
+            include=list(include),
+            exclude=list(exclude),
+            max_file_size_mb=max_file_size_mb,
+            mirror_deletions=mirror_deletions,
+            alert_receiver=alert_receiver,
+            run_now=run_now,
+            index_files=index_files,
+            index_feature_group=index_feature_group,
+        ),
+    )
+    _print_sync(sync)
+    output.success("✓ Created sync %s into dataset %s", sync.id, sync.dataset_name)
+
+
+@sharepoint_sync_group.command("list")
+@click.argument("name")
+@click.pass_context
+def sharepoint_sync_list(ctx: click.Context, name: str) -> None:
+    """List the syncs of a SharePoint data source.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+    """
+    sc = _sharepoint(ctx, name)
+    syncs = _call("Listing syncs", sc.get_syncs)
+    if output.JSON_MODE:
+        output.print_json([s.to_dict() for s in syncs])
+        return
+    output.print_table(_SYNC_HEADERS, _sync_rows(syncs))
+
+
+@sharepoint_sync_group.command("status")
+@click.argument("name")
+@click.argument("sync_id", type=int)
+@click.pass_context
+def sharepoint_sync_status(ctx: click.Context, name: str, sync_id: int) -> None:
+    """Show the run state and counters of a sync.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        sync_id: Sync id.
+    """
+    sync = _sync(ctx, name, sync_id)
+    status = _call("Status", sync.status)
+    if output.JSON_MODE:
+        output.print_json(status)
+        return
+    output.print_table(
+        ["FIELD", "VALUE"],
+        [[k, "-" if v is None else v] for k, v in status.items()]
+        + [["audit_path", sync.audit_path or "-"]]
+        + [["index_feature_group", sync.index_feature_group or "-"]],
+    )
+
+
+def _sync_action(command: str, help: str, act: Callable[[Any], Any], done: str) -> None:
+    @sharepoint_sync_group.command(command, help=help)
+    @click.argument("name")
+    @click.argument("sync_id", type=int)
+    @click.pass_context
+    def run(ctx: click.Context, name: str, sync_id: int) -> None:
+        sync = _sync(ctx, name, sync_id)
+        result = _call(command.capitalize(), lambda: act(sync))
+        if output.JSON_MODE:
+            output.print_json(_action_json(result))
+            return
+        output.success(done, sync_id)
+
+
+def _action_json(result: Any) -> Any:
+    to_dict = getattr(result, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+    if result is None or isinstance(result, dict):
+        return result
+    return job_cmd._execution_to_dict(result)
+
+
+_sync_action(
+    "run",
+    "Start a run of the sync now, also while paused or unscheduled.",
+    lambda s: s.run(),
+    "✓ Started sync %s",
+)
+_sync_action(
+    "pause", "Disable the sync's schedule.", lambda s: s.pause(), "✓ Paused sync %s"
+)
+_sync_action(
+    "resume",
+    "Re-enable the sync's schedule.",
+    lambda s: s.resume(),
+    "✓ Resumed sync %s",
+)
+_sync_action(
+    "resync",
+    "Run the sync now comparing file contents by checksum.",
+    lambda s: s.force_full_resync(),
+    "✓ Started a full resync of sync %s",
+)
+
+
+@sharepoint_sync_group.command("schedule")
+@click.argument("name")
+@click.argument("sync_id", type=int)
+@click.option(
+    "--cron",
+    help="New schedule, a Quartz cron expression in UTC, seconds first, e.g. '0 0 2 ? * *' for daily at 02:00.",
+)
+@click.option(
+    "--none",
+    "remove",
+    is_flag=True,
+    help="Remove the schedule; the sync then runs only when started.",
+)
+@click.pass_context
+def sharepoint_sync_schedule(
+    ctx: click.Context, name: str, sync_id: int, cron: str | None, remove: bool
+) -> None:
+    """Set or remove the schedule of a sync.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        sync_id: Sync id.
+        cron: New cron expression.
+        remove: Remove the schedule.
+    """
+    if bool(cron) == remove:
+        raise click.UsageError("Pass exactly one of --cron and --none.", ctx)
+    sync = _sync(ctx, name, sync_id)
+    _call("Schedule", lambda: sync.set_schedule(None if remove else cron))
+    _print_sync(sync)
+
+
+@sharepoint_sync_group.command("set-folder")
+@click.argument("name")
+@click.argument("sync_id", type=int)
+@click.option(
+    "--folder", required=True, help='Folder inside the same library; "" for the root.'
+)
+@click.pass_context
+def sharepoint_sync_set_folder(
+    ctx: click.Context, name: str, sync_id: int, folder: str
+) -> None:
+    """Point a sync at another folder of its library; the next run reconciles the dataset.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        sync_id: Sync id.
+        folder: New folder path.
+    """
+    sync = _sync(ctx, name, sync_id)
+    _call("Set folder", lambda: sync.set_folder(folder))
+    _print_sync(sync)
+
+
+@sharepoint_sync_group.command("index")
+@click.argument("name")
+@click.argument("sync_id", type=int)
+@click.option(
+    "--on/--off",
+    "enabled",
+    required=True,
+    help="Start or stop indexing; --off keeps the feature group.",
+)
+@click.option(
+    "--feature-group",
+    help="Name of the index feature group; sharepoint_<dataset> when unset.",
+)
+@click.pass_context
+def sharepoint_sync_index(
+    ctx: click.Context,
+    name: str,
+    sync_id: int,
+    enabled: bool,
+    feature_group: str | None,
+) -> None:
+    """Turn indexing of a sync's files in a feature group on or off; the next run brings it up to date.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        sync_id: Sync id.
+        enabled: Whether to index.
+        feature_group: Name of the index feature group.
+    """
+    sync = _sync(ctx, name, sync_id)
+    fields: dict[str, Any] = {"index_files": enabled}
+    if enabled and feature_group:
+        fields["index_feature_group"] = feature_group
+    _call("Index", lambda: sync.update(**fields))
+    _print_sync(sync)
+
+
+@sharepoint_sync_group.command("delete")
+@click.argument("name")
+@click.argument("sync_id", type=int)
+@click.option(
+    "--keep-files",
+    is_flag=True,
+    help="Keep the dataset, audit log and index feature group.",
+)
+@click.option(
+    "--force", is_flag=True, help="Stop a run in progress instead of refusing."
+)
+@click.option("--yes", is_flag=True, help="Skip confirmation.")
+@click.pass_context
+def sharepoint_sync_delete(
+    ctx: click.Context,
+    name: str,
+    sync_id: int,
+    keep_files: bool,
+    force: bool,
+    yes: bool,
+) -> None:
+    """Delete a sync and its job, and its dataset unless --keep-files.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        sync_id: Sync id.
+        keep_files: Keep the dataset.
+        force: Stop a run in progress.
+        yes: Skip confirmation when True.
+    """
+    sync = _sync(ctx, name, sync_id)
+    if not yes and not output.JSON_MODE:
+        what = "keeping" if keep_files else "and DELETE"
+        index = (
+            f" and index feature group '{sync.index_feature_group}'"
+            if sync.index_feature_group
+            else ""
+        )
+        click.confirm(
+            f"Delete sync {sync_id} {what} dataset '{sync.dataset_name}'{index}?",
+            abort=True,
+        )
+    deleted = _call("Delete", lambda: sync.delete(keep_files=keep_files, force=force))
+    if output.JSON_MODE:
+        output.print_json({"id": sync_id, "deleted": deleted})
+        return
+    if deleted:
+        output.success("✓ Deleted sync %s", sync_id)
+        return
+    output.warn(
+        "Sync %s is still DELETING: its run did not stop in time.\n"
+        "Run the delete again to finish it: hops datasource sharepoint sync delete %s %s%s --force --yes",
+        sync_id,
+        name,
+        sync_id,
+        " --keep-files" if keep_files else "",
+    )
+
+
+@sharepoint_sync_group.command("audit")
+@click.argument("name")
+@click.argument("sync_id", type=int)
+@click.option("--day", help="Day in UTC as YYYY-MM-DD; today when unset.")
+@click.pass_context
+def sharepoint_sync_audit(
+    ctx: click.Context, name: str, sync_id: int, day: str | None
+) -> None:
+    """Show the paths a sync's runs changed on one day.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        sync_id: Sync id.
+        day: Day in UTC.
+    """
+    sync = _sync(ctx, name, sync_id)
+    rows = _call("Audit", lambda: sync.get_audit(day=day))
+    output.print_table(
+        ["DATE", "EXECUTION", "OP", "KIND", "PATH", "SRC_PATH"],
+        [
+            [
+                r.get("date"),
+                r.get("execution_id"),
+                r.get("op"),
+                r.get("kind"),
+                r.get("path"),
+                r.get("src_path") or "",
+            ]
+            for r in rows
+        ],
+    )
+
+
+# endregion
 
 
 def _test_connector(ctx: click.Context, body: dict[str, Any]) -> None:
