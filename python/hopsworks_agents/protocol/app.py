@@ -44,7 +44,6 @@ from .models import (
     PROTOCOL_VERSION,
     AgentError,
     AgentResponse,
-    ChatMessage,
     ChatRequest,
     ChatResponse,
     FeedbackRequest,
@@ -168,10 +167,10 @@ class AgentApp(FastAPI):
         # Evaluation trials' bindings, by trial conversation; see _resolve_subject.
         self._trial_subjects: _BoundedDict = _BoundedDict(LAST_TRACE_LIMIT)
         # What each paused conversation is waiting on, by conversation id: the
-        # interrupt ids, when each expires, and the message the turn was asked
+        # interrupt ids, when each expires, and the request the turn was asked
         # with, which a resume replays. In memory, like the trial bindings: a
-        # pod that restarts forgets it, and a resume then replays whatever user
-        # message the client sent, unchecked.
+        # pod that restarts forgets it, and a resume it then receives is
+        # refused, since answers nobody asked for must not reach the handler.
         self._pending_interrupts: _BoundedDict = _BoundedDict(LAST_TRACE_LIMIT)
 
         # framework: explicit arg > AGENT_FRAMEWORK env (platform-injected) >
@@ -825,9 +824,17 @@ class AgentApp(FastAPI):
             current_context.reset(token)
 
     def _check_resume(
-        self, conversation_id: str | None, answers: list[ResumeAnswer]
-    ) -> tuple[ChatMessage | None, list[ResumeAnswer]]:
-        """The message a resumed turn replays and every answer it has, after checking them.
+        self,
+        conversation_id: str | None,
+        answers: list[ResumeAnswer],
+        run_id: str | None,
+    ) -> ChatRequest | None:
+        """The paused request a resume replays, with every answer it has, after checking them.
+
+        The replay is the request the turn paused on, not the resume's own: the
+        handler is asked the same thing again, with the same context, metadata,
+        state and history, and only the answers are new. A client answering a
+        question sends just the answers.
 
         A turn that asks twice pauses twice, and a client answers only what is
         open, as AG-UI asks; the answers from earlier pauses are kept here and
@@ -835,20 +842,29 @@ class AgentApp(FastAPI):
 
         AG-UI asks a resume to answer every open interrupt and nothing else, and
         a question past its expiry cannot be answered any more. Returns None
-        when the request resumes nothing, or resumes a pause this process does
-        not know about (it restarted); the turn then replays the user message
-        the client sent.
+        when the request resumes nothing.
 
         Raises:
-            AgentError: The answers leave a question open, answer one that was
-                not asked, or answer one that has expired.
+            AgentError: The conversation is not paused here (it never was, it
+                was answered already, or this process restarted), or the
+                answers leave a question open, answer one that was not asked,
+                or answer one that has expired.
         """
         if not answers:
-            return None, answers
+            return None
         pending = self._pending_interrupts.get(conversation_id or "")
         if pending is None:
-            return None, answers
-        earlier = {a.interrupt_id: a for a in pending["answers"]}
+            # Unchecked answers would be consumed by ctx.interrupt() without
+            # pausing: a fresh or finished conversation could approve an
+            # action nobody was asked about, and repeat it.
+            raise AgentError(
+                "The resume answers questions this conversation is not waiting "
+                "on: it was never paused, it was answered already, or the agent "
+                "restarted since. Send the message again instead.",
+                "nothing_to_resume",
+                409,
+            )
+        earlier = {a.interrupt_id: a for a in pending["request"].resume}
         answers = [a for a in answers if a.interrupt_id not in earlier]
         asked = set(pending["expires"])
         answered = {answer.interrupt_id for answer in answers}
@@ -877,14 +893,19 @@ class AgentApp(FastAPI):
                 "interrupt_expired",
                 400,
             )
-        return pending["message"], [*earlier.values(), *answers]
+        return pending["request"].model_copy(
+            deep=True,
+            update={"resume": [*earlier.values(), *answers], "run_id": run_id},
+        )
 
     def _pause(self, ctx: HandlerContext, span: Any, interrupts: list[dict]) -> None:
         """Remember what the conversation now waits on, and say so on the span."""
         self._pending_interrupts[ctx.conversation_id] = {
-            "message": ctx.request.message,
+            # a copy: the handler may have changed the request it was given
+            "request": ctx.request.model_copy(
+                deep=True, update={"conversation_id": ctx.conversation_id}
+            ),
             "expires": {q["id"]: q.get("expires_at") for q in interrupts},
-            "answers": list(ctx.request.resume),
         }
         _set_span_attribute(
             span, conventions.TURN_INTERRUPTS, [q["id"] for q in interrupts]
@@ -921,13 +942,13 @@ class AgentApp(FastAPI):
                     AgentError("No chat handler registered.", "not_implemented", 501)
                 )
             try:
-                replay, request.resume = self._check_resume(
-                    request.conversation_id, request.resume
+                replay = self._check_resume(
+                    request.conversation_id, request.resume, request.run_id
                 )
             except AgentError as err:
                 return _error_response(err)
             if replay is not None:
-                request.message = replay
+                request = replay
             if request.message is None:
                 return _error_response(
                     AgentError(
@@ -1005,16 +1026,11 @@ class AgentApp(FastAPI):
                     AgentError("No chat handler registered.", "not_implemented", 501)
                 )
             try:
-                replay, answers = self._check_resume(
+                request = self._check_resume(
                     run.thread_id,
                     [_resume_answer(entry) for entry in run.resume or []],
-                )
-                request = _to_chat_request(
-                    run,
-                    server_history=self.memory is not None,
-                    replay=replay,
-                    answers=answers,
-                )
+                    run.run_id or None,
+                ) or _to_chat_request(run, server_history=self.memory is not None)
             except AgentError as err:
                 return _error_response(err)
             ctx = self._prepare(request)

@@ -2107,6 +2107,27 @@ class TestChatStream:
         assert reply.usage == {"input_tokens": 5, "output_tokens": 3}
         assert reply.status == "completed"
 
+    def test_a_final_text_that_rewrites_the_draft_replaces_it(self):
+        _, agent7, _ = agent(
+            MANIFEST,
+            Reply(
+                lines=sse(
+                    started(),
+                    {
+                        "type": "TEXT_MESSAGE_START",
+                        "messageId": "m1",
+                        "role": "assistant",
+                    },
+                    text("draft answer"),
+                    {"type": "TEXT_MESSAGE_END", "messageId": "m1"},
+                    finished(text="corrected answer"),
+                )
+            ),
+        )
+        stream = agent7.chat_stream("q")
+        assert list(stream) == ["draft answer"]
+        assert stream.text == stream.reply.text == "corrected answer"
+
     def test_a_conversation_is_continued_by_its_thread(self):
         _, agent7, session = agent(MANIFEST, Reply(lines=sse(started(), finished())))
         reply = agent7.chat_stream(

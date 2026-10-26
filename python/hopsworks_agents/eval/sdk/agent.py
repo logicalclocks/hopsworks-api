@@ -1454,6 +1454,9 @@ class ChatStream:
             elif kind == "RUN_FINISHED":
                 outcome = event.get("outcome") or {}
                 result = _hopsworks_of(event.get("result"))
+                if isinstance(result.get("text"), str):
+                    # the agent's final text rewrote the streamed draft
+                    self._chunks = [result["text"]]
                 metadata = dict(result.get("metadata") or {})
                 metadata["trace_id"] = result.get("trace_id") or trace_id
                 for key in ("subject", "subject_source"):

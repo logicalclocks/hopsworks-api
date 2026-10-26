@@ -9,7 +9,7 @@ Server helpers that make any Python agent chat-ready in the Hopsworks UI with a 
 | `POST /v1/chat` | The same turn as one JSON reply, for callers that do not stream |
 | `GET /health` | Liveness probe |
 
-What Hopsworks adds to AG-UI rides under a `hopsworks` key in AG-UI's own extension points: the subject, context and metadata in `forwardedProps.hopsworks`; the trace id in `RUN_STARTED.metadata.hopsworks`; the trace id, subject and citations in `RUN_FINISHED.result.hopsworks`; the would-be HTTP status and retryability in `RUN_ERROR.metadata.hopsworks`; and image, file or audio parts of the reply as `CUSTOM` events named `hopsworks.media`. A client that knows nothing of it ignores it.
+What Hopsworks adds to AG-UI rides under a `hopsworks` key in AG-UI's own extension points: the subject, context and metadata in `forwardedProps.hopsworks`; the trace id in `RUN_STARTED.metadata.hopsworks`; the trace id, subject and citations in `RUN_FINISHED.result.hopsworks`, and there too, as `text`, a stream handler's final text when it rewrites the draft it streamed (a final text that only adds to the draft streams the rest instead); the would-be HTTP status and retryability in `RUN_ERROR.metadata.hopsworks`; and image, file or audio parts of the reply as `CUSTOM` events named `hopsworks.media`. A client that knows nothing of it ignores it.
 
 CORS is enabled by default (required for the in-browser chat panel). Part of the `hopsworks` package; serving an agent needs the `agents` extra (`pip install 'hopsworks[agents]'`).
 
@@ -421,7 +421,7 @@ async def chat(request, ctx):
 - Everything before the call runs again on resume, so ask before acting, never after.
 - `key` names the question the same way each time the turn runs; without it the question is named by its place in the turn (`interrupt-0`, `interrupt-1`, ...).
 - A turn can ask several times: each pause asks one question, and a client answers only what is open — the agent keeps the earlier answers.
-- The agent keeps the paused turn's message, so a resume needs no message; it checks the resume answers exactly the open questions and none has passed `expires_in`. The paused run is not a turn of its own in memory: the transcript holds the question once, with the answer that finished it.
+- The agent keeps the paused turn's request (message, context, metadata, state, history), so a resume needs only the answers, and the replay sees exactly what the paused turn saw. It checks the resume answers exactly the open questions and none has passed `expires_in`. A resume on a conversation that is not waiting on anything (never paused, answered already, or the pod restarted since, as pending questions live in memory) is refused with 409 `nothing_to_resume`: answers nobody asked for never reach `ctx.interrupt`, and the client sends the message again instead. The paused run is not a turn of its own in memory: the transcript holds the question once, with the answer that finished it.
 - `/v1/chat` pauses too: the reply has `status: "interrupted"` and the questions in `interrupts`, and a request carrying `resume` (and no message) continues it. From Python, `agent.chat(None, conversation_id=..., resume={"refund-42": {"approved": True}})`.
 - In an evaluation run nobody is there to answer: the runner answers from the task context's `interrupt_answers` (question id to payload) and cancels the rest.
 

@@ -73,13 +73,7 @@ def _resume_answer(entry: ResumeEntry) -> ResumeAnswer:
     )
 
 
-def _to_chat_request(
-    run: RunAgentInput,
-    *,
-    server_history: bool,
-    replay: ChatMessage | None = None,
-    answers: list[ResumeAnswer] | None = None,
-) -> ChatRequest:
+def _to_chat_request(run: RunAgentInput, *, server_history: bool) -> ChatRequest:
     """The turn an AG-UI run asks for, as the request object handlers receive.
 
     The new turn is the user messages after the last assistant message: a client
@@ -89,37 +83,19 @@ def _to_chat_request(
     memory holds the conversation and a client must not be able to rewrite it.
     Without it they become ``prior_messages``, the history a stateless agent has.
 
+    A resume never comes here: it replays the request the turn paused on.
+
     Raises:
         AgentError: The run carries no user message after the last assistant
             message, or content this agent cannot take.
     """
     messages = list(run.messages or [])
-    resume = (
-        answers
-        if answers is not None
-        else [_resume_answer(entry) for entry in run.resume or []]
-    )
     last_assistant = -1
     for index, message in enumerate(messages):
         if message.role == "assistant":
             last_assistant = index
     new = [m for m in messages[last_assistant + 1 :] if m.role == "user"]
-    if resume:
-        # A resume asks the paused turn again. Its message is the one the agent
-        # kept when it paused; without that (the process restarted) it is the
-        # last user message the client sent, wherever it stands.
-        users = [i for i, m in enumerate(messages) if m.role == "user"]
-        if replay is None and not users:
-            raise AgentError(
-                "The resume carries no user message, and the paused turn is not "
-                "known here any more, so there is nothing to replay.",
-                "nothing_to_resume",
-                409,
-            )
-        if replay is None:
-            new = [messages[users[-1]]]
-        last_assistant = (users[-1] - 1) if users else len(messages) - 1
-    if not new and replay is None:
+    if not new:
         raise AgentError(
             "The run has no user message after the last assistant message, "
             "so there is nothing to answer.",
@@ -127,7 +103,7 @@ def _to_chat_request(
             400,
         )
     content: list[Any] = []
-    for message in new if replay is None else []:
+    for message in new:
         content.extend(_parts(message.content))
     hopsworks = _hopsworks_props(run.forwarded_props)
     context: dict[str, Any] = {c.description: c.value for c in run.context or []}
@@ -144,10 +120,7 @@ def _to_chat_request(
     metadata = hopsworks.get("metadata")
     return ChatRequest(
         conversation_id=run.thread_id or None,
-        message=replay
-        if replay is not None
-        else ChatMessage(id=new[-1].id, role="user", content=content),
-        resume=resume,
+        message=ChatMessage(id=new[-1].id, role="user", content=content),
         subject=subject if isinstance(subject, str) and subject.strip() else None,
         context=context,
         metadata=metadata if isinstance(metadata, dict) else {},
@@ -234,7 +207,8 @@ class RunStream:
         self.run_id = run_id
         self._encoder = EventEncoder(accept=accept)
         self._text_id: str | None = None
-        self._streamed_text = False
+        # every delta sent, to hold against the handler's final text
+        self._streamed_text = ""
         self._started_tools: set[str] = set()
         self._ended_tools: set[str] = set()
         self._args_sent: set[str] = set()
@@ -267,7 +241,7 @@ class RunStream:
             out += self._encode(
                 TextMessageStartEvent(message_id=self._text_id, role="assistant")
             )
-        self._streamed_text = True
+        self._streamed_text += delta
         return out + self._encode(
             TextMessageContentEvent(message_id=self._text_id, delta=delta)
         )
@@ -360,6 +334,12 @@ class RunStream:
         text = "".join(
             p.text for p in response.message.content if p.type == "text" and p.text
         )
+        # The handler's final text is the answer the transcript and the trace
+        # keep, and a stream handler may correct its draft with it. What it
+        # adds to the draft goes out as more of the message; a final text that
+        # rewrites the draft rides in the result, for clients to put in its
+        # place, since AG-UI has no event that takes streamed text back.
+        replaced = None
         if text and not self._streamed_text:
             message_id = response.message.id or new_message_id()
             out += self._encode(
@@ -367,6 +347,11 @@ class RunStream:
                 TextMessageContentEvent(message_id=message_id, delta=text),
                 TextMessageEndEvent(message_id=message_id),
             )
+        elif text and text != self._streamed_text:
+            if text.startswith(self._streamed_text):
+                out += self._text(text[len(self._streamed_text) :])
+            else:
+                replaced = text
         out += self._close_text()
         for part in response.message.content:
             if part.type != "text":
@@ -390,6 +375,7 @@ class RunStream:
             "subject": subject,
             "subject_source": subject_source,
             "citations": response.citations,
+            "text": replaced,
         }
         if metadata:
             facts["metadata"] = metadata

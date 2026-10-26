@@ -5137,6 +5137,44 @@ class TestAguiRun:
         assert result["metadata"]["hopsworks"] == {"status": "failed"}
 
 
+class TestAguiFinalText:
+    """A stream handler's final text is the answer, after whatever draft it streamed."""
+
+    @staticmethod
+    def _run(*chunks, final=None):
+        from hopsworks_agents.protocol import AgentResponse, InMemoryAgentMemory
+
+        memory = InMemoryAgentMemory()
+        app = AgentApp(tracing=False, memory=memory)
+
+        @app.stream
+        async def stream(request, ctx):
+            for chunk in chunks:
+                yield chunk
+            if final is not None:
+                yield AgentResponse.text(final)
+
+        events = parse_sse(
+            TestClient(app).post("/v1/run", json=make_run("q", thread_id="c1")).text
+        )
+        return events, memory.get("c1")[-1]["content"]
+
+    def test_a_final_text_that_rewrites_the_draft_rides_in_the_result(self):
+        events, kept = self._run("draft answer", final="corrected answer")
+        assert streamed_text(events) == "draft answer"
+        assert hopsworks_result(events)["text"] == "corrected answer" == kept
+
+    def test_a_final_text_that_extends_the_draft_streams_the_rest(self):
+        events, kept = self._run("Hello", final="Hello, world")
+        assert streamed_text(events) == "Hello, world" == kept
+        assert "text" not in hopsworks_result(events)
+
+    def test_a_final_text_equal_to_the_draft_adds_nothing(self):
+        events, kept = self._run("same", final="same")
+        assert streamed_text(events) == "same" == kept
+        assert "text" not in hopsworks_result(events)
+
+
 class TestInterrupts:
     """``ctx.interrupt``: pause a turn to ask a person, and go on with their answer."""
 
@@ -5345,3 +5383,71 @@ class TestInterrupts:
         app, _ = self._refund_app()
         result = TestClient(app).post("/v1/chat", json={"conversation_id": "c9"})
         assert result.status_code == 422
+
+    def test_answers_to_a_question_never_asked_are_refused(self):
+        app, calls = self._refund_app()
+        client = TestClient(app)
+        body = self._resume("fresh", ("refund-42", "resolved", {"approved": True}))
+        for route, payload in (
+            ("/v1/run", body),
+            (
+                "/v1/chat",
+                {
+                    **make_request("refund order 42", "fresh"),
+                    "resume": [
+                        {
+                            "interrupt_id": "refund-42",
+                            "status": "resolved",
+                            "payload": {"approved": True},
+                        }
+                    ],
+                },
+            ),
+        ):
+            refused = client.post(route, json=payload)
+            assert refused.status_code == 409, route
+            assert refused.json()["detail"]["code"] == "nothing_to_resume"
+        assert calls == {"handler": 0, "refunded": 0}
+
+    def test_an_answered_question_cannot_be_answered_again(self):
+        app, calls = self._refund_app()
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        body = self._resume("c1", ("refund-42", "resolved", {"approved": True}))
+        assert streamed_text(parse_sse(client.post("/v1/run", json=body).text)) == (
+            "Refunded."
+        )
+        again = client.post("/v1/run", json=body)
+        assert again.status_code == 409
+        assert calls["refunded"] == 1
+
+    def test_the_replay_is_the_request_the_turn_paused_on(self):
+        app = AgentApp(tracing=False)
+        seen = []
+
+        @app.chat
+        async def chat(request, ctx):
+            seen.append((request.text, request.context["account"], request.run_id))
+            answer = ctx.interrupt("Close the account?", key="close")
+            return f"{request.context['account']}: {answer.payload}"
+
+        client = TestClient(app)
+        client.post(
+            "/v1/run",
+            json=make_run(
+                "close my account",
+                thread_id="c1",
+                run_id="run-1",
+                context={"account": "customer-7"},
+            ),
+        )
+        # only the answer: no message, no context
+        body = self._resume("c1", ("close", "resolved", "yes"))
+        body["messages"] = []
+        body["runId"] = "run-2"
+        events = parse_sse(client.post("/v1/run", json=body).text)
+        assert streamed_text(events) == "customer-7: yes"
+        assert seen == [
+            ("close my account", "customer-7", "run-1"),
+            ("close my account", "customer-7", "run-2"),
+        ]
