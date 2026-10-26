@@ -141,6 +141,10 @@ app.alter_table("notes", "ADD COLUMN score DOUBLE")   # schema changes go throug
   and `app.preview_table(name)` return the same.
 - Who starts the app does not change what it can do; a Data Scientist can start
   it and it still writes its own tables.
+- Project members reach the app tables with their own online feature store
+  credentials: a Data Scientist can `SELECT`, `INSERT`, `UPDATE` and `DELETE`
+  rows of every app table, but not create, alter or drop one; a Data Owner has
+  `ALL PRIVILEGES` on the project database.
 - Apps created before table registration (`app.managed_db` is False) keep
   connecting as the user who started them: a Data Owner starter gets
   `ALL PRIVILEGES` on the project database, a Data Scientist `SELECT` only. They
