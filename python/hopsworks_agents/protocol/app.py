@@ -33,8 +33,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from hopsworks_apigen import public
 
 from . import conventions
-from .agui import RunStream, _to_chat_request
-from .context import HandlerContext
+from .agui import RunStream, _resume_answer, _to_chat_request
+from .context import HandlerContext, Interrupted
 from .evaluation import RunVerifier, env_eval_mode, parse_baggage
 from .evaluation import active as eval_active
 from .memory import TURN_ABANDONED, TURN_CLOSED, ChatMemory, MemoryEraseError
@@ -43,9 +43,12 @@ from .models import (
     PROTOCOL,
     PROTOCOL_VERSION,
     AgentError,
+    AgentResponse,
+    ChatMessage,
     ChatRequest,
     ChatResponse,
     FeedbackRequest,
+    ResumeAnswer,
     new_conversation_id,
     new_response_id,
 )
@@ -164,6 +167,12 @@ class AgentApp(FastAPI):
         self._last_trace: OrderedDict[str, str] = OrderedDict()
         # Evaluation trials' bindings, by trial conversation; see _resolve_subject.
         self._trial_subjects: _BoundedDict = _BoundedDict(LAST_TRACE_LIMIT)
+        # What each paused conversation is waiting on, by conversation id: the
+        # interrupt ids, when each expires, and the message the turn was asked
+        # with, which a resume replays. In memory, like the trial bindings: a
+        # pod that restarts forgets it, and a resume then replays whatever user
+        # message the client sent, unchecked.
+        self._pending_interrupts: _BoundedDict = _BoundedDict(LAST_TRACE_LIMIT)
 
         # framework: explicit arg > AGENT_FRAMEWORK env (platform-injected) >
         # 'custom'. Drives which OpenInference instrumentor tracing activates.
@@ -469,6 +478,10 @@ class AgentApp(FastAPI):
             attributes[conventions.MESSAGE_ID] = ctx.message_id
         if ctx.deployment_id:
             attributes[conventions.DEPLOYMENT_ID] = ctx.deployment_id
+        if ctx.request.resume:
+            attributes[conventions.TURN_RESUMED] = [
+                f"{a.interrupt_id}:{a.status}" for a in ctx.request.resume
+            ]
         text = ctx.request.text
         if text:
             attributes[conventions.INPUT_VALUE] = text
@@ -641,6 +654,9 @@ class AgentApp(FastAPI):
         housekeeping: skip it and the store keeps a question whose answer never
         arrived, which then reappears as history on the next turn.
         """
+        if response is not None:
+            # answered: whatever the conversation was waiting on is behind it
+            self._pending_interrupts.pop(ctx.conversation_id, None)
         if self.memory is None or not ctx._turn_open:
             return
         ctx._turn_open = False
@@ -808,6 +824,72 @@ class AgentApp(FastAPI):
         finally:
             current_context.reset(token)
 
+    def _check_resume(
+        self, conversation_id: str | None, answers: list[ResumeAnswer]
+    ) -> tuple[ChatMessage | None, list[ResumeAnswer]]:
+        """The message a resumed turn replays and every answer it has, after checking them.
+
+        A turn that asks twice pauses twice, and a client answers only what is
+        open, as AG-UI asks; the answers from earlier pauses are kept here and
+        handed back, since the replay asks those questions again too.
+
+        AG-UI asks a resume to answer every open interrupt and nothing else, and
+        a question past its expiry cannot be answered any more. Returns None
+        when the request resumes nothing, or resumes a pause this process does
+        not know about (it restarted); the turn then replays the user message
+        the client sent.
+
+        Raises:
+            AgentError: The answers leave a question open, answer one that was
+                not asked, or answer one that has expired.
+        """
+        if not answers:
+            return None, answers
+        pending = self._pending_interrupts.get(conversation_id or "")
+        if pending is None:
+            return None, answers
+        earlier = {a.interrupt_id: a for a in pending["answers"]}
+        answers = [a for a in answers if a.interrupt_id not in earlier]
+        asked = set(pending["expires"])
+        answered = {answer.interrupt_id for answer in answers}
+        if asked - answered:
+            raise AgentError(
+                "The resume leaves these questions unanswered: "
+                + ", ".join(sorted(asked - answered)),
+                "unanswered_interrupts",
+                400,
+            )
+        if answered - asked:
+            raise AgentError(
+                "The resume answers questions this conversation was not asked: "
+                + ", ".join(sorted(answered - asked)),
+                "unknown_interrupt",
+                400,
+            )
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        now = datetime.now(timezone.utc).isoformat()
+        expired = sorted(i for i, at in pending["expires"].items() if at and at < now)
+        if expired:
+            raise AgentError(
+                "These questions expired before they were answered: "
+                + ", ".join(expired),
+                "interrupt_expired",
+                400,
+            )
+        return pending["message"], [*earlier.values(), *answers]
+
+    def _pause(self, ctx: HandlerContext, span: Any, interrupts: list[dict]) -> None:
+        """Remember what the conversation now waits on, and say so on the span."""
+        self._pending_interrupts[ctx.conversation_id] = {
+            "message": ctx.request.message,
+            "expires": {q["id"]: q.get("expires_at") for q in interrupts},
+            "answers": list(ctx.request.resume),
+        }
+        _set_span_attribute(
+            span, conventions.TURN_INTERRUPTS, [q["id"] for q in interrupts]
+        )
+
     def _register_routes(self) -> None:
         @self.get("/.well-known/hopsworks-agent.json")
         async def manifest() -> dict[str, Any]:
@@ -838,6 +920,22 @@ class AgentApp(FastAPI):
                 return _error_response(
                     AgentError("No chat handler registered.", "not_implemented", 501)
                 )
+            try:
+                replay, request.resume = self._check_resume(
+                    request.conversation_id, request.resume
+                )
+            except AgentError as err:
+                return _error_response(err)
+            if replay is not None:
+                request.message = replay
+            if request.message is None:
+                return _error_response(
+                    AgentError(
+                        "The request has no message, and resumes no paused turn.",
+                        "no_message",
+                        422,
+                    )
+                )
             ctx = self._prepare(request)
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
@@ -862,6 +960,20 @@ class AgentApp(FastAPI):
                 ctx._span = span
                 try:
                     response = await self._run_chat(ctx)
+                except Interrupted as paused:
+                    # Not finalized as an answer: the turn is abandoned, and the
+                    # resume asks it again, so the transcript holds it once.
+                    self._pause(ctx, span, paused.interrupts)
+                    interrupted = AgentResponse.text(
+                        "", conversation_id=ctx.conversation_id
+                    )
+                    interrupted.status = "interrupted"
+                    interrupted.interrupts = paused.interrupts
+                    interrupted.id = ctx.response_id
+                    trace_id = _trace_id(span)
+                    if trace_id:
+                        interrupted.metadata["trace_id"] = trace_id
+                    return JSONResponse(interrupted.model_dump())
                 except AgentError as err:
                     _record_span_error(span, err)
                     return _error_response(err)
@@ -893,7 +1005,16 @@ class AgentApp(FastAPI):
                     AgentError("No chat handler registered.", "not_implemented", 501)
                 )
             try:
-                request = _to_chat_request(run, server_history=self.memory is not None)
+                replay, answers = self._check_resume(
+                    run.thread_id,
+                    [_resume_answer(entry) for entry in run.resume or []],
+                )
+                request = _to_chat_request(
+                    run,
+                    server_history=self.memory is not None,
+                    replay=replay,
+                    answers=answers,
+                )
             except AgentError as err:
                 return _error_response(err)
             ctx = self._prepare(request)
@@ -1205,6 +1326,8 @@ class AgentApp(FastAPI):
                         else:
                             async for item in self._invoke_stream(ctx):
                                 await queue.put(("item", item))
+                    except Interrupted as paused:
+                        await queue.put(("interrupt", paused.interrupts))
                     except AgentError as err:
                         await queue.put(("error", err))
                     except Exception as err:  # noqa: BLE001 — surfaced to the client
@@ -1244,6 +1367,12 @@ class AgentApp(FastAPI):
                             _record_span_error(span, payload)
                             yield stream._error(payload, trace_id=trace_id)
                             return
+                        if kind == "interrupt":
+                            # The run ends here with the question; the turn is
+                            # abandoned and asked again when it is resumed.
+                            self._pause(ctx, span, payload)
+                            yield stream._interrupted(payload, trace_id=trace_id)
+                            return
                         if kind == "tool_event":
                             yield stream._progress(payload)
                         elif kind == "final":
@@ -1278,6 +1407,15 @@ class AgentApp(FastAPI):
                 # not get to run, which is what the store's stale-turn reaper is
                 # there to catch.
                 await self._finalize_turn(ctx, completed)
+
+
+def _set_span_attribute(span: Any, key: str, value: Any) -> None:
+    if span is None:
+        return
+    import contextlib  # noqa: PLC0415
+
+    with contextlib.suppress(Exception):  # never let telemetry break a turn
+        span.set_attribute(key, value)
 
 
 def _trace_id(span: Any) -> str | None:

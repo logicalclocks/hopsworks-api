@@ -5135,3 +5135,213 @@ class TestAguiRun:
         result = next(e for e in events if e["type"] == "TOOL_CALL_RESULT")
         assert result["content"] == "timed out"
         assert result["metadata"]["hopsworks"] == {"status": "failed"}
+
+
+class TestInterrupts:
+    """``ctx.interrupt``: pause a turn to ask a person, and go on with their answer."""
+
+    SCHEMA = {
+        "type": "object",
+        "properties": {"approved": {"type": "boolean"}},
+        "required": ["approved"],
+    }
+
+    def _refund_app(self, memory=None, **interrupt):
+        app = AgentApp(tracing=False, memory=memory)
+        calls = {"handler": 0, "refunded": 0}
+
+        @app.chat
+        async def chat(request, ctx):
+            calls["handler"] += 1
+            answer = ctx.interrupt(
+                "Refund 40 EUR to order 42?",
+                key="refund-42",
+                response_schema=self.SCHEMA,
+                **interrupt,
+            )
+            if answer.cancelled:
+                return "Left as it is."
+            if not answer.payload.get("approved"):
+                return "No refund, then."
+            calls["refunded"] += 1
+            return "Refunded."
+
+        return app, calls
+
+    @staticmethod
+    def _resume(thread, *answers, text="refund order 42"):
+        body = make_run(text, thread_id=thread)
+        body["resume"] = [
+            {"interruptId": i, "status": status, **({"payload": p} if p else {})}
+            for i, status, p in answers
+        ]
+        return body
+
+    def test_a_run_pauses_with_the_question(self):
+        from ag_ui.core import Event
+        from pydantic import TypeAdapter
+
+        app, calls = self._refund_app()
+        events = parse_sse(
+            TestClient(app)
+            .post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+            .text
+        )
+        for event in events:
+            TypeAdapter(Event).validate_python(event)
+        assert kinds(events) == ["RUN_STARTED", "RUN_FINISHED"]
+        outcome = events[-1]["outcome"]
+        assert outcome["type"] == "interrupt"
+        [question] = outcome["interrupts"]
+        assert question["id"] == "refund-42"
+        assert question["reason"] == "confirmation"
+        assert question["message"] == "Refund 40 EUR to order 42?"
+        assert question["responseSchema"] == self.SCHEMA
+        assert calls == {"handler": 1, "refunded": 0}
+
+    def test_the_answer_resumes_the_turn(self):
+        from hopsworks_agents.protocol import InMemoryAgentMemory
+
+        memory = InMemoryAgentMemory()
+        app, calls = self._refund_app(memory=memory)
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        # the client answers without resending the question: the agent kept it
+        body = self._resume("c1", ("refund-42", "resolved", {"approved": True}))
+        body["messages"] = []
+        events = parse_sse(client.post("/v1/run", json=body).text)
+        assert streamed_text(events) == "Refunded."
+        assert "outcome" not in events[-1] or events[-1]["outcome"]["type"] == "success"
+        assert calls == {"handler": 2, "refunded": 1}
+        # the paused run is not a turn of its own: the question is asked once
+        assert memory.get("c1") == [
+            {"role": "user", "content": "refund order 42"},
+            {"role": "assistant", "content": "Refunded."},
+        ]
+
+    def test_a_refusal_and_a_cancellation_reach_the_handler(self):
+        app, calls = self._refund_app()
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        no = self._resume("c1", ("refund-42", "resolved", {"approved": False}))
+        assert streamed_text(parse_sse(client.post("/v1/run", json=no).text)) == (
+            "No refund, then."
+        )
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c2"))
+        cancel = self._resume("c2", ("refund-42", "cancelled", None))
+        assert streamed_text(parse_sse(client.post("/v1/run", json=cancel).text)) == (
+            "Left as it is."
+        )
+        assert calls["refunded"] == 0
+
+    def test_a_resume_must_answer_what_was_asked(self):
+        app, _ = self._refund_app()
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        unknown = client.post(
+            "/v1/run", json=self._resume("c1", ("refund-43", "resolved", {"a": 1}))
+        )
+        assert unknown.status_code == 400
+        assert unknown.json()["detail"]["code"] == "unanswered_interrupts"
+        extra = client.post(
+            "/v1/run",
+            json=self._resume(
+                "c1",
+                ("refund-42", "resolved", {"approved": True}),
+                ("refund-43", "resolved", {"approved": True}),
+            ),
+        )
+        assert extra.json()["detail"]["code"] == "unknown_interrupt"
+
+    def test_an_expired_question_cannot_be_answered(self):
+        app, _ = self._refund_app(expires_in=-1)
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        late = client.post(
+            "/v1/run",
+            json=self._resume("c1", ("refund-42", "resolved", {"approved": True})),
+        )
+        assert late.status_code == 400
+        assert late.json()["detail"]["code"] == "interrupt_expired"
+
+    def test_a_question_without_a_key_is_named_by_its_place(self):
+        app = AgentApp(tracing=False)
+
+        @app.chat
+        async def chat(request, ctx):
+            first = ctx.interrupt("Name?", reason="input_required")
+            second = ctx.interrupt("Email?", reason="input_required")
+            return f"{first.payload} <{second.payload}>"
+
+        client = TestClient(app)
+        events = parse_sse(
+            client.post("/v1/run", json=make_run("sign me up", thread_id="c1")).text
+        )
+        assert events[-1]["outcome"]["interrupts"][0]["id"] == "interrupt-0"
+        events = parse_sse(
+            client.post(
+                "/v1/run", json=self._resume("c1", ("interrupt-0", "resolved", "Dana"))
+            ).text
+        )
+        assert events[-1]["outcome"]["interrupts"][0]["id"] == "interrupt-1"
+        events = parse_sse(
+            client.post(
+                "/v1/run",
+                # only what is open: the first answer is kept by the agent
+                json=self._resume(
+                    "c1", ("interrupt-1", "resolved", "dana@example.com")
+                ),
+            ).text
+        )
+        assert streamed_text(events) == "Dana <dana@example.com>"
+
+    def test_a_streamed_answer_is_closed_before_the_pause(self):
+        app = AgentApp(tracing=False)
+
+        @app.stream
+        async def stream(request, ctx):
+            yield "Let me check. "
+            ctx.interrupt("Go ahead?")
+            yield "never"
+
+        events = parse_sse(
+            TestClient(app).post("/v1/run", json=make_run("q", thread_id="c1")).text
+        )
+        assert kinds(events) == [
+            "RUN_STARTED",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED",
+        ]
+        assert events[-1]["outcome"]["type"] == "interrupt"
+
+    def test_the_json_route_pauses_and_resumes_too(self):
+        app, calls = self._refund_app()
+        client = TestClient(app)
+        paused = client.post(
+            "/v1/chat", json=make_request("refund order 42", "c1")
+        ).json()
+        assert paused["status"] == "interrupted"
+        assert paused["interrupts"][0]["id"] == "refund-42"
+        resumed = client.post(
+            "/v1/chat",
+            json={
+                "conversation_id": "c1",
+                "resume": [
+                    {
+                        "interrupt_id": "refund-42",
+                        "status": "resolved",
+                        "payload": {"approved": True},
+                    }
+                ],
+            },
+        ).json()
+        assert resumed["status"] == "completed"
+        assert resumed["message"]["content"][0]["text"] == "Refunded."
+        assert calls["refunded"] == 1
+
+    def test_a_request_with_no_message_and_nothing_to_resume_is_refused(self):
+        app, _ = self._refund_app()
+        result = TestClient(app).post("/v1/chat", json={"conversation_id": "c9"})
+        assert result.status_code == 422

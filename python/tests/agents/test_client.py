@@ -347,3 +347,65 @@ class TestWhereTheAgentIs:
             agent_url="https://elsewhere/agent/",
         )
         assert client._base_url() == "https://elsewhere/agent"
+
+
+class SequenceSession(FakeSession):
+    """Answers each post with the next reply, the last one forever."""
+
+    def __init__(self, *replies):
+        super().__init__()
+        self._replies = list(replies)
+
+    def post(self, url, **kwargs):
+        self.posted.append({"url": url, **kwargs})
+        return self._replies.pop(0) if len(self._replies) > 1 else self._replies[0]
+
+
+class TestATrialThatPausesToAskAPerson:
+    """A trial has nobody to ask: the run answers a paused turn on its behalf."""
+
+    PAUSED = {
+        "conversation_id": "c1",
+        "status": "interrupted",
+        "message": {"role": "assistant", "content": []},
+        "interrupts": [{"id": "refund-42", "reason": "confirmation"}],
+    }
+
+    def test_an_unanswered_question_is_cancelled_and_the_turn_finishes(self):
+        session = SequenceSession(FakeResponse(self.PAUSED), FakeResponse(REPLY))
+        result = client(session)._send_prompt(
+            "refund order 42", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert result.text == "4" and result.error == ""
+        assert result.interrupts == [{"id": "refund-42", "reason": "confirmation"}]
+        resume = session.posted[1]
+        assert resume["json"] == {
+            "conversation_id": "c1",
+            "resume": [{"interrupt_id": "refund-42", "status": "cancelled"}],
+        }
+        # one trial, one trace: the answer goes on the pause's trace
+        assert resume["headers"]["traceparent"] == "t"
+
+    def test_the_tasks_context_answers_by_question_id(self):
+        session = SequenceSession(FakeResponse(self.PAUSED), FakeResponse(REPLY))
+        client(session)._send_prompt(
+            "refund order 42",
+            traceparent="t",
+            baggage="b",
+            timeout_s=10,
+            context={"interrupt_answers": {"refund-42": {"approved": True}}},
+        )
+        assert session.posted[1]["json"]["resume"] == [
+            {
+                "interrupt_id": "refund-42",
+                "status": "resolved",
+                "payload": {"approved": True},
+            }
+        ]
+
+    def test_an_agent_that_never_stops_asking_fails_the_trial(self):
+        session = SequenceSession(FakeResponse(self.PAUSED))
+        result = client(session)._send_prompt(
+            "q", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert "kept asking" in result.error

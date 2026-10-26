@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from .evaluation import EvalTrial
     from .memory import ChatMemory, Turn
-    from .models import ChatRequest
+    from .models import ChatRequest, ResumeAnswer
 
 
 class HandlerContext:
@@ -116,6 +116,13 @@ class HandlerContext:
         # above is drained into the response metadata and is empty while
         # streaming, so it can't double as the record we persist
         self._recorded_events: list[dict[str, Any]] = []
+        # The answers this run carries, by interrupt id, and how many times the
+        # handler has asked so far: an interrupt without a key is named by its
+        # place in the turn, which a replay of the same turn reproduces.
+        self._resume: dict[str, ResumeAnswer] = {
+            answer.interrupt_id: answer for answer in getattr(request, "resume", [])
+        }
+        self._interrupts_asked = 0
 
     @property
     def history(self) -> list[Turn]:
@@ -503,6 +510,82 @@ class HandlerContext:
         return await asyncio.to_thread(self.system_context, header, state_header)
 
     @public
+    def interrupt(
+        self,
+        message: str | None = None,
+        *,
+        reason: str = "confirmation",
+        key: str | None = None,
+        response_schema: dict[str, Any] | None = None,
+        tool_call_id: str | None = None,
+        expires_in: float | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ResumeAnswer:
+        """Pause the turn and ask a person, returning their answer once they give it.
+
+        The first time, this ends the run: the client receives an AG-UI
+        interrupt saying what was asked, and nothing after this line runs.
+        When the client answers, the turn runs again from the start with the
+        answer attached, and this call returns it instead of pausing.
+        So everything before it runs twice, and must be safe to repeat: ask
+        before acting, not after.
+
+        Example:
+            ```python
+            @agent_app.chat
+            async def chat(request, ctx):
+                order = await find_order(request.text)
+                answer = ctx.interrupt(
+                    f"Refund {order.amount} to order {order.id}?",
+                    key=f"refund-{order.id}",
+                    response_schema={
+                        "type": "object",
+                        "properties": {"approved": {"type": "boolean"}},
+                        "required": ["approved"],
+                    },
+                )
+                if answer.cancelled or not answer.payload.get("approved"):
+                    return "Understood, no refund."
+                await refund(order)
+                return "Refunded."
+            ```
+
+        Parameters:
+            message: What to ask, for the person reading it.
+            reason: Why the agent is asking: `confirmation`, `input_required` or `tool_call`, or a word of your own.
+            key: A name for this question that is the same each time the turn runs; by default its place among the turn's questions.
+            response_schema: A JSON Schema the answer's payload should match; the chat panel builds its form from it.
+            tool_call_id: The tool call this question is about, when it is about one.
+            expires_in: Seconds after which the question can no longer be answered.
+            metadata: Anything else the client should see with the question.
+
+        Returns:
+            `ResumeAnswer`: the person's answer, on the run that resumes the turn.
+        """
+        index = self._interrupts_asked
+        self._interrupts_asked += 1
+        interrupt_id = key or f"interrupt-{index}"
+        answer = self._resume.get(interrupt_id)
+        if answer is not None:
+            return answer
+        question: dict[str, Any] = {"id": interrupt_id, "reason": reason}
+        if message is not None:
+            question["message"] = message
+        if tool_call_id is not None:
+            question["tool_call_id"] = tool_call_id
+        if response_schema is not None:
+            question["response_schema"] = response_schema
+        if expires_in is not None:
+            from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+            question["expires_at"] = (
+                datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+            ).isoformat()
+        if metadata is not None:
+            question["metadata"] = metadata
+        raise Interrupted([question])
+
+    @public
     async def emit_event(
         self,
         name: str,
@@ -709,3 +792,16 @@ def _bounded_text(value: Any) -> str:
     if len(text) > _MAX_EVENT_TEXT:
         return text[:_MAX_EVENT_TEXT] + "…"
     return text
+
+
+class Interrupted(Exception):  # noqa: N818 -- it is a signal, not an error
+    """Raised by ``ctx.interrupt`` to end the run with a question for a person.
+
+    The route catches it and ends the run with an AG-UI interrupt outcome; a
+    handler that catches it by accident (``except Exception``) keeps the turn
+    from pausing, so let it through.
+    """
+
+    def __init__(self, interrupts: list[dict[str, Any]]):
+        super().__init__("the turn is waiting for a person")
+        self.interrupts = interrupts

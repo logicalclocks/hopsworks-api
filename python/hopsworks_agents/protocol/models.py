@@ -70,9 +70,36 @@ class ChatMessage(BaseModel):
     content: list[ContentPart]
 
 
+class ResumeAnswer(BaseModel):
+    """A person's answer to an interrupt: what ``ctx.interrupt`` returns on the run that resumes it.
+
+    ``status`` is ``resolved`` when the person answered, with what they said in
+    ``payload``, and ``cancelled`` when they declined to answer. A refusal to go
+    ahead is an answer, so it is ``resolved`` with a payload that says so, for
+    example ``{"approved": False}``.
+    """
+
+    interrupt_id: str
+    status: Literal["resolved", "cancelled"]
+    payload: Any = None
+    metadata: dict[str, Any] | None = None
+
+    @property
+    def resolved(self) -> bool:
+        """Whether the person answered."""
+        return self.status == "resolved"
+
+    @property
+    def cancelled(self) -> bool:
+        """Whether the person declined to answer."""
+        return self.status == "cancelled"
+
+
 class ChatRequest(BaseModel):
     conversation_id: str | None = None
-    message: ChatMessage
+    # Required, except on a request that resumes an interrupted turn: that one
+    # replays the message the turn was asked with, which the agent kept.
+    message: ChatMessage | None = None
     # End-user identity, used to key durable per-user memory. CLIENT-ASSERTED:
     # the chat transport authenticates with a project-wide serving key, so
     # anyone holding it can claim any subject — and because `subject` keys both
@@ -95,25 +122,35 @@ class ChatRequest(BaseModel):
     # memory. With memory the server's transcript is the history and this stays
     # empty, so a client resending the conversation cannot rewrite it.
     prior_messages: list[dict[str, str]] = Field(default_factory=list)
+    # The answers to the interrupts that paused this turn's previous run. When
+    # present the turn is that one again, replayed: ``ctx.interrupt`` returns
+    # the answer instead of pausing.
+    resume: list[ResumeAnswer] = Field(default_factory=list)
 
     @property
     def text(self) -> str:
         """The user message as plain text (text parts joined)."""
+        if self.message is None:
+            return ""
         return "\n".join(
             part.text for part in self.message.content if part.type == "text"
         ).strip()
 
     @property
+    def _parts(self) -> list[Any]:
+        return self.message.content if self.message is not None else []
+
+    @property
     def images(self) -> list[ImageContent]:
-        return [p for p in self.message.content if p.type == "image"]
+        return [p for p in self._parts if p.type == "image"]
 
     @property
     def files(self) -> list[FileContent]:
-        return [p for p in self.message.content if p.type == "file"]
+        return [p for p in self._parts if p.type == "file"]
 
     @property
     def audio_clips(self) -> list[AudioContent]:
-        return [p for p in self.message.content if p.type == "audio"]
+        return [p for p in self._parts if p.type == "audio"]
 
     @public
     def to_framework_messages(self) -> list[dict[str, str]]:
@@ -128,7 +165,10 @@ class ChatRequest(BaseModel):
         """
         return [
             *self.prior_messages,
-            {"role": self.message.role, "content": self.text},
+            {
+                "role": self.message.role if self.message else "user",
+                "content": self.text,
+            },
         ]
 
 
@@ -158,7 +198,11 @@ class ChatResponse(BaseModel):
     citations: list[dict[str, Any]] = Field(default_factory=list)
     usage: dict[str, int] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
-    status: Literal["completed", "failed"] = "completed"
+    # "interrupted" when the agent paused to ask a person: ``interrupts`` says
+    # what it asked, and the turn goes on when a request carrying ``resume``
+    # answers every one of them.
+    status: Literal["completed", "failed", "interrupted"] = "completed"
+    interrupts: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AgentResponse:

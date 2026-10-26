@@ -67,6 +67,9 @@ class AgentResponse:
     #: rather than a judgement: `_classify` decides what it means, so the two
     #: live in one place next to the enum.
     status_code: int = 0
+    #: What the agent paused to ask during the turn, and the run answered on the
+    #: trial's behalf (the task context's `interrupt_answers`, else cancelled).
+    interrupts: list[dict[str, Any]] = field(default_factory=list)
 
 
 class AgentClient(Protocol):

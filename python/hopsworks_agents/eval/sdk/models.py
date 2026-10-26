@@ -700,6 +700,7 @@ class ChatReply(ApiModel):
     usage: dict[str, int] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     status: str = "completed"
+    interrupts: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def parts(self) -> list[dict[str, Any]]:
@@ -724,6 +725,11 @@ class ChatReply(ApiModel):
     @property
     def failed(self) -> bool:
         return self.status == "failed"
+
+    @property
+    def interrupted(self) -> bool:
+        """Whether the agent paused to ask a person; `interrupts` holds what it asked."""
+        return self.status == "interrupted"
 
     @property
     def tool_events(self) -> list[ToolEvent]:

@@ -399,6 +399,32 @@ message and data under the event's `metadata.hopsworks`.
           yield delta
   ```
 
+## Asking a person first (human in the loop)
+
+`ctx.interrupt(...)` pauses a turn to ask a person, and returns their answer once they give it. The run ends with an AG-UI interrupt (`RUN_FINISHED` with `outcome.type` `interrupt`); the client answers with a new run on the same thread whose `resume` answers every open question, and the turn runs again from the start with the answers attached, so the same call now returns instead of pausing:
+
+```python
+@agent_app.chat
+async def chat(request, ctx):
+    order = await find_order(request.text)
+    answer = ctx.interrupt(
+        f"Refund {order.amount} to order {order.id}?",
+        key=f"refund-{order.id}",
+        response_schema={"type": "object", "properties": {"approved": {"type": "boolean"}}},
+    )
+    if answer.cancelled or not answer.payload.get("approved"):
+        return "Understood, no refund."
+    await refund(order)
+    return "Refunded."
+```
+
+- Everything before the call runs again on resume, so ask before acting, never after.
+- `key` names the question the same way each time the turn runs; without it the question is named by its place in the turn (`interrupt-0`, `interrupt-1`, ...).
+- A turn can ask several times: each pause asks one question, and a client answers only what is open — the agent keeps the earlier answers.
+- The agent keeps the paused turn's message, so a resume needs no message; it checks the resume answers exactly the open questions and none has passed `expires_in`. The paused run is not a turn of its own in memory: the transcript holds the question once, with the answer that finished it.
+- `/v1/chat` pauses too: the reply has `status: "interrupted"` and the questions in `interrupts`, and a request carrying `resume` (and no message) continues it. From Python, `agent.chat(None, conversation_id=..., resume={"refund-42": {"approved": True}})`.
+- In an evaluation run nobody is there to answer: the runner answers from the task context's `interrupt_answers` (question id to payload) and cancels the rest.
+
 ## End-user feedback
 
 A chat UI built on the agent's endpoint has the gateway, the serving credential and the

@@ -22,9 +22,12 @@ from typing import Any
 
 from ag_ui.core import (
     CustomEvent,
+    Interrupt,
+    ResumeEntry,
     RunAgentInput,
     RunErrorEvent,
     RunFinishedEvent,
+    RunFinishedInterruptOutcome,
     RunStartedEvent,
     StepFinishedEvent,
     StepStartedEvent,
@@ -47,6 +50,7 @@ from .models import (
     ChatResponse,
     FileContent,
     ImageContent,
+    ResumeAnswer,
     TextContent,
     new_message_id,
 )
@@ -60,7 +64,22 @@ _HISTORY_ROLES = {"user": "user", "assistant": "assistant", "system": "system"}
 _HISTORY_ROLES["developer"] = "system"
 
 
-def _to_chat_request(run: RunAgentInput, *, server_history: bool) -> ChatRequest:
+def _resume_answer(entry: ResumeEntry) -> ResumeAnswer:
+    return ResumeAnswer(
+        interrupt_id=entry.interrupt_id,
+        status=entry.status,
+        payload=entry.payload,
+        metadata=entry.metadata,
+    )
+
+
+def _to_chat_request(
+    run: RunAgentInput,
+    *,
+    server_history: bool,
+    replay: ChatMessage | None = None,
+    answers: list[ResumeAnswer] | None = None,
+) -> ChatRequest:
     """The turn an AG-UI run asks for, as the request object handlers receive.
 
     The new turn is the user messages after the last assistant message: a client
@@ -75,12 +94,32 @@ def _to_chat_request(run: RunAgentInput, *, server_history: bool) -> ChatRequest
             message, or content this agent cannot take.
     """
     messages = list(run.messages or [])
+    resume = (
+        answers
+        if answers is not None
+        else [_resume_answer(entry) for entry in run.resume or []]
+    )
     last_assistant = -1
     for index, message in enumerate(messages):
         if message.role == "assistant":
             last_assistant = index
     new = [m for m in messages[last_assistant + 1 :] if m.role == "user"]
-    if not new:
+    if resume:
+        # A resume asks the paused turn again. Its message is the one the agent
+        # kept when it paused; without that (the process restarted) it is the
+        # last user message the client sent, wherever it stands.
+        users = [i for i, m in enumerate(messages) if m.role == "user"]
+        if replay is None and not users:
+            raise AgentError(
+                "The resume carries no user message, and the paused turn is not "
+                "known here any more, so there is nothing to replay.",
+                "nothing_to_resume",
+                409,
+            )
+        if replay is None:
+            new = [messages[users[-1]]]
+        last_assistant = (users[-1] - 1) if users else len(messages) - 1
+    if not new and replay is None:
         raise AgentError(
             "The run has no user message after the last assistant message, "
             "so there is nothing to answer.",
@@ -88,7 +127,7 @@ def _to_chat_request(run: RunAgentInput, *, server_history: bool) -> ChatRequest
             400,
         )
     content: list[Any] = []
-    for message in new:
+    for message in new if replay is None else []:
         content.extend(_parts(message.content))
     hopsworks = _hopsworks_props(run.forwarded_props)
     context: dict[str, Any] = {c.description: c.value for c in run.context or []}
@@ -105,7 +144,10 @@ def _to_chat_request(run: RunAgentInput, *, server_history: bool) -> ChatRequest
     metadata = hopsworks.get("metadata")
     return ChatRequest(
         conversation_id=run.thread_id or None,
-        message=ChatMessage(id=new[-1].id, role="user", content=content),
+        message=replay
+        if replay is not None
+        else ChatMessage(id=new[-1].id, role="user", content=content),
+        resume=resume,
         subject=subject if isinstance(subject, str) and subject.strip() else None,
         context=context,
         metadata=metadata if isinstance(metadata, dict) else {},
@@ -357,6 +399,22 @@ class RunStream:
                 run_id=self.run_id,
                 result={HOPSWORKS: {k: v for k, v in facts.items() if v is not None}},
                 usage=_usage(response.usage),
+            )
+        )
+
+    def _interrupted(
+        self, interrupts: list[dict[str, Any]], *, trace_id: str | None = None
+    ) -> str:
+        """``RUN_FINISHED`` with an interrupt outcome: the run waits for a person."""
+        result = {HOPSWORKS: {"trace_id": trace_id}} if trace_id else None
+        return self._close_text() + self._encode(
+            RunFinishedEvent(
+                thread_id=self.thread_id,
+                run_id=self.run_id,
+                outcome=RunFinishedInterruptOutcome(
+                    interrupts=[Interrupt.model_validate(q) for q in interrupts]
+                ),
+                result=result,
             )
         )
 

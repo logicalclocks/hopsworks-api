@@ -76,6 +76,10 @@ What matters in the handler:
 - **Embedding models never download in a pod.** Register once where there is internet with `register_sentence_transformer("all-MiniLM-L6-v2")` (a notebook or the feature pipeline that embeds the data) and load with `load_sentence_transformer("all-MiniLM-L6-v2")` in the agent; `sentence_transformer_embedder()` does the same for memory search. An unregistered model falls back to the hub with a warning; `fallback=False` forbids it.
 - **Evaluation-safe writes:** an agent that writes (refunds, tickets) checks `hopsworks_agents.protocol.evaluation.in_evaluation()` in its tools and skips the real write, so a sandboxed suite can run against the production deployment (`eval_per_request=True` on the app). A deployment that exists only to be evaluated sets `EVAL_MODE=true` instead.
 
+## Ask a person before acting
+
+For an action that needs a person's approval (a refund, a deletion, sending an email), call `answer = ctx.interrupt("Refund 40 EUR?", key="refund-42", response_schema={...})` before the action. The run pauses with an AG-UI interrupt; the chat panel shows the question and the person's answer resumes the turn, which runs again from the start and gets `answer` (`answer.cancelled`, `answer.payload`). Everything before the call runs twice, so it must not act. In evaluation, the task context's `interrupt_answers` (question id to payload) answers on the trial's behalf; unanswered questions are cancelled. See the protocol README's human-in-the-loop section.
+
 ## Who long-term memory belongs to
 
 `user`-scope memory is keyed by the request's **subject**, and the subject is whatever the client asserted — `agent.chat(..., subject="marcus@example.com")`, the chat panel's signed-in user, or your own application calling `ctx.rebind_subject(key)` after it has verified the person. That is what makes a second conversation start knowing them.

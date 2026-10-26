@@ -53,6 +53,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers only
         ChatResponse,
         FileContent,
         ImageContent,
+        ResumeAnswer,
         TextContent,
     )
     from .summarizers import (
@@ -110,6 +111,7 @@ _EXPORTS: dict[str, str] = {
     "ChatMessage": "models",
     "ChatRequest": "models",
     "ChatResponse": "models",
+    "ResumeAnswer": "models",
     "FileContent": "models",
     "ImageContent": "models",
     "TextContent": "models",

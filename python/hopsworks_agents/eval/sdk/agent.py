@@ -135,12 +135,13 @@ class Agent:
     @public
     def chat(
         self,
-        text: str,
+        text: str | None,
         *,
         conversation_id: str | None = None,
         subject: str | None = None,
         context: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        resume: dict[str, Any] | Sequence[dict[str, Any]] | None = None,
         timeout: float = 120.0,
     ) -> ChatReply:
         """Send the agent one message and get its reply.
@@ -153,20 +154,23 @@ class Agent:
             ```
 
         Parameters:
-            text: The user's message.
+            text: The user's message; `None` when `resume` answers a paused turn, which the agent replays.
             conversation_id: Thread this message onto an earlier reply's conversation, so the agent's own memory sees one conversation. A new conversation when omitted.
             subject: Who the end user is, for agents that keep per-user memory.
             context: Extra request context the agent reads.
             metadata: Extra request metadata the agent reads.
+            resume: Answers to the questions a paused turn asked (`reply.interrupts`): a mapping of interrupt id to the answer's payload, or AG-UI resume entries (`interrupt_id`, `status`, `payload`) to cancel one.
             timeout: Seconds to wait for the reply.
 
         Returns:
-            `ChatReply`: the reply, with its text, its conversation id and the trace id the agent recorded.
+            `ChatReply`: the reply, with its text, its conversation id and the trace id the agent recorded; `status` is `interrupted` when the agent paused to ask a person, with the questions in `interrupts`.
 
         Raises:
             `AgentServingError`: If the agent or the gateway refuses the request.
         """
         payload = _chat_payload(text, conversation_id, subject, context, metadata)
+        if resume:
+            payload["resume"] = _resume_entries(resume)
         body = self._http.agent_request(
             "POST",
             self._segments(self._endpoint("chat", DEFAULT_CHAT_PATH)),
@@ -178,12 +182,13 @@ class Agent:
     @public
     def chat_stream(
         self,
-        text: str,
+        text: str | None,
         *,
         conversation_id: str | None = None,
         subject: str | None = None,
         context: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        resume: dict[str, Any] | Sequence[dict[str, Any]] | None = None,
         timeout: float = 120.0,
     ) -> ChatStream:
         """Send the agent one message and read its reply as it is produced.
@@ -208,11 +213,12 @@ class Agent:
             ```
 
         Parameters:
-            text: The user's message.
+            text: The user's message; `None` when `resume` answers a paused turn, which the agent replays.
             conversation_id: Thread this message onto an earlier reply's conversation.
             subject: Who the end user is, for agents that keep per-user memory.
             context: Extra request context the agent reads.
             metadata: Extra request metadata the agent reads.
+            resume: Answers to the questions a paused turn asked, as for `chat`.
             timeout: Seconds to wait for each piece of the reply.
 
         Returns:
@@ -222,6 +228,15 @@ class Agent:
             `AgentServingError`: If the gateway refuses the request, or, while reading, if the agent reports an error.
         """
         payload = _run_payload(text, conversation_id, subject, context, metadata)
+        if resume:
+            payload["resume"] = [
+                {
+                    "interruptId": e["interrupt_id"],
+                    "status": e["status"],
+                    **({"payload": e["payload"]} if "payload" in e else {}),
+                }
+                for e in _resume_entries(resume)
+            ]
         lines = self._http.agent_request(
             "POST",
             self._segments(self._endpoint("run", DEFAULT_RUN_PATH)),
@@ -1221,9 +1236,12 @@ def _chat_payload(
     context: dict[str, Any] | None,
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "message": {"role": "user", "content": [{"type": "text", "text": text}]}
-    }
+    payload: dict[str, Any] = {}
+    if text is not None:
+        payload["message"] = {
+            "role": "user",
+            "content": [{"type": "text", "text": text}],
+        }
     if conversation_id:
         payload["conversation_id"] = conversation_id
     if subject:
@@ -1233,6 +1251,25 @@ def _chat_payload(
     if metadata:
         payload["metadata"] = metadata
     return payload
+
+
+def _resume_entries(
+    resume: dict[str, Any] | Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Answers to a paused turn as resume entries: a mapping is id to a resolved payload."""
+    if isinstance(resume, dict):
+        return [
+            {"interrupt_id": key, "status": "resolved", "payload": value}
+            for key, value in resume.items()
+        ]
+    entries = []
+    for entry in resume:
+        interrupt_id = entry.get("interrupt_id") or entry.get("interruptId")
+        item = {"interrupt_id": interrupt_id, "status": entry.get("status", "resolved")}
+        if "payload" in entry:
+            item["payload"] = entry["payload"]
+        entries.append(item)
+    return entries
 
 
 def _run_payload(
@@ -1260,9 +1297,9 @@ def _run_payload(
     return {
         "threadId": conversation_id or "",
         "runId": f"run_{uuid.uuid4().hex}",
-        "messages": [
-            {"id": f"msg_{uuid.uuid4().hex}", "role": "user", "content": text}
-        ],
+        "messages": []
+        if text is None
+        else [{"id": f"msg_{uuid.uuid4().hex}", "role": "user", "content": text}],
         "tools": [],
         "context": [],
         "forwardedProps": {"hopsworks": hopsworks} if hopsworks else {},
@@ -1415,6 +1452,7 @@ class ChatStream:
                 if isinstance(event.get("value"), dict):
                     media.append(event["value"])
             elif kind == "RUN_FINISHED":
+                outcome = event.get("outcome") or {}
                 result = _hopsworks_of(event.get("result"))
                 metadata = dict(result.get("metadata") or {})
                 metadata["trace_id"] = result.get("trace_id") or trace_id
@@ -1435,7 +1473,12 @@ class ChatStream:
                     citations=list(result.get("citations") or []),
                     usage=_usage_of(event.get("usage")),
                     metadata=metadata,
-                    status="completed",
+                    status="interrupted"
+                    if outcome.get("type") == "interrupt"
+                    else "completed",
+                    interrupts=[
+                        _interrupt_of(q) for q in outcome.get("interrupts") or []
+                    ],
                 )
                 yield StreamFrame(
                     "completed",
@@ -1462,6 +1505,16 @@ def _hopsworks_of(value: Any) -> dict[str, Any]:
     if isinstance(value, dict) and isinstance(value.get("hopsworks"), dict):
         return value["hopsworks"]
     return {}
+
+
+def _interrupt_of(question: dict[str, Any]) -> dict[str, Any]:
+    """An AG-UI interrupt with the field names the JSON route uses."""
+    names = {
+        "toolCallId": "tool_call_id",
+        "responseSchema": "response_schema",
+        "expiresAt": "expires_at",
+    }
+    return {names.get(k, k): v for k, v in question.items()}
 
 
 def _usage_of(usage: Any) -> dict[str, int] | None:

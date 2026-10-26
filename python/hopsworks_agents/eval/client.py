@@ -28,6 +28,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+# How many times one turn of a trial may pause before the run gives up on it.
+_MAX_RESUMES = 5
+
+
 class HopsworksAgentClient:
     """Calls an agent through the ingress, reads its traces back through the.
 
@@ -168,8 +172,8 @@ class HopsworksAgentClient:
                 text="", latency_ms=(time.monotonic() - started) * 1000, error=str(err)
             )
 
-        latency_ms = (time.monotonic() - started) * 1000
         if response.status_code >= 400:
+            latency_ms = (time.monotonic() - started) * 1000
             return AgentResponse(
                 text="",
                 latency_ms=latency_ms,
@@ -178,12 +182,46 @@ class HopsworksAgentClient:
             )
 
         body = response.json()
+        asked: list[dict] = []
+        for _ in range(_MAX_RESUMES):
+            if body.get("status") != "interrupted":
+                break
+            # A trial has nobody to ask, so the run answers for them: what the
+            # task's context says to answer, by question id, and a refusal to
+            # answer for the rest. A question left open would be a trial that
+            # never ends; a cancelled one is a turn the agent has to finish
+            # without the answer, which is itself worth grading.
+            questions = body.get("interrupts") or []
+            asked.extend(questions)
+            body = self._resume(
+                questions,
+                (context or {}).get("interrupt_answers") or {},
+                conversation_id=body.get("conversation_id") or conversation_id,
+                traceparent=traceparent,
+                baggage=baggage,
+                timeout_s=timeout_s,
+            )
+            if body is None:
+                return AgentResponse(
+                    text="",
+                    latency_ms=(time.monotonic() - started) * 1000,
+                    error="the agent paused to ask a person, and refused the answer",
+                )
+        latency_ms = (time.monotonic() - started) * 1000
         text = "".join(
             part.get("text", "")
             for part in (body.get("message") or {}).get("content", [])
             if part.get("type") == "text"
         )
         metadata = body.get("metadata") or {}
+        if body.get("status") == "interrupted":
+            return AgentResponse(
+                text=text,
+                latency_ms=latency_ms,
+                error=f"the agent kept asking: {_MAX_RESUMES} questions in one turn",
+                status_code=response.status_code,
+                interrupts=asked,
+            )
         return AgentResponse(
             text=text,
             # The SDK reports the trace id it actually used. The runner already
@@ -194,7 +232,46 @@ class HopsworksAgentClient:
             latency_ms=latency_ms,
             error=("" if body.get("status") != "failed" else _AGENT_REPORTED_FAILURE),
             status_code=response.status_code,
+            interrupts=asked,
         )
+
+    def _resume(
+        self,
+        questions: list[dict],
+        answers: dict,
+        *,
+        conversation_id: str | None,
+        traceparent: str,
+        baggage: str,
+        timeout_s: float,
+    ) -> dict | None:
+        """Answer a paused turn on the trial's behalf; None when the agent refuses it."""
+        resume = []
+        for question in questions:
+            interrupt_id = question.get("id")
+            if interrupt_id in answers:
+                resume.append(
+                    {
+                        "interrupt_id": interrupt_id,
+                        "status": "resolved",
+                        "payload": answers[interrupt_id],
+                    }
+                )
+            else:
+                resume.append({"interrupt_id": interrupt_id, "status": "cancelled"})
+        try:
+            response = self._session.post(
+                f"{self._base_url()}{self._chat_path}",
+                json={"conversation_id": conversation_id, "resume": resume},
+                # the same trace: the pause and the answer are one trial
+                headers={"traceparent": traceparent, "baggage": baggage},
+                timeout=timeout_s,
+            )
+        except Exception:  # noqa: BLE001 — reported as the trial's error
+            return None
+        if response.status_code >= 400:
+            return None
+        return response.json()
 
     # ── the trace ───────────────────────────────────────────────────────────
 

@@ -2628,3 +2628,69 @@ class TestATraceReadStraightAfterTheReply:
         _, agent7, session = agent(Reply(self.HALF))
         agent7.trace("t")
         assert len(session.sent) == 1
+
+
+class TestAPausedTurn:
+    """An agent that pauses to ask a person, and the answer that resumes it."""
+
+    def test_a_streamed_run_that_pauses_says_what_it_asked(self):
+        question = {
+            "id": "refund-42",
+            "reason": "confirmation",
+            "message": "Refund?",
+            "responseSchema": {"type": "object"},
+        }
+        _, agent7, _ = agent(
+            MANIFEST,
+            Reply(
+                lines=sse(
+                    started(),
+                    {
+                        "type": "RUN_FINISHED",
+                        "threadId": "conv-1",
+                        "runId": "r1",
+                        "outcome": {"type": "interrupt", "interrupts": [question]},
+                    },
+                )
+            ),
+        )
+        reply = agent7.chat_stream("refund order 42").reply
+        assert reply.interrupted and reply.status == "interrupted"
+        assert reply.interrupts == [
+            {
+                "id": "refund-42",
+                "reason": "confirmation",
+                "message": "Refund?",
+                "response_schema": {"type": "object"},
+            }
+        ]
+
+    def test_resume_answers_by_id_without_resending_the_message(self):
+        _, agent7, session = agent(MANIFEST, Reply(lines=sse(started(), finished())))
+        reply = agent7.chat_stream(
+            None, conversation_id="conv-1", resume={"refund-42": {"approved": True}}
+        ).reply
+        assert reply.status == "completed"
+        body = session.sent[1][3]
+        assert body["threadId"] == "conv-1" and body["messages"] == []
+        assert body["resume"] == [
+            {
+                "interruptId": "refund-42",
+                "status": "resolved",
+                "payload": {"approved": True},
+            }
+        ]
+
+    def test_the_json_route_takes_the_same_answers(self):
+        _, agent7, session = agent(
+            MANIFEST,
+            Reply({"conversation_id": "conv-1", "message": {"content": []}}),
+        )
+        agent7.chat(
+            None,
+            conversation_id="conv-1",
+            resume=[{"interrupt_id": "refund-42", "status": "cancelled"}],
+        )
+        body = session.sent[1][3]
+        assert "message" not in body
+        assert body["resume"] == [{"interrupt_id": "refund-42", "status": "cancelled"}]
