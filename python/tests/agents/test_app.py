@@ -5175,6 +5175,191 @@ class TestAguiFinalText:
         assert "text" not in hopsworks_result(events)
 
 
+class TestSharedPendingQuestions:
+    """What a paused conversation waits on lives in the memory store, so every replica sees it."""
+
+    @staticmethod
+    def _replica(url, calls, fail=None):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        # two AgentApps over one database are two replicas of one deployment
+        app = AgentApp(
+            tracing=False, memory=ManagedMemoryService(url, deployment_id="7")
+        )
+
+        @app.chat
+        async def chat(request, ctx):
+            answer = ctx.interrupt("Refund 40 EUR?", key="refund-42")
+            if fail is not None and fail():
+                raise RuntimeError("payment service down")
+            calls.append((request.context.get("account"), answer.payload))
+            return "Refunded."
+
+        return app
+
+    @staticmethod
+    def _answer(thread, payload=True):
+        body = make_run("", thread_id=thread)
+        body["messages"] = []
+        body["resume"] = [
+            {"interruptId": "refund-42", "status": "resolved", "payload": payload}
+        ]
+        return body
+
+    def _pending(self, url, thread):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        return (
+            ManagedMemoryService(url, deployment_id="7")
+            ._pending_questions()
+            ._get(thread)
+        )
+
+    def test_another_replica_answers_the_question_and_the_record_is_deleted(
+        self, tmp_path
+    ):
+        url = f"sqlite:///{tmp_path}/memory.db"
+        calls = []
+        one = TestClient(self._replica(url, calls))
+        two = TestClient(self._replica(url, calls))
+        paused = parse_sse(
+            one.post(
+                "/v1/run",
+                json=make_run(
+                    "refund order 42", thread_id="c1", context={"account": "c-7"}
+                ),
+            ).text
+        )
+        assert paused[-1]["outcome"]["type"] == "interrupt"
+        assert self._pending(url, "c1") is not None
+
+        events = parse_sse(two.post("/v1/run", json=self._answer("c1")).text)
+        assert streamed_text(events) == "Refunded."
+        # the replay is the paused request, context and all
+        assert calls == [("c-7", True)]
+        # answered: nothing is left waiting, and the same answer is refused
+        assert self._pending(url, "c1") is None
+        assert one.post("/v1/run", json=self._answer("c1")).status_code == 409
+        assert calls == [("c-7", True)]
+
+    def test_a_resume_another_replica_holds_is_refused(self, tmp_path):
+        url = f"sqlite:///{tmp_path}/memory.db"
+        calls = []
+        one = TestClient(self._replica(url, calls))
+        one.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        # another replica has claimed it and is replaying the turn right now
+        pending = self._pending(url, "c1")
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        store = ManagedMemoryService(url, deployment_id="7")._pending_questions()
+        assert store._claim("c1", pending.version)
+        refused = one.post("/v1/run", json=self._answer("c1"))
+        assert refused.status_code == 409
+        assert refused.json()["detail"]["code"] == "resume_in_progress"
+        assert calls == []
+
+    def test_a_resume_that_fails_gives_the_question_back(self, tmp_path):
+        url = f"sqlite:///{tmp_path}/memory.db"
+        calls, failing = [], [True]
+        client = TestClient(self._replica(url, calls, fail=lambda: failing[0]))
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        failed = parse_sse(client.post("/v1/run", json=self._answer("c1")).text)
+        assert failed[-1]["type"] == "RUN_ERROR"
+        pending = self._pending(url, "c1")
+        assert pending is not None and not pending.claimed
+        failing[0] = False
+        events = parse_sse(client.post("/v1/run", json=self._answer("c1")).text)
+        assert streamed_text(events) == "Refunded."
+        assert self._pending(url, "c1") is None
+
+    def test_a_new_message_moves_the_conversation_on(self, tmp_path):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        url = f"sqlite:///{tmp_path}/memory.db"
+        app = AgentApp(
+            tracing=False, memory=ManagedMemoryService(url, deployment_id="7")
+        )
+
+        @app.chat
+        async def chat(request, ctx):
+            if "refund" in request.text:
+                ctx.interrupt("Refund 40 EUR?", key="refund-42")
+            return "ok"
+
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        assert self._pending(url, "c1") is not None
+        # the person asks something else instead of answering
+        client.post("/v1/run", json=make_run("never mind", thread_id="c1"))
+        assert self._pending(url, "c1") is None
+
+    def test_deleting_the_conversation_deletes_what_it_waited_on(self, tmp_path):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        url = f"sqlite:///{tmp_path}/memory.db"
+        client = TestClient(self._replica(url, []))
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        ManagedMemoryService(url, deployment_id="7").clear("c1")
+        assert self._pending(url, "c1") is None
+
+    def test_another_deployments_record_is_not_seen(self, tmp_path):
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        url = f"sqlite:///{tmp_path}/memory.db"
+        TestClient(self._replica(url, [])).post(
+            "/v1/run", json=make_run("refund order 42", thread_id="c1")
+        )
+        other = ManagedMemoryService(url, deployment_id="8")._pending_questions()
+        assert other._get("c1") is None
+
+
+class TestProcessPending:
+    """The in-process record a conversation waits on, for agents without a shared store."""
+
+    def test_a_claim_names_the_version_it_read(self):
+        from hopsworks_agents.protocol.pending import _ProcessPending
+
+        store = _ProcessPending()
+        store._put("c1", "{}", _far())
+        version = store._get("c1").version
+        assert store._claim("c1", version)
+        # a second resume that read the same version loses
+        assert not store._claim("c1", version)
+        assert store._get("c1").claimed
+        store._release("c1")
+        assert not store._get("c1").claimed
+
+    def test_a_claim_past_its_lease_can_be_taken_again(self):
+        from datetime import timedelta
+
+        from hopsworks_agents.protocol import pending as module
+
+        store = module._ProcessPending()
+        store._put("c1", "{}", _far())
+        version = store._get("c1").version
+        assert store._claim("c1", version)
+        store._rows["c1"]["claimed_at"] -= module.CLAIM_LEASE + timedelta(seconds=1)
+        # the replica holding it died mid-turn
+        current = store._get("c1")
+        assert not current.claimed
+        assert store._claim("c1", current.version)
+
+    def test_an_expired_record_is_gone(self):
+        from datetime import datetime, timedelta
+
+        from hopsworks_agents.protocol.pending import _ProcessPending
+
+        store = _ProcessPending()
+        store._put("c1", "{}", datetime(2000, 1, 1) + timedelta(days=1))
+        assert store._get("c1") is None
+
+
+def _far():
+    from datetime import datetime
+
+    return datetime(2999, 1, 1)
+
+
 class TestInterrupts:
     """``ctx.interrupt``: pause a turn to ask a person, and go on with their answer."""
 

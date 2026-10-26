@@ -93,6 +93,10 @@ class HandlerContext:
         # turn lifecycle bookkeeping, owned by AgentApp
         self._turn_open = False
         self._next_seq = 1
+        # a resume holds the conversation's pending record until the turn ends
+        self._claimed = False
+        # the turn asked a person and is waiting: the record is fresh, not held
+        self._paused = False
         # the turn's root OTel span, set by the route when tracing is active.
         # None when untraced, so every read must tolerate it.
         self._span: Any = None

@@ -51,6 +51,7 @@ from .models import (
     new_conversation_id,
     new_response_id,
 )
+from .pending import EXPIRED_GRACE, RETENTION, _PendingQuestions, _ProcessPending
 from .tracing import resolve_framework, setup_tracing, turn_span
 
 
@@ -166,12 +167,11 @@ class AgentApp(FastAPI):
         self._last_trace: OrderedDict[str, str] = OrderedDict()
         # Evaluation trials' bindings, by trial conversation; see _resolve_subject.
         self._trial_subjects: _BoundedDict = _BoundedDict(LAST_TRACE_LIMIT)
-        # What each paused conversation is waiting on, by conversation id: the
-        # interrupt ids, when each expires, and the request the turn was asked
-        # with, which a resume replays. In memory, like the trial bindings: a
-        # pod that restarts forgets it, and a resume it then receives is
+        # What each paused conversation waits on, when the memory store does
+        # not keep it (no memory, or one that is not shared). In this process
+        # only: a resume another replica or a restarted pod receives is then
         # refused, since answers nobody asked for must not reach the handler.
-        self._pending_interrupts: _BoundedDict = _BoundedDict(LAST_TRACE_LIMIT)
+        self._local_pending = _ProcessPending()
 
         # framework: explicit arg > AGENT_FRAMEWORK env (platform-injected) >
         # 'custom'. Drives which OpenInference instrumentor tracing activates.
@@ -653,9 +653,7 @@ class AgentApp(FastAPI):
         housekeeping: skip it and the store keeps a question whose answer never
         arrived, which then reappears as history on the next turn.
         """
-        if response is not None:
-            # answered: whatever the conversation was waiting on is behind it
-            self._pending_interrupts.pop(ctx.conversation_id, None)
+        await self._settle_pending(ctx, answered=response is not None)
         if self.memory is None or not ctx._turn_open:
             return
         ctx._turn_open = False
@@ -823,13 +821,18 @@ class AgentApp(FastAPI):
         finally:
             current_context.reset(token)
 
-    def _check_resume(
+    def _pending_store(self) -> _PendingQuestions:
+        """Where paused conversations are kept: the memory store's, when it has one."""
+        shared = self.memory._pending_questions() if self.memory is not None else None
+        return shared if shared is not None else self._local_pending
+
+    async def _check_resume(
         self,
         conversation_id: str | None,
         answers: list[ResumeAnswer],
         run_id: str | None,
     ) -> ChatRequest | None:
-        """The paused request a resume replays, with every answer it has, after checking them.
+        """The paused request a resume replays, with every answer it has, after checking and claiming it.
 
         The replay is the request the turn paused on, not the resume's own: the
         handler is asked the same thing again, with the same context, metadata,
@@ -837,22 +840,35 @@ class AgentApp(FastAPI):
         question sends just the answers.
 
         A turn that asks twice pauses twice, and a client answers only what is
-        open, as AG-UI asks; the answers from earlier pauses are kept here and
-        handed back, since the replay asks those questions again too.
+        open, as AG-UI asks; the answers from earlier pauses are kept with the
+        paused request and handed back, since the replay asks those questions
+        again too.
 
         AG-UI asks a resume to answer every open interrupt and nothing else, and
-        a question past its expiry cannot be answered any more. Returns None
-        when the request resumes nothing.
+        a question past its expiry cannot be answered any more. The record is
+        claimed before the replay runs, so that two replicas handed the same
+        answer do not both run the action it approves; ``_settle_pending``
+        deletes it when the turn completes and gives it back when it does not.
+        Returns None when the request resumes nothing.
 
         Raises:
-            AgentError: The conversation is not paused here (it never was, it
-                was answered already, or this process restarted), or the
-                answers leave a question open, answer one that was not asked,
-                or answer one that has expired.
+            AgentError: The conversation is not paused (it never was, it was
+                answered already, or its record is gone with a restarted pod),
+                another resume holds it, the answers leave a question open,
+                answer one that was not asked or answer one that has expired,
+                or the store could not be read.
         """
         if not answers:
             return None
-        pending = self._pending_interrupts.get(conversation_id or "")
+        store = self._pending_store()
+        try:
+            pending = await asyncio.to_thread(store._get, conversation_id or "")
+        except Exception as err:  # noqa: BLE001 -- said to the client, retryable
+            raise AgentError(
+                "The agent could not read what this conversation is waiting on.",
+                "pending_unavailable",
+                503,
+            ) from err
         if pending is None:
             # Unchecked answers would be consumed by ctx.interrupt() without
             # pausing: a fresh or finished conversation could approve an
@@ -864,9 +880,14 @@ class AgentApp(FastAPI):
                 "nothing_to_resume",
                 409,
             )
-        earlier = {a.interrupt_id: a for a in pending["request"].resume}
+        if pending.claimed:
+            raise _resume_in_progress()
+        record = json.loads(pending.record)
+        paused = _restore_request(record["request"])
+        expires: dict[str, str | None] = record["expires"]
+        earlier = {a.interrupt_id: a for a in paused.resume}
         answers = [a for a in answers if a.interrupt_id not in earlier]
-        asked = set(pending["expires"])
+        asked = set(expires)
         answered = {answer.interrupt_id for answer in answers}
         if asked - answered:
             raise AgentError(
@@ -885,7 +906,7 @@ class AgentApp(FastAPI):
         from datetime import datetime, timezone  # noqa: PLC0415
 
         now = datetime.now(timezone.utc).isoformat()
-        expired = sorted(i for i, at in pending["expires"].items() if at and at < now)
+        expired = sorted(i for i, at in expires.items() if at and at < now)
         if expired:
             raise AgentError(
                 "These questions expired before they were answered: "
@@ -893,23 +914,83 @@ class AgentApp(FastAPI):
                 "interrupt_expired",
                 400,
             )
-        return pending["request"].model_copy(
-            deep=True,
-            update={"resume": [*earlier.values(), *answers], "run_id": run_id},
+        try:
+            claimed = await asyncio.to_thread(
+                store._claim, conversation_id or "", pending.version
+            )
+        except Exception as err:  # noqa: BLE001
+            raise AgentError(
+                "The agent could not take up the answers just now.",
+                "pending_unavailable",
+                503,
+            ) from err
+        if not claimed:
+            raise _resume_in_progress()
+        return paused.model_copy(
+            update={"resume": [*earlier.values(), *answers], "run_id": run_id}
         )
 
-    def _pause(self, ctx: HandlerContext, span: Any, interrupts: list[dict]) -> None:
-        """Remember what the conversation now waits on, and say so on the span."""
-        self._pending_interrupts[ctx.conversation_id] = {
-            # a copy: the handler may have changed the request it was given
-            "request": ctx.request.model_copy(
-                deep=True, update={"conversation_id": ctx.conversation_id}
-            ),
+    async def _pause(
+        self, ctx: HandlerContext, span: Any, interrupts: list[dict]
+    ) -> AgentError | None:
+        """Record what the conversation now waits on, and say so on the span.
+
+        Returns the error to end the turn with when it could not be recorded:
+        a question the agent cannot recognise the answer to must not be asked.
+        """
+        record = {
+            # the request as the handler was given it, answers so far included
+            "request": ctx.request.model_dump(mode="json"),
             "expires": {q["id"]: q.get("expires_at") for q in interrupts},
         }
+        try:
+            await asyncio.to_thread(
+                self._pending_store()._put,
+                ctx.conversation_id,
+                json.dumps(record),
+                _record_expiry(interrupts),
+            )
+        except Exception:  # noqa: BLE001
+            import logging  # noqa: PLC0415
+
+            logging.getLogger(__name__).exception("could not record the questions")
+            failure = AgentError(
+                "The agent asked a question it could not record, so it would not "
+                "recognise the answer. Try again.",
+                "pending_unavailable",
+                503,
+            )
+            _record_span_error(span, failure)
+            return failure
+        ctx._paused = True
         _set_span_attribute(
             span, conventions.TURN_INTERRUPTS, [q["id"] for q in interrupts]
         )
+        return None
+
+    async def _settle_pending(self, ctx: HandlerContext, *, answered: bool) -> None:
+        """Clean up what the conversation waited on, as the turn ends.
+
+        Answered, the record is deleted: its questions are behind the
+        conversation, and so are they when a new message moved it on instead.
+        A resume that did not finish gives its claim back, so the person can
+        answer again. Best effort: a record that cannot be deleted stays
+        claimed, which refuses a second resume until the lease runs out.
+        """
+        if not answered and not (ctx._claimed and not ctx._paused):
+            return
+        store = self._pending_store()
+        try:
+            if answered:
+                await asyncio.to_thread(store._clear, ctx.conversation_id)
+            else:
+                await asyncio.to_thread(store._release, ctx.conversation_id)
+        except Exception:  # noqa: BLE001
+            import logging  # noqa: PLC0415
+
+            logging.getLogger(__name__).exception(
+                "could not settle what conversation %s waited on", ctx.conversation_id
+            )
 
     def _register_routes(self) -> None:
         @self.get("/.well-known/hopsworks-agent.json")
@@ -942,7 +1023,7 @@ class AgentApp(FastAPI):
                     AgentError("No chat handler registered.", "not_implemented", 501)
                 )
             try:
-                replay = self._check_resume(
+                replay = await self._check_resume(
                     request.conversation_id, request.resume, request.run_id
                 )
             except AgentError as err:
@@ -958,8 +1039,10 @@ class AgentApp(FastAPI):
                     )
                 )
             ctx = self._prepare(request)
+            ctx._claimed = replay is not None
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
+                await self._settle_pending(ctx, answered=False)
                 return _error_response(refused)
             await self._resolve_subject(ctx)
             await self._open_turn(ctx)
@@ -984,7 +1067,9 @@ class AgentApp(FastAPI):
                 except Interrupted as paused:
                     # Not finalized as an answer: the turn is abandoned, and the
                     # resume asks it again, so the transcript holds it once.
-                    self._pause(ctx, span, paused.interrupts)
+                    unrecorded = await self._pause(ctx, span, paused.interrupts)
+                    if unrecorded is not None:
+                        return _error_response(unrecorded)
                     interrupted = AgentResponse.text(
                         "", conversation_id=ctx.conversation_id
                     )
@@ -1026,16 +1111,21 @@ class AgentApp(FastAPI):
                     AgentError("No chat handler registered.", "not_implemented", 501)
                 )
             try:
-                request = self._check_resume(
+                replay = await self._check_resume(
                     run.thread_id,
                     [_resume_answer(entry) for entry in run.resume or []],
                     run.run_id or None,
-                ) or _to_chat_request(run, server_history=self.memory is not None)
+                )
+                request = replay or _to_chat_request(
+                    run, server_history=self.memory is not None
+                )
             except AgentError as err:
                 return _error_response(err)
             ctx = self._prepare(request)
+            ctx._claimed = replay is not None
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
+                await self._settle_pending(ctx, answered=False)
                 return _error_response(refused)
             await self._resolve_subject(ctx)
             await self._open_turn(ctx)
@@ -1386,7 +1476,10 @@ class AgentApp(FastAPI):
                         if kind == "interrupt":
                             # The run ends here with the question; the turn is
                             # abandoned and asked again when it is resumed.
-                            self._pause(ctx, span, payload)
+                            unrecorded = await self._pause(ctx, span, payload)
+                            if unrecorded is not None:
+                                yield stream._error(unrecorded, trace_id=trace_id)
+                                return
                             yield stream._interrupted(payload, trace_id=trace_id)
                             return
                         if kind == "tool_event":
@@ -1606,3 +1699,43 @@ def _annotate_span(ctx: HandlerContext, response: ChatResponse) -> None:
         response.metadata.setdefault("trace_id", format(ctxt.trace_id, "032x"))
     except Exception:  # noqa: BLE001 — correlation is best-effort
         pass
+
+
+def _resume_in_progress() -> AgentError:
+    return AgentError(
+        "Another request is answering these questions already.",
+        "resume_in_progress",
+        409,
+    )
+
+
+def _record_expiry(interrupts: list[dict]) -> Any:
+    """When a paused record can go: its last question's expiry, or the retention for one that has none."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc)
+    ends = []
+    for question in interrupts:
+        at = question.get("expires_at")
+        if not at:
+            ends = []
+            break
+        ends.append(datetime.fromisoformat(str(at).replace("Z", "+00:00")))
+    # a day past the last expiry, so a late answer is told the question
+    # expired rather than that the conversation was never paused
+    end = max(ends) + EXPIRED_GRACE if ends else now + RETENTION
+    return end.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _restore_request(data: dict[str, Any]) -> ChatRequest:
+    """A paused request back from its record, AG-UI messages and tools as the models they were."""
+    request = ChatRequest.model_validate(data)
+    try:
+        from ag_ui.core import Message, Tool  # noqa: PLC0415
+        from pydantic import TypeAdapter  # noqa: PLC0415
+
+        request.messages = TypeAdapter(list[Message]).validate_python(request.messages)
+        request.tools = TypeAdapter(list[Tool]).validate_python(request.tools)
+    except Exception:  # noqa: BLE001 -- a /v1/chat request carries plain values
+        pass
+    return request
