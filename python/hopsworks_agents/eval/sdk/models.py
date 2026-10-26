@@ -47,6 +47,14 @@ def as_datetime(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+def _tag_list(value: Any) -> list[str]:
+    """Tags as a list, whether they arrived as JSON text, a list, or nothing."""
+    parsed = as_json(value, [])
+    if isinstance(parsed, str):
+        parsed = [parsed]
+    return [str(tag) for tag in parsed or []]
+
+
 @public
 def as_json(value: Any, default: Any) -> Any:
     """A JSON-as-text column parsed, or the default when empty or malformed."""
@@ -110,7 +118,10 @@ class Suite(ApiModel):
     suite_id: str = ""
     version: int = 1
     name: str = ""
-    tags: str = ""
+    #: The suite's tags, as a list. The API carries them as JSON text, and read back
+    #: as that text, `tags=[agent.name, *suite.tags]` iterated its characters and
+    #: wrote "[", '"', "r", "e", ... onto every suite it touched.
+    tags: list[str] = field(default_factory=list)
     execution_mode: str = "read_only"
     blocks_are_success: bool = False
     run_on_update: bool = False
@@ -125,9 +136,13 @@ class Suite(ApiModel):
     created_at: str | None = None
     task_count: int | None = None
 
+    def __post_init__(self) -> None:
+        self.tags = _tag_list(self.tags)
+
     @property
     def tag_list(self) -> list[str]:
-        return [str(t) for t in as_json(self.tags, [])]
+        """The same as `tags`; kept for code written when `tags` was JSON text."""
+        return list(self.tags)
 
     @property
     def checks(self) -> list[Check]:
@@ -145,16 +160,20 @@ class EvaluatorTemplate(ApiModel):
     template_id: str = ""
     name: str = ""
     description: str = ""
-    tags: str = "[]"
+    #: The entry's tags, as a list; see `Suite.tags`.
+    tags: list[str] = field(default_factory=list)
     spec: str = "[]"
     created_by: str | None = None
     created_at: str | None = None
     used_in: list[dict[str, Any]] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.tags = _tag_list(self.tags)
+
     @property
     def tag_list(self) -> list[str]:
-        """The tags as a list; the API carries them as a JSON array string, like a suite's."""
-        return [str(t) for t in as_json(self.tags, [])]
+        """The same as `tags`; kept for code written when `tags` was JSON text."""
+        return list(self.tags)
 
     @property
     def checks(self) -> list[dict[str, Any]]:
@@ -178,10 +197,24 @@ class Task(ApiModel):
     category: str | None = None
     created_by: str | None = None
     created_at: str | None = None
+    #: Who the task is asked as -- the request's ``subject`` on every turn. None
+    #: asks anonymously. A task promoted from a trace carries the subject that
+    #: turn ran as, so a memory regression is asked by the person who had the
+    #: memory rather than by a stranger who never did.
+    subject: str | None = None
+    #: The request ``context`` replayed with it, as the JSON text the API keeps;
+    #: :attr:`request_context` is the same as a dict.
+    context: str | None = None
 
     @property
     def messages(self) -> list[dict[str, Any]]:
         return as_json(self.input_messages, [])
+
+    @property
+    def request_context(self) -> dict[str, Any]:
+        """The request context this task is asked with, as a dict; empty when none."""
+        parsed = as_json(self.context, {})
+        return parsed if isinstance(parsed, dict) else {}
 
     @property
     def question(self) -> str:
@@ -395,7 +428,7 @@ class TaskFailure(ApiModel):
     """One task, and what the latest run of its suite did to it."""
 
     task_id: str = ""
-    #: new | regression | fixed | persistent
+    #: new | regression | fixed | persistent | unanswered
     status: str = ""
     previous_verdict: str = ""
     current_verdict: str = ""
@@ -420,6 +453,8 @@ class SuiteFailureHistory(ApiModel):
                 print(suite.suite_name, [t.task_id for t in suite.regressions])
 
     A verdict is ``pass^k``: a task passed only when every gradable trial of it passed.
+    A task whose every trial was an agent error is ``unanswered`` rather than failing: the agent
+    was down, and a run of nothing else is never the baseline the next run is compared with.
     Nothing has to have run since the evaluation itself -- this is read from the trials as
     they are stored.
     """
@@ -437,6 +472,8 @@ class SuiteFailureHistory(ApiModel):
     regressions: int = 0
     fixed: int = 0
     persistent: int = 0
+    #: Tasks the agent did not answer at all in the latest run.
+    unanswered: int = 0
     #: Tasks that passed in both runs, counted rather than listed.
     passing: int = 0
     tasks: list[TaskFailure] = field(default_factory=list)
@@ -468,11 +505,17 @@ class SuiteFailureHistory(ApiModel):
     def still_failing(self) -> list[TaskFailure]:
         return self._of("persistent")
 
+    @property
+    def not_answered(self) -> list[TaskFailure]:
+        """Every trial an agent error in the latest run: an outage, not a wrong answer."""
+        return self._of("unanswered")
+
     def __str__(self) -> str:
         return (
             f"{self.suite_name or self.suite_id}: {self.new_failures} new, "
             f"{self.regressions} regressed, {self.fixed} fixed, "
             f"{self.persistent} still failing"
+            + (f", {self.unanswered} not answered" if self.unanswered else "")
         )
 
 
@@ -534,6 +577,8 @@ class EvalJob(ApiModel):
     #: How many of this job's executions may run at once. None or 1 queues the
     #: second rather than running it beside the first.
     parallel_runs: int | None = None
+    #: How long one turn of a trial may take before it is TIMEOUT; None is ten minutes.
+    trial_timeout_s: int | None = None
     #: Whether a run that broke something is analysed as soon as it finishes.
     #: The analysis job is configured from here and triggered by this one.
     analyse_failures: bool | None = None
@@ -752,12 +797,49 @@ class Trace(ApiModel):
             self.spans[0] if self.spans else None,
         )
 
+    @classmethod
+    def from_api(cls, data: dict[str, Any] | None) -> Trace:
+        """As the API sends it, with each span's and event's attributes put on it.
+
+        The wire format keeps them apart -- one flat list of (spanId, attrKey, attrValue)
+        rows for the whole trace -- because that is how they are stored. Read back, every
+        span looked empty: the span kind, the model, the prompt and the answer all live in
+        attributes, so ``for span in trace.spans`` showed a name, two timestamps and
+        nothing about what happened. The flat lists are still there, and ``attributes_of``
+        still works; this puts a dict on each span as well, which is where anybody looks
+        first. Set with ``setdefault``, so a server that one day sends them inline wins.
+        """
+        trace = super().from_api(data)
+        for span in trace.spans:
+            if isinstance(span, dict):
+                span.setdefault(
+                    "attributes", trace.attributes_of(str(span.get("spanId") or ""))
+                )
+        for event in trace.events:
+            if isinstance(event, dict):
+                event.setdefault(
+                    "attributes", trace.attributes_of_event(event.get("eventId"))
+                )
+        return trace
+
     @public
     def attributes_of(self, span_id: str) -> dict[str, str]:
+        """Every attribute recorded on one span, by key."""
         return {
             a.get("attrKey", ""): a.get("attrValue", "")
             for a in self.span_attributes
             if a.get("spanId") == span_id
+        }
+
+    @public
+    def attributes_of_event(self, event_id: Any) -> dict[str, str]:
+        """Every attribute recorded on one event, by key."""
+        if event_id is None:
+            return {}
+        return {
+            a.get("attrKey", ""): a.get("attrValue", "")
+            for a in self.event_attributes
+            if a.get("eventId") == event_id
         }
 
     @property

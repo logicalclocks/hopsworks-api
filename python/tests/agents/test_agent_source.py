@@ -134,6 +134,36 @@ class TestWhereTheCodeIs:
         assert location.script_file == "chinook/support_agent.py"
         assert location._known()
 
+    def test_a_locally_deployed_agent_is_found_by_its_entry_script(self):
+        # Neither git-backed nor a model: no gitUrl, no modelPath, and the only
+        # thing that says where the code is is the entry script's own path. The
+        # location used to come back unknown for every such agent, so failure
+        # analysis read no source -- every triage came back with no findings,
+        # including for a failure that was a line of the prompt.
+        location = src.CodeLocation._from_serving(
+            {
+                "predictor": "/Projects/g1/Resources/fa/advisor_agent_openai.py",
+                "modelPath": None,
+                "gitUrl": None,
+            }
+        )
+        assert location.model_path == "/Projects/g1/Resources/fa"
+        assert location.script_file.endswith("advisor_agent_openai.py")
+        assert location._known()
+
+    def test_a_git_agent_is_still_read_from_git(self):
+        # The script path must not become a HopsFS location for an agent whose
+        # code is in a repository: the clone is the source of truth there.
+        location = src.CodeLocation._from_serving(
+            {
+                "gitUrl": "https://github.com/o/r",
+                "predictor": "/Projects/g1/Resources/fa/advisor.py",
+                "modelPath": None,
+            }
+        )
+        assert location.model_path == ""
+        assert location.git_url == "https://github.com/o/r"
+
     def test_an_override_is_a_git_url_with_an_optional_ref_or_a_hopsfs_path(self):
         git = src.CodeLocation._from_override("https://github.com/o/r#v2")
         assert git.git_url == "https://github.com/o/r" and git.git_branch == "v2"
@@ -300,3 +330,46 @@ class TestImports:
         assert (
             src._module_candidates(bundle().files, "agent/main.py", module) == expected
         )
+
+
+class TestTheModuleAboutTheFailureIsShownFirst:
+    """In import order, a large early module used the budget before the prompt file.
+
+    The reference advisor's agent file and memory module filled the old budget
+    between them, so its prompts were never shown and no triage cited code.
+    """
+
+    def test_after_the_entry_imports_are_ranked_by_the_failure(self):
+        files = {
+            "agent.py": "import memory\nimport prompts\n",
+            "memory.py": "x = 1\n" * 200,
+            "prompts.py": "Name the risk analyst before calling it.\n",
+        }
+        shown = src._relevant_files(
+            src.SourceBundle(files=files, entry="agent.py"),
+            clues=["announced the risk analyst without calling it"],
+            budget_chars=10_000,
+        )
+        assert [path for path, _ in shown][:2] == ["agent.py", "prompts.py"]
+
+    def test_the_default_budget_holds_an_agent_and_its_prompts(self):
+        assert src.DEFAULT_SOURCE_CHARS >= 60_000
+
+
+def test_another_agents_folder_is_not_shown_because_it_mentions_a_tool():
+    # a repository of several agents gave the analysis all 94 of their files
+    files = {
+        "financial_advisor/agent.py": "import prompts\n",
+        "financial_advisor/prompts.py": "Call assess_risk last.\n",
+        "financial_advisor/notes.py": "assess_risk is the last step\n",
+        "travel_concierge/agent.py": "def assess_risk(): ...\n",
+    }
+    shown = [
+        path
+        for path, _ in src._relevant_files(
+            src.SourceBundle(files=files, entry="financial_advisor/agent.py"),
+            tool_names=["assess_risk"],
+        )
+    ]
+    assert "travel_concierge/agent.py" not in shown
+    assert "financial_advisor/notes.py" in shown

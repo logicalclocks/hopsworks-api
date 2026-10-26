@@ -206,8 +206,14 @@ def _assign_clusters(
     is nothing to group them by, and a bucket called "unknown" would hide that.
     A dismissed cluster is not reopened by a new member; the member is filed under
     it so the count is honest, and the reviewer's decision stands until they change it.
+
+    A cluster's size counts conversations, not verdicts. One trace that fails
+    three judges arrives here as three rows with the same signature, and counting
+    each of them made a cluster of three out of one bad answer.
     """
     now = now or datetime.now(tz=timezone.utc)
+    #: Which traces this run has already counted towards each cluster.
+    counted: dict[str, set[str]] = {}
     by_signature: dict[str, Cluster] = {}
     for cluster in existing:
         key = _signature_key(cluster.signature)
@@ -231,8 +237,21 @@ def _assign_clusters(
             )
             by_signature[_signature_key(signature)] = cluster
         row["cluster_id"] = cluster.cluster_id
-        cluster.size += 1
         cluster.changed = True
+        # One conversation counts once. A trace that fails three judges produces
+        # three verdicts and three triage rows, and counted one apiece a single
+        # bad answer filled a cluster and listed the same trace three times as
+        # its members -- a queue that says "3" about one thing to fix. The rows
+        # are all filed, because each says which judge objected; only the size
+        # and the representative are per conversation.
+        trace_id = str(row.get("trace_id") or "")
+        first_for_trace = not trace_id or trace_id not in counted.setdefault(
+            cluster.cluster_id, set()
+        )
+        if first_for_trace:
+            if trace_id:
+                counted[cluster.cluster_id].add(trace_id)
+            cluster.size += 1
         cluster.first_seen = min(cluster.first_seen or seen_at, seen_at)
         cluster.last_seen = max(cluster.last_seen or seen_at, seen_at)
         if SEVERITY_RANK.get(str(row.get("severity") or "low"), 0) > SEVERITY_RANK.get(

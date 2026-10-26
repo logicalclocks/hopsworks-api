@@ -297,6 +297,18 @@ class TestGradingOneTrace:
         trial = _grade_trace([], "r", 1, "t", detail(), None)
         assert trial.status is not TrialStatus.FAILED
 
+    def test_a_judge_that_could_not_be_called_is_not_a_missing_trace(self):
+        # A provider out of credits answered every judge call with a 429; the
+        # trials read TRACE_MISSING, so the window looked like a broken tracing
+        # pipeline while every trace was there.
+        class OutOfCredits:
+            def __call__(self, prompt: str) -> str:
+                raise RuntimeError("Error code: 429 - insufficient_quota")
+
+        trace = {"trace_id": "t", "tool_calls": [], "tool_error_count": 0}
+        trial = _grade_trace(with_judge(OutOfCredits()), "r", 1, "t", detail(), trace)
+        assert trial.status is TrialStatus.EVALUATOR_ERROR
+
     def test_a_graded_trace_records_that_it_had_one(self):
         trace = {
             "trace_id": "t",
@@ -340,11 +352,12 @@ class FakeSession:
             if self._count is not None:
                 body["count"] = self._count
             return FakeResponse(body)
-        if "/traces/sessions/" in url:
+        if url.endswith("/traces/sessions"):
+            # The session id travels as a query parameter: a trial's id has
+            # slashes in it, so in the path it was a different route.
             self.session_fetches += 1
-            return FakeResponse(
-                {"items": self._sessions.get(url.rsplit("/", 1)[-1], [])}
-            )
+            asked = (params or {}).get("sessionId", "")
+            return FakeResponse({"items": self._sessions.get(asked, [])})
         return FakeResponse(self._details[url.rsplit("/", 1)[-1]])
 
 
@@ -829,3 +842,41 @@ class TestTheWindowIsTheServersJob:
         assert {t.task_id for t in result.trials} == {"recent"}
         assert result.available == 1
         assert result.processed_through_ms is None
+
+
+class TestASampleIsCostedLikeASuite:
+    """A monitor run priced its trials at nothing while a suite run costed the same traffic.
+
+    Every run carries the deployment's prices; the suite runner applied them and the
+    sample job did not, so every monitor reported `estimated_cost 0.0` -- free, not
+    unpriced.
+    """
+
+    @staticmethod
+    def _graded(**prices):
+        session = FakeSession([summary("a", 1)], {"a": detail()})
+        client = FakeClient(
+            {"a": {"input_tokens": 1_000_000, "output_tokens": 500_000}}
+        )
+        return _run_sample(
+            client, session, "https://h", 1, sample_run(**prices), trace_only()
+        ).trials[0]
+
+    def test_a_priced_deployment_prices_the_trial(self):
+        trial = self._graded(
+            inputTokenPricePerMillion=2.0, outputTokenPricePerMillion=8.0
+        )
+        assert trial.estimated_cost == 6.0
+
+    def test_an_unpriced_one_stays_unpriced(self):
+        assert self._graded().estimated_cost is None
+
+
+def test_a_sampled_turn_carries_who_it_was_for():
+    from hopsworks_agents.eval.sample_job import _subject_of
+
+    assert (
+        _subject_of({"spanAttributes": [{"attrKey": "user.id", "attrValue": "m@x"}]})
+        == "m@x"
+    )
+    assert _subject_of({"spanAttributes": []}) == ""
