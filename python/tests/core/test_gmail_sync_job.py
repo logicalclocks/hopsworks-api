@@ -116,9 +116,11 @@ class FakeWriter:
         self.table = {}
         self.calls = []
         self.compacted = []
+        self.compactions = 0
 
-    def _compact(self, day):
-        self.compacted.append(day)
+    def _compact(self, days):
+        self.compacted.extend(days)
+        self.compactions += 1
 
     def _upsert(self, rows, overwrite):
         self.calls.append((len(rows), overwrite))
@@ -499,8 +501,8 @@ class TestIncremental:
         names = sorted(
             p.name for p in (tmp_path / "Resources" / "mail" / g.STATE_DIR).iterdir()
         )
-        # Four upsert checkpoints, then one per compacted day.
-        assert names == ["7.json", "8.json"]
+        # Four upsert checkpoints, then one for the compaction.
+        assert names == ["4.json", "5.json"]
 
 
 class TestCompaction:
@@ -540,18 +542,19 @@ class TestCompaction:
         writer = FakeWriter()
         _run(tmp_path, client, _config(), writer)
         assert writer.compacted == ["2026-10-20", "2026-10-21"]
+        assert writer.compactions == 1
 
     def test_a_failed_compaction_is_retried_by_the_next_run(self, tmp_path):
         client = FakeGmail([_message("a", DAY1)])
         writer = FakeWriter()
 
-        def fail(day):
+        def fail(days):
             raise OSError("namenode unavailable")
 
         writer._compact = fail
         with pytest.raises(OSError):
             _run(tmp_path, client, _config(), writer)
-        writer._compact = writer.compacted.append
+        writer._compact = writer.compacted.extend
         _run(tmp_path, client, _config(), writer, execution_id="8")
         assert writer.compacted == ["2026-10-20"]
         assert sorted(writer.table) == ["a"]

@@ -525,10 +525,11 @@ class _FeatureGroupWriter:
         frame["size_estimate"] = frame["size_estimate"].astype("Int64")
         self._fg.insert(frame, overwrite=overwrite, wait=True)
 
-    def _compact(self, day: str) -> None:
-        """Rewrite one day's files into as few files of up to COMPACTION_TARGET_BYTES as fit.
+    def _compact(self, days: list[str]) -> None:
+        """Rewrite each day's files into as few files of up to COMPACTION_TARGET_BYTES as fit.
 
-        A Delta optimize commit: readers see the day before or after it, never in between.
+        One Delta optimize commit for all the days: readers see them before or after it, never in between.
+        A day already in one file is left as it is.
         """
         from deltalake import DeltaTable
         from hsfs.core import delta_engine
@@ -541,7 +542,7 @@ class _FeatureGroupWriter:
             storage_options=engine._get_delta_rs_storage_options(),
         )
         table.optimize.compact(
-            partition_filters=[("day", "=", day)],
+            partition_filters=[("day", "in", days)],
             target_size=COMPACTION_TARGET_BYTES,
             max_concurrent_tasks=1,
         )
@@ -937,20 +938,20 @@ class _SyncRun:
         )
 
     def _compact_ended_days(self, state: _SyncState, seq: int) -> None:
-        """Compact every written day that has ended in UTC, and checkpoint each one done.
+        """Compact every written day that has ended in UTC, in one commit, and checkpoint them done.
 
         An hourly job leaves a file per run in the current day; the first run after midnight compacts the day before.
         A day still under way is left alone, so its files are rewritten once, not every hour.
+        A backfill ends with thousands of ended days, which one commit compacts in seconds and a commit per day in hours.
         """
         today = _day_of(int(self._clock() * 1000))
-        for day in sorted(set(state.uncompacted_days)):
-            if day >= today:
-                continue
-            self._writer._compact(day)
-            state.uncompacted_days = [d for d in state.uncompacted_days if d != day]
-            seq += 1
-            _write_state(self._target, state, seq)
-            _logger.info("Compacted %s", day)
+        ended = sorted(day for day in set(state.uncompacted_days) if day < today)
+        if not ended:
+            return
+        self._writer._compact(ended)
+        state.uncompacted_days = [d for d in state.uncompacted_days if d >= today]
+        _write_state(self._target, state, seq + 1)
+        _logger.info("Compacted %d days, %s to %s", len(ended), ended[0], ended[-1])
 
     def _staging_root(self) -> Path:
         return self._target.with_name(self._target.name + STAGING_SUFFIX)
