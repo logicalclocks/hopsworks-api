@@ -407,7 +407,7 @@ class AppApi:
         return _client._send_request("POST", path_params, headers=headers)
 
     def _set_public(self, app_name: str, enabled: bool):
-        """Enable or disable public (no-login) access for a Streamlit app.
+        """Enable or disable public (no-login) access for an app.
 
         On enable the response carries the share token (data-owner only); the
         caller builds the share URL from it.
