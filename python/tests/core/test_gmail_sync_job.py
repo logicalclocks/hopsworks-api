@@ -17,6 +17,7 @@
 import base64
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from email.message import EmailMessage
 
@@ -30,6 +31,8 @@ DAY1 = int(
 )
 DAY2 = DAY1 + 1
 HOUR = 3_600_000
+# A run two hours after NOW_MS, by when new mail has arrived.
+LATER = NOW_MS + 2 * HOUR
 PROJECT_ROOT = "/Projects/mail"
 
 
@@ -66,8 +69,10 @@ def _raw(
     return base64.urlsafe_b64encode(message.as_bytes()).decode().rstrip("=")
 
 
-def _message(message_id, internal_ms, labels=("INBOX",), **kwargs):
+def _message(message_id, internal_ms, labels=("INBOX",), received_ms=None, **kwargs):
+    """A message in `raw` format; `received_ms`, when Gmail got it, defaults to `internal_ms`."""
     return {
+        "_received_ms": internal_ms if received_ms is None else received_ms,
         "id": message_id,
         "threadId": "t-" + message_id,
         "historyId": "100",
@@ -93,13 +98,20 @@ class FakeGmail:
 
     def _list_message_ids(self, query, label_ids):
         self.queries.append((query, list(label_ids)))
-        # Like Gmail, labelIds selects the messages carrying every label given.
+        # Like Gmail, after: and before: search on when a message was received, and labelIds selects the messages carrying every label given.
+        after = re.search(r"after:(\d+)", query)
+        before = re.search(r"before:(\d+)", query)
+
+        def selected(m):
+            received_s = m["_received_ms"] // 1000
+            return (
+                set(label_ids) <= set(m["labelIds"])
+                and (after is None or received_s > int(after.group(1)))
+                and (before is None or received_s < int(before.group(1)))
+            )
+
         return sorted(
-            (
-                i
-                for i, m in self.messages.items()
-                if set(label_ids) <= set(m["labelIds"])
-            ),
+            (i for i, m in self.messages.items() if selected(m)),
             key=lambda i: -int(self.messages[i]["internalDate"]),
         )
 
@@ -277,11 +289,18 @@ class TestIncremental:
             FakeWriter(),
         )
         assert _run(tmp_path, client, _config(), writer).copied == 2
-        client.add(_message("c", DAY2 + 5_000))
-        second = _run(tmp_path, client, _config(), writer, execution_id="8")
+        client.add(_message("c", NOW_MS + HOUR))
+        second = _run(
+            tmp_path, client, _config(), writer, execution_id="8", now_ms=LATER
+        )
         assert second.copied == 1
-        assert second.cursor_ms == DAY2 + 5_000
-        assert _run(tmp_path, client, _config(), writer, execution_id="9").copied == 0
+        assert second.cursor_ms == LATER - g.RUN_HORIZON_MS
+        assert (
+            _run(
+                tmp_path, client, _config(), writer, execution_id="9", now_ms=LATER
+            ).copied
+            == 0
+        )
         assert sorted(writer.table) == ["a", "b", "c"]
         assert all(not overwrite for _, overwrite in writer.calls)
 
@@ -306,7 +325,7 @@ class TestIncremental:
         )
         query, labels = client.queries[-1]
         assert query.startswith("(from:bob) -in:drafts after:")
-        assert f"after:{DAY1 // 1000 - 1}" in query
+        assert f"after:{(NOW_MS - g.RUN_HORIZON_MS) // 1000 - 1}" in query
         assert labels == ["INBOX"]
 
     @pytest.mark.parametrize("strategy", ["INCREMENTAL_TIMESTAMP", "FULL_LOAD"])
@@ -324,22 +343,62 @@ class TestIncremental:
         # The SENT-only message is the oldest, so the backfill must start from it.
         assert sorted(writer.table) == ["both", "inbox", "sent"]
 
-    def test_messages_at_the_cursors_millisecond_are_neither_lost_nor_duplicated(
-        self, tmp_path, monkeypatch
+    def test_messages_in_the_overlap_with_the_cursor_are_neither_lost_nor_duplicated(
+        self, tmp_path
     ):
-        monkeypatch.setattr(g, "UPSERT_BATCH", 500)
-        client = FakeGmail([_message(f"m{i:04d}", DAY1) for i in range(1200)])
+        cursor = NOW_MS - g.RUN_HORIZON_MS
+        # Received in the cursor's second: one before the cursor, one after it but indexed only after the run.
+        client = FakeGmail([_message("before", DAY1, received_ms=cursor - 200)])
         writer = FakeWriter()
         _run(tmp_path, client, _config(), writer)
-        client.add(_message("late", DAY1))
+        client.add(_message("late", DAY1, received_ms=cursor + 300))
         upserted_before = sum(n for n, _ in writer.calls)
-        assert _run(tmp_path, client, _config(), writer, execution_id="8").copied == 1
+        second = _run(
+            tmp_path, client, _config(), writer, execution_id="8", now_ms=LATER
+        )
+        assert second.copied == 1
         assert sum(n for n, _ in writer.calls) == upserted_before + 1
-        assert len(writer.table) == 1201
+        assert sorted(writer.table) == ["before", "late"]
+
+    def test_a_message_is_copied_whenever_gmail_received_it(self, tmp_path):
+        # Gmail searches on when it received a message; internalDate can be the sender's Date, days away.
+        client = FakeGmail(
+            [
+                _message("dated_later", DAY1, received_ms=DAY1 - 9 * 24 * HOUR),
+                _message("dated_earlier", DAY1 - 3 * g.WINDOW_MS, received_ms=DAY1),
+                _message("old_date", 0, received_ms=DAY1 - 2 * g.WINDOW_MS),
+                _message("anchor", DAY1 - 4 * g.WINDOW_MS),
+            ]
+        )
+        writer = FakeWriter()
+        _run(tmp_path, client, _config(), writer)
+        assert sorted(writer.table) == [
+            "anchor",
+            "dated_earlier",
+            "dated_later",
+            "old_date",
+        ]
+        client.add(_message("delayed", DAY1, received_ms=NOW_MS + HOUR))
+        _run(tmp_path, client, _config(), writer, execution_id="8", now_ms=LATER)
+        assert "delayed" in writer.table
+
+    def test_a_cursor_from_an_earlier_version_is_refused(self, tmp_path):
+        client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()
+        _run(tmp_path, client, _config(), writer)
+        state_dir = tmp_path / "Resources" / "mail" / g.STATE_DIR
+        for path in state_dir.iterdir():
+            state = json.loads(path.read_text())
+            path.write_text(json.dumps({**state, "schema_version": 2}))
+        with pytest.raises(g._GmailSyncError, match="earlier version"):
+            _run(tmp_path, client, _config(), writer, execution_id="8")
 
     def test_initial_value_is_an_inclusive_lower_bound(self, tmp_path):
         client = FakeGmail(
-            [_message("old", DAY1 - 1), _message("edge", DAY1), _message("new", DAY2)]
+            [
+                _message("old", DAY1 - 5_000),
+                _message("edge", DAY1),
+                _message("new", DAY2),
+            ]
         )
         writer = FakeWriter()
         _run(tmp_path, client, _config(initialValue=DAY1), writer)
@@ -360,7 +419,9 @@ class TestIncremental:
 
     def test_the_cursor_is_checkpointed_after_every_batch(self, tmp_path, monkeypatch):
         monkeypatch.setattr(g, "UPSERT_BATCH", 2)
-        client = FakeGmail([_message(str(i), DAY1 + i * HOUR) for i in range(5)])
+        client = FakeGmail(
+            [_message(str(i), NOW_MS - (5 - i) * g.WINDOW_MS) for i in range(5)]
+        )
         writer = FakeWriter()
         real_write_state = g._write_state
 
@@ -391,7 +452,7 @@ class TestIncremental:
         assert writer.calls == [(2, False), (2, False), (1, False)]
         assert list(writer.table) == ["5", "4", "3", "2", "1"]
         state, _ = g._read_state(tmp_path / "Resources" / "mail")
-        assert state.cursor_ms == NOW_MS - g.WINDOW_MS
+        assert state.cursor_ms == NOW_MS - g.RUN_HORIZON_MS
         assert writer.compacted == result.days
 
     def test_without_a_start_date_the_oldest_message_is_copied(self, tmp_path):
@@ -496,12 +557,12 @@ class TestIncremental:
 
     def test_checkpoints_keep_the_previous_version(self, tmp_path, monkeypatch):
         monkeypatch.setattr(g, "UPSERT_BATCH", 1)
-        client = FakeGmail([_message(str(i), DAY1 + i * 86_400_000) for i in range(4)])
+        client = FakeGmail([_message(str(i), DAY1 - i * g.WINDOW_MS) for i in range(4)])
         _run(tmp_path, client, _config(), FakeWriter())
         names = sorted(
             p.name for p in (tmp_path / "Resources" / "mail" / g.STATE_DIR).iterdir()
         )
-        # Four upsert checkpoints, then one for the compaction.
+        # One upsert checkpoint per weekly window, then one for the compaction.
         assert names == ["4.json", "5.json"]
 
 
@@ -584,7 +645,7 @@ class TestFullLoad:
 
     def test_only_the_first_batch_overwrites(self, tmp_path, monkeypatch):
         monkeypatch.setattr(g, "UPSERT_BATCH", 2)
-        client = FakeGmail([_message(str(i), DAY1 + i) for i in range(5)])
+        client = FakeGmail([_message(str(i), DAY1 - i * g.WINDOW_MS) for i in range(5)])
         writer = FakeWriter()
         _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
         assert writer.calls == [(2, True), (2, False), (1, False)]
@@ -593,8 +654,13 @@ class TestFullLoad:
     def test_incremental_after_a_full_load_continues_from_its_cursor(self, tmp_path):
         client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()
         _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
-        client.add(_message("b", DAY2))
-        assert _run(tmp_path, client, _config(), writer, execution_id="8").copied == 1
+        client.add(_message("b", NOW_MS + HOUR))
+        assert (
+            _run(
+                tmp_path, client, _config(), writer, execution_id="8", now_ms=LATER
+            ).copied
+            == 1
+        )
         assert sorted(writer.table) == ["a", "b"]
 
     def test_a_publication_interrupted_between_renames_is_restored(self, tmp_path):
@@ -606,8 +672,8 @@ class TestFullLoad:
         previous.parent.mkdir()
         mail.rename(previous)
         (tmp_path / "Resources" / "mail.__staging__" / "7").mkdir(parents=True)
-        client.add(_message("b", DAY2))
-        _run(tmp_path, client, _config(), writer, execution_id="8")
+        client.add(_message("b", NOW_MS + HOUR))
+        _run(tmp_path, client, _config(), writer, execution_id="8", now_ms=LATER)
         assert sorted(writer.table) == ["a", "b"]
         assert (mail / "day=2026-10-20" / "a" / "x.bin").exists()
         assert sorted(p.name for p in (tmp_path / "Resources").iterdir()) == ["mail"]

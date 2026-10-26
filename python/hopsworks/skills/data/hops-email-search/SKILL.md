@@ -34,7 +34,7 @@ T=/hopsfs/featurestore/<project>_featurestore.db/<feature group>_1
 |---|---|
 | `day` | Partition: UTC receive date as a string, `'YYYY-MM-DD'` |
 | `hour` | UTC receive hour as a string, `'00'` to `'23'` |
-| `internal_date` | Receive time, UTC timestamp; use it for exact message times |
+| `internal_date` | Gmail's `internalDate`, UTC timestamp: when Gmail accepted the message, or the sender's `Date` for imported mail; use it for exact message times |
 | `message_id`, `thread_id` | Stable Gmail ids; `message_id` is unique |
 | `from_address` | Sender, e.g. `Anna Berg <anna@example.com>` |
 | `to_addresses`, `cc_addresses`, `bcc_addresses` | Recipient lists |
@@ -49,7 +49,7 @@ T=/hopsfs/featurestore/<project>_featurestore.db/<feature group>_1
 1. Inspect the schema once: `duckdb -init /opt/duckdb/init.sql -c "DESCRIBE SELECT * FROM delta_scan('$T');"`.
 2. Translate the request into one read-only SQL query.
    Filter on `day` whenever there is a date range: it is the partition, so DuckDB reads only those days.
-   `day` is the UTC receive date; for an exact local time window filter on `internal_date` as well.
+   `day` is the UTC date of `internal_date`; for an exact local time window filter on `internal_date` as well.
    With no date in the question, start with the last 30 days and widen only if nothing matches, saying so.
 3. Search metadata first: project `day`, `internal_date`, `from_address`, `subject`, `snippet`, `message_id`.
    Do not select `body_text` until needed.

@@ -63,7 +63,7 @@ _logger = logging.getLogger(__name__)
 
 GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/"
 STATE_DIR = "_gmail_sync_state"
-STATE_SCHEMA_VERSION = 2
+STATE_SCHEMA_VERSION = 3
 STAGING_SUFFIX = ".__staging__"
 PREVIOUS_SUFFIX = ".__previous__"
 LEASE_SUFFIX = ".__lease__"
@@ -809,6 +809,11 @@ class _SyncRun:
     def _incremental(self) -> _RunResult:
         expected = self._expected_state()
         state, seq = _read_state(self._target)
+        if state is not None and state.schema_version != STATE_SCHEMA_VERSION:
+            raise _GmailSyncError(
+                f"The feature group {self._config.feature_group_name} was filled by an earlier version of the sync, "
+                "whose cursor this one cannot resume from. Run a full load to rebuild it."
+            )
         if state is not None and state._identity() != expected._identity():
             raise _GmailSyncError(
                 f"The feature group {self._config.feature_group_name} was filled for a different mailbox, "
@@ -816,14 +821,18 @@ class _SyncRun:
             )
         if state is None:
             state = expected
-        if state.cursor_ms is not None:
-            lower, inclusive, seen = state.cursor_ms, False, set(state.cursor_ids)
-        else:
-            lower, inclusive, seen = self._config.initial_value, True, set()
+        lower = (
+            state.cursor_ms
+            if state.cursor_ms is not None
+            else self._config.initial_value
+        )
         result = _RunResult(0, [], 0, 0, state.cursor_ms)
-        for batch in self._windows(lower, inclusive, seen, self._target, result):
-            self._writer._upsert(batch, overwrite=False)
-            _advance(state, batch)
+        for batch, through_ms, last_ids in self._windows(
+            lower, set(state.cursor_ids), self._target, result
+        ):
+            if batch:
+                self._writer._upsert(batch, overwrite=False)
+            _advance(state, batch, through_ms, last_ids)
             seq += 1
             _write_state(self._target, state, seq)
             self._log_progress(result, state)
@@ -838,12 +847,13 @@ class _SyncRun:
             shutil.rmtree(staging)
         staging.mkdir(parents=True)
         result = _RunResult(0, [], 0, 0, None)
-        batches = self._windows(
-            self._config.initial_value, True, set(), staging, result
-        )
-        for i, batch in enumerate(batches):
-            self._writer._upsert(batch, overwrite=i == 0)
-            _advance(state, batch)
+        batches = self._windows(self._config.initial_value, set(), staging, result)
+        overwrite = True
+        for batch, through_ms, last_ids in batches:
+            if batch:
+                self._writer._upsert(batch, overwrite=overwrite)
+                overwrite = False
+            _advance(state, batch, through_ms, last_ids)
             self._log_progress(result, state)
         if not result.copied:
             _logger.info("No messages matched; the feature group is left as it was")
@@ -856,15 +866,16 @@ class _SyncRun:
     def _windows(
         self,
         lower_ms: int | None,
-        inclusive: bool,
-        seen: set[str],
+        skip_ids: set[str],
         attachments_root: Path,
         result: _RunResult,
-    ) -> Iterator[list[dict]]:
-        """Upsert batches, oldest first, of the messages from `lower_ms` up to the run horizon.
+    ) -> Iterator[tuple[list[dict], int, set[str]]]:
+        """Upsert batches of the messages that reached Gmail from `lower_ms` up to the run horizon, each with the point the cursor can move to after it and the ids listed in the last window read.
 
-        The range is read in `WINDOW_MS` windows and a batch is only cut from fully read windows, so every batch ends at a point the cursor can safely move to.
-        Without a lower bound the first window reaches back to the oldest message Gmail lists.
+        Gmail's `after:` and `before:` search on when a message reached Gmail, which can be days away from its `internalDate`, the sender's `Date`; every message a window lists is copied, whatever its `internalDate`.
+        The range is read in `WINDOW_MS` windows and a batch is only cut after a fully read window, so its cursor point is safe.
+        Without a lower bound the first window is open below and the windows start from the oldest message Gmail lists.
+        The run ends with a batch, possibly empty, so a run that finds nothing still moves the cursor.
         """
         upper_ms = int(self._clock() * 1000) - RUN_HORIZON_MS
         start = lower_ms if lower_ms is not None else self._oldest(upper_ms)
@@ -875,9 +886,10 @@ class _SyncRun:
         )
         pending: list[dict] = []
         window_lower = lower_ms
-        for window_upper in [*edges, upper_ms]:
-            rows, deleted, unreadable = self._fetch(
-                window_lower, inclusive, seen, attachments_root, window_upper
+        windows = [*edges, upper_ms]
+        for i, window_upper in enumerate(windows):
+            rows, listed, deleted, unreadable = self._fetch(
+                window_lower, window_upper, skip_ids, attachments_root
             )
             result.skipped_deleted += deleted
             result.skipped_unreadable += unreadable
@@ -885,21 +897,13 @@ class _SyncRun:
                 pending.extend(rows[day])
                 if day not in result.days:
                     result.days.append(day)
-            while len(pending) >= UPSERT_BATCH:
-                batch, pending = pending[:UPSERT_BATCH], pending[UPSERT_BATCH:]
-                result.copied += len(batch)
-                yield batch
-            # A message on the edge belongs to this window; the next one skips it as a cursor would.
-            seen = {
-                row["message_id"]
-                for day_rows in rows.values()
-                for row in day_rows
-                if row["internal_date"] == window_upper
-            }
-            window_lower, inclusive = window_upper, False
-        if pending:
-            result.copied += len(pending)
-            yield pending
+            # The queries of neighbouring windows overlap by a second or two.
+            skip_ids = listed
+            window_lower = window_upper
+            if len(pending) >= UPSERT_BATCH or i == len(windows) - 1:
+                result.copied += len(pending)
+                yield pending, window_upper, listed
+                pending = []
         result.days.sort()
 
     def _label_sets(self) -> list[list[str]]:
@@ -917,7 +921,10 @@ class _SyncRun:
         )
 
     def _oldest(self, upper_ms: int) -> int | None:
-        """The receive time of the oldest message selected, or None for no messages; Gmail lists newest first."""
+        """Where the windows of a run without a lower bound start: the `internalDate` of the last message each label lists, or None for no messages.
+
+        Gmail lists newest first, so this is about the oldest message; the first window is open below, so a message before it is still copied.
+        """
         query = _gmail_query(self._config.query, None, upper_ms)
         oldest = None
         for labels in self._label_sets():
@@ -988,18 +995,18 @@ class _SyncRun:
     def _fetch(
         self,
         lower_ms: int | None,
-        inclusive: bool,
-        seen: set[str],
-        attachments_root: Path,
         upper_ms: int,
-    ) -> tuple[dict[str, list[dict]], int, int]:
-        """The messages in (lower_ms, upper_ms], or [lower_ms, upper_ms] when inclusive, grouped by day and sorted, with the counts of messages deleted since listing and of messages that could not be parsed.
+        skip_ids: set[str],
+        attachments_root: Path,
+    ) -> tuple[dict[str, list[dict]], set[str], int, int]:
+        """The messages Gmail lists as received in (lower_ms, upper_ms], give or take a second, except `skip_ids`, grouped by day and sorted, with the ids listed and the counts of messages deleted since listing and of messages that could not be parsed.
 
         Attachments are written under `attachments_root` as messages arrive, and rows are spilled to scratch files per day, so memory holds one message per worker.
         A message that cannot be parsed is logged with its id and left out, so one unusual message does not stop every later run; a filesystem error still fails the run.
         """
         query = _gmail_query(self._config.query, lower_ms, upper_ms)
-        ids = self._list_ids(query)
+        listed = self._list_ids(query)
+        ids = [i for i in listed if i not in skip_ids]
         if ids:
             _logger.info(
                 "Gmail listed %d candidate messages up to %s",
@@ -1021,8 +1028,6 @@ class _SyncRun:
                     for message in pool.map(self._client._get_raw_message, batch):
                         if message is None:
                             deleted += 1
-                            continue
-                        if not _in_window(message, lower_ms, inclusive, seen, upper_ms):
                             continue
                         try:
                             row = _parse_message(
@@ -1048,35 +1053,19 @@ class _SyncRun:
                     day_rows = [json.loads(line) for line in f]
                 day_rows.sort(key=lambda r: (r["internal_date"], r["message_id"]))
                 rows[spill.stem] = day_rows
-            return rows, deleted, unreadable
+            return rows, set(listed), deleted, unreadable
         finally:
             shutil.rmtree(spill_dir, ignore_errors=True)
 
 
-def _advance(state: _SyncState, batch: list[dict]) -> None:
-    """Move the cursor to the newest message of `batch`, which is sorted oldest first, and note the days it wrote."""
+def _advance(
+    state: _SyncState, batch: list[dict], through_ms: int, last_ids: set[str]
+) -> None:
+    """Move the cursor past a fully read window, keeping the ids it listed so the next query's overlap skips them, and note the days `batch` wrote."""
     state.uncompacted_days = sorted(
         set(state.uncompacted_days) | {r["day"] for r in batch}
     )
-    last = batch[-1]["internal_date"]
-    ids_at_last = [r["message_id"] for r in batch if r["internal_date"] == last]
-    if last == state.cursor_ms:
-        ids_at_last = sorted(set(ids_at_last) | set(state.cursor_ids))
-    state.cursor_ms, state.cursor_ids = last, ids_at_last
-
-
-def _in_window(
-    message: dict, lower_ms: int | None, inclusive: bool, seen: set[str], upper_ms: int
-) -> bool:
-    internal = int(message["internalDate"])
-    if internal > upper_ms:
-        return False
-    if lower_ms is None or internal > lower_ms:
-        return True
-    if internal < lower_ms:
-        return False
-    # At the cursor's millisecond: the previous run copied exactly the ids it recorded there.
-    return inclusive or message["id"] not in seen
+    state.cursor_ms, state.cursor_ids = through_ms, sorted(last_ids)
 
 
 # endregion
