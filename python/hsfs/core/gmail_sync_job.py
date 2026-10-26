@@ -78,6 +78,8 @@ FETCH_WORKERS = 4
 FETCH_BATCH = 64
 # Messages per feature group upsert, and so per cursor checkpoint.
 UPSERT_BATCH = 5000
+# Bytes of rows, as JSON, per upsert: a delta-rs merge holds about ten times its batch, so 5000 large emails ran a 2 GiB job out of memory.
+UPSERT_BATCH_BYTES = 16 * 1024 * 1024
 # A run reads its range in windows this long, oldest first, so a backfill upserts as it goes.
 WINDOW_MS = 7 * 24 * 3600_000
 # Rate-limit retries are logged at most this often.
@@ -874,6 +876,7 @@ class _SyncRun:
 
         Gmail's `after:` and `before:` search on when a message reached Gmail, which can be days away from its `internalDate`, the sender's `Date`; every message a window lists is copied, whatever its `internalDate`.
         The range is read in `WINDOW_MS` windows and a batch is only cut after a fully read window, so its cursor point is safe.
+        A batch is cut once it holds `UPSERT_BATCH` messages or `UPSERT_BATCH_BYTES`, so it can exceed either by one window.
         Without a lower bound the first window is open below and the windows start from the oldest message Gmail lists.
         The run ends with a batch, possibly empty, so a run that finds nothing still moves the cursor.
         """
@@ -885,6 +888,7 @@ class _SyncRun:
             else []
         )
         pending: list[dict] = []
+        pending_bytes = 0
         window_lower = lower_ms
         windows = [*edges, upper_ms]
         for i, window_upper in enumerate(windows):
@@ -895,15 +899,20 @@ class _SyncRun:
             result.skipped_unreadable += unreadable
             for day in sorted(rows):
                 pending.extend(rows[day])
+                pending_bytes += sum(_row_bytes(row) for row in rows[day])
                 if day not in result.days:
                     result.days.append(day)
             # The queries of neighbouring windows overlap by a second or two.
             skip_ids = listed
             window_lower = window_upper
-            if len(pending) >= UPSERT_BATCH or i == len(windows) - 1:
+            if (
+                len(pending) >= UPSERT_BATCH
+                or pending_bytes >= UPSERT_BATCH_BYTES
+                or i == len(windows) - 1
+            ):
                 result.copied += len(pending)
                 yield pending, window_upper, listed
-                pending = []
+                pending, pending_bytes = [], 0
         result.days.sort()
 
     def _label_sets(self) -> list[list[str]]:
@@ -1056,6 +1065,10 @@ class _SyncRun:
             return rows, set(listed), deleted, unreadable
         finally:
             shutil.rmtree(spill_dir, ignore_errors=True)
+
+
+def _row_bytes(row: dict) -> int:
+    return len(json.dumps(row, ensure_ascii=False).encode())
 
 
 def _advance(

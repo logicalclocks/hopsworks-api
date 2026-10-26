@@ -455,6 +455,22 @@ class TestIncremental:
         assert state.cursor_ms == NOW_MS - g.RUN_HORIZON_MS
         assert writer.compacted == result.days
 
+    def test_large_messages_are_upserted_in_smaller_batches(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(g, "UPSERT_BATCH_BYTES", 30_000)
+        client = FakeGmail(
+            [
+                _message(str(i), NOW_MS - (5 - i) * g.WINDOW_MS, body="x" * 20_000)
+                for i in range(5)
+            ]
+        )
+        writer = FakeWriter()
+        result = _run(tmp_path, client, _config(), writer)
+        assert result.copied == 5
+        # Each window adds about 20 kB, so a batch is cut after every second window.
+        assert writer.calls == [(2, False), (2, False), (1, False)]
+
     def test_without_a_start_date_the_oldest_message_is_copied(self, tmp_path):
         years_ago = NOW_MS - 2 * 365 * 24 * HOUR
         client = FakeGmail([_message("old", years_ago), _message("new", DAY1)])
