@@ -1918,16 +1918,29 @@ def _resolve_table(ds, table: str, database: str | None):
     """Return the data source of ``table`` as the source lists it.
 
     The listing carries the schema a bare table name lacks, so a read by name
-    alone is looked up there first. A source that cannot list tables (REST,
-    CRM) or does not list this name is read with the name as given.
+    alone is looked up there first; ``schema.table`` picks one schema's table.
+    A bare name listed in several schemas is refused rather than guessed. A
+    source that cannot list tables (REST, CRM) or does not list this name is
+    read with the name as given.
     """
     try:
         listed = ds.get_tables(database=database)
     except Exception:  # noqa: BLE001
         listed = []
-    for entry in listed or []:
-        if getattr(entry, "table", None) == table:
-            return entry
+    schema, _, bare = table.rpartition(".")
+    found = [
+        entry
+        for entry in listed or []
+        if getattr(entry, "table", None) == bare
+        and (not schema or getattr(entry, "group", None) == schema)
+    ]
+    if len(found) > 1:
+        names = ", ".join(sorted(f"{getattr(e, 'group', None)}.{bare}" for e in found))
+        raise click.ClickException(
+            f"Table '{table}' is in several schemas: {names}. Name one as schema.table."
+        )
+    if found:
+        return found[0]
     ds.table = table
     return ds
 
@@ -1952,9 +1965,9 @@ def _preview_rows(preview) -> list[dict]:
 @click.option(
     "--table",
     help=(
-        "Table, sheet or collection to preview. Required for every connector "
-        "type unless the data source already names one; list them with "
-        "`hops datasource tables`."
+        "Table, sheet or collection to preview, as schema.table when the name "
+        "is in several schemas. Required for every connector type unless the "
+        "data source already names one; list them with `hops datasource tables`."
     ),
 )
 @click.option(
