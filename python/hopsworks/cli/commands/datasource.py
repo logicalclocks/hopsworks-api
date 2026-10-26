@@ -626,6 +626,13 @@ def _check_elasticsearch(v: dict[str, Any]) -> str | None:
     return _refuses(v, "--auth-type NONE", "--user", "--password", "--api-key")
 
 
+def _check_hopsworks(v: dict[str, Any]) -> str | None:
+    host = v.get(_dest("--host")) or ""
+    if "://" in host or "/" in host:
+        return "--host takes the bare host name of the remote cluster, without scheme or path; pass the port as --port."
+    return None
+
+
 def _check_bigquery(v: dict[str, Any]) -> str | None:
     if (
         _given(v, "--project-id")
@@ -952,7 +959,14 @@ _SPECS: dict[str, _Spec] = {
                 "databaseType",
                 "Database engine.",
                 required=True,
-                choices=("MYSQL", "POSTGRESQL", "ORACLE", "CLICKHOUSE", "TERADATA"),
+                choices=(
+                    "MYSQL",
+                    "POSTGRESQL",
+                    "ORACLE",
+                    "CLICKHOUSE",
+                    "TERADATA",
+                    "SQLSERVER",
+                ),
             ),
             _Opt(
                 "--credentials-mode",
@@ -972,7 +986,7 @@ _SPECS: dict[str, _Spec] = {
             _Opt(
                 "--port",
                 "port",
-                "Database port; the HTTP interface port (8123) for CLICKHOUSE, 1025 for TERADATA.",
+                "Database port; the HTTP interface port (8123) for CLICKHOUSE, 1025 for TERADATA, 1433 for SQLSERVER.",
                 required=True,
                 kind="int",
             ),
@@ -1270,6 +1284,40 @@ _SPECS: dict[str, _Spec] = {
             _OPTIONS,
         ),
         check=_check_mongodb,
+    ),
+    "hopsworks": _Spec(
+        "featurestoreHopsworksConnectorDTO",
+        "HOPSWORKS",
+        "Register a connector to a project on another Hopsworks cluster.",
+        (
+            _Opt(
+                "--host",
+                "host",
+                "Host name or IP address of the remote cluster, without scheme or port.",
+                required=True,
+            ),
+            _Opt("--port", "port", "HTTPS port; 443 when unset.", kind="int"),
+            _Opt(
+                "--project",
+                "project",
+                "Project on the remote cluster that the API key belongs to.",
+                required=True,
+            ),
+            _Opt(
+                "--api-key",
+                "apiKey",
+                "API key on the remote cluster with the PROJECT and FEATURESTORE scopes.",
+                required=True,
+                secret=True,
+            ),
+            _Opt(
+                "--tls-verify/--no-tls-verify",
+                "verify",
+                "Verify the remote cluster's certificate and host name; verified when unset.",
+                kind="bool",
+            ),
+        ),
+        check=_check_hopsworks,
     ),
     "bigquery": _Spec(
         "featurestoreBigqueryConnectorDTO",
