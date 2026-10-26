@@ -1047,3 +1047,16 @@ def test_a_failed_test_exits_with_the_checkers_output():
 
     assert result.exit_code == 1
     assert "refused" in result.output
+
+
+def test_labels_lists_the_gmail_labels_by_id():
+    fs = mock.MagicMock()
+    fs.get_data_source.return_value.storage_connector.get_labels.return_value = {
+        "INBOX": "INBOX",
+        "Label_7": "receipts",
+    }
+    with mock.patch.object(ds.session, "get_feature_store", return_value=fs):
+        result = CliRunner().invoke(cli, ["datasource", "labels", "inbox"])
+
+    assert result.exit_code == 0, result.output
+    assert "Label_7" in result.output and "receipts" in result.output

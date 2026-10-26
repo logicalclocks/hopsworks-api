@@ -195,6 +195,13 @@ class StorageConnectorApi:
             "POST", self._gmail_path(feature_store_id, name, "token")
         )
 
+    def _get_gmail_labels(
+        self, feature_store_id: int, name: str
+    ) -> list[dict[str, Any]]:
+        return client._get_instance()._send_request(
+            "GET", self._gmail_path(feature_store_id, name, "labels")
+        )
+
     def _put_gmail_sync_job(
         self, feature_store_id: int, name: str, job_name: str, sync_job: dict[str, Any]
     ) -> dict[str, Any]:

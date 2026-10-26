@@ -438,9 +438,12 @@ It is not browsed or mounted: a sync job upserts its emails into a Delta feature
 
 ```bash
 hops datasource create gmail support_inbox --mailbox support@example.com --auth-type OAUTH --client-id CID --client-secret - --refresh-token - < secrets.txt
-hops datasource sync support_inbox --start-date 2026-01-01 --schedule hourly
+hops datasource labels support_inbox    # label ids and names: INBOX, SENT, Label_12 (receipts), ...
+hops datasource sync support_inbox --label INBOX --label SENT --start-date 2026-01-01 --schedule hourly
 hops datasource sync-jobs support_inbox
 ```
+
+Each `--label` (SDK `labels=[...]`) adds the messages carrying that label; without any label, every message except spam, trash and drafts is copied.
 
 ```python
 fs.get_data_source("support_inbox").sync(query="-category:promotions", schedule="daily")

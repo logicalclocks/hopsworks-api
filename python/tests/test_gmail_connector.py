@@ -93,6 +93,17 @@ class TestGmailConnector:
         assert token.expires_at == 1761400000000
         assert "ya29" not in repr(token)
 
+    def test_get_labels_maps_ids_to_names_in_the_backends_order(self, mocker):
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._get_gmail_labels",
+            return_value=[
+                {"id": "INBOX", "name": "INBOX", "type": "system"},
+                {"id": "Label_7", "name": "receipts", "type": "user"},
+            ],
+        )
+        labels = _connector().get_labels()
+        assert list(labels.items()) == [("INBOX", "INBOX"), ("Label_7", "receipts")]
+
     def test_sync_creates_starts_and_schedules_the_job(self, mocker):
         put = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi._put_gmail_sync_job"

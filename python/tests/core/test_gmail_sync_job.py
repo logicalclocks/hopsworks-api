@@ -93,8 +93,14 @@ class FakeGmail:
 
     def _list_message_ids(self, query, label_ids):
         self.queries.append((query, list(label_ids)))
+        # Like Gmail, labelIds selects the messages carrying every label given.
         return sorted(
-            self.messages, key=lambda i: -int(self.messages[i]["internalDate"])
+            (
+                i
+                for i, m in self.messages.items()
+                if set(label_ids) <= set(m["labelIds"])
+            ),
+            key=lambda i: -int(self.messages[i]["internalDate"]),
         )
 
     def _get_raw_message(self, message_id):
@@ -300,6 +306,21 @@ class TestIncremental:
         assert query.startswith("(from:bob) -in:drafts after:")
         assert f"after:{DAY1 // 1000 - 1}" in query
         assert labels == ["INBOX"]
+
+    @pytest.mark.parametrize("strategy", ["INCREMENTAL_TIMESTAMP", "FULL_LOAD"])
+    def test_labels_select_the_messages_carrying_any_of_them(self, tmp_path, strategy):
+        client = FakeGmail(
+            [
+                _message("sent", DAY1 - 9 * g.WINDOW_MS, labels=("SENT",)),
+                _message("inbox", DAY1, labels=("INBOX",)),
+                _message("both", DAY1 + 1000, labels=("INBOX", "SENT")),
+                _message("other", DAY1 + 2000, labels=("Label_1",)),
+            ]
+        )
+        writer = FakeWriter()
+        _run(tmp_path, client, _config(strategy, labels=["INBOX", "SENT"]), writer)
+        # The SENT-only message is the oldest, so the backfill must start from it.
+        assert sorted(writer.table) == ["both", "inbox", "sent"]
 
     def test_messages_at_the_cursors_millisecond_are_neither_lost_nor_duplicated(
         self, tmp_path, monkeypatch

@@ -1906,7 +1906,7 @@ def connector_databases(ctx: click.Context, name: str) -> None:
     "--label",
     "labels",
     multiple=True,
-    help="Gmail label id a message must carry; repeatable.",
+    help="Gmail label id, e.g. INBOX; repeatable. A message carrying any of them is copied; 'hops datasource labels' lists them.",
 )
 @click.option(
     "--strategy",
@@ -1949,7 +1949,7 @@ def connector_sync(
         feature_group: Feature group name.
         attachments_path: Directory for attachment files.
         query: Gmail search query.
-        labels: Gmail label ids a message must carry.
+        labels: Gmail label ids; a message carrying any of them is copied.
         strategy: INCREMENTAL_TIMESTAMP or FULL_LOAD.
         start_date: Earliest receive time to copy.
         schedule: hourly or daily.
@@ -1981,6 +1981,29 @@ def connector_sync(
         + (" and running" if start else "")
         + (f", scheduled {schedule}" if schedule else "")
     )
+
+
+@datasource_group.command("labels")
+@click.argument("name")
+@click.pass_context
+def connector_labels(ctx: click.Context, name: str) -> None:
+    """List the labels of a Gmail data source's mailbox that a sync can select.
+
+    Args:
+        ctx: Click context.
+        name: Gmail data source name.
+    """
+    fs = session.get_feature_store(ctx)
+    try:
+        labels = fs.get_data_source(name).storage_connector.get_labels()
+    except AttributeError as exc:
+        raise click.ClickException(f"{name} is not a Gmail data source") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not list labels: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json(labels)
+        return
+    output.print_table(["ID", "NAME"], [[i, n] for i, n in labels.items()])
 
 
 @datasource_group.command("sync-jobs")

@@ -6525,7 +6525,7 @@ class GmailSyncJobConfig:
     @public
     @property
     def labels(self) -> list[str]:
-        """Gmail label ids a message must carry to be copied."""
+        """Gmail label ids that select the messages copied: a message carrying any of them is copied, and every message without any."""
         return self._labels
 
     @public
@@ -6742,6 +6742,34 @@ class GmailConnector(StorageConnector):
         )
 
     @public
+    def get_labels(self) -> dict[str, str]:
+        """Get the labels of the mailbox that a sync can select, by id.
+
+        System labels, such as `INBOX`, `SENT`, `STARRED` and `CATEGORY_PERSONAL`, come first, then the labels the mailbox's owner created.
+        Spam, trash and drafts are left out, since a sync never copies them.
+
+        Example:
+            ```python
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            print(gmail.get_labels())  # {'INBOX': 'INBOX', 'SENT': 'SENT', ..., 'Label_12': 'receipts'}
+            gmail.sync(labels=["INBOX"], schedule="hourly")
+            ```
+
+        Returns:
+            The label names, keyed by the ids that [`sync`][hsfs.storage_connector.GmailConnector.sync] takes.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Google refuses the stored credentials or Gmail cannot be reached.
+        """
+        return {
+            label["id"]: label["name"]
+            for label in self._storage_connector_api._get_gmail_labels(
+                self._featurestore_id, self._name
+            )
+            or []
+        }
+
+    @public
     def sync(
         self,
         feature_group_name: str | None = None,
@@ -6784,7 +6812,7 @@ class GmailConnector(StorageConnector):
             feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `dowling_jim_gmails` for `dowling.jim@gmail.com`.
             attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/gmail/<feature group name>`.
             query: Gmail search query selecting the messages, written as in the Gmail search box.
-            labels: Gmail label ids a message must carry, such as `INBOX`.
+            labels: Gmail label ids selecting the messages to copy, such as `["INBOX", "SENT"]`; a message carrying any of them is copied, and without labels every message is. [`get_labels`][hsfs.storage_connector.GmailConnector.get_labels] lists the mailbox's labels.
             loading_strategy: `INCREMENTAL_TIMESTAMP` or `FULL_LOAD`.
             initial_value: Earliest receive time to copy, as a date or datetime, a date string, or epoch milliseconds.
             schedule: `hourly`, at the top of every hour, or `daily`, at 00:00 UTC; `None` leaves the job's schedule as it is.

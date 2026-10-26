@@ -881,14 +881,33 @@ class _SyncRun:
             yield pending
         result.days.sort()
 
-    def _oldest(self, upper_ms: int) -> int | None:
-        """The receive time of the last message Gmail lists, which lists newest first, or None for no messages."""
-        ids = self._client._list_message_ids(
-            _gmail_query(self._config.query, None, upper_ms), self._config.labels
+    def _label_sets(self) -> list[list[str]]:
+        # Gmail's labelIds selects the messages carrying every label given, so each label is listed on its own.
+        return [[label] for label in self._config.labels] or [[]]
+
+    def _list_ids(self, query: str) -> list[str]:
+        """Ids of the messages matching `query` that carry any of the configured labels, or of all of them without labels."""
+        return list(
+            dict.fromkeys(
+                message_id
+                for labels in self._label_sets()
+                for message_id in self._client._list_message_ids(query, labels)
+            )
         )
-        last = collections.deque(ids, maxlen=1)
-        message = self._client._get_raw_message(last[0]) if last else None
-        return int(message["internalDate"]) if message else None
+
+    def _oldest(self, upper_ms: int) -> int | None:
+        """The receive time of the oldest message selected, or None for no messages; Gmail lists newest first."""
+        query = _gmail_query(self._config.query, None, upper_ms)
+        oldest = None
+        for labels in self._label_sets():
+            last = collections.deque(
+                self._client._list_message_ids(query, labels), maxlen=1
+            )
+            message = self._client._get_raw_message(last[0]) if last else None
+            if message is not None:
+                received = int(message["internalDate"])
+                oldest = received if oldest is None else min(oldest, received)
+        return oldest
 
     def _log_progress(self, result: _RunResult, state: _SyncState) -> None:
         _logger.info(
@@ -959,7 +978,7 @@ class _SyncRun:
         A message that cannot be parsed is logged with its id and left out, so one unusual message does not stop every later run; a filesystem error still fails the run.
         """
         query = _gmail_query(self._config.query, lower_ms, upper_ms)
-        ids = list(self._client._list_message_ids(query, self._config.labels))
+        ids = self._list_ids(query)
         if ids:
             _logger.info(
                 "Gmail listed %d candidate messages up to %s",
