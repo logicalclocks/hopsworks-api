@@ -44,6 +44,8 @@ import os
 import random
 import re
 import shutil
+import subprocess
+import sys
 import time
 import unicodedata
 import uuid
@@ -75,7 +77,8 @@ TOKEN_RENEWAL_MS = 5 * 60_000
 # Gmail rate-limits per user; a few parallel fetches stay well under it and the client backs off when it does not.
 FETCH_WORKERS = 4
 # Messages fetched per batch; bounds how many raw messages, attachments included, are in memory at once.
-FETCH_BATCH = 64
+# A raw message can be 35 MB as base64, and parsing it takes several copies.
+FETCH_BATCH = 8
 # Messages per feature group upsert, and so per cursor checkpoint.
 UPSERT_BATCH = 5000
 # Bytes of rows, as JSON, per upsert: a delta-rs merge holds about ten times its batch, so 5000 large emails ran a 2 GiB job out of memory.
@@ -504,28 +507,47 @@ def _replace(source: Path, target: Path) -> None:
 
 
 class _FeatureGroupWriter:
-    """Upserts rows into the mailbox's feature group; `overwrite` replaces its contents first."""
+    """Upserts rows into the mailbox's feature group; `overwrite` replaces its contents first.
 
-    def __init__(self, feature_group):
+    With `isolated`, each upsert runs in a child process that writes `rows` from a scratch file.
+    A delta-rs merge keeps about 100 MB per call that the process never returns, so a backfill of dozens of upserts in one process outgrows its memory; a child returns it all when it exits.
+    """
+
+    def __init__(
+        self, feature_group, isolated: bool = False, scratch: Path | None = None
+    ):
         self._fg = feature_group
+        self._isolated = isolated
+        self._scratch = scratch
 
     def _upsert(self, rows: list[dict], overwrite: bool) -> None:
-        import pandas as pd
-        import pyarrow as pa
-
-        frame = pd.DataFrame(rows, columns=[name for name, _ in COLUMNS])
-        # Typed explicitly: inferred, a batch without any Bcc becomes list<null>, which the feature group refuses.
-        arrow_types = {"string": pa.string(), "array<string>": pa.list_(pa.string())}
-        for name, offline_type in COLUMNS:
-            if offline_type in arrow_types:
-                frame[name] = frame[name].astype(
-                    pd.ArrowDtype(arrow_types[offline_type])
-                )
-        frame["internal_date"] = pd.to_datetime(
-            frame["internal_date"], unit="ms", utc=True
-        )
-        frame["size_estimate"] = frame["size_estimate"].astype("Int64")
-        self._fg.insert(frame, overwrite=overwrite, wait=True)
+        if not self._isolated:
+            self._fg.insert(_frame(rows), overwrite=overwrite, wait=True)
+            return
+        scratch = self._scratch or Path(os.environ.get("TMPDIR", "/tmp"))
+        scratch.mkdir(parents=True, exist_ok=True)
+        rows_path = scratch / f"gmail_upsert_{uuid.uuid4().hex}.jsonl"
+        try:
+            with open(rows_path, "w", encoding="utf-8") as f:
+                for row in rows:
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            # Not multiprocessing: its children re-import the job's launcher, which would start another sync.
+            code = (
+                "from hsfs.core import gmail_sync_job as g; "
+                f"g._upsert_from_file({self._fg.name!r}, {self._fg.version!r}, {str(rows_path)!r}, {overwrite!r})"
+            )
+            returncode = subprocess.run([sys.executable, "-c", code]).returncode
+        finally:
+            rows_path.unlink(missing_ok=True)
+        if returncode != 0:
+            killed = (
+                " (killed, most likely for running out of memory)"
+                if returncode in (-9, 137)
+                else ""
+            )
+            raise _GmailSyncError(
+                f"Upserting {len(rows)} messages failed with exit code {returncode}{killed}; the next run resumes from the last upsert"
+            )
 
     def _compact(self, days: list[str]) -> None:
         """Rewrite each day's files into as few files of up to COMPACTION_TARGET_BYTES as fit.
@@ -548,6 +570,35 @@ class _FeatureGroupWriter:
             target_size=COMPACTION_TARGET_BYTES,
             max_concurrent_tasks=1,
         )
+
+
+def _frame(rows: list[dict]):
+    """The rows as a DataFrame typed like the feature group."""
+    import pandas as pd
+    import pyarrow as pa
+
+    frame = pd.DataFrame(rows, columns=[name for name, _ in COLUMNS])
+    # Typed explicitly: inferred, a batch without any Bcc becomes list<null>, which the feature group refuses.
+    arrow_types = {"string": pa.string(), "array<string>": pa.list_(pa.string())}
+    for name, offline_type in COLUMNS:
+        if offline_type in arrow_types:
+            frame[name] = frame[name].astype(pd.ArrowDtype(arrow_types[offline_type]))
+    frame["internal_date"] = pd.to_datetime(frame["internal_date"], unit="ms", utc=True)
+    frame["size_estimate"] = frame["size_estimate"].astype("Int64")
+    return frame
+
+
+def _upsert_from_file(name: str, version: int, rows_path: str, overwrite: bool) -> None:
+    """Upsert the rows of a JSON lines file into a feature group of the job's project; the child process of an isolated upsert."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+    import hopsworks
+
+    with open(rows_path, encoding="utf-8") as f:
+        rows = [json.loads(line) for line in f]
+    fg = hopsworks.login().get_feature_store().get_feature_group(name, version=version)
+    fg.insert(_frame(rows), overwrite=overwrite, wait=True)
 
 
 def _feature_group(fs, name: str, mailbox: str):
@@ -1146,7 +1197,8 @@ def _main(argv: list[str] | None = None) -> None:
             "recreate the sync job"
         )
     writer = _FeatureGroupWriter(
-        _feature_group(fs, config.feature_group_name, connector.mailbox)
+        _feature_group(fs, config.feature_group_name, connector.mailbox),
+        isolated=True,
     )
     execution_id = (
         os.environ.get("HOPSWORKS_JOB_EXECUTION_ID") or f"local-{uuid.uuid4().hex}"

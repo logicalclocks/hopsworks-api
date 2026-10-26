@@ -777,6 +777,65 @@ class TestFeatureGroup:
         )
         assert {f.name: f.type for f in features} == dict(g.COLUMNS)
 
+    def test_an_isolated_upsert_runs_in_a_child_process(self, tmp_path, mocker):
+        fg = _FakeFeatureGroup(1)
+        fg.name, fg.version = "alice_examples", 1
+        rows = [g._parse_message(_message(i, DAY1), None, PROJECT_ROOT) for i in "ab"]
+        sent = {}
+
+        def upsert_from_file(name, version, path, overwrite):
+            # The child reads the rows the parent wrote, before the parent removes them.
+            with open(path) as f:
+                ids = [json.loads(line)["message_id"] for line in f]
+            sent.update(name=name, version=version, overwrite=overwrite, ids=ids)
+
+        def child(argv):
+            exec(argv[2], {})
+            return mocker.MagicMock(returncode=0)
+
+        mocker.patch.object(g, "_upsert_from_file", side_effect=upsert_from_file)
+        run = mocker.patch.object(g.subprocess, "run", side_effect=child)
+        g._FeatureGroupWriter(fg, isolated=True, scratch=tmp_path)._upsert(
+            rows, overwrite=True
+        )
+        assert run.call_args.args[0][0] == g.sys.executable
+        assert sent == {
+            "name": "alice_examples",
+            "version": 1,
+            "overwrite": True,
+            "ids": ["a", "b"],
+        }
+        assert fg.inserts == [] and list(tmp_path.iterdir()) == []
+
+    def test_a_child_killed_for_memory_fails_the_run(self, tmp_path, mocker):
+        fg = _FakeFeatureGroup(1)
+        fg.name, fg.version = "alice_examples", 1
+        mocker.patch.object(
+            g.subprocess, "run", return_value=mocker.MagicMock(returncode=-9)
+        )
+        row = g._parse_message(_message("a", DAY1), None, PROJECT_ROOT)
+        with pytest.raises(g._GmailSyncError, match="running out of memory"):
+            g._FeatureGroupWriter(fg, isolated=True, scratch=tmp_path)._upsert(
+                [row], overwrite=False
+            )
+
+    def test_the_child_upserts_the_rows_of_its_file(self, tmp_path, mocker):
+        import hopsworks
+
+        fg = _FakeFeatureGroup(1)
+        project = mocker.MagicMock()
+        project.get_feature_store.return_value.get_feature_group.return_value = fg
+        mocker.patch.object(hopsworks, "login", return_value=project)
+        rows_path = tmp_path / "rows.jsonl"
+        row = g._parse_message(_message("a", DAY1), None, PROJECT_ROOT)
+        rows_path.write_text(json.dumps(row) + "\n")
+        g._upsert_from_file("alice_examples", 1, str(rows_path), False)
+        frame, overwrite, wait = fg.inserts[0]
+        assert list(frame["message_id"]) == ["a"] and (overwrite, wait) == (False, True)
+        project.get_feature_store.return_value.get_feature_group.assert_called_once_with(
+            "alice_examples", version=1
+        )
+
     def test_a_new_feature_group_is_created_with_the_full_schema(self, mocker):
         fg = _FakeFeatureGroup()
         fs = mocker.MagicMock()
