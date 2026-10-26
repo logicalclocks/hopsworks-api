@@ -214,7 +214,8 @@ Plain PyMySQL:
 ```python
 from db import connect
 
-NOTES = app.create_table("notes", """   # app as above; the full name, a no-op once created
+# app as above; create_table returns the full name and is a no-op once the table exists.
+NOTES = app.create_table("notes", """
     id         BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_email VARCHAR(255) NOT NULL,
     note       TEXT,

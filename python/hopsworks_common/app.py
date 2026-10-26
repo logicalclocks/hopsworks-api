@@ -555,6 +555,9 @@ class App:
     def get_table(self, name: str) -> dict:
         """Get a registered table with its columns.
 
+        Parameters:
+            name: The full table name.
+
         Returns:
             The table dict of `get_tables` plus `columns`, each with `name`, `type`, `nullable`, `primary` and `default_value`.
         """
