@@ -348,14 +348,11 @@ class SharePointSync:
     def update(self, **fields: Any) -> SharePointSync:
         """Change settings of the sync; they apply from the next run.
 
+        The keyword arguments are any of `include_patterns`, `exclude_patterns`, `max_file_size_mb`, `mirror_deletions`, `verify_checksums`, `checksum_every`, `transfers`, `index_files`, `index_feature_group`, `cron_expression` (`None` removes the schedule), `folder_path` and `take_ownership`.
         Fields not given keep their value.
         Under mirror semantics, files that a new filter or size cap excludes are deleted from the dataset on the next run.
-
-        Parameters:
-            **fields:
-                Any of `include_patterns`, `exclude_patterns`, `max_file_size_mb`, `mirror_deletions`, `verify_checksums`, `checksum_every`, `transfers`, `index_files`, `index_feature_group`, `cron_expression` (`None` removes the schedule), `folder_path` and `take_ownership`.
-                `index_files=False` stops indexing and keeps the feature group; a new `index_feature_group` starts a new one, which the next run fills with every copied file still in the folder.
-                `take_ownership=True` re-creates the schedule as the caller, so scheduled runs run as the caller, which adopts a sync whose creator left the project.
+        `index_files=False` stops indexing and keeps the feature group; a new `index_feature_group` starts a new one, which the next run fills with every copied file still in the folder.
+        `take_ownership=True` re-creates the schedule as the caller, so scheduled runs run as the caller, which adopts a sync whose creator left the project.
 
         Returns:
             This sync, updated.
