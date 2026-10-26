@@ -26,6 +26,45 @@ Reference for **hops-agent-evals**. A suite's checks are `check(type, name=None,
 
 Checks without a task expectation (`no_tool_error`, `tool_latency`, the judges whose `inputs` have neither `rubric` nor `expected_result`) can grade live traffic, which is what online sampling and `monitor=True` use. Checks that need an expectation only run in suites.
 
+A judge saved without an explicit `inputs` takes the defaults — `user_request`, `expected_result`, `agent_response`, `rubric` — two of which only a task can supply, so it is suite-only by accident and a monitor refuses it. A judge meant for live traffic says what it reads: `inputs=["user_request", "agent_response", "tool_calls", "tool_results"]`.
+
+## Criteria that may not apply
+
+A criterion is scored on every trial, so one that describes a conditional behaviour is scored even when its condition never arose — and a judge with nothing to go on scores it low rather than skipping it. Three criteria, two of them inapplicable, is a failing trial for an agent that did the right thing.
+
+Write each criterion so the inapplicable case passes:
+
+```text
+If the user gave a name instead of an email address, the reply asks for the address.
+If an address was already given, score 5.
+```
+
+Or split the conditional case into its own task, where the condition is part of the question. Prefer the split when the two behaviours are really two requirements: one task per behaviour reads better in a report than one criterion that is sometimes vacuous.
+
+## How a judge decides pass or fail
+
+An `llm_judge` asks the model for one score per criterion on `score_range` (default `[1, 5]`), then decides the verdict itself:
+
+1. **Weighted average.** `Σ(score × weight) / Σ(weight)`. Weights are relative — `{"a": 2, "b": 1}` and `{"a": 1, "b": 0.5}` are the same judge — default to 1, and may be 0 (scored and shown, never counted) but not all 0.
+2. **Pass score.** The trial passes when the average is at least `thresholds={"pass_score": ...}`, in the same units as `score_range`. Default: three quarters of the way up the range — 4 on 1–5.
+3. **Floors.** A criterion with a floor (`"critical_min"` on the criterion, or `thresholds={"critical_dimensions": {name: floor}}`; "never below" in the UI) fails the trial when it scores under it, **whatever the average**. Use one for anything that must never be traded away — safety, a required disclaimer — because a weight only dilutes a bad score.
+
+```python
+check("llm_judge", name="advice",
+      criteria={
+          "correct":            {"weight": 2, "description": "..."},
+          "complete":           {"weight": 1, "description": "..."},
+          "disclaimer_present": {"weight": 0.5, "critical_min": 4, "description": "..."},
+      },
+      thresholds={"pass_score": 3.5})
+```
+
+**The model never sees the weights or floors** — it is shown each criterion's name and description and scores them independently. Raising a weight does not make the judge stricter about that criterion; it only makes that criterion count for more in the average. To change how a criterion is *scored*, change its description.
+
+A reply missing any criterion's score, or one that is not a number, makes the trial **ungradable**, not failed: an average over whichever criteria came back would be a different measurement each time. Out-of-range scores are clamped to `score_range` before anything else reads them.
+
+The trial's `score` is the weighted average normalised to 0–1. Its `assertions` hold what the verdict was made from: `criteria` (raw scores), `criteria_normalised`, `weighted_score`, `pass_score`, `critical_breached` (the floors broken), `failure_category`, and the model's per-criterion `reasoning`. `reason` reads `scored 3.80 of 5, needs 4` or `below the floor on disclaimer_present`, followed by that reasoning — on passes as well as failures.
+
 ## Judge provider keys
 
 Every judge check and the analysis job take the same keys:
@@ -41,7 +80,7 @@ Without `api_key_env` the provider's conventional variable is read (`ANTHROPIC_A
 
 ## Built-in judge templates
 
-`agents.evaluators.install_defaults()` puts these in the project's library (rename, retune or delete as needed): **Faithfulness**, **Hallucination**, **User frustration**, **Toxicity**, **Profanity**, **Bias and fairness**, **Answer relevance**, **Safety**. Each is an `llm_judge` check with a rubric; save your own with `agents.evaluators.save(name, checks, description, tags=[...])`; tags are how an entry is found once the library is long (the agent it was written for, say), and `agents.evaluators.update(entry, tags=[...])` changes them.
+`agents.evaluators.install_defaults()` puts these in the project's library (rename, retune or delete as needed): **Faithfulness**, **Hallucination**, **User frustration**, **Toxicity**, **Profanity**, **Bias and fairness**, **Answer relevance**, **Safety**. Each is an `llm_judge` check with a rubric; save your own with `agents.evaluators.save(name, checks, description, tags=[agent.name, ...])`; tags are how an entry is found once the library is long, so give it the name of the agent it was written for, and `agents.evaluators.update(entry, tags=[...])` changes them.
 
 ## Failure-analysis job settings
 

@@ -218,3 +218,57 @@ class TestRows:
         assert parsed.first_seen == datetime(2026, 9, 1, tzinfo=timezone.utc)
         assert parsed.last_seen.tzinfo is not None
         assert parsed.status == "promoted" and parsed.promoted_task_id == "t"
+
+
+class TestOneConversationCountsOnce:
+    """A trace that fails several judges is one failure, not several.
+
+    Each judge writes its own verdict, so one bad answer arrives at the clustering
+    as three rows with the same signature. Counted one apiece, the queue said a
+    cluster of three about one thing to fix, and listed the same trace three times
+    as its members.
+    """
+
+    @staticmethod
+    def _rows(trace_ids, signature="missing disclaimer"):
+        return [
+            {
+                "deployment_id": 1,
+                "feedback_id": f"fb-{i}",
+                "trace_id": trace_id,
+                "failure_signature": signature,
+                "severity": "medium",
+                "confidence": 0.9,
+                "failure_summary": "no disclaimer",
+            }
+            for i, trace_id in enumerate(trace_ids)
+        ]
+
+    def test_three_verdicts_on_one_trace_make_a_cluster_of_one(self):
+        from hopsworks_agents.eval.clusters import _assign_clusters
+
+        rows = self._rows(["t1", "t1", "t1"])
+        clusters = _assign_clusters(rows, [])
+        assert len(clusters) == 1
+        assert clusters[0].size == 1
+
+    def test_every_row_is_still_filed_under_it(self):
+        from hopsworks_agents.eval.clusters import _assign_clusters
+
+        rows = self._rows(["t1", "t1", "t1"])
+        clusters = _assign_clusters(rows, [])
+        assert {row["cluster_id"] for row in rows} == {clusters[0].cluster_id}
+
+    def test_distinct_traces_still_count_separately(self):
+        from hopsworks_agents.eval.clusters import _assign_clusters
+
+        rows = self._rows(["t1", "t2", "t1", "t3"])
+        clusters = _assign_clusters(rows, [])
+        assert clusters[0].size == 3
+
+    def test_a_row_with_no_trace_is_not_folded_into_another(self):
+        from hopsworks_agents.eval.clusters import _assign_clusters
+
+        rows = self._rows(["", ""])
+        clusters = _assign_clusters(rows, [])
+        assert clusters[0].size == 2

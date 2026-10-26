@@ -162,6 +162,8 @@ class AgentApp(FastAPI):
 
         self._platform = platform if platform is not None else PlatformClient()
         self._last_trace: OrderedDict[str, str] = OrderedDict()
+        # Evaluation trials' bindings, by trial conversation; see _resolve_subject.
+        self._trial_subjects: _BoundedDict = _BoundedDict(LAST_TRACE_LIMIT)
 
         # framework: explicit arg > AGENT_FRAMEWORK env (platform-injected) >
         # 'custom'. Drives which OpenInference instrumentor tracing activates.
@@ -453,6 +455,7 @@ class AgentApp(FastAPI):
             turn_id=new_turn_id(),
             subject=getattr(request, "subject", None),
             subjects=self._subjects,
+            trial_subjects=self._trial_subjects,
         )
 
     async def _attach_evaluation(
@@ -511,7 +514,29 @@ class AgentApp(FastAPI):
         The store is the only thing that can answer it, so this is one read
         before the turn opens, and only for a turn that asserted no subject.
         """
-        if self.memory is None or ctx.has_subject:
+        if ctx.has_subject:
+            # The client said who this is, which is the one identity that actually
+            # keys durable memory -- and it reached the span and nothing else, so
+            # the traces table, feedback by user and failure analysis by user all
+            # showed nothing while memory quietly followed the person. Recorded
+            # here as the client's claim, which is what subject_source is for.
+            if ctx.subject_source == "client":
+                ctx.record_subject(ctx.subject, source="client")
+            return
+        if ctx._in_trial:
+            # A trial's binding is kept in this process rather than read from the
+            # store, which files a trial's messages under the trial so they never
+            # join the person's own. Held here, the next turn of the trial finds the
+            # person turn one identified, as the next turn of a real conversation
+            # does. A deployment scaled to several replicas may send the next turn
+            # elsewhere, which leaves it unbound as before.
+            bound = self._trial_subjects.get(ctx.conversation_id)
+            if bound:
+                ctx.subject = bound
+                ctx.has_subject = True
+                ctx.subject_source = "conversation"
+            return
+        if self.memory is None:
             return
         try:
             subject = await asyncio.to_thread(
@@ -560,7 +585,7 @@ class AgentApp(FastAPI):
                 "user",
                 recorded,
                 message_id=ctx.message_id,
-                subject=ctx.subject,
+                subject=ctx._stamp_subject,
             )
             ctx._turn_open = True
         except Exception:  # noqa: BLE001 — memory must never break a turn
@@ -615,7 +640,7 @@ class AgentApp(FastAPI):
                 json.dumps(event),
                 memory_type="event",
                 message_id=ctx.message_id,
-                subject=ctx.subject,
+                subject=ctx._stamp_subject,
             )
         answer = "".join(
             part.text for part in response.message.content if part.type == "text"
@@ -627,7 +652,7 @@ class AgentApp(FastAPI):
                 "assistant",
                 answer,
                 message_id=ctx.message_id,
-                subject=ctx.subject,
+                subject=ctx._stamp_subject,
             )
 
     def _finalize(
@@ -803,6 +828,19 @@ class AgentApp(FastAPI):
                 except AgentError as err:
                     _record_span_error(span, err)
                     return _error_response(err)
+                except Exception as err:  # noqa: BLE001 -- answered, not swallowed
+                    # Said in the body, as the stream route says it in its error
+                    # event. Left to the framework it was a bare "500 Internal Server
+                    # Error": a model refusing a parameter on every request read the
+                    # same as a crash, and the reason was only in the pod log.
+                    import logging  # noqa: PLC0415
+
+                    logging.getLogger(__name__).exception("the chat handler failed")
+                    failure = AgentError(
+                        f"{type(err).__name__}: {err}", "agent_error", 500
+                    )
+                    _record_span_error(span, failure)
+                    return _error_response(failure)
                 finally:
                     # in a finally because an AgentError must not leave the turn
                     # open: its user message is already recorded
@@ -1186,6 +1224,26 @@ class AgentApp(FastAPI):
                 await self._finalize_turn(ctx, completed)
 
 
+def _stamp_request_context(span: Any, ctx: HandlerContext) -> None:
+    """The client's request context, as JSON, for a promoted task to replay.
+
+    Left off when empty, and when too large to keep whole: a cut JSON object is
+    not a smaller context, it is no context, and a replay given one would fail
+    for a reason the original turn never had.
+    """
+    import json
+
+    context = getattr(ctx.request, "context", None) or {}
+    if not context:
+        return
+    try:
+        text = json.dumps(context, default=str)
+    except (TypeError, ValueError):
+        return
+    if len(text) <= conventions.MAX_REQUEST_CONTEXT_CHARS:
+        span.set_attribute(conventions.REQUEST_CONTEXT, text)
+
+
 def _describe_parts(request: Any) -> str:
     """What a message carried, for a transcript, when it carried no text.
 
@@ -1213,6 +1271,20 @@ def _describe_parts(request: Any) -> str:
 def contentful(response: ChatResponse) -> bool:
     # any non-text part counts as content; text parts count when non-empty
     return any(part.type != "text" or part.text for part in response.message.content)
+
+
+class _BoundedDict(OrderedDict):
+    """A dict that forgets its oldest entries past a limit."""
+
+    def __init__(self, limit: int):
+        super().__init__()
+        self._limit = limit
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > self._limit:
+            self.popitem(last=False)
 
 
 def _error_response(err: AgentError) -> JSONResponse:
@@ -1279,6 +1351,12 @@ def _annotate_span(ctx: HandlerContext, response: ChatResponse) -> None:
         if ctx.deployment_id:
             span.set_attribute(conventions.DEPLOYMENT_ID, ctx.deployment_id)
         span.set_attribute(conventions.RESPONSE_ID, response.id)
+        # Who the turn ran as, as it ended rather than as it began: an agent
+        # that identified the person mid-turn ran its memory reads under them.
+        if ctx.has_subject:
+            span.set_attribute(conventions.USER_ID, ctx.subject)
+            span.set_attribute(conventions.SUBJECT_SOURCE, ctx.subject_source)
+        _stamp_request_context(span, ctx)
         # the authoritative final answer, straight from the response object,
         # rather than reconstructed downstream from whichever child span
         # happened to look most like an answer

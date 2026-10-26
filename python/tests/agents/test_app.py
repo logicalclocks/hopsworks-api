@@ -102,6 +102,23 @@ class TestChat:
             "retryable": False,
         }
 
+    def test_handler_crash_says_why(self):
+        # A model refusing a parameter on every request used to read as a bare
+        # "Internal Server Error"; the reason was only in the pod log.
+        app = AgentApp()
+
+        @app.chat
+        async def chat(request):
+            raise ValueError("'temperature' is not supported with this model")
+
+        result = TestClient(app, raise_server_exceptions=False).post(
+            "/v1/chat", json=make_request("hi")
+        )
+        assert result.status_code == 500
+        detail = result.json()["detail"]
+        assert detail["code"] == "agent_error"
+        assert "temperature" in detail["message"]
+
     def test_no_handler_is_501(self):
         client = TestClient(AgentApp())
         assert client.post("/v1/chat", json=make_request("x")).status_code == 501
@@ -4627,3 +4644,193 @@ class TestFeedback:
             "c0" not in app._last_trace
             and f"c{app_module.LAST_TRACE_LIMIT + 4}" in app._last_trace
         )
+
+
+class TestOneChipPerToolCall:
+    """A tool call surfaces once, whoever reported it.
+
+    ``tool_events=True`` bridges the framework's TOOL spans to event frames so an
+    agent needs no code for them. An agent that emits its own as well got both: two
+    chips for one call, under two id spaces -- the framework's call id and the span
+    id -- and the handler's pair closing under the event's name rather than the
+    tool's. The handler wins: it has said what it wants shown.
+    """
+
+    def _traced_app(self, **kwargs):
+        pytest.importorskip("opentelemetry.sdk")
+        from hopsworks_agents.protocol.autoevents import install_auto_tool_events
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+            InMemorySpanExporter,
+        )
+
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        app = AgentApp(name="Tooled agent", tracing=False, tool_events=True, **kwargs)
+        app.tracer_provider = provider
+        install_auto_tool_events(provider)
+        return app
+
+    @staticmethod
+    def _events(app, handler):
+        app.chat(handler)
+        body = TestClient(app).post("/v1/chat", json=make_request("hi")).json()
+        return body.get("metadata", {}).get("tool_events", [])
+
+    def test_a_span_alone_is_reported_once(self):
+        app = self._traced_app()
+
+        async def chat(request):
+            tracer = app.tracer_provider.get_tracer("framework")
+            with tracer.start_as_current_span(
+                "identify",
+                attributes={"openinference.span.kind": "TOOL", "tool.name": "identify"},
+            ):
+                pass
+            return AgentResponse.text(text="ok")
+
+        events = self._events(app, chat)
+        assert [(e["name"], e["status"]) for e in events] == [
+            ("identify", "running"),
+            ("identify", "done"),
+        ]
+
+    def test_an_automatic_running_event_is_always_closed(self):
+        # A tool that reports itself from inside its own span: the automatic
+        # "running" went out when the span opened, so its close must go out too.
+        # Suppressed because the handler had reported the tool by then, the chip
+        # stayed running for good beside the handler's own pair.
+        app = self._traced_app()
+
+        async def chat(request):
+            from hopsworks_agents.protocol.autoevents import current_context
+
+            handler_ctx = current_context.get(None)
+            tracer = app.tracer_provider.get_tracer("framework")
+            with tracer.start_as_current_span(
+                "lookup",
+                attributes={"openinference.span.kind": "TOOL", "tool.name": "lookup"},
+            ):
+                await handler_ctx.emit_event("lookup", "running", event_id="call_1")
+                await handler_ctx.emit_event("lookup", "done", event_id="call_1")
+            return AgentResponse.text(text="ok")
+
+        events = self._events(app, chat)
+        statuses: dict[str, list[str]] = {}
+        for event in events:
+            statuses.setdefault(event.get("id"), []).append(event["status"])
+        assert all(s[-1] in ("done", "failed") for s in statuses.values()), (
+            f"an event was left running: {statuses}"
+        )
+
+    def test_the_handlers_own_events_suppress_the_automatic_ones(self):
+        app = self._traced_app()
+
+        async def chat(request):
+            ctx = request.context if hasattr(request, "context") else None  # noqa: F841
+            from hopsworks_agents.protocol.autoevents import current_context
+
+            handler_ctx = current_context.get(None)
+            await handler_ctx.emit_event("identify", "running", event_id="call_1")
+            tracer = app.tracer_provider.get_tracer("framework")
+            with tracer.start_as_current_span(
+                "identify",
+                attributes={"openinference.span.kind": "TOOL", "tool.name": "identify"},
+            ):
+                pass
+            await handler_ctx.emit_event("identify", "done", event_id="call_1")
+            return AgentResponse.text(text="ok")
+
+        events = self._events(app, chat)
+        assert [(e.get("id"), e["name"], e["status"]) for e in events] == [
+            ("call_1", "identify", "running"),
+            ("call_1", "identify", "done"),
+        ]
+
+    def test_a_tool_the_handler_never_claims_is_still_reported(self):
+        app = self._traced_app()
+
+        async def chat(request):
+            from hopsworks_agents.protocol.autoevents import current_context
+
+            handler_ctx = current_context.get(None)
+            await handler_ctx.emit_event("identify", "running", event_id="call_1")
+            tracer = app.tracer_provider.get_tracer("framework")
+            for tool in ("identify", "recall"):
+                with tracer.start_as_current_span(
+                    tool,
+                    attributes={"openinference.span.kind": "TOOL", "tool.name": tool},
+                ):
+                    pass
+            await handler_ctx.emit_event("identify", "done", event_id="call_1")
+            return AgentResponse.text(text="ok")
+
+        events = self._events(app, chat)
+        assert [(e["name"], e["status"]) for e in events] == [
+            ("identify", "running"),
+            ("recall", "running"),
+            ("recall", "done"),
+            ("identify", "done"),
+        ]
+
+
+class TestATrialKeepsItsBindingAcrossTurns:
+    """A multi-turn trial must carry the person turn one identified into turn two.
+
+    A trial's messages are filed under the trial, so the store could not say who
+    the conversation was bound to: every later turn started unbound and the agent
+    identified the person again, and no suite could test that a binding carries
+    over.
+    """
+
+    def test_the_second_turn_finds_the_first_turns_binding(self, monkeypatch):
+        from hopsworks_agents.protocol import conventions
+
+        monkeypatch.setenv(conventions.EVAL_MODE_ENV, "true")
+        app = AgentApp(name="t", tracing=False)
+        seen = []
+
+        @app.chat
+        async def chat(request, ctx):
+            seen.append((ctx.has_subject, ctx.subject, ctx.subject_source))
+            if "@" in request.text:
+                ctx.rebind_subject(request.text)
+            return AgentResponse.text(
+                text="ok", conversation_id=request.conversation_id
+            )
+
+        client = TestClient(app)
+        trial = {"baggage": "hopsworks.eval.run_id=run_7,hopsworks.eval.trial_index=0"}
+        for text in ("dana@example.com", "What do you remember about me?"):
+            client.post("/v1/chat", json=make_request(text, "run_7/t/0"), headers=trial)
+
+        assert seen[1] == (True, "dana@example.com", "conversation")
+
+    def test_another_trial_does_not_inherit_it(self, monkeypatch):
+        from hopsworks_agents.protocol import conventions
+
+        monkeypatch.setenv(conventions.EVAL_MODE_ENV, "true")
+        app = AgentApp(name="t", tracing=False)
+        seen = []
+
+        @app.chat
+        async def chat(request, ctx):
+            seen.append(ctx.has_subject)
+            if "@" in request.text:
+                ctx.rebind_subject(request.text)
+            return AgentResponse.text(
+                text="ok", conversation_id=request.conversation_id
+            )
+
+        client = TestClient(app)
+        trial = {"baggage": "hopsworks.eval.run_id=run_7,hopsworks.eval.trial_index=0"}
+        client.post(
+            "/v1/chat",
+            json=make_request("dana@example.com", "run_7/t/0"),
+            headers=trial,
+        )
+        client.post("/v1/chat", json=make_request("hi", "run_7/t/1"), headers=trial)
+
+        assert seen == [False, False]

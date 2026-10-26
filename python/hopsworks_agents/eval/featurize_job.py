@@ -192,8 +192,12 @@ def _featurize(
     if rows:
         import pandas as pd
 
+        # Online only, so no offline materialization job per run. The trace
+        # features are read from the online store like the rest of the agent
+        # tables; a feature view for training over the offline copy would need
+        # this write to materialize, and is the one reason to change it back.
         feature_store.get_feature_group(FEATURES_FG, 1).insert(
-            pd.DataFrame(rows), write_options={"mode": "append"}
+            pd.DataFrame(rows), storage="online"
         )
     return len(rows)
 

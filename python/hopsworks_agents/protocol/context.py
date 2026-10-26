@@ -22,7 +22,7 @@ from hopsworks_apigen import public
 
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, MutableMapping
 
     from .evaluation import EvalTrial
     from .memory import ChatMemory, Turn
@@ -39,6 +39,7 @@ class HandlerContext:
         turn_id: str = "",
         subject: str | None = None,
         subjects: Any | None = None,
+        trial_subjects: MutableMapping[str, str] | None = None,
     ):
         self.request = request
         self.conversation_id = request.conversation_id or ""
@@ -69,6 +70,10 @@ class HandlerContext:
         # traced back to that customer's conversations. None when the app did
         # not configure one; every use tolerates that.
         self._subjects = subjects
+        # Who each evaluation trial's conversation was bound to, for the trial's
+        # next turn. A trial's messages are filed under its own conversation, so
+        # the store cannot answer that the way it does for a person's turns.
+        self._trial_subjects = trial_subjects
         # The evaluation trial this turn belongs to, when it is one: set by
         # AgentApp from the request's baggage, after verifying the run with
         # Hopsworks (or without verifying, under EVAL_MODE, where the whole
@@ -95,6 +100,13 @@ class HandlerContext:
         self._event_queue: asyncio.Queue[Any] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._event_buffer: list[dict[str, Any]] = []
+        #: Tool names the handler has emitted an event for in this turn. The
+        #: automatic span-driven emitter stays off them: an agent that reports
+        #: its own progress has said what it wants shown.
+        self._handler_emitted: set[str] = set()
+        #: Spans the automatic emitter opened and then found to be the handler's
+        #: after all, so its closing event is dropped with its opening one.
+        self._auto_suppressed: set[str] = set()
         # set by the LLM-span detector when a model call is traced during this
         # turn: what says whether the turn's own usage figure is the only one
         # a reader of these spans will find
@@ -138,9 +150,18 @@ class HandlerContext:
         if self.memory is None:
             return {}
         owner = self._state_owner(scope)
-        return {
+        facts = {
             row["key"]: row["value"] for row in self.memory.list_state(scope, owner)
         }
+        if self._trial_overlay(scope):
+            # what this trial wrote, over what the person already had
+            facts.update(
+                {
+                    row["key"]: row["value"]
+                    for row in self.memory.list_state(scope, self.conversation_id)
+                }
+            )
+        return facts
 
     @public
     def recall(self, key: str, *, scope: str = "user") -> str | None:
@@ -165,6 +186,10 @@ class HandlerContext:
             raise ValueError(f"unknown scope {scope!r}; expected one of {SCOPES}")
         if self.memory is None:
             return None
+        if self._trial_overlay(scope):
+            written = self.memory.get_state(scope, self.conversation_id, key)
+            if written is not None:
+                return written
         return self.memory.get_state(scope, self._state_owner(scope), key)
 
     @public
@@ -229,7 +254,7 @@ class HandlerContext:
             return False
         self.memory.set_state(
             scope,
-            self._state_owner(scope),
+            self._write_owner(scope),
             key,
             value,
             source_ref=source_ref if source_ref is not None else self._provenance(),
@@ -257,7 +282,10 @@ class HandlerContext:
             )
         if self.memory is None:
             return 0
-        return self.memory.delete_state(scope, self._state_owner(scope), key)
+        # In a trial this erases only what the trial itself wrote: the person's
+        # own facts are read through, never changed, so a replay cannot forget
+        # anything on their behalf.
+        return self.memory.delete_state(scope, self._write_owner(scope), key)
 
     def _provenance(self) -> str:
         """Where a fact written this turn came from, as the store records it.
@@ -307,8 +335,15 @@ class HandlerContext:
         # tell the three apart.
         self.subject_source = "app"
         self.has_subject = True
-        if self.memory is not None:
+        if self.memory is not None and not self._in_trial:
+            # A trial's rows stay the trial's: stamped with the person, they would
+            # join that person's conversation list and episodic search.
             self.memory.rebind_turn_subject(self.conversation_id, self.turn_id, subject)
+        if self._in_trial and self._trial_subjects is not None:
+            # Kept for the trial's next turn, which otherwise started unbound: the
+            # agent identified the person again on every turn, and a multi-turn
+            # task could not test that a binding carries over.
+            self._trial_subjects[self.conversation_id] = subject
         # the same identification, recorded where a developer holding a
         # customer key will look for it. One writer for both, so the index and
         # the memory rows cannot end up disagreeing about who this is.
@@ -329,6 +364,15 @@ class HandlerContext:
         """
         if not subject or self._subjects is None:
             return False
+        if source == "model" and self.has_subject:
+            # A model's label never overwrites an identity that keys memory. The
+            # index keeps one row per conversation and the last claim wins, so an
+            # agent that called `identify` again on turn three replaced the app's
+            # binding with its own guess, and every trace of the conversation then
+            # reported subject_source "model" -- including turns where the app had
+            # bound the person and memory followed them. The binding already says
+            # who this is, more authoritatively than the label could.
+            return False
         return self._subjects.record(self.conversation_id, subject, source)
 
     def _state_owner(self, scope: str) -> str:
@@ -337,6 +381,40 @@ class HandlerContext:
         if scope == "app":
             return ""
         return self.subject
+
+    @property
+    def _in_trial(self) -> bool:
+        """Whether this turn is an evaluation trial rather than somebody's turn."""
+        return self.evaluation is not None or self._eval_labelled
+
+    def _trial_overlay(self, scope: str) -> bool:
+        """Whether this turn reads a real person's facts but must not write them.
+
+        A trial replaying a promoted task runs as the subject the original turn
+        ran as -- that is the only way a memory regression can fail for the
+        reason the original did. Reading that person's memory is the point;
+        writing it is not: a regression suite run nightly would otherwise
+        rewrite a customer's stored profile with whatever the agent concluded
+        during the test. So in a trial with a subject, ``user`` writes land
+        under the trial's own conversation and reads look there first.
+        """
+        return scope == "user" and self.has_subject and self._in_trial
+
+    def _write_owner(self, scope: str) -> str:
+        """The owner a write goes under, which differs from a read's only in a trial."""
+        if self._trial_overlay(scope):
+            return self.conversation_id
+        return self._state_owner(scope)
+
+    @property
+    def _stamp_subject(self) -> str:
+        """The subject a turn's stored messages are filed under.
+
+        The person for their own turns. For a trial, the trial's conversation:
+        filed under the person, a replay's messages joined their conversation
+        list and came back from their episodic search as things they had said.
+        """
+        return self.conversation_id if self._in_trial else self.subject
 
     @public
     def system_context(
@@ -442,6 +520,10 @@ class HandlerContext:
         same id for the start and end of one call (the SDK's auto-emit uses the
         span id); omit it and each event stands alone.
         """
+        # The handler is emitting for this tool itself, so the automatic emitter
+        # must not emit for it too: two chips for one call, with different ids,
+        # one closing under the tool's name and one under the event's.
+        self._handler_emitted.add(name)
         self._emit_sync(name, status, message, data, event_id)
 
     def _emit_sync(

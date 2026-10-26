@@ -132,7 +132,7 @@ class TestToolArguments:
         # whether the framework records arguments says nothing about the agent
         evaluator = ToolArgumentEvaluator("cancel_order", ["order_id"])
         result = evaluator._grade(task(), trial(), trace(call("cancel_order")))
-        assert result.ungradable and result.passed is False
+        assert result.ungradable and result.passed is None and result.score is None
         assert "does not appear to trace them" in result.reason
 
     def test_a_tool_that_never_ran_is_ungradable_not_a_failure(self):
@@ -335,7 +335,7 @@ class TestToolJudges:
     def test_a_judge_returning_prose_is_ungradable_not_a_failure(self):
         evaluator = ToolArgumentsJudge(lambda _p: "looks fine to me")
         result = evaluator._grade(task(), trial(), trace(call("x", arguments="{}")))
-        assert result.ungradable and result.passed is False
+        assert result.ungradable and result.passed is None and result.score is None
 
     def test_a_judge_that_raises_is_ungradable(self):
         def boom(_p):

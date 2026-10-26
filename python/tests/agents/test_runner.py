@@ -314,12 +314,41 @@ class TestFailureClassification:
             m["metric_name"]: m["metric_value"]
             for m in _run_metrics("r", "s", 7, result.trials)
         }
-        # nothing gradable happened, so the pass rate must not read as 0% agent
-        # quality
-        assert metrics["pass_rate"] == 0.0
+        # nothing gradable happened, so there is no pass rate to read as 0% agent
+        # quality, and the run says how much of it went ungraded
+        assert "pass_rate" not in metrics
+        assert metrics["ungradable_rate"] == 1.0
         from hopsworks_agents.eval.models import _gradable_trials
 
         assert _gradable_trials(result.trials) == []
+
+    def test_an_agent_that_never_answered_is_an_outage_in_the_metrics(self):
+        # Every trial a 500 from the agent: failures, because nobody got an answer,
+        # but said as such rather than only as a pass rate of 0.0.
+        result = go(FakeClient(error="agent returned 500: Internal Server Error"))
+        metrics = {
+            m["metric_name"]: m["metric_value"]
+            for m in _run_metrics("r", "s", 7, result.trials)
+        }
+        assert result.trials[0].status is TrialStatus.AGENT_ERROR
+        assert metrics["pass_rate"] == 0.0
+        assert metrics["agent_error_rate"] == 1.0
+
+    def test_a_turn_that_ran_out_of_time_is_said_as_such(self):
+        # gpt-6 with web search runs one to two minutes a turn; trials lost to the
+        # clock read only as a pass rate, indistinguishable from wrong answers.
+        result = go(FakeClient(error="request timeout after 600s"))
+        metrics = {
+            m["metric_name"]: m["metric_value"]
+            for m in _run_metrics("r", "s", 7, result.trials)
+        }
+        assert metrics["timeout_rate"] == 1.0
+        assert metrics["agent_error_rate"] == 0.0
+
+    def test_the_default_trial_timeout_lets_a_slow_agent_answer(self):
+        from hopsworks_agents.eval.runner import RunnerConfig
+
+        assert RunnerConfig().timeout_s >= 600
 
 
 class TestWhenTheHarnessItselfBreaks:
@@ -1071,3 +1100,57 @@ class TestWaitingForTheDeployment:
                 config=config,
                 sleep=lambda _s: None,
             )
+
+
+class TestATaskIsAskedAsWhoeverItNames:
+    """A promoted task replays the subject and context of the turn it came from.
+
+    A memory failure only happens to someone the agent has memory of. Asked by a
+    stranger, its regression passes, so the regression suite could never hold the
+    one kind of failure memory exists to prevent.
+    """
+
+    class Recording(FakeClient):
+        def _send_prompt(self, prompt, *, traceparent, baggage, timeout_s, **identity):
+            self.identity = getattr(self, "identity", [])
+            self.identity.append(identity)
+            return super()._send_prompt(
+                prompt, traceparent=traceparent, baggage=baggage, timeout_s=timeout_s
+            )
+
+    def test_the_subject_and_context_ride_on_the_request(self):
+        client = self.Recording()
+        go(
+            client,
+            suite(tasks=[task(subject="marcus@example.com", context={"plan": "pro"})]),
+        )
+        assert client.identity == [
+            {"subject": "marcus@example.com", "context": {"plan": "pro"}}
+        ]
+
+    def test_every_turn_of_a_scripted_conversation_carries_them(self):
+        client = self.Recording()
+        script = json.dumps(
+            [
+                {"role": "user", "content": "hi"},
+                {"role": "user", "content": "what do you know about me?"},
+            ]
+        )
+        go(
+            client,
+            suite(
+                tasks=[
+                    task(
+                        input_messages=script,
+                        task_type="multi_turn",
+                        subject="marcus@example.com",
+                    )
+                ]
+            ),
+        )
+        assert [i.get("subject") for i in client.identity] == ["marcus@example.com"] * 2
+
+    def test_an_anonymous_task_sends_neither(self):
+        client = self.Recording()
+        go(client, suite(tasks=[task()]))
+        assert client.identity == [{}]
