@@ -76,6 +76,7 @@ index must be loaded, or the source is an API with no table to mount.
 | glue | AWS Glue Data Catalog | `--database`, `--region` | `--secret-key`, `--session-token` (`HOPSWORKS_DS_GLUE_<OPTION>`) |
 | google-sheets | Google Sheets | `--key-path` | none; the key file is uploaded to HopsFS first |
 | hopsfs | A dataset in this project | `--dataset` | none |
+| hopsworks | Feature groups of a project on another Hopsworks cluster | `--host`, `--project` | `--api-key` (`HOPSWORKS_DS_HOPSWORKS_API_KEY`) |
 | jdbc | Any JDBC database | `--url` | `--password` (`HOPSWORKS_DS_JDBC_PASSWORD`) |
 | kafka | An external Kafka cluster | `--bootstrap-servers`, `--security-protocol` | `--ssl-truststore-password`, `--ssl-keystore-password`, `--ssl-key-password` (`HOPSWORKS_DS_KAFKA_<OPTION>`) |
 | mongodb | MongoDB | `--connection-string`, `--database` | `--password` (`HOPSWORKS_DS_MONGODB_PASSWORD`) |

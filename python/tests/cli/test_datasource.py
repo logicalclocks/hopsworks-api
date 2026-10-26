@@ -91,6 +91,7 @@ _MINIMAL: dict[str, list[str]] = {
     "sap-hana": ["--host", "h", "--user", "u", "--password", "p"],
     "unity-catalog": ["--workspace-url", "https://w", "--access-token", "t"],
     "mongodb": ["--connection-string", "mongodb://h", "--database", "d"],
+    "hopsworks": ["--host", "h", "--project", "p", "--api-key", "k"],
     "glue": ["--database", "d", "--region", "eu-north-1"],
     "google-sheets": ["--key-path", "/Projects/p/k.json"],
 }
@@ -114,6 +115,7 @@ _DTOS: dict[str, tuple[str, str]] = {
     "sap-hana": ("featureStoreSapHanaConnectorDTO", "SAP_HANA"),
     "unity-catalog": ("featurestoreUnityCatalogConnectorDTO", "UNITY_CATALOG"),
     "mongodb": ("featurestoreMongoConnectorDTO", "MONGODB"),
+    "hopsworks": ("featurestoreHopsworksConnectorDTO", "HOPSWORKS"),
     "glue": ("featurestoreGlueConnectorDTO", "GLUE"),
     "google-sheets": ("featurestoreGoogleSheetsConnectorDTO", "GOOGLE_SHEETS"),
 }
@@ -644,6 +646,29 @@ def test_sql_teradata_is_a_database_type_of_the_sql_connector():
     assert body["port"] == 1025
 
 
+def test_sql_sqlserver_is_a_database_type_of_the_sql_connector():
+    body = _create(
+        [
+            "sql",
+            "n",
+            "--database-type",
+            "SQLSERVER",
+            "--host",
+            "mssql",
+            "--port",
+            "1433",
+            "--database",
+            "sales",
+            "--user",
+            "u",
+        ]
+    )
+
+    assert body["type"] == "featurestoreSqlConnectorDTO"
+    assert body["databaseType"] == "SQLSERVER"
+    assert body["port"] == 1433
+
+
 def test_unity_catalog_defaults_to_a_personal_access_token():
     body = _create(["unity-catalog", "n", *_MINIMAL["unity-catalog"]])
 
@@ -898,6 +923,41 @@ def test_sql_shared_credentials_still_need_a_user():
 def test_elasticsearch_auth_modes_are_exclusive(argv, message):
     output = _refused(["elasticsearch", "n", "--host", "h", *argv])
     assert message in output
+
+
+def test_hopsworks_sends_the_remote_project_and_api_key():
+    body = _create(
+        [
+            "hopsworks",
+            "n",
+            "--host",
+            "hopsworks.example.com",
+            "--port",
+            "8181",
+            "--project",
+            "sales",
+            "--no-tls-verify",
+        ],
+        env={"HOPSWORKS_DS_HOPSWORKS_API_KEY": "from-env"},
+    )
+
+    assert (body["host"], body["port"], body["project"], body["apiKey"]) == (
+        "hopsworks.example.com",
+        8181,
+        "sales",
+        "from-env",
+    )
+    assert body["verify"] is False
+
+
+@pytest.mark.parametrize(
+    "host", ["https://hopsworks.example.com", "hopsworks.example.com/hopsworks-api"]
+)
+def test_hopsworks_host_is_a_bare_host_name(host):
+    output = _refused(
+        ["hopsworks", "n", "--host", host, "--project", "p", "--api-key", "k"]
+    )
+    assert "--host takes the bare host name" in output
 
 
 def _tested(response: dict) -> tuple:

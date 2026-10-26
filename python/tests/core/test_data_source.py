@@ -109,6 +109,23 @@ class TestDataSource:
         # Assert
         assert sc.default_index == "events"
 
+    def test_update_storage_connector_hopsworks_keeps_the_connector(self):
+        # Arrange
+        ds = data_source.DataSource()
+        ds.database = "sales_featurestore"
+        ds.table = "transactions_1"
+
+        sc = storage_connector.HopsworksConnector(
+            1, "test", 100, host="h", project="sales"
+        )
+        before = sc.to_dict()
+
+        # Act
+        ds._update_storage_connector(sc)
+
+        # Assert
+        assert sc.to_dict() == before
+
     def test_update_storage_connector_other(self):
         # Arrange
         ds = data_source.DataSource()

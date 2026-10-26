@@ -87,11 +87,13 @@ class StorageConnector(ABC):
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
     TERADATA = "TERADATA"
+    SQLSERVER = "SQLSERVER"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
     GLUE = "GLUE"
     ELASTICSEARCH = "ELASTICSEARCH"
+    HOPSWORKS = "HOPSWORKS"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -112,6 +114,7 @@ class StorageConnector(ABC):
         ORACLE: "featurestoreSqlConnectorDTO",
         OPENSEARCH: "featurestoreOpensearchConnectorDTO",
         ELASTICSEARCH: "featurestoreElasticsearchConnectorDTO",
+        HOPSWORKS: "featurestoreHopsworksConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
@@ -155,6 +158,7 @@ class StorageConnector(ABC):
         | MongoDBConnector
         | GlueConnector
         | ElasticsearchConnector
+        | HopsworksConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -187,6 +191,7 @@ class StorageConnector(ABC):
         | MongoDBConnector
         | GlueConnector
         | ElasticsearchConnector
+        | HopsworksConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -694,6 +699,8 @@ class StorageConnector(ABC):
                         "explicit `database` to get_tables()."
                     )
                 database = self.database
+            elif self.type == StorageConnector.HOPSWORKS:
+                database = self._default_feature_store()
             elif self.type in [
                 StorageConnector.S3,
                 StorageConnector.GCS,
@@ -3466,6 +3473,7 @@ class SqlConnector(StorageConnector):
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
     TERADATA = "TERADATA"
+    SQLSERVER = "SQLSERVER"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
@@ -3473,6 +3481,7 @@ class SqlConnector(StorageConnector):
         ORACLE: "oracle.jdbc.driver.OracleDriver",
         CLICKHOUSE: "com.clickhouse.jdbc.ClickHouseDriver",
         TERADATA: "com.teradata.jdbc.TeraDriver",
+        SQLSERVER: "com.microsoft.sqlserver.jdbc.SQLServerDriver",
     }
     # Connection settings the connector's own fields supply, so a free-form argument must never be
     # able to replace them.
@@ -3482,6 +3491,11 @@ class SqlConnector(StorageConnector):
             "port",
             "dbs_port",
             "database",
+            "databasename",
+            # SQL Server's JDBC driver reads the host and port under these names too.
+            "server",
+            "servername",
+            "portnumber",
             "database_type",
             "user",
             "username",
@@ -3495,6 +3509,7 @@ class SqlConnector(StorageConnector):
         # No protocol in the scheme: the 0.9.x driver defaults to HTTP (port 8123).
         CLICKHOUSE: "clickhouse",
         TERADATA: "teradata",
+        SQLSERVER: "sqlserver",
     }
 
     def __init__(
@@ -4108,6 +4123,11 @@ class SqlConnector(StorageConnector):
             if self._port:
                 params.append(f"DBS_PORT={self._port}")
             opts["url"] = f"jdbc:{scheme}://{self._host}/" + ",".join(params)
+        elif self._database_type == self.SQLSERVER:
+            # The database is a ;-separated property, not a path, braced so a ; or = in it cannot
+            # start another property; }} is a literal } inside braces.
+            database = (self._database or "").replace("}", "}}")
+            opts["url"] = f"jdbc:{scheme}://{host_port};databaseName={{{database}}}"
         else:
             opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
         return opts
@@ -4900,6 +4920,149 @@ class ElasticsearchConnector(StorageConnector):
             dataframe, self._object_paths(self._get_mapping(index, merged))
         )
         return engine._get_instance()._return_dataframe_type(dataframe, dataframe_type)
+
+
+@public
+class HopsworksConnector(StorageConnector):
+    """Storage connector to a project on another Hopsworks cluster.
+
+    Use this connector to browse the feature stores and feature groups that the remote project can read, to register an external feature group on one of its feature groups, and to ingest one into a local feature group with a DLTHub ingestion job.
+    External feature groups are read through the Hopsworks Query Service of the remote cluster.
+    The API key is kept in the Hopsworks secret store and needs the `PROJECT` and `FEATURESTORE` scopes on the remote cluster.
+
+    Example:
+        ```python
+        fs = ...
+        sc = fs.get_storage_connector("my_remote_cluster")
+        tables = sc.get_tables("sales_featurestore")
+        fg = fs.create_external_feature_group(
+            name="transactions",
+            version=1,
+            primary_key=["id"],
+            data_source=tables[0],
+        )
+        fg.save()
+        ```
+    """
+
+    type = StorageConnector.HOPSWORKS
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        project: str | None = None,
+        api_key: str | None = None,
+        verify: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._project = project
+        self._api_key = api_key
+        self._verify = verify
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Host name or IP address of the remote Hopsworks cluster."""
+        return self._host
+
+    @public
+    @property
+    def port(self) -> int | None:
+        """HTTPS port of the remote cluster; 443 when unset."""
+        return self._port
+
+    @public
+    @property
+    def project(self) -> str | None:
+        """Name of the project on the remote cluster that the API key belongs to."""
+        return self._project
+
+    @public
+    @property
+    def api_key(self) -> str | None:
+        """API key of a user of the remote project, resolved from the secret store."""
+        return self._api_key
+
+    @public
+    @property
+    def verify(self) -> bool | None:
+        """Whether the TLS certificate and host name of the remote cluster are verified; true when unset."""
+        return self._verify
+
+    def _ensure_full(self) -> None:
+        """Refetch the connector when it is the basic-info copy a data source or feature group carries."""
+        if not self._host:
+            self._refetch()
+
+    def _default_feature_store(self) -> str:
+        """Name of the remote project's own feature store, browsed when no database is given."""
+        self._ensure_full()
+        if not self._project:
+            raise ValueError(
+                "Database name is required for Hopsworks connectors without a project. "
+                "Pass the remote feature store name as the `database` argument to get_tables()."
+            )
+        return f"{self._project.lower()}_featurestore"
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "project": self._project,
+                "apiKey": self._api_key,
+                "verify": self._verify,
+            }
+        )
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: read a remote feature group through an external feature group instead.
+
+        Create an external feature group on a table from [`get_tables`][hsfs.storage_connector.StorageConnector.get_tables] and read it with [`FeatureGroup.read`][hsfs.feature_group.FeatureGroup.read], which goes through the Hopsworks Query Service.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Cannot read from a Hopsworks connector directly. Create an external feature group "
+            "on one of its tables and use feature_group.read() instead."
+        )
 
 
 class CRMSource(Enum):
