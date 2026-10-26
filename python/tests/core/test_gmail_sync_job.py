@@ -23,6 +23,7 @@ from email.message import EmailMessage
 
 import pytest
 from hsfs.core import gmail_sync_job as g
+from hsfs.core import mail_sync_job as m
 
 
 NOW_MS = int(datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc).timestamp() * 1000)
@@ -93,8 +94,8 @@ class FakeGmail:
         self.fail_ids = set()
 
     def add(self, *messages):
-        for m in messages:
-            self.messages[m["id"]] = m
+        for message in messages:
+            self.messages[message["id"]] = message
 
     def _list_message_ids(self, query, label_ids):
         self.queries.append((query, list(label_ids)))
@@ -117,7 +118,7 @@ class FakeGmail:
 
     def _get_raw_message(self, message_id):
         if message_id in self.fail_ids:
-            raise g._GmailSyncError("Gmail returned HTTP 400: failedPrecondition")
+            raise m._MailSyncError("Gmail returned HTTP 400: failedPrecondition")
         return self.messages.get(message_id)
 
 
@@ -153,7 +154,7 @@ def _config(strategy="INCREMENTAL_TIMESTAMP", **kwargs):
         "loadingStrategy": strategy,
     }
     values.update(kwargs)
-    return g._SyncConfig.from_json(values)
+    return m._SyncConfig.from_json(values)
 
 
 def _run(
@@ -166,10 +167,10 @@ def _run(
     now_ms=NOW_MS,
 ):
     (tmp_path / "Resources").mkdir(exist_ok=True)
-    return g._SyncRun(
+    return m._SyncRun(
         config,
         "alice@example.com",
-        client,
+        g._GmailSource(client, config.query, config.labels),
         writer,
         tmp_path,
         PROJECT_ROOT,
@@ -187,7 +188,7 @@ class TestParseMessage:
             None,
             PROJECT_ROOT + "/Resources/mail",
         )
-        assert [name for name, _ in g.COLUMNS] == list(row)
+        assert [name for name, _ in m.COLUMNS] == list(row)
         assert row["subject"] == "Hello"
         assert row["from_address"] == "Bob <bob@example.com>"
         assert row["to_addresses"] == ["Alice <alice@example.com>", "carol@example.com"]
@@ -244,7 +245,7 @@ class TestParseMessage:
         ],
     )
     def test_attachment_names_stay_inside_their_directory(self, sent, stored):
-        assert g._safe_name(sent) == stored
+        assert m._safe_name(sent) == stored
 
     def test_html_only_message_is_reduced_to_text(self):
         html = "<html><style>p{}</style><p>Hi <b>there</b></p><p>Second &amp; last</p></html>"
@@ -274,7 +275,7 @@ class TestIncremental:
         assert (tmp_path / "Resources" / "gmail" / "alice_examples").is_dir()
 
     def test_a_missing_dataset_is_refused(self, tmp_path):
-        with pytest.raises(g._GmailSyncError, match="dataset Mail does not exist"):
+        with pytest.raises(m._MailSyncError, match="dataset Mail does not exist"):
             _run(
                 tmp_path,
                 FakeGmail([_message("a", DAY1)]),
@@ -294,7 +295,7 @@ class TestIncremental:
             tmp_path, client, _config(), writer, execution_id="8", now_ms=LATER
         )
         assert second.copied == 1
-        assert second.cursor_ms == LATER - g.RUN_HORIZON_MS
+        assert second.cursor_ms == LATER - m.RUN_HORIZON_MS
         assert (
             _run(
                 tmp_path, client, _config(), writer, execution_id="9", now_ms=LATER
@@ -325,14 +326,14 @@ class TestIncremental:
         )
         query, labels = client.queries[-1]
         assert query.startswith("(from:bob) -in:drafts after:")
-        assert f"after:{(NOW_MS - g.RUN_HORIZON_MS) // 1000 - 1}" in query
+        assert f"after:{(NOW_MS - m.RUN_HORIZON_MS) // 1000 - 1}" in query
         assert labels == ["INBOX"]
 
     @pytest.mark.parametrize("strategy", ["INCREMENTAL_TIMESTAMP", "FULL_LOAD"])
     def test_labels_select_the_messages_carrying_any_of_them(self, tmp_path, strategy):
         client = FakeGmail(
             [
-                _message("sent", DAY1 - 9 * g.WINDOW_MS, labels=("SENT",)),
+                _message("sent", DAY1 - 9 * m.WINDOW_MS, labels=("SENT",)),
                 _message("inbox", DAY1, labels=("INBOX",)),
                 _message("both", DAY1 + 1000, labels=("INBOX", "SENT")),
                 _message("other", DAY1 + 2000, labels=("Label_1",)),
@@ -346,7 +347,7 @@ class TestIncremental:
     def test_messages_in_the_overlap_with_the_cursor_are_neither_lost_nor_duplicated(
         self, tmp_path
     ):
-        cursor = NOW_MS - g.RUN_HORIZON_MS
+        cursor = NOW_MS - m.RUN_HORIZON_MS
         # Received in the cursor's second: one before the cursor, one after it but indexed only after the run.
         client = FakeGmail([_message("before", DAY1, received_ms=cursor - 200)])
         writer = FakeWriter()
@@ -365,9 +366,9 @@ class TestIncremental:
         client = FakeGmail(
             [
                 _message("dated_later", DAY1, received_ms=DAY1 - 9 * 24 * HOUR),
-                _message("dated_earlier", DAY1 - 3 * g.WINDOW_MS, received_ms=DAY1),
-                _message("old_date", 0, received_ms=DAY1 - 2 * g.WINDOW_MS),
-                _message("anchor", DAY1 - 4 * g.WINDOW_MS),
+                _message("dated_earlier", DAY1 - 3 * m.WINDOW_MS, received_ms=DAY1),
+                _message("old_date", 0, received_ms=DAY1 - 2 * m.WINDOW_MS),
+                _message("anchor", DAY1 - 4 * m.WINDOW_MS),
             ]
         )
         writer = FakeWriter()
@@ -389,7 +390,7 @@ class TestIncremental:
         for path in state_dir.iterdir():
             state = json.loads(path.read_text())
             path.write_text(json.dumps({**state, "schema_version": 2}))
-        with pytest.raises(g._GmailSyncError, match="earlier version"):
+        with pytest.raises(m._MailSyncError, match="earlier version"):
             _run(tmp_path, client, _config(), writer, execution_id="8")
 
     def test_initial_value_is_an_inclusive_lower_bound(self, tmp_path):
@@ -418,22 +419,22 @@ class TestIncremental:
         assert later.copied == 1
 
     def test_the_cursor_is_checkpointed_after_every_batch(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(g, "UPSERT_BATCH", 2)
+        monkeypatch.setattr(m, "UPSERT_BATCH", 2)
         client = FakeGmail(
-            [_message(str(i), NOW_MS - (5 - i) * g.WINDOW_MS) for i in range(5)]
+            [_message(str(i), NOW_MS - (5 - i) * m.WINDOW_MS) for i in range(5)]
         )
         writer = FakeWriter()
-        real_write_state = g._write_state
+        real_write_state = m._write_state
 
-        def crash_after_second_checkpoint(directory, state, seq):
-            real_write_state(directory, state, seq)
+        def crash_after_second_checkpoint(directory, state_dir, state, seq):
+            real_write_state(directory, state_dir, state, seq)
             if seq == 2:
                 raise OSError("pod killed")
 
-        monkeypatch.setattr(g, "_write_state", crash_after_second_checkpoint)
+        monkeypatch.setattr(m, "_write_state", crash_after_second_checkpoint)
         with pytest.raises(OSError):
             _run(tmp_path, client, _config(), writer)
-        monkeypatch.setattr(g, "_write_state", real_write_state)
+        monkeypatch.setattr(m, "_write_state", real_write_state)
         upserts_before = len(writer.calls)
         retry = _run(tmp_path, client, _config(), writer, execution_id="8")
         assert retry.copied == 1
@@ -441,18 +442,18 @@ class TestIncremental:
         assert sorted(writer.table) == ["0", "1", "2", "3", "4"]
 
     def test_a_backfill_upserts_as_it_reads_its_windows(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(g, "UPSERT_BATCH", 2)
+        monkeypatch.setattr(m, "UPSERT_BATCH", 2)
         weeks_ago = [5, 4, 3, 2, 1]
         client = FakeGmail(
-            [_message(str(w), NOW_MS - w * g.WINDOW_MS) for w in weeks_ago]
+            [_message(str(w), NOW_MS - w * m.WINDOW_MS) for w in weeks_ago]
         )
         writer = FakeWriter()
         result = _run(tmp_path, client, _config(), writer)
         assert result.copied == 5
         assert writer.calls == [(2, False), (2, False), (1, False)]
         assert list(writer.table) == ["5", "4", "3", "2", "1"]
-        state, _ = g._read_state(tmp_path / "Resources" / "mail")
-        assert state.cursor_ms == NOW_MS - g.RUN_HORIZON_MS
+        state, _ = m._read_state(tmp_path / "Resources" / "mail", g.STATE_DIR)
+        assert state.cursor_ms == NOW_MS - m.RUN_HORIZON_MS
         assert writer.compacted == result.days
 
     def test_without_a_start_date_the_oldest_message_is_copied(self, tmp_path):
@@ -468,7 +469,7 @@ class TestIncremental:
         client = FakeGmail([_message("a", DAY1), _message("b", DAY2)])
         writer = FakeWriter()
         monkeypatch.setattr(
-            g, "_write_state", lambda *a: (_ for _ in ()).throw(OSError("killed"))
+            m, "_write_state", lambda *a: (_ for _ in ()).throw(OSError("killed"))
         )
         with pytest.raises(OSError):
             _run(tmp_path, client, _config(), writer)
@@ -493,7 +494,7 @@ class TestIncremental:
         client = FakeGmail([_message("a", DAY1), _message("b", DAY2)])
         client.fail_ids.add("b")
         writer = FakeWriter()
-        with pytest.raises(g._GmailSyncError):
+        with pytest.raises(m._MailSyncError):
             _run(tmp_path, client, _config(), writer)
         assert writer.calls == []
         assert not (tmp_path / "Resources" / "mail" / g.STATE_DIR).exists()
@@ -538,7 +539,7 @@ class TestIncremental:
     ):
         client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()
         _run(tmp_path, client, _config(labels=["INBOX"]), writer)
-        with pytest.raises(g._GmailSyncError, match="full load"):
+        with pytest.raises(m._MailSyncError, match="full load"):
             _run(
                 tmp_path,
                 client,
@@ -552,12 +553,12 @@ class TestIncremental:
         _run(tmp_path, client, _config(), writer)
         for state in (tmp_path / "Resources" / "mail" / g.STATE_DIR).iterdir():
             state.write_text("{not json")
-        with pytest.raises(g._GmailSyncError, match="cannot be read"):
+        with pytest.raises(m._MailSyncError, match="cannot be read"):
             _run(tmp_path, client, _config(), writer, execution_id="8")
 
     def test_checkpoints_keep_the_previous_version(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(g, "UPSERT_BATCH", 1)
-        client = FakeGmail([_message(str(i), DAY1 - i * g.WINDOW_MS) for i in range(4)])
+        monkeypatch.setattr(m, "UPSERT_BATCH", 1)
+        client = FakeGmail([_message(str(i), DAY1 - i * m.WINDOW_MS) for i in range(4)])
         _run(tmp_path, client, _config(), FakeWriter())
         names = sorted(
             p.name for p in (tmp_path / "Resources" / "mail" / g.STATE_DIR).iterdir()
@@ -644,8 +645,8 @@ class TestFullLoad:
         assert sorted(p.name for p in (tmp_path / "Resources").iterdir()) == ["mail"]
 
     def test_only_the_first_batch_overwrites(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(g, "UPSERT_BATCH", 2)
-        client = FakeGmail([_message(str(i), DAY1 - i * g.WINDOW_MS) for i in range(5)])
+        monkeypatch.setattr(m, "UPSERT_BATCH", 2)
+        client = FakeGmail([_message(str(i), DAY1 - i * m.WINDOW_MS) for i in range(5)])
         writer = FakeWriter()
         _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
         assert writer.calls == [(2, True), (2, False), (1, False)]
@@ -688,7 +689,7 @@ class TestLease:
 
     def test_a_running_holder_keeps_the_mailbox(self, tmp_path):
         self._lease(tmp_path, "5", NOW_MS)
-        with pytest.raises(g._GmailSyncError, match="Another sync"):
+        with pytest.raises(m._MailSyncError, match="Another sync"):
             _run(
                 tmp_path,
                 FakeGmail([_message("a", DAY1)]),
@@ -708,11 +709,11 @@ class TestLease:
     def test_an_unverifiable_holder_is_taken_over_only_when_old(self, tmp_path):
         lease = self._lease(tmp_path, "local-x", NOW_MS - 1000)
         client = FakeGmail([_message("a", DAY1)])
-        with pytest.raises(g._GmailSyncError):
+        with pytest.raises(m._MailSyncError):
             _run(tmp_path, client, _config(), FakeWriter(), is_running=lambda h: None)
         lease.write_text(
             json.dumps(
-                {"holder": "local-x", "since": NOW_MS - g.UNVERIFIABLE_LEASE_MS - 1}
+                {"holder": "local-x", "since": NOW_MS - m.UNVERIFIABLE_LEASE_MS - 1}
             )
         )
         result = _run(
@@ -738,9 +739,9 @@ class TestFeatureGroup:
     def test_the_writer_sends_typed_columns(self):
         fg = _FakeFeatureGroup(1)
         row = g._parse_message(_message("a", DAY1), None, PROJECT_ROOT)
-        g._FeatureGroupWriter(fg)._upsert([row], overwrite=True)
+        m._FeatureGroupWriter(fg)._upsert([row], overwrite=True)
         frame, overwrite, wait = fg.inserts[0]
-        assert list(frame.columns) == [name for name, _ in g.COLUMNS]
+        assert list(frame.columns) == [name for name, _ in m.COLUMNS]
         assert str(frame["internal_date"].dtype).endswith(", UTC]")
         assert frame["internal_date"][0].year == 2026
         assert str(frame["size_estimate"].dtype) == "Int64"
@@ -755,17 +756,19 @@ class TestFeatureGroup:
         assert all(r["bcc_addresses"] == [] for r in rows)
         for row in rows:
             row["date_header"] = None
-        g._FeatureGroupWriter(fg)._upsert(rows, overwrite=False)
+        m._FeatureGroupWriter(fg)._upsert(rows, overwrite=False)
         features = python.Engine._parse_schema_feature_group(
             None, fg.inserts[0][0], "DELTA"
         )
-        assert {f.name: f.type for f in features} == dict(g.COLUMNS)
+        assert {f.name: f.type for f in features} == dict(m.COLUMNS)
 
     def test_a_new_feature_group_is_created_with_the_full_schema(self, mocker):
         fg = _FakeFeatureGroup()
         fs = mocker.MagicMock()
         fs.get_or_create_feature_group.return_value = fg
-        assert g._feature_group(fs, "alice_examples", "alice@example.com") is fg
+        assert (
+            m._feature_group(fs, "alice_examples", "alice@example.com", "Gmail") is fg
+        )
         kwargs = fs.get_or_create_feature_group.call_args.kwargs
         assert kwargs["name"] == "alice_examples"
         assert kwargs["primary_key"] == ["message_id"]
@@ -773,13 +776,13 @@ class TestFeatureGroup:
         assert kwargs["event_time"] == "internal_date"
         assert kwargs["time_travel_format"] == "DELTA"
         assert kwargs["online_enabled"] is False
-        assert [(f.name, f.type) for f in fg.saved] == list(g.COLUMNS)
+        assert [(f.name, f.type) for f in fg.saved] == list(m.COLUMNS)
 
     def test_an_existing_feature_group_is_reused(self, mocker):
         fg = _FakeFeatureGroup(5)
         fs = mocker.MagicMock()
         fs.get_or_create_feature_group.return_value = fg
-        g._feature_group(fs, "alice_examples", "alice@example.com")
+        m._feature_group(fs, "alice_examples", "alice@example.com", "Gmail")
         assert fg.saved is None
 
 
@@ -851,7 +854,7 @@ class TestGmailClient:
         client, sleeps = self._clocked_client([*throttled, _Response(200, {"id": "a"})])
         assert client._get_raw_message("a") == {"id": "a"}
         assert len(sleeps) == 200
-        assert max(sleeps) <= g.MAX_RATE_LIMIT_BACKOFF_S + 1
+        assert max(sleeps) <= m.MAX_RATE_LIMIT_BACKOFF_S + 1
         assert sum(sleeps) > 3 * 3600
 
     def test_a_throttled_request_holds_back_a_concurrent_one(self):
@@ -871,9 +874,9 @@ class TestGmailClient:
 
     def test_server_errors_keep_the_attempt_count(self):
         client, sleeps = self._clocked_client([_Response(503)] * 100)
-        with pytest.raises(g._GmailSyncError, match="HTTP 503"):
+        with pytest.raises(m._MailSyncError, match="HTTP 503"):
             client._get_raw_message("a")
-        assert len(sleeps) == g.MAX_ATTEMPTS - 1
+        assert len(sleeps) == m.MAX_ATTEMPTS - 1
 
     def test_throttling_is_logged_once_per_interval(self, caplog):
         caplog.set_level(logging.INFO)
@@ -890,7 +893,7 @@ class TestGmailClient:
 
     def test_a_forbidden_mailbox_is_not_retried(self):
         client, _, sleeps = self._client([_rate_limited("insufficientPermissions")])
-        with pytest.raises(g._GmailSyncError, match="403: insufficientPermissions"):
+        with pytest.raises(m._MailSyncError, match="403: insufficientPermissions"):
             client._get_raw_message("a")
         assert sleeps == []
 
@@ -925,7 +928,7 @@ def test_logs_carry_no_message_content_or_credentials(tmp_path, caplog):
 
 def test_the_scheduler_argument_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setenv("HOPSFS_MOUNT", str(tmp_path / "missing"))
-    with pytest.raises(g._GmailSyncError, match="HopsFS mount"):
+    with pytest.raises(m._MailSyncError, match="HopsFS mount"):
         g._main(
             [
                 "--config",
@@ -959,19 +962,19 @@ def test_a_run_that_finds_another_one_syncing_does_nothing(tmp_path, monkeypatch
     fs = type("F", (), {"get_data_source": lambda self, name: data_source})()
     project = type("P", (), {"name": "mail", "get_feature_store": lambda self: fs})()
     monkeypatch.setattr(hopsworks, "login", lambda: project)
-    monkeypatch.setattr(g, "_feature_group", lambda *a: None)
+    monkeypatch.setattr(m, "_feature_group", lambda *a: None)
 
     class HeldRun:
         def __init__(self, *a):
             pass
 
         def _run(self):
-            raise g._LeaseHeld("Another sync of this mailbox is running")
+            raise m._LeaseHeld("Another sync of this mailbox is running")
 
-    monkeypatch.setattr(g, "_SyncRun", HeldRun)
+    monkeypatch.setattr(m, "_SyncRun", HeldRun)
     g._main(["--config", "Resources/jobs/x/gmail_sync.json"])
 
 
 def test_configs_from_before_the_feature_group_are_refused():
-    with pytest.raises(g._GmailSyncError, match="save the sync job again"):
-        g._SyncConfig.from_json({"schemaVersion": 1})
+    with pytest.raises(m._MailSyncError, match="save the sync job again"):
+        m._SyncConfig.from_json({"schemaVersion": 1})

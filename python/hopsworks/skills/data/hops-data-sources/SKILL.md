@@ -455,6 +455,25 @@ The copy is an archive: deletions and label changes in Gmail after a message was
 A sync job is a Python job; schedule it `hourly` or `daily`, and monitor it like any job.
 To search the emails, use **hops-email-search**.
 
+## Copy an Outlook mailbox into a feature group
+
+An `outlook` data source is a Microsoft 365 or Outlook.com mailbox, read through Microsoft Graph with an app registration in Microsoft Entra ID:
+- `OAUTH`: a refresh token the mailbox owner granted with `Mail.Read offline_access`;
+- `CLIENT_CREDENTIALS`: a client secret of an app with the `Mail.Read` application permission in the mailbox's tenant, which needs `--tenant-id`.
+
+Its credentials are write-only, and Hopsworks stores the new refresh token Microsoft returns on each use.
+It syncs exactly like Gmail, into a feature group with the same columns (`jim@outlook.com` → `jim_outlooks`), so **hops-email-search** works on it too.
+It selects folders instead of labels and takes no query:
+
+```bash
+hops datasource create outlook support_outlook --mailbox support@contoso.com --auth-type CLIENT_CREDENTIALS --tenant-id contoso.com --client-id APP_ID --client-secret - < secret.txt
+hops datasource labels support_outlook    # folder ids and paths: Inbox, Inbox/Projects, Sent Items, ...
+hops datasource sync support_outlook --label <inbox folder id> --start-date 2026-01-01 --schedule hourly
+```
+
+Without `--label` (SDK `folders=[...]`), every folder but Deleted Items, Junk Email, Drafts and Outbox is copied; a chosen folder's subfolders need choosing too.
+A message keeps its key when moved between folders, but its `labels` keep the folder it was in when copied.
+
 ## Next Steps
 
 - Discover connectors/tables first: **hops-data-discovery**.

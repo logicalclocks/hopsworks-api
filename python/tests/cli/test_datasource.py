@@ -102,6 +102,18 @@ _MINIMAL: dict[str, list[str]] = {
         "--key-path",
         "/Projects/p/sa.json",
     ],
+    "outlook": [
+        "--mailbox",
+        "a@contoso.com",
+        "--auth-type",
+        "CLIENT_CREDENTIALS",
+        "--tenant-id",
+        "contoso.com",
+        "--client-id",
+        "app",
+        "--client-secret",
+        "s",
+    ],
 }
 
 # The Jackson subtype name and the FeaturestoreConnectorType each command sends.
@@ -127,6 +139,7 @@ _DTOS: dict[str, tuple[str, str]] = {
     "glue": ("featurestoreGlueConnectorDTO", "GLUE"),
     "google-sheets": ("featurestoreGoogleSheetsConnectorDTO", "GOOGLE_SHEETS"),
     "gmail": ("featurestoreGmailConnectorDTO", "GMAIL"),
+    "outlook": ("featurestoreOutlookConnectorDTO", "OUTLOOK"),
 }
 
 
@@ -1060,3 +1073,69 @@ def test_labels_lists_the_gmail_labels_by_id():
 
     assert result.exit_code == 0, result.output
     assert "Label_7" in result.output and "receipts" in result.output
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["--auth-type", "OAUTH"], "--auth-type OAUTH needs --refresh-token"),
+        (
+            ["--auth-type", "CLIENT_CREDENTIALS", "--client-secret", "s"],
+            "--auth-type CLIENT_CREDENTIALS needs --tenant-id",
+        ),
+        (
+            [
+                "--auth-type",
+                "CLIENT_CREDENTIALS",
+                "--tenant-id",
+                "Common",
+                "--client-secret",
+                "s",
+            ],
+            "--auth-type CLIENT_CREDENTIALS needs --tenant-id",
+        ),
+        (
+            ["--auth-type", "CLIENT_CREDENTIALS", "--tenant-id", "contoso.com"],
+            "--auth-type CLIENT_CREDENTIALS needs --client-secret",
+        ),
+    ],
+)
+def test_outlook_credentials_follow_the_auth_type(argv, message):
+    assert message in _refused(
+        ["outlook", "n", "--mailbox", "a@contoso.com", "--client-id", "app", *argv]
+    )
+
+
+def test_labels_lists_the_outlook_folders_by_id():
+    from hsfs.storage_connector import OutlookConnector
+
+    fs = mock.MagicMock()
+    sc = mock.MagicMock(spec=OutlookConnector)
+    sc.get_folders.return_value = {"f1": "Inbox/Projects"}
+    fs.get_data_source.return_value.storage_connector = sc
+    with mock.patch.object(ds.session, "get_feature_store", return_value=fs):
+        result = CliRunner().invoke(cli, ["datasource", "labels", "outlook"])
+
+    assert result.exit_code == 0, result.output
+    assert "Inbox/Projects" in result.output
+
+
+def test_sync_passes_outlook_labels_as_folders_and_refuses_a_query():
+    from hsfs.storage_connector import OutlookConnector
+
+    fs = mock.MagicMock()
+    data_source = fs.get_data_source.return_value
+    data_source.storage_connector = mock.MagicMock(spec=OutlookConnector)
+    data_source.sync.return_value.name = "outlook_outlook_sync"
+    with mock.patch.object(ds.session, "get_feature_store", return_value=fs):
+        refused = CliRunner().invoke(
+            cli, ["datasource", "sync", "outlook", "--query", "from:bob"]
+        )
+        result = CliRunner().invoke(
+            cli, ["datasource", "sync", "outlook", "--label", "f1", "--no-start"]
+        )
+
+    assert refused.exit_code != 0 and "Gmail only" in refused.output
+    assert result.exit_code == 0, result.output
+    assert data_source.sync.call_args.kwargs["folders"] == ["f1"]
+    assert "query" not in data_source.sync.call_args.kwargs

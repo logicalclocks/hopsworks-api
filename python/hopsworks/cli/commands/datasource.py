@@ -647,6 +647,20 @@ def _check_gmail(v: dict[str, Any]) -> str | None:
     )
 
 
+_OUTLOOK_TENANT_ALIASES = ("common", "consumers", "organizations")
+
+
+def _check_outlook(v: dict[str, Any]) -> str | None:
+    if v["auth_type"] == "OAUTH":
+        return _needs(v, "--auth-type OAUTH", "--refresh-token")
+    tenant = (v.get(_dest("--tenant-id")) or "").lower()
+    if not tenant or tenant in _OUTLOOK_TENANT_ALIASES:
+        return "--auth-type CLIENT_CREDENTIALS needs --tenant-id, the mailbox's tenant id or domain."
+    return _needs(v, "--auth-type CLIENT_CREDENTIALS", "--client-secret") or _refuses(
+        v, "--auth-type CLIENT_CREDENTIALS", "--refresh-token"
+    )
+
+
 def _check_bigquery(v: dict[str, Any]) -> str | None:
     if (
         _given(v, "--project-id")
@@ -1371,6 +1385,48 @@ _SPECS: dict[str, _Spec] = {
         ),
         check=_check_gmail,
     ),
+    "outlook": _Spec(
+        "featurestoreOutlookConnectorDTO",
+        "OUTLOOK",
+        "Register an Outlook mailbox, read through Microsoft Graph. Copy it into a feature group with `hops datasource sync`.",
+        (
+            _Opt(
+                "--mailbox", "mailbox", "Email address of the mailbox.", required=True
+            ),
+            _Opt(
+                "--auth-type",
+                "authType",
+                "OAUTH for a refresh token granted by the mailbox owner, CLIENT_CREDENTIALS for "
+                "an app with the Mail.Read application permission in the mailbox's tenant.",
+                required=True,
+                choices=("OAUTH", "CLIENT_CREDENTIALS"),
+            ),
+            _Opt(
+                "--tenant-id",
+                "tenantId",
+                "Microsoft Entra tenant id or domain; defaults to common for --auth-type OAUTH.",
+            ),
+            _Opt(
+                "--client-id",
+                "clientId",
+                "Application (client) id of the app registration.",
+                required=True,
+            ),
+            _Opt(
+                "--client-secret",
+                "clientSecret",
+                "Client secret; required for --auth-type CLIENT_CREDENTIALS, omitted for a public client.",
+                secret=True,
+            ),
+            _Opt(
+                "--refresh-token",
+                "refreshToken",
+                "Refresh token granted with Mail.Read offline_access, for --auth-type OAUTH.",
+                secret=True,
+            ),
+        ),
+        check=_check_outlook,
+    ),
     "bigquery": _Spec(
         "featurestoreBigqueryConnectorDTO",
         "BIGQUERY",
@@ -1895,18 +1951,22 @@ def connector_databases(ctx: click.Context, name: str) -> None:
 @click.option(
     "--feature-group",
     help="Feature group to upsert the emails into; defaults to one named after the mailbox, "
-    "e.g. dowling_jim_gmails for dowling.jim@gmail.com.",
+    "e.g. dowling_jim_gmails for dowling.jim@gmail.com or jim_outlooks for jim@outlook.com.",
 )
 @click.option(
     "--attachments-path",
-    help="Directory inside a dataset for attachment files; defaults to Resources/gmail/<feature group>.",
+    help="Directory inside a dataset for attachment files; defaults to Resources/gmail/<feature group> "
+    "or Resources/outlook/<feature group>.",
 )
-@click.option("--query", help="Gmail search query, as typed in the Gmail search box.")
+@click.option(
+    "--query", help="Gmail search query, as typed in the Gmail search box; Gmail only."
+)
 @click.option(
     "--label",
     "labels",
     multiple=True,
-    help="Gmail label id, e.g. INBOX; repeatable. A message carrying any of them is copied; 'hops datasource labels' lists them.",
+    help="Gmail label id, e.g. INBOX, or Outlook folder id; repeatable. A message in any of them is copied; "
+    "'hops datasource labels' lists them.",
 )
 @click.option(
     "--strategy",
@@ -1921,7 +1981,10 @@ def connector_databases(ctx: click.Context, name: str) -> None:
     type=click.Choice(["hourly", "daily"], case_sensitive=False),
     help="Run at the top of every hour, or daily at 00:00 UTC.",
 )
-@click.option("--job-name", help="Job name; defaults to <data source>_gmail_sync.")
+@click.option(
+    "--job-name",
+    help="Job name; defaults to <data source>_gmail_sync or _outlook_sync.",
+)
 @click.option("--environment", help="Python environment for the job.")
 @click.option(
     "--start/--no-start", default=True, show_default=True, help="Start a run now."
@@ -1941,15 +2004,15 @@ def connector_sync(
     environment: str | None,
     start: bool,
 ) -> None:
-    """Create or update a job that copies a Gmail data source into a Delta feature group.
+    """Create or update a job that copies a Gmail or Outlook data source into a Delta feature group.
 
     Args:
         ctx: Click context.
-        name: Gmail data source name.
+        name: Gmail or Outlook data source name.
         feature_group: Feature group name.
         attachments_path: Directory for attachment files.
         query: Gmail search query.
-        labels: Gmail label ids; a message carrying any of them is copied.
+        labels: Gmail label ids or Outlook folder ids; a message in any of them is copied.
         strategy: INCREMENTAL_TIMESTAMP or FULL_LOAD.
         start_date: Earliest receive time to copy.
         schedule: hourly or daily.
@@ -1957,13 +2020,23 @@ def connector_sync(
         environment: Python environment for the job.
         start: Start a run now when True.
     """
+    from hsfs.storage_connector import OutlookConnector
+
     fs = session.get_feature_store(ctx)
     try:
-        job = fs.get_data_source(name).sync(
+        data_source = fs.get_data_source(name)
+        if isinstance(data_source.storage_connector, OutlookConnector):
+            if query:
+                raise click.ClickException(
+                    "--query is Gmail only; select Outlook messages with --label folder ids"
+                )
+            selection = {"folders": list(labels)}
+        else:
+            selection = {"query": query, "labels": list(labels)}
+        job = data_source.sync(
             feature_group_name=feature_group,
             attachments_path=attachments_path,
-            query=query,
-            labels=list(labels),
+            **selection,
             loading_strategy=strategy.upper(),
             initial_value=start_date,
             schedule=schedule,
@@ -1971,6 +2044,8 @@ def connector_sync(
             environment=environment,
             start=start,
         )
+    except click.ClickException:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not set up the sync job: {exc}") from exc
     if output.JSON_MODE:
@@ -1987,17 +2062,21 @@ def connector_sync(
 @click.argument("name")
 @click.pass_context
 def connector_labels(ctx: click.Context, name: str) -> None:
-    """List the labels of a Gmail data source's mailbox that a sync can select.
+    """List the Gmail labels or Outlook folders of a data source's mailbox that a sync can select.
 
     Args:
         ctx: Click context.
-        name: Gmail data source name.
+        name: Gmail or Outlook data source name.
     """
     fs = session.get_feature_store(ctx)
     try:
-        labels = fs.get_data_source(name).storage_connector.get_labels()
+        sc = fs.get_data_source(name).storage_connector
+        lister = getattr(sc, "get_labels", None) or sc.get_folders
+        labels = lister()
     except AttributeError as exc:
-        raise click.ClickException(f"{name} is not a Gmail data source") from exc
+        raise click.ClickException(
+            f"{name} is not a Gmail or Outlook data source"
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list labels: {exc}") from exc
     if output.JSON_MODE:
@@ -2010,18 +2089,20 @@ def connector_labels(ctx: click.Context, name: str) -> None:
 @click.argument("name")
 @click.pass_context
 def connector_sync_jobs(ctx: click.Context, name: str) -> None:
-    """List the sync jobs of a Gmail data source.
+    """List the sync jobs of a Gmail or Outlook data source.
 
     Args:
         ctx: Click context.
-        name: Gmail data source name.
+        name: Gmail or Outlook data source name.
     """
     fs = session.get_feature_store(ctx)
     try:
         sc = fs.get_data_source(name).storage_connector
         jobs = sc.list_sync_jobs()
     except AttributeError as exc:
-        raise click.ClickException(f"{name} is not a Gmail data source") from exc
+        raise click.ClickException(
+            f"{name} is not a Gmail or Outlook data source"
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list sync jobs: {exc}") from exc
     if output.JSON_MODE:
