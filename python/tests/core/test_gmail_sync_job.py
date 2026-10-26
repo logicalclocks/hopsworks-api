@@ -753,7 +753,7 @@ class TestGmailClient:
         return client, session, sleeps
 
     def test_rate_limits_are_retried_and_retry_after_is_honoured(self):
-        client, _, sleeps = self._client(
+        client, sleeps = self._clocked_client(
             [
                 _rate_limited("userRateLimitExceeded"),
                 _Response(429, headers={"Retry-After": "7"}),
@@ -776,19 +776,29 @@ class TestGmailClient:
         )
         return client, sleeps
 
-    def test_rate_limits_are_retried_for_minutes_beyond_the_attempt_count(self):
-        throttled = [_rate_limited("rateLimitExceeded")] * (g.MAX_ATTEMPTS + 4)
+    def test_rate_limits_are_retried_until_gmail_serves_the_request(self):
+        # 200 throttles at the 64s cap is over three hours of backoff.
+        throttled = [_rate_limited("rateLimitExceeded")] * 200
         client, sleeps = self._clocked_client([*throttled, _Response(200, {"id": "a"})])
         assert client._get_raw_message("a") == {"id": "a"}
-        assert len(sleeps) == g.MAX_ATTEMPTS + 4
+        assert len(sleeps) == 200
+        assert max(sleeps) <= g.MAX_RATE_LIMIT_BACKOFF_S + 1
+        assert sum(sleeps) > 3 * 3600
 
-    def test_rate_limits_give_up_after_the_budget(self):
-        client, sleeps = self._clocked_client(
-            [_rate_limited("rateLimitExceeded")] * 100
+    def test_a_throttled_request_holds_back_a_concurrent_one(self):
+        clock = [NOW_MS / 1000]
+        sleeps = []
+        client = g._GmailClient(
+            "alice@example.com",
+            lambda: ("t", None),
+            session=_Session([_Response(200, {"id": "b"})]),
+            sleep=sleeps.append,
+            clock=lambda: clock[0],
         )
-        with pytest.raises(g._GmailSyncError, match="403: rateLimitExceeded"):
-            client._get_raw_message("a")
-        assert g.RATE_LIMIT_BUDGET_S <= sum(sleeps) < g.RATE_LIMIT_BUDGET_S + 66
+        client._pause(3, None)
+        client._get_raw_message("b")
+        assert len(sleeps) == 1
+        assert 8 <= sleeps[0] <= 9
 
     def test_server_errors_keep_the_attempt_count(self):
         client, sleeps = self._clocked_client([_Response(503)] * 100)

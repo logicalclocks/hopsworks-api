@@ -84,9 +84,10 @@ WINDOW_MS = 7 * 24 * 3600_000
 THROTTLE_LOG_INTERVAL_S = 60.0
 # Longest wait honoured from a Retry-After header.
 MAX_RETRY_AFTER_S = 300.0
+# Attempts at a request that fails on the network or with a server error; rate limits are retried without limit.
 MAX_ATTEMPTS = 8
-# Gmail's quota is per user per minute, so another client of the mailbox can keep a request throttled for minutes.
-RATE_LIMIT_BUDGET_S = 15 * 60.0
+# Longest wait between two retries of a throttled request.
+MAX_RATE_LIMIT_BACKOFF_S = 64.0
 # A lease whose holder cannot be checked is taken over after this long; no sync runs for a day.
 UNVERIFIABLE_LEASE_MS = 24 * 3600_000
 # UTF-8 bytes; HopsFS names hold 255, and a write first goes to the name plus a 37-byte temporary suffix.
@@ -158,6 +159,8 @@ class _GmailClient:
         self._expires_at_ms: int | None = None
         self._throttled = 0
         self._throttle_logged_at: float | None = None
+        # Shared by the fetch workers: one throttled request pauses them all, rather than each spending quota to learn the same.
+        self._paused_until = 0.0
 
     def _access_token(self, renew: bool = False) -> str:
         now_ms = int(self._clock() * 1000)
@@ -173,13 +176,18 @@ class _GmailClient:
         return self._token
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> dict | None:
-        """GET a Gmail resource, or None when Gmail answers 404."""
+        """GET a Gmail resource, or None when Gmail answers 404.
+
+        A rate-limited request is retried until Gmail serves it, so a throttled sync slows down instead of failing.
+        """
         url = GMAIL_API + self._mailbox + path
         renewed = False
-        started = self._clock()
-        attempt = -1
+        attempt = throttled = -1
         while True:
             attempt += 1
+            pause = self._paused_until - self._clock()
+            if pause > 0:
+                self._sleep(pause)
             try:
                 response = self._session.get(
                     url,
@@ -203,12 +211,12 @@ class _GmailClient:
                 self._access_token(renew=True)
                 renewed = True
                 continue
-            rate_limited = _is_rate_limit(status, response)
-            if (rate_limited or status >= 500) and (
-                attempt < MAX_ATTEMPTS - 1
-                or (rate_limited and self._clock() - started < RATE_LIMIT_BUDGET_S)
-            ):
+            if _is_rate_limit(status, response):
+                throttled += 1
                 self._log_throttle(status, response)
+                self._pause(throttled, _retry_after(response))
+                continue
+            if status >= 500 and attempt < MAX_ATTEMPTS - 1:
                 self._backoff(attempt, _retry_after(response))
                 continue
             raise _GmailSyncError(
@@ -231,13 +239,18 @@ class _GmailClient:
             )
             self._throttle_logged_at = now
 
+    def _delay(self, attempt: int, retry_after: float | None) -> float:
+        if retry_after is not None:
+            return min(retry_after, MAX_RETRY_AFTER_S)
+        return min(MAX_RATE_LIMIT_BACKOFF_S, 2**attempt) + random.uniform(0, 1)
+
     def _backoff(self, attempt: int, retry_after: float | None) -> None:
-        delay = (
-            min(retry_after, MAX_RETRY_AFTER_S)
-            if retry_after is not None
-            else min(64.0, 2**attempt) + random.uniform(0, 1)
-        )
-        self._sleep(delay)
+        self._sleep(self._delay(attempt, retry_after))
+
+    def _pause(self, attempt: int, retry_after: float | None) -> None:
+        """Hold every request back for the backoff; `_get` waits it out before its next attempt."""
+        resume = self._clock() + self._delay(attempt, retry_after)
+        self._paused_until = max(self._paused_until, resume)
 
     def _list_message_ids(self, query: str, label_ids: list[str]) -> Iterator[str]:
         """Ids of the messages matching `query` and every label in `label_ids`, newest first."""
