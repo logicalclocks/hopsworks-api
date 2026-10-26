@@ -85,6 +85,8 @@ THROTTLE_LOG_INTERVAL_S = 60.0
 # Longest wait honoured from a Retry-After header.
 MAX_RETRY_AFTER_S = 300.0
 MAX_ATTEMPTS = 8
+# Gmail's quota is per user per minute, so another client of the mailbox can keep a request throttled for minutes.
+RATE_LIMIT_BUDGET_S = 15 * 60.0
 # A lease whose holder cannot be checked is taken over after this long; no sync runs for a day.
 UNVERIFIABLE_LEASE_MS = 24 * 3600_000
 # UTF-8 bytes; HopsFS names hold 255, and a write first goes to the name plus a 37-byte temporary suffix.
@@ -174,7 +176,10 @@ class _GmailClient:
         """GET a Gmail resource, or None when Gmail answers 404."""
         url = GMAIL_API + self._mailbox + path
         renewed = False
-        for attempt in range(MAX_ATTEMPTS):
+        started = self._clock()
+        attempt = -1
+        while True:
+            attempt += 1
             try:
                 response = self._session.get(
                     url,
@@ -183,7 +188,7 @@ class _GmailClient:
                     timeout=(10, 60),
                 )
             except OSError as e:
-                if attempt == MAX_ATTEMPTS - 1:
+                if attempt >= MAX_ATTEMPTS - 1:
                     raise _GmailSyncError(
                         f"Gmail unreachable: {type(e).__name__}"
                     ) from e
@@ -198,15 +203,17 @@ class _GmailClient:
                 self._access_token(renew=True)
                 renewed = True
                 continue
-            retry_after = _retry_after(response)
-            if _is_retryable(status, response) and attempt < MAX_ATTEMPTS - 1:
+            rate_limited = _is_rate_limit(status, response)
+            if (rate_limited or status >= 500) and (
+                attempt < MAX_ATTEMPTS - 1
+                or (rate_limited and self._clock() - started < RATE_LIMIT_BUDGET_S)
+            ):
                 self._log_throttle(status, response)
-                self._backoff(attempt, retry_after)
+                self._backoff(attempt, _retry_after(response))
                 continue
             raise _GmailSyncError(
                 f"Gmail returned HTTP {status}: {_error_reason(response)}"
             )
-        raise _GmailSyncError("Gmail kept refusing the request after retries")
 
     def _log_throttle(self, status: int, response: Any) -> None:
         # Unlocked across fetch workers: a lost count or an extra line is harmless.
@@ -257,8 +264,8 @@ class _GmailClient:
         return self._get(f"/messages/{message_id}", {"format": "raw"})
 
 
-def _is_retryable(status: int, response: Any) -> bool:
-    if status == 429 or status >= 500:
+def _is_rate_limit(status: int, response: Any) -> bool:
+    if status == 429:
         return True
     # Gmail reports per-user and per-project rate limits as 403 with these reasons.
     return status == 403 and _error_reason(response) in (

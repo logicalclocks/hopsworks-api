@@ -765,6 +765,37 @@ class TestGmailClient:
         assert sleeps[1] == 7.0
         assert len(sleeps) == 3
 
+    def _clocked_client(self, responses):
+        sleeps = []
+        client = g._GmailClient(
+            "alice@example.com",
+            lambda: ("t", None),
+            session=_Session(responses),
+            sleep=sleeps.append,
+            clock=lambda: NOW_MS / 1000 + sum(sleeps),
+        )
+        return client, sleeps
+
+    def test_rate_limits_are_retried_for_minutes_beyond_the_attempt_count(self):
+        throttled = [_rate_limited("rateLimitExceeded")] * (g.MAX_ATTEMPTS + 4)
+        client, sleeps = self._clocked_client([*throttled, _Response(200, {"id": "a"})])
+        assert client._get_raw_message("a") == {"id": "a"}
+        assert len(sleeps) == g.MAX_ATTEMPTS + 4
+
+    def test_rate_limits_give_up_after_the_budget(self):
+        client, sleeps = self._clocked_client(
+            [_rate_limited("rateLimitExceeded")] * 100
+        )
+        with pytest.raises(g._GmailSyncError, match="403: rateLimitExceeded"):
+            client._get_raw_message("a")
+        assert g.RATE_LIMIT_BUDGET_S <= sum(sleeps) < g.RATE_LIMIT_BUDGET_S + 66
+
+    def test_server_errors_keep_the_attempt_count(self):
+        client, sleeps = self._clocked_client([_Response(503)] * 100)
+        with pytest.raises(g._GmailSyncError, match="HTTP 503"):
+            client._get_raw_message("a")
+        assert len(sleeps) == g.MAX_ATTEMPTS - 1
+
     def test_throttling_is_logged_once_per_interval(self, caplog):
         caplog.set_level(logging.INFO)
         client, _, _ = self._client(
