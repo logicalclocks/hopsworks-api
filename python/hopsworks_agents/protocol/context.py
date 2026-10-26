@@ -7,13 +7,14 @@ declared, so ``def chat(request)`` and ``def chat(request, ctx)`` both work.
 The context bundles per-turn conveniences (history, memory, logger,
 deployment/framework identity, correlation ids) and ``emit_event`` for
 surfacing intermediate progress (tool calls, retrieval, code execution) as
-``tool_event`` SSE frames while streaming — without the author hand-crafting
+AG-UI events while streaming — without the author hand-crafting
 SSE.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from typing import TYPE_CHECKING, Any
@@ -510,10 +511,14 @@ class HandlerContext:
         data: dict[str, Any] | None = None,
         event_id: str | None = None,
     ) -> None:
-        """Surface an intermediate progress event (a tool call, a retrieval, a.
+        """Surface an intermediate progress event (a retrieval, a plan, a code run).
 
-        code run). While streaming it is sent immediately as a ``tool_event``
-        SSE frame; otherwise it is buffered into the response metadata.
+        On ``/v1/run`` it is sent immediately as an AG-UI ``STEP_STARTED`` (for
+        ``running``) or ``STEP_FINISHED`` event, with ``message``, ``data`` and
+        the status under the event's ``metadata.hopsworks``; on ``/v1/chat`` it is
+        buffered into the response metadata.
+        Tool calls the framework makes are reported as AG-UI tool calls without
+        this, when tracing is on.
 
         ``event_id`` ties a ``running`` event to its later ``done``/``failed``
         so a client renders one chip that updates rather than several. Pass the
@@ -526,6 +531,25 @@ class HandlerContext:
         self._handler_emitted.add(name)
         self._emit_sync(name, status, message, data, event_id)
 
+    async def _emit_tool_call(
+        self,
+        name: str,
+        status: str,
+        event_id: str | None,
+        args: Any = None,
+        result: Any = None,
+        message: str | None = None,
+    ) -> None:
+        """Report a tool call the handler's framework made, as an AG-UI tool call.
+
+        For the framework stream helpers, which see the call itself. Like
+        ``emit_event`` it keeps the automatic emitter off the tool.
+        """
+        self._handler_emitted.add(name)
+        self._emit_sync(
+            name, status, message, None, event_id, kind="tool", args=args, result=result
+        )
+
     def _emit_sync(
         self,
         name: str,
@@ -533,18 +557,28 @@ class HandlerContext:
         message: str | None,
         data: dict[str, Any] | None,
         event_id: str | None,
+        *,
+        kind: str = "step",
+        args: Any = None,
+        result: Any = None,
     ) -> None:
         """Non-async emit used by both ``emit_event`` and the auto-emit span.
 
         processor (which runs in sync OTel callbacks, possibly off-thread).
+        ``kind`` says how the event goes on the wire: a ``tool`` is an AG-UI tool
+        call, carrying its arguments and result, and a ``step`` is an AG-UI step.
         """
-        payload: dict[str, Any] = {"name": name, "status": status}
+        payload: dict[str, Any] = {"name": name, "status": status, "kind": kind}
         if event_id is not None:
             payload["id"] = event_id
         if message is not None:
             payload["message"] = message
         if data is not None:
             payload["data"] = data
+        if args is not None:
+            payload["args"] = _bounded_text(args)
+        if result is not None:
+            payload["result"] = _bounded_text(result)
         self._dispatch(payload)
 
     @public
@@ -554,7 +588,7 @@ class HandlerContext:
         """Pipe a LangChain/LangGraph ``astream_events(version="v2")`` stream.
 
         through, yielding assistant text deltas and turning tool calls into
-        ``tool_event`` chips automatically — no manual ``emit_event`` and no
+        AG-UI tool calls automatically — no manual ``emit_event`` and no
         dependency on tracing:
 
             async for delta in ctx.stream_langchain(agent.astream_events(...)):
@@ -579,33 +613,34 @@ class HandlerContext:
                             if text:
                                 yield text
             elif kind == "on_tool_start":
-                tool_input = (event.get("data") or {}).get("input")
-                await self.emit_event(
+                await self._emit_tool_call(
                     event.get("name", "tool"),
-                    status="running",
-                    message=str(tool_input) if tool_input else None,
-                    event_id=event.get("run_id"),
+                    "running",
+                    event.get("run_id"),
+                    args=(event.get("data") or {}).get("input") or None,
                 )
             elif kind == "on_tool_end":
-                await self.emit_event(
+                output = (event.get("data") or {}).get("output")
+                await self._emit_tool_call(
                     event.get("name", "tool"),
-                    status="done",
-                    event_id=event.get("run_id"),
+                    "done",
+                    event.get("run_id"),
+                    result=getattr(output, "content", output),
                 )
             elif kind == "on_tool_error":
                 err = (event.get("data") or {}).get("error")
-                await self.emit_event(
+                await self._emit_tool_call(
                     event.get("name", "tool"),
-                    status="failed",
+                    "failed",
+                    event.get("run_id"),
                     message=str(err) if err else None,
-                    event_id=event.get("run_id"),
                 )
 
     @public
     async def stream_llamaindex(self, handler: Any) -> AsyncIterator[str]:
         """Pipe a LlamaIndex workflow agent run through, yielding assistant.
 
-        text deltas and turning tool calls into ``tool_event`` chips:
+        text deltas and turning tool calls into AG-UI tool calls:
 
             handler = agent.run(msg)          # a WorkflowHandler
             async for delta in ctx.stream_llamaindex(handler):
@@ -622,18 +657,19 @@ class HandlerContext:
                 if isinstance(delta, str) and delta:
                     yield delta
             elif cls == "ToolCall":
-                kwargs = getattr(event, "tool_kwargs", None)
-                await self.emit_event(
+                await self._emit_tool_call(
                     getattr(event, "tool_name", "tool"),
-                    status="running",
-                    message=str(kwargs) if kwargs else None,
-                    event_id=getattr(event, "tool_id", None),
+                    "running",
+                    getattr(event, "tool_id", None),
+                    args=getattr(event, "tool_kwargs", None) or None,
                 )
             elif cls == "ToolCallResult":
-                await self.emit_event(
+                output = getattr(event, "tool_output", None)
+                await self._emit_tool_call(
                     getattr(event, "tool_name", "tool"),
-                    status="done",
-                    event_id=getattr(event, "tool_id", None),
+                    "done",
+                    getattr(event, "tool_id", None),
+                    result=getattr(output, "content", output),
                 )
 
     def _dispatch(self, payload: dict[str, Any]) -> None:
@@ -655,3 +691,21 @@ class HandlerContext:
             # off-thread (a framework tool running in a threadpool): hop back
             # onto the loop safely
             loop.call_soon_threadsafe(queue.put_nowait, ("tool_event", payload))
+
+
+# Arguments and results ride on progress events and into the memory transcript,
+# so a tool that returns a whole document does not get to fill either.
+_MAX_EVENT_TEXT = 4000
+
+
+def _bounded_text(value: Any) -> str:
+    if isinstance(value, str):
+        text = value
+    else:
+        try:
+            text = json.dumps(value, default=str)
+        except (TypeError, ValueError):
+            text = str(value)
+    if len(text) > _MAX_EVENT_TEXT:
+        return text[:_MAX_EVENT_TEXT] + "…"
+    return text

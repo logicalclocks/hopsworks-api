@@ -13,17 +13,40 @@ def make_request(text, conversation_id=None):
     }
 
 
+def make_run(text, thread_id="", run_id="run-1", **hopsworks):
+    """An AG-UI RunAgentInput carrying one user message."""
+    return {
+        "threadId": thread_id,
+        "runId": run_id,
+        "messages": [{"id": "msg-1", "role": "user", "content": text}],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {"hopsworks": hopsworks} if hopsworks else {},
+    }
+
+
 def parse_sse(body: str):
-    events = []
-    for frame in body.strip().split("\n\n"):
-        event, data = None, None
-        for line in frame.split("\n"):
-            if line.startswith("event: "):
-                event = line[len("event: ") :]
-            elif line.startswith("data: "):
-                data = json.loads(line[len("data: ") :])
-        events.append((event, data))
-    return events
+    """The AG-UI events of a run, in order."""
+    return [
+        json.loads(line[len("data: ") :])
+        for frame in body.strip().split("\n\n")
+        for line in frame.split("\n")
+        if line.startswith("data: ")
+    ]
+
+
+def kinds(events):
+    return [e["type"] for e in events]
+
+
+def streamed_text(events):
+    return "".join(e["delta"] for e in events if e["type"] == "TEXT_MESSAGE_CONTENT")
+
+
+def hopsworks_result(events):
+    finished = [e for e in events if e["type"] == "RUN_FINISHED"]
+    assert finished, kinds(events)
+    return finished[-1].get("result", {}).get("hopsworks", {})
 
 
 def build_basic_app():
@@ -51,11 +74,21 @@ class TestManifestAndHealth:
     def test_manifest(self):
         client = TestClient(build_basic_app())
         manifest = client.get("/.well-known/hopsworks-agent.json").json()
-        assert manifest["protocol"] == "hopsworks-agent"
-        assert manifest["protocol_version"] == "1.4"
+        assert manifest["protocol"] == "ag-ui"
+        assert manifest["protocol_version"] == "1.0"
+        assert manifest["hopsworks_version"] == "2.0"
         assert manifest["agent"]["name"] == "Test agent"
-        assert manifest["endpoints"] == {"chat": "/v1/chat", "feedback": "/v1/feedback"}
-        assert manifest["capabilities"]["streaming"] is False
+        assert manifest["endpoints"] == {
+            "run": "/v1/run",
+            "chat": "/v1/chat",
+            "feedback": "/v1/feedback",
+        }
+        capabilities = manifest["capabilities"]
+        # AG-UI's AgentCapabilities, so an AG-UI client can read it as it is
+        assert capabilities["identity"]["name"] == "Test agent"
+        assert capabilities["transport"]["streaming"] is True
+        assert capabilities["humanInTheLoop"]["feedback"] is True
+        assert capabilities["custom"]["hopsworks"]["streaming"] is False
         assert manifest["ui"]["welcome_message"] == "Hi!"
         assert manifest["ui"]["suggested_prompts"] == ["What is attention?"]
 
@@ -143,21 +176,28 @@ class TestStreaming:
     def test_manifest_advertises_streaming(self):
         client = TestClient(self.build_streaming_app())
         manifest = client.get("/.well-known/hopsworks-agent.json").json()
-        assert manifest["capabilities"]["streaming"] is True
-        assert manifest["endpoints"]["stream"] == "/v1/chat/stream"
+        assert manifest["capabilities"]["custom"]["hopsworks"]["streaming"] is True
+        assert manifest["endpoints"]["run"] == "/v1/run"
 
     def test_stream_events(self):
         client = TestClient(self.build_streaming_app())
-        result = client.post("/v1/chat/stream", json=make_request("q"))
+        result = client.post("/v1/run", json=make_run("q"))
         assert result.headers["content-type"].startswith("text/event-stream")
         events = parse_sse(result.text)
-        assert events[0] == ("message.delta", {"delta": {"text": "Atten"}})
-        assert events[1] == ("message.delta", {"delta": {"text": "tion"}})
-        event, completed = events[-1]
-        assert event == "message.completed"
-        assert completed["message"]["content"][0]["text"] == "Attention"
-        assert completed["usage"] == {"output_tokens": 2}
-        assert completed["conversation_id"].startswith("conv_")
+        assert kinds(events) == [
+            "RUN_STARTED",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED",
+        ]
+        assert events[0]["threadId"].startswith("conv_")
+        assert events[0]["runId"] == "run-1"
+        assert [e["delta"] for e in events[2:4]] == ["Atten", "tion"]
+        assert events[1]["role"] == "assistant"
+        assert events[-1]["threadId"] == events[0]["threadId"]
+        assert events[-1]["usage"] == [{"outputTokens": 2}]
 
     def test_chat_collects_stream_when_no_chat_handler(self):
         client = TestClient(self.build_streaming_app())
@@ -166,9 +206,10 @@ class TestStreaming:
 
     def test_stream_falls_back_to_chat_handler(self):
         client = TestClient(build_basic_app())
-        events = parse_sse(client.post("/v1/chat/stream", json=make_request("hi")).text)
-        assert events[-1][0] == "message.completed"
-        assert events[-1][1]["message"]["content"][0]["text"] == "echo: hi"
+        events = parse_sse(client.post("/v1/run", json=make_run("hi")).text)
+        assert kinds(events)[-1] == "RUN_FINISHED"
+        assert streamed_text(events) == "echo: hi"
+        assert hopsworks_result(events)["citations"] == [{"title": "doc", "score": 0.9}]
 
     def test_stream_error_event(self):
         app = AgentApp()
@@ -179,11 +220,39 @@ class TestStreaming:
             raise AgentError("upstream died", code="upstream", retryable=True)
 
         client = TestClient(app)
-        events = parse_sse(client.post("/v1/chat/stream", json=make_request("x")).text)
-        assert events[-1] == (
-            "error",
-            {"code": "upstream", "message": "upstream died", "retryable": True},
+        events = parse_sse(client.post("/v1/run", json=make_run("x")).text)
+        assert kinds(events)[-2:] == ["TEXT_MESSAGE_END", "RUN_ERROR"]
+        error = events[-1]
+        assert error["code"] == "upstream"
+        assert error["message"] == "upstream died"
+        # the status it would have had over plain HTTP: the agent broke, not declined
+        assert error["metadata"]["hopsworks"] == {"status": 500, "retryable": True}
+
+    def test_a_refusal_keeps_its_status(self):
+        events = parse_sse(
+            TestClient(build_basic_app()).post("/v1/run", json=make_run("boom")).text
         )
+        assert kinds(events) == ["RUN_STARTED", "RUN_ERROR"]
+        assert events[-1]["metadata"]["hopsworks"]["status"] == 400
+
+    def test_a_handler_crash_ends_the_run(self):
+        app = AgentApp(tracing=False)
+
+        @app.chat
+        async def chat(request):
+            raise ValueError("no such model")
+
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        assert kinds(events) == ["RUN_STARTED", "RUN_ERROR"]
+        assert "no such model" in events[-1]["message"]
+        assert events[-1]["code"] == "agent_error"
+
+    def test_a_run_without_a_user_message_is_refused(self):
+        body = make_run("q")
+        body["messages"] = [{"id": "a1", "role": "assistant", "content": "hello"}]
+        result = TestClient(build_basic_app()).post("/v1/run", json=body)
+        assert result.status_code == 400
+        assert result.json()["detail"]["code"] == "no_user_message"
 
 
 class TestStreamFinalStatus:
@@ -216,11 +285,10 @@ class TestStreamFinalStatus:
 
     def test_stream_reports_the_failure(self):
         client = TestClient(self.build_failing_app())
-        events = parse_sse(client.post("/v1/chat/stream", json=make_request("q")).text)
-        event, completed = events[-1]
-        assert event == "message.completed"
-        assert completed["status"] == "failed"
-        assert completed["message"]["content"][0]["text"] == "partial answer"
+        events = parse_sse(client.post("/v1/run", json=make_run("q")).text)
+        assert streamed_text(events) == "partial answer"
+        assert kinds(events)[-1] == "RUN_ERROR"
+        assert events[-1]["code"] == "turn_failed"
 
     def test_a_successful_merge_still_completes(self):
         app = AgentApp(tracing=False)
@@ -322,14 +390,18 @@ class TestMultimodal:
 
     def test_manifest_modalities(self):
         client = TestClient(self.build_vision_app())
-        caps = client.get("/.well-known/hopsworks-agent.json").json()["capabilities"]
+        caps = client.get("/.well-known/hopsworks-agent.json").json()["capabilities"][
+            "custom"
+        ]["hopsworks"]
         assert caps["input_modalities"] == ["text", "image"]
         assert caps["output_modalities"] == ["text", "image"]
         assert caps["attachments"] is True
 
     def test_text_only_manifest_defaults(self):
         client = TestClient(build_basic_app())
-        caps = client.get("/.well-known/hopsworks-agent.json").json()["capabilities"]
+        caps = client.get("/.well-known/hopsworks-agent.json").json()["capabilities"][
+            "custom"
+        ]["hopsworks"]
         assert caps["input_modalities"] == ["text"]
         assert caps["attachments"] is False
 
@@ -382,14 +454,40 @@ class TestMultimodal:
             )
 
         client = TestClient(app)
+        events = parse_sse(client.post("/v1/run", json=make_run("chart")).text)
+        assert streamed_text(events) == "Here is the chart"
+        media = [e for e in events if e["type"] == "CUSTOM"]
+        # AG-UI assistant messages carry text only, so media rides a custom event
+        assert [e["name"] for e in media] == ["hopsworks.media"]
+        assert media[0]["value"] == {
+            "type": "image",
+            "media_type": "image/png",
+            "data": "cGxvdA==",
+        }
+        assert kinds(events)[-1] == "RUN_FINISHED"
+
+    def test_an_agui_image_part_reaches_the_handler(self):
+        body = make_run("what is this?")
+        body["messages"][0]["content"] = [
+            {"type": "text", "text": "what is this?"},
+            {
+                "type": "image",
+                "source": {"type": "data", "value": "aW1n", "mimeType": "image/png"},
+            },
+        ]
         events = parse_sse(
-            client.post("/v1/chat/stream", json=make_request("chart")).text
+            TestClient(self.build_vision_app()).post("/v1/run", json=body).text
         )
-        event, completed = events[-1]
-        assert event == "message.completed"
-        parts = completed["message"]["content"]
-        assert parts[0] == {"type": "text", "text": "Here is the chart"}
-        assert parts[1]["type"] == "image"
+        assert streamed_text(events) == "got 1 image(s): what is this?"
+
+    def test_an_image_by_url_is_refused(self):
+        body = make_run("q")
+        body["messages"][0]["content"] = [
+            {"type": "image", "source": {"type": "url", "value": "https://x/y.png"}}
+        ]
+        result = TestClient(self.build_vision_app()).post("/v1/run", json=body)
+        assert result.status_code == 422
+        assert result.json()["detail"]["code"] == "unsupported_content"
 
 
 class TestFrameworkAndTracing:
@@ -714,7 +812,10 @@ class TestConversationEndpoints:
         client = TestClient(app)
         assert client.get("/v1/conversations/x/messages").status_code == 404
         manifest = client.get("/.well-known/hopsworks-agent.json").json()
-        assert manifest["capabilities"]["conversation_management"] is False
+        assert (
+            manifest["capabilities"]["custom"]["hopsworks"]["conversation_management"]
+            is False
+        )
         assert "conversations" not in manifest["endpoints"]
 
     def test_manifest_advertises_conversations_with_memory(self):
@@ -727,7 +828,10 @@ class TestConversationEndpoints:
             return "ok"
 
         manifest = TestClient(app).get("/.well-known/hopsworks-agent.json").json()
-        assert manifest["capabilities"]["conversation_management"] is True
+        assert (
+            manifest["capabilities"]["custom"]["hopsworks"]["conversation_management"]
+            is True
+        )
         assert manifest["endpoints"]["conversations"] == "/v1/conversations"
 
 
@@ -736,13 +840,13 @@ class TestToolEvents:
         from hopsworks_agents.protocol import AgentApp
 
         off = TestClient(AgentApp()).get("/.well-known/hopsworks-agent.json").json()
-        assert off["capabilities"]["tool_events"] is False
+        assert off["capabilities"]["custom"]["hopsworks"]["tool_events"] is False
         on = (
             TestClient(AgentApp(tool_events=True))
             .get("/.well-known/hopsworks-agent.json")
             .json()
         )
-        assert on["capabilities"]["tool_events"] is True
+        assert on["capabilities"]["custom"]["hopsworks"]["tool_events"] is True
 
     def test_emit_event_interleaves_in_stream(self):
         from hopsworks_agents.protocol import AgentApp
@@ -756,19 +860,26 @@ class TestToolEvents:
             await ctx.emit_event("retrieve", status="done")
             yield "text"
 
-        events = parse_sse(
-            TestClient(app).post("/v1/chat/stream", json=make_request("q")).text
-        )
-        kinds = [e[0] for e in events]
-        assert "tool_event" in kinds
-        assert kinds[0] == "tool_event"
-        assert events[0][1] == {
-            "name": "retrieve",
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        assert kinds(events) == [
+            "RUN_STARTED",
+            "STEP_STARTED",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "STEP_FINISHED",
+            "TEXT_MESSAGE_START",
+            "TEXT_MESSAGE_CONTENT",
+            "TEXT_MESSAGE_END",
+            "RUN_FINISHED",
+        ]
+        assert events[1]["stepName"] == "retrieve"
+        assert events[1]["metadata"]["hopsworks"] == {
             "status": "running",
             "message": "searching",
         }
-        assert kinds[-1] == "message.completed"
-        assert events[-1][1]["message"]["content"][0]["text"] == "answer text"
+        assert events[5]["metadata"]["hopsworks"] == {"status": "done"}
+        assert streamed_text(events) == "answer text"
 
     def test_emit_event_buffered_in_non_streaming(self):
         from hopsworks_agents.protocol import AgentApp
@@ -782,7 +893,7 @@ class TestToolEvents:
 
         response = TestClient(app).post("/v1/chat", json=make_request("x")).json()
         assert response["metadata"]["tool_events"] == [
-            {"name": "tool", "status": "done"}
+            {"name": "tool", "status": "done", "kind": "step"}
         ]
 
 
@@ -825,11 +936,21 @@ class TestAutoToolEvents:
         events = asyncio.run(run())
         assert events[0] == (
             "tool_event",
-            {"name": "search_papers", "status": "running", "id": "span-abc"},
+            {
+                "name": "search_papers",
+                "status": "running",
+                "kind": "step",
+                "id": "span-abc",
+            },
         )
         assert events[1] == (
             "tool_event",
-            {"name": "search_papers", "status": "done", "id": "span-abc"},
+            {
+                "name": "search_papers",
+                "status": "done",
+                "kind": "step",
+                "id": "span-abc",
+            },
         )
 
     def test_emit_event_id_collapses(self):
@@ -843,12 +964,13 @@ class TestAutoToolEvents:
             yield "x"
             await ctx.emit_event("t", status="done", event_id="e1")
 
-        events = parse_sse(
-            TestClient(app).post("/v1/chat/stream", json=make_request("q")).text
-        )
-        tool_events = [e[1] for e in events if e[0] == "tool_event"]
-        assert tool_events[0] == {"name": "t", "status": "running", "id": "e1"}
-        assert tool_events[1] == {"name": "t", "status": "done", "id": "e1"}
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        steps = [e for e in events if e["type"].startswith("STEP_")]
+        assert [(e["type"], e["stepName"]) for e in steps] == [
+            ("STEP_STARTED", "t"),
+            ("STEP_FINISHED", "t"),
+        ]
+        assert steps[0]["metadata"]["hopsworks"]["id"] == "e1"
 
 
 class TestStreamLangchainHelper:
@@ -889,22 +1011,18 @@ class TestStreamLangchainHelper:
             async for delta in ctx.stream_langchain(helper._fake_events()):
                 yield delta
 
-        events = parse_sse(
-            TestClient(app).post("/v1/chat/stream", json=make_request("q")).text
-        )
-        deltas = [e[1]["delta"]["text"] for e in events if e[0] == "message.delta"]
-        tools = [e[1] for e in events if e[0] == "tool_event"]
-        assert "".join(deltas) == "Let me search done."
-        assert tools == [
-            {
-                "name": "search_papers",
-                "status": "running",
-                "id": "r1",
-                "message": "{'query': 'CoT'}",
-            },
-            {"name": "search_papers", "status": "done", "id": "r1"},
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        assert streamed_text(events) == "Let me search done."
+        tools = [e for e in events if e["type"].startswith("TOOL_CALL_")]
+        assert [e["type"] for e in tools] == [
+            "TOOL_CALL_START",
+            "TOOL_CALL_ARGS",
+            "TOOL_CALL_END",
+            "TOOL_CALL_RESULT",
         ]
-        assert events[-1][1]["message"]["content"][0]["text"] == "Let me search done."
+        assert tools[0]["toolCallName"] == "search_papers"
+        assert {e["toolCallId"] for e in tools} == {"r1"}
+        assert json.loads(tools[1]["delta"]) == {"query": "CoT"}
 
 
 class TestGraph:
@@ -959,7 +1077,7 @@ class TestGraph:
 
         client = TestClient(app)
         manifest = client.get("/.well-known/hopsworks-agent.json").json()
-        assert manifest["capabilities"]["graph"] is True
+        assert manifest["capabilities"]["custom"]["hopsworks"]["graph"] is True
         assert manifest["endpoints"]["graph"] == "/v1/graph"
 
         graph = client.get("/v1/graph").json()
@@ -976,7 +1094,7 @@ class TestGraph:
     def test_no_graph_capability_off(self):
         app = build_basic_app()
         m = TestClient(app).get("/.well-known/hopsworks-agent.json").json()
-        assert m["capabilities"]["graph"] is False
+        assert m["capabilities"]["custom"]["hopsworks"]["graph"] is False
         assert "graph" not in m["endpoints"]
         assert TestClient(app).get("/v1/graph").status_code == 404
 
@@ -1118,7 +1236,7 @@ class TestOpenAIAgentsGraph:
 
         client = TestClient(app)
         manifest = client.get("/.well-known/hopsworks-agent.json").json()
-        assert manifest["capabilities"]["graph"] is True
+        assert manifest["capabilities"]["custom"]["hopsworks"]["graph"] is True
         graph = client.get("/v1/graph").json()
         assert "triage" in {n["id"] for n in graph["nodes"]}
 
@@ -1144,7 +1262,12 @@ class TestStreamLlamaindexHelper:
                 tool_id="t1",
                 tool_kwargs={"query": "CoT"},
             ),
-            ev(ToolCallResult, tool_name="search_papers", tool_id="t1"),
+            ev(
+                ToolCallResult,
+                tool_name="search_papers",
+                tool_id="t1",
+                tool_output=type("Out", (), {"content": "3 papers"})(),
+            ),
             ev(AgentStream, delta="done."),
         ]
 
@@ -1166,21 +1289,13 @@ class TestStreamLlamaindexHelper:
             async for delta in ctx.stream_llamaindex(helper._handler()):
                 yield delta
 
-        events = parse_sse(
-            TestClient(app).post("/v1/chat/stream", json=make_request("q")).text
-        )
-        deltas = [e[1]["delta"]["text"] for e in events if e[0] == "message.delta"]
-        tools = [e[1] for e in events if e[0] == "tool_event"]
-        assert "".join(deltas) == "Let me search done."
-        assert tools == [
-            {
-                "name": "search_papers",
-                "status": "running",
-                "id": "t1",
-                "message": "{'query': 'CoT'}",
-            },
-            {"name": "search_papers", "status": "done", "id": "t1"},
-        ]
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        assert streamed_text(events) == "Let me search done."
+        tools = {e["type"]: e for e in events if e["type"].startswith("TOOL_CALL_")}
+        assert tools["TOOL_CALL_START"]["toolCallName"] == "search_papers"
+        assert json.loads(tools["TOOL_CALL_ARGS"]["delta"]) == {"query": "CoT"}
+        assert tools["TOOL_CALL_RESULT"]["content"] == "3 papers"
+        assert tools["TOOL_CALL_RESULT"]["toolCallId"] == "t1"
 
 
 class TestLlamaIndexWorkflowGraph:
@@ -1251,8 +1366,8 @@ class TestLlamaIndexWorkflowGraph:
         client = TestClient(app)
         assert (
             client.get("/.well-known/hopsworks-agent.json").json()["capabilities"][
-                "graph"
-            ]
+                "custom"
+            ]["hopsworks"]["graph"]
             is True
         )
         assert "plan" in {n["id"] for n in client.get("/v1/graph").json()["nodes"]}
@@ -1337,10 +1452,10 @@ class TestTurnLifecycle:
 
         client = TestClient(app)
         with client.stream(
-            "POST", "/v1/chat/stream", json=make_request("question", "c1")
+            "POST", "/v1/run", json=make_run("question", thread_id="c1")
         ) as r:
             body = "".join(r.iter_text())
-        assert "event: error" in body
+        assert kinds(parse_sse(body))[-1] == "RUN_ERROR"
         assert [r.status for r in self._rows(memory, "c1")] == ["abandoned"]
         assert memory.get("c1") == []
 
@@ -1355,7 +1470,7 @@ class TestTurnLifecycle:
 
         client = TestClient(app)
         with client.stream(
-            "POST", "/v1/chat/stream", json=make_request("question", "c1")
+            "POST", "/v1/run", json=make_run("question", thread_id="c1")
         ) as r:
             "".join(r.iter_text())
         assert memory.get("c1") == [
@@ -1530,7 +1645,10 @@ class TestStreamAbort:
                 async def is_disconnected(self):
                     return False
 
-            agen = app._stream_events(ctx, _Raw())
+            from hopsworks_agents.protocol.agui import RunStream
+
+            agen = app._run_events(ctx, _Raw(), RunStream("c1", "r1"))
+            await agen.__anext__()  # RUN_STARTED
             await agen.__anext__()  # pull the first delta
             await agen.aclose()  # client disconnects
 
@@ -1582,7 +1700,10 @@ class TestStreamAbort:
                 async def is_disconnected(self):
                     return False
 
-            agen = app._stream_events(ctx, _Raw())
+            from hopsworks_agents.protocol.agui import RunStream
+
+            agen = app._run_events(ctx, _Raw(), RunStream("c1", "r1"))
+            await agen.__anext__()
             await agen.__anext__()
             await agen.aclose()
             with memory._engine.connect() as conn:
@@ -2717,7 +2838,9 @@ class TestSemanticSearch:
             return "ok"
 
         client = TestClient(app)
-        caps = client.get("/.well-known/hopsworks-agent.json").json()["capabilities"]
+        caps = client.get("/.well-known/hopsworks-agent.json").json()["capabilities"][
+            "custom"
+        ]["hopsworks"]
         assert caps["memory"] == {
             # the agent built this store itself, which is what "code" records
             "source": "code",
@@ -4339,18 +4462,17 @@ class TestTurnSpan:
             yield "one "
             yield "two"
 
-        with TestClient(app).stream(
-            "POST", "/v1/chat/stream", json=make_request("hi")
-        ) as response:
+        with TestClient(app).stream("POST", "/v1/run", json=make_run("hi")) as response:
             frames = parse_sse("".join(response.iter_text()))
 
-        assert [e for e, _ in frames] == [
-            "message.delta",
-            "message.delta",
-            "message.completed",
-        ]
+        assert streamed_text(frames) == "one two"
         attrs = self._attrs(exporter)
         assert attrs["output.value"] == "one two"
+        # the same trace the run reports, at its start and at its end
+        trace_id = frames[0]["metadata"]["hopsworks"]["trace_id"]
+        assert hopsworks_result(frames)["trace_id"] == trace_id
+        span = exporter.get_finished_spans()[-1]
+        assert format(span.context.trace_id, "032x") == trace_id
 
     def test_untraced_app_still_serves(self):
         # tracing off is the common case; the span must degrade to nothing
@@ -4369,11 +4491,16 @@ class TestEvalCapabilities:
     def test_trace_correlation_reflects_tracing(self):
         app = AgentApp(name="t", tracing=False)
         manifest = TestClient(app).get("/.well-known/hopsworks-agent.json").json()
-        assert manifest["capabilities"]["trace_correlation"] is False
+        assert (
+            manifest["capabilities"]["custom"]["hopsworks"]["trace_correlation"]
+            is False
+        )
 
         app.tracer_provider = object()
         manifest = TestClient(app).get("/.well-known/hopsworks-agent.json").json()
-        assert manifest["capabilities"]["trace_correlation"] is True
+        assert (
+            manifest["capabilities"]["custom"]["hopsworks"]["trace_correlation"] is True
+        )
 
     def test_eval_mode_comes_from_the_platform(self, monkeypatch):
         from hopsworks_agents.protocol import conventions
@@ -4384,7 +4511,7 @@ class TestEvalCapabilities:
             .get("/.well-known/hopsworks-agent.json")
             .json()
         )
-        assert manifest["capabilities"]["eval_mode"] is True
+        assert manifest["capabilities"]["custom"]["hopsworks"]["eval_mode"] is True
 
     def test_eval_mode_defaults_off(self, monkeypatch):
         from hopsworks_agents.protocol import conventions
@@ -4395,7 +4522,7 @@ class TestEvalCapabilities:
             .get("/.well-known/hopsworks-agent.json")
             .json()
         )
-        assert manifest["capabilities"]["eval_mode"] is False
+        assert manifest["capabilities"]["custom"]["hopsworks"]["eval_mode"] is False
 
 
 class TestTheEvalModeVariableIsSettable:
@@ -4549,7 +4676,7 @@ class TestFeedback:
             .json()
         )
         assert manifest["endpoints"]["feedback"] == "/v1/feedback"
-        assert manifest["capabilities"]["feedback"] is True
+        assert manifest["capabilities"]["custom"]["hopsworks"]["feedback"] is True
 
     def test_a_verdict_on_a_trace_is_relayed_under_the_end_user(self):
         platform = FakePlatform()
@@ -4834,3 +4961,177 @@ class TestATrialKeepsItsBindingAcrossTurns:
         client.post("/v1/chat", json=make_request("hi", "run_7/t/1"), headers=trial)
 
         assert seen == [False, False]
+
+
+class TestAguiRun:
+    """``/v1/run``: an AG-UI run in, AG-UI events out, Hopsworks under ``hopsworks``."""
+
+    @staticmethod
+    def _echo_app(**kwargs):
+        app = AgentApp(tracing=False, **kwargs)
+        seen = {}
+
+        @app.chat
+        async def chat(request, ctx):
+            seen["request"] = request
+            seen["ctx"] = ctx
+            return AgentResponse.text(text=f"echo: {request.text}")
+
+        return app, seen
+
+    def test_every_event_is_a_valid_agui_event(self):
+        from ag_ui.core import Event
+        from pydantic import TypeAdapter
+
+        app = AgentApp(tracing=False, tool_events=True)
+
+        @app.stream
+        async def stream(request, ctx):
+            await ctx.emit_event("plan", status="running", data={"steps": 2})
+            yield "one "
+            await ctx._emit_tool_call("lookup", "running", "c1", args={"q": 1})
+            await ctx._emit_tool_call("lookup", "done", "c1", result="found")
+            await ctx.emit_event("plan", status="done")
+            yield "two"
+            yield AgentResponse.text("", usage={"input_tokens": 3, "output_tokens": 2})
+
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        adapter = TypeAdapter(Event)
+        for event in events:
+            adapter.validate_python(event)
+        # text messages never interleave with a tool call or a step
+        open_message = None
+        for event in events:
+            if event["type"] == "TEXT_MESSAGE_START":
+                assert open_message is None
+                open_message = event["messageId"]
+            elif event["type"] == "TEXT_MESSAGE_END":
+                assert event["messageId"] == open_message
+                open_message = None
+            elif event["type"].startswith(("TOOL_CALL_", "STEP_")):
+                assert open_message is None, event
+        assert open_message is None
+        assert events[-1]["usage"] == [
+            {"inputTokens": 3, "outputTokens": 2},
+        ]
+
+    def test_the_subject_and_context_come_from_forwarded_props(self):
+        app, seen = self._echo_app()
+        body = make_run(
+            "hi",
+            subject="customer-7",
+            context={"order": 42},
+            metadata={"channel": "web"},
+        )
+        body["context"] = [{"description": "locale", "value": "sv-SE"}]
+        events = parse_sse(TestClient(app).post("/v1/run", json=body).text)
+        request = seen["request"]
+        assert request.subject == "customer-7"
+        assert request.context == {"locale": "sv-SE", "order": 42}
+        assert request.metadata == {"channel": "web"}
+        assert request.run_id == "run-1"
+        result = hopsworks_result(events)
+        assert result["subject"] == "customer-7"
+        assert result["subject_source"] == "client"
+
+    def test_the_thread_is_the_conversation(self):
+        app, seen = self._echo_app()
+        events = parse_sse(
+            TestClient(app).post("/v1/run", json=make_run("hi", thread_id="t-9")).text
+        )
+        assert seen["request"].conversation_id == "t-9"
+        assert events[0]["threadId"] == "t-9"
+        assert events[-1]["threadId"] == "t-9"
+
+    def test_without_memory_the_client_sends_the_history(self):
+        app, seen = self._echo_app()
+        body = make_run("and the second?")
+        body["messages"] = [
+            {"id": "s", "role": "system", "content": "be brief"},
+            {"id": "u1", "role": "user", "content": "where is order 1?"},
+            {"id": "a1", "role": "assistant", "content": "shipped"},
+            {"id": "u2", "role": "user", "content": "and the second?"},
+        ]
+        TestClient(app).post("/v1/run", json=body)
+        request = seen["request"]
+        assert request.text == "and the second?"
+        assert request.message.id == "u2"
+        assert request.to_framework_messages() == [
+            {"role": "system", "content": "be brief"},
+            {"role": "user", "content": "where is order 1?"},
+            {"role": "assistant", "content": "shipped"},
+            {"role": "user", "content": "and the second?"},
+        ]
+
+    def test_with_memory_the_servers_transcript_wins(self):
+        from hopsworks_agents.protocol import InMemoryAgentMemory
+
+        memory = InMemoryAgentMemory()
+        app, seen = self._echo_app(memory=memory)
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("first", thread_id="c1"))
+        body = make_run("second", thread_id="c1")
+        # a client that resends the conversation, rewritten, cannot change it
+        body["messages"] = [
+            {"id": "u1", "role": "user", "content": "something I never said"},
+            {"id": "a1", "role": "assistant", "content": "nor this"},
+            {"id": "u2", "role": "user", "content": "second"},
+        ]
+        client.post("/v1/run", json=body)
+        assert seen["request"].prior_messages == []
+        assert seen["request"].to_framework_messages() == [
+            {"role": "user", "content": "second"}
+        ]
+        assert memory.get("c1") == [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "echo: first"},
+            {"role": "user", "content": "second"},
+            {"role": "assistant", "content": "echo: second"},
+        ]
+
+    def test_a_tool_span_becomes_a_tool_call_with_its_arguments_and_result(self):
+        pytest.importorskip("opentelemetry.sdk")
+        from hopsworks_agents.protocol.autoevents import install_auto_tool_events
+        from opentelemetry.sdk.trace import TracerProvider
+
+        provider = TracerProvider()
+        app = AgentApp(tracing=False, tool_events=True)
+        app.tracer_provider = provider
+        install_auto_tool_events(provider)
+
+        @app.chat
+        async def chat(request):
+            with provider.get_tracer("framework").start_as_current_span(
+                "lookup",
+                attributes={"openinference.span.kind": "TOOL", "tool.name": "lookup"},
+            ) as span:
+                span.set_attribute("input.value", '{"order": 42}')
+                span.set_attribute("output.value", "shipped")
+            return "It shipped."
+
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        calls = [e for e in events if e["type"].startswith("TOOL_CALL_")]
+        assert [e["type"] for e in calls] == [
+            "TOOL_CALL_START",
+            "TOOL_CALL_ARGS",
+            "TOOL_CALL_END",
+            "TOOL_CALL_RESULT",
+        ]
+        assert calls[0]["toolCallName"] == "lookup"
+        assert calls[1]["delta"] == '{"order": 42}'
+        assert calls[3]["content"] == "shipped"
+        assert streamed_text(events) == "It shipped."
+
+    def test_a_failed_tool_call_says_so(self):
+        app = AgentApp(tracing=False)
+
+        @app.chat
+        async def chat(request, ctx):
+            await ctx._emit_tool_call("lookup", "running", "c1")
+            await ctx._emit_tool_call("lookup", "failed", "c1", message="timed out")
+            return "sorry"
+
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        result = next(e for e in events if e["type"] == "TOOL_CALL_RESULT")
+        assert result["content"] == "timed out"
+        assert result["metadata"]["hopsworks"] == {"status": "failed"}

@@ -13,7 +13,12 @@ from hopsworks_agents.eval.models import ExecutionMode, Suite, Task, TrialStatus
 from hopsworks_agents.eval.runner import AgentResponse, RunnerConfig, _run_suite
 
 
-CAPABLE = {"capabilities": {"trace_correlation": True, "eval_mode": True}}
+def declares(**capabilities):
+    """A manifest declaring these to Hopsworks, where an AG-UI manifest keeps them."""
+    return {"capabilities": {"custom": {"hopsworks": capabilities}}}
+
+
+CAPABLE = declares(trace_correlation=True, eval_mode=True)
 
 
 class ScriptedAgent:

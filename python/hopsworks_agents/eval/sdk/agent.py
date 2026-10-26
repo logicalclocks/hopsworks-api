@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 VERDICTS = ("positive", "negative", "false_alarm")
 MANIFEST_PATH = ".well-known/hopsworks-agent.json"
 DEFAULT_CHAT_PATH = "/v1/chat"
-DEFAULT_STREAM_PATH = "/v1/chat/stream"
+DEFAULT_RUN_PATH = "/v1/run"
 #: The feature groups an agent's memory is kept in, every deployment's rows together.
 MEMORY_MESSAGES_FG = "agent_memory_messages"
 MEMORY_CONVERSATIONS_FG = "agent_memory_conversations"
@@ -188,11 +188,12 @@ class Agent:
     ) -> ChatStream:
         """Send the agent one message and read its reply as it is produced.
 
-        The stream is the protocol's server-sent events: text deltas, the steps
-        the agent reports while working (tool calls, retrievals, code runs) and
-        the completed reply. Iterating the stream yields the text deltas;
-        `events()` yields every frame; `reply` is the completed `ChatReply`,
-        reading the rest of the stream first if needed.
+        The message is sent as an AG-UI run, and the stream is its events: text
+        deltas, the tool calls and steps the agent reports while working, and
+        the completed reply.
+        Iterating the stream yields the text deltas; `events()` yields every
+        frame; `reply` is the completed `ChatReply`, reading the rest of the
+        stream first if needed.
 
         Example:
             ```python
@@ -220,10 +221,10 @@ class Agent:
         Raises:
             `AgentServingError`: If the gateway refuses the request, or, while reading, if the agent reports an error.
         """
-        payload = _chat_payload(text, conversation_id, subject, context, metadata)
+        payload = _run_payload(text, conversation_id, subject, context, metadata)
         lines = self._http.agent_request(
             "POST",
-            self._segments(self._endpoint("stream", DEFAULT_STREAM_PATH)),
+            self._segments(self._endpoint("run", DEFAULT_RUN_PATH)),
             json=payload,
             timeout=timeout,
             stream=True,
@@ -1234,15 +1235,50 @@ def _chat_payload(
     return payload
 
 
+def _run_payload(
+    text: str,
+    conversation_id: str | None,
+    subject: str | None,
+    context: dict[str, Any] | None,
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """One message as an AG-UI ``RunAgentInput``.
+
+    Only the new message is sent: the agent keeps the conversation, and one with
+    no memory gets this message alone, as it would on ``/v1/chat``.
+    Hopsworks' own fields ride under ``forwardedProps.hopsworks``.
+    """
+    import uuid  # noqa: PLC0415
+
+    hopsworks: dict[str, Any] = {}
+    if subject:
+        hopsworks["subject"] = subject
+    if context:
+        hopsworks["context"] = context
+    if metadata:
+        hopsworks["metadata"] = metadata
+    return {
+        "threadId": conversation_id or "",
+        "runId": f"run_{uuid.uuid4().hex}",
+        "messages": [
+            {"id": f"msg_{uuid.uuid4().hex}", "role": "user", "content": text}
+        ],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {"hopsworks": hopsworks} if hopsworks else {},
+    }
+
+
 # ── streaming ──────────────────────────────────────────────────────────────
 
 
 @dataclass
 class StreamFrame:
-    """One server-sent event of a streamed reply.
+    """One frame of a streamed reply, read from the run's AG-UI events.
 
-    ``type`` is ``delta`` (a piece of text, in ``text``), ``tool`` (a step the
-    agent reported, in ``tool``) or ``completed`` (the whole reply, in ``reply``).
+    ``type`` is ``delta`` (a piece of text, in ``text``), ``tool`` (a tool call
+    or a step the agent reported, in ``tool``) or ``completed`` (the whole reply,
+    in ``reply``). ``raw`` is the AG-UI event it was read from.
     """
 
     type: str
@@ -1317,38 +1353,132 @@ class ChatStream:
         return self._completed
 
     def _parse(self, lines: Iterable[str]) -> Iterator[StreamFrame]:
-        for event, data in _sse_events(lines):
+        thread_id = ""
+        trace_id: str | None = None
+        media: list[dict[str, Any]] = []
+        calls: dict[str, dict[str, Any]] = {}
+        for _, data in _sse_events(lines):
             try:
-                body = json.loads(data) if data else {}
+                event = json.loads(data) if data else {}
             except ValueError:
                 continue
-            if event == "message.delta":
-                delta = (
-                    (body.get("delta") or {}).get("text")
-                    if isinstance(body, dict)
-                    else None
-                )
+            if not isinstance(event, dict):
+                continue
+            kind = event.get("type")
+            hopsworks = _hopsworks_of(event.get("metadata"))
+            if kind == "RUN_STARTED":
+                thread_id = str(event.get("threadId") or "")
+                trace_id = hopsworks.get("trace_id") or trace_id
+            elif kind == "TEXT_MESSAGE_CONTENT":
+                delta = event.get("delta")
                 if isinstance(delta, str) and delta:
                     self._chunks.append(delta)
-                    yield StreamFrame("delta", text=delta, raw=body)
-            elif event == "tool_event":
-                if isinstance(body, dict) and body.get("name"):
-                    tool = ToolEvent.from_api(body)
-                    self._tool_events.append(tool)
-                    yield StreamFrame("tool", tool=tool, raw=body)
-            elif event == "message.completed":
-                self._completed = ChatReply.from_api(
-                    body if isinstance(body, dict) else {}
+                    yield StreamFrame("delta", text=delta, raw=event)
+            elif kind == "TOOL_CALL_START":
+                call_id = str(event.get("toolCallId") or "")
+                calls[call_id] = {
+                    "id": call_id,
+                    "name": event.get("toolCallName") or "tool",
+                    "status": "running",
+                }
+                yield self._tool_frame(dict(calls[call_id]), event)
+            elif kind == "TOOL_CALL_ARGS":
+                call = calls.get(str(event.get("toolCallId") or ""))
+                if call is not None:
+                    data_ = call.setdefault("data", {})
+                    data_["args"] = data_.get("args", "") + str(
+                        event.get("delta") or ""
+                    )
+            elif kind == "TOOL_CALL_RESULT":
+                call = calls.get(str(event.get("toolCallId") or ""))
+                if call is None:
+                    continue
+                failed = _hopsworks_of(event.get("metadata")).get("status") == "failed"
+                call["status"] = "failed" if failed else "done"
+                content = event.get("content")
+                if failed:
+                    call["message"] = content
+                else:
+                    call.setdefault("data", {})["result"] = content
+                yield self._tool_frame(dict(call), event)
+            elif kind in ("STEP_STARTED", "STEP_FINISHED"):
+                step = {
+                    "name": event.get("stepName") or "step",
+                    "status": hopsworks.get("status")
+                    or ("running" if kind == "STEP_STARTED" else "done"),
+                }
+                for key in ("id", "message", "data"):
+                    if hopsworks.get(key) is not None:
+                        step[key] = hopsworks[key]
+                yield self._tool_frame(step, event)
+            elif kind == "CUSTOM" and event.get("name") == "hopsworks.media":
+                if isinstance(event.get("value"), dict):
+                    media.append(event["value"])
+            elif kind == "RUN_FINISHED":
+                result = _hopsworks_of(event.get("result"))
+                metadata = dict(result.get("metadata") or {})
+                metadata["trace_id"] = result.get("trace_id") or trace_id
+                for key in ("subject", "subject_source"):
+                    if result.get(key) is not None:
+                        metadata[key] = result[key]
+                metadata["tool_events"] = [t.raw for t in self._tool_events]
+                self._completed = ChatReply(
+                    id=str(result.get("response_id") or ""),
+                    conversation_id=str(event.get("threadId") or thread_id),
+                    message={
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": self.text},
+                            *media,
+                        ],
+                    },
+                    citations=list(result.get("citations") or []),
+                    usage=_usage_of(event.get("usage")),
+                    metadata=metadata,
+                    status="completed",
                 )
                 yield StreamFrame(
                     "completed",
                     text=self._completed.text,
                     reply=self._completed,
-                    raw=body,
+                    raw=event,
                 )
-            elif event == "error":
-                message = body.get("message") if isinstance(body, dict) else None
-                raise AgentServingError(str(message or "the agent returned an error"))
+            elif kind == "RUN_ERROR":
+                raise AgentServingError(
+                    str(event.get("message") or "the agent returned an error"),
+                    int(hopsworks.get("status") or 0),
+                    code=str(event.get("code") or ""),
+                    retryable=bool(hopsworks.get("retryable")),
+                )
+
+    def _tool_frame(self, body: dict[str, Any], event: dict[str, Any]) -> StreamFrame:
+        tool = ToolEvent.from_api(body)
+        self._tool_events.append(tool)
+        return StreamFrame("tool", tool=tool, raw=event)
+
+
+def _hopsworks_of(value: Any) -> dict[str, Any]:
+    """What Hopsworks put under ``hopsworks`` in an AG-UI event's metadata or result."""
+    if isinstance(value, dict) and isinstance(value.get("hopsworks"), dict):
+        return value["hopsworks"]
+    return {}
+
+
+def _usage_of(usage: Any) -> dict[str, int] | None:
+    """AG-UI's per-model token counts, summed into the reply's ``usage``."""
+    if not isinstance(usage, list):
+        return None
+    totals: dict[str, int] = {}
+    for entry in usage:
+        if not isinstance(entry, dict):
+            continue
+        for wire, key in (
+            ("inputTokens", "input_tokens"),
+            ("outputTokens", "output_tokens"),
+        ):
+            if isinstance(entry.get(wire), int):
+                totals[key] = totals.get(key, 0) + entry[wire]
+    return totals or None
 
 
 def _sse_events(lines: Iterable[str]) -> Iterator[tuple[str, str]]:

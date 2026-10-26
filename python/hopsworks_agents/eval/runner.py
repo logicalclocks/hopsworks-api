@@ -143,6 +143,17 @@ class RunResult:
     error_message: str = ""
 
 
+def _hopsworks_capabilities(manifest: dict[str, Any]) -> dict[str, Any]:
+    """What the agent declares to Hopsworks: ``capabilities.custom.hopsworks``.
+
+    The rest of ``capabilities`` is AG-UI's ``AgentCapabilities``, which has no
+    word for trace correlation or evaluation mode.
+    """
+    custom = (manifest.get("capabilities") or {}).get("custom") or {}
+    hopsworks = custom.get("hopsworks") if isinstance(custom, dict) else None
+    return hopsworks if isinstance(hopsworks, dict) else {}
+
+
 def _check_deployment_supports(suite: Suite, manifest: dict[str, Any]) -> None:
     """Refuse a run that cannot produce trustworthy results.
 
@@ -152,7 +163,7 @@ def _check_deployment_supports(suite: Suite, manifest: dict[str, Any]) -> None:
     deployment executes injection attempts against real tools. Neither announces
     itself in the results.
     """
-    capabilities = manifest.get("capabilities", {})
+    capabilities = _hopsworks_capabilities(manifest)
 
     if suite.execution_mode is ExecutionMode.LIVE:
         raise SuiteRefused(

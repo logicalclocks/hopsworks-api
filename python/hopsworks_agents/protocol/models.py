@@ -1,8 +1,8 @@
-"""Pydantic models for the Hopsworks Agent Protocol v1.0.
+"""Pydantic models for the turn an agent answers.
 
-Spec: the manifest is served at /.well-known/hopsworks-agent.json; chat is a
-ChatRequest -> ChatResponse exchange with typed content parts; history is
-server-side via conversation_id.
+A turn arrives as an AG-UI run on /v1/run (see ``agui``) or as a ChatRequest on
+/v1/chat, and handlers see a ChatRequest either way; they answer with a
+ChatResponse. History is server-side via conversation_id when memory is on.
 """
 
 from __future__ import annotations
@@ -14,8 +14,9 @@ from hopsworks_apigen import public
 from pydantic import BaseModel, Field
 
 
-PROTOCOL = "hopsworks-agent"
-PROTOCOL_VERSION = "1.4"
+# The wire protocol, and the version of the Hopsworks extensions carried on it.
+PROTOCOL = "ag-ui"
+PROTOCOL_VERSION = "2.0"
 
 
 @public
@@ -83,6 +84,17 @@ class ChatRequest(BaseModel):
     subject: str | None = None
     context: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # What an AG-UI run sent beyond the new message, for a handler that wants it.
+    # Empty for a turn that arrived on /v1/chat.
+    run_id: str | None = None
+    messages: list[Any] = Field(default_factory=list)
+    tools: list[Any] = Field(default_factory=list)
+    state: Any = None
+    forwarded_props: Any = None
+    # The turns before this one, as the client sent them, for an agent with no
+    # memory. With memory the server's transcript is the history and this stays
+    # empty, so a client resending the conversation cannot rewrite it.
+    prior_messages: list[dict[str, str]] = Field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -109,11 +121,15 @@ class ChatRequest(BaseModel):
 
         LangChain, LangGraph, and LlamaIndex all accept directly.
 
-        History is server-side in the protocol, so this is only the current
-        turn; pair it with your framework's checkpointer/memory keyed by
-        ``conversation_id``.
+        With memory configured the history is server-side, so this is only the
+        current turn; pair it with your framework's checkpointer/memory keyed by
+        ``conversation_id``. Without memory, an AG-UI client sends the
+        conversation, and the earlier turns come first.
         """
-        return [{"role": self.message.role, "content": self.text}]
+        return [
+            *self.prior_messages,
+            {"role": self.message.role, "content": self.text},
+        ]
 
 
 class FeedbackRequest(BaseModel):

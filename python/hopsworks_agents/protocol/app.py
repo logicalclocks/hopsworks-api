@@ -2,10 +2,12 @@
 
 Registers automatically:
 
-- ``GET  /.well-known/hopsworks-agent.json``  — protocol manifest
-- ``POST /v1/chat``                           — non-streaming chat
-- ``POST /v1/chat/stream``                    — SSE streaming (when a stream
-  handler is registered; otherwise the capability is off)
+- ``GET  /.well-known/hopsworks-agent.json``  — manifest: endpoints and
+  AG-UI capabilities
+- ``POST /v1/run``                            — one AG-UI run: ``RunAgentInput``
+  in, AG-UI events out as server-sent events (see ``agui``)
+- ``POST /v1/chat``                           — the same turn as one JSON reply,
+  for callers that do not stream
 - ``GET  /health``                            — liveness probe
 
 Being a FastAPI subclass, it works anywhere a FastAPI app does (uvicorn,
@@ -23,12 +25,15 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
+from ag_ui.core import AgentCapabilities, RunAgentInput
+from ag_ui.core.version import PROTOCOL_VERSION as AGUI_PROTOCOL_VERSION
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from hopsworks_apigen import public
 
 from . import conventions
+from .agui import RunStream, _to_chat_request
 from .context import HandlerContext
 from .evaluation import RunVerifier, env_eval_mode, parse_baggage
 from .evaluation import active as eval_active
@@ -49,11 +54,6 @@ from .tracing import resolve_framework, setup_tracing, turn_span
 
 ChatHandler = Callable[..., Awaitable[ChatResponse | str] | ChatResponse | str]
 StreamHandler = Callable[..., AsyncIterator["str | ChatResponse"]]
-
-
-def _sse(event: str, data: Any) -> str:
-    payload = data if isinstance(data, str) else json.dumps(data)
-    return f"event: {event}\ndata: {payload}\n\n"
 
 
 def _wants_context(handler: Callable[..., Any]) -> bool:
@@ -144,8 +144,8 @@ class AgentApp(FastAPI):
         # is not to serve them.
         self._memory_routes = memory_routes
 
-        # advertise tool_event SSE frames (emitted via ctx.emit_event); off by
-        # default so existing manifests are unchanged
+        # report tool calls the framework makes as AG-UI tool calls, from its
+        # tracing spans; off by default
         self._tool_events = tool_events
         self._auto_tool_events = False
 
@@ -329,10 +329,17 @@ class AgentApp(FastAPI):
         }
 
     def _manifest(self) -> dict[str, Any]:
+        """What this agent is and what it can do, for a client to discover it.
+
+        AG-UI defines no discovery endpoint, so the manifest is ours, but its
+        ``capabilities`` are AG-UI's ``AgentCapabilities``: a TypeScript client
+        can hand them out of ``getCapabilities()`` as they are.
+        What only Hopsworks reads is under ``capabilities.custom.hopsworks``,
+        where ``streaming`` still means a stream handler is registered, so the
+        answer arrives token by token rather than whole.
+        """
         streaming = self._stream_handler is not None
-        endpoints: dict[str, str] = {"chat": "/v1/chat"}
-        if streaming:
-            endpoints["stream"] = "/v1/chat/stream"
+        endpoints: dict[str, str] = {"run": "/v1/run", "chat": "/v1/chat"}
         if self.memory is not None and self._memory_routes:
             # server-managed history is available: clients can list/clear it
             endpoints["conversations"] = "/v1/conversations"
@@ -343,9 +350,79 @@ class AgentApp(FastAPI):
             endpoints["graph"] = "/v1/graph"
         # always served: a chat UI built on the gateway has nowhere else to send a verdict
         endpoints["feedback"] = "/v1/feedback"
+        hopsworks: dict[str, Any] = {
+            "streaming": streaming,
+            # protocol-level statement that history is server-side. The
+            # per-tier detail is under "memory" below; this was previously
+            # hardcoded True even with no store configured, which was wrong.
+            "conversation_history": self.memory is not None,
+            "memory": self._memory_capabilities(),
+            # server-side history is inspectable/clearable via the endpoints
+            "conversation_management": self.memory is not None,
+            "attachments": any(m != "text" for m in self._input_modalities),
+            "input_modalities": self._input_modalities,
+            "output_modalities": self._output_modalities,
+            "citations": False,
+            "tool_events": self._tool_events,
+            # a structure graph is available to visualize the agent
+            "graph": self._graph_spec is not None,
+            # end users can rate a turn through the agent itself
+            "feedback": True,
+            # This agent continues an incoming W3C trace context and
+            # propagates hopsworks.eval.* baggage onto its spans, so a
+            # caller that generated the traceparent can find the trace
+            # afterwards. False means tracing is off on the deployment;
+            # *absent* means an SDK too old to do it at all. The eval
+            # runner checks this before running a suite, rather than
+            # discovering afterwards that every trial points at a trace
+            # that was never created.
+            "trace_correlation": self.tracer_provider is not None,
+            # Running with tools mocked or pointed at scratch resources.
+            # Lets the runner refuse to fire a sandboxed suite — one full
+            # of injection and exfiltration attempts — at a deployment
+            # whose tools can still mutate production systems.
+            "eval_mode": self._eval_mode,
+            # This agent reads hopsworks.eval.* baggage and skips its
+            # production side effects for a turn that belongs to a
+            # verified run — so a sandboxed suite may be fired at it even
+            # while it serves real traffic. The runner accepts either this
+            # or eval_mode.
+            "eval_per_request": self._eval_per_request,
+        }
+        inputs = set(self._input_modalities)
+        outputs = set(self._output_modalities)
+        capabilities = AgentCapabilities.model_validate(
+            {
+                "identity": {
+                    "name": self._agent_name,
+                    "description": self._agent_description,
+                    "version": self._agent_version,
+                    "provider": "hopsworks",
+                },
+                "transport": {"streaming": True},
+                "multimodal": {
+                    "input": {
+                        "image": "image" in inputs,
+                        "audio": "audio" in inputs,
+                        "file": "file" in inputs,
+                    },
+                    "output": {
+                        "image": "image" in outputs,
+                        "audio": "audio" in outputs,
+                    },
+                },
+                "state": {
+                    "memory": self.memory is not None,
+                    "persistent_state": bool(getattr(self.memory, "_long_term", False)),
+                },
+                "human_in_the_loop": {"feedback": True},
+                "custom": {"hopsworks": hopsworks},
+            }
+        )
         return {
             "protocol": PROTOCOL,
-            "protocol_version": PROTOCOL_VERSION,
+            "protocol_version": AGUI_PROTOCOL_VERSION,
+            "hopsworks_version": PROTOCOL_VERSION,
             "agent": {
                 "name": self._agent_name,
                 "description": self._agent_description,
@@ -353,45 +430,7 @@ class AgentApp(FastAPI):
                 "framework": self.framework,
             },
             "endpoints": endpoints,
-            "capabilities": {
-                "streaming": streaming,
-                # protocol-level statement that history is server-side. The
-                # per-tier detail is under "memory" below; this was previously
-                # hardcoded True even with no store configured, which was wrong.
-                "conversation_history": self.memory is not None,
-                "memory": self._memory_capabilities(),
-                # server-side history is inspectable/clearable via the endpoints
-                "conversation_management": self.memory is not None,
-                "attachments": any(m != "text" for m in self._input_modalities),
-                "input_modalities": self._input_modalities,
-                "output_modalities": self._output_modalities,
-                "citations": False,
-                "tool_events": self._tool_events,
-                # a structure graph is available to visualize the agent
-                "graph": self._graph_spec is not None,
-                # end users can rate a turn through the agent itself
-                "feedback": True,
-                # This agent continues an incoming W3C trace context and
-                # propagates hopsworks.eval.* baggage onto its spans, so a
-                # caller that generated the traceparent can find the trace
-                # afterwards. False means tracing is off on the deployment;
-                # *absent* means an SDK too old to do it at all. The eval
-                # runner checks this before running a suite, rather than
-                # discovering afterwards that every trial points at a trace
-                # that was never created.
-                "trace_correlation": self.tracer_provider is not None,
-                # Running with tools mocked or pointed at scratch resources.
-                # Lets the runner refuse to fire a sandboxed suite — one full
-                # of injection and exfiltration attempts — at a deployment
-                # whose tools can still mutate production systems.
-                "eval_mode": self._eval_mode,
-                # This agent reads hopsworks.eval.* baggage and skips its
-                # production side effects for a turn that belongs to a
-                # verified run — so a sandboxed suite may be fired at it even
-                # while it serves real traffic. The runner accepts either this
-                # or eval_mode.
-                "eval_per_request": self._eval_per_request,
-            },
+            "capabilities": capabilities.model_dump(by_alias=True, exclude_none=True),
             "ui": {
                 "welcome_message": self._welcome_message,
                 "suggested_prompts": self._suggested_prompts,
@@ -630,8 +669,6 @@ class AgentApp(FastAPI):
 
     def _write_turn_items(self, ctx: HandlerContext, response: ChatResponse) -> None:
         """Assistant reply + any tool events, in emission order."""
-        import json
-
         for event in ctx._recorded_events:
             self.memory.record_item(
                 ctx.conversation_id,
@@ -847,16 +884,31 @@ class AgentApp(FastAPI):
                     await self._finalize_turn(ctx, response)
             return JSONResponse(response.model_dump())
 
-        @self.post("/v1/chat/stream")
-        async def stream_route(request: ChatRequest, raw: Request) -> Response:
+        @self.post("/v1/run")
+        async def run_route(run: RunAgentInput, raw: Request) -> Response:
+            # Refusals before the run starts are plain HTTP errors, as AG-UI
+            # clients expect: nothing has streamed yet, so there is no run to end.
+            if self._chat_handler is None and self._stream_handler is None:
+                return _error_response(
+                    AgentError("No chat handler registered.", "not_implemented", 501)
+                )
+            try:
+                request = _to_chat_request(run, server_history=self.memory is not None)
+            except AgentError as err:
+                return _error_response(err)
             ctx = self._prepare(request)
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
                 return _error_response(refused)
             await self._resolve_subject(ctx)
             await self._open_turn(ctx)
+            stream = RunStream(
+                ctx.conversation_id,
+                request.run_id or ctx.turn_id,
+                accept=raw.headers.get("accept"),
+            )
             return StreamingResponse(
-                self._stream_events(ctx, raw), media_type="text/event-stream"
+                self._run_events(ctx, raw, stream), media_type=stream.media_type
             )
 
         self._register_feedback_route()
@@ -1095,10 +1147,12 @@ class AgentApp(FastAPI):
                     )
             return JSONResponse({"removed": removed, "vectors_removed": vectors})
 
-    async def _stream_events(
-        self, ctx: HandlerContext, raw: Request
+    async def _run_events(
+        self, ctx: HandlerContext, raw: Request, stream: RunStream
     ) -> AsyncIterator[str]:
-        # graceful degradation: no stream handler -> run chat, emit one event
+        # One AG-UI run. With no stream handler the chat handler runs and its
+        # answer goes out whole, so a caller never has to ask which was written.
+        #
         # Every exit below — normal completion, AgentError, handler crash,
         # client disconnect — has to end the turn, because its user message is
         # already in the store. Hence one finally around the whole generator.
@@ -1129,23 +1183,15 @@ class AgentApp(FastAPI):
             ) as span,
         ):
             ctx._span = span
+            trace_id = _trace_id(span)
             completed: ChatResponse | None = None
             try:
-                if self._stream_handler is None:
-                    try:
-                        response = await self._run_chat(ctx)
-                    except AgentError as err:
-                        _record_span_error(span, err)
-                        yield _sse("error", err.detail())
-                        return
-                    completed = response
-                    yield _sse("message.completed", response.model_dump())
-                    return
-
-                # Run the handler as a task that feeds a queue, so ctx.emit_event
-                # (tool_event frames) interleaves with the handler's own yields.
+                yield stream._started(trace_id)
                 from .autoevents import current_context
 
+                # The handler runs as a task that feeds a queue, so progress
+                # events (ctx.emit_event, automatic tool calls) go out while it
+                # works rather than after it.
                 queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
                 ctx._event_queue = queue
                 ctx._loop = asyncio.get_running_loop()
@@ -1153,19 +1199,24 @@ class AgentApp(FastAPI):
                 async def pump() -> None:
                     token = current_context.set(ctx)
                     try:
-                        async for item in self._invoke_stream(ctx):
-                            await queue.put(("item", item))
+                        if self._stream_handler is None:
+                            response = await self._run_chat(ctx)
+                            await queue.put(("final", response))
+                        else:
+                            async for item in self._invoke_stream(ctx):
+                                await queue.put(("item", item))
                     except AgentError as err:
-                        await queue.put(("error", err.detail()))
+                        await queue.put(("error", err))
                     except Exception as err:  # noqa: BLE001 — surfaced to the client
+                        import logging  # noqa: PLC0415
+
+                        logging.getLogger(__name__).exception("the handler failed")
                         await queue.put(
                             (
                                 "error",
-                                {
-                                    "code": "agent_error",
-                                    "message": str(err),
-                                    "retryable": False,
-                                },
+                                AgentError(
+                                    f"{type(err).__name__}: {err}", "agent_error", 500
+                                ),
                             )
                         )
                     finally:
@@ -1175,6 +1226,7 @@ class AgentApp(FastAPI):
                 task = asyncio.create_task(pump())
                 chunks: list[str] = []
                 final: ChatResponse | None = None
+                answered: ChatResponse | None = None
                 try:
                     while True:
                         kind, payload = await queue.get()
@@ -1189,18 +1241,18 @@ class AgentApp(FastAPI):
                             task.cancel()
                             return
                         if kind == "error":
-                            _record_span_error(
-                                span, AgentError(str(payload.get("message", "")))
-                            )
-                            yield _sse("error", payload)
+                            _record_span_error(span, payload)
+                            yield stream._error(payload, trace_id=trace_id)
                             return
                         if kind == "tool_event":
-                            yield _sse("tool_event", payload)
+                            yield stream._progress(payload)
+                        elif kind == "final":
+                            answered = payload
                         elif isinstance(payload, ChatResponse):
                             final = payload
                         else:
                             chunks.append(payload)
-                            yield _sse("message.delta", {"delta": {"text": payload}})
+                            yield stream._text(payload)
                 except asyncio.CancelledError:
                     # What a client hanging up actually looks like. Starlette
                     # cancels the generator on disconnect, so the await above
@@ -1214,14 +1266,31 @@ class AgentApp(FastAPI):
                     if not task.done():
                         task.cancel()
 
-                response = self._merge_stream_result(chunks, final, ctx)
+                response = answered or self._merge_stream_result(chunks, final, ctx)
                 completed = response
-                yield _sse("message.completed", response.model_dump())
+                yield stream._finished(
+                    response,
+                    subject=ctx.subject if ctx.has_subject else None,
+                    subject_source=ctx.subject_source if ctx.has_subject else None,
+                )
             finally:
                 # Best effort: if the whole task tree is being cancelled this may
                 # not get to run, which is what the store's stale-turn reaper is
                 # there to catch.
                 await self._finalize_turn(ctx, completed)
+
+
+def _trace_id(span: Any) -> str | None:
+    """The turn's trace id as a hex string, or None when the turn is untraced."""
+    if span is None:
+        return None
+    try:
+        context = span.get_span_context()
+    except Exception:  # noqa: BLE001 — correlation is best-effort
+        return None
+    if not getattr(context, "is_valid", False):
+        return None
+    return format(context.trace_id, "032x")
 
 
 def _stamp_request_context(span: Any, ctx: HandlerContext) -> None:
@@ -1231,8 +1300,6 @@ def _stamp_request_context(span: Any, ctx: HandlerContext) -> None:
     not a smaller context, it is no context, and a replay given one would fail
     for a reason the original turn never had.
     """
-    import json
-
     context = getattr(ctx.request, "context", None) or {}
     if not context:
         return
