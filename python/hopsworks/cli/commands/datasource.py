@@ -1906,10 +1906,11 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
         [
             getattr(t, "table", None) or "?",
             getattr(t, "database", None) or database or "-",
+            getattr(t, "group", None) or "-",
         ]
         for t in tables or []
     ]
-    output.print_table(["TABLE", "DATABASE"], rows)
+    output.print_table(["TABLE", "DATABASE", "SCHEMA"], rows)
 
 
 def _resolve_table(ds, table: str, database: str | None):

@@ -258,3 +258,25 @@ def test_datasource_preview_prints_the_rows_the_backend_nests(mock_project):
     assert "387" in result.output and "Paris" in result.output
     as_json = CliRunner().invoke(cli, ["--json", "datasource", "preview", "pg"])
     assert json.loads(as_json.stdout)["preview"] == [{"id": "387", "city": "Paris"}]
+
+
+def test_datasource_tables_shows_the_schema_of_each_table(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    listed = [
+        DataSource(
+            storage_connector=mock.MagicMock(),
+            database="db",
+            group="rnacen",
+            table="rna",
+        )
+    ]
+    fs.get_data_source.return_value.get_tables.return_value = listed
+    result = CliRunner().invoke(cli, ["datasource", "tables", "pg", "--database", "db"])
+    assert result.exit_code == 0, result.output
+    assert "SCHEMA" in result.output and "rnacen" in result.output
+    as_json = CliRunner().invoke(
+        cli, ["--json", "datasource", "tables", "pg", "--database", "db"]
+    )
+    assert json.loads(as_json.stdout) == [
+        {"TABLE": "rna", "DATABASE": "db", "SCHEMA": "rnacen"}
+    ]
