@@ -65,6 +65,51 @@ def test_a_failed_request_counts_as_an_error_at_the_timeout():
     assert summary["p99_ms"] == 500
 
 
+def test_a_system_with_benchmark_requests_is_loaded_in_its_own_request_shape(monkeypatch):
+    import sys
+    import types
+
+    bench = _benchmark()
+    sent = []
+
+    class Deployment:
+        def predict(self, inputs):
+            sent.append(inputs)
+
+        def to_dict(self):
+            return {"name": "fraud"}
+
+    project = types.SimpleNamespace(
+        get_model_serving=lambda: types.SimpleNamespace(get_deployment=lambda name: Deployment())
+    )
+    monkeypatch.setitem(sys.modules, "hopsworks", types.SimpleNamespace(login=lambda: project))
+    pkg = inference_pipeline.__name__.split(".")[0]
+    shaped = types.ModuleType(f"{pkg}.benchmark_requests")
+    shaped.requests = lambda project, n: [[["card-1", 42.5]]] * n
+    shaped.__spec__ = importlib.util.spec_from_loader(shaped.__name__, loader=None)
+    monkeypatch.setitem(sys.modules, shaped.__name__, shaped)
+
+    def closed_loop(send, requests, **kwargs):
+        send(requests[0])
+        return bench.summarize([10.0], 0, 1.0, 1.0)
+
+    monkeypatch.setattr(bench, "closed_loop", closed_loop)
+    system = {
+        "system": {"slug": pkg.replace("_", "-")},
+        "inference": {"realtime": {"deployment": "fraud", "model_version": 1}},
+        "requirements": {"sla": {"realtime": {"p99_ms": 300, "throughput_qps": 1}}},
+    }
+    protocol = {
+        "offered_qps": 1,
+        "concurrency": 1,
+        "duration_s": 1,
+        "warmup_s": 0,
+        "timeout_ms": 500,
+    }
+    bench.run_realtime(system, protocol, {"entities": 3})
+    assert sent == [[["card-1", 42.5]]]
+
+
 def test_batch_budget_runs_from_the_cron_fire_to_the_deadline():
     budget = inference_pipeline.batch_budget_s
     assert budget("0 0 4 1 * ?", "06:00 UTC") == 7200

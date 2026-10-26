@@ -76,14 +76,15 @@ def generate_second(universe: dict, n: int, fraud_rate: float, first_id: int) ->
     return frame.with_columns(transaction_id=np.arange(first_id, first_id + n, dtype=np.int64))
 
 
-def connect():
+def connect(system: str):
     import hopsworks
 
     project = hopsworks.login()
     fg = project.get_feature_store().get_or_create_feature_group(
         name=FEATURE_GROUP,
         version=1,
-        description="Live debit card authorisations, the schema of card_authorisations, written by transaction_stream.py.",
+        description=f"{system}: live debit card authorisations, the schema of card_authorisations, "
+        "written by transaction_stream.py.",
         primary_key=AUTHORISATIONS["primary_key"],
         event_time=AUTHORISATIONS["event_time"],
         features=AUTHORISATIONS["features"],
@@ -94,12 +95,12 @@ def connect():
     return fg, fg.multi_part_insert()
 
 
-def reconnect(fg):
+def reconnect(fg, system: str):
     try:
         fg.finalize_multi_part_insert()
     except Exception as error:  # the old writer is discarded either way
         print(f"  finalize failed on reconnect: {type(error).__name__}")
-    return connect()
+    return connect(system)
 
 
 def main():
@@ -118,6 +119,9 @@ def main():
     )
     parser.add_argument("--max-retries", type=int, default=5)
     parser.add_argument("--dry-run", action="store_true")
+    # Every asset's description starts with the system's slug, which is how deleting the
+    # system with its assets tells its own from another's.
+    parser.add_argument("--system", default="debitcard-example", help="the system's slug")
     args = parser.parse_args()
 
     universe = build_universe(args.history_rows, args.seed)
@@ -142,7 +146,7 @@ def main():
             )
         return
 
-    fg, writer = connect()
+    fg, writer = connect(args.system)
     print(
         f"Writing {args.rate} authorisations a second to {FEATURE_GROUP} (topic {fg._online_topic_name})"
     )
@@ -152,7 +156,7 @@ def main():
     while deadline is None or time.time() < deadline:
         tick = time.time()
         if tick - last_login >= args.relogin_mins * 60:
-            fg, writer = reconnect(fg)
+            fg, writer = reconnect(fg, args.system)
             last_login = time.time()
         frame = generate_second(universe, args.rate, args.fraud_rate, next_id)
         next_id += args.rate
@@ -170,7 +174,7 @@ def main():
                 )
                 time.sleep(backoff)
                 try:
-                    fg, writer = reconnect(fg)
+                    fg, writer = reconnect(fg, args.system)
                     last_login = time.time()
                 except Exception as reconnect_error:
                     print(f"  reconnect failed: {type(reconnect_error).__name__}")

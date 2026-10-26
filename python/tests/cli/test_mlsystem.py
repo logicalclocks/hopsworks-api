@@ -444,6 +444,25 @@ def test_a_monitoring_job_goes_with_its_configuration():
     assert deleter.delete(other) == "gone"
 
 
+def test_a_feature_groups_monitoring_job_goes_with_its_configuration():
+    from hopsworks.cli import teardown
+
+    deleted = []
+    config = SimpleNamespace(
+        name="amount_psi_hourly", delete=lambda: deleted.append("config")
+    )
+    group = SimpleNamespace(get_feature_monitoring_configs=lambda name: config)
+    # The feature view lookup of a group's name finds nothing and returns None.
+    fs = SimpleNamespace(
+        get_feature_view=lambda name, version: None,
+        get_feature_group=lambda name, version: group,
+    )
+    deleter = teardown.Deleter(SimpleNamespace(get_feature_store=lambda: fs))
+    job = teardown.Asset("job", "credit_card_transactions_1_run_fm_amount_psi_hourly")
+    assert deleter.delete(job) == "deleted"
+    assert deleted == ["config"]
+
+
 def test_delete_removes_the_code_last_and_a_retry_after_it_finishes(
     monkeypatch, logged_in, system_dir
 ):
@@ -600,3 +619,34 @@ def test_a_path_that_is_not_the_systems_directory_is_refused(
     )
     assert done.exit_code != 0 and "not the directory of" in done.output
     assert removed == [] and other.exists()
+
+
+def test_a_logging_job_goes_with_its_feature_view():
+    from hopsworks.cli import teardown
+
+    deleted = []
+    job = SimpleNamespace(unschedule=lambda: None, delete=lambda: deleted.append("job"))
+    views = {}
+    fs = SimpleNamespace(
+        get_feature_view=lambda name, version: views.get((name, version))
+    )
+    project = SimpleNamespace(
+        get_feature_store=lambda: fs,
+        get_job_api=lambda: SimpleNamespace(get_job=lambda name: job),
+    )
+    deleter = teardown.Deleter(project)
+    asset = teardown.Asset(
+        "job",
+        "cc_fraud_fv_1_log_1_offline_fg_materialization",
+        owned_by="fraud-example",
+    )
+    views[("cc_fraud_fv", 1)] = SimpleNamespace(description="the card fraud features")
+    assert deleter.delete(asset).startswith("kept")
+    views[("cc_fraud_fv", 1)] = SimpleNamespace(
+        description="fraud-example: card features"
+    )
+    assert deleter.delete(asset) == "deleted"
+    # Its feature view is gone, so the job is nobody's.
+    views.clear()
+    assert deleter.delete(asset) == "deleted"
+    assert deleted == ["job", "job"]

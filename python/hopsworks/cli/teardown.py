@@ -40,6 +40,8 @@ _NAMED_VERSION = re.compile(r"^(\S+) v(\d+)\b")
 _MENTION = re.compile(r"\b([A-Za-z_][\w]*) v(\d+)\b")
 # `<feature view or group>_<version>_run_fm_<config>`, the job of a feature monitoring configuration.
 _MONITORING_JOB = re.compile(r"^(\w+)_(\d+)_run_fm_(\w+)$")
+# The backend's job that materializes a feature view's logging group.
+_LOGGING_JOB = re.compile(r"^(\w+)_(\d+)_log_\d+_offline_fg_materialization$")
 
 
 @dataclass(frozen=True)
@@ -408,7 +410,27 @@ class Deleter:
         monitoring = _MONITORING_JOB.match(asset.name)
         if monitoring:
             return self._monitoring_config(asset, *monitoring.groups())
+        logging = _LOGGING_JOB.match(asset.name)
+        if logging and asset.owned_by:
+            return self._logging_job(asset, *logging.groups())
         return self._each(asset, [self.project.get_job_api().get_job(asset.name)])
+
+    def _logging_job(self, asset: Asset, view: str, version: str) -> str:
+        # A job has no description; its feature view's says whose it is, and a job
+        # left behind by a deleted view is nobody's.
+        try:
+            owner = self.fs.get_feature_view(view, int(version))
+        except Exception as exc:
+            if not _missing(exc):
+                raise
+            owner = None
+        mine = owner is None or _names(asset.owned_by).search(owner.description or "")
+        if not mine:
+            return f"kept {asset}: not created by {asset.owned_by}"
+        return self._each(
+            replace(asset, owned_by=None),
+            [self.project.get_job_api().get_job(asset.name)],
+        )
 
     def _monitoring_config(
         self, asset: Asset, entity: str, version: str, config: str
@@ -422,6 +444,9 @@ class Deleter:
                 if _missing(exc):
                     continue
                 raise
+            # A feature view lookup of a feature group's name returns None.
+            if owner is None:
+                continue
             try:
                 found = owner.get_feature_monitoring_configs(name=config)
             except Exception as exc:

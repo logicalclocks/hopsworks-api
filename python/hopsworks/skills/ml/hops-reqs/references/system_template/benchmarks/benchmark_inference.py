@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import threading
@@ -220,24 +221,34 @@ def deployment_config(deployment: Any) -> str:
 
 
 def run_realtime(system: dict, protocol: dict, params: dict) -> dict:
-    """Load the deployment with real entity keys and summarize against the SLA."""
+    """Load the deployment with real requests and summarize against the SLA.
+
+    A request is `[{entity: key}]` over real entity keys, unless the system's package
+    has a `benchmark_requests` module, whose `requests(project, n)` returns the `inputs`
+    of `n` requests in the deployment's own shape.
+    """
     import hopsworks
 
     project = hopsworks.login()
     realtime = system["inference"]["realtime"]
     deployment = project.get_model_serving().get_deployment(realtime["deployment"])
-    entity = system["requirements"]["problem"]["entity"]
-    source = next(
-        s for s in system["requirements"]["data_sources"] if s.get("entity", entity) == entity
-    )
-    fg = project.get_feature_store().get_feature_group(
-        source["name"], version=source.get("version", 1)
-    )
-    keys = list(fg.select([entity]).show(int(params.get("entities", 500)))[entity])
+    n = int(params.get("entities", 500))
+    pkg = system["system"]["slug"].replace("-", "_")
+    if importlib.util.find_spec(f"{pkg}.benchmark_requests"):
+        requests = importlib.import_module(f"{pkg}.benchmark_requests").requests(project, n)
+    else:
+        entity = system["requirements"]["problem"]["entity"]
+        source = next(
+            s for s in system["requirements"]["data_sources"] if s.get("entity", entity) == entity
+        )
+        fg = project.get_feature_store().get_feature_group(
+            source["name"], version=source.get("version", 1)
+        )
+        requests = [[{entity: key}] for key in fg.select([entity]).show(n)[entity]]
 
     summary = closed_loop(
-        lambda key: deployment.predict(inputs=[{entity: key}]),
-        keys,
+        lambda inputs: deployment.predict(inputs=inputs),
+        requests,
         offered_qps=params.get("qps", protocol["offered_qps"]),
         concurrency=protocol["concurrency"],
         duration_s=params.get("duration_s", protocol["duration_s"]),
@@ -257,8 +268,6 @@ def run_realtime(system: dict, protocol: dict, params: dict) -> dict:
 
 def run_batch(system: dict, params: dict, run_id: str) -> dict:
     """Time one window end to end into a throwaway prediction group, then delete it."""
-    import importlib
-
     import hopsworks
 
     pkg = system["system"]["slug"].replace("-", "_")
