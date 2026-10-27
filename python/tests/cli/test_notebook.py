@@ -11,13 +11,16 @@ import secrets
 import socket
 import subprocess
 import sys
+import threading
 import time
 
 import click
 import pytest
 from hopsworks.cli import notebook_api
 from hopsworks.cli.commands import notebook
+from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
+from websockets.sync.server import serve
 
 
 CHART = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -113,6 +116,98 @@ def test_another_client_of_the_kernel_sees_the_outputs_by_cell_id(jupyter, path)
                 seen.append(message["parent_header"]["msg_id"])
                 break
     assert seen and seen[0].startswith("hops:abcd1234:")
+
+
+class Relay:
+    """A real WebSocket hop between the CLI and Jupyter that loses messages like a dropped proxy.
+
+    ``close_on`` names the first request type the relay does not pass on: it closes the CLI's
+    socket instead. ``lose_after`` names a request type the relay passes on, after which it
+    drops every answer and closes the CLI's socket once the kernel is idle again.
+    """
+
+    def __init__(self, jupyter, close_on=None, lose_after=None):
+        self.upstream = jupyter.base_url.replace("http", "ws", 1)
+        self.close_on, self.lose_after = close_on, lose_after
+        self.server = serve(self._handle, "127.0.0.1", 0)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        port = self.server.socket.getsockname()[1]
+        self.jupyter = notebook_api.Jupyter(f"http://127.0.0.1:{port}", jupyter.token)
+
+    def _handle(self, front):
+        lost: list[str] = []
+        with connect(self.upstream + front.request.path) as back:
+
+            def forward():
+                try:
+                    for raw in front:
+                        kind = json.loads(raw)["header"]["msg_type"]
+                        if kind == self.close_on:
+                            front.close()
+                            break
+                        back.send(raw)
+                        if kind == self.lose_after:
+                            lost.append(json.loads(raw)["header"]["msg_id"])
+                except ConnectionClosed:
+                    pass
+                # The CLI's socket is gone: so is this hop, and the loop below ends.
+                back.close()
+
+            threading.Thread(target=forward, daemon=True).start()
+            try:
+                for raw in back:
+                    message = json.loads(raw)
+                    parent = message.get("parent_header", {}).get("msg_id")
+                    if not lost:
+                        front.send(raw)
+                    elif (
+                        parent == lost[0]
+                        and message["header"]["msg_type"] == "status"
+                        and message["content"].get("execution_state") == "idle"
+                    ):
+                        front.close()
+                        return
+            except ConnectionClosed:
+                pass
+
+    def stop(self):
+        self.server.shutdown()
+
+
+def _lines(path) -> int:
+    return len(path.read_text().splitlines()) if path.exists() else 0
+
+
+def test_a_cell_whose_answers_are_lost_is_not_sent_again(jupyter, path, tmp_path):
+    effect = tmp_path / "effect.txt"
+    code = f"open({str(effect)!r}, 'a').write('ran\\n')"
+    session = jupyter.session(path)
+    relay = Relay(jupyter, lose_after="execute_request")
+    try:
+        with pytest.raises(RuntimeError, match="may have run") as raised:
+            relay.jupyter.execute(session, "c1", code, 60)
+    finally:
+        relay.stop()
+    # Not Unreached: `hops notebook run` sends the cell again only on Unreached.
+    assert not isinstance(raised.value, notebook_api.Unreached)
+    time.sleep(2)
+    assert _lines(effect) == 1
+
+
+def test_a_socket_closed_before_the_cell_is_sent_ran_nothing(jupyter, path, tmp_path):
+    effect = tmp_path / "effect.txt"
+    code = f"open({str(effect)!r}, 'a').write('ran\\n')"
+    session = jupyter.session(path)
+    relay = Relay(jupyter, close_on="kernel_info_request")
+    try:
+        with pytest.raises(notebook_api.Unreached):
+            relay.jupyter.execute(session, "c1", code, 60)
+    finally:
+        relay.stop()
+    assert _lines(effect) == 0
+    # What `hops notebook run` does next: the cell again, which runs once.
+    assert jupyter.execute(jupyter.session(path), "c1", code, 60).finished
+    assert _lines(effect) == 1
 
 
 def test_a_missing_notebook_reads_as_none_and_has_no_session(jupyter, path):

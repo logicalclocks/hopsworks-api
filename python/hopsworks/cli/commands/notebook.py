@@ -178,8 +178,8 @@ def notebook_run(
         _report(project_path, index, None, [], True)
         return
     try:
-        # A kernel still starting may close a socket before it takes the cell: nothing ran, so
-        # the cell is sent again, a few times at most.
+        # A kernel still starting may close the socket before the cell is sent: nothing ran, so
+        # the cell is tried again, a few times at most.
         for attempt in range(3):
             try:
                 run = jupyter.execute(jupyter_session, new["id"], text, timeout)

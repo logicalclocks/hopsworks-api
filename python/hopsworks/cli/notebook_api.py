@@ -47,7 +47,11 @@ class Run(NamedTuple):
 
 
 class Unreached(RuntimeError):
-    """The kernel's socket closed before any message about the cell: the kernel did not run it."""
+    """The kernel's socket closed before the cell was sent: the kernel did not run it."""
+
+
+# How long a kernel still starting may take to answer the kernel_info request sent before a cell.
+_KERNEL_INFO_SECONDS = 60
 
 
 def server(project_id: int) -> dict | None:
@@ -387,8 +391,7 @@ class Jupyter:
         finished = True
         execution: dict[str, str] = {}
         idle = False
-        heard = False
-        deadline = time.monotonic() + timeout
+        sent = False
         try:
             with ws_connect(
                 url,
@@ -397,7 +400,12 @@ class Jupyter:
                 max_size=None,
                 open_timeout=60,
             ) as ws:
+                # A kernel still starting may close the socket. Its kernel_info reply shows it
+                # takes requests on this socket, so a close before the cell is sent ran nothing.
+                _kernel_info(ws, session["id"])
+                sent = True
                 ws.send(json.dumps(request))
+                deadline = time.monotonic() + timeout
                 while True:
                     left = deadline - time.monotonic()
                     if idle and (left <= 0 or "shell.execute_reply" in execution):
@@ -419,7 +427,6 @@ class Jupyter:
                         continue
                     if message.get("parent_header", {}).get("msg_id") != msg_id:
                         continue
-                    heard = True
                     kind = message["header"]["msg_type"]
                     date = message["header"].get("date")
                     content = message.get("content", {})
@@ -453,9 +460,49 @@ class Jupyter:
                                 _append(outputs, output)
 
         except ConnectionClosed as exc:
-            if not heard:
+            if not sent:
                 raise Unreached(str(exc)) from exc
-            raise
+            # A reply lost on the way back does not show that the cell did not run.
+            raise RuntimeError(
+                "The connection to the kernel closed after the cell was sent, so it may have "
+                "run. Read the notebook before running the cell again."
+            ) from exc
+
+
+def _kernel_info(ws: Any, session_id: str) -> None:
+    """Ask the kernel for its info and wait for the reply, before any cell is sent on ``ws``."""
+    msg_id = f"hops:kernel_info:{uuid.uuid4().hex}"
+    ws.send(
+        json.dumps(
+            {
+                "header": {
+                    "msg_id": msg_id,
+                    "msg_type": "kernel_info_request",
+                    "username": "hops",
+                    "session": session_id,
+                    "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "version": "5.3",
+                },
+                "parent_header": {},
+                "metadata": {},
+                "content": {},
+                "channel": "shell",
+                "buffers": [],
+            }
+        )
+    )
+    deadline = time.monotonic() + _KERNEL_INFO_SECONDS
+    while (left := deadline - time.monotonic()) > 0:
+        try:
+            message = json.loads(ws.recv(timeout=left))
+        except TimeoutError:
+            break
+        if (
+            message.get("parent_header", {}).get("msg_id") == msg_id
+            and message["header"]["msg_type"] == "kernel_info_reply"
+        ):
+            return
+    raise Unreached(f"The kernel did not answer within {_KERNEL_INFO_SECONDS} s.")
 
 
 def to_output(kind: str, content: dict) -> dict | None:
