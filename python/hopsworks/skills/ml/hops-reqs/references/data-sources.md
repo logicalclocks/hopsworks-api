@@ -70,7 +70,7 @@ index must be loaded, or the source is an API with no table to mount.
 | --- | --- | --- | --- |
 | adls | Azure Data Lake Storage | `--account-name`, `--generation`, `--directory-id`, `--application-id` | `--service-credential` (`HOPSWORKS_DS_ADLS_SERVICE_CREDENTIAL`) |
 | bigquery | Google BigQuery | `--parent-project`, `--key-path` | none; the key file is uploaded to HopsFS first |
-| crm | CRM and analytics APIs | `--crm-type` | `--api-key`, `--password`, `--dev-token`, `--refresh-token`, `--private-app-password` (`HOPSWORKS_DS_CRM_<OPTION>`) |
+| crm | CRM and analytics APIs | `--crm-type` | `--api-key`, `--password`, `--dev-token`, `--refresh-token`, `--private-app-password`, `--client-secret` (`HOPSWORKS_DS_CRM_<OPTION>`) |
 | elasticsearch | Elasticsearch | `--host` | `--password`, `--api-key`, `--truststore-password` (`HOPSWORKS_DS_ELASTICSEARCH_<OPTION>`) |
 | gcs | Google Cloud Storage | `--bucket`, `--key-path` | `--encryption-key` (`HOPSWORKS_DS_GCS_ENCRYPTION_KEY`) |
 | glue | AWS Glue Data Catalog | `--database`, `--region` | `--secret-key`, `--session-token` (`HOPSWORKS_DS_GLUE_<OPTION>`) |
@@ -94,6 +94,11 @@ index must be loaded, or the source is an API with no table to mount.
 (`--refresh-token` is `HOPSWORKS_DS_CRM_REFRESH_TOKEN`). The auth mode decides
 which secret a type needs: ask which mode the user has, then list only its
 secrets under `needs`.
+
+Shopify (`--crm-type SHOPIFY --shop-url https://<shop>.myshopify.com`) takes
+`--private-app-password`, or an app's `--client-id` and `--client-secret`: each
+run then mints a token valid 24 h from issuance, so a run (queue time included)
+must finish within that.
 
 After creating the connector, find and inspect the table before deciding how it
 enters the feature store:
