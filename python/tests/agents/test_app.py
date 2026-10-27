@@ -5417,6 +5417,60 @@ class TestSharedPendingQuestions:
         assert streamed_text(events) == "Refunded."
         assert self._pending(url, "c1") is None
 
+    def test_a_resume_the_handler_reports_failed_gives_the_question_back(
+        self, tmp_path
+    ):
+        # a failed turn has not answered: clearing the question here left the
+        # person a 409 nothing_to_resume when they tried again
+        from hopsworks_agents.protocol import AgentResponse, ManagedMemoryService
+
+        url = f"sqlite:///{tmp_path}/memory.db"
+        failing = [True]
+        app = AgentApp(
+            tracing=False, memory=ManagedMemoryService(url, deployment_id="7")
+        )
+
+        @app.chat
+        async def chat(request, ctx):
+            ctx.interrupt("Refund 40 EUR?", key="refund-42")
+            if failing[0]:
+                failed = AgentResponse.text(
+                    "The payment service is down.", conversation_id=ctx.conversation_id
+                )
+                failed.status = "failed"
+                return failed
+            return "Refunded."
+
+        client = TestClient(app)
+        for route in ("/v1/run", "/v1/chat"):
+            thread = f"c-{route[4:]}"
+            failing[0] = True
+            client.post("/v1/run", json=make_run("refund order 42", thread_id=thread))
+            if route == "/v1/run":
+                failed = parse_sse(client.post(route, json=self._answer(thread)).text)
+                assert failed[-1]["type"] == "RUN_ERROR"
+            else:
+                failed = client.post(
+                    route,
+                    json={
+                        "conversation_id": thread,
+                        "resume": [
+                            {
+                                "interrupt_id": "refund-42",
+                                "status": "resolved",
+                                "payload": True,
+                            }
+                        ],
+                    },
+                )
+                assert failed.json()["status"] == "failed"
+            pending = self._pending(url, thread)
+            assert pending is not None and not pending.claimed, route
+            failing[0] = False
+            again = parse_sse(client.post("/v1/run", json=self._answer(thread)).text)
+            assert streamed_text(again) == "Refunded.", route
+            assert self._pending(url, thread) is None
+
     def test_a_new_message_moves_the_conversation_on(self, tmp_path):
         from hopsworks_agents.protocol import ManagedMemoryService
 

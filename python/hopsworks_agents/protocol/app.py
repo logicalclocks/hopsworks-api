@@ -653,7 +653,12 @@ class AgentApp(FastAPI):
         housekeeping: skip it and the store keeps a question whose answer never
         arrived, which then reappears as history on the next turn.
         """
-        await self._settle_pending(ctx, answered=response is not None)
+        # Answered only when the turn completed: a handler that reported the turn
+        # failed has not answered, so the question goes back to the person rather
+        # than leaving them a 409 nothing_to_resume on their retry.
+        await self._settle_pending(
+            ctx, answered=response is not None and response.status == "completed"
+        )
         if self.memory is None or not ctx._turn_open:
             return
         ctx._turn_open = False

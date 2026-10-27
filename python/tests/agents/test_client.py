@@ -403,6 +403,32 @@ class TestATrialThatPausesToAskAPerson:
             }
         ]
 
+    def test_an_agent_that_breaks_on_the_answer_is_graded_as_breaking(self):
+        # a 5xx on the resumed turn is the agent failing, not the infrastructure:
+        # without its status the runner set the trial aside and it was not graded
+        session = SequenceSession(
+            FakeResponse(self.PAUSED),
+            FakeResponse(status_code=500, text="Traceback: KeyError 'approved'"),
+        )
+        result = client(session)._send_prompt(
+            "q", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert result.status_code == 500
+        assert "500" in result.error and "KeyError" in result.error
+        assert result.interrupts == [{"id": "refund-42", "reason": "confirmation"}]
+
+    def test_an_answer_that_cannot_be_delivered_is_the_trials_error(self):
+        class Unreachable(SequenceSession):
+            def post(self, url, **kwargs):
+                if self.posted:
+                    raise ConnectionError("connection reset")
+                return super().post(url, **kwargs)
+
+        result = client(Unreachable(FakeResponse(self.PAUSED)))._send_prompt(
+            "q", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert "connection reset" in result.error and result.status_code == 0
+
     def test_an_agent_that_never_stops_asking_fails_the_trial(self):
         session = SequenceSession(FakeResponse(self.PAUSED))
         result = client(session)._send_prompt(

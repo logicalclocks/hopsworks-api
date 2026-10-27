@@ -22,6 +22,8 @@ from .runner import _AGENT_REPORTED_FAILURE, AgentResponse
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    import requests
+
     from .evaluators import Trace
 
 
@@ -193,20 +195,38 @@ class HopsworksAgentClient:
             # without the answer, which is itself worth grading.
             questions = body.get("interrupts") or []
             asked.extend(questions)
-            body = self._resume(
-                questions,
-                (context or {}).get("interrupt_answers") or {},
-                conversation_id=body.get("conversation_id") or conversation_id,
-                traceparent=traceparent,
-                baggage=baggage,
-                timeout_s=timeout_s,
-            )
-            if body is None:
+            try:
+                response = self._resume(
+                    questions,
+                    (context or {}).get("interrupt_answers") or {},
+                    conversation_id=body.get("conversation_id") or conversation_id,
+                    traceparent=traceparent,
+                    baggage=baggage,
+                    timeout_s=timeout_s,
+                )
+            except Exception as err:  # noqa: BLE001 — classified by the runner
                 return AgentResponse(
                     text="",
                     latency_ms=(time.monotonic() - started) * 1000,
-                    error="the agent paused to ask a person, and refused the answer",
+                    error=str(err),
+                    interrupts=asked,
                 )
+            # A resumed turn that fails is the agent failing, as the first
+            # request's would be: its status goes to the runner, which grades a
+            # 5xx as the agent breaking rather than setting it aside as an
+            # infrastructure error.
+            if response.status_code >= 400:
+                return AgentResponse(
+                    text="",
+                    latency_ms=(time.monotonic() - started) * 1000,
+                    error=(
+                        "the agent paused to ask a person, and the answer got "
+                        f"{response.status_code}: {response.text[:200]}"
+                    ),
+                    status_code=response.status_code,
+                    interrupts=asked,
+                )
+            body = response.json()
         latency_ms = (time.monotonic() - started) * 1000
         text = "".join(
             part.get("text", "")
@@ -244,8 +264,8 @@ class HopsworksAgentClient:
         traceparent: str,
         baggage: str,
         timeout_s: float,
-    ) -> dict | None:
-        """Answer a paused turn on the trial's behalf; None when the agent refuses it."""
+    ) -> requests.Response:
+        """Answer a paused turn on the trial's behalf; the agent's response, whatever its status."""
         resume = []
         for question in questions:
             interrupt_id = question.get("id")
@@ -259,19 +279,13 @@ class HopsworksAgentClient:
                 )
             else:
                 resume.append({"interrupt_id": interrupt_id, "status": "cancelled"})
-        try:
-            response = self._session.post(
-                f"{self._base_url()}{self._chat_path}",
-                json={"conversation_id": conversation_id, "resume": resume},
-                # the same trace: the pause and the answer are one trial
-                headers={"traceparent": traceparent, "baggage": baggage},
-                timeout=timeout_s,
-            )
-        except Exception:  # noqa: BLE001 — reported as the trial's error
-            return None
-        if response.status_code >= 400:
-            return None
-        return response.json()
+        return self._session.post(
+            f"{self._base_url()}{self._chat_path}",
+            json={"conversation_id": conversation_id, "resume": resume},
+            # the same trace: the pause and the answer are one trial
+            headers={"traceparent": traceparent, "baggage": baggage},
+            timeout=timeout_s,
+        )
 
     # ── the trace ───────────────────────────────────────────────────────────
 
