@@ -703,6 +703,34 @@ class TestSqlMemoryResilience:
         assert memory.get("c1") == []
 
 
+class TestInProcessConversationList:
+    """An agent without managed memory still lists who it talked to, until it restarts."""
+
+    def test_conversations_are_listed_per_subject_newest_first(self):
+        from hopsworks_agents.protocol import AgentApp, InMemoryAgentMemory
+
+        app = AgentApp(memory=InMemoryAgentMemory())
+
+        @app.chat
+        async def chat(request, ctx):
+            return "ok"
+
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("a", "c-ann-1", subject="ann"))
+        client.post("/v1/run", json=make_run("b", "c-bob-1", subject="bob"))
+        client.post("/v1/run", json=make_run("c", "c-ann-2", subject="ann"))
+
+        listed = client.get("/v1/conversations", params={"subject": "ann"}).json()
+        ids = [c["conversation_id"] for c in listed["conversations"]]
+        assert ids == ["c-ann-2", "c-ann-1"]
+        assert all(c["subject"] == "ann" for c in listed["conversations"])
+        assert listed["conversations"][0]["message_count"] == 2
+
+        client.delete("/v1/conversations/c-ann-2")
+        listed = client.get("/v1/conversations", params={"subject": "ann"}).json()
+        assert [c["conversation_id"] for c in listed["conversations"]] == ["c-ann-1"]
+
+
 class TestContextObject:
     def test_two_param_handler_receives_context(self):
         from hopsworks_agents.protocol import AgentApp, InMemoryAgentMemory
@@ -971,6 +999,99 @@ class TestAutoToolEvents:
             ("STEP_FINISHED", "t"),
         ]
         assert steps[0]["metadata"]["hopsworks"]["id"] == "e1"
+
+
+def assert_valid_agui_order(events):
+    """The ordering rules @ag-ui/client enforces, which end a run on a client when broken."""
+    steps, tools, texts = set(), set(), set()
+    for e in events:
+        kind = e["type"]
+        if kind == "STEP_STARTED":
+            assert e["stepName"] not in steps, f"step {e['stepName']} started twice"
+            steps.add(e["stepName"])
+        elif kind == "STEP_FINISHED":
+            assert e["stepName"] in steps, f"step {e['stepName']} finished, not started"
+            steps.discard(e["stepName"])
+        elif kind == "TOOL_CALL_START":
+            tools.add(e["toolCallId"])
+        elif kind == "TOOL_CALL_END":
+            assert e["toolCallId"] in tools
+            tools.discard(e["toolCallId"])
+        elif kind == "TEXT_MESSAGE_START":
+            texts.add(e["messageId"])
+        elif kind == "TEXT_MESSAGE_END":
+            texts.discard(e["messageId"])
+        elif kind == "RUN_FINISHED":
+            assert not (steps or tools or texts), (steps, tools, texts)
+
+
+class TestStepOrder:
+    """Steps the way AG-UI clients count them: one open step per name, all closed at the end."""
+
+    def _run(self, stream_handler):
+        from hopsworks_agents.protocol import AgentApp
+
+        app = AgentApp(tool_events=True)
+        app.stream(stream_handler)
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        assert_valid_agui_order(events)
+        return events
+
+    def test_two_open_steps_of_one_name_go_out_under_two_names(self):
+        async def stream(request, ctx):
+            await ctx.emit_event("tool", status="running", event_id="a")
+            await ctx.emit_event("tool", status="running", event_id="b")
+            await ctx.emit_event("tool", status="done", event_id="a")
+            await ctx.emit_event("tool", status="done", event_id="b")
+            yield "x"
+
+        steps = [
+            (e["type"], e["stepName"])
+            for e in self._run(stream)
+            if e["type"].startswith("STEP_")
+        ]
+        assert steps == [
+            ("STEP_STARTED", "tool"),
+            ("STEP_STARTED", "tool #2"),
+            ("STEP_FINISHED", "tool"),
+            ("STEP_FINISHED", "tool #2"),
+        ]
+
+    def test_a_running_update_of_an_open_step_sends_nothing(self):
+        async def stream(request, ctx):
+            await ctx.emit_event("search", status="running", event_id="s")
+            await ctx.emit_event(
+                "search", status="running", event_id="s", message="2/3"
+            )
+            await ctx.emit_event("search", status="done", event_id="s")
+            yield "x"
+
+        types = [e["type"] for e in self._run(stream) if e["type"].startswith("STEP_")]
+        assert types == ["STEP_STARTED", "STEP_FINISHED"]
+
+    def test_steps_and_tool_calls_left_open_are_closed_before_the_run_ends(self):
+        async def stream(request, ctx):
+            await ctx.emit_event("plan", status="running", event_id="p")
+            await ctx._emit_tool_call("lookup", "running", "call_1", args="{}")
+            yield "answer"
+
+        events = self._run(stream)
+        assert events[-1]["type"] == "RUN_FINISHED"
+        kinds = [e["type"] for e in events]
+        assert "TOOL_CALL_END" in kinds and "STEP_FINISHED" in kinds
+
+    def test_steps_left_open_are_closed_before_an_error(self):
+        from hopsworks_agents.protocol import AgentError
+
+        async def stream(request, ctx):
+            await ctx.emit_event("plan", status="running", event_id="p")
+            yield "partial"
+            raise AgentError("broke", "broke", 500)
+
+        events = self._run(stream)
+        kinds = [e["type"] for e in events]
+        assert kinds[-1] == "RUN_ERROR"
+        assert kinds.index("STEP_FINISHED") < kinds.index("RUN_ERROR")
 
 
 class TestStreamLangchainHelper:

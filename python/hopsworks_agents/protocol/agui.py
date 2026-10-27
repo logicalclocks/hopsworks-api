@@ -212,7 +212,10 @@ class RunStream:
         self._started_tools: set[str] = set()
         self._ended_tools: set[str] = set()
         self._args_sent: set[str] = set()
-        self._open_steps: set[str] = set()
+        # open steps by id, each with the step name it went out under: AG-UI
+        # allows one open step per name, so a second step of the same name
+        # running at the same time (parallel tools) is sent under "name #2"
+        self._open_steps: dict[str, str] = {}
 
     @property
     def media_type(self) -> str:
@@ -251,6 +254,18 @@ class RunStream:
             return ""
         message_id, self._text_id = self._text_id, None
         return self._encode(TextMessageEndEvent(message_id=message_id))
+
+    def _close_open(self) -> str:
+        """End the text, tool calls and steps still open: AG-UI refuses a run that ends with any."""
+        out = self._close_text()
+        events: list[Any] = []
+        for call_id in sorted(self._started_tools - self._ended_tools):
+            self._ended_tools.add(call_id)
+            events.append(ToolCallEndEvent(tool_call_id=call_id))
+        for sent_as in self._open_steps.values():
+            events.append(StepFinishedEvent(step_name=sent_as))
+        self._open_steps.clear()
+        return out + self._encode(*events)
 
     def _progress(self, payload: dict[str, Any]) -> str:
         """A progress event from the turn: a tool call, or a step the agent reports."""
@@ -308,15 +323,30 @@ class RunStream:
         }
         metadata = {HOPSWORKS: detail}
         events: list[Any] = []
-        if status == "running":
-            self._open_steps.add(key)
-            events.append(StepStartedEvent(step_name=name, metadata=metadata))
+        sent_as = self._open_steps.get(key)
+        if sent_as is None:
+            sent_as = self._unused_step_name(name)
+            events.append(StepStartedEvent(step_name=sent_as, metadata=metadata))
+            if status == "running":
+                self._open_steps[key] = sent_as
+        elif status == "running":
+            # a progress update of a step already open: AG-UI has no event for it
+            return ""
         else:
-            if key not in self._open_steps:
-                events.append(StepStartedEvent(step_name=name, metadata=metadata))
-            self._open_steps.discard(key)
-            events.append(StepFinishedEvent(step_name=name, metadata=metadata))
+            del self._open_steps[key]
+        if status != "running":
+            events.append(StepFinishedEvent(step_name=sent_as, metadata=metadata))
         return self._encode(*events)
+
+    def _unused_step_name(self, name: str) -> str:
+        """``name``, or ``name #2``, ``#3``... while a step of that name is open."""
+        taken = set(self._open_steps.values())
+        if name not in taken:
+            return name
+        n = 2
+        while f"{name} #{n}" in taken:
+            n += 1
+        return f"{name} #{n}"
 
     def _finished(
         self,
@@ -352,7 +382,7 @@ class RunStream:
                 out += self._text(text[len(self._streamed_text) :])
             else:
                 replaced = text
-        out += self._close_text()
+        out += self._close_open()
         for part in response.message.content:
             if part.type != "text":
                 out += self._encode(
@@ -393,7 +423,7 @@ class RunStream:
     ) -> str:
         """``RUN_FINISHED`` with an interrupt outcome: the run waits for a person."""
         result = {HOPSWORKS: {"trace_id": trace_id}} if trace_id else None
-        return self._close_text() + self._encode(
+        return self._close_open() + self._encode(
             RunFinishedEvent(
                 thread_id=self.thread_id,
                 run_id=self.run_id,
@@ -417,7 +447,7 @@ class RunStream:
         }
         if trace_id:
             detail["trace_id"] = trace_id
-        return self._close_text() + self._encode(
+        return self._close_open() + self._encode(
             RunErrorEvent(
                 message=err.message,
                 code=err.code,

@@ -651,6 +651,9 @@ class InMemoryAgentMemory(ChatMemory):
         # on close and are dropped on abandon, so history never shows a
         # question whose answer never arrived
         self._open: dict[str, list[Turn]] = {}
+        # who each conversation is with and when it last moved, for listing
+        self._subjects: dict[str, str] = {}
+        self._active_at: dict[str, str] = {}
         self._lock = threading.Lock()
         self._pending = _ProcessPending()
 
@@ -673,6 +676,8 @@ class InMemoryAgentMemory(ChatMemory):
     ) -> None:
         with self._lock:
             self._open[turn_id] = [{"role": role, "content": content}]
+            if subject:
+                self._subjects[conversation_id] = subject
 
     def record_item(
         self,
@@ -706,10 +711,34 @@ class InMemoryAgentMemory(ChatMemory):
             turns.extend(buffered)
             if len(turns) > self._max:
                 del turns[: len(turns) - self._max]
+            self._active_at[conversation_id] = datetime.now(timezone.utc).isoformat()
+
+    def list_conversations(
+        self, *, subject: str | None = None, limit: int = 50
+    ) -> list[dict]:
+        with self._lock:
+            listed = [
+                {
+                    "conversation_id": conversation_id,
+                    "message_count": len(turns),
+                    "last_active_at": self._active_at.get(conversation_id),
+                    "subject": self._subjects.get(conversation_id),
+                }
+                for conversation_id, turns in self._conversations.items()
+                if subject is None or self._subjects.get(conversation_id) == subject
+            ]
+        listed.sort(key=lambda c: c["last_active_at"] or "", reverse=True)
+        return listed[:limit]
+
+    def conversation_subject(self, conversation_id: str) -> str | None:
+        with self._lock:
+            return self._subjects.get(conversation_id)
 
     def clear(self, conversation_id: str) -> None:
         with self._lock:
             self._conversations.pop(conversation_id, None)
+            self._subjects.pop(conversation_id, None)
+            self._active_at.pop(conversation_id, None)
         self._pending._clear(conversation_id)
 
 
