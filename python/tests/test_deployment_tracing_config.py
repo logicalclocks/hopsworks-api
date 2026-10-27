@@ -77,3 +77,16 @@ class TestDeploymentTracingConfig:
 
         assert config.sampling_percentage == 150
         assert "active: False" in repr(config)
+
+    def test_a_pause_is_read_and_sent_back(self):
+        config = DeploymentTracingConfig.from_response_json(
+            {
+                "enabled": True,
+                "samplingPercentage": 10,
+                "pausedReason": "DISK_NEARLY_FULL",
+            }
+        )
+
+        assert config.paused_reason == "DISK_NEARLY_FULL"
+        assert config.to_dict()["pausedReason"] == "DISK_NEARLY_FULL"
+        assert "pausedReason" not in DeploymentTracingConfig(enabled=True).to_dict()

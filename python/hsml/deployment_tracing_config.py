@@ -58,6 +58,7 @@ class DeploymentTracingConfig:
     ):
         self._enabled = enabled
         self._active = active
+        self._paused_reason = None
         self._sampling_percentage = self._validate_sampling_percentage(
             sampling_percentage
         )
@@ -107,8 +108,10 @@ class DeploymentTracingConfig:
         kwargs = cls.extract_fields_from_json(json_decamelized)
         # Validated on write only: a value stored before the range check must not make the deployment unreadable.
         sampling_percentage = kwargs.pop("sampling_percentage", None)
+        paused_reason = kwargs.pop("paused_reason", None)
         config = DeploymentTracingConfig(**kwargs)
         config._sampling_percentage = sampling_percentage
+        config._paused_reason = paused_reason
         return config
 
     @classmethod
@@ -147,6 +150,7 @@ class DeploymentTracingConfig:
             config, "sampling_percentage"
         )
         kwargs["active"] = util._extract_field_from_json(config, "active")
+        kwargs["paused_reason"] = util._extract_field_from_json(config, "paused_reason")
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -173,6 +177,9 @@ class DeploymentTracingConfig:
             json["samplingPercentage"] = self._sampling_percentage
         if self._active is not None:
             json["active"] = self._active
+        # Sent back as read, so saving a deployment does not lift a pause Hopsworks set.
+        if self._paused_reason is not None:
+            json["pausedReason"] = self._paused_reason
         return json
 
     @public
@@ -194,6 +201,16 @@ class DeploymentTracingConfig:
     @active.setter
     def active(self, active: bool | None):
         self._active = active
+
+    @public
+    @property
+    def paused_reason(self) -> str | None:
+        """Why Hopsworks paused tracing on a model or feature view deployment, overriding `active`, or `None`.
+
+        `"DISK_NEARLY_FULL"`: the online feature store's disk tablespace is nearly full.
+        Tracing resumes by itself once an administrator adds space.
+        """
+        return self._paused_reason
 
     @public
     @property
@@ -257,5 +274,6 @@ class DeploymentTracingConfig:
             f"output_token_price_per_million_tokens: "
             f"{self._output_token_price_per_million_tokens!r}, "
             f"sampling_percentage: {self._sampling_percentage!r}, "
-            f"active: {self._active!r})"
+            f"active: {self._active!r}, "
+            f"paused_reason: {self._paused_reason!r})"
         )
