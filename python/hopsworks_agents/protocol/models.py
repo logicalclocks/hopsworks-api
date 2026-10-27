@@ -178,7 +178,9 @@ class FeedbackRequest(BaseModel):
     Names the turn by ``trace_id`` (from the reply's metadata) or, when a client
     never kept it, by ``conversation_id``, which resolves to that conversation's
     latest turn. ``subject`` is who is speaking, client-asserted like the chat
-    request's; it is what the feedback is filed under.
+    request's; it is what the feedback is filed under. ``source`` is where the
+    verdict was given, a short tag such as ``chat-app``, so a reviewer can tell
+    one place's verdicts from another's.
     """
 
     trace_id: str | None = None
@@ -189,6 +191,7 @@ class FeedbackRequest(BaseModel):
     expected_tool_behavior: str | None = None
     note: str | None = None
     subject: str | None = None
+    source: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
 
 class ChatResponse(BaseModel):

@@ -1168,6 +1168,7 @@ class AgentApp(FastAPI):
                     "correctedAnswer": request.corrected_answer,
                     "expectedToolBehavior": request.expected_tool_behavior,
                     "note": request.note,
+                    "source": request.source,
                     # filed under the end user, never under the deployment's own account
                     "reviewer": (request.subject or "").strip() or "anonymous",
                 }

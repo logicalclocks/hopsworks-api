@@ -437,7 +437,7 @@ Hopsworks account. So the agent takes the verdict and relays it itself:
 POST /v1/feedback
 {"trace_id": "<metadata.trace_id of the reply>", "verdict": "negative",
  "issue_category": "wrong_tool", "corrected_answer": "...", "note": "...",
- "subject": "alice"}
+ "subject": "alice", "source": "my-portal"}
 ```
 
 `verdict` is `positive`, `negative` or `false_alarm`. A client that kept no trace id sends
@@ -445,7 +445,10 @@ POST /v1/feedback
 is speaking, asserted by the client like the chat request's; the row lands in Hopsworks under
 the reviewer `user:<subject>` (`user:anonymous` without one), so it never collides with a
 reviewer's account, shows as **user** in the Feedback tab, and reaches the failure analysis as
-a signal to triage rather than a verdict that closes the trace. The manifest advertises
+a signal to triage rather than a verdict that closes the trace. `source` is optional: where
+the verdict was given, a short tag of lowercase letters, digits, `_` and `-` (an agent's chat
+app sends `chat-app`), stored with the row so a reviewer can tell one place's verdicts from
+another's. The manifest advertises
 `endpoints.feedback` and `capabilities.custom.hopsworks.feedback` (and AG-UI's `capabilities.humanInTheLoop.feedback`).
 
 The relay runs over the deployment's own credential (`REST_ENDPOINT`, `DEPLOYMENT_ID` and the

@@ -4745,6 +4745,30 @@ class TestFeedback:
         assert response.status_code == 400
         assert response.json()["detail"]["code"] == "invalid_request"
 
+    def test_where_the_verdict_was_given_is_passed_on(self):
+        platform = FakePlatform()
+        response = TestClient(build_feedback_app(platform)).post(
+            "/v1/feedback",
+            json={"trace_id": "abc", "verdict": "positive", "source": "chat-app"},
+        )
+        assert response.status_code == 200, response.text
+        assert platform.posted[0][1]["source"] == "chat-app"
+
+    def test_a_verdict_that_does_not_say_where_sends_no_source(self):
+        platform = FakePlatform()
+        TestClient(build_feedback_app(platform)).post(
+            "/v1/feedback", json={"trace_id": "abc", "verdict": "positive"}
+        )
+        assert "source" not in platform.posted[0][1]
+
+    def test_a_source_is_a_short_tag(self):
+        platform = FakePlatform()
+        response = TestClient(build_feedback_app(platform)).post(
+            "/v1/feedback",
+            json={"trace_id": "abc", "verdict": "positive", "source": "Chat App!"},
+        )
+        assert response.status_code == 422 and platform.posted == []
+
     def test_an_unknown_verdict_is_refused_before_anything_is_sent(self):
         platform = FakePlatform()
         response = TestClient(build_feedback_app(platform)).post(
