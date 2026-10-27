@@ -433,7 +433,6 @@ class TestATrialThatPausesToAskAPerson:
         # every pause answers 200, so without the client's finding the runner
         # filed the exhausted limit as INFRA_ERROR and left it out of the score
         from fastapi.testclient import TestClient  # noqa: PLC0415
-
         from hopsworks_agents.eval.runner import TrialStatus, _classify  # noqa: PLC0415
         from hopsworks_agents.protocol import AgentApp  # noqa: PLC0415
 
