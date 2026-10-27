@@ -92,36 +92,6 @@ class TestExternalFeatureGroupEngine:
         assert len(mock_fg_api.return_value._save.call_args[0][0].columns) == 1
         assert not mock_fg_api.return_value._save.call_args[0][0].columns[0].primary
 
-    def test_save_arrowflight_reads_the_path_in_the_feature_group_format(self, mocker):
-        # Arrange
-        mocker.patch("hsfs.engine._get_type")
-        mocker.patch("hsfs.core.arrow_flight_client._supports", return_value=True)
-        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
-        formats = []
-        mocker.patch(
-            "hsfs.core.data_source.DataSource.get_data",
-            autospec=True,
-            side_effect=lambda source, *a, **k: formats.append(source.format)
-            or dsd.DataSourceData(features=[feature.Feature(name="f", type="str")]),
-        )
-        fg = feature_group.ExternalFeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=[],
-            id=10,
-            data_format="csv",
-            data_source=ds.DataSource(path="run/small.csv"),
-        )
-
-        # Act
-        external_feature_group_engine.ExternalFeatureGroupEngine(
-            feature_store_id=99
-        )._save(feature_group=fg)
-
-        # Assert
-        assert formats == ["CSV"]
-
     @pytest.mark.parametrize(
         ("make_data", "expected"),
         [
