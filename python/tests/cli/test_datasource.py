@@ -1031,6 +1031,16 @@ def test_test_only_checks_the_connection_and_creates_nothing():
     assert send.call_args.kwargs["json_body"]["storageConnectorType"] == "SQL"
 
 
+def test_hopsfs_has_no_connection_test():
+    # The backend's ConnectionChecker refuses HOPSFS; create already checks the dataset.
+    result = CliRunner().invoke(
+        cli, ["datasource", "create", "hopsfs", "n", *_MINIMAL["hopsfs"], "--test"]
+    )
+
+    assert result.exit_code == 2
+    assert "No such option: --test" in result.output
+
+
 def test_a_failed_test_exits_with_the_checkers_output():
     result, _, _ = _tested({"statusCode": 1, "connectionOutput": "refused"})
 
