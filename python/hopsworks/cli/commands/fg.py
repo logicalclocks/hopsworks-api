@@ -116,8 +116,11 @@ def fg_info(
         featurestore: Pin lookup to this feature store by name.
     """
     fg = _get_fg(ctx, name, version, featurestore)
+    size = _offline_size(session.get_project(ctx).get_dataset_api(), fg)
     if output.JSON_MODE:
-        output.print_json(_fg_to_dict(fg))
+        output.print_json(
+            {**_fg_to_dict(fg), "offline_size_bytes": size[0] if size else None}
+        )
         return
     rows = [
         ["ID", getattr(fg, "id", "?")],
@@ -125,6 +128,11 @@ def fg_info(
         ["Version", getattr(fg, "version", "?")],
         ["Type", _fg_type_label(fg)],
         ["Online", "yes" if getattr(fg, "online_enabled", False) else "no"],
+        ["Table format", getattr(fg, "time_travel_format", None) or "-"],
+        [
+            "Offline size",
+            f"{_human_bytes(size[0])} ({size[1]} files)" if size else "-",
+        ],
         ["Primary key", ", ".join(getattr(fg, "primary_key", []) or []) or "-"],
         ["Event time", getattr(fg, "event_time", None) or "-"],
         ["Description", output.first_line(getattr(fg, "description", ""))],
@@ -401,6 +409,50 @@ def _get_fg(
     )
 
 
+def _offline_size(dataset_api: Any, fg: Any) -> tuple[int, int] | None:
+    """Bytes and file count under the offline table's directory, or None without one.
+
+    Delta and Hudi keep the files of older versions until they are vacuumed, so
+    this is an upper bound of what a read loads.
+    """
+    from urllib.parse import urlparse
+
+    from hopsworks_common.core import inode
+
+    location = getattr(fg, "location", None)
+    if not isinstance(location, str) or _fg_type_label(fg) == "external":
+        return None
+    total, files, dirs = 0, 0, [urlparse(location).path]
+    try:
+        while dirs:
+            path, offset = dirs.pop(), 0
+            while True:
+                count, entries = dataset_api._list_dataset_path(
+                    path, inode.Inode, offset=offset
+                )
+                for e in entries:
+                    if e.dir:
+                        dirs.append(e.path)
+                    else:
+                        total += e.size or 0
+                        files += 1
+                offset += len(entries)
+                if not entries or offset >= count:
+                    break
+    except Exception:  # noqa: BLE001
+        return None  # no offline table yet (online only, or nothing inserted)
+    return total, files
+
+
+def _human_bytes(n: int) -> str:
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{n} B"
+
+
 def _fg_type_label(fg: Any) -> str:
     """Best-effort one-word type label: ``managed``, ``stream``, ``external``, ``spine``.
 
@@ -460,6 +512,7 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
         "version": getattr(fg, "version", None),
         "type": _fg_type_label(fg),
         "online_enabled": getattr(fg, "online_enabled", False),
+        "table_format": getattr(fg, "time_travel_format", None),
         "data_source_access": access if isinstance(access, dict) else None,
         "source": _source_to_dict(fg),
         "primary_key": list(getattr(fg, "primary_key", []) or []),
@@ -511,6 +564,12 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
     "embedding_spec",
     help='Embedding feature spec, "col:dim[:metric]". Auto-enables online.',
 )
+@click.option(
+    "--no-statistics",
+    "no_statistics",
+    is_flag=True,
+    help="Compute no statistics on insert (statistics_config=False).",
+)
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
 def fg_create(
@@ -523,6 +582,7 @@ def fg_create(
     partition_key: str | None,
     online: bool,
     embedding_spec: str | None,
+    no_statistics: bool,
     description: str,
 ) -> None:
     """Register a new feature group in the feature store.
@@ -538,6 +598,7 @@ def fg_create(
         partition_key: Comma-separated partition keys.
         online: Whether to enable the online store.
         embedding_spec: `col:dim[:metric]` for a vector feature.
+        no_statistics: Whether to turn statistics off.
         description: Free-form description.
     """
     fs = session.get_feature_store(ctx)
@@ -561,6 +622,7 @@ def fg_create(
             event_time=event_time,
             features=features or None,
             embedding_index=embedding_index,
+            **({"statistics_config": False} if no_statistics else {}),
         )
         fg.save()
     except Exception as exc:  # noqa: BLE001
@@ -828,7 +890,7 @@ def fg_insert(
     "--join",
     "joins",
     multiple=True,
-    help='Join spec, repeatable: "<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>] [prefix]".',
+    help='Join spec, repeatable: "<fg>[:<ver>] <INNER|LEFT|RIGHT|FULL> <on>[=<right_on>][,...] [prefix]"; a composite key is comma-separated.',
 )
 @click.option(
     "--primary-key", "primary_key", required=True, help="Comma-separated primary keys."
@@ -889,9 +951,7 @@ def fg_derive(
         parents.append(other)
         query = query.join(
             other.select_all(),
-            on=[spec.on] if not spec.right_on else None,
-            left_on=[spec.on] if spec.right_on else None,
-            right_on=[spec.right_on] if spec.right_on else None,
+            **spec.join_kwargs(),
             join_type=spec.join_type.lower(),
             prefix=spec.prefix,
         )
@@ -1459,13 +1519,20 @@ def _generate_dataframe(fg: Any, n: int) -> Any:
     import pandas as pd  # noqa: PLC0415
 
     data: dict[str, list[Any]] = {}
+    narrow: dict[str, str] = {}
     for feat in getattr(fg, "features", []) or []:
         name = getattr(feat, "name", None)
         if not name:
             continue
         dtype = str(getattr(feat, "type", "") or "").lower()
         data[name] = [_synth_value(dtype, i) for i in range(n)]
-    return pd.DataFrame(data)
+        if dtype in _NARROW_INTS:
+            narrow[name] = _NARROW_INTS[dtype]
+    # pandas makes every Python int an int64, which the schema check reads as bigint.
+    return pd.DataFrame(data).astype(narrow)
+
+
+_NARROW_INTS = {"int": "int32", "smallint": "int16", "tinyint": "int8"}
 
 
 def _synth_value(dtype: str, i: int) -> Any:

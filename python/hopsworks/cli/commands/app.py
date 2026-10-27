@@ -587,6 +587,11 @@ _POLL_SECONDS = 3.0
     default=None,
     help="A route to fetch through the Hopsworks proxy once the app serves (api/top); a non-2xx answer fails the deploy.",
 )
+@click.option(
+    "--description",
+    default=None,
+    help="App description, set when the app is created; an existing app keeps its own.",
+)
 @click.pass_context
 def app_deploy(
     ctx: click.Context,
@@ -595,6 +600,7 @@ def app_deploy(
     environment: str | None,
     timeout: int,
     check_path: str | None,
+    description: str | None,
 ) -> None:
     """Create or update an app from a local directory.
 
@@ -612,6 +618,7 @@ def app_deploy(
         environment: Python environment; derived from LOCAL_DIR when None.
         timeout: Seconds to wait for serving.
         check_path: A route to fetch through the proxy after serving.
+        description: App description for a new app.
     """
     import hashlib
     import os
@@ -692,6 +699,15 @@ def app_deploy(
             requirements_changed,
         )
 
+    if (
+        existing is not None
+        and description
+        and description != getattr(existing, "description", None)
+    ):
+        output.warn(
+            "App %s keeps its description; --description applies when the app is created.",
+            name,
+        )
     previous = None
     try:
         if existing is None:
@@ -706,6 +722,7 @@ def app_deploy(
                         "app_port": _DEPLOY_PORT,
                         "readiness_probe_path": "/health",
                         "environment": env_name,
+                        **({"description": description} if description else {}),
                     },
                 )
             )

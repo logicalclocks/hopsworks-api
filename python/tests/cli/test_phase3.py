@@ -8,8 +8,10 @@ it for raw REST calls (connector create/delete).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
 
@@ -185,9 +187,40 @@ def test_job_run_with_wait(mock_project):
     mock_project.get_job_api.return_value = api
     result = CliRunner().invoke(cli, ["job", "run", "etl", "--wait"])
     assert result.exit_code == 0, result.output
+    # The CLI holds the execution it started and waits on that one, not the job's latest.
     job.run.assert_called_with(
-        args=None, await_termination=True, start_time=None, end_time=None
+        args=None, await_termination=False, start_time=None, end_time=None
     )
+    execution.await_termination.assert_called_once_with(None)
+
+
+def _failing(tmp_path, execution):
+    def download_logs(path):
+        out, err = Path(path) / "stdout.log", Path(path) / "stderr.log"
+        out.write_text("".join(f"line {i}\n" for i in range(80)))
+        err.write_text("ValueError: bad column\n")
+        return str(out), str(err)
+
+    execution.download_logs.side_effect = download_logs
+    return execution
+
+
+@pytest.mark.parametrize("command", [["run", "etl", "--wait"], ["wait", "etl"]])
+def test_a_failed_wait_prints_the_log_tails_and_exits_1(
+    mock_project, tmp_path, command
+):
+    execution = _failing(
+        tmp_path,
+        mock.MagicMock(id=7, state="FAILED", final_status="FAILED", success=False),
+    )
+    job = _job_api(mock_project, execution)
+    job.get_executions.return_value = [execution]
+    result = CliRunner().invoke(cli, ["job", *command])
+    assert result.exit_code == 1
+    assert "ValueError: bad column" in result.output
+    assert "line 79" in result.output and "line 29" not in result.output
+    assert "etl: execution #7 FAILED" in result.output
+    assert "hops job logs etl --execution 7 --stdout" in result.output
 
 
 def _job_api(mock_project, execution):

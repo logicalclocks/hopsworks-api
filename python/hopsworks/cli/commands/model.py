@@ -80,7 +80,7 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
         ["Framework", getattr(model, "framework", "-")],
         ["Created", _ts_label(getattr(model, "created", None))],
         ["Feature view", _feature_view_label(model)],
-        ["Metrics", _short_metrics(getattr(model, "training_metrics", {}) or {})],
+        ["Metrics", _short_metrics(getattr(model, "training_metrics", {}) or {}, None)],
         ["Description", output.first_line(getattr(model, "description", ""))],
         ["Tags", output.format_mapping(output.read_tags(model))],
     ]
@@ -116,10 +116,10 @@ def _list_models(project: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _short_metrics(metrics: dict[str, Any]) -> str:
+def _short_metrics(metrics: dict[str, Any], limit: int | None = 3) -> str:
     if not metrics:
         return "-"
-    parts = [f"{k}={v}" for k, v in list(metrics.items())[:3]]
+    parts = [f"{k}={v}" for k, v in list(metrics.items())[:limit]]
     return ", ".join(parts)
 
 

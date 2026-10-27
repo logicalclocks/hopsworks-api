@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import re
 import sys
 from typing import TYPE_CHECKING, Any
@@ -389,6 +390,9 @@ def cli(
 
 def main() -> None:
     """Console-script entry point referenced by ``pyproject.toml``."""
+    # Off a terminal, a progress bar redraw is one more line in a log or an agent's context.
+    if not sys.stdout.isatty():
+        os.environ.setdefault("TQDM_DISABLE", "1")
     cli.main(prog_name="hops")
 
 

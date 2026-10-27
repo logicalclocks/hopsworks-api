@@ -246,6 +246,33 @@ def test_fg_insert_generate_calls_sdk(mock_project):
     assert list(df.columns) == ["id"]
 
 
+@pytest.mark.parametrize(
+    ("flags", "statistics"), [([], None), (["--no-statistics"], False)]
+)
+def test_fg_create_statistics_flag(mock_project, flags, statistics):
+    fs = mock_project.get_feature_store.return_value
+    result = CliRunner().invoke(
+        cli, ["fg", "create", "orders", "--primary-key", "id", *flags]
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = fs.create_feature_group.call_args.kwargs
+    assert kwargs.get("statistics_config") is statistics
+
+
+def test_fg_insert_generate_matches_narrow_int_types(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.features = [mock.MagicMock(type="int"), mock.MagicMock(type="bigint")]
+    fg.features[0].name, fg.features[1].name = "won", "id"
+    fg.insert.return_value = (None, None)
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "insert", "labels", "--generate", "3"])
+    assert result.exit_code == 0, result.output
+    df = fg.insert.call_args[0][0]
+    assert str(df["won"].dtype) == "int32"
+    assert str(df["id"].dtype) == "int64"
+
+
 # --- fv create -------------------------------------------------------------
 
 
@@ -276,6 +303,34 @@ def test_fv_create_parses_joins(mock_project):
     )
     assert result.exit_code == 0, result.output
     fs.create_feature_view.assert_called_once()
+
+
+def test_fv_create_joins_on_a_composite_key(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    base = mock.MagicMock()
+    query = mock.MagicMock()
+    base.select_all.return_value = query
+    query.join.return_value = query
+    fs.get_feature_group.side_effect = lambda name, version=None: base
+    created = mock.MagicMock()
+    created.name, created.version = "deals", 1
+    fs.create_feature_view.return_value = created
+    result = CliRunner().invoke(
+        cli,
+        [
+            "fv",
+            "create",
+            "deals",
+            "--feature-group",
+            "deal_snapshots",
+            "--join",
+            "deal_labels LEFT deal_id,snapshot_date",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = query.join.call_args.kwargs
+    assert kwargs["on"] == ["deal_id", "snapshot_date"]
+    assert kwargs["left_on"] is None
 
 
 # --- fv get ----------------------------------------------------------------
