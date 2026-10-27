@@ -257,6 +257,38 @@ def test_crm_shopify_needs_its_shop_and_app_password():
     assert "--private-app-password" in output
 
 
+@pytest.mark.parametrize(
+    ("extra", "named"),
+    [
+        (["--client-id", "i"], "--client-secret"),
+        (["--client-secret", "s"], "--client-id"),
+        (
+            ["--client-id", "i", "--client-secret", "s", "--private-app-password", "p"],
+            "--private-app-password",
+        ),
+    ],
+)
+def test_crm_shopify_takes_a_password_or_a_whole_client_credential(extra, named):
+    shop = [
+        "crm",
+        "n",
+        "--crm-type",
+        "SHOPIFY",
+        "--shop-url",
+        "https://s.myshopify.com",
+    ]
+
+    assert named in _refused([*shop, *extra])
+
+
+def test_crm_client_credentials_are_for_shopify_only():
+    output = _refused(
+        ["crm", "n", "--crm-type", "HUBSPOT", "--api-key", "k", "--client-id", "i"]
+    )
+
+    assert "--client-id" in output
+
+
 def test_options_that_were_not_given_are_left_out():
     body = _create(["opensearch", "os", *_MINIMAL["opensearch"]])
 
