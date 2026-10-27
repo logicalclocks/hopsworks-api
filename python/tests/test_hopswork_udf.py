@@ -14,10 +14,13 @@
 #   limitations under the License.
 #
 
+import multiprocessing
+import threading
 from datetime import date, datetime, time
 
 import pandas as pd
 import pytest
+from hsfs import hopsworks_udf
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.hopsworks_udf import (
     HopsworksUdf,
@@ -1527,12 +1530,12 @@ def test_function():
         print(scope)
 
         assert scope["_output_col_names"] == ["test_func_feature_"]
-        assert scope["context"] == {"test_value": 100}
+        assert scope["_transformation_context"]() == {"test_value": 100}
         assert all(
             value in scope
             for value in {
                 "_output_col_names",
-                "context",
+                "_transformation_context",
             }
         )
 
@@ -1549,10 +1552,11 @@ def test_function():
         scope = test_func._prepare_transformation_function_scope()
 
         assert scope["_output_col_names"] == ["test_func_feature_"]
-        assert scope["context"] == {"test_value": 100}
+        assert scope["_transformation_context"]() == {"test_value": 100}
         assert scope["statistics"] == 10
         assert all(
-            value in scope for value in {"_output_col_names", "context", "statistics"}
+            value in scope
+            for value in {"_output_col_names", "_transformation_context", "statistics"}
         )
 
     def test_prepare_transformation_function_scope_kwargs_statistics_context(self):
@@ -1568,12 +1572,17 @@ def test_function():
         scope = test_func._prepare_transformation_function_scope(test="values")
 
         assert scope["_output_col_names"] == ["test_func_feature_"]
-        assert scope["context"] == {"test_value": 100}
+        assert scope["_transformation_context"]() == {"test_value": 100}
         assert scope["statistics"] == 10
         assert scope["test"] == "values"
         assert all(
             value in scope
-            for value in {"_output_col_names", "context", "statistics", "test"}
+            for value in {
+                "_output_col_names",
+                "_transformation_context",
+                "statistics",
+                "test",
+            }
         )
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
@@ -1639,3 +1648,318 @@ def test_function():
         assert add_statistics_data.executor(
             statistics={"feature": {"mean": 100}}, context={"test_value": 10}
         ).execute(data).values.tolist() == [111, 112, 113]
+
+
+class TestUdfSourceExtraction:
+    """Source extraction for UDFs defined inside another function.
+
+    These pin the property the fix guarantees: the extracted source is the UDF
+    and nothing above it, so the imports derived from it cannot carry a fragment
+    of an enclosing block into the generated wrapper.
+
+    They are not a reproduction of the original failure. A decorated function's
+    co_firstlineno is its first decorator line, so `inspect.getsource`'s
+    backwards scan matches immediately and does not reach an enclosing def; the
+    loop shape below does not fail on the old code. What reached the imports in
+    the run that hit this 42 times is still unidentified. The consequence chain
+    is exercised directly by
+    test_imports_never_carry_a_fragment_of_an_enclosing_scope, which feeds the
+    malformed source in rather than relying on the extractor to produce it.
+    """
+
+    def test_udf_defined_in_a_loop_extracts_only_itself(self):
+        # The shape that failed: several UDFs, same enclosing scope, in a loop.
+        # A single UDF per loop does not reproduce it.
+        udfs = []
+        for mode in ["default", "pandas", "python"]:
+
+            @udf(int, drop=["feature"], mode=mode)
+            def add_one(feature):
+                return feature + 1
+
+            @udf([int, int], drop=["feature"], mode=mode)
+            def add_two(feature):
+                return feature + 1, feature + 2
+
+            udfs.extend([add_one, add_two])
+
+        for extracted in udfs:
+            source = extracted._function_source
+            assert (
+                "def test_udf_defined_in_a_loop_extracts_only_itself" not in source
+            ), "extraction captured the enclosing test function, not the UDF"
+            assert "for mode in" not in source, (
+                "extraction captured the enclosing loop, whose body is then cut "
+                "off at the first decorator and cannot compile"
+            )
+
+    def test_udf_defined_in_a_loop_generates_compilable_source(self):
+        # The failure was not a bad message, it was a UDF that could not be
+        # built, so assert on the thing that actually broke.
+        for mode in ["default", "pandas"]:
+
+            @udf(int, drop=["feature"], mode=mode)
+            def add_one(feature):
+                return feature + 1
+
+            @udf([int, int], drop=["feature"], mode=mode)
+            def add_two(feature):
+                return feature + 1, feature + 2
+
+            for built in (add_one, add_two):
+                # One output name per declared return type; the wrapper renames
+                # its columns to these.
+                built._output_column_names = [
+                    f"out_{i}" for i in range(len(built.return_types))
+                ]
+                built._pandas_udf_wrapper()  # raised IndentationError before
+
+    def test_nested_udf_source_is_dedented(self):
+        # A UDF defined inside a function must yield the same source as one at
+        # module level, or the generated wrapper mixes indentation levels.
+        @udf(int, drop=["feature"])
+        def add_three(feature):
+            return feature + 3
+
+        first_line = add_three._function_source.split("\n")[-3]
+        assert not first_line.startswith(" "), (
+            f"nested UDF source kept its enclosing indentation: {first_line!r}"
+        )
+
+    def test_imports_never_carry_a_fragment_of_an_enclosing_scope(self):
+        """The shape captured from a real run that failed 42 nodes.
+
+        The source handed to the formatter contained an enclosing function, so
+        splitting it on the first "@" kept everything up to the decorator: the
+        imports *plus* a `for` statement with no body. The generated wrapper
+        then failed to compile with an IndentationError naming a line in a
+        string the caller never sees.
+        """
+        source = (
+            "import pandas as pd\n"
+            "from hsfs.transformation_statistics import TransformationStatistics\n"
+            "def enclosing_test(fs):\n"
+            "    df = pd.DataFrame()\n"
+            "    for mode in ['default', 'pandas', 'python']:\n"
+            "\n"
+            "        @udf(int, drop=['feature'], mode=mode)\n"
+            "        def add_one(feature):\n"
+            "            return feature + 1\n"
+        )
+        _, module_imports = HopsworksUdf._format_source_code(source)
+
+        assert "for mode in" not in module_imports, (
+            f"imports carried a fragment of the enclosing scope: {module_imports!r}"
+        )
+        # The real symptom: the imports block on its own must compile.
+        compile(module_imports + "\nimport pandas as pd\n", "<test>", "exec")
+
+
+class TestTransformationContextIsRequestLocal:
+    """A feature view holds one set of UDF objects and every caller shares them.
+
+    The context of a request therefore belongs to the request, not to the
+    object: writing it onto the UDF let one caller's transformations run under
+    another's context as soon as two of them overlapped.
+    """
+
+    def _udf(self):
+        @udf(int)
+        def add_context(feature):
+            return feature
+
+        return add_context
+
+    def test_the_request_context_wins_over_the_objects(self):
+        function = self._udf()
+        function.transformation_context = {"scope": "object"}
+
+        with hopsworks_udf._serving_transformation_context({"scope": "request"}):
+            assert function.transformation_context == {"scope": "request"}
+
+        assert function.transformation_context == {"scope": "object"}
+
+    def test_two_threads_do_not_see_each_other(self):
+        function = self._udf()
+        seen = {}
+        both_inside = threading.Barrier(2)
+
+        def serve(name):
+            with hopsworks_udf._serving_transformation_context({"caller": name}):
+                both_inside.wait(timeout=5)
+                seen[name] = function.transformation_context
+
+        threads = [threading.Thread(target=serve, args=(n,)) for n in ("a", "b")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        assert seen == {"a": {"caller": "a"}, "b": {"caller": "b"}}
+
+    def test_the_object_is_not_written_to(self):
+        function = self._udf()
+
+        with hopsworks_udf._serving_transformation_context({"scope": "request"}):
+            pass
+
+        assert function._transformation_context == {}
+
+    def test_an_empty_request_context_falls_back_to_the_object(self):
+        function = self._udf()
+        function.transformation_context = {"scope": "object"}
+
+        with hopsworks_udf._serving_transformation_context(None):
+            assert function.transformation_context == {"scope": "object"}
+        with hopsworks_udf._serving_transformation_context({}):
+            assert function.transformation_context == {"scope": "object"}
+
+
+def _read_context_in_worker(transformation_context):
+    """Runs in the worker: what the UDF reports as its context for one job."""
+    from hsfs.core.transformation_function_engine import TransformationFunctionEngine
+
+    @udf(int)
+    def read_context(feature):
+        return feature
+
+    read_context.transformation_context = {"scope": "object"}
+    seen = {}
+    TransformationFunctionEngine._execute_udf_in_context = staticmethod(
+        lambda **kwargs: seen.update(kwargs["udf"].transformation_context or {})
+    )
+    TransformationFunctionEngine._execute_udf(
+        udf=read_context, data={}, transformation_context=transformation_context
+    )
+    return seen
+
+
+class TestForkedWorkersDoNotInheritAContext:
+    """A pool built during one request must not transform later requests under it.
+
+    A forked worker is a memory copy of the process that forked it, context
+    variables included, and the request context wins over the UDF's own. A pool
+    built while one request held the context therefore answered every later
+    request with that request's context, which is a different tenant's.
+    """
+
+    def _udf(self):
+        @udf(int)
+        def read_context(feature):
+            return feature
+
+        return read_context
+
+    @pytest.mark.skipif(
+        "fork" not in multiprocessing.get_all_start_methods(),
+        reason="the inheritance this covers only exists when a worker is forked",
+    )
+    def test_a_pool_forked_under_one_request_serves_the_next_ones_own_context(self):
+        from hsfs.core.transformation_function_engine import (
+            TransformationFunctionEngine,
+        )
+
+        context_seen = multiprocessing.get_context("fork")
+        with hopsworks_udf._serving_transformation_context({"tenant": "request-A"}):
+            # Forked while request A holds the context, which is what a lazily
+            # built or resized pool does on a serving path.
+            pool = context_seen.Pool(
+                processes=1,
+                initializer=TransformationFunctionEngine._init_worker,
+                initargs=("python",),
+            )
+        try:
+            for tenant in ("request-B", "request-C"):
+                seen = pool.apply(_read_context_in_worker, ({"tenant": tenant},), {})
+                assert seen == {"tenant": tenant}, (
+                    f"{tenant} was transformed under {seen}"
+                )
+            # No context supplied returns the worker to the UDF's own, rather
+            # than to whatever the previous job left behind.
+            assert pool.apply(_read_context_in_worker, (None,), {}) == {
+                "scope": "object"
+            }
+        finally:
+            pool.terminate()
+            pool.join()
+
+
+class TestACachedWrapperDoesNotShareOneRequestsContext:
+    """The wrapper's scope is shared; the context in it must not be.
+
+    `_get_udf()` returns a cached wrapper and its scope, and the caller runs the
+    wrapper afterwards. Writing the request's context into that scope on the way
+    out is a race: another request can overwrite the entry in between, and the
+    first is then transformed under the second's context.
+    """
+
+    def _udf(self):
+        @udf(int)
+        def uses_context(feature, context):
+            return feature + context["offset"]
+
+        return uses_context
+
+    def test_the_scope_resolves_the_reading_requests_context(self):
+        function = self._udf()
+        function._get_udf(online=True, engine_type="python")
+        scope = next(iter(function._udf_cache.values()))[1]
+        resolve = scope["_transformation_context"]
+
+        with hopsworks_udf._serving_transformation_context({"offset": 1}):
+            assert resolve()["offset"] == 1
+        with hopsworks_udf._serving_transformation_context({"offset": 2}):
+            assert resolve()["offset"] == 2
+
+    @pytest.mark.parametrize("mode", ["python", "pandas"])
+    def test_the_udf_is_handed_a_real_dict(self, mode):
+        """A read-only view broke UDFs that copy, extend or serialise their context."""
+        import pandas as pd
+
+        @udf(int, mode=mode)
+        def uses_dict(feature, context):
+            import json
+
+            assert isinstance(context, dict)
+            extended = context.copy()
+            extended.setdefault("extra", 1)
+            json.dumps(context | {"more": 2})
+            return feature + extended["offset"] + extended["extra"]
+
+        uses_dict.output_column_names = ["out"]
+        wrapper = uses_dict._get_udf(online=(mode == "python"), engine_type="python")
+        with hopsworks_udf._serving_transformation_context({"offset": 10}):
+            if mode == "python":
+                assert wrapper(1) == 12
+            else:
+                assert wrapper(pd.Series([1])).tolist() == [12]
+
+    def test_a_request_context_that_is_not_a_dict_is_refused(self):
+        with pytest.raises(FeatureStoreException, match="as dictionary"):  # noqa: SIM117
+            with hopsworks_udf._serving_transformation_context(["not", "a", "dict"]):
+                pass
+
+    def test_two_threads_running_the_cached_wrapper_keep_their_own(self):
+        function = self._udf()
+        seen = {}
+        both_ready = threading.Barrier(2)
+
+        def serve(name, offset):
+            with hopsworks_udf._serving_transformation_context({"offset": offset}):
+                wrapper = function._get_udf(online=True, engine_type="python")
+                # Both callers have now taken the wrapper and written whatever
+                # they were going to write; running it afterwards is the window.
+                both_ready.wait(timeout=5)
+                seen[name] = wrapper(1)
+
+        threads = [
+            threading.Thread(target=serve, args=args) for args in (("a", 10), ("b", 20))
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        assert seen == {"a": 11, "b": 21}, (
+            f"one request was transformed under the other's context: {seen}"
+        )

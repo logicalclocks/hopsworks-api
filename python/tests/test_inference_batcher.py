@@ -64,7 +64,8 @@ class TestInferenceBatcher:
             return_value=json,
         )
         mock_ib_init = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.__init__", return_value=None
+            "hsml.inference_batcher.InferenceBatcher.__init__",
+            return_value=None,
         )
 
         # Act
@@ -84,7 +85,8 @@ class TestInferenceBatcher:
             return_value=json,
         )
         mock_ib_init = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.__init__", return_value=None
+            "hsml.inference_batcher.InferenceBatcher.__init__",
+            return_value=None,
         )
 
         # Act

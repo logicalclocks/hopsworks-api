@@ -47,10 +47,10 @@ def test_deployment_predict_parses_json_data(mock_project):
         cli, ["deployment", "predict", "fraud", "--data", '{"instances": [[1,2]]}']
     )
     assert result.exit_code == 0, result.output
-    deployment.predict.assert_called_with(data={"instances": [[1, 2]]})
+    deployment.predict.assert_called_with(data={"instances": [[1, 2]]}, validate=True)
 
 
-def test_deployment_logs(mock_project):
+def test_deployment_logs_defaults_to_kubernetes_source(mock_project):
     ms = mock.MagicMock()
     deployment = mock.MagicMock()
     deployment.read_logs.return_value = "line1\nline2"
@@ -59,9 +59,51 @@ def test_deployment_logs(mock_project):
     result = CliRunner().invoke(cli, ["deployment", "logs", "fraud", "--tail", "5"])
     assert result.exit_code == 0, result.output
     deployment.read_logs.assert_called_with(
-        component="predictor", tail=5, source=mock.ANY, since=None, until=None
+        component="predictor", tail=5, source="kubernetes", since=None, until=None
     )
     assert "line1" in result.output
+
+
+def test_deployment_logs_download_calls_download_logs(mock_project):
+    ms = mock.MagicMock()
+    deployment = mock.MagicMock()
+    deployment.download_logs.return_value = ["/tmp/a.log"]
+    ms.get_deployment.return_value = deployment
+    mock_project.get_model_serving.return_value = ms
+    result = CliRunner().invoke(cli, ["deployment", "logs", "fraud", "--download"])
+    assert result.exit_code == 0, result.output
+    deployment.download_logs.assert_called_once_with(path=None)
+    deployment.read_logs.assert_not_called()
+    assert "/tmp/a.log" in result.output
+
+
+def test_deployment_logs_download_goes_to_the_given_dir(mock_project, tmp_path):
+    ms = mock.MagicMock()
+    deployment = mock.MagicMock()
+    deployment.download_logs.return_value = []
+    ms.get_deployment.return_value = deployment
+    mock_project.get_model_serving.return_value = ms
+    logs = tmp_path / "Logs" / "factory" / "churn"
+    result = CliRunner().invoke(
+        cli, ["deployment", "logs", "fraud", "--download", "--dir", str(logs)]
+    )
+    assert result.exit_code == 0, result.output
+    deployment.download_logs.assert_called_once_with(path=str(logs))
+    assert logs.is_dir()
+
+
+def test_deployment_logs_download_conflicts_with_follow_and_source(mock_project):
+    ms = mock.MagicMock()
+    deployment = mock.MagicMock()
+    ms.get_deployment.return_value = deployment
+    mock_project.get_model_serving.return_value = ms
+    for extra in (["--follow"], ["--source", "kubernetes"]):
+        result = CliRunner().invoke(
+            cli, ["deployment", "logs", "fraud", "--download", *extra]
+        )
+        assert result.exit_code != 0
+        assert "--download cannot be combined" in result.output
+    deployment.download_logs.assert_not_called()
 
 
 def test_deployment_delete(mock_project):
@@ -88,6 +130,46 @@ def test_deployment_create_via_model_deploy(mock_project):
     )
     assert result.exit_code == 0, result.output
     model.deploy.assert_called_once()
+
+
+def test_deployment_create_sets_the_cores_and_memory_it_is_given(mock_project):
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.version = 1
+    model.deploy.return_value = mock.MagicMock()
+    mr.get_models.return_value = [model]
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(cli, ["deployment", "create", "fraud", "--cores", "2"])
+    assert result.exit_code == 0, result.output
+    resources = model.deploy.call_args.kwargs["resources"]
+    assert (resources.limits.cores, resources.limits.memory) == (2, 1024)
+    assert (resources.requests.cores, resources.requests.memory) == (1, 1024)
+    assert resources.num_instances == 1
+
+    model.deploy.reset_mock()
+    result = CliRunner().invoke(cli, ["deployment", "create", "fraud"])
+    assert result.exit_code == 0, result.output
+    assert model.deploy.call_args.kwargs["resources"] is None
+
+
+def test_deployment_create_deploys_the_latest_version_whatever_the_order(mock_project):
+    # The registry lists versions newest first, so the last one is version 1.
+    versions = []
+    for number in (3, 1, 2):
+        model = mock.MagicMock()
+        model.version = number
+        model.deploy.return_value = mock.MagicMock()
+        versions.append(model)
+    mr = mock.MagicMock()
+    mr.get_models.return_value = versions
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(
+        cli, ["deployment", "create", "fraud", "--name", "fraud"]
+    )
+    assert result.exit_code == 0, result.output
+    versions[0].deploy.assert_called_once()
+    versions[1].deploy.assert_not_called()
+    versions[2].deploy.assert_not_called()
 
 
 # --- job -------------------------------------------------------------------
@@ -140,9 +222,11 @@ def test_job_history(mock_project):
     e1 = mock.MagicMock()
     e1.id, e1.state, e1.final_status = 1, "FINISHED", "SUCCEEDED"
     e1.submission_time = "2026-04-01"
+    e1.duration = 41_400
     e2 = mock.MagicMock()
     e2.id, e2.state, e2.final_status = 2, "RUNNING", "-"
     e2.submission_time = "2026-04-02"
+    e2.duration = None
     job.get_executions.return_value = [e1, e2]
     api.get_job.return_value = job
     mock_project.get_job_api.return_value = api
@@ -151,6 +235,9 @@ def test_job_history(mock_project):
     # Most recent first
     lines = [ln for ln in result.output.splitlines() if ln.startswith(("1", "2"))]
     assert lines and lines[0].startswith("2")
+    # The finished run's duration in seconds; a running one has none yet.
+    assert lines[1].split()[-1] == "41"
+    assert lines[0].split()[-1] == "-"
 
 
 def test_job_logs(mock_project):
@@ -317,9 +404,21 @@ def test_datasource_create_carries_type_discriminator(mock_project):
     )
     assert sf["type"] == "featurestoreSnowflakeConnectorDTO"
     bq = _create_connector_body(
-        ["datasource", "create", "bigquery", "bq", "--project-id", "proj"]
+        [
+            "datasource",
+            "create",
+            "bigquery",
+            "bq",
+            "--parent-project",
+            "bill",
+            "--project-id",
+            "proj",
+            "--key-path",
+            "/Projects/p/k.json",
+        ]
     )
     assert bq["type"] == "featurestoreBigqueryConnectorDTO"
+    assert bq["parentProject"] == "bill"
 
 
 def test_datasource_delete_calls_rest(mock_project):
@@ -364,6 +463,14 @@ def test_superset_dashboard_list(mock_project):
     result = CliRunner().invoke(cli, ["superset", "dashboard", "list"])
     assert result.exit_code == 0, result.output
     assert "Ops" in result.output
+
+
+def test_superset_outside_the_cluster_fails_with_a_reason(mock_project):
+    with mock.patch("hopsworks_common.client._is_external", return_value=True):
+        result = CliRunner().invoke(cli, ["superset", "dashboard", "list"])
+    assert result.exit_code != 0
+    assert "only inside the cluster" in result.output
+    mock_project.get_superset_api.assert_not_called()
 
 
 def test_superset_dashboard_create(mock_project):

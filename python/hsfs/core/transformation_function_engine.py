@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
 import errno
 import logging
 import multiprocessing
@@ -44,7 +45,12 @@ from hsfs import (
 )
 from hsfs.core import transformation_function_api
 from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
-from hsfs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
+from hsfs.hopsworks_udf import (
+    _REQUEST_TRANSFORMATION_CONTEXT,
+    HopsworksUdf,
+    UDFExecutionMode,
+    _serving_transformation_context,
+)
 
 
 _logger = logging.getLogger(__name__)
@@ -222,6 +228,12 @@ class TransformationFunctionEngine:
         """Initialize the engine singleton in a worker process (needed for spawn)."""
         global _IS_TF_WORKER
         _IS_TF_WORKER = True
+        # A forked worker is a copy of the process that made it, context
+        # variables included. A pool built while a request held the serving
+        # context would start every worker holding it, and that context wins
+        # over the one each job supplies, so every later request would be
+        # transformed under the context of whichever request built the pool.
+        _REQUEST_TRANSFORMATION_CONTEXT.set(None)
         import hopsworks_common.connection
 
         hopsworks_common.connection._hsfs_engine_type = engine_type
@@ -539,22 +551,34 @@ class TransformationFunctionEngine:
             execution_graph, n_processes
         )
 
-        # Python path. Set the transformation context on every UDF, inject any
-        # request parameters, then delegate to the handler for the input shape.
-        for tf in execution_graph.nodes:
-            tf.hopsworks_udf.transformation_context = transformation_context
+        # Python path. Make the context the one this request runs under, inject
+        # any request parameters, then delegate to the handler for the input
+        # shape. The context is not written onto the UDF objects: a feature view
+        # holds one set of them and every caller shares it, so one request would
+        # otherwise be transformed under another's context.
         if request_parameters:
             data = TransformationFunctionEngine._update_request_parameter_data(
                 data, request_parameters
             )
 
-        if is_dataframe:
-            return TransformationFunctionEngine._apply_to_dataframe(
-                execution_graph, data, online, n_processes, expected_features
+        with _serving_transformation_context(transformation_context):
+            if is_dataframe:
+                return TransformationFunctionEngine._apply_to_dataframe(
+                    execution_graph,
+                    data,
+                    online,
+                    n_processes,
+                    expected_features,
+                    transformation_context,
+                )
+            return TransformationFunctionEngine._apply_to_dict_list(
+                execution_graph,
+                data,
+                online,
+                n_processes,
+                expected_features,
+                transformation_context,
             )
-        return TransformationFunctionEngine._apply_to_dict_list(
-            execution_graph, data, online, n_processes, expected_features
-        )
 
     @staticmethod
     def _transformed_column_layout(
@@ -603,6 +627,7 @@ class TransformationFunctionEngine:
         online: bool,
         n_processes: int | None,
         expected_features: set[str] | None,
+        transformation_context: dict[str, Any] | None = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Apply the transformations to a single dict or a list of dicts.
 
@@ -655,6 +680,8 @@ class TransformationFunctionEngine:
                     data=task_inputs(tf),
                     online=online,
                     engine_type=engine_type,
+                    # A forked worker inherits whatever context the pool was forked under, and its initializer clears that, so the request's context travels with each task instead.
+                    transformation_context=transformation_context,
                 ),
                 collect=merge,
             )
@@ -682,6 +709,7 @@ class TransformationFunctionEngine:
         online: bool,
         n_processes: int | None,
         expected_features: set[str] | None,
+        transformation_context: dict[str, Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply the transformations to a pandas or polars DataFrame.
 
@@ -730,6 +758,7 @@ class TransformationFunctionEngine:
                 engine_type,
                 column_store,
                 merge,
+                transformation_context,
             )
 
         # Merge the accumulated outputs back into the frame, then project to the
@@ -762,6 +791,7 @@ class TransformationFunctionEngine:
         engine_type: str,
         column_store: dict[str, Any],
         merge: Callable[[transformation_function.TransformationFunction, Any], None],
+        transformation_context: dict[str, Any] | None = None,
     ) -> None:
         """Run the DataFrame DAG in parallel, staging the frame in shared memory.
 
@@ -801,6 +831,8 @@ class TransformationFunctionEngine:
                 "udf": tf.hopsworks_udf,
                 "online": online,
                 "engine_type": engine_type,
+                # A forked worker inherits whatever context the pool was forked under, and its initializer clears that, so the request's context travels with each task instead.
+                "transformation_context": transformation_context,
             }
             if use_shm:
                 predecessor_cols = {
@@ -1010,6 +1042,7 @@ class TransformationFunctionEngine:
         | None = None,
         engine_type: str | None = None,
         online: bool = False,
+        transformation_context: dict[str, Any] | None = None,
         shm_name: str | None = None,
         shm_size: int | None = None,
         is_polars: bool = False,
@@ -1039,6 +1072,42 @@ class TransformationFunctionEngine:
             The transformed data in the same container type as the input
             (dict, list of dicts, or DataFrame).
         """
+        # The context is bound for the length of this job rather than written
+        # onto the UDF, so it is gone when the job is: a worker outlives the
+        # request that gave it work, and the copy of the UDF it holds outlives
+        # it too. A job that names no context does not bind one, which leaves
+        # the caller's own binding in place for an in-process call and, in a
+        # worker, the cleared one its initializer set.
+        with (
+            _serving_transformation_context(transformation_context)
+            if transformation_context is not None
+            else contextlib.nullcontext()
+        ):
+            return TransformationFunctionEngine._execute_udf_in_context(
+                udf=udf,
+                data=data,
+                online=online,
+                engine_type=engine_type,
+                shm_name=shm_name,
+                shm_size=shm_size,
+                is_polars=is_polars,
+                columns=columns,
+                predecessor_columns=predecessor_columns,
+            )
+
+    @staticmethod
+    def _execute_udf_in_context(
+        udf: HopsworksUdf,
+        data: Any,
+        online: bool | None,
+        engine_type: str | None,
+        shm_name: str | None,
+        shm_size: int | None,
+        is_polars: bool,
+        columns: list[str] | None,
+        predecessor_columns: dict[str, Any] | None,
+    ) -> Any:
+        """Run one prepared UDF job, with this job's serving context already bound."""
         if shm_name is not None:
             data = TransformationFunctionEngine._read_from_shared_memory(
                 shm_name, shm_size, is_polars
@@ -1248,6 +1317,7 @@ class TransformationFunctionEngine:
         transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         training_dataset_version: int | None = None,
+        pre_transform: Callable[[Any], Any] | None = None,
     ) -> (
         dict[str, pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame")]
         | pd.DataFrame
@@ -1268,15 +1338,18 @@ class TransformationFunctionEngine:
             transformation_context: Context variables passed to the transformation functions.
             n_processes: Number of worker processes for applying the transformations.
             training_dataset_version: When given, statistics are retrieved from the backend for this version instead of being fit.
+            pre_transform: Applied to a single frame after the statistics are fit and before the transformations run, so a `coalesce(1)` neither changes the profiled statistics nor evaluates the transformations once per parent partition (FSTORE-2109). Not supported for split dictionaries.
 
         Returns:
             The transformed dataset, in the same shape as `dataset`.
         """
-        # A standalone training dataset (created directly, not from a feature
-        # view) has no feature view and therefore no transformation functions,
-        # so there is nothing to fit or apply — return the dataset unchanged.
-        if feature_view_obj is None:
-            return dataset
+        # no caller passes the hook for splits; without this it would be
+        # silently dropped
+        if pre_transform is not None and isinstance(dataset, dict):
+            raise ValueError(
+                "pre_transform is only supported when `dataset` is a single "
+                "dataframe, not a dictionary of splits."
+            )
 
         if training_dataset_version is not None:
             # The statistics of an existing training dataset version already
@@ -1286,6 +1359,8 @@ class TransformationFunctionEngine:
                 training_dataset, feature_view_obj, training_dataset_version
             )
             if not isinstance(dataset, dict):
+                if pre_transform is not None:
+                    dataset = pre_transform(dataset)
                 return TransformationFunctionEngine._transform(
                     feature_view_obj, dataset, transformation_context, n_processes
                 )
@@ -1303,6 +1378,7 @@ class TransformationFunctionEngine:
                 dataset,
                 transformation_context=transformation_context,
                 n_processes=n_processes,
+                pre_transform=pre_transform,
             )
 
         # The train split is fit on and transformed first: fitting binds the
@@ -1367,6 +1443,7 @@ class TransformationFunctionEngine:
         | TypeVar("pyspark.sql.DataFrame"),
         transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
+        pre_transform: Callable[[Any], Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame"):
         """Fit the required statistics on the train data and return it transformed.
 
@@ -1391,6 +1468,7 @@ class TransformationFunctionEngine:
             feature_dataframe: The train data.
             transformation_context: Context variables passed to the transformation functions.
             n_processes: Number of worker processes for applying the transformations.
+            pre_transform: Applied to the train data once the statistics are fit and before the transformations run.
 
         Returns:
             The transformed train data.
@@ -1430,6 +1508,7 @@ class TransformationFunctionEngine:
                 label_encoder_features,
                 transformation_context,
                 n_processes,
+                pre_transform=pre_transform,
             )
 
         if statistics_features:
@@ -1445,6 +1524,10 @@ class TransformationFunctionEngine:
             for tf in feature_view_obj.transformation_functions:
                 tf.transformation_statistics = stats.feature_descriptive_statistics
 
+        # statistics are fit on the frame as read; reshape only now
+        if pre_transform is not None:
+            feature_dataframe = pre_transform(feature_dataframe)
+
         return TransformationFunctionEngine._transform(
             feature_view_obj, feature_dataframe, transformation_context, n_processes
         )
@@ -1459,6 +1542,7 @@ class TransformationFunctionEngine:
         label_encoder_features: set[str],
         transformation_context: dict[str, Any] | None,
         n_processes: int | None,
+        pre_transform: Callable[[Any], Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame"):
         """Fit statistics over a chained DAG and return the transformed data.
 
@@ -1477,6 +1561,7 @@ class TransformationFunctionEngine:
             label_encoder_features: The statistics features consumed by encoders.
             transformation_context: Context variables passed to the transformation functions.
             n_processes: Number of worker processes for applying each stage.
+            pre_transform: Applied once the last stage that fits statistics has been profiled and before its transformations run.
 
         Returns:
             The fully transformed train data.
@@ -1491,20 +1576,20 @@ class TransformationFunctionEngine:
         )
 
         provisional_statistics: list = []
-        provisioned_features: set[str] = set()
         working_dataframe = feature_dataframe
         original_columns = list(feature_dataframe.columns)
         statistics_engine = training_dataset._statistics_engine
         previous_barrier = None
 
-        remaining = list(graph.nodes)  # topological order
-        while remaining:
-            stage, remaining = TransformationFunctionEngine._next_statistics_stage(
-                remaining, provisioned_features
-            )
-            features_to_fit = {
-                f for tf in stage for f in tf.hopsworks_udf.statistics_features
-            } - provisioned_features
+        stages = TransformationFunctionEngine._plan_statistics_stages(
+            list(graph.nodes)  # topological order
+        )
+        # pre_transform goes after the last stage that fits anything
+        pre_transform_stage = max(
+            (i for i, (_, features_to_fit) in enumerate(stages) if features_to_fit),
+            default=0,
+        )
+        for stage_index, (stage, features_to_fit) in enumerate(stages):
             if features_to_fit:
                 # Present in working_dataframe: raw features from the start,
                 # intermediate features materialized by earlier stages. Profiled
@@ -1528,9 +1613,10 @@ class TransformationFunctionEngine:
                 provisional_statistics.extend(
                     provisional.feature_descriptive_statistics
                 )
-                provisioned_features |= features_to_fit
             for tf in stage:
                 tf.transformation_statistics = provisional_statistics
+            if pre_transform is not None and stage_index == pre_transform_stage:
+                working_dataframe = pre_transform(working_dataframe)
             # expected_features keeps the already-present columns so a dropping
             # transformation does not remove inputs later stages still need;
             # drops are applied once in the final projection below.
@@ -1570,6 +1656,34 @@ class TransformationFunctionEngine:
         if is_spark_dataframe:
             return working_dataframe.select(*final_columns)
         return working_dataframe[final_columns]
+
+    @staticmethod
+    def _plan_statistics_stages(
+        transformation_functions: list[transformation_function.TransformationFunction],
+    ) -> list[tuple[list[transformation_function.TransformationFunction], set[str]]]:
+        """Split a topologically ordered list into its statistics stages.
+
+        Parameters:
+            transformation_functions: All transformation functions, in topological order.
+
+        Returns:
+            One `(stage, features_to_fit)` pair per stage, in execution order,
+            where `features_to_fit` are the features whose statistics must be
+            profiled before that stage runs.
+        """
+        stages = []
+        remaining = list(transformation_functions)
+        provisioned_features: set[str] = set()
+        while remaining:
+            stage, remaining = TransformationFunctionEngine._next_statistics_stage(
+                remaining, provisioned_features
+            )
+            features_to_fit = {
+                f for tf in stage for f in tf.hopsworks_udf.statistics_features
+            } - provisioned_features
+            provisioned_features |= features_to_fit
+            stages.append((stage, features_to_fit))
+        return stages
 
     @staticmethod
     def _next_statistics_stage(

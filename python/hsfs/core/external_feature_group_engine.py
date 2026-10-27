@@ -31,6 +31,9 @@ if TYPE_CHECKING:
 
 
 class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
+    def _test_data_source_access(self, feature_group) -> dict:
+        return self._feature_group_api._test_data_source_access(feature_group)
+
     def _save(self, feature_group):
         if not feature_group.data_source:
             raise FeatureStoreException(
@@ -44,11 +47,30 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 or feature_group.data_source.query
             ) and arrow_flight_client._supports([feature_group]):
                 # If the user provided a data source, we can use it to infer the schema
+                data = feature_group.data_source.get_data()
+                source = feature_group.data_source._describe() or "the data source"
+                # Taking an empty schema as the answer left the failure to surface further down
+                # as "Provided primary key(s) <pk> doesn't exist in feature dataframe", which
+                # names the key the user did give and says nothing about the source.
+                if data is None:
+                    raise FeatureStoreException(
+                        f"Reading {source} for feature group '{feature_group.name}'"
+                        " returned an empty response, so the schema cannot be inferred"
+                        " from it."
+                        " Pass the schema explicitly as `features`."
+                    )
+                if not data.features:
+                    raise FeatureStoreException(
+                        f"Reading {source} for feature group '{feature_group.name}'"
+                        " returned no columns, so the schema cannot be inferred from it."
+                        " Check that the source returns data, or pass the schema"
+                        " explicitly as `features`."
+                    )
                 feature_group._features = [
                     feature.Feature.from_response_json(feat)
                     if isinstance(feat, dict)
                     else feat
-                    for feat in (feature_group.data_source.get_data().features or [])
+                    for feat in data.features
                 ]
             else:
                 # If the user didn't specify the schema, parse it from the query

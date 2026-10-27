@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import warnings
+from datetime import timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -54,6 +55,7 @@ from hsfs.core import (
     feature_monitoring_result_engine,
     feature_view_engine,
     job,
+    partition_grains,
     statistics_engine,
     transformation_execution_dag,
     transformation_function_engine,
@@ -100,20 +102,28 @@ TrainingDatasetDataFrameTypes = (
     | list[list[Any]]
 )
 
+# The frame a caller anchors a read on. Accepts a Spark DataFrame only under the Spark engine,
+# which is the only engine with a session to evaluate one.
+SpineDataFrameTypes = (
+    pd.DataFrame | list[dict[str, Any]] | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
+)
+
 if HAS_POLARS:
     import polars as pl
 
     TrainingDatasetDataFrameTypes = TrainingDatasetDataFrameTypes | pl.DataFrame
+    SpineDataFrameTypes = SpineDataFrameTypes | pl.DataFrame
 
-
-# TODO: Rework SplineDataFrameTypes
-SplineDataFrameTypes = (
+# The frames the deprecated `spine` argument accepts. Named for that argument rather than
+# for the concept, so it cannot be mistaken for `SpineDataFrameTypes` above, which is what
+# `spine_df` takes.
+DeprecatedSpineTypes = (
     pd.DataFrame
     | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
     | TypeVar("pyspark.RDD")  # noqa: F821
     | np.ndarray
     | list[list[Any]]
-    | TypeVar("SplineGroup")  # noqa: F821
+    | TypeVar("SpineGroup")  # noqa: F821
 )
 
 
@@ -147,6 +157,9 @@ class FeatureView:
         featurestore_name: str | None = None,
         serving_keys: list[skm.ServingKey] | None = None,
         logging_enabled: bool | None = False,
+        # int is the deserialised form: the backend stores seconds, so `from_response_json`
+        # hands one straight back. Callers pass a timedelta.
+        max_feature_age: timedelta | int | None = None,
         extra_log_columns: list[Feature] | dict[str, str] | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: list[tag.Tag] | None = None,
@@ -164,6 +177,7 @@ class FeatureView:
         self._version = version
         self._description = description
         self._labels = labels if labels else []
+        self._max_feature_age = self._normalize_feature_age(max_feature_age)
         self._inference_helper_columns = (
             inference_helper_columns if inference_helper_columns else []
         )
@@ -249,9 +263,13 @@ class FeatureView:
         self._transformation_n_processes: int | None = None
 
         # Lazy initialization for column names used in feature logging.
-        self.__label_column_names = None
-        self.__transformed_feature_names = None
-        self.__untransformed_feature_names = None
+        # Keyed by training dataset version: a one_hot_encoder makes the transformed
+        # schema depend on the training statistics, so two versions of the same feature
+        # view do not agree on their column sets.
+        self.__training_dataset_schemas = {}
+        self.__label_column_names = {}
+        self.__transformed_feature_names = {}
+        self.__untransformed_feature_names = {}
         self.__required_serving_key_names = None
         self.__root_feature_group_event_time_column_name = None
         self.__extra_logging_column_names = None
@@ -274,6 +292,98 @@ class FeatureView:
         self._model_dependent_transformation_execution_graph: transformation_execution_dag.TransformationExecutionDAG = transformation_execution_dag.TransformationExecutionDAG(
             self.transformation_functions,
         )
+
+    @staticmethod
+    def _warn_spine_deprecated(spine: Any, method: str) -> None:
+        """Warn when a read is driven by a spine group rather than by `spine_df`."""
+        if spine is None:
+            return
+        warnings.warn(
+            f"`spine` is deprecated in {method}() and will be removed in a future release."
+            " It only means anything for a feature view created with a spine group, which is"
+            " itself deprecated. Use `spine_df` instead: it takes the same rows and works on"
+            " any feature view, without the view having to be created for it.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    @staticmethod
+    def _reject_unknown_kwargs(kwargs: dict[str, Any], method: str) -> None:
+        """Refuse a keyword this method does not take, rather than swallowing it.
+
+        These methods keep `**kwargs` for the deprecated `primary_keys` spelling, which means a
+        misspelled or withdrawn argument is accepted and ignored. `prediction_times` is the one
+        that matters: it existed on earlier revisions of this API, so a caller who passes it gets
+        no reads of its value and an error about a missing prediction time instead.
+        """
+        unexpected = sorted(k for k in kwargs if k != "primary_keys")
+        if not unexpected:
+            return
+        hint = ""
+        if "prediction_times" in unexpected:
+            hint = (
+                " `prediction_times` was replaced by `spine_df`: build the frame with"
+                " `PredictionTimes.cross(entities, event_time=...)` and pass it as `spine_df`."
+            )
+        raise TypeError(
+            f"{method}() got an unexpected keyword argument"
+            f" {unexpected[0]!r}{'' if len(unexpected) == 1 else f' (and {len(unexpected) - 1} more)'}."
+            f"{hint}"
+        )
+
+    @staticmethod
+    def _normalize_feature_age(max_feature_age: Any) -> int | None:
+        """Seconds, from a `timedelta` or an already-resolved integer of seconds."""
+        if max_feature_age is None:
+            return None
+        if isinstance(max_feature_age, timedelta):
+            seconds = int(max_feature_age.total_seconds())
+        elif isinstance(max_feature_age, int) and not isinstance(max_feature_age, bool):
+            seconds = max_feature_age
+        elif isinstance(max_feature_age, dict):
+            # The per-feature-group map this argument used to take. Named because a caller who
+            # wrote against that form gets told what replaced it rather than a bare type error.
+            raise TypeError(
+                "max_feature_age is one bound for the whole feature view, not a bound per"
+                " feature group. Pass a single timedelta, for example"
+                " `max_feature_age=datetime.timedelta(days=1)`."
+            )
+        else:
+            raise TypeError(
+                "max_feature_age must be a timedelta, or an integer number of seconds;"
+                f" got {type(max_feature_age)!r}."
+            )
+        if seconds <= 0:
+            raise FeatureStoreException(
+                "max_feature_age must be a positive duration;"
+                f" got {max_feature_age!r}, which would match no row at all."
+            )
+        return seconds
+
+    @staticmethod
+    def _resolve_serving_keys(
+        serving_keys: Any, entry: Any, method: str, stacklevel: int = 3
+    ) -> Any:
+        """Accept either name for the serving keys, preferring the new one.
+
+        `entry` is the original name for this argument and is kept working so existing code does
+        not break. Passing both is refused rather than resolved silently: the two would disagree
+        for a reason the caller needs to fix, not a preference we should guess at.
+        """
+        if entry is None:
+            return serving_keys
+        if serving_keys is not None:
+            raise FeatureStoreException(
+                f"{method}() received both `serving_keys` and `entry`, which name the same"
+                " argument. Pass only `serving_keys`; `entry` is deprecated."
+            )
+        warnings.warn(
+            f"`entry` is deprecated in {method}() and will be removed in a future release."
+            " Use `serving_keys` instead; it takes the same value.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+        return entry
 
     @public
     def get_last_accessed_training_dataset(self):
@@ -464,6 +574,10 @@ class FeatureView:
                 - `timeout`: int, optional.
                   The timeout for the rest client in seconds.
                   Defaults to 2.
+                - `max_connections`: int, optional.
+                  Reads allowed in flight, and the size of the connection pool they share.
+                  A read that cannot get a turn within its timeout raises rather than waiting.
+                  Defaults to 16.
                 - `use_ssl`: boolean, optional.
                   Use SSL to connect to the online store.
                   Defaults to True.
@@ -486,7 +600,6 @@ class FeatureView:
                 self.init_batch_scoring(1)
             else:
                 raise e
-        self._serving_training_dataset_version = training_dataset_version
         # Compatibility with 3.7
         if init_sql_client is None:
             init_sql_client = kwargs.get("init_online_store_sql_client")
@@ -500,6 +613,11 @@ class FeatureView:
                 util.VersionWarning,
                 stacklevel=1,
             )
+
+        # Recorded after the default is applied, not before.
+        # Serving goes on to use version 1, and feature logging reads this to decide both
+        # which schema the logged columns come from and which version it stamps on the row.
+        self._serving_training_dataset_version = training_dataset_version
 
         # initiate single vector server
         self._vector_server._init_serving(
@@ -680,7 +798,7 @@ class FeatureView:
     def _offline_only_partition_features(self) -> list[str]:
         """Names of selected features that are `partitioned_by` grain columns not available online.
 
-        Grain columns are derived from `event_time`.
+        Grain columns are the `year`, `month`, ... columns a Hudi feature group derives from `event_time` for its temporal transforms.
         Unless the feature group enabled `online_partition_columns`, they live only in the
         offline store, so the online serving APIs cannot return them.
         Walks the query (including joins) so it covers every feature group in the view.
@@ -689,11 +807,12 @@ class FeatureView:
 
         def _walk(query) -> None:
             fg = query._left_feature_group
-            partitioned_by = getattr(fg, "partitioned_by", None) or []
+            is_hudi = (getattr(fg, "time_travel_format", None) or "").upper() == "HUDI"
+            grains = partition_grains._grains(fg) if is_hudi else []
             online_grains = bool(getattr(fg, "online_partition_columns", False))
-            if partitioned_by and not online_grains:
+            if grains and not online_grains:
                 for feat in query._left_features:
-                    if feat.name in partitioned_by and feat.name not in offending:
+                    if feat.name in grains and feat.name not in offending:
                         offending.append(feat.name)
             for join in query._joins:
                 _walk(join.query)
@@ -738,7 +857,7 @@ class FeatureView:
     @public
     def get_feature_vector(
         self,
-        entry: dict[str, Any] | None = None,
+        serving_keys: dict[str, Any] | None = None,
         passed_features: dict[str, Any] | None = None,
         external: bool | None = None,
         return_type: Literal["list", "polars", "numpy", "pandas"] = "list",
@@ -751,6 +870,8 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        timeout: float | None = None,
+        entry: dict[str, Any] | None = None,
     ) -> (
         list[Any]
         | pd.DataFrame
@@ -766,8 +887,12 @@ class FeatureView:
         2. Additional configurations of online serving engine.
 
         Warning: Missing primary key entries
-            If the provided primary key `entry` can't be found in one or more of the feature groups used by this feature view the call to this method will raise an exception.
+            If the provided `serving_keys` can't be found in one or more of the feature groups used by this feature view the call to this method will raise an exception.
             Alternatively, setting `allow_missing` to `True` returns a feature vector with missing values.
+
+        Note: Supplied serving keys
+            A serving key passed in the entry is returned in its slot of the feature vector when it is a feature of the vector, also when `allow_missing` is `True` and no row matches it.
+            A key with a `None` value is treated as not provided.
 
         Example:
             ```python
@@ -779,18 +904,18 @@ class FeatureView:
 
             # get assembled serving vector as a python list
             feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2}
+                serving_keys = {"pk1": 1, "pk2": 2}
             )
 
             # get assembled serving vector as a pandas dataframe
             feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2},
+                serving_keys = {"pk1": 1, "pk2": 2},
                 return_type = "pandas"
             )
 
             # get assembled serving vector as a numpy array
             feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2},
+                serving_keys = {"pk1": 1, "pk2": 2},
                 return_type = "numpy"
             )
             ```
@@ -807,7 +932,7 @@ class FeatureView:
 
             # get a feature vector
             feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2},
+                serving_keys = {"pk1": 1, "pk2": 2},
                 passed_features = { "app_feature" : app_attr }
             )
             ```
@@ -824,7 +949,7 @@ class FeatureView:
 
             # get a feature vector
             feature_vector = feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2},
+                serving_keys = {"pk1": 1, "pk2": 2},
                 passed_features = { "app_feature" : app_attr },
                 logging_data = True
             )
@@ -837,10 +962,10 @@ class FeatureView:
             ```
 
         Parameters:
-            entry:
+            serving_keys:
                 Dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
-                If the required primary keys is not provided, it will look for name of the primary key in feature group in the entry.
+                If the required primary keys is not provided, it will look for name of the primary key in feature group in the serving keys.
             passed_features:
                 Dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
@@ -876,26 +1001,38 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            timeout: Seconds to wait for the online read, as a deadline for the whole of it.
+                It covers waiting for a free connection, sending the request and receiving the answer, and raises `TimeoutError` when it runs out.
+                Must be a finite number of seconds greater than zero.
+                Unset keeps what a caller that names no timeout got before: the REST client's configured `timeout` bounds each connection attempt and each socket read rather than the whole call, and a SQL read has no deadline.
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
 
         Returns:
             Returned `list`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (the exact type dependends on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            hopsworks.client.exceptions.FeatureStoreException: When a serving key cannot be found in one or more of the feature groups used by this feature view.
         """
+        serving_keys = self._resolve_serving_keys(
+            serving_keys, entry, "get_feature_vector"
+        )
+
         self._assert_no_offline_only_partition_features()
 
         if not self._vector_server._serving_initialized:
-            self.init_serving(external=external)
+            # force_rest_client is forwarded here as the batch method already does it: without it, a first single call asking for REST used to initialise SQL and then pick REST anyway.
+            self.init_serving(external=external, init_rest_client=force_rest_client)
 
         if n_processes is None:
             n_processes = self._transformation_n_processes
 
         vector_db_features = None
         if self._vector_db_client:
-            vector_db_features = self._get_vector_db_result(entry)
+            vector_db_features = self._get_vector_db_result(serving_keys)
         return self._vector_server._get_feature_vector(
-            entry=entry,
+            entry=serving_keys,
             return_type=return_type,
             passed_features=passed_features,
             allow_missing=allow_missing,
@@ -908,12 +1045,89 @@ class FeatureView:
             transformation_context=transformation_context,
             logging_data=logging_data,
             n_processes=n_processes,
+            timeout=timeout,
+        )
+
+    @public
+    async def get_feature_vector_async(self, **kwargs: Any) -> Any:
+        """Awaitable [`get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector].
+
+        The lookup is a round trip to the online store, and on a caller that runs an
+        event loop, a serving deployment above all, the synchronous call blocks that loop
+        for the whole trip and no other request is served meanwhile. Almost all of that
+        round trip is waiting rather than computing, so awaiting it lets the loop serve
+        other requests in the meantime.
+
+        The statements are awaited on the caller's own event loop, against a connection
+        pool belonging to that loop, so several lookups are in flight at once. Nothing is
+        handed to a worker thread and nothing queues on the client's task thread, which
+        serves one lookup at a time however many callers there are.
+
+        A REST client deployment has no awaitable path, so its blocking call runs on a worker thread and does not hold up the event loop.
+
+        Takes the arguments of [`get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector].
+
+        Returns:
+            What the synchronous method returns for the same arguments.
+
+        Example:
+            ```python
+            vector = await feature_view.get_feature_vector_async(entry={"id": 1})
+            ```
+        """
+        entry = kwargs.pop("entry", None)
+        external = kwargs.pop("external", None)
+        force_rest_client = kwargs.get("force_rest_client", False)
+        if not self._vector_server._serving_initialized:
+            self.init_serving(external=external, init_rest_client=force_rest_client)
+        if kwargs.get("n_processes") is None:
+            kwargs["n_processes"] = self._transformation_n_processes
+        vector_db_features = None
+        if self._vector_db_client:
+            vector_db_features = self._get_vector_db_result(entry)
+        return await self._vector_server._get_feature_vector_async(
+            entry=entry, vector_db_features=vector_db_features, **kwargs
+        )
+
+    @public
+    async def get_feature_vectors_async(self, **kwargs: Any) -> Any:
+        """Awaitable [`get_feature_vectors`][hsfs.feature_view.FeatureView.get_feature_vectors].
+
+        The online lookup is awaited on the caller's own event loop, against a connection
+        pool belonging to that loop, so several lookups are in flight at once. The
+        synchronous method hands the work to a task thread that serves one lookup at a
+        time however many callers there are, which is the ceiling this method removes.
+
+        A REST client deployment has no awaitable path, so its blocking call runs on a worker thread and does not hold up the event loop.
+
+        Takes the arguments of [`get_feature_vectors`][hsfs.feature_view.FeatureView.get_feature_vectors].
+
+        Returns:
+            What the synchronous method returns for the same arguments.
+
+        Example:
+            ```python
+            vectors = await feature_view.get_feature_vectors_async(entry=[{"id": 1}, {"id": 2}])
+            ```
+        """
+        entry = kwargs.pop("entry", None)
+        external = kwargs.pop("external", None)
+        force_rest_client = kwargs.get("force_rest_client", False)
+        if not self._vector_server._serving_initialized:
+            self.init_serving(external=external, init_rest_client=force_rest_client)
+        if kwargs.get("n_processes") is None:
+            kwargs["n_processes"] = self._transformation_n_processes
+        vector_db_features = []
+        if self._vector_db_client:
+            vector_db_features = self._get_vector_db_results(entry)
+        return await self._vector_server._get_feature_vectors_async(
+            entries=entry, vector_db_features=vector_db_features, **kwargs
         )
 
     @public
     def get_feature_vectors(
         self,
-        entry: list[dict[str, Any]] | None = None,
+        serving_keys: list[dict[str, Any]] | None = None,
         passed_features: list[dict[str, Any]] | None = None,
         external: bool | None = None,
         return_type: Literal["list", "polars", "numpy", "pandas"] = "list",
@@ -926,6 +1140,8 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        timeout: float | None = None,
+        entry: list[dict[str, Any]] | None = None,
     ) -> (
         list[list[Any]]
         | pd.DataFrame
@@ -941,9 +1157,13 @@ class FeatureView:
         2. Additional configurations of online serving engine.
 
         Warning: Missing primary key entries
-            If any of the provided primary key elements in `entry` can't be found in any of the feature groups, no feature vector for that primary key value will be returned.
+            If any of the rows in `serving_keys` can't be found in any of the feature groups, no feature vector for that primary key value will be returned.
             If it can be found in at least one but not all feature groups used by this feature view the call to this method will raise an exception.
             Alternatively, setting `allow_missing` to `True` returns feature vectors with missing values.
+
+        Note: Supplied serving keys
+            A serving key passed in the entry is returned in its slot of the feature vector when it is a feature of the vector, also when `allow_missing` is `True` and no row matches it.
+            A key with a `None` value is treated as not provided.
 
         Example:
             ```python
@@ -955,7 +1175,7 @@ class FeatureView:
 
             # get assembled serving vectors as a python list of lists
             feature_view.get_feature_vectors(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -964,7 +1184,7 @@ class FeatureView:
 
             # get assembled serving vectors as a pandas dataframe
             feature_view.get_feature_vectors(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -974,7 +1194,7 @@ class FeatureView:
 
             # get assembled serving vectors as a numpy array
             feature_view.get_feature_vectors(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -995,7 +1215,7 @@ class FeatureView:
 
             # get a feature vectors
             feature_vectors = feature_view.get_feature_vectors(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -1011,10 +1231,10 @@ class FeatureView:
             ```
 
         Parameters:
-            entry:
+            serving_keys:
                 A list of dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
-                If the required primary keys is not provided, it will look for name of the primary key in feature group in the entry.
+                If the required primary keys is not provided, it will look for name of the primary key in feature group in the serving keys.
             passed_features:
                 A list of dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
@@ -1048,13 +1268,24 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            timeout: Seconds to wait for the online read, as a deadline for the whole of it.
+                It covers waiting for a free connection, sending the request and receiving the answer, and raises `TimeoutError` when it runs out.
+                Must be a finite number of seconds greater than zero.
+                Unset keeps what a caller that names no timeout got before: the REST client's configured `timeout` bounds each connection attempt and each socket read rather than the whole call, and a SQL read has no deadline.
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
 
         Returns:
             Returned `list[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (depending on the `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            hopsworks.client.exceptions.FeatureStoreException: When a serving key cannot be found in one or more of the feature groups used by this feature view.
         """
+        serving_keys = self._resolve_serving_keys(
+            serving_keys, entry, "get_feature_vectors"
+        )
+
         self._assert_no_offline_only_partition_features()
 
         if not self._vector_server._serving_initialized:
@@ -1065,11 +1296,10 @@ class FeatureView:
 
         vector_db_features = []
         if self._vector_db_client:
-            for _entry in entry:
-                vector_db_features.append(self._get_vector_db_result(_entry))
+            vector_db_features = self._get_vector_db_results(serving_keys)
 
         return self._vector_server._get_feature_vectors(
-            entries=entry,
+            entries=serving_keys,
             return_type=return_type,
             passed_features=passed_features,
             allow_missing=allow_missing,
@@ -1082,16 +1312,18 @@ class FeatureView:
             transformation_context=transformation_context,
             logging_data=logging_data,
             n_processes=n_processes,
+            timeout=timeout,
         )
 
     @public
     def get_inference_helper(
         self,
-        entry: dict[str, Any],
+        serving_keys: dict[str, Any] | None = None,
         external: bool | None = None,
         return_type: Literal["pandas", "dict", "polars"] = "pandas",
         force_rest_client: bool = False,
         force_sql_client: bool = False,
+        entry: dict[str, Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame | dict[str, Any]:
         """Returns assembled inference helper column vectors from online feature store.
 
@@ -1105,12 +1337,12 @@ class FeatureView:
 
             # get assembled inference helper column vector
             feature_view.get_inference_helper(
-                entry = {"pk1": 1, "pk2": 2}
+                serving_keys = {"pk1": 1, "pk2": 2}
             )
             ```
 
         Parameters:
-            entry:
+            serving_keys:
                 Dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
             external:
@@ -1121,31 +1353,40 @@ class FeatureView:
             force_rest_client: If set to `True`, reads from online feature store using the REST client if initialised.
             force_sql_client: If set to `True`, reads from online feature store using the SQL client if initialised.
 
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
+
         Returns:
             The dataframe.
 
         Raises:
-            Exception: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            Exception: When a serving key cannot be found in one or more of the feature groups used by this feature view.
         """
+        serving_keys = self._resolve_serving_keys(
+            serving_keys, entry, "get_inference_helper"
+        )
+
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
         return self._vector_server._get_inference_helper(
-            entry, return_type, force_rest_client, force_sql_client
+            serving_keys, return_type, force_rest_client, force_sql_client
         )
 
     @public
     def get_inference_helpers(
         self,
-        entry: list[dict[str, Any]],
+        serving_keys: list[dict[str, Any]] | None = None,
         external: bool | None = None,
         return_type: Literal["pandas", "dict", "polars"] = "pandas",
         force_sql_client: bool = False,
         force_rest_client: bool = False,
+        entry: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Returns assembled inference helper column vectors in batches from online feature store.
 
         Warning: Missing primary key entries
-            If any of the provided primary key elements in `entry` can't be found in any of the feature groups, no inference helper column vectors for that primary key value will be returned.
+            If any of the rows in `serving_keys` can't be found in any of the feature groups, no inference helper column vectors for that primary key value will be returned.
             If it can be found in at least one but not all feature groups used by this feature view the call to this method will raise an exception.
 
         Example:
@@ -1158,7 +1399,7 @@ class FeatureView:
 
             # get assembled inference helper column vectors
             feature_view.get_inference_helpers(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -1167,7 +1408,7 @@ class FeatureView:
             ```
 
         Parameters:
-            entry:
+            serving_keys:
                 A list of dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
             external:
@@ -1178,16 +1419,24 @@ class FeatureView:
             force_sql_client: If set to `True`, reads from online feature store using the SQL client if initialised.
             force_rest_client: If set to `True`, reads from online feature store using the REST client if initialised.
 
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
+
         Returns:
             Returned `pd.DataFrame`, `polars.DataFrame` or `list[dict]` (depending on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
 
         Raises:
-            Exception: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            Exception: When a serving key cannot be found in one or more of the feature groups used by this feature view.
         """
+        serving_keys = self._resolve_serving_keys(
+            serving_keys, entry, "get_inference_helpers"
+        )
+
         if self._vector_server is None:
             self.init_serving(external=external, init_rest_client=force_rest_client)
         return self._vector_server._get_inference_helpers(
-            entry, return_type, force_rest_client, force_sql_client
+            serving_keys, return_type, force_rest_client, force_sql_client
         )
 
     def _get_vector_db_result(
@@ -1196,25 +1445,51 @@ class FeatureView:
     ) -> dict[str, Any] | None:
         if not self._vector_db_client:
             return {}
-        result_vectors = {}
-        for join_index, fg in self._vector_db_client.embedding_fg_by_join_index.items():
-            complete, fg_entry = self._vector_db_client._filter_entry_by_join_index(
-                entry, join_index
-            )
-            if not complete:
-                # Not retrieving from vector db if entry is not completed
-                continue
-            vector_db_features = self._vector_db_client._read(
-                fg.id,
-                fg.columns,
-                keys=fg_entry,
-                index_name=fg.embedding_index.index_name,
-            )
+        return self._get_vector_db_results([entry])[0]
 
-            # if result is not empty
-            if vector_db_features:
-                vector_db_features = vector_db_features[0]  # get the first result
-                result_vectors.update(vector_db_features)
+    def _get_vector_db_results(
+        self,
+        entries: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """The embedding features of every entry, one round trip per embedding group.
+
+        A batch of N entries joined to J embedding groups used to cost N times J
+        sequential reads before the online store was touched at all. The entries
+        an embedding group can answer are collected and read together, and the
+        results are put back by the position of the entry they belong to, so the
+        matching, the join prefix and the treatment of an entry the group cannot
+        answer are what they were.
+        """
+        if not self._vector_db_client:
+            return [{} for _ in entries]
+        result_vectors: list[dict[str, Any]] = [{} for _ in entries]
+        for join_index, fg in self._vector_db_client.embedding_fg_by_join_index.items():
+            positions = []
+            key_sets = []
+            for position, entry in enumerate(entries):
+                complete, fg_entry = self._vector_db_client._filter_entry_by_join_index(
+                    entry, join_index
+                )
+                if not complete:
+                    # Not retrieving from vector db if entry is not completed
+                    continue
+                positions.append(position)
+                key_sets.append(fg_entry)
+            if not key_sets:
+                continue
+            for position, found in zip(
+                positions,
+                self._vector_db_client._read_many(
+                    fg.id,
+                    fg.columns,
+                    key_sets,
+                    index_name=fg.embedding_index.index_name,
+                ),
+                strict=True,
+            ):
+                # if result is not empty
+                if found:
+                    result_vectors[position].update(found[0])
         return result_vectors
 
     @public
@@ -1324,9 +1599,9 @@ class FeatureView:
         start_time: str | int | datetime | date | None = None,
         end_time: str | int | datetime | date | None = None,
         read_options: dict[str, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
-        primary_key: bool = False,
-        event_time: bool = False,
+        spine: DeprecatedSpineTypes | None = None,
+        primary_key: bool | None = None,
+        event_time: bool | None = None,
         inference_helper_columns: bool = False,
         dataframe_type: Literal[
             "default", "spark", "pandas", "polars", "numpy", "python"
@@ -1337,6 +1612,7 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes | HopsworksLoggingMetadataType:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1388,6 +1664,22 @@ class FeatureView:
             feature_view.log(df, predictions=predictions)
             ```
 
+        Example: Batch data for future prediction times
+            ```python
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # score three streets every day at 08:00 for the next 7 days
+            entities = pd.DataFrame([
+                {"country": "SE", "city": "Stockholm", "street": "Sveavagen"},
+                {"country": "SE", "city": "Stockholm", "street": "Odengatan"},
+            ])
+            schedule = PredictionTimes.every("daily", offset="08:00", count=7)
+            df = feature_view.get_batch_data(
+                spine_df=schedule.cross(entities, event_time="date"),
+            )
+            ```
+
         Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and Spark dataframes.
 
@@ -1407,9 +1699,11 @@ class FeatureView:
                   For example: `{"arrow_flight_config": {"timeout": 900}}`.
 
             spine:
+                Deprecated, use `spine_df` instead.
                 Spine dataframe with primary key, event time and label column to use for point in time join when fetching features.
                 Defaults to `None` and is only required when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the feature join, however, the same features as in the original feature group that is being replaced need to be available in the spine group.
+                `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view having to be created with a spine group.
             primary_key:
                 Whether to include primary key features or not.
                 Defaults to `False`, no primary key features.
@@ -1448,6 +1742,14 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_batch_scoring` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            spine_df:
+                The entities to score, one row each, carrying the feature view's required serving keys and any features of the root feature group you want to supply yourself rather than look up.
+                Every feature group whose keys are absent is skipped and its features come back as NULL, with a warning.
+                Supplying no recognized column at all is an error.
+                Must carry the prediction time for each row under the root feature group's event time column; [`PredictionTimes.cross`][hsfs.constructor.prediction_times.PredictionTimes.cross] builds that frame from a set of entities and a schedule.
+                Passing this switches the read to ASOF batch inference: the query is anchored on these rows instead of on the root feature group, so prediction times in the future work.
+                Rows come back in the order given, so predictions zip back positionally.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             DataFrame: The spark dataframe containing the feature data.
@@ -1457,6 +1759,8 @@ class FeatureView:
             numpy.ndarray: A two-dimensional Numpy array.
             list: A two-dimensional Python list.
         """
+        self._reject_unknown_kwargs(kwargs, "get_batch_data")
+        self._warn_spine_deprecated(spine, "get_batch_data")
         if not self._batch_scoring_server._serving_initialized:
             self.init_batch_scoring()
 
@@ -1471,7 +1775,7 @@ class FeatureView:
             self._batch_scoring_server._model_dependent_transformation_functions_execution_graph,
             read_options,
             spine,
-            kwargs.get("primary_keys") or primary_key,
+            kwargs.get("primary_keys", primary_key),
             event_time,
             inference_helper_columns,
             dataframe_type,
@@ -1481,6 +1785,7 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
             n_processes=n_processes,
+            spine_df=spine_df,
         )
 
     @public
@@ -1513,7 +1818,7 @@ class FeatureView:
         return self._feature_view_engine._add_tag(self, name, value)
 
     @public
-    def get_tag(self, name: str) -> tag.Tag | None:
+    def get_tag(self, name: str) -> Any | None:
         """Get the tags of a feature view.
 
         Example:
@@ -1540,7 +1845,7 @@ class FeatureView:
         return self._feature_view_engine._get_tag(self, name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, Any]:
         """Returns all tags attached to a feature view.
 
         Example:
@@ -1556,12 +1861,128 @@ class FeatureView:
             ```
 
         Returns:
-            The dictionary of tags.
+            The dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_view_engine._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`FeatureView.get_tag`][hsfs.feature_view.FeatureView.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Example:
+            ```python
+            fv_tag = feature_view.get_tag_metadata("example_tag")
+            print(fv_tag.value, fv_tag.created_on)
+            ```
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_tag_metadata(self, name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Returns all tags attached to a feature view, with their metadata.
+
+        Unlike [`FeatureView.get_tags`][hsfs.feature_view.FeatureView.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_tags_metadata(self)
+
+    @public
+    def get_keywords(self) -> list[str]:
+        """Retrieve all keywords attached to a feature view.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_keywords(self)
+
+    @public
+    def get_keywords_metadata(self) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a feature view, with the time each was attached.
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_keywords_metadata(self)
+
+    @public
+    def set_keywords(self, keywords: list[str]) -> list[str]:
+        """Replace the whole keyword set of a feature view.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._set_keywords(self, keywords)
+
+    @public
+    def add_keywords(self, keywords: str | list[str]) -> list[str]:
+        """Add keywords to a feature view, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent `add_keywords` or [`FeatureView.set_keywords`][hsfs.feature_view.FeatureView.set_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`FeatureView.set_keywords`][hsfs.feature_view.FeatureView.set_keywords].
+
+        Parameters:
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._feature_view_engine._add_keywords(self, keywords)
+
+    @public
+    def delete_keyword(self, keyword: str) -> list[str]:
+        """Remove a single keyword from a feature view.
+
+        Parameters:
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._delete_keyword(self, keyword)
 
     @public
     def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
@@ -1702,12 +2123,12 @@ class FeatureView:
         seed: int | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
-        partition_precision: str = "day",
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1840,8 +2261,14 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset.
             coalesce:
-                If true the training dataset data will be coalesced into a single partition before writing.
-                The resulting training dataset will be a single file per split.
+                Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
+                will be a single file per split.
             seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
             statistics_config:
                 A configuration object, or a dictionary with keys:
@@ -1867,9 +2294,11 @@ class FeatureView:
                   By default it waits.
 
             spine:
+                Deprecated, use `spine_df` instead.
                 Spine dataframe with primary key, event time and label column to use for point in time join when fetching features.
                 Defaults to `None` and is only required when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the feature join, however, the same features as in the original feature group that is being replaced need to be available in the spine group.
+                `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view having to be created with a spine group.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
@@ -1880,9 +2309,20 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
-            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
-                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
-                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             td_version: training dataset version
@@ -1891,6 +2331,8 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        self._reject_unknown_kwargs(kwargs, "create_training_data")
+        self._warn_spine_deprecated(spine, "create_training_data")
         if not data_source:
             data_source = ds.DataSource(
                 storage_connector=storage_connector, path=location
@@ -1912,7 +2354,6 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
-            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -1920,6 +2361,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            spine_df=spine_df,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -1950,12 +2392,12 @@ class FeatureView:
         seed: int | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
-        partition_precision: str = "day",
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
@@ -2138,8 +2580,13 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset,
                 defaults to `"parquet"`-format.
-            coalesce: If true the training dataset data will be coalesced into
-                a single partition before writing. The resulting training dataset
+            coalesce: Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
                 will be a single file per split. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
@@ -2163,12 +2610,14 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-            spine: Spine dataframe with primary key, event time and
+            spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+                `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view
+                having to be created with a spine group.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
@@ -2179,9 +2628,20 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
-            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
-                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
-                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             td_version: The version of the created training dataset.
@@ -2190,6 +2650,8 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
+        self._reject_unknown_kwargs(kwargs, "create_train_test_split")
+        self._warn_spine_deprecated(spine, "create_train_test_split")
         self._validate_train_test_split(
             test_size=test_size, train_end=train_end, test_start=test_start
         )
@@ -2218,7 +2680,6 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
-            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -2226,6 +2687,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            spine_df=spine_df,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -2258,12 +2720,12 @@ class FeatureView:
         seed: int | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
-        partition_precision: str = "day",
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2431,8 +2893,13 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset,
                 defaults to `"parquet"`-format.
-            coalesce: If true the training dataset data will be coalesced into
-                a single partition before writing. The resulting training dataset
+            coalesce: Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
                 will be a single file per split. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
@@ -2456,12 +2923,14 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-            spine: Spine dataframe with primary key, event time and
+            spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+                `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view
+                having to be created with a spine group.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
@@ -2472,9 +2941,20 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
-            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
-                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
-                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             td_version: The training dataset version.
@@ -2483,6 +2963,8 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
+        self._reject_unknown_kwargs(kwargs, "create_train_validation_test_split")
+        self._warn_spine_deprecated(spine, "create_train_validation_test_split")
         self._validate_train_validation_test_split(
             validation_size=validation_size,
             test_size=test_size,
@@ -2519,7 +3001,6 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
-            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -2527,6 +3008,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            spine_df=spine_df,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -2546,7 +3028,8 @@ class FeatureView:
         training_dataset_version: int,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
     ) -> job.Job:
         """Recreate a training dataset.
@@ -2566,6 +3049,14 @@ class FeatureView:
         Info:
             If a materialised training data has deleted. Use `recreate_training_dataset()` to
             recreate the training data.
+
+        Warning: A training dataset built from `spine_df` needs the frame again
+            The query is recorded with the training dataset, and so is the fact that a
+            `spine_df` anchored it; the dataframe itself is not. Recreating such a version
+            means passing the same `spine_df` again, and calling this without it is refused
+            rather than answered from the feature view's own rows under the same version.
+            The reverse is refused too: a version built without a `spine_df` is not recreated
+            on one.
 
         Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
@@ -2593,12 +3084,19 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-            spine: Spine dataframe with primary key, event time and
+            spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+                `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view
+                having to be created with a spine group.
+            spine_df:
+                The rows to compute features for, in place of the root feature group: the feature view's required
+                serving keys, a prediction time per row under the root feature group's event time column, and any
+                label or other column the view does not define, which is carried through untouched.
+                Pass the same frame the training dataset was originally built from.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
@@ -2609,169 +3107,19 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
+        self._warn_spine_deprecated(spine, "recreate_training_dataset")
         td, td_job = self._feature_view_engine._recreate_training_dataset(
             self,
             training_dataset_version=training_dataset_version,
             statistics_config=statistics_config,
             user_write_options=write_options or {},
             spine=spine,
+            spine_df=spine_df,
             transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
 
         return td_job
-
-    @public
-    @usage._method_logger
-    def insert_training_data(
-        self,
-        training_dataset_version: int,
-        start_time: str | int | datetime | date | None = "",
-        end_time: str | int | datetime | date | None = "",
-        overwrite: bool = False,
-        write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
-        transformation_context: dict[str, Any] | None = None,
-        compute_statistics: bool = False,
-    ) -> job.Job:
-        """Append a new batch of data to an existing training dataset version.
-
-        Materializes the feature view query over the `start_time`/`end_time` window and, with `overwrite=False` (the default), writes the result as a new increment of the training dataset: the batch is stored in its own Hive partition under the existing location, leaving data already materialized untouched.
-        This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
-
-        The materialized data is stored in Hive partitions keyed by each row's UTC event date (a human-readable `YYYYMMDD` value), truncated to the training dataset's partition precision — `day` by default, or `month`/`year` for coarser layouts with fewer partitions, fixed when the version was created (see the `partition_precision` parameter of [`create_training_data`][hsfs.feature_view.FeatureView.create_training_data]).
-        This makes the dataset time-addressable: [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] returns everything by default, or only a time range via its `start_time`/`end_time` parameters (e.g. a sliding training window over a growing time-series dataset).
-        Because rows land in the day partitions they belong to, batches may arrive in any order: backfills and late-arriving events are supported.
-        Re-appending a batch that was already materialized adds its rows again — appends are not deduplicated, as with feature group inserts.
-        The partition column itself is an internal storage detail and never surfaces as a feature.
-        If the feature view's query has no event-time column to derive the partitions from (the left feature group defines none), each increment is keyed by a counter instead — the dataset stays appendable but cannot be read by time range.
-
-        With `overwrite=True` the entire training dataset version is rewritten instead, equivalent to [`recreate_training_dataset`][hsfs.feature_view.FeatureView.recreate_training_dataset] for the given window.
-
-        Statistics are not recomputed on append by default, since that reads the whole (potentially multi-terabyte) dataset back on every append.
-        Pass `compute_statistics=True` to refresh the descriptive statistics over all increments after the batch is written, or call [`compute_training_dataset_statistics`][hsfs.feature_view.FeatureView.compute_training_dataset_statistics] explicitly when needed, e.g. periodically or right before retraining.
-        Model-dependent transformation functions transform each appended batch with the statistics fit when the version was created, so all increments and serving stay consistent with each other; `compute_statistics=True` refreshes only the descriptive statistics and does not refit them — to refit those statistics, rebuild the version with `overwrite=True` or create a new version.
-
-        Randomly split training datasets are appended per split: each split receives a share of the batch (e.g. 80/10/10), which is sound over many appends.
-        Appending to a time-series-split training dataset is not supported and raises an error.
-        For time-series data, grow an unsplit training dataset instead and derive the train and test sets at read time, as shown below.
-
-        Example:
-            ```python
-            # get feature view instance
-            feature_view = fs.get_feature_view(...)
-
-            # create an unsplit training dataset once, then grow it with a
-            # daily batch (rows are partitioned by their event-time day)
-            job = feature_view.insert_training_data(
-                training_dataset_version=1,
-                start_time="2026-07-01 00:00:00",
-                end_time="2026-07-01 23:59:59",
-            )
-
-            # at (re)training time, derive sliding train and test sets by
-            # time range instead of materialized splits: train on everything
-            # up to 30 days ago, test on the most recent 30 days
-            X_train, y_train = feature_view.get_training_data(
-                training_dataset_version=1,
-                end_time="2026-06-01",
-            )
-            X_test, y_test = feature_view.get_training_data(
-                training_dataset_version=1,
-                start_time="2026-06-02",
-            )
-            ```
-
-        Warning: Engine Support
-            Appending (`overwrite=False`) is only supported for the `parquet` data format.
-            On the `python` engine the append is offloaded to the Hopsworks Feature Query Service (FlyingDuck) or a backend Spark job; appending requires Hopsworks 5.1 or later, as older versions overwrite instead of appending.
-
-        Parameters:
-            training_dataset_version: Version of the training dataset to append to.
-            start_time: Start event time for the batch query, inclusive.
-                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
-            end_time: End event time for the batch query, inclusive.
-                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
-            overwrite: Whether to overwrite the entire training dataset version instead of appending a new increment.
-            write_options: Additional options as key/value pairs to pass to the execution engine.
-                Defaults to `{}`.
-                For spark engine: Dictionary of read options for Spark.
-            spine: Spine dataframe with primary key, event time and label column to use for point in time join when fetching features.
-                Defaults to `None` and is only required when the feature view was created with a spine group in the feature query.
-            transformation_context:
-                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
-                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
-            compute_statistics: Whether to recompute the descriptive statistics over all increments after the batch is written, at the cost of reading the whole dataset back.
-                Only applies when appending; an overwrite recomputes statistics as part of the materialization itself.
-                When appending through a materialization job, only use it together with the default `wait_for_job=True`, so the statistics include the new batch.
-
-        Returns:
-            The Hopsworks Job that was launched to materialize the batch.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-            hopsworks.client.exceptions.FeatureStoreException: If the training dataset has a non-`parquet` data format, or if appending to a time-series-split training dataset.
-        """
-        td, td_job = self._feature_view_engine._insert_training_data(
-            self,
-            training_dataset_version=training_dataset_version,
-            start_time=start_time,
-            end_time=end_time,
-            user_write_options=write_options or {},
-            overwrite=overwrite,
-            spine=spine,
-            transformation_context=transformation_context,
-            compute_statistics=compute_statistics,
-        )
-        self.update_last_accessed_training_dataset(td.version)
-
-        return td_job
-
-    @public
-    @usage._method_logger
-    def compute_training_dataset_statistics(
-        self, training_dataset_version: int
-    ) -> Statistics:
-        """Recompute the descriptive statistics of a materialized training dataset version.
-
-        Reads the materialized data back — all increments of a training dataset grown with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] — computes the descriptive statistics on it, and saves them as the statistics of this version.
-        Appends do not recompute statistics automatically (that would read the whole, potentially multi-terabyte, dataset back on every append), so call this after growing a training dataset when fresh statistics are needed, e.g. for data exploration or as a drift baseline.
-
-        The statistics used by model-dependent transformation functions are not refit by this method.
-        They are deliberately pinned to the ones computed when the version was created: the materialized data (including every appended increment) was transformed with them, so refitting them would make serving and future appends inconsistent with the data already written.
-        To refit the transformation statistics, rebuild the version with `insert_training_data(..., overwrite=True)` or create a new training dataset version.
-
-        Example:
-            ```python
-            # get feature view instance
-            feature_view = fs.get_feature_view(...)
-
-            # grow the training dataset with a new batch
-            feature_view.insert_training_data(
-                training_dataset_version=1,
-                start_time="2026-07-01 00:00:00",
-                end_time="2026-07-01 23:59:59",
-            )
-
-            # refresh the descriptive statistics over all increments
-            statistics = feature_view.compute_training_dataset_statistics(
-                training_dataset_version=1
-            )
-            ```
-
-        Parameters:
-            training_dataset_version: Version of the training dataset to recompute the statistics for.
-
-        Returns:
-            The recomputed statistics.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-            hopsworks.client.exceptions.FeatureStoreException: If the training dataset is in-memory, or if statistics are disabled for it.
-        """
-        return self._feature_view_engine._recompute_training_dataset_statistics(
-            self, training_dataset_version
-        )
 
     @public
     @usage._method_logger
@@ -2783,7 +3131,7 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         read_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
@@ -2792,6 +3140,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2872,12 +3221,14 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-            spine: Spine dataframe with primary key, event time and
+            spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+                `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view
+                having to be created with a spine group.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -2904,9 +3255,25 @@ class FeatureView:
                 Ignored by the Spark engine, which pushes transformations down to Spark.
             tags: Tags to attach to the training dataset for better discoverability.
 
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
+
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
         """
+        self._reject_unknown_kwargs(kwargs, "training_data")
+        self._warn_spine_deprecated(spine, "training_data")
         normalized_tags = tag.Tag._normalize(tags)
 
         td = training_dataset.TrainingDataset(
@@ -2930,6 +3297,7 @@ class FeatureView:
             read_options,
             training_dataset_obj=td,
             spine=spine,
+            spine_df=spine_df,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
@@ -2958,7 +3326,7 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         read_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
@@ -2967,6 +3335,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3059,12 +3428,14 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-            spine: Spine dataframe with primary key, event time and
+            spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+                `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view
+                having to be created with a spine group.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -3091,10 +3462,26 @@ class FeatureView:
                 Ignored by the Spark engine, which pushes transformations down to Spark.
             tags: Tags to attach to the training dataset for better discoverability.
 
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
+
         Returns:
             (X_train, X_test, y_train, y_test):
                 Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "train_test_split")
+        self._warn_spine_deprecated(spine, "train_test_split")
         self._validate_train_test_split(
             test_size=test_size, train_end=train_end, test_start=test_start
         )
@@ -3126,6 +3513,7 @@ class FeatureView:
             training_dataset_obj=td,
             splits=[TrainingDatasetSplit.TRAIN, TrainingDatasetSplit.TEST],
             spine=spine,
+            spine_df=spine_df,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
@@ -3170,7 +3558,7 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         read_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
@@ -3179,6 +3567,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3286,12 +3675,14 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-            spine: Spine dataframe with primary key, event time and
+            spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the
                 feature join, however, the same features as in the original feature group that is being replaced need to
                 be available in the spine group.
+                `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view
+                having to be created with a spine group.
             primary_key: whether to include primary key features or not.  Defaults to `False`, no primary key
                 features.
             event_time: whether to include event time feature or not.  Defaults to `False`, no event time feature.
@@ -3318,10 +3709,26 @@ class FeatureView:
                 Ignored by the Spark engine, which pushes transformations down to Spark.
             tags: Tags to attach to the training dataset for better discoverability.
 
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
+
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
                 Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "train_validation_test_split")
+        self._warn_spine_deprecated(spine, "train_validation_test_split")
         self._validate_train_validation_test_split(
             validation_size=validation_size,
             test_size=test_size,
@@ -3365,6 +3772,7 @@ class FeatureView:
                 TrainingDatasetSplit.TEST,
             ],
             spine=spine,
+            spine_df=spine_df,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
@@ -3413,18 +3821,13 @@ class FeatureView:
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
-        start_time: str | int | datetime | date | None = None,
-        end_time: str | int | datetime | date | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes | None,
     ]:
         """Get training data created by `feature_view.create_training_data` or `feature_view.training_data`.
-
-        For a training dataset grown incrementally with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data], `start_time`/`end_time` read only the rows whose event time falls inside the given range, instead of the whole dataset.
-        The materialized data is stored in Hive partitions keyed by each row's UTC event date, truncated to the dataset's partition precision (day by default, or month/year), so a time-range read prunes to the matching partitions and never scans the rest of the data — for example, one growing time-series training dataset can serve `[t0, t1]` as the training set and `(t1, t2]` as the test set with two calls.
-        The range selects whole partitions (both bounds inclusive, converted to UTC dates), so align the bounds with the dataset's partition precision; finer bounds do not filter rows within a partition.
 
         Example:
             ```python
@@ -3436,14 +3839,6 @@ class FeatureView:
 
             # get training data
             features_df, labels_df = feature_view.get_training_data(training_dataset_version=1)
-
-            # read only the increments of June 2026 from an incrementally
-            # grown time-series training dataset
-            features_df, labels_df = feature_view.get_training_data(
-                training_dataset_version=1,
-                start_time="2026-06-01",
-                end_time="2026-06-30 23:59:59",
-            )
             ```
 
         Warning: External Storage Support
@@ -3479,18 +3874,18 @@ class FeatureView:
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
-            start_time: Read only the rows whose event date is at or after this event time, inclusive (converted to a UTC date).
-                Requires a materialized training dataset partitioned by event time; data materialized without an event-time column is never matched.
-                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
-            end_time: Read only the rows whose event date is at or before this event time, inclusive (converted to a UTC date).
-                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+
+            spine_df:
+                The frame the version was built from, required when it was built from one.
+                A spine-anchored training dataset records that a `spine_df` anchored it but not
+                the rows themselves, so reading it back means passing the same frame again;
+                without it the read is refused rather than answered from the feature view's own
+                rows. Leave it unset for a version built from the feature view's rows.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels
-
-        Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If `start_time`/`end_time` is used with an in-memory training dataset or one that is not partitioned by event time.
         """
+        self._reject_unknown_kwargs(kwargs, "get_training_data")
         td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
@@ -3501,8 +3896,7 @@ class FeatureView:
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
             n_processes=n_processes,
-            event_start_time=start_time,
-            event_end_time=end_time,
+            spine_df=spine_df,
         )
         self.update_last_accessed_training_dataset(td.version)
         util._check_missing_mandatory_tags(td.missing_mandatory_tags)
@@ -3520,6 +3914,7 @@ class FeatureView:
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3569,10 +3964,18 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
 
+            spine_df:
+                The frame the version was built from, required when it was built from one.
+                A spine-anchored training dataset records that a `spine_df` anchored it but not
+                the rows themselves, so reading it back means passing the same frame again;
+                without it the read is refused rather than answered from the feature view's own
+                rows. Leave it unset for a version built from the feature view's rows.
+
         Returns:
             (X_train, X_test, y_train, y_test):
                 Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "get_train_test_split")
         td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
@@ -3584,6 +3987,7 @@ class FeatureView:
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
             n_processes=n_processes,
+            spine_df=spine_df,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -3600,6 +4004,7 @@ class FeatureView:
         dataframe_type: str = "default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3651,10 +4056,18 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
 
+            spine_df:
+                The frame the version was built from, required when it was built from one.
+                A spine-anchored training dataset records that a `spine_df` anchored it but not
+                the rows themselves, so reading it back means passing the same frame again;
+                without it the read is refused rather than answered from the feature view's own
+                rows. Leave it unset for a version built from the feature view's rows.
+
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
                 Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "get_train_validation_test_split")
         td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
@@ -3670,46 +4083,10 @@ class FeatureView:
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
             n_processes=n_processes,
+            spine_df=spine_df,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
-
-    @public
-    @usage._method_logger
-    def get_training_dataset(
-        self, training_dataset_version: int
-    ) -> training_dataset.TrainingDatasetBase:
-        """Returns the metadata of a single training dataset created with this feature view.
-
-        Example:
-            ```python
-            # get feature store instance
-            fs = ...
-
-            # get feature view instance
-            feature_view = fs.get_feature_view(...)
-
-            # get metadata of a specific training dataset version
-            td_meta = feature_view.get_training_dataset(training_dataset_version=1)
-            ```
-
-        Parameters:
-            training_dataset_version: Version of the training dataset to retrieve.
-
-        Returns:
-            Training dataset metadata.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
-        """
-        td = self._feature_view_engine._get_training_dataset(
-            self, training_dataset_version
-        )
-        util._check_missing_mandatory_tags(
-            td.missing_mandatory_tags,
-            message=f"Training dataset '{td.name}' version {td.version} has missing mandatory tags",
-        )
-        return td
 
     @public
     @usage._method_logger
@@ -3821,7 +4198,7 @@ class FeatureView:
     @usage._method_logger
     def get_training_dataset_tag(
         self, training_dataset_version: int, name: str
-    ) -> tag.Tag | None:
+    ) -> Any | None:
         """Get the tags of a training dataset.
 
         Example:
@@ -3857,7 +4234,7 @@ class FeatureView:
     @usage._method_logger
     def get_training_dataset_tags(
         self, training_dataset_version: int
-    ) -> dict[str, tag.Tag]:
+    ) -> dict[str, Any]:
         """Returns all tags attached to a training dataset.
 
         Example:
@@ -3878,13 +4255,169 @@ class FeatureView:
             training_dataset_version: The training dataset version to get tags for.
 
         Returns:
-            Dictionary of tags.
+            Dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine._get_tags(
             self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_tag_metadata(
+        self, training_dataset_version: int, name: str
+    ) -> tag.Tag | None:
+        """Get a training dataset tag with its metadata, including the time it was attached.
+
+        Unlike [`FeatureView.get_training_dataset_tag`][hsfs.feature_view.FeatureView.get_training_dataset_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_tag_metadata(
+            self, name, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_tags_metadata(
+        self, training_dataset_version: int
+    ) -> dict[str, tag.Tag]:
+        """Returns all tags attached to a training dataset, with their metadata.
+
+        Unlike [`FeatureView.get_training_dataset_tags`][hsfs.feature_view.FeatureView.get_training_dataset_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            training_dataset_version: The training dataset version to get tags for.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_tags_metadata(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_keywords(self, training_dataset_version: int) -> list[str]:
+        """Retrieve all keywords attached to a training dataset.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Parameters:
+            training_dataset_version: training dataset version
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_keywords(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_keywords_metadata(
+        self, training_dataset_version: int
+    ) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a training dataset, with the time each was attached.
+
+        Parameters:
+            training_dataset_version: training dataset version
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_keywords_metadata(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def set_training_dataset_keywords(
+        self, training_dataset_version: int, keywords: list[str]
+    ) -> list[str]:
+        """Replace the whole keyword set of a training dataset.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._set_keywords(
+            self, keywords, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def add_training_dataset_keywords(
+        self, training_dataset_version: int, keywords: str | list[str]
+    ) -> list[str]:
+        """Add keywords to a training dataset, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent add or [`FeatureView.set_training_dataset_keywords`][hsfs.feature_view.FeatureView.set_training_dataset_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`FeatureView.set_training_dataset_keywords`][hsfs.feature_view.FeatureView.set_training_dataset_keywords].
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._feature_view_engine._add_keywords(
+            self, keywords, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def delete_training_dataset_keyword(
+        self, training_dataset_version: int, keyword: str
+    ) -> list[str]:
+        """Remove a single keyword from a training dataset.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._delete_keyword(
+            self, keyword, training_dataset_version=training_dataset_version
         )
 
     @public
@@ -4255,6 +4788,7 @@ class FeatureView:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        event_time: str | bool | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Create a job to compute statistics on snapshot of feature data on a schedule.
 
@@ -4284,12 +4818,16 @@ class FeatureView:
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
-            cron_expression: Cron expression to use to schedule the job. The cron expression
-                must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
+            cron_expression: Cron expression to use to schedule the job.
+                The cron expression must be in UTC and follow the Quartz specification.
+                The default value means "every day at 12pm UTC".
+            event_time: The feature the detection window is sliced by.
+                When `None`, uses the left feature group's own event-time feature if one is defined, otherwise commit time.
+                Pass a feature name to slice by a different feature instead; it must exist on this feature view, and may come from a joined feature group, with an offline type of TIMESTAMP, DATE or BIGINT.
+                Pass `False` to force commit-time windows even when the left feature group declares an event-time feature.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks, or if event_time names a feature that does not exist or has an unsupported type.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
@@ -4309,6 +4847,14 @@ class FeatureView:
         elif not isinstance(feature_names, list):
             feature_names = [feature_names]
 
+        resolved_event_time = (
+            self._feature_monitoring_config_engine._resolve_event_time(
+                event_time=event_time,
+                default_event_time=self._root_feature_group_event_time_column_name,
+                valid_features=self._event_time_valid_features(valid_features),
+            )
+        )
+
         return self._feature_monitoring_config_engine._build_default_scheduled_statistics_config(
             name=name,
             feature_names=feature_names,
@@ -4318,6 +4864,7 @@ class FeatureView:
             cron_expression=cron_expression,
             end_date_time=end_date_time,
             valid_features=valid_features,
+            event_time=resolved_event_time,
         )
 
     @public
@@ -4328,6 +4875,7 @@ class FeatureView:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        event_time: str | bool | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
 
@@ -4367,9 +4915,13 @@ class FeatureView:
             cron_expression: Cron expression to use to schedule the job.
                 The cron expression must be in UTC and follow the Quartz specification.
                 The default value means "every day at 12pm UTC".
+            event_time: The feature the detection and reference windows are sliced by.
+                When `None`, uses the left feature group's own event-time feature if one is defined, otherwise commit time.
+                Pass a feature name to slice by a different feature instead; it must exist on this feature view, and may come from a joined feature group, with an offline type of TIMESTAMP, DATE or BIGINT.
+                Pass `False` to force commit-time windows even when the left feature group declares an event-time feature.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks, or if event_time names a feature that does not exist or has an unsupported type.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
@@ -4381,6 +4933,13 @@ class FeatureView:
             )
 
         valid_features = {feat.name: feat.type for feat in self._features}
+        resolved_event_time = (
+            self._feature_monitoring_config_engine._resolve_event_time(
+                event_time=event_time,
+                default_event_time=self._root_feature_group_event_time_column_name,
+                valid_features=self._event_time_valid_features(valid_features),
+            )
+        )
         return self._feature_monitoring_config_engine._build_default_feature_monitoring_config(
             name=name,
             description=description,
@@ -4389,7 +4948,88 @@ class FeatureView:
             end_date_time=end_date_time,
             cron_expression=cron_expression,
             valid_features=valid_features,
+            event_time=resolved_event_time,
         )
+
+    @public
+    @usage._method_logger
+    def deploy(
+        self,
+        name: str | None = None,
+        description: str | None = None,
+        training_dataset_version: int | None = None,
+        passed_features: list[str] | None = None,
+        schema: Any = None,
+        script_file: str | None = None,
+        resources: Any = None,
+        scaling_configuration: Any = None,
+        environment: str | None = None,
+        env_vars: dict[str, str] | None = None,
+        tags: Any = None,
+        feature_logging: Any = None,
+    ) -> Any:
+        """Deploy this feature view as an online endpoint that returns transformed feature vectors.
+
+        The deployment accepts the same requests as a model deployment of this
+        view (serving keys, passed features, request parameters, see
+        `deployment.schema`) and answers with one transformed feature vector per
+        row under `predictions` plus the column names under `columns`. Requests
+        are logged when logging is enabled on the view, and feature monitoring
+        can be attached to the deployment's logs with
+        `deployment.create_feature_monitoring()`.
+
+        Example:
+            ```python
+            fv = fs.get_feature_view("transactions", version=1)
+            fv.get_training_data(1)  # pins the training dataset the transformations use
+
+            deployment = fv.deploy(passed_features=["amount"])
+            deployment.start()
+            deployment.predict(inputs=[{"cc_num": 4473593503484549, "amount": 12.5}])
+            ```
+
+        Parameters:
+            name: Deployment name; defaults to the view name and version without special characters.
+            description: Deployment description.
+            training_dataset_version: Training dataset whose statistics the model-dependent transformations use.
+                Defaults to the last training dataset accessed from this view in this session.
+            passed_features: Features of this view whose values clients send with each request.
+            schema: A refinement of the inferred deployment schema, keeping its fields but changing types or descriptions.
+            script_file: A script subclassing `hsml.default_predictor.DefaultPredict`; it must end with the `run_kserve_wrapper()` hand-over.
+            resources: Resources to be allocated for the predictor.
+            scaling_configuration: Scaling configuration for the predictor.
+            environment: The inference environment to use.
+            env_vars: Environment variables to set on the predictor.
+            tags: Tags to attach to the deployment when it is created.
+            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar, a [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig] or an equivalent dict.
+
+        Returns:
+            The deployment metadata object, created but not started.
+
+        Raises:
+            ValueError: If the view has statistics-dependent transformations and no training dataset version can be resolved, or a passed feature or schema does not match the view.
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        # Lazy import: hsml is a sibling SDK package and the rest of hsfs imports it
+        # the same way (see explicit_provenance.py).
+        from hsml.predictor import Predictor
+
+        predictor = Predictor.for_feature_view(
+            self,
+            name=name,
+            description=description,
+            training_dataset_version=training_dataset_version,
+            passed_features=passed_features,
+            schema=schema,
+            script_file=script_file,
+            resources=resources,
+            scaling_configuration=scaling_configuration,
+            environment=environment,
+            env_vars=env_vars,
+            tags=tags,
+            feature_logging=feature_logging,
+        )
+        return predictor.deploy()
 
     @public
     def create_model_monitoring(
@@ -4508,18 +5148,31 @@ class FeatureView:
             )
 
         logging_fg = self.feature_logging.get_feature_group()
+        # Model monitoring always slices by the logging FG's log_time
+        # column — the basis is not a user choice here, unlike create_feature_monitoring.
         config = logging_fg.create_feature_monitoring(
             name=name,
             description=description,
             start_date_time=start_date_time,
             end_date_time=end_date_time,
             cron_expression=cron_expression,
+            event_time="log_time",
         )
         # Stamp model fields onto the config — they are persisted via to_dict() and
         # threaded through to the FM job, where they become a Filter on the logging FG.
         config._model_name = model_name
         config._model_version = model_version
         config._associated_model_td_version = training_dataset_version
+        # The logging feature group also carries the serving keys, the helper columns,
+        # the predicted_* columns and the logging metadata columns.
+        # None of those exist in the training dataset the reference window reads, so a
+        # fan-out over them leaves the FM job without reference statistics and it fails.
+        # Fan out over the training features of the model's training dataset only, the
+        # same set feature logging resolves; a feature_name given explicitly is not
+        # restricted.
+        config._fanout_feature_names = set(
+            self._get_untransformed_feature_names(training_dataset_version)
+        )
         return config
 
     @public
@@ -4648,6 +5301,7 @@ class FeatureView:
             featurestore_name=json_decamelized.get("featurestore_name", None),
             serving_keys=serving_keys,
             logging_enabled=json_decamelized.get("logging_enabled", False),
+            max_feature_age=json_decamelized.get("max_feature_age_secs"),
             transformation_functions=(
                 [
                     TransformationFunction.from_response_json(
@@ -4756,6 +5410,8 @@ class FeatureView:
             "logging_enabled",
         ]:
             self._update_attribute_if_present(self, other, key)
+        # Read-only, so it cannot go through the setter loop above.
+        self._max_feature_age = other._max_feature_age
         self._init_feature_monitoring_engine()
         return self
 
@@ -4843,14 +5499,23 @@ class FeatureView:
 
     @public
     def enable_logging(
-        self, extra_log_columns: Feature | dict[str, str] = None
+        self,
+        extra_log_columns: Feature | dict[str, str] = None,
+        materialization_interval: str | None = None,
+        transport: str | None = None,
     ) -> None:
         """Enable feature logging for the current feature view.
 
         This method activates logging of features.
+        A feature view logs through one transport: `"realtime"` sends every prediction through the deployment's inference logger to an online-enabled logging feature group, readable within seconds, and `"job"` buffers predictions on the deployment's pod and commits them to an offline-only logging feature group with a scheduled job.
+        Enabling the other transport on a view that already logs is refused; call [`FeatureView.delete_log`][hsfs.feature_view.FeatureView.delete_log] with the new transport to switch.
 
         Parameters:
             extra_log_columns: Additional columns to be logged. Any duplicate columns will be ignored.
+            materialization_interval: How often the logs are written to the offline store, `"hour"` or `"day"`.
+                `None` keeps the platform default.
+                Change it later with [`FeatureView.set_log_materialization_interval`][hsfs.feature_view.FeatureView.set_log_materialization_interval].
+            transport: `"realtime"` or `"job"`; `None` keeps the platform default.
 
         Example: Enable feature logging
             ```python
@@ -4879,10 +5544,33 @@ class FeatureView:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.FeatureStoreException: If the view already logs through the other transport.
         """
-        fv = self._feature_view_engine._enable_feature_logging(self, extra_log_columns)
+        fv = self._feature_view_engine._enable_feature_logging(
+            self, extra_log_columns, materialization_interval, transport
+        )
         self._feature_logging = self._feature_view_engine._get_feature_logging(fv)
         return fv
+
+    @public
+    def set_log_materialization_interval(self, interval: str) -> None:
+        """Choose how often the logs are written to the offline store.
+
+        The online log window is unaffected; this reschedules the materialization job of the logging feature group.
+
+        Parameters:
+            interval: `"hour"` or `"day"`.
+
+        Example:
+            ```python
+            feature_view.set_log_materialization_interval("hour")
+            ```
+
+        Raises:
+            ValueError: If `interval` is not one of the supported values.
+            hopsworks.client.exceptions.FeatureStoreException: If logging is not enabled on the feature view.
+        """
+        self._feature_view_engine._schedule_log_materialization(self, interval)
 
     @public
     def init_feature_logger(self, feature_logger: FeatureLogger) -> None:
@@ -5053,6 +5741,7 @@ class FeatureView:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to log features.
+            hopsworks.client.exceptions.FeatureStoreException: If only one of `model_name` and `model_version` is passed on a logging feature group created before Hopsworks 4.6, which stores the model as a single `<model_name>_<model_version>` value.
         """
         if not self.logging_enabled:
             warnings.warn(
@@ -5075,6 +5764,42 @@ class FeatureView:
                 )
             )
             self.enable_logging(extra_log_columns=logging_features)
+
+        if (
+            logging_data is not None
+            and untransformed_features is not None
+            and transformed_features is None
+            and self._looks_like_prediction_data(untransformed_features)
+        ):
+            if self.feature_logging is not None and self.feature_logging._is_legacy:
+                # Pre-FSTORE-1871 call style log(features, predictions[, transformed_features]):
+                # the current signature prepends logging_data, shifting every positional argument
+                # by one. The legacy dual-feature-group row is proof the calling code predates the
+                # shift, so re-bind the arguments to the old order.
+                _logger.info(
+                    "Detected the pre-4.6 `log(features, predictions)` call style on a feature view "
+                    "with legacy logging feature groups. Re-binding the arguments accordingly. "
+                    "Update the call to `log(features, predictions=...)` to silence this message."
+                )
+                (
+                    untransformed_features,
+                    predictions,
+                    transformed_features,
+                    logging_data,
+                ) = (
+                    logging_data,
+                    untransformed_features,
+                    predictions,
+                    None,
+                )
+            else:
+                warnings.warn(
+                    "The second positional argument of `log()` is `untransformed_features`, but the "
+                    "passed value matches this feature view's label schema. If you meant to log "
+                    "predictions (pre-4.6 call style `log(features, predictions)`), pass them "
+                    "explicitly as `log(features, predictions=...)`.",
+                    stacklevel=1,
+                )
         return self._feature_view_engine._log_features(
             self,
             feature_logging=self.feature_logging,
@@ -5142,6 +5867,7 @@ class FeatureView:
         model: Model | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
+        online: bool = False,
     ) -> TypeVar("pyspark.sql.DataFrame") | pd.DataFrame | pl.DataFrame:
         """Read the log entries for the current feature view.
 
@@ -5157,6 +5883,9 @@ class FeatureView:
             model_name: Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
             model_version: Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
 
+            online: Read from the online store instead of the offline store.
+                Only rows still inside the logging feature group's time to live are there, so pair it with `start_time` and `end_time` for an incremental read.
+
         Example:
             ```python
             # read all log entries
@@ -5171,11 +5900,16 @@ class FeatureView:
             log_entries = feature_view.read_log(filter=fg.feature1 > 10)
             ```
 
+        Info: Logging feature groups created before Hopsworks 4.6
+            These groups store the model as a single `<model_name>_<model_version>` value instead of separate `model_name` and `model_version` columns.
+            On them, `model_name` and `model_version` filter only when passed together, because a prefix match on that value cannot express "any version": `_` is a wildcard and sibling model names share the prefix.
+
         Returns:
             The dataframe containing the feature data.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to read the log entries.
+            hopsworks.client.exceptions.FeatureStoreException: If only one of `model_name` and `model_version` is passed on a logging feature group created before Hopsworks 4.6.
         """
         return self._feature_view_engine._read_feature_logs(
             self,
@@ -5187,6 +5921,7 @@ class FeatureView:
             model,
             model_name,
             model_version,
+            online=online,
         )
 
     @public
@@ -5246,24 +5981,38 @@ class FeatureView:
         )
 
     @public
-    def delete_log(self, transformed: bool | None = None) -> None:
+    def delete_log(
+        self, transformed: bool | None = None, transport: str | None = None
+    ) -> None:
         """Delete the logged feature data for the current feature view.
+
+        Logging stays enabled on an empty logging feature group.
+        Name a `transport` to recreate that group for the other transport, which is how a view moves between `"realtime"` and `"job"` logging.
 
         Parameters:
             transformed: Whether to delete transformed logs. Defaults to None. Delete both transformed and untransformed logs.
+            transport: `"realtime"` or `"job"` for the recreated logging feature group; `None` keeps the current one.
 
         Example:
             ```python
             # delete log
             feature_view.delete_log()
+
+            # drop the log and switch to the job transport
+            feature_view.delete_log(transport="job")
             ```
+
+        Info: Logging feature groups created before Hopsworks 4.6
+            A feature view that still has the separate transformed and untransformed logging feature groups gets both deleted and replaced by one combined logging feature group, whatever `transformed` is set to.
+            The pair is replaced as a whole because a mixed layout cannot be written to by any client.
+            A deployment that still runs a pre-4.6 client cannot write to the combined group and its logs are lost, so update the deployment's environment before deleting the log.
 
         Raises:
              hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the log.
         """
         if self.feature_logging is not None:
             self._feature_view_engine._delete_feature_logs(
-                self, self.feature_logging, transformed
+                self, self.feature_logging, transformed, transport
             )
 
     @public
@@ -5292,9 +6041,11 @@ class FeatureView:
             raise FeatureStoreException(
                 "Feature logging only supported in Hopsworks serving deployments"
             )
+        from hopsworks_common.core.feature_logging_buffer import _positive_env
         from hsfs.feature_logger_async import AsyncFeatureLogger
 
         return AsyncFeatureLogger(
+            max_queue_size=_positive_env("FEATURE_LOGGER_QUEUE_SIZE", 1000),
             project_id=int(client._get_instance()._project_id),
             source="localhost",
             namespace=os.environ["HOPSWORKS_PROJECT_NAME"].replace("_", "-"),
@@ -5539,6 +6290,8 @@ class FeatureView:
             "type": "featureViewDTO",
             "extraLogColumns": self._extra_log_columns,
         }
+        if self._max_feature_age is not None:
+            fv_dict["maxFeatureAgeSecs"] = self._max_feature_age
         tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             fv_dict["tags"] = tags_dict
@@ -5624,6 +6377,35 @@ class FeatureView:
 
     @public
     @property
+    def max_feature_age(self) -> timedelta | None:
+        """How stale a looked-up row may be, relative to the time it is looked up as of.
+
+        An as-of lookup carries the last value forward for ever, so a feature group that stops
+        producing rows keeps answering with its final one and nothing in the result says so.
+        This returns NULL instead once the newest row at or before that time is older than the
+        bound, which makes the gap visible to you and to the model.
+
+        Applies to every read anchored on a `spine_df`, batch inference and training data alike.
+        Read-only, and set when the feature view is created: if it could be changed per call, a
+        training set and an inference read could be built with different bounds, which is the
+        training/serving skew a feature view exists to prevent.
+
+        One bound for the whole view. `None` is unbounded.
+
+        ```python
+        fv = fs.create_feature_view(
+            name="air_quality_fv",
+            query=query,
+            max_feature_age=datetime.timedelta(days=1),
+        )
+        ```
+        """
+        if self._max_feature_age is None:
+            return None
+        return timedelta(seconds=self._max_feature_age)
+
+    @public
+    @property
     def labels(self) -> list[str]:
         """The labels/prediction feature of the feature view.
 
@@ -5684,6 +6466,37 @@ class FeatureView:
     @query.setter
     def query(self, query_obj: query.Query) -> None:
         self._query = query_obj
+
+    @public
+    def get_root_fg(self) -> feature_group.FeatureGroupBase:
+        """Return the feature group this feature view's query is anchored on.
+
+        The root is the left side of the query: the feature group whose rows a normal
+        `get_batch_data(start_time, end_time)` reads, with every other feature group in the
+        view point-in-time joined onto them. It is also the feature group whose `event_time`
+        names the column a `spine_df` carries its prediction times under.
+
+        Example: the latest feature values for every entity
+            ```python
+            import datetime
+            from hsfs.constructor.prediction_times import PredictionTimes
+
+            fg = feature_view.get_root_fg()
+            now = datetime.datetime.now(datetime.timezone.utc)
+
+            spine_df = PredictionTimes.of([now]).cross(
+                fg.read_primary_keys(), event_time=fg.event_time
+            )
+            latest = feature_view.get_batch_data(spine_df=spine_df)
+            ```
+
+        Returns:
+            The feature group at the root of the query, as a `FeatureGroup`, an
+            `ExternalFeatureGroup` or a `SpineGroup` depending on what the view was built on.
+            Those three are siblings under `FeatureGroupBase`, which is why the return type is
+            the base and not `FeatureGroup`.
+        """
+        return self._query._left_feature_group
 
     @public
     def get_feature(self, name: str) -> Feature:
@@ -5895,6 +6708,22 @@ class FeatureView:
         embedding_fg_ids = [fg.id for fg in self._get_embedding_fgs()]
         return set(embedding_fg_ids + self._get_spine_fg_ids())
 
+    def _close(self) -> None:
+        """Release the online store connection pools this feature view holds.
+
+        Idempotent, and safe on a feature view that never initialised serving.
+        `init_serving` can be called again afterwards.
+
+        Needed because the pools cannot be reclaimed by garbage collection: each
+        one is owned by a client that its own running task thread keeps
+        reachable. A pool holds one connection per feature group in the view, so
+        a long-lived process that initialises serving for many feature views can
+        exhaust the online store's `max_connections`.
+        """
+        for server in (self.__vector_server, self.__batch_scoring_server):
+            if server is not None:
+                server._close()
+
     @property
     def _vector_server(self) -> vector_server.VectorServer:
         if not self.__vector_server:
@@ -5943,42 +6772,141 @@ class FeatureView:
             )
         return self.__fully_qualified_event_time
 
+    def _schema_requires_training_statistics(self) -> bool:
+        """Whether the training dataset schema depends on which training dataset produced it.
+
+        Only a one_hot_encoder does that: the encoded column set follows the categories seen in the training statistics.
+        Every other transformation has a fixed output schema, so for those the version is not just unnecessary but costly — resolving one makes the schema lookup validate that the training dataset still exists, which is a request, and a failure if it has since been deleted.
+        """
+        return any(
+            tf.hopsworks_udf.function_name == "one_hot_encoder"
+            for tf in self.transformation_functions
+        )
+
+    def _schema_training_dataset_version(
+        self, training_dataset_version: int | None = None
+    ) -> int | None:
+        """Training dataset version the transformed schema should be resolved against.
+
+        `None` when the schema does not depend on the training statistics: those feature views have one schema rather than one per version, and asking for a version there would only cost a training-dataset lookup.
+        Otherwise an explicit version wins, because the caller knows which training dataset the data it is describing belongs to.
+        This mirrors how [`FeatureView.log`][hsfs.feature_view.FeatureView.log] resolves the version it stamps on the log, so the columns and the stamp cannot disagree.
+        Failing that, serving and batch scoring each record the version they were initialised with, and the last version this feature view accessed is the final fallback.
+        """
+        if not self._schema_requires_training_statistics():
+            return None
+        batch_scoring_server = self.__batch_scoring_server
+        return (
+            training_dataset_version
+            or self._serving_training_dataset_version
+            or (
+                batch_scoring_server.training_dataset_version
+                if batch_scoring_server
+                else None
+            )
+            or self.get_last_accessed_training_dataset()
+        )
+
+    def _cached_training_dataset_schema(
+        self, training_dataset_version: int | None = None
+    ) -> list[training_dataset_feature.TrainingDatasetFeature]:
+        """Training dataset schema for the given version, or for the version currently in use.
+
+        Cached because feature logging asks for it on every logged row, and kept per version so that logging against one training dataset never serves another one's columns.
+        """
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__training_dataset_schemas:
+            self.__training_dataset_schemas[version] = self.get_training_dataset_schema(
+                version
+            )
+        return self.__training_dataset_schemas[version]
+
+    def _get_label_column_names(
+        self, training_dataset_version: int | None = None
+    ) -> set[str]:
+        """Label column names as of the given training dataset version."""
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__label_column_names:
+            self.__label_column_names[version] = {
+                feature.name
+                for feature in self._cached_training_dataset_schema(version)
+                if feature.label
+            }
+        return self.__label_column_names[version]
+
+    def _get_transformed_feature_names(
+        self, training_dataset_version: int | None = None
+    ) -> list[str]:
+        """Transformed feature names as of the given training dataset version.
+
+        These line the transformed vector up with the logging feature group's columns, so the version has to be the one the vector was produced against.
+        """
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__transformed_feature_names:
+            self.__transformed_feature_names[version] = [
+                feature.name
+                for feature in self._cached_training_dataset_schema(version)
+                if feature.name not in self._get_label_column_names(version)
+                and feature.name not in self.training_helper_columns
+                and feature.name not in self.inference_helper_columns
+            ]
+        return self.__transformed_feature_names[version]
+
+    def _get_untransformed_feature_names(
+        self, training_dataset_version: int | None = None
+    ) -> list[str]:
+        """Untransformed feature names as of the given training dataset version.
+
+        The names come from the feature view's own features rather than the training dataset schema, but which of them are labels does depend on the version.
+        """
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__untransformed_feature_names:
+            self.__untransformed_feature_names[version] = [
+                feature.name
+                for feature in self.features
+                if feature.name not in self._get_label_column_names(version)
+                and feature.name not in self.training_helper_columns
+                and feature.name not in self.inference_helper_columns
+            ]
+        return self.__untransformed_feature_names[version]
+
+    def _event_time_valid_features(
+        self, valid_features: dict[str, str]
+    ) -> dict[str, str]:
+        """Features a monitoring configuration may slice its windows by.
+
+        The left feature group's event time is included even when the view does not select it.
+        It is the default time basis, so naming it explicitly must be accepted as well.
+
+        Parameters:
+            valid_features: Mapping of the view's selected feature names to their offline types.
+
+        Returns:
+            A new mapping with the left feature group's event-time column added when missing.
+        """
+        root_event_time = self._root_feature_group_event_time_column_name
+        if not root_event_time or root_event_time in valid_features:
+            return valid_features
+        left_fg = self.query._left_feature_group
+        feature = left_fg.get_feature(root_event_time) if left_fg is not None else None
+        if feature is None:
+            return valid_features
+        return {**valid_features, root_event_time: feature.type}
+
     @property
     def _label_column_names(self) -> set[str]:
-        """Get label column names."""
-        if self.__label_column_names is None:
-            training_dataset_schema = self.get_training_dataset_schema()
-            self.__label_column_names = {
-                feature.name for feature in training_dataset_schema if feature.label
-            }
-        return self.__label_column_names
+        """Label column names for the training dataset version currently in use."""
+        return self._get_label_column_names()
 
     @property
     def _transformed_feature_names(self) -> list[str]:
-        """Get transformed feature names."""
-        if self.__transformed_feature_names is None:
-            training_dataset_schema = self.get_training_dataset_schema()
-            self.__transformed_feature_names = [
-                feature.name
-                for feature in training_dataset_schema
-                if feature.name not in self._label_column_names
-                and feature.name not in self.training_helper_columns
-                and feature.name not in self.inference_helper_columns
-            ]
-        return self.__transformed_feature_names
+        """Transformed feature names for the training dataset version currently in use."""
+        return self._get_transformed_feature_names()
 
     @property
     def _untransformed_feature_names(self) -> list[str]:
-        """Get untransformed feature names."""
-        if self.__untransformed_feature_names is None:
-            self.__untransformed_feature_names = [
-                feature.name
-                for feature in self.features
-                if feature.name not in self._label_column_names
-                and feature.name not in self.training_helper_columns
-                and feature.name not in self.inference_helper_columns
-            ]
-        return self.__untransformed_feature_names
+        """Untransformed feature names for the training dataset version currently in use."""
+        return self._get_untransformed_feature_names()
 
     @property
     def _required_serving_key_names(self) -> list[str]:
@@ -6004,3 +6932,34 @@ class FeatureView:
                 else []
             )
         return self.__extra_logging_column_names
+
+    def _looks_like_prediction_data(self, data) -> bool:
+        """Whether `data` matches this feature view's label schema.
+
+        Used to detect the pre-4.6 positional call style `log(features, predictions)`, whose second
+        positional argument binds to `untransformed_features` in the current signature.
+        """
+        label_names = self._label_column_names
+        if not label_names:
+            return False
+        columns = getattr(data, "columns", None)
+        if columns is not None:
+            return set(columns) == set(label_names)
+        if isinstance(data, dict):
+            return set(data.keys()) == set(label_names)
+        if isinstance(data, pd.Series) or (HAS_POLARS and isinstance(data, pl.Series)):
+            return len(label_names) == 1
+        if isinstance(data, (list, tuple)) or (
+            HAS_NUMPY and isinstance(data, np.ndarray)
+        ):
+            if len(data) == 0:
+                return False
+            first_row = data[0]
+            if isinstance(first_row, dict):
+                return set(first_row.keys()) == set(label_names)
+            if isinstance(first_row, (list, tuple)) or (
+                HAS_NUMPY and isinstance(first_row, np.ndarray)
+            ):
+                return len(first_row) == len(label_names)
+            return len(label_names) == 1
+        return False

@@ -39,6 +39,14 @@ Inside a Hopsworks terminal pod, authentication is automatic via JWT.
 hops project list                         # List projects
 hops project use <name>                   # Switch active project
 hops project info                         # Current project details
+hops project costs --window month         # Kubernetes cost of the project (data owners); --project NAME, --json
+```
+
+## Platform administration
+
+```bash
+hops admin costs --window week            # Cost of every namespace (HOPS_ADMIN, API key with the ADMIN scope)
+hops admin costs --by department          # The same, one row per department
 ```
 
 ## Feature Groups
@@ -80,13 +88,24 @@ Flags:
 
 ### External Feature Groups
 
+An external feature group reads from a data source in place; Hopsworks stores only its metadata.
+Give one source spec:
+
 ```bash
-hops fg create-external <name> \
-  --connector <connector-name> \
-  --query "SELECT ... FROM ..." \
-  --primary-key <cols> \
-  [--event-time <col>] [--description <text>]
+# SQL / warehouse sources (Snowflake, BigQuery, Redshift, JDBC, ...)
+hops fg create-external <name> --connector <ds> --query "SELECT ... FROM ..." --primary-key <cols>
+# Object storage (S3, ADLS, GCS): a file or a prefix
+hops fg create-external <name> --connector <ds> --path sales/ --data-format parquet --primary-key <cols>
+# MongoDB collection
+hops fg create-external <name> --connector <ds> --database <db> --table <collection> --primary-key <cols>
 ```
+
+- Outside Spark, give the schema with `--features "id:bigint,city:string,..."`.
+- `--online` enables the online store; rows then go in with `hops fg insert`, offline data stays in the source.
+- `hops fg list` shows every type in its TYPE column (`managed`, `stream`, `external`, `spine`); `--type external` lists only external groups.
+- `hops fg info <name>` shows the connector, query or path, and the access state.
+- `hops fg test-access <name>` checks that the stored credentials can read the source.
+- `hops fg delete` on an external group removes its metadata only; the source table is untouched.
 
 ### Insert
 
@@ -185,7 +204,7 @@ hops deployment delete <name> --yes
 ```bash
 hops job list
 hops job info <name>
-hops job create <name> --type python --app-path Resources/jobs/x.py
+hops job create <name> --type python --app-path Resources/jobs/x.py [--env <environment>]
 hops job run <name> [--wait] [--args "..."]
 hops job stop <name>
 hops job logs <name> [--execution ID]
@@ -249,19 +268,46 @@ hops files unshare Resources/my_dir --target other_project
 ## Search
 
 ```bash
-# Project-scoped search across feature groups, feature views, training datasets, features
-hops search ls "transactions"
+# Project-scoped search across feature groups, feature views, training datasets, features,
+# jobs, apps, models, deployments and agents
+hops search "transactions"
 
 # Global search across every project the caller can see
-hops search ls "transactions" --global
+hops search "transactions" --global
 
-# Restrict to one entity type
-hops search ls "transactions" --type feature_group
+# Restrict to one entity type: feature_group, feature_view, training_dataset, feature,
+# job, app, model, deployment, agent
+hops search "transactions" --type feature_group
+hops search "fraud" --type model
 
 # Filter by keyword and/or schematized tag (repeatable)
-hops search ls "transactions" --keyword fraud --keyword production
-hops search ls --tag "ownership:owner=jim" --tag "lifecycle:env=prod"
+hops search "transactions" --keyword fraud --keyword production
+hops search --tag "ownership:owner=jim" --tag "lifecycle:env=prod"
 ```
+
+## Session (teleport)
+
+Move a coding agent session between this machine and a Hopsworks terminal pod (Claude Code is pre-installed in the pod image). `push` hands the session you are in to the pod, which lands it on its own; `pull` reclaims it; `new` starts a fresh one on the pod; `mirror` streams the live pod terminal to your laptop.
+
+```bash
+hops session push [SESSION_ID]     # Hand the current session to the pod (baton hand-off)
+hops session push --fork           # Copy instead of hand off (local stays canonical)
+hops session new [--prompt "..."]  # Start a fresh session on the pod
+hops session pull [SESSION_ID]     # Reclaim a session onto this machine
+hops session pull --force          # Steal the baton from a live pod
+hops session list [--all]          # Show sessions and where each lives
+hops session stop                  # Stop the pod terminal from the CLI
+hops session extend [--hours N]    # Give the pod terminal more time (CLI-started ones last 12h)
+hops session mirror [--write]      # Attach to the live pod terminal
+hops git provider list             # Git provider tokens registered with Hopsworks
+hops git provider set --provider github --username <you>   # Register a personal access token (prompted, hidden)
+```
+
+Notes:
+1. Push and new wait briefly for the pod's landing ack, then print `Landed on pod`. On a cold start (the push that boots the pod) it may print `Not landed yet`; it still lands via the pod boot shell.
+2. The watcher lands a pushed session only once a terminal is open (a tmux session exists). Open the terminal tab first, then run `hops session new`.
+3. Sessions stage per working directory (a slug of the cwd). `claude --resume` resolves only from a path that hashes to the same slug, which `pull` prints for you.
+4. `push` can sync your git checkout to the pod. It asks once how the pod should authenticate: an existing SSH key, a new passphrase-free key it generates for Hopsworks (`ssh-keygen`, then `gh ssh-key add` when the GitHub CLI is logged in; Linux/macOS/WSL only), or a provider personal access token registered with Hopsworks (the pod clones over HTTPS; the only option for an HTTPS remote). The answer is remembered in `~/.hops.toml`.
 
 ## Context and LLM Integration
 

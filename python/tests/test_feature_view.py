@@ -13,18 +13,25 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import datetime
+import inspect
 import json
+import typing
 import warnings
 
+import pandas as pd
 import pytest
 from hopsworks_common import version
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature, feature_group, feature_view, training_dataset_feature
+from hsfs.builtin_transformations import one_hot_encoder
 from hsfs.constructor import query
+from hsfs.core.feature_logging import FeatureLogging
 from hsfs.feature_store import FeatureStore
 from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
 from hsfs.transformation_function import TransformationType
+from hsfs.util import VersionWarning
 
 
 fg1 = feature_group.FeatureGroup(
@@ -586,6 +593,40 @@ class TestFeatureView:
 
         assert get_vector.call_args.kwargs["n_processes"] == 2
 
+    def test_the_async_single_call_initialises_the_rest_client_it_asks_for(
+        self, mocker
+    ):
+        """As the blocking call does: asking for REST first must not set up SQL alone."""
+        import asyncio
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        fv._vector_server._serving_initialized = False
+        fv._vector_db_client = None
+        init_serving = mocker.patch.object(fv, "init_serving")
+
+        async def answered(**_kwargs):
+            return [1]
+
+        mocker.patch.object(
+            fv._vector_server, "_get_feature_vector_async", side_effect=answered
+        )
+
+        asyncio.run(
+            fv.get_feature_vector_async(
+                entry={"primary_key": 1}, force_rest_client=True
+            )
+        )
+
+        assert init_serving.call_args.kwargs["init_rest_client"] is True
+
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine._get_type")
@@ -661,6 +702,97 @@ class TestFeatureView:
 
         # Assert
         assert fv.logging_enabled is True
+
+    def _logging_feature_view(self, mocker, legacy):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine")
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            labels=["label"],
+        )
+        fv.logging_enabled = True
+        mocker.patch.object(
+            feature_view.FeatureView,
+            "_label_column_names",
+            new_callable=mocker.PropertyMock,
+            return_value={"label"},
+        )
+        transformed_fg = mocker.MagicMock() if legacy else None
+        mocker.patch.object(
+            feature_view.FeatureView,
+            "feature_logging",
+            new_callable=mocker.PropertyMock,
+            return_value=FeatureLogging(1, transformed_fg, mocker.MagicMock()),
+        )
+        return fv
+
+    def test_log_positional_predictions_reroute_on_legacy(self, mocker):
+        # Arrange
+        fv = self._logging_feature_view(mocker, legacy=True)
+        features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
+        predictions_df = pd.DataFrame({"label": ["a", "b"]})
+
+        # Act: pre-4.6 call style log(features, predictions) on a legacy feature view.
+        fv.log(features_df, predictions_df)
+
+        # Assert: arguments are re-bound to the old positional order.
+        call_kwargs = fv._feature_view_engine._log_features.call_args[1]
+        assert call_kwargs["logs"] is None
+        assert call_kwargs["untransformed_features"] is features_df
+        assert call_kwargs["predictions"] is predictions_df
+        assert call_kwargs["transformed_features"] is None
+
+    def test_log_positional_predictions_reroute_on_legacy_three_args(self, mocker):
+        # Arrange
+        fv = self._logging_feature_view(mocker, legacy=True)
+        features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
+        predictions_df = pd.DataFrame({"label": ["a", "b"]})
+        transformed_df = pd.DataFrame({"fg1_feature": [0.5, 0.6]})
+
+        # Act: pre-4.6 call style log(features, predictions, transformed_features).
+        fv.log(features_df, predictions_df, transformed_df)
+
+        # Assert
+        call_kwargs = fv._feature_view_engine._log_features.call_args[1]
+        assert call_kwargs["logs"] is None
+        assert call_kwargs["untransformed_features"] is features_df
+        assert call_kwargs["predictions"] is predictions_df
+        assert call_kwargs["transformed_features"] is transformed_df
+
+    def test_log_positional_predictions_warns_on_combined(self, mocker):
+        # Arrange
+        fv = self._logging_feature_view(mocker, legacy=False)
+        features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
+        predictions_df = pd.DataFrame({"label": ["a", "b"]})
+
+        # Act: same call style on a combined feature group warns but is not re-routed.
+        with pytest.warns(UserWarning, match="label schema"):
+            fv.log(features_df, predictions_df)
+
+        # Assert
+        call_kwargs = fv._feature_view_engine._log_features.call_args[1]
+        assert call_kwargs["logs"] is features_df
+        assert call_kwargs["untransformed_features"] is predictions_df
+        assert call_kwargs["predictions"] is None
+
+    def test_log_new_style_not_rerouted_on_legacy(self, mocker):
+        # Arrange
+        fv = self._logging_feature_view(mocker, legacy=True)
+        features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
+        untransformed_df = pd.DataFrame({"fg1_feature": [0.3, 0.4]})
+
+        # Act: second argument does not match the label schema, so nothing is re-bound.
+        fv.log(features_df, untransformed_df)
+
+        # Assert
+        call_kwargs = fv._feature_view_engine._log_features.call_args[1]
+        assert call_kwargs["logs"] is features_df
+        assert call_kwargs["untransformed_features"] is untransformed_df
+        assert call_kwargs["predictions"] is None
 
     def test_label_column_name(self, mocker):
         # Arrange
@@ -1032,6 +1164,26 @@ class TestFeatureView:
 
         # Assert
         assert root_feature_group_event_time == "event_time"
+
+    def test_event_time_valid_features_adds_unselected_root_event_time(self, mocker):
+        # The left FG's event time can be named as a monitoring basis even
+        # when the view does not select it, matching what event_time=None resolves to.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select(["fg1_feature"]).join(fg2.select(["fg2_feature"])),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        selected = {"fg1_feature": "float", "fg2_feature": "float"}
+
+        valid = fv._event_time_valid_features(selected)
+
+        assert valid["event_time"] == "timestamp"
+        assert set(selected) < set(valid)
+        assert "event_time" not in selected  # the selectable map is left untouched
 
     def test_delete_feature_view_force(self, mocker, backend_fixtures):
         # Arrange
@@ -1786,3 +1938,675 @@ class TestFeatureViewVisualizeTransformations:
 
         with pytest.raises(ValueError, match="Invalid kind"):
             fv.visualize_transformations(kind="invalid")
+
+
+class TestFeatureViewTrainingDatasetVersionResolution:
+    """The transformed schema of a feature view with a one_hot_encoder depends on the training statistics.
+
+    `get_training_dataset_schema()` raises without a version for such a feature view, which is why feature logging was impossible on it.
+    These tests pin which version the derived feature names are resolved against, and that switching versions is noticed.
+    """
+
+    def _feature_view(self, mocker, one_hot: bool = True):
+        """A feature view that one-hot encodes a feature, unless asked for one that does not.
+
+        Only a one_hot_encoder makes the schema depend on the training statistics, so it is what makes the version matter at all.
+        """
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        return feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features().join(fg2.select_features()),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+            inference_helper_columns=["fg1_inference_helper", "fg2_inference_helper"],
+            training_helper_columns=["fg1_training_helper", "fg2_training_helper"],
+            labels=["label"],
+            transformation_functions=(
+                [one_hot_encoder("fg2_feature")] if one_hot else []
+            ),
+        )
+
+    def _one_hot_schema(self, *categories):
+        """A schema shaped like a one-hot encoded training dataset.
+
+        The encoded column set is what differs between training dataset versions, which is exactly what a version-blind lookup gets wrong.
+        """
+        return [
+            training_dataset_feature.TrainingDatasetFeature(
+                name="fg1_feature", type="float"
+            ),
+            *[
+                training_dataset_feature.TrainingDatasetFeature(
+                    name=f"fg2_feature_{category}", type="int"
+                )
+                for category in categories
+            ],
+            training_dataset_feature.TrainingDatasetFeature(
+                name="fg1_inference_helper", type="int"
+            ),
+            training_dataset_feature.TrainingDatasetFeature(
+                name="fg1_training_helper", type="int"
+            ),
+            training_dataset_feature.TrainingDatasetFeature(
+                name="label", type="int", label=True
+            ),
+        ]
+
+    def _schema_per_version(self, mocker, fv, schemas):
+        """Mock `get_training_dataset_schema` so each version answers with its own column set.
+
+        A version with no entry raises the way the backend does for an unspecified version, so a lookup that forgets the version fails the test loudly instead of silently picking the wrong columns.
+        """
+
+        def get_schema(training_dataset_version=None):
+            if training_dataset_version not in schemas:
+                raise FeatureStoreException(
+                    "The feature view includes the one_hot_encoder transformation function. "
+                    "Please specify the version of the training dataset."
+                )
+            return schemas[training_dataset_version]
+
+        return mocker.patch.object(
+            fv, "get_training_dataset_schema", side_effect=get_schema
+        )
+
+    def test_serving_version_is_used(self, mocker):
+        """`init_serving(training_dataset_version=2)` records the version, so the schema lookup has one to use."""
+        # Arrange
+        fv = self._feature_view(mocker)
+        schema = self._schema_per_version(mocker, fv, {2: self._one_hot_schema("a")})
+        fv._serving_training_dataset_version = 2
+
+        # Act
+        names = fv._transformed_feature_names
+
+        # Assert
+        assert names == ["fg1_feature", "fg2_feature_a"]
+        schema.assert_called_once_with(2)
+
+    def test_batch_scoring_version_is_used(self, mocker):
+        """Batch scoring records its own version, and nothing else does on that path."""
+        # Arrange
+        fv = self._feature_view(mocker)
+        schema = self._schema_per_version(mocker, fv, {3: self._one_hot_schema("b")})
+        batch_scoring_server = mocker.MagicMock()
+        batch_scoring_server.training_dataset_version = 3
+        fv._FeatureView__batch_scoring_server = batch_scoring_server
+
+        # Act
+        names = fv._transformed_feature_names
+
+        # Assert
+        assert names == ["fg1_feature", "fg2_feature_b"]
+        schema.assert_called_once_with(3)
+
+    def test_last_accessed_version_is_the_final_fallback(self, mocker):
+        """Neither serving nor batch scoring was initialised, but the feature view still remembers what it last read."""
+        # Arrange
+        fv = self._feature_view(mocker)
+        schema = self._schema_per_version(mocker, fv, {4: self._one_hot_schema("c")})
+        fv._last_accessed_training_dataset = 4
+
+        # Act
+        names = fv._transformed_feature_names
+
+        # Assert
+        assert names == ["fg1_feature", "fg2_feature_c"]
+        schema.assert_called_once_with(4)
+
+    def test_an_explicit_version_wins_over_serving_state(self, mocker):
+        """The version `log()` resolved has to be the version the columns come from.
+
+        `log(training_dataset_version=...)` and `model.training_dataset_version` both override serving state when stamping the log, so a schema taken from serving state would label the row with one training dataset's columns and stamp it with another's.
+        """
+        # Arrange
+        fv = self._feature_view(mocker)
+        schema = self._schema_per_version(
+            mocker,
+            fv,
+            {2: self._one_hot_schema("a"), 5: self._one_hot_schema("x", "y")},
+        )
+        fv._serving_training_dataset_version = 2
+
+        # Act
+        names = fv._get_transformed_feature_names(5)
+
+        # Assert
+        assert names == ["fg1_feature", "fg2_feature_x", "fg2_feature_y"]
+        schema.assert_called_once_with(5)
+
+    def test_an_explicit_version_is_used_on_a_fresh_feature_view(self, mocker):
+        """The reported reproduction: nothing has been initialised and nothing accessed, only `log(training_dataset_version=3)`.
+
+        Every other source of a version is empty here, so a resolver that ignores the explicit one asks for `None` and a one-hot feature view raises the exact error this fix targets.
+        """
+        # Arrange
+        fv = self._feature_view(mocker)
+        schema = self._schema_per_version(mocker, fv, {3: self._one_hot_schema("z")})
+
+        # Act
+        names = fv._get_transformed_feature_names(3)
+
+        # Assert
+        assert names == ["fg1_feature", "fg2_feature_z"]
+        schema.assert_called_once_with(3)
+
+    def test_log_forwards_its_resolved_version_to_the_engine(self, mocker):
+        """`log()` owns the resolution order, and what it resolves is what the engine has to receive.
+
+        Together with the engine-side test that the received version reaches the three name lookups, this closes the loop between the version stamped on the row and the columns the row is written under.
+        """
+        # Arrange
+        fv = self._feature_view(mocker)
+        fv._serving_training_dataset_version = 2
+        mocker.patch.object(
+            type(fv),
+            "logging_enabled",
+            new_callable=mocker.PropertyMock,
+            return_value=True,
+        )
+        mocker.patch.object(
+            type(fv),
+            "feature_logging",
+            new_callable=mocker.PropertyMock,
+            return_value=mocker.MagicMock(),
+        )
+        log_features = mocker.patch.object(fv._feature_view_engine, "_log_features")
+
+        # Act
+        fv.log(untransformed_features=[[1]], training_dataset_version=3)
+
+        # Assert: the explicit version beats the initialised one, all the way down.
+        assert log_features.call_args.kwargs["training_dataset_version"] == 3
+
+    def test_labels_and_untransformed_names_take_the_explicit_version_too(self, mocker):
+        """All three derived name sets are read side by side when a row is logged, so all three have to agree on the version."""
+        # Arrange
+        fv = self._feature_view(mocker)
+        self._schema_per_version(
+            mocker,
+            fv,
+            {2: self._one_hot_schema("a"), 5: self._one_hot_schema("x", "y")},
+        )
+        fv._serving_training_dataset_version = 2
+
+        # Act
+        fv.schema = [
+            training_dataset_feature.TrainingDatasetFeature(
+                name="fg1_feature", type="float"
+            ),
+            training_dataset_feature.TrainingDatasetFeature(
+                name="fg2_feature", type="string"
+            ),
+            training_dataset_feature.TrainingDatasetFeature(
+                name="fg1_inference_helper", type="int"
+            ),
+            training_dataset_feature.TrainingDatasetFeature(
+                name="label", type="int", label=True
+            ),
+        ]
+        labels = fv._get_label_column_names(5)
+        untransformed = fv._get_untransformed_feature_names(5)
+
+        # Assert: the untransformed names come from the feature view's own features, but which of them is a label is read from the version asked for.
+        assert labels == {"label"}
+        assert untransformed == ["fg1_feature", "fg2_feature"]
+
+    def test_switching_versions_refreshes_the_derived_names(self, mocker):
+        """Re-initialising serving against a different training dataset must not keep serving the previous schema.
+
+        The names are cached because logging reads them on every row, and a cache that ignores the version is how the stale-column bug would come back.
+        """
+        # Arrange
+        fv = self._feature_view(mocker)
+        schema = self._schema_per_version(
+            mocker,
+            fv,
+            {2: self._one_hot_schema("a"), 5: self._one_hot_schema("x", "y")},
+        )
+
+        # Act
+        fv._serving_training_dataset_version = 2
+        before = fv._transformed_feature_names
+        fv._serving_training_dataset_version = 5
+        after = fv._transformed_feature_names
+
+        # Assert
+        assert before == ["fg1_feature", "fg2_feature_a"]
+        assert after == ["fg1_feature", "fg2_feature_x", "fg2_feature_y"]
+        assert schema.call_count == 2
+
+    def test_the_schema_is_fetched_once_per_version(self, mocker):
+        """Feature logging asks for these names on every logged row, so the fetch has to be cached, and cached per version rather than globally."""
+        # Arrange
+        fv = self._feature_view(mocker)
+        schema = self._schema_per_version(
+            mocker,
+            fv,
+            {2: self._one_hot_schema("a"), 5: self._one_hot_schema("x", "y")},
+        )
+        fv._serving_training_dataset_version = 2
+
+        # Act
+        for _ in range(3):
+            fv._get_transformed_feature_names(2)
+            fv._get_transformed_feature_names(5)
+            fv._get_label_column_names(2)
+            fv._get_untransformed_feature_names(5)
+
+        # Assert: one fetch for version 2 and one for version 5, not one per access.
+        assert schema.call_count == 2
+        assert sorted(call.args[0] for call in schema.call_args_list) == [2, 5]
+
+    def test_init_serving_records_the_version_it_actually_uses(self, mocker):
+        """`init_serving()` with no version defaults to 1 and serves version 1.
+
+        It used to record `None` instead, because the attribute was set before the default was applied.
+        Feature logging reads that attribute for both the schema and the `td_version` stamped on the row, so a row served against version 1 was stamped with whatever the feature view had last accessed.
+        """
+        # Arrange
+        fv = self._feature_view(mocker)
+        mocker.patch.object(fv, "init_batch_scoring")
+        mocker.patch.object(fv._vector_server, "_init_serving")
+        mocker.patch.object(fv, "_get_embedding_fgs", return_value=[])
+        mocker.patch.object(fv, "_warmup_transformation_workers")
+
+        # Act
+        with pytest.warns(VersionWarning):
+            fv.init_serving()
+
+        # Assert
+        assert fv._serving_training_dataset_version == 1
+
+    def test_init_serving_records_an_explicit_version(self, mocker):
+        # Arrange
+        fv = self._feature_view(mocker)
+        mocker.patch.object(fv, "init_batch_scoring")
+        mocker.patch.object(fv._vector_server, "_init_serving")
+        mocker.patch.object(fv, "_get_embedding_fgs", return_value=[])
+        mocker.patch.object(fv, "_warmup_transformation_workers")
+
+        # Act
+        fv.init_serving(training_dataset_version=3)
+
+        # Assert
+        assert fv._serving_training_dataset_version == 3
+
+    def test_no_version_is_resolved_when_the_schema_does_not_need_one(self, mocker):
+        """A schema with no one_hot_encoder is the same whichever training dataset produced it.
+
+        Asking for a version there is not merely redundant: `get_training_dataset_schema` validates that the version still exists, so resolving one turns a local computation into a request, and into a failure once that training dataset is deleted.
+        """
+        # Arrange
+        fv = self._feature_view(mocker, one_hot=False)
+        fv._serving_training_dataset_version = 2
+        fv._last_accessed_training_dataset = 4
+        schema = mocker.patch.object(
+            fv,
+            "get_training_dataset_schema",
+            return_value=[
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_feature", type="float"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="label", type="int", label=True
+                ),
+            ],
+        )
+
+        # Act
+        names = fv._get_transformed_feature_names(5)
+
+        # Assert: no version asked for, even with three of them available.
+        assert names == ["fg1_feature"]
+        schema.assert_called_once_with(None)
+
+
+class TestFeatureViewDeploy:
+    def test_deploy_builds_predictor_and_deploys(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("col1")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="fv", featurestore_id=99, query=fg.select_all(), version=2, labels=[]
+        )
+        for_feature_view = mocker.patch("hsml.predictor.Predictor.for_feature_view")
+
+        result = fv.deploy(
+            name="d",
+            passed_features=["a"],
+            training_dataset_version=3,
+        )
+
+        for_feature_view.assert_called_once_with(
+            fv,
+            name="d",
+            description=None,
+            training_dataset_version=3,
+            passed_features=["a"],
+            schema=None,
+            script_file=None,
+            resources=None,
+            scaling_configuration=None,
+            environment=None,
+            env_vars=None,
+            tags=None,
+            feature_logging=None,
+        )
+        assert result is for_feature_view.return_value.deploy.return_value
+
+
+class TestServingKeysAlias:
+    """`entry` is the original name for the serving keys and is kept working, with a warning."""
+
+    METHODS = [
+        "get_feature_vector",
+        "get_feature_vectors",
+        "get_inference_helper",
+        "get_inference_helpers",
+    ]
+
+    @pytest.mark.parametrize("method", METHODS)
+    def test_serving_keys_is_first_and_entry_is_last(self, method):
+        # Positional callers were passing the serving keys first and must keep working, so
+        # serving_keys takes that position and entry moves to the end as a keyword.
+        params = list(
+            inspect.signature(getattr(feature_view.FeatureView, method)).parameters
+        )
+        assert params[1] == "serving_keys"
+        assert params[-1] == "entry"
+
+    def test_entry_is_returned_with_a_deprecation_warning(self):
+        with pytest.warns(DeprecationWarning, match="Use `serving_keys` instead"):
+            resolved = feature_view.FeatureView._resolve_serving_keys(
+                None, {"id": 1}, "get_feature_vector"
+            )
+        assert resolved == {"id": 1}
+
+    def test_serving_keys_alone_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            assert feature_view.FeatureView._resolve_serving_keys(
+                {"id": 1}, None, "get_feature_vector"
+            ) == {"id": 1}
+
+    def test_both_names_together_are_refused(self):
+        # They name one argument, so disagreeing values are a caller bug, not a preference.
+        with pytest.raises(
+            FeatureStoreException, match="both `serving_keys` and `entry`"
+        ):
+            feature_view.FeatureView._resolve_serving_keys(
+                {"id": 1}, {"id": 2}, "get_feature_vector"
+            )
+
+    def test_neither_name_is_passed_through_untouched(self):
+        assert (
+            feature_view.FeatureView._resolve_serving_keys(
+                None, None, "get_feature_vector"
+            )
+            is None
+        )
+
+
+class TestMaxFeatureAge:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def _fv(self, max_feature_age):
+        return feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+            max_feature_age=max_feature_age,
+        )
+
+    def test_a_timedelta_goes_on_the_wire_as_seconds(self):
+        fv = self._fv(datetime.timedelta(hours=12))
+        assert json.loads(fv.json())["maxFeatureAgeSecs"] == 43200
+
+    def test_the_signature_matches_what_is_accepted(self):
+        """The annotation is the API reference, so a form it advertises has to work.
+
+        It advertised the withdrawn per-feature-group map, which always raises.
+        """
+        # Compared as source text, which is both what mkdocstrings renders and all that can be
+        # read here: `get_type_hints` cannot resolve this signature, whose other annotations
+        # name TYPE_CHECKING-only classes.
+        annotation = (
+            inspect.signature(feature_view.FeatureView.__init__)
+            .parameters["max_feature_age"]
+            .annotation
+        )
+        assert annotation == "timedelta | int | None"
+
+    def test_the_withdrawn_map_form_names_its_replacement(self):
+        with pytest.raises(TypeError, match="not a bound per feature group"):
+            self._fv({"weather": datetime.timedelta(days=1)})
+
+    def test_it_reads_back_as_a_timedelta(self):
+        assert self._fv(datetime.timedelta(days=1)).max_feature_age == (
+            datetime.timedelta(days=1)
+        )
+
+    def test_unbounded_by_default(self):
+        fv = self._fv(None)
+        assert fv.max_feature_age is None
+        assert "maxFeatureAgeSecs" not in json.loads(fv.json())
+
+    def test_the_bound_is_read_only(self):
+        # A bound changed after training would silently skew inference against the training set.
+        with pytest.raises(AttributeError):
+            self._fv(datetime.timedelta(days=1)).max_feature_age = datetime.timedelta(
+                days=2
+            )
+
+    @pytest.mark.parametrize(
+        "bound", [datetime.timedelta(0), datetime.timedelta(seconds=-1)]
+    )
+    def test_a_non_positive_bound_is_refused(self, bound):
+        with pytest.raises(FeatureStoreException, match="positive duration"):
+            self._fv(bound)
+
+    def test_a_number_is_refused(self):
+        with pytest.raises(TypeError, match="must be a timedelta"):
+            self._fv(3600.0)
+
+    def test_a_refresh_carries_the_bound_without_assigning_the_property(self, mocker):
+        # The property has no setter, so a refresh must not go through one.
+        fv = self._fv(datetime.timedelta(days=1))
+        refreshed = self._fv(datetime.timedelta(hours=1))
+        refreshed._serving_keys = [ServingKey(feature_name="primary_key", join_index=0)]
+        mocker.patch.object(
+            feature_view.FeatureView, "from_response_json", return_value=refreshed
+        )
+        fv.update_from_response_json({})
+        assert fv.max_feature_age == datetime.timedelta(hours=1)
+
+
+class TestGetRootFg:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def test_it_is_the_left_side_of_the_query(self):
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+        )
+        assert fv.get_root_fg() is fg1
+
+    def test_a_join_does_not_change_the_root(self):
+        # The root is what the view is anchored on, not whichever feature group is joined in.
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all().join(fg2.select_all()),
+            version=1,
+        )
+        assert fv.get_root_fg() is fg1
+
+    def test_the_return_type_is_the_base_not_the_subclass(self):
+        """The annotation has to admit every root the docstring promises.
+
+        An external feature group and a spine group are siblings of `FeatureGroup`, not
+        subclasses, so the narrower annotation made those two roots fail under
+        `HOPSWORKS_RUN_WITH_TYPECHECK`, which the CI unit-test job sets.
+        """
+        hints = typing.get_type_hints(feature_view.FeatureView.get_root_fg)
+        assert hints["return"] is feature_group.FeatureGroupBase
+        for cls in (
+            feature_group.FeatureGroup,
+            feature_group.ExternalFeatureGroup,
+            feature_group.SpineGroup,
+        ):
+            assert issubclass(cls, hints["return"])
+
+    def test_an_external_feature_group_root_comes_back(self):
+        external = object.__new__(feature_group.ExternalFeatureGroup)
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+        )
+        fv._query._left_feature_group = external
+        assert fv.get_root_fg() is external
+
+    def test_its_event_time_names_the_spine_column(self):
+        # This is what makes get_root_fg() useful for building a spine_df.
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+        )
+        assert fv.get_root_fg().event_time == fg1.event_time
+
+
+class TestSpineDeprecation:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def test_passing_spine_warns(self):
+        with pytest.warns(DeprecationWarning, match="`spine` is deprecated"):
+            feature_view.FeatureView._warn_spine_deprecated(
+                [{"a": 1}], "get_batch_data"
+            )
+
+    def test_not_passing_spine_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            feature_view.FeatureView._warn_spine_deprecated(None, "get_batch_data")
+
+    def test_the_warning_points_at_spine_df(self):
+        with pytest.warns(DeprecationWarning, match="Use `spine_df` instead"):
+            feature_view.FeatureView._warn_spine_deprecated([{"a": 1}], "training_data")
+
+    def test_every_method_taking_spine_warns(self):
+        # A method that accepts `spine` but never warns is a deprecation with a hole in it.
+        import inspect
+
+        missing = []
+        for name, member in inspect.getmembers(
+            feature_view.FeatureView, predicate=inspect.isfunction
+        ):
+            try:
+                takes_spine = "spine" in inspect.signature(member).parameters
+            except (ValueError, TypeError):
+                continue
+            if not takes_spine:
+                continue
+            source = inspect.getsource(member)
+            if "_warn_spine_deprecated" not in source:
+                missing.append(name)
+        assert missing == [], f"these accept `spine` but never warn: {missing}"
+
+    def test_every_method_pointing_at_spine_df_accepts_it(self):
+        """A deprecation that names a replacement the method does not take is a dead end.
+
+        `recreate_training_dataset` told callers to use `spine_df` and had no such parameter,
+        so the only way to follow the advice was to not use the method.
+        """
+        wrong = []
+        for name, member in inspect.getmembers(
+            feature_view.FeatureView, predicate=inspect.isfunction
+        ):
+            doc = inspect.getdoc(member) or ""
+            if "use `spine_df` instead" not in doc:
+                continue
+            if "spine_df" not in inspect.signature(member).parameters:
+                wrong.append(name)
+        assert wrong == [], f"these point at `spine_df` but do not accept it: {wrong}"
+
+
+class TestUnknownKeywordArguments:
+    """`**kwargs` exists for the deprecated `primary_keys` spelling and swallowed everything else."""
+
+    @pytest.fixture(autouse=True)
+    def _client(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def _fv(self):
+        return feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+
+    def test_the_withdrawn_prediction_times_argument_names_its_replacement(self):
+        with pytest.raises(TypeError, match="PredictionTimes.cross"):
+            self._fv().get_batch_data(prediction_times=["2026-09-16"])
+
+    def test_a_misspelled_argument_is_refused(self):
+        with pytest.raises(TypeError, match="spine_dff"):
+            self._fv().get_batch_data(spine_dff=[{"id": 1}])
+
+    def test_the_deprecated_primary_keys_spelling_still_passes(self, mocker):
+        fv = self._fv()
+        engine = mocker.patch.object(fv, "_feature_view_engine")
+        fv.get_batch_data(primary_keys=True)
+        # The engine takes it positionally, after the read options and the spine group.
+        assert engine._get_batch_data.call_args.args[7] is True
+
+    def test_it_covers_the_training_data_methods_too(self):
+        with pytest.raises(TypeError, match="PredictionTimes.cross"):
+            self._fv().training_data(prediction_times=["2026-09-16"])
+
+
+class TestRecreateTrainingDataset:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def test_the_spine_reaches_the_engine(self, mocker):
+        # Without it the dataset is rebuilt anchored on the root feature group, since the
+        # frame is not recorded with the training dataset.
+        fv = feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+        engine = mocker.patch.object(fv, "_feature_view_engine")
+        engine._recreate_training_dataset.return_value = (mocker.MagicMock(), "job")
+        mocker.patch.object(fv, "update_last_accessed_training_dataset")
+        frame = [{"id": 1}]
+
+        fv.recreate_training_dataset(training_dataset_version=3, spine_df=frame)
+
+        assert engine._recreate_training_dataset.call_args.kwargs["spine_df"] is frame

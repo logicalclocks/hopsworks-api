@@ -14,6 +14,17 @@
 #   limitations under the License.
 #
 
+import os
+import tempfile
+
+
+def _temp_dir() -> str:
+    """Return the directory for client temp files: `/tmp` on POSIX, the system temp directory on Windows.
+
+    POSIX keeps `/tmp` rather than following `TMPDIR`, since the shared certificate folder hierarchy relies on it.
+    """
+    return tempfile.gettempdir() if os.name == "nt" else "/tmp"
+
 
 class Default:
     """An object of this class is used in place of optional arguments in cases when passing `None` should result in an exception or other behaviour.
@@ -45,10 +56,6 @@ class JOBS:
 class GIT:
     SUCCESS_STATES = ["SUCCESS"]
     ERROR_STATES = ["FAILED", "KILLED", "INITIALIZATION_FAILED", "TIMEDOUT"]
-
-
-class SERVICES:
-    LIST = ["JOBS", "KAFKA", "JUPYTER", "SERVING", "FEATURESTORE", "AIRFLOW"]
 
 
 class OPENSEARCH_CONFIG:
@@ -159,7 +166,7 @@ class MODEL_REGISTRY:
     HOPSFS_MOUNT_PREFIX = "/hopsfs/"
     MODELS_DATASET = "Models"
     MODEL_FILES_DIR_NAME = "Files"
-    MODEL_CACHE_DIR_DEFAULT = "/tmp/hopsworks/models"
+    MODEL_CACHE_DIR_DEFAULT = os.path.join(_temp_dir(), "hopsworks", "models")
 
 
 class MODEL_SERVING:
@@ -167,6 +174,45 @@ class MODEL_SERVING:
     ARTIFACTS_DIR_NAME = "Artifacts"  # legacy, kept for backward compatibility (<4.6)
     # Subfolder for user-uploaded files at Deployments/<name>/resources/<role>/
     DEPLOYMENT_RESOURCES_DIR = "resources"
+    # Project dataset and subdirectory where the backend archives pod logs at
+    # deployment stop/delete time: Logs/Serving/<deployment_name>/
+    LOGS_DATASET = "Logs"
+    ARCHIVED_LOGS_DIR = "Serving"
+    # Content-addressed deployment schemas live at
+    # Deployments/<name>/resources/schema/<schema_id>.json; the id rides on the
+    # predictor as an env var so each revision names the file it serves.
+    DEPLOYMENT_SCHEMA_DIR = "schema"
+    # Derived documents published next to <schema_id>.json for clients that
+    # cannot render them from the schema; the backend serves all three.
+    DEPLOYMENT_SCHEMA_JSON_SCHEMA_SUFFIX = ".jsonschema.json"
+    DEPLOYMENT_SCHEMA_OPENAPI_SUFFIX = ".openapi.json"
+    DEFAULT_PREDICTOR_SCRIPT = "default_predictor.py"
+    DEPLOYMENT_SCHEMA_ID_ENV_VAR = "SERVING_SCHEMA_ID"
+    FEATURE_VIEW_NAME_ENV_VAR = "SERVING_FEATURE_VIEW_NAME"
+    # Set when the served feature view logs; the value is the transport the
+    # rows take (realtime or job), which the deployment page keys off.
+    FEATURE_LOGGING_ENV_VAR = "SERVING_FEATURE_LOGGING"
+    FEATURE_VIEW_VERSION_ENV_VAR = "SERVING_FEATURE_VIEW_VERSION"
+    TRAINING_DATASET_VERSION_ENV_VAR = "SERVING_TRAINING_DATASET_VERSION"
+    MAX_BATCH_ROWS_ENV_VAR = "SERVING_MAX_BATCH_ROWS"
+    # Tells the backend that a model-less deployment's script is a Predict
+    # class to run under the KServe wrapper, not a server to start with python.
+    SCRIPT_KIND_ENV_VAR = "SERVING_SCRIPT_KIND"
+    SCRIPT_KIND_PREDICTOR = "predictor"
+    # which component of the revision validates requests against the schema
+    SCHEMA_ENFORCER_ENV_VAR = "SERVING_SCHEMA_ENFORCER"
+    SCHEMA_ENFORCER_PREDICTOR = "predictor"
+    SCHEMA_ENFORCER_TRANSFORMER = "transformer"
+    RESERVED_ENV_VARS = (
+        DEPLOYMENT_SCHEMA_ID_ENV_VAR,
+        FEATURE_VIEW_NAME_ENV_VAR,
+        FEATURE_LOGGING_ENV_VAR,
+        FEATURE_VIEW_VERSION_ENV_VAR,
+        TRAINING_DATASET_VERSION_ENV_VAR,
+        SCRIPT_KIND_ENV_VAR,
+        SCHEMA_ENFORCER_ENV_VAR,
+    )
+    DEFAULT_MAX_BATCH_ROWS = 512
 
 
 class RESOURCES:
@@ -277,6 +323,10 @@ class FEATURE_LOGGING:
     PREFIX_PREDICTIONS = "predicted_"
     EMPTY_REQUEST_PARAMETER_COLUMN_VALUE = "{}"
 
+    # Model identity column of logging feature groups created before FSTORE-1871
+    # combined them and split the column into model_name and model_version.
+    LEGACY_MODEL_COLUMN_NAME = "hsml_model"
+
     LOGGING_METADATA_COLUMNS = [
         LOG_ID_COLUMN_NAME,
         TRAINING_DATASET_VERSION_COLUMN_NAME,
@@ -300,7 +350,7 @@ class SCALING_CONFIG:
 class CLIENT:
     """Constants for Hopsworks client configuration."""
 
-    CERT_FOLDER_DEFAULT = "/tmp"
+    CERT_FOLDER_DEFAULT = _temp_dir()
 
 
 class TRANSFORMATIONS:

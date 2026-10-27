@@ -320,7 +320,7 @@ You can then build either `hsfs` or `hsfs_utils`:
 
 ```bash
 cd java
-mvn clean package -Pspark-3.5,with-hops-ee
+mvn clean package -Pspark-4.1,with-hops-ee
 # Or
 cd ../utils/python
 mvn clean package

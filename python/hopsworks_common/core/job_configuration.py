@@ -30,6 +30,11 @@ class JobConfiguration:
     """Configuration of a Hopsworks job.
 
     Each job has a `config` attribute, which can be used in combination with `job.save()` to update the job's configuration.
+
+    Memory sizes are in MB.
+    The two memory overhead factors are the fractions of the driver and executor memory that Spark adds to each pod as non-heap headroom.
+    Leave them unset to keep Spark's defaults of 0.10 for Spark jobs and 0.40 for PySpark jobs.
+    Raise the executor factor when executors are OOMKilled.
     """
 
     DTO_TYPE = "sparkJobConfiguration"
@@ -45,6 +50,8 @@ class JobConfiguration:
         dynamic_min_executors=1,
         dynamic_max_executors=2,
         environment_name="spark-feature-pipeline",
+        driver_memory_overhead_factor: float | None = None,
+        executor_memory_overhead_factor: float | None = None,
         **kwargs,
     ):
         self._driver_memory = driver_memory
@@ -56,9 +63,11 @@ class JobConfiguration:
         self._dynamic_min_executors = dynamic_min_executors
         self._dynamic_max_executors = dynamic_max_executors
         self._environment_name = environment_name
+        self._driver_memory_overhead_factor = driver_memory_overhead_factor
+        self._executor_memory_overhead_factor = executor_memory_overhead_factor
 
     def to_dict(self):
-        return {
+        config = {
             "spark.driver.memory": self._driver_memory,
             "spark.driver.cores": self._driver_cores,
             "spark.executor.memory": self._executor_memory,
@@ -70,6 +79,15 @@ class JobConfiguration:
             "environmentName": self._environment_name,
             "type": JobConfiguration.DTO_TYPE,
         }
+        if self._driver_memory_overhead_factor is not None:
+            config["spark.driver.memoryOverheadFactor"] = (
+                self._driver_memory_overhead_factor
+            )
+        if self._executor_memory_overhead_factor is not None:
+            config["spark.executor.memoryOverheadFactor"] = (
+                self._executor_memory_overhead_factor
+            )
+        return config
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

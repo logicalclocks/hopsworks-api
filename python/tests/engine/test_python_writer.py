@@ -186,7 +186,7 @@ class TestPythonWriter:
 
         # Assert - num_entries should be len(dataframe) = 3 when flag is not set
         mock_init_kafka_resources.assert_called_once_with(
-            fg, {"start_offline_materialization": True}, num_entries=3
+            fg, {"start_offline_materialization": True}, num_entries=3, storage=None
         )
 
     def test_run_materialization_job_disable_online_ingestion_count(self, mocker):
@@ -218,4 +218,5 @@ class TestPythonWriter:
                 "start_offline_materialization": True,
             },
             num_entries=None,
+            storage=None,
         )

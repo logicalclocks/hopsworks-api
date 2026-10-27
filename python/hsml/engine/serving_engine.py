@@ -15,11 +15,18 @@
 #
 from __future__ import annotations
 
+import contextlib
+import json
+import math
 import os
+import re
+import sys
 import tempfile
 import time
 import uuid
+import warnings
 
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.client.istio.utils.infer_type import InferInput
 from hopsworks_common.constants import (
@@ -31,10 +38,50 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
+from hsml import default_predictor, deployable_component_logs
+from hsml import deployment_schema as deployment_schema
 from hsml.core import serving_api
 from hsml.engine import local_engine
-from hsml.utils.local_paths import _resolve_serving_file
+from hsml.utils.local_paths import _ensure_dataset_dir, _resolve_serving_file
 from tqdm.auto import tqdm
+
+
+def _structured_prediction_error(error: RestAPIError) -> dict | None:
+    """The `detail` object of a default predictor error response, or `None` for any other body."""
+    try:
+        body = error.response.json()
+    except Exception:  # noqa: BLE001 - not JSON, so not one of ours
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict) and "code" in detail:
+        return detail
+    return None
+
+
+# KServe reports a deployment ready once its route object exists, and Istio pushes the route to the ingress gateway a
+# moment later. start() and save() wait for the gateway to route the deployment, for at most this long.
+_ROUTE_WAIT_MAX_SECONDS = 60
+_ROUTE_RETRY_MAX_INTERVAL_SECONDS = 4
+# Each probe of the route waits at most this long, and never past the caller's budget.
+_ROUTE_PROBE_TIMEOUT_SECONDS = 5
+
+
+def _caller_stacklevel() -> int:
+    """The `stacklevel` that points a warning raised by the calling SDK function at the first frame outside the SDK.
+
+    How many SDK frames separate the user's call from the warning depends on the method (start, save, rollback) and on whether usage reporting wraps it, so a fixed `stacklevel` lands inside the SDK.
+    """
+    import hopsworks_common
+    import hsml
+
+    sdk = tuple(
+        os.path.dirname(package.__file__) + os.sep
+        for package in (hsml, hopsworks_common)
+    )
+    frame, level = sys._getframe(1), 1
+    while frame is not None and frame.f_code.co_filename.startswith(sdk):
+        frame, level = frame.f_back, level + 1
+    return level
 
 
 def _render_chunk(chunk) -> str:
@@ -50,6 +97,46 @@ def _render_chunk(chunk) -> str:
     if content and not content.endswith("\n"):
         content += "\n"
     return content
+
+
+# RESTCodes.ServingErrorCode.SCHEMA_NOT_FOUND: the id is not a published schema
+_SCHEMA_NOT_FOUND = 240037
+
+
+# The scaling fields a backend older than 5.2 does not know and silently drops (HWORKS-3106, HWORKS-3113).
+_SCALING_FIELDS_5_2 = (
+    "autoscaler",
+    "scale_down_stabilization_window_seconds",
+    "scale_up_stabilization_window_seconds",
+    "additional_scale_metrics",
+    "idle_scale_to_zero",
+    "idle_cooldown_seconds",
+    "cold_start_timeout_seconds",
+)
+
+
+def _scaling_json(component) -> dict | None:
+    """The scaling configuration of a predictor or transformer as sent, or None without one."""
+    if component is None or component.scaling_configuration is None:
+        return None
+    return component.scaling_configuration.to_json()
+
+
+def _dropped_scaling_fields(sent: dict | None, received: dict | None) -> list[str]:
+    """The 5.2 scaling fields present in `sent` and absent from `received`.
+
+    The backend reports every field it stores, so one that was sent and did not come back was dropped.
+    A false `idle_scale_to_zero` is the one value the backend leaves out on purpose.
+    """
+    if not sent or received is None:
+        return []
+    return [
+        field
+        for field in _SCALING_FIELDS_5_2
+        if field in sent
+        and field not in received
+        and not (field == "idle_scale_to_zero" and sent[field] is False)
+    ]
 
 
 class ServingEngine:
@@ -112,7 +199,7 @@ class ServingEngine:
     ):
         if await_status > 0:
             sleep_seconds = 5
-            for _ in range(int(await_status / sleep_seconds)):
+            for _ in range(max(1, math.ceil(await_status / sleep_seconds))):
                 time.sleep(sleep_seconds)
                 state = deployment_instance.get_state()
                 num_instances = self._get_available_instances(state)
@@ -150,6 +237,7 @@ class ServingEngine:
         return None
 
     def _start(self, deployment_instance, await_status: int) -> bool:
+        started = time.monotonic()
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_RUNNING
         )
@@ -196,7 +284,12 @@ class ServingEngine:
                 self._stop(deployment_instance, await_status=0)
                 raise re
 
-        if state.status == PREDICTOR_STATE.STATUS_RUNNING:
+        # await_running=0 returns before the state is polled again
+        if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+            if not done:
+                self._await_route(
+                    deployment_instance, await_status - (time.monotonic() - started)
+                )
             if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
                 print("Start prompting using any OpenAI API-compatible client.")
             elif not deployment_instance.has_model:
@@ -244,6 +337,46 @@ class ServingEngine:
 
         # free grpc channel
         deployment_instance._grpc_channel = None
+
+    def _await_route(self, deployment_instance, budget_seconds: float) -> None:
+        """Wait for the ingress gateway to route requests to a deployment that just reported Running.
+
+        A prediction sent before the gateway has the route gets its empty 404, which reads as a deployment that is not running.
+        The wait never fails a start or an update, since the deployment is running: running out of time, or a probe that fails, only warns.
+        """
+        if deployment_instance.predictor.serving_tool != PREDICTOR.SERVING_TOOL_KSERVE:
+            return  # requests go through Hopsworks, which needs no gateway route
+        deadline = time.monotonic() + max(
+            0.0, min(budget_seconds, _ROUTE_WAIT_MAX_SECONDS)
+        )
+        interval = 0.5
+        probed = False
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    if probed:
+                        warnings.warn(
+                            f"The ingress gateway does not route requests to deployment '{deployment_instance.name}' yet, "
+                            "so predictions can fail with 'Deployment not created or running' for a few seconds.",
+                            stacklevel=_caller_stacklevel(),
+                        )
+                    return
+                if self._serving_api._is_routed(
+                    deployment_instance,
+                    timeout=min(remaining, _ROUTE_PROBE_TIMEOUT_SECONDS),
+                ):
+                    return
+                probed = True
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    time.sleep(min(interval, remaining))
+                    interval = min(interval * 2, _ROUTE_RETRY_MAX_INTERVAL_SECONDS)
+        except Exception as e:  # noqa: BLE001 - checking the route must never fail a start or an update
+            warnings.warn(
+                f"Could not check that the ingress gateway routes requests to deployment '{deployment_instance.name}': {e}",
+                stacklevel=_caller_stacklevel(),
+            )
 
     def _check_status(self, deployment_instance, desired_status):
         state = deployment_instance.get_state()
@@ -477,9 +610,80 @@ class ServingEngine:
 
         return local_path
 
+    def _download_logs(self, deployment_instance, path=None, latest=False):
+        """Download the HopsFS log archives of a deployment.
+
+        Each instance archives its own output when it exits, restarts, or is
+        stopped. Archives live in the project's ``Logs`` dataset, one file per
+        instance run under ``Logs/Serving/<deployment_name>/`` named
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log``.
+
+        Parameters:
+            deployment_instance: The deployment whose archived logs to download.
+            path: Local directory to download into; the current working directory when unset.
+            latest: Download only the most recent archives instead of all of them.
+
+        Returns:
+            The local paths of the downloaded archive files.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If `path` does not exist or the deployment has no archived logs.
+        """
+        if path is not None and not os.path.exists(path):
+            raise ModelServingException(f"Path {path} does not exist")
+        if path is not None and not os.path.isdir(path):
+            raise ModelServingException(f"Path {path} is not a directory")
+        if path is None:
+            path = os.getcwd()
+
+        archives_path = f"{MODEL_SERVING.LOGS_DATASET}/{MODEL_SERVING.ARCHIVED_LOGS_DIR}/{deployment_instance.name}"
+        no_archives_msg = (
+            f"No archived logs found for deployment '{deployment_instance.name}' "
+            f"under {archives_path}. Instances archive their logs when they "
+            "exit, restart, or are stopped."
+        )
+        if not self._dataset_api.exists(archives_path):
+            raise ModelServingException(no_archives_msg)
+
+        _, items = self._dataset_api._list_dataset_path(
+            archives_path, inode.Inode, sort_by="NAME:desc"
+        )
+        # Inode paths are absolute (/Projects/<project>/...), and download() interpolates the path
+        # straight into the request, so passing them through yields a //Projects/... segment. The
+        # archives are flat files directly under archives_path, so rebuilding project-relative paths
+        # from the basename avoids having to strip a project prefix.
+        archive_paths = [
+            f"{archives_path}/{os.path.basename(entry.path)}"
+            for entry in items
+            if not entry.dir
+        ]
+        if latest and archive_paths:
+            # File names start with the UTC stop timestamp, so the
+            # lexicographically greatest prefix is the most recent stop.
+            latest_prefix = max(
+                os.path.basename(p).split("_", 1)[0] for p in archive_paths
+            )
+            archive_paths = [
+                p
+                for p in archive_paths
+                if os.path.basename(p).startswith(latest_prefix + "_")
+            ]
+        if not archive_paths:
+            raise ModelServingException(no_archives_msg)
+
+        download_dir = os.path.join(
+            path,
+            f"logs-deployment-{deployment_instance.name}_{str(uuid.uuid4())[:16]}",
+        )
+        os.makedirs(download_dir, exist_ok=True)
+        return [
+            self._dataset_api.download(p, download_dir, overwrite=True)
+            for p in archive_paths
+        ]
+
     def _create(self, deployment_instance):
         try:
-            self._serving_api._put(deployment_instance)
+            self._put_and_check(deployment_instance)
             print("Deployment created, explore it at " + deployment_instance.get_url())
         except RestAPIError as re:
             raise_err = True
@@ -507,7 +711,57 @@ class ServingEngine:
         if deployment_instance.is_stopped():
             print("Before making predictions, start the deployment by using `.start()`")
 
-    def _update(self, deployment_instance, await_update):
+    def _update(self, deployment_instance, await_update, new_version=False):
+        self._apply(
+            deployment_instance,
+            lambda: self._put_and_check(deployment_instance, new_version),
+            await_update,
+        )
+
+    def _put_and_check(self, deployment_instance, new_version=False):
+        """Save the deployment and warn about scaling fields the backend did not keep.
+
+        The backend ignores JSON fields it does not know, so the KEDA and idle fields sent to a release that predates
+        them (5.1) are dropped without a word; the connection layer only warns on a major.minor mismatch.
+        The read-back says what was kept.
+        """
+        sent = {
+            component: _scaling_json(getattr(deployment_instance, component))
+            for component in ("predictor", "transformer")
+        }
+        self._serving_api._put(deployment_instance, new_version)
+        dropped = []
+        for component, before in sent.items():
+            after = _scaling_json(getattr(deployment_instance, component))
+            dropped += [
+                f"{component}.{field}"
+                for field in _dropped_scaling_fields(before, after)
+            ]
+        if dropped:
+            warnings.warn(
+                "The backend did not keep the scaling fields "
+                + ", ".join(dropped)
+                + "; they need Hopsworks 5.2 or later. The deployment was saved without them.",
+                stacklevel=3,
+            )
+
+    def _rollback(self, deployment_instance, version, await_update):
+        # Also refuses an unsaved deployment and a backend without versions.
+        versions = self._serving_api._get_versions(deployment_instance)
+        if any(v.active and v.version == version for v in versions):
+            print(f"Version {version} is already the active version, nothing to do.")
+            return
+        # Unlike a save, a rollback is accepted while a version is updating: a version that does not
+        # come up is the main reason to roll back.
+        self._apply(
+            deployment_instance,
+            lambda: self._serving_api._rollback(deployment_instance, version),
+            await_update,
+            allow_updating=True,
+        )
+
+    def _apply(self, deployment_instance, change, await_update, allow_updating=False):
+        """Run a change of the deployment's configuration and wait for the running instances to pick it up."""
         state = deployment_instance.get_state()
         if state is None:
             return
@@ -522,14 +776,23 @@ class ServingEngine:
             state.status == PREDICTOR_STATE.STATUS_RUNNING
             or state.status == PREDICTOR_STATE.STATUS_IDLE
             or state.status == PREDICTOR_STATE.STATUS_FAILED
+            or (allow_updating and state.status == PREDICTOR_STATE.STATUS_UPDATING)
         ):
             # if running, it's fine
-            self._serving_api._put(deployment_instance)
+            change()
             print("Deployment updated, applying changes to running instances...")
+            started = time.monotonic()
             state = self._poll_deployment_status(  # wait for status
-                deployment_instance, PREDICTOR_STATE.STATUS_RUNNING, await_update
+                # save() and rollback() accept None, which skips the wait like 0.
+                deployment_instance,
+                PREDICTOR_STATE.STATUS_RUNNING,
+                await_update or 0,
             )
             if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
+                self._await_route(
+                    deployment_instance,
+                    (await_update or 0) - (time.monotonic() - started),
+                )
                 print("Running instances updated successfully")
             return
         if state.status == PREDICTOR_STATE.STATUS_UPDATING:
@@ -549,25 +812,179 @@ class ServingEngine:
             or state.status == PREDICTOR_STATE.STATUS_STOPPED
         ):
             # if stopped, it's fine
-            self._serving_api._put(deployment_instance)
+            change()
             print("Deployment updated, explore it at " + deployment_instance.get_url())
             return
 
         raise ValueError("Unknown deployment status: " + state.status)
 
-    def _save(self, deployment_instance, await_update: int):
+    def _save(self, deployment_instance, await_update: int, new_version: bool = False):
         # Local paths on script_file / config_file are auto-uploaded under
         # /Projects/<p>/Deployments/<name>/resources/ and rewritten to
         # HopsFS paths in-memory. On update of a deployment fetched from the
         # backend, these fields hold backend-managed references (e.g. a bare
         # basename), which are left untouched; only newly-assigned local
         # paths are re-uploaded.
+        # Both refusals come before anything is written to HopsFS.
+        if new_version:
+            if deployment_instance.id is None:
+                raise ModelServingException(
+                    "A new deployment starts at version 1; new_version applies to updates only"
+                )
+            # A backend that predates versioning ignores the flag and edits the active version in place.
+            if not self._serving_api._supports_versions(deployment_instance):
+                raise ModelServingException(
+                    "Deployment versioning requires a newer Hopsworks release; nothing was saved."
+                )
         self._upload_local_serving_files(deployment_instance)
+        self._upload_default_predictor_stub(deployment_instance)
+        self._publish_schema(deployment_instance)
 
         if deployment_instance.id is None:
             self._create(deployment_instance)
             return
-        self._update(deployment_instance, await_update)
+        self._update(deployment_instance, await_update, new_version)
+
+    def _upload_default_predictor_stub(self, deployment_instance):
+        """Give a default-predictor deployment without a script the library stub as its predictor script."""
+        predictor = deployment_instance._predictor
+        if not predictor.default_predictor or predictor.script_file is not None:
+            return
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            stub_path = os.path.join(tmp_dir, MODEL_SERVING.DEFAULT_PREDICTOR_SCRIPT)
+            with open(stub_path, "w", encoding="utf-8") as f:
+                f.write(default_predictor.STUB_SCRIPT)
+            predictor.script_file = _resolve_serving_file(
+                self._engine,
+                deployment_instance.name,
+                stub_path,
+                field_name="script_file",
+                subdir="predictor",
+                is_update=deployment_instance.id is not None,
+            )
+
+    def _schema_dir(self, deployment_name: str) -> str:
+        return (
+            f"{MODEL_SERVING.DEPLOYMENTS_DATASET}/{deployment_name}/"
+            f"{MODEL_SERVING.DEPLOYMENT_RESOURCES_DIR}/{MODEL_SERVING.DEPLOYMENT_SCHEMA_DIR}"
+        )
+
+    def _publish_schema(self, deployment_instance):
+        """Write the pending schema as immutable, content-addressed files and point the env vars at them.
+
+        Both happen before the `PUT`, so the revision the backend creates
+        already names files that exist and never change. The JSON Schema and
+        OpenAPI renderings go next to the schema for the backend's discovery
+        endpoint. The batch limit configured in the predictor's env vars is
+        part of the schema, so changing it publishes a new id. A transformer
+        gets the id too and is named the enforcer: it sees the client request
+        first, and the predictor behind it defers.
+        """
+        predictor = deployment_instance._predictor
+        # the property loads a fetched deployment's schema by id, so a save that
+        # only attaches a transformer or changes the batch limit still publishes
+        schema = predictor.schema
+        schema_id = schema.schema_id if schema is not None else predictor.schema_id
+        if schema_id is None:
+            return
+        if schema is not None:
+            configured = deployment_schema._configured_batch_rows(predictor.env_vars)
+            if configured is not None and configured != schema.max_batch_rows:
+                schema = schema._with_max_batch_rows(configured)
+                predictor._schema = schema
+                schema_id = schema.schema_id
+            self._write_schema_documents(deployment_instance.name, schema)
+        transformer = predictor.transformer
+        enforcer = (
+            MODEL_SERVING.SCHEMA_ENFORCER_TRANSFORMER
+            if transformer is not None
+            else MODEL_SERVING.SCHEMA_ENFORCER_PREDICTOR
+        )
+        for component in [predictor] + ([transformer] if transformer else []):
+            env_vars = dict(component.env_vars or {})
+            env_vars[MODEL_SERVING.DEPLOYMENT_SCHEMA_ID_ENV_VAR] = schema_id
+            if schema is not None:
+                view = schema.feature_view or {}
+                identity = {
+                    MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR: view.get("name"),
+                    MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR: view.get("version"),
+                    MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR: schema.training_dataset_version,
+                }
+                for name, value in identity.items():
+                    if value is None:
+                        env_vars.pop(name, None)
+                    else:
+                        env_vars[name] = str(value)
+            # each pod validates, or defers, according to its own revision
+            env_vars[MODEL_SERVING.SCHEMA_ENFORCER_ENV_VAR] = enforcer
+            component.env_vars = env_vars
+
+    def _write_schema_documents(self, deployment_name: str, schema) -> None:
+        schema_dir = self._schema_dir(deployment_name)
+        documents = {
+            f"{schema.schema_id}.json": schema.json(),
+            f"{schema.schema_id}{MODEL_SERVING.DEPLOYMENT_SCHEMA_JSON_SCHEMA_SUFFIX}": json.dumps(
+                schema.to_json_schema()
+            ),
+            f"{schema.schema_id}{MODEL_SERVING.DEPLOYMENT_SCHEMA_OPENAPI_SUFFIX}": json.dumps(
+                schema.to_openapi(deployment_name)
+            ),
+        }
+        missing = {
+            name: content
+            for name, content in documents.items()
+            if not self._engine._dataset_api.exists(f"{schema_dir}/{name}")
+        }
+        if not missing:
+            return
+        _ensure_dataset_dir(self._engine, schema_dir)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            for name, content in missing.items():
+                local_path = os.path.join(tmp_dir, name)
+                with open(local_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                self._engine._upload(local_path, schema_dir, overwrite=False)
+
+    def _read_schema(self, predictor, schema_id: str):
+        """Fetch the schema a revision names, or `None` when it is gone.
+
+        The backend endpoint needs only the `SERVING` scope; a backend without
+        it answers a bare 404, and the schema file is then downloaded
+        directly, which needs dataset access. A 404 naming another error, such
+        as an unknown deployment, propagates.
+        """
+        if predictor.id is not None:
+            try:
+                schema_json = self._serving_api._get_schema(predictor.id, schema_id)
+                return deployment_schema.DeploymentSchema.from_response_json(
+                    schema_json
+                )
+            except RestAPIError as e:
+                if e.response.status_code != 404:
+                    raise
+                error_code = getattr(e, "error_code", None)
+                if error_code == _SCHEMA_NOT_FOUND:
+                    return None
+                if error_code:
+                    raise
+        project_name = client._get_instance()._project_name
+        path = f"/Projects/{project_name}/{self._schema_dir(predictor.name)}/{schema_id}.json"
+        response = self._dataset_api.read_content(path)
+        if response is None:
+            return None
+        content = getattr(response, "content", response)
+        if isinstance(content, (bytes, bytearray)):
+            content = content.decode("utf-8")
+        return deployment_schema.DeploymentSchema.from_response_json(
+            json.loads(content)
+        )
+
+    def _remove_schemas(self, deployment_name: str):
+        schema_dir = self._schema_dir(deployment_name)
+        if self._engine._dataset_api.exists(schema_dir):
+            self._engine._dataset_api.remove(
+                f"/Projects/{client._get_instance()._project_name}/{schema_dir}"
+            )
 
     def _upload_local_serving_files(self, deployment_instance):
         """Upload local ``script_file`` / ``config_file`` paths.
@@ -583,9 +1000,15 @@ class ServingEngine:
         is_update = deployment_instance.id is not None
 
         targets = [
-            (predictor, "script_file", "predictor", "script_file"),
             (predictor, "config_file", "config", "config_file"),
         ]
+        # A git-backed agent's script is a path inside the repository the pod
+        # clones, not a local file: resolving it here either fails (the cwd
+        # does not hold the repository) or uploads a copy and rewrites the
+        # field to an absolute HopsFS path, which the backend then refuses as
+        # not being a safe relative path. Left exactly as given.
+        if getattr(predictor, "git_url", None) is None:
+            targets.insert(0, (predictor, "script_file", "predictor", "script_file"))
         if predictor.transformer is not None:
             targets.append(
                 (
@@ -622,6 +1045,9 @@ class ServingEngine:
             )
 
         self._serving_api._delete(deployment_instance)
+        # The backend may already have removed the deployment folder.
+        with contextlib.suppress(RestAPIError):
+            self._remove_schemas(deployment_instance.name)
         print("Deployment deleted successfully")
 
     def _get_state(self, deployment_instance):
@@ -654,8 +1080,10 @@ class ServingEngine:
         if state.status == PREDICTOR_STATE.STATUS_STARTING:
             print("Deployment is starting, server logs might not be ready yet")
 
+        # Kibana is gone with the OpenSearch pipeline: the deployment page is where the live
+        # reader and the log-history archives are now.
         print(
-            "Explore all the logs and filters in the Kibana logs at "
+            "Explore all the logs and filters on the deployment page at "
             + deployment_instance.get_url(),
             end="\n\n",
         )
@@ -663,17 +1091,16 @@ class ServingEngine:
         return self._serving_api._get_logs(deployment_instance, component, tail)
 
     # ----- Programmatic log APIs (read_logs / tail_logs) ---------------------
-    # These never print and never short-circuit on deployment state. The
-    # OpenSearch source returns logs even when the deployment is stopped, so
-    # the legacy "deployment is stopping → return None" guard would just hide
-    # data that is in fact retrievable.
+    # These never print and never short-circuit on deployment state, so a
+    # deployment that is starting or stopping can still be read without the
+    # legacy "deployment is stopping → return None" guard hiding data.
 
     def _read_logs(
         self,
         deployment_instance,
         component: str = "predictor",
         tail: int = 100,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
@@ -687,7 +1114,7 @@ class ServingEngine:
             deployment_instance: The deployment whose logs to read.
             component: Which deployment component to read (``predictor``, ``transformer``).
             tail: Maximum number of recent log entries to fetch.
-            source: Log source (``opensearch`` or ``kubernetes``).
+            source: Log source (``kubernetes`` or ``opensearch``).
             since: ISO-8601 lower bound for log timestamps, if any.
             until: ISO-8601 upper bound for log timestamps, if any.
             pod: Specific pod name to read logs for, if any.
@@ -711,28 +1138,39 @@ class ServingEngine:
         deployment_instance,
         component: str = "predictor",
         interval: float = 2.0,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status=None,
+        pod: str | None = None,
     ):
         """Yield only newly observed log chunks as plain text.
 
-        v1 streaming is client-side polling: each tick calls
-        :py:meth:`read_logs` with a moving ``since`` cursor and yields the
-        portion not already seen. Deduplication is by (timestamp, doc_id)
-        on the OpenSearch path and by content hash for the Kubernetes path
-        (which has neither field). The generator stops when:
+        v1 streaming is client-side polling: each tick fetches with a moving
+        ``since`` cursor and yields the portion not already seen.
+        Deduplication is by (timestamp, doc_id) on the OpenSearch path (old
+        backends). On the Kubernetes path lines are requested with kubelet
+        timestamps and a per-pod cursor advances past what was yielded, so a
+        poll transfers only the news; against an old backend that ignores
+        those params, the previous tail window is kept per pod and only the
+        non-overlapping suffix is emitted. The generator stops when:
 
         - ``timeout`` (seconds, optional) elapses,
         - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
         - the caller breaks out of the loop / closes the generator.
 
+        Continuation is not lossless in one case, and says so when it happens.
+        ``since`` filters by whole seconds, so a resume re-reads the second the
+        cursor sits in; a replica writing more in that second than one read can
+        return can never be resumed past it. After a few such reads the cursor
+        for that replica is abandoned for a fresh tail and a line marking the
+        skipped range is yielded in place of the lines that were lost.
+
         Parameters:
             deployment_instance: The deployment whose logs to tail.
             component: Which deployment component to tail (``predictor``, ``transformer``).
             interval: Seconds between successive polls.
-            source: Log source (``opensearch`` or ``kubernetes``).
+            source: Log source (``kubernetes`` or ``opensearch``).
             since: ISO-8601 starting cursor, or ``"now"`` for new-only.
             timeout: Stop after this many seconds, if set.
             stop_on_status: Stop when the deployment status matches this value.
@@ -745,11 +1183,31 @@ class ServingEngine:
         # successive overlapping windows.
         seen_doc_ids: set[str] = set()
         last_timestamp: str | None = since if (since and since != "now") else None
-        # Kubernetes path has no doc id / timestamp, so dedupe by content
-        # hash instead. Bound the set so a chatty deployment doesn't keep
-        # the dedupe state growing forever.
-        seen_hashes: set[int] = set()
-        seen_hashes_cap = 4096
+        # Kubernetes path: lines are requested with kubelet timestamps and a
+        # per-pod cursor advances past what was already yielded, so each poll
+        # transfers only what is new. ``since`` is applied by the kubelet at
+        # second granularity, so the cursor comparison below is what actually
+        # dedupes the overlap it re-sends. A cursor is (timestamp, ordinal):
+        # the ordinal counts the lines already delivered bearing exactly that
+        # timestamp, because coarse-clock runtimes can emit several lines per
+        # timestamp and a timestamp-only cursor would drop the later ones.
+        # Old backends ignore both params and return unprefixed tail windows;
+        # the previous window is kept per pod (keyed by instance name) for
+        # overlap-suffix dedup as a fallback.
+        cursor_by_pod: dict[str, tuple[str, int]] = {}
+        previous_lines_by_pod: dict[str, list[str]] = {}
+        # Stall recovery. ``since`` filters by whole seconds, so a resume always
+        # re-fetches the whole second the cursor sits in. When that second holds
+        # more than the backend's per-read byte budget, every read returns the
+        # same head, the cursor cannot advance, and without this the generator
+        # polls that prefix for ever and never reaches the next second. Counted
+        # per container instance, since only the busy replica is stuck.
+        stalled_by_instance: dict[str, int] = {}
+        reseeds_by_instance: dict[str, int] = {}
+        pre_reseed_cursor: dict[str, tuple[str, int]] = {}
+        # Set when a stalled instance abandons its cursor; makes the next read a
+        # tail read instead of another since-bounded one.
+        reseed_pending = False
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
         # only. Resolved here on the first call to a real ISO-8601 timestamp
@@ -764,43 +1222,162 @@ class ServingEngine:
         deadline = (time.monotonic() + timeout) if timeout else None
 
         while True:
+            # since is an absolute instant, so one value covers every pod: the
+            # earliest cursor lags without losing, and each pod trims its own
+            # overlap.
+            #
+            # A reseed is the exception. Dropping the stalled instance's cursor
+            # is not enough to reach the newest output: with any cursor left, or
+            # any resolved ``since``, the next read is still bounded by that
+            # instant and returns the same capped prefix. The gap notice would
+            # then claim a jump that never happened. So a reseed clears every
+            # cursor and drops the resolved ``since`` for exactly one read,
+            # which is what makes it a tail read. That is why the reseed is
+            # coordinated rather than per-instance: one request carries one
+            # ``since``, so a fresh tail cannot be fetched for one replica
+            # without releasing the others, and the gap notice covers them all.
+            if reseed_pending:
+                since_param = None
+                reseed_pending = False
+            elif cursor_by_pod:
+                since_param = min(ts for ts, _ in cursor_by_pod.values())
+            else:
+                since_param = last_timestamp
             chunks = (
                 self._serving_api._get_logs(
                     deployment_instance,
                     component,
-                    # Bounded per-poll fetch. Larger values just mean more work
-                    # for the dedupe pass; the SDK still yields only what's new.
-                    tail=200,
+                    # Bounded first fetch; no bound on a resume, where a tail
+                    # would discard exactly the lines being resumed.
+                    tail=None if since_param is not None else 200,
                     source=source,
-                    since=last_timestamp,
+                    since=since_param,
                     until=None,
-                    pod=None,
+                    pod=pod,
+                    timestamps=True,
                 )
                 or []
             )
 
             new_chunks = []
+            pods_in_response: set[str] = set()
+            saw_kubernetes_chunk = False
             for chunk in chunks:
                 if chunk.doc_id is not None:
                     if chunk.doc_id in seen_doc_ids:
                         continue
                     seen_doc_ids.add(chunk.doc_id)
-                else:
-                    key = hash((chunk.instance_name, chunk.content))
-                    if key in seen_hashes:
-                        continue
-                    if len(seen_hashes) >= seen_hashes_cap:
-                        # Drop the oldest half — set has no ordering, so we
-                        # just clear and start fresh; worst case we re-yield
-                        # at most ``seen_hashes_cap / 2`` already-seen lines
-                        # once before steady state is restored.
-                        seen_hashes = set()
-                    seen_hashes.add(key)
-                new_chunks.append(chunk)
-                if chunk.timestamp is not None and (
-                    last_timestamp is None or chunk.timestamp > last_timestamp
+                    new_chunks.append(chunk)
+                    if chunk.timestamp is not None and (
+                        last_timestamp is None or chunk.timestamp > last_timestamp
+                    ):
+                        last_timestamp = chunk.timestamp
+                    continue
+                saw_kubernetes_chunk = True
+                # Keyed by container instance, not by pod name: a restarted
+                # container starts a new log at zero, and resuming it from the
+                # dead instance's cursor would skip everything it printed.
+                chunk_pod = self._instance_key(chunk)
+                pods_in_response.add(chunk_pod)
+                if chunk.skipped or chunk.read_failed:
+                    # A note, not log lines. Surfacing it as content would seed
+                    # a cursor from prose.
+                    continue
+                content = chunk.content or ""
+                new_lines = content.splitlines()
+                # splitlines() erases whether the last line ended. A byte-capped
+                # response can stop mid-line, and emitting that fragment commits
+                # its timestamp to the cursor, so the complete line is discarded
+                # as already delivered on the next read and its tail is lost for
+                # good. Hold the fragment back instead: the next read re-fetches
+                # its second and delivers it whole. A line larger than the whole
+                # budget never completes, which is what the stall counter below
+                # is for.
+                last_line_complete = content.endswith(("\n", "\r"))
+                before = cursor_by_pod.get(chunk_pod)
+                remainder = self._advance_pod_cursor(
+                    cursor_by_pod, chunk_pod, new_lines, last_line_complete
+                )
+                if chunk.truncated and not remainder:
+                    stalled_by_instance[chunk_pod] = (
+                        stalled_by_instance.get(chunk_pod, 0) + 1
+                    )
+                    if (
+                        stalled_by_instance[chunk_pod] >= self._MAX_STALLED_READS
+                        and reseeds_by_instance.get(chunk_pod, 0)
+                        < self._MAX_FRUITLESS_RESEEDS
+                    ):
+                        # Abandon the cursor and take a fresh tail. The jump is
+                        # reported: this is a gap, not a continuation, and the
+                        # caller must not be told otherwise.
+                        pre_reseed_cursor[chunk_pod] = cursor_by_pod.pop(
+                            chunk_pod, before
+                        )
+                        # Every cursor goes, not just this instance's: one
+                        # request carries one ``since``, so a leftover cursor
+                        # would keep the next read bounded and there would be no
+                        # tail to jump to.
+                        cursor_by_pod.clear()
+                        reseed_pending = True
+                        stalled_by_instance[chunk_pod] = 0
+                        reseeds_by_instance[chunk_pod] = (
+                            reseeds_by_instance.get(chunk_pod, 0) + 1
+                        )
+                        new_chunks.append(
+                            deployable_component_logs.DeployableComponentLogs(
+                                instance_name=chunk.instance_name,
+                                content=self._GAP_NOTICE,
+                            )
+                        )
+                elif remainder:
+                    stalled_by_instance[chunk_pod] = 0
+                    # Only progress past where the reseed restarted from counts.
+                    # A reseed re-delivers lines already seen, and treating that
+                    # as progress reset the budget and made the reseed cap
+                    # unreachable.
+                    resumed = pre_reseed_cursor.get(chunk_pod)
+                    if (
+                        resumed is None
+                        or cursor_by_pod.get(chunk_pod, ("", 0)) > resumed
+                    ):
+                        reseeds_by_instance[chunk_pod] = 0
+                        pre_reseed_cursor.pop(chunk_pod, None)
+                if remainder is None:
+                    # No kubelet timestamps: an old backend that ignored the
+                    # request param. Fall back to overlap-suffix dedup of the
+                    # rolling tail windows.
+                    previous_lines = previous_lines_by_pod.get(chunk_pod)
+                    remainder = (
+                        new_lines
+                        if previous_lines is None
+                        else self._overlap_remainder(previous_lines, new_lines)
+                    )
+                    previous_lines_by_pod[chunk_pod] = new_lines
+                if remainder:
+                    # ``content`` is read-only on the DTO, so build a
+                    # new chunk holding only the unseen lines.
+                    new_chunks.append(
+                        deployable_component_logs.DeployableComponentLogs(
+                            instance_name=chunk.instance_name,
+                            content="\n".join(remainder),
+                        )
+                    )
+
+            # A replaced or scaled-away pod must not keep pinning since to its
+            # last position, or every later poll re-transfers a growing history
+            # for the pods that are still alive.
+            if saw_kubernetes_chunk:
+                for known_pod in list(cursor_by_pod):
+                    if known_pod not in pods_in_response:
+                        del cursor_by_pod[known_pod]
+                for tracked in (
+                    stalled_by_instance,
+                    reseeds_by_instance,
+                    pre_reseed_cursor,
                 ):
-                    last_timestamp = chunk.timestamp
+                    for known_pod in list(tracked):
+                        if known_pod not in pods_in_response:
+                            del tracked[known_pod]
 
             if new_chunks:
                 yield self._format_log_chunks(new_chunks)
@@ -814,6 +1391,117 @@ class ServingEngine:
                 return
 
             time.sleep(interval)
+
+    # Truncated-but-empty reads tolerated before a cursor is abandoned, and
+    # reseeds allowed without real progress in between. Both mirror the browser
+    # reader so the two clients report the same gaps at the same points.
+    _MAX_STALLED_READS = 2
+    _MAX_FRUITLESS_RESEEDS = 2
+
+    _GAP_NOTICE = (
+        "-- lines skipped: this replica writes more in one second than a single read "
+        "can return; jumped to the newest output --"
+    )
+
+    @staticmethod
+    def _instance_key(chunk) -> str:
+        return "|".join(
+            str(part) if part is not None else ""
+            for part in (chunk.instance_name, chunk.pod_uid, chunk.restart_count)
+        )
+
+    # Matches the kubelet's RFC 3339 line prefix requested via timestamps=true,
+    # e.g. "2026-08-07T12:34:56.123456789Z log text".
+    _K8S_TS_PREFIX = re.compile(
+        r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})) ?"
+    )
+
+    @classmethod
+    def _advance_pod_cursor(
+        cls,
+        cursor_by_pod: dict[str, tuple[str, int]],
+        pod: str,
+        lines: list[str],
+        last_line_complete: bool = True,
+    ) -> list[str] | None:
+        """Strip kubelet timestamp prefixes and return the lines after this pod's cursor.
+
+        Returns ``None`` when the lines carry no timestamps, signalling the
+        caller to use the rolling-window fallback instead. Timestamps compare
+        lexicographically: the kubelet emits them in one fixed UTC format.
+        Lines sharing the cursor's exact timestamp are skipped only up to the
+        cursor's ordinal, so a runtime emitting several lines per timestamp
+        does not lose the later ones. A line without a prefix (a continuation
+        of a long line) follows the keep-or-drop decision of the timestamped
+        line before it.
+        """
+        if not any(cls._K8S_TS_PREFIX.match(line) for line in lines):
+            return None
+        if not last_line_complete and lines:
+            # The trailing fragment is neither delivered nor recorded, so the
+            # cursor stays behind it and the next read returns the whole line.
+            lines = lines[:-1]
+            if not lines:
+                return []
+        cursor_ts, cursor_ordinal = cursor_by_pod.get(pod, (None, 0))
+        fresh: list[str] = []
+        keep_continuation = cursor_ts is None
+        max_ts = cursor_ts
+        max_ts_count = 0
+        equal_seen = 0
+        for line in lines:
+            match = cls._K8S_TS_PREFIX.match(line)
+            if match is None:
+                if keep_continuation:
+                    fresh.append(line)
+                continue
+            ts = match.group(1)
+            if cursor_ts is not None and ts < cursor_ts:
+                keep_continuation = False
+            elif ts == cursor_ts:
+                equal_seen += 1
+                keep_continuation = equal_seen > cursor_ordinal
+            else:
+                keep_continuation = True
+            if keep_continuation:
+                fresh.append(line[match.end() :])
+            if max_ts is None or ts > max_ts:
+                max_ts = ts
+                max_ts_count = 1
+            elif ts == max_ts:
+                max_ts_count += 1
+        if max_ts is not None:
+            if max_ts == cursor_ts:
+                # A since-bounded window re-sends the whole cursor second, so the
+                # in-window count subsumes the previous ordinal; max() guards the
+                # case where a byte cap cut the window short of it.
+                cursor_by_pod[pod] = (max_ts, max(cursor_ordinal, equal_seen))
+            else:
+                cursor_by_pod[pod] = (max_ts, max_ts_count)
+        return fresh
+
+    @staticmethod
+    def _overlap_remainder(
+        previous_lines: list[str], new_lines: list[str]
+    ) -> list[str]:
+        """Return the lines of a new tail window not covered by the previous one.
+
+        Finds the largest suffix of the previous window that is a prefix of
+        the new window and returns the remaining new lines. When no overlap
+        exists (the window rotated fully between polls), the whole new
+        window is returned.
+
+        Parameters:
+            previous_lines: Lines of the previous poll's tail window.
+            new_lines: Lines of the current poll's tail window.
+
+        Returns:
+            The lines of `new_lines` that were not already observed.
+        """
+        for overlap in range(min(len(previous_lines), len(new_lines)), 0, -1):
+            if previous_lines[-overlap:] == new_lines[:overlap]:
+                return new_lines[overlap:]
+        return new_lines
 
     @staticmethod
     def _format_log_chunks(chunks) -> str:
@@ -842,11 +1530,47 @@ class ServingEngine:
 
     # Model inference
 
+    def _init_predict(self, deployment_instance) -> None:
+        """Do everything the first `predict()` would otherwise do on the request path.
+
+        The schema document is downloaded, and the transport the deployment's
+        protocol selects is connected. No prediction is sent: a prediction can
+        log rows and have application side effects, so it is not a warm-up.
+        """
+        self._prepare_predict(deployment_instance)
+        if deployment_instance.api_protocol != IE.API_PROTOCOL_GRPC:
+            through_hopsworks = (
+                deployment_instance.predictor.serving_tool
+                != PREDICTOR.SERVING_TOOL_KSERVE
+            )
+            self._serving_api._warm_rest_transport(
+                deployment_instance, through_hopsworks
+            )
+
+    def _prepare_predict(self, deployment_instance) -> None:
+        """Download the schema and open the gRPC channel once per deployment object.
+
+        `predict()` and `init_predict()` both come through here, so concurrent
+        first callers of either prepare once. A failure leaves the object
+        unprepared, and the next call tries again.
+        """
+        if deployment_instance._predict_prepared:
+            return
+        with deployment_instance._predict_init_lock:
+            if deployment_instance._predict_prepared:
+                return
+            # Reading the property is what downloads and caches the document.
+            _ = deployment_instance.schema
+            if deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC:
+                self._serving_api._grpc_channel(deployment_instance)
+            deployment_instance._predict_prepared = True
+
     def _predict(
         self,
         deployment_instance,
         data: dict | list[InferInput],
         inputs: dict | list[dict],
+        validate: bool = True,
     ):
         # validate user-provided payload
         if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
@@ -854,22 +1578,63 @@ class ServingEngine:
                 "Inference requests to LLM deployments are not supported by the `predict` method. Please, use any OpenAI API-compatible client instead."
             )
 
-        self._validate_inference_payload(deployment_instance.api_protocol, data, inputs)
-
-        # build inference payload based on API protocol
-        payload = self._build_inference_payload(
-            deployment_instance.api_protocol, data, inputs
+        if data is not None and inputs is not None:
+            raise ModelServingException(
+                "Inference data and inputs parameters cannot be provided together."
+            )
+        if deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC or validate:
+            # A REST request that skips validation never reads the schema, so it must not depend on the schema artifact being readable.
+            self._prepare_predict(deployment_instance)
+        # a schema describes rows, so rows sent to a gRPC deployment that has one
+        # are validated as they are over REST and then encoded as v2 tensors.
+        # `data` reaches here in its REST dictionary form; a list of `InferInput`
+        # is already tensors and takes the path below.
+        as_tensors = (
+            deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC
+            and deployment_instance.schema is not None
+            and (
+                isinstance(data, dict)
+                or (
+                    inputs is not None
+                    and not deployment_schema._is_tensor_payload(inputs)
+                )
+            )
         )
+        if as_tensors:
+            if inputs is not None:
+                payload = self._parse_inference_inputs(IE.API_PROTOCOL_REST, inputs)
+            else:
+                self._validate_inference_data(IE.API_PROTOCOL_REST, data)
+                payload = data
+            if validate:
+                payload = self._validate_against_schema(deployment_instance, payload)
+            payload = self._encode_tensors(deployment_instance, payload)
+        else:
+            self._validate_inference_payload(
+                deployment_instance.api_protocol, data, inputs
+            )
+
+            # build inference payload based on API protocol
+            payload = self._build_inference_payload(
+                deployment_instance.api_protocol, data, inputs
+            )
+            if validate and deployment_instance.api_protocol == IE.API_PROTOCOL_REST:
+                payload = self._validate_against_schema(deployment_instance, payload)
 
         # if not KServe, send request through Hopsworks
         serving_tool = deployment_instance.predictor.serving_tool
         through_hopsworks = serving_tool != PREDICTOR.SERVING_TOOL_KSERVE
         try:
-            return self._serving_api._send_inference_request(
+            response = self._serving_api._send_inference_request(
                 deployment_instance, payload, through_hopsworks
             )
+            return (
+                deployment_schema._decode_outputs(response) if as_tensors else response
+            )
         except RestAPIError as re:
-            if (
+            # The default predictor answers 404 ENTITY_NOT_FOUND with a
+            # structured body; only a bare 404 means the deployment is absent.
+            if _structured_prediction_error(re) is None and (
                 re.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
                 or re.error_code
                 == ModelServingException.ERROR_CODE_DEPLOYMENT_NOT_RUNNING
@@ -1024,11 +1789,35 @@ class ServingEngine:
         # parse inputs
         return self._parse_inference_inputs(api_protocol, inputs)
 
+    def _encode_tensors(self, deployment_instance, payload: dict) -> list[InferInput]:
+        """The rows of a REST payload as one v2 tensor per schema field."""
+        key = "instances" if "instances" in payload else "inputs"
+        return [
+            InferInput(**tensor)
+            for tensor in deployment_schema._encode_rows(
+                deployment_instance.schema, payload[key]
+            )
+        ]
+
+    def _validate_against_schema(self, deployment_instance, payload: dict) -> dict:
+        """Encode and validate the rows of a REST payload against the deployment schema, when there is one."""
+        schema = deployment_instance.schema
+        if schema is None or not isinstance(payload, dict):
+            return payload
+        key = "instances" if "instances" in payload else "inputs"
+        rows = deployment_schema._encode_instances(payload.get(key))
+        schema._raise_if_invalid(rows, deployment_instance.name)
+        return {**payload, key: rows}
+
     def _parse_inference_inputs(
         self, api_protocol, inputs: dict | list[dict], recursive_call=False
     ):
         if api_protocol == IE.API_PROTOCOL_REST:  # REST protocol
-            if not isinstance(inputs, list):
+            if isinstance(inputs, dict):
+                # A dict is one row keyed by field name; wrapping it twice
+                # would hand the predictor a one-element list instead of the row.
+                data = {"instances": [inputs]}
+            elif not isinstance(inputs, list):
                 data = {"instances": [[inputs]]}  # wrap inputs in a 2-dim list
             else:
                 data = {"instances": inputs}  # use given inputs list by default

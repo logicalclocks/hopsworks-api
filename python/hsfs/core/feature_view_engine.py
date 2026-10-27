@@ -15,8 +15,10 @@
 #
 from __future__ import annotations
 
+import contextlib
 import datetime
 import logging
+import tempfile
 import warnings
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -33,9 +35,11 @@ from hsfs import (
     util,
 )
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.constructor.inference_spine import SPINE_DIR, InferenceSpine
 from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_view_api,
+    keywords_api,
     query_constructor_api,
     statistics_engine,
     tags_api,
@@ -43,7 +47,12 @@ from hsfs.core import (
     transformation_execution_dag,
     transformation_function_engine,
 )
-from hsfs.core.feature_logging import FeatureLogging
+from hsfs.core.feature_logging import (
+    LOG_MATERIALIZATION_INTERVALS,
+    FeatureLogging,
+    _materialization_cron,
+    _transport,
+)
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
@@ -62,6 +71,18 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _event_time_log_component(fv, event_time):
+    """The event time log component, or an empty one when the root feature group has no event time.
+
+    Without this the logging dataframe gets a column named `None`, or the
+    lookup-time metadata is matched against zero column names and rejected.
+    """
+    name = fv._root_feature_group_event_time_column_name
+    if not name:
+        return None, [], constants.FEATURE_LOGGING.EVENT_TIME
+    return event_time, [name], constants.FEATURE_LOGGING.EVENT_TIME
+
+
 class FeatureViewEngine:
     ENTITY_TYPE = "featureview"
     _TRAINING_DATA_API_PATH = "trainingdatasets"
@@ -73,6 +94,9 @@ class FeatureViewEngine:
 
         self._feature_view_api = feature_view_api.FeatureViewApi(feature_store_id)
         self._tags_api = tags_api.TagsApi(feature_store_id, self.ENTITY_TYPE)
+        self._keywords_api = keywords_api.KeywordsApi(
+            feature_store_id, self.ENTITY_TYPE
+        )
         self._statistics_engine = statistics_engine.StatisticsEngine(
             feature_store_id, self._TRAINING_DATA_API_PATH
         )
@@ -277,10 +301,7 @@ class FeatureViewEngine:
         dropped_features = set()
 
         # Statistics only required for computing schema if one-hot-encoder in the transformation functions
-        statistics_required = any(
-            tf.hopsworks_udf.function_name == "one_hot_encoder"
-            for tf in feature_view.transformation_functions
-        )
+        statistics_required = feature_view._schema_requires_training_statistics()
 
         if statistics_required:
             if not training_dataset_version:
@@ -368,8 +389,19 @@ class FeatureViewEngine:
         spine=None,
         extra_filter=None,
         lookback=None,
+        inference_spine=None,
     ):
         extra_filter = self._normalize_extra_filter(extra_filter)
+
+        if inference_spine is not None:
+            # The spine is the population: its rows are exactly the ones to return, and it
+            # carries its own upper bound. An event-time window on top of that would filter the
+            # anchor itself and drop rows the caller asked for, which is why the backend refuses
+            # a filter on a column the spine supplies. A lookback is different: it bounds which
+            # rows of each feature group are candidates, never which spine rows come back, so
+            # it rides along and is what keeps a large feature group's scan bounded.
+            start_time = None
+            end_time = None
 
         try:
             query = self._feature_view_api._get_batch_query(
@@ -391,6 +423,8 @@ class FeatureViewEngine:
             # query tree in `QueryController.resolveLookbacks`.
             if lookback is not None:
                 query.lookback = lookback
+            if inference_spine is not None:
+                query.inference_spine = inference_spine
             # verify whatever is passed 1. spine group with dataframe contained, or 2. dataframe
             # the schema has to be consistent
 
@@ -471,6 +505,7 @@ class FeatureViewEngine:
         training_helper_columns=True,
         transformation_context: dict[str, Any] = None,
         lookback: Lookback | None = None,
+        spine_df=None,
     ):
         # Build the lookback list (one entry per FG in the Query tree) from
         # the feature view's query. The backend's POST /trainingdatasets
@@ -482,6 +517,9 @@ class FeatureViewEngine:
         # batch-data path.
         if lookback is not None:
             training_dataset_obj._lookback = lookback
+        # Recorded with the dataset, since the frame itself is not: it is what lets a later read
+        # or recreate without the frame be refused rather than answered from other rows.
+        training_dataset_obj.spine_anchored = spine_df is not None
         self._set_event_time(feature_view_obj, training_dataset_obj)
         updated_instance = self._create_training_data_metadata(
             feature_view_obj, training_dataset_obj
@@ -495,8 +533,51 @@ class FeatureViewEngine:
             event_time=event_time,
             training_helper_columns=training_helper_columns,
             transformation_context=transformation_context,
+            spine_df=spine_df,
         )
         return updated_instance, td_job
+
+    def _check_spine_matches(self, training_dataset_obj, inference_spine):
+        """Refuse a read or recreate whose population differs from the one the version was built from.
+
+        The spine rows are not recorded with a training dataset, only that there were some. Without
+        this, version N built from a caller's frame quietly answers from the root feature group's
+        history the moment the frame is not passed again, and a version built from history is
+        quietly rebuilt on someone's frame under the same number.
+        """
+        anchored = bool(getattr(training_dataset_obj, "spine_anchored", False))
+        if anchored and inference_spine is None:
+            raise FeatureStoreException(
+                f"Training dataset version {training_dataset_obj.version} was built from a"
+                " `spine_df`, which is not recorded with it. Pass the same `spine_df` again to"
+                " read or recreate it."
+            )
+        if not anchored and inference_spine is not None:
+            raise FeatureStoreException(
+                f"Training dataset version {training_dataset_obj.version} was built from the"
+                " feature view's own rows, not from a `spine_df`. Create a new version to train"
+                " on a frame of your own."
+            )
+
+    def _training_spine(self, feature_view_obj, spine_df, spine):
+        """Build the spine a training-data call is anchored on, or None when it is not one.
+
+        Training data is built from a labels frame, so columns the view does not define are
+        carried through to the output rather than refused; `get_batch_data` stays strict because
+        inference has no labels and an unrecognised column there is a mistake.
+
+        The frame supplies the times itself, one per row under the event time column. There is no
+        cross product with a set of prediction times: a training row is one entity at one moment,
+        not an entity scored repeatedly.
+        """
+        if spine_df is None:
+            return None
+        if spine is not None:
+            raise FeatureStoreException(
+                "`spine` replaces a SpineGroup the feature view was created with, while"
+                " `spine_df` re-anchors the query on rows you supply. Pass one or the other."
+            )
+        return InferenceSpine(feature_view_obj, spine_df, allow_passthrough=True)
 
     def _get_training_data(
         self,
@@ -512,8 +593,7 @@ class FeatureViewEngine:
         dataframe_type="default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
-        event_start_time=None,
-        event_end_time=None,
+        spine_df=None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -522,6 +602,11 @@ class FeatureViewEngine:
             )
         else:
             self._set_event_time(feature_view_obj, training_dataset_obj)
+            # Recorded here as well as on the materialised path: an in-memory version built from
+            # a frame is a version whose population is not reproducible from its metadata either,
+            # and reading it back by version has to be refused rather than answered from the
+            # feature view's own rows.
+            training_dataset_obj.spine_anchored = spine_df is not None
             td_updated = self._create_training_data_metadata(
                 feature_view_obj, training_dataset_obj
             )
@@ -543,57 +628,11 @@ class FeatureViewEngine:
             td_updated.data_format, read_options
         )
 
-        # A time-range read prunes the materialized data by its event-date
-        # partition key (see `Engine.DATE_PARTITION_COLUMN`); an in-memory
-        # training dataset has no materialized layout to prune. The bounds are
-        # converted to the keys' `YYYYMMDD` UTC date encoding.
-        event_start_time = util._get_event_date_int_from_timestamp(
-            util._convert_event_time_to_timestamp(event_start_time)
-        )
-        event_end_time = util._get_event_date_int_from_timestamp(
-            util._convert_event_time_to_timestamp(event_end_time)
-        )
-        if (event_start_time is not None or event_end_time is not None) and (
-            td_updated.training_dataset_type == td_updated.IN_MEMORY
-        ):
-            raise FeatureStoreException(
-                "`start_time`/`end_time` prune the materialized increments of "
-                "a training dataset and cannot be used with an in-memory "
-                "training dataset, which is recomputed on read."
-            )
-        # Partitions are keyed by the period start (e.g. `20260601` for June
-        # at month precision), so a start bound inside a period excludes that
-        # whole period from the read — silent data loss rather than a coarser
-        # range, hence the warning.
-        if event_start_time is not None and td_updated.partition_precision in (
-            "month",
-            "year",
-        ):
-            period_start = (
-                event_start_time % 100 == 1
-                if td_updated.partition_precision == "month"
-                else event_start_time % 10000 == 101
-            )
-            if not period_start:
-                warnings.warn(
-                    f"`start_time` does not fall on a "
-                    f"{td_updated.partition_precision} boundary, but this "
-                    f"training dataset is partitioned at "
-                    f"`{td_updated.partition_precision}` precision: the "
-                    f"period containing `start_time` is excluded entirely, "
-                    f"including its rows at or after `start_time`. Align "
-                    f"`start_time` with the start of the "
-                    f"{td_updated.partition_precision} to include them.",
-                    stacklevel=1,
-                )
-
         if td_updated.training_dataset_type != td_updated.IN_MEMORY:
             split_df = self._read_from_storage_connector(
                 td_updated,
                 td_updated.splits,
                 read_options,
-                event_start_time=event_start_time,
-                event_end_time=event_end_time,
                 with_primary_keys=primary_keys,
                 # at this stage training dataset was already written and if there was any name clash it should have
                 # already failed in creation phase, so we don't need to check it here. This is to make
@@ -623,6 +662,9 @@ class FeatureViewEngine:
             # picks it up. The lookback rides on the persisted training dataset
             # and comes back with `td_updated` regardless of whether we just
             # created it or fetched an existing version.
+            query_spine = self._training_spine(feature_view_obj, spine_df, spine)
+            if training_dataset_version:
+                self._check_spine_matches(td_updated, query_spine)
             query = self._get_batch_query(
                 feature_view_obj,
                 training_dataset_version=td_updated.version,
@@ -635,17 +677,21 @@ class FeatureViewEngine:
                 training_helper_columns=training_helper_columns,
                 spine=spine,
                 lookback=td_updated._lookback,
+                inference_spine=query_spine,
             )
-            split_df = engine._get_instance()._get_training_data(
-                td_updated,
-                feature_view_obj,
-                query,
-                read_options,
-                dataframe_type,
-                training_dataset_version,
-                transformation_context=transformation_context,
-                n_processes=n_processes,
-            )
+            with contextlib.ExitStack() as stack:
+                if query_spine is not None:
+                    stack.enter_context(self._staged_spine(query_spine))
+                split_df = engine._get_instance()._get_training_data(
+                    td_updated,
+                    feature_view_obj,
+                    query,
+                    read_options,
+                    dataframe_type,
+                    training_dataset_version,
+                    transformation_context=transformation_context,
+                    n_processes=n_processes,
+                )
             self._compute_training_dataset_statistics(
                 feature_view_obj, td_updated, split_df
             )
@@ -728,6 +774,7 @@ class FeatureViewEngine:
         statistics_config,
         user_write_options,
         spine=None,
+        spine_df=None,
         transformation_context: dict[str, Any] = None,
     ):
         training_dataset_obj = self._get_training_dataset_metadata(
@@ -740,11 +787,16 @@ class FeatureViewEngine:
             training_dataset_obj.statistics_config = statistics_config
             training_dataset_obj.update_statistics_config()
 
+        self._check_spine_matches(
+            training_dataset_obj,
+            self._training_spine(feature_view_obj, spine_df, spine),
+        )
         td_job = self._compute_training_dataset(
             feature_view_obj,
             user_write_options,
             training_dataset_obj=training_dataset_obj,
             spine=spine,
+            spine_df=spine_df,
             transformation_context=transformation_context,
         )
         # Set training dataset schema after training dataset has been generated
@@ -752,81 +804,6 @@ class FeatureViewEngine:
             feature_view=feature_view_obj,
             training_dataset_version=training_dataset_obj.version,
         )
-        return training_dataset_obj, td_job
-
-    def _insert_training_data(
-        self,
-        feature_view_obj,
-        training_dataset_version,
-        start_time,
-        end_time,
-        user_write_options,
-        overwrite=False,
-        spine=None,
-        transformation_context: dict[str, Any] = None,
-        compute_statistics=False,
-    ):
-        # Append (`overwrite=False`) works on both engines: the Spark engine
-        # writes the new `_hopsworks_event_date=<v>` partition directly, and the
-        # Python engine offloads to a backend that does the same — either the
-        # Hopsworks Feature Query Service (FlyingDuck) fast path, which is sent
-        # `overwrite=false`, or the fallback backend Spark job. Note this relies
-        # on a Hopsworks 5.1+ Query Service; older versions ignore the flag and
-        # overwrite instead (see `ArrowFlightClient._create_training_dataset`).
-        training_dataset_obj = self._get_training_dataset_metadata(
-            feature_view_obj, training_dataset_version
-        )
-
-        # Split datasets append per split: each split writes a new partition into
-        # its own subdirectory. For a random split that means the batch is split
-        # 80/10/10 (etc.) on its own, which is sound. For a time-series split the
-        # batch is bucketed by the split's fixed calendar boundaries, so a new
-        # (recent) batch lands entirely in the last split (e.g. test) while the
-        # earlier splits stay frozen — the dataset silently skews with every
-        # append, so refuse rather than warn. The supported way to grow a
-        # time-series dataset is an unsplit one read with a time range.
-        if not overwrite and any(
-            split.split_type == TrainingDatasetSplit.TIME_SERIES_SPLIT
-            for split in training_dataset_obj.splits
-        ):
-            raise FeatureStoreException(
-                "Appending to a time-series-split training dataset is not "
-                "supported. For a growing time-series training "
-                "dataset, create it without splits, append batches with "
-                "`insert_training_data`, and read the train and test sets as "
-                "time ranges with `get_training_data(start_time=..., "
-                "end_time=...)`. Alternatively pass `overwrite=True` to "
-                "rebuild the splits over the full window."
-            )
-        if training_dataset_obj.data_format != "parquet":
-            raise FeatureStoreException(
-                "Appending to a training dataset is only supported for the "
-                f"`parquet` data format, but this dataset is `{training_dataset_obj.data_format}`."
-            )
-
-        # Scope the materialization to this call's event-time window so only the
-        # new batch is read from the feature groups; the persisted create-time
-        # window is not reused for an incremental append.
-        training_dataset_obj.event_start_time = start_time
-        training_dataset_obj.event_end_time = end_time
-
-        td_job = self._compute_training_dataset(
-            feature_view_obj,
-            user_write_options,
-            training_dataset_obj=training_dataset_obj,
-            spine=spine,
-            transformation_context=transformation_context,
-            save_mode=self._OVERWRITE if overwrite else self._APPEND,
-        )
-
-        # Appends skip the automatic statistics refit (see
-        # `_compute_training_dataset`); the caller opts into paying the
-        # full-dataset read here. On overwrite the statistics were already
-        # recomputed by the materialization itself.
-        if compute_statistics and not overwrite:
-            self._recompute_training_dataset_statistics(
-                feature_view_obj, training_dataset_version
-            )
         return training_dataset_obj, td_job
 
     def _read_from_storage_connector(
@@ -842,16 +819,7 @@ class FeatureViewEngine:
         training_helper_columns,
         feature_view_features,
         dataframe_type,
-        event_start_time=None,
-        event_end_time=None,
     ):
-        # A time-range read ships the window to the engine as internal read
-        # options; the engine prunes the day partitions by their event-time key
-        # and strips the keys before they reach the reader.
-        if event_start_time is not None:
-            read_options = {**read_options, "event_start_time": event_start_time}
-        if event_end_time is not None:
-            read_options = {**read_options, "event_end_time": event_end_time}
         if splits:
             result = {}
             for split in splits:
@@ -987,12 +955,8 @@ class FeatureViewEngine:
         event_time=False,
         training_helper_columns=False,
         transformation_context: dict[str, Any] = None,
-        save_mode=None,
+        spine_df=None,
     ):
-        # Overwrite the whole dataset unless the caller asks to append (see
-        # `_insert_training_data`), in which case a new Hive partition is added.
-        if save_mode is None:
-            save_mode = self._OVERWRITE
         if training_dataset_obj:
             pass
         elif training_dataset_version:
@@ -1006,6 +970,16 @@ class FeatureViewEngine:
         # this method builds, so any lookback set on the TD must ride along.
         # `_create_training_dataset` puts the user-supplied Lookback on
         # `training_dataset_obj._lookback` before calling this helper.
+        materialisation_spine = self._training_spine(feature_view_obj, spine_df, spine)
+        if training_dataset_obj.spine_anchored and materialisation_spine is None:
+            # The one-directional form of _check_spine_matches: a fresh version created without a
+            # frame reaches here through _create_training_dataset with the flag off, so only the
+            # case where the recorded population is missing is refused.
+            raise FeatureStoreException(
+                f"Training dataset version {training_dataset_obj.version} was built from a"
+                " `spine_df`, which is not recorded with it. Pass the same `spine_df` again to"
+                " materialise it."
+            )
         batch_query = self._get_batch_query(
             feature_view_obj,
             training_dataset_obj.event_start_time,
@@ -1018,43 +992,29 @@ class FeatureViewEngine:
             training_dataset_version=training_dataset_obj.version,
             spine=spine,
             lookback=getattr(training_dataset_obj, "_lookback", None),
+            inference_spine=materialisation_spine,
         )
 
         # for spark job
         user_write_options["training_helper_columns"] = training_helper_columns
         user_write_options["primary_keys"] = primary_keys
         user_write_options["event_time"] = event_time
-        # The partition precision is fixed at creation and stored in the
-        # training dataset metadata; every materialization (initial or append)
-        # rides it to the engine through the write options. `None` (in-memory,
-        # or created before the field existed) falls back to day.
-        user_write_options["partition_precision"] = (
-            training_dataset_obj.partition_precision or "day"
-        )
-        # The per-call event-time window set by `_insert_training_data` lives
-        # only on this client-side object; the `create_fv_td` job re-fetches
-        # the training dataset from backend metadata, whose window is the
-        # create-time one. Ride the window along in the write options so the
-        # job materializes the requested batch, not the create-time window.
-        event_start_time = util._convert_event_time_to_timestamp(
-            training_dataset_obj.event_start_time
-        )
-        if event_start_time is not None:
-            user_write_options["event_start_time"] = event_start_time
-        event_end_time = util._convert_event_time_to_timestamp(
-            training_dataset_obj.event_end_time
-        )
-        if event_end_time is not None:
-            user_write_options["event_end_time"] = event_end_time
 
-        td_job = engine._get_instance()._write_training_dataset(
-            training_dataset_obj,
-            batch_query,
-            user_write_options,
-            save_mode,
-            feature_view_obj=feature_view_obj,
-            transformation_context=transformation_context,
-        )
+        with contextlib.ExitStack() as stack:
+            if materialisation_spine is not None:
+                # The job reads the spine after this call returns, so the file outlives the
+                # request and the backend sweeper reclaims it rather than this finally block.
+                stack.enter_context(
+                    self._staged_spine(materialisation_spine, keep_file=True)
+                )
+            td_job = engine._get_instance()._write_training_dataset(
+                training_dataset_obj,
+                batch_query,
+                user_write_options,
+                self._OVERWRITE,
+                feature_view_obj=feature_view_obj,
+                transformation_context=transformation_context,
+            )
 
         # Set training dataset schema after training dataset has been generated
         training_dataset_obj.schema = self._get_training_dataset_schema(
@@ -1062,17 +1022,17 @@ class FeatureViewEngine:
             training_dataset_version=training_dataset_obj.version,
         )
 
-        # On append the newly written partition is a small daily increment, but
-        # recomputing statistics reads the whole (potentially multi-TB) dataset
-        # back, so skip the read-and-refit; existing statistics are left as they
-        # were computed at create/recreate time. Users refresh them explicitly
-        # with `FeatureView.compute_training_dataset_statistics` (which calls
-        # `_recompute_training_dataset_statistics`).
-        if save_mode == self._APPEND:
-            return td_job
-
-        if engine._get_type().startswith("spark"):
-            # if spark engine, read td and compute stats
+        if (
+            engine._get_type().startswith("spark")
+            and training_dataset_obj.statistics_config.enabled
+        ):
+            # The read-back exists only to feed statistics, so it is gated on the
+            # same flag.
+            # `_compute_training_dataset_statistics` checks `enabled` itself, but
+            # checking only there meant `statistics_config=False` still re-read
+            # every split of the freshly written dataset and then threw the
+            # dataframes away, which on a large training dataset is the most
+            # expensive step of creation.
             if training_dataset_obj.splits:
                 td_df = {
                     split.name: self._training_dataset_engine._read(
@@ -1112,57 +1072,6 @@ class FeatureViewEngine:
             )
         return None
 
-    def _recompute_training_dataset_statistics(
-        self, feature_view_obj, training_dataset_version
-    ):
-        training_dataset_obj = self._get_training_dataset_metadata(
-            feature_view_obj, training_dataset_version
-        )
-        if training_dataset_obj.training_dataset_type == training_dataset_obj.IN_MEMORY:
-            raise FeatureStoreException(
-                "Statistics can only be recomputed for a materialized training "
-                "dataset; an in-memory training dataset has no materialized "
-                "data to compute them on."
-            )
-        if not training_dataset_obj.statistics_config.enabled:
-            raise FeatureStoreException(
-                "Statistics are disabled for this training dataset version, so "
-                "there is nothing to recompute."
-            )
-        if any(
-            tf.hopsworks_udf.statistics_required
-            for tf in feature_view_obj.transformation_functions
-        ):
-            warnings.warn(
-                "Only the descriptive statistics are recomputed: the statistics "
-                "used by the model-dependent transformation functions stay "
-                "pinned to the ones fit when the training dataset version was "
-                "created, since the materialized data was transformed with "
-                "them. To refit them, rebuild the version with "
-                "`insert_training_data(..., overwrite=True)` or create a new "
-                "training dataset version.",
-                stacklevel=1,
-            )
-        # Read the materialized data back (all increments of an incremental
-        # dataset) and recompute the descriptive statistics on it. The
-        # transformation-function statistics are deliberately not refit: the
-        # materialized data was transformed with the statistics saved at
-        # creation, so refitting them would make serving and future appends
-        # inconsistent with the data already written — to refit them, rebuild
-        # the version with `overwrite=True` or create a new version.
-        if training_dataset_obj.splits:
-            td_df = {
-                split.name: self._training_dataset_engine._read(
-                    training_dataset_obj, split.name, {}
-                )
-                for split in training_dataset_obj.splits
-            }
-        else:
-            td_df = self._training_dataset_engine._read(training_dataset_obj, None, {})
-        return self._compute_training_dataset_statistics(
-            feature_view_obj, training_dataset_obj, td_df
-        )
-
     def _get_training_dataset_metadata(
         self, feature_view_obj: feature_view.FeatureView, training_dataset_version
     ):
@@ -1186,15 +1095,6 @@ class FeatureViewEngine:
         # this is the only place we expose training dataset metadata
         # we return training dataset base classes with metadata only
         return [super(td.__class__, td) for td in tds]
-
-    def _get_training_dataset(self, feature_view_obj, training_dataset_version):
-        td = self._get_training_dataset_metadata(
-            feature_view_obj, training_dataset_version
-        )
-        # schema needs to be set for writing training data or feature serving
-        td.schema = self._get_training_dataset_schema(feature_view_obj, td.version)
-        # expose metadata only, as with `_get_training_datasets`
-        return super(td.__class__, td)
 
     def _create_training_data_metadata(self, feature_view_obj, training_dataset_obj):
         return self._feature_view_api._create_training_dataset(
@@ -1283,8 +1183,31 @@ class FeatureViewEngine:
         extra_filter=None,
         lookback=None,
         n_processes: int | None = None,
+        spine_df=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
+
+        inference_spine = None
+        if spine_df is not None:
+            if start_time is not None or end_time is not None:
+                raise FeatureStoreException(
+                    "`start_time`/`end_time` cannot be combined with `spine_df`: the"
+                    " spine carries a prediction time per row and defines the time axis."
+                )
+            if spine is not None:
+                raise FeatureStoreException(
+                    "`spine` replaces a SpineGroup the feature view was created with, while"
+                    " `spine_df` re-anchors the query. Pass one or the other."
+                )
+            inference_spine = InferenceSpine(feature_view_obj, spine_df)
+            # Without the keys and the prediction time the frame says nothing about which row is
+            # which entity or day, so they default on. An explicit False still wins.
+            if primary_keys is None:
+                primary_keys = True
+            if event_time is None:
+                event_time = True
+        primary_keys = bool(primary_keys)
+        event_time = bool(event_time)
 
         # check if primary_keys/event_time are ambiguous
         if primary_keys:
@@ -1294,7 +1217,7 @@ class FeatureViewEngine:
 
         # Fetch batch data with primary key, event time and inference helper columns if logging metadata is required.
         # Columns fetched to create logging metadata is implicitly removed in the client before returning to the user.
-        feature_dataframe = self._get_batch_query(
+        batch_query = self._get_batch_query(
             feature_view_obj,
             start_time,
             end_time,
@@ -1309,7 +1232,16 @@ class FeatureViewEngine:
             spine=spine,
             extra_filter=extra_filter,
             lookback=lookback,
-        ).read(read_options=read_options, dataframe_type=dataframe_type)
+            inference_spine=inference_spine,
+        )
+        if inference_spine is None:
+            feature_dataframe = batch_query.read(
+                read_options=read_options, dataframe_type=dataframe_type
+            )
+        else:
+            feature_dataframe = self._read_with_spine(
+                batch_query, inference_spine, read_options, dataframe_type
+            )
         has_graph = execution_graph is not None and execution_graph.nodes
         if (has_graph and transformed) or logging_data:
             try:
@@ -1344,6 +1276,67 @@ class FeatureViewEngine:
             )
 
         return batch_dataframe
+
+    @contextlib.contextmanager
+    def _staged_spine(self, inference_spine, keep_file=False):
+        """Put the spine where the executor that runs the query can reach it.
+
+        The Hopsworks Query Service reads it from a Parquet file under the caller's own
+        `Resources/.hopsworks_spine/`, so the backend can check the caller may read that file
+        before it renders the path into SQL that runs as the superuser. Spark instead registers
+        the rows as a session temporary view and needs no file.
+
+        `keep_file` is for the materialisation methods, whose Spark job reads the spine long
+        after this call has returned. Those files are left for the backend's sweeper rather than
+        deleted here, because deleting them on the way out would race the job that needs them.
+        """
+        if engine._get_type() != "python":
+            try:
+                yield
+            finally:
+                # The view's name is unique per read, so leaving it registered would add one view
+                # and one cached plan to the session every time. Dropping it afterwards is safe:
+                # Spark resolves the view when it analyses the statement, so the dataframe it
+                # returned carries that plan rather than the catalog name.
+                engine._get_instance()._drop_spine_temporary_view(
+                    inference_spine.table_name
+                )
+            return
+
+        from hopsworks_common.core.dataset_api import DatasetApi
+
+        dataset_api = DatasetApi()
+        with tempfile.TemporaryDirectory() as tmp:
+            local_path = inference_spine._write_parquet(tmp)
+            if not dataset_api.exists(SPINE_DIR):
+                dataset_api.mkdir(SPINE_DIR)
+            dataset_api.upload(local_path, SPINE_DIR, overwrite=True)
+        inference_spine.parquet_staged = True
+        try:
+            yield
+        finally:
+            # A return here would swallow whatever the body raised, so the cleanup is guarded
+            # by a condition rather than an early exit.
+            if not keep_file:
+                try:
+                    dataset_api.remove(f"{SPINE_DIR}/{inference_spine.basename}")
+                except Exception as e:
+                    _logger.warning(
+                        "Could not remove the inference spine file %s/%s: %s. The backend"
+                        " sweeper removes spine files left behind.",
+                        SPINE_DIR,
+                        inference_spine.basename,
+                        e,
+                    )
+
+    def _read_with_spine(
+        self, batch_query, inference_spine, read_options, dataframe_type
+    ):
+        """Read a spine-anchored query with the spine staged for the engine that runs it."""
+        with self._staged_spine(inference_spine):
+            return batch_query.read(
+                read_options=read_options, dataframe_type=dataframe_type
+            )
 
     def _transform_batch_data(self, features, transformation_functions):
         try:
@@ -1382,6 +1375,65 @@ class FeatureViewEngine:
     def _get_tags(self, feature_view_obj, training_dataset_version=None):
         return self._tags_api._get(
             feature_view_obj, training_dataset_version=training_dataset_version
+        )
+
+    def _get_tag_metadata(
+        self, feature_view_obj, name: str, training_dataset_version=None
+    ):
+        """Get the tag with a certain name as a Tag object, or None if it does not exist."""
+        return self._tags_api._get_metadata(
+            feature_view_obj, name, training_dataset_version=training_dataset_version
+        ).get(name)
+
+    def _get_tags_metadata(self, feature_view_obj, training_dataset_version=None):
+        """Get all tags for a feature view or training dataset as Tag objects."""
+        return self._tags_api._get_metadata(
+            feature_view_obj, training_dataset_version=training_dataset_version
+        )
+
+    def _get_keywords(self, feature_view_obj, training_dataset_version=None):
+        """Get all keywords of a feature view or one of its training datasets."""
+        return self._keywords_api._get(
+            feature_view_obj, training_dataset_version=training_dataset_version
+        )
+
+    def _get_keywords_metadata(self, feature_view_obj, training_dataset_version=None):
+        """Get all keywords of a feature view or one of its training datasets with their attachment times."""
+        return self._keywords_api._get_with_metadata(
+            feature_view_obj, training_dataset_version=training_dataset_version
+        )
+
+    def _set_keywords(
+        self, feature_view_obj, keywords: list[str], training_dataset_version=None
+    ):
+        """Replace the whole keyword set of a feature view or one of its training datasets."""
+        return self._keywords_api._replace(
+            feature_view_obj,
+            keywords,
+            training_dataset_version=training_dataset_version,
+        )
+
+    def _add_keywords(
+        self, feature_view_obj, keywords: list[str], training_dataset_version=None
+    ):
+        """Add keywords to a feature view or one of its training datasets, keeping the existing ones."""
+        current = self._keywords_api._get(
+            feature_view_obj, training_dataset_version=training_dataset_version
+        )
+        return self._keywords_api._replace(
+            feature_view_obj,
+            list(dict.fromkeys(current + keywords)),
+            training_dataset_version=training_dataset_version,
+        )
+
+    def _delete_keyword(
+        self, feature_view_obj, keyword: str, training_dataset_version=None
+    ):
+        """Remove a single keyword from a feature view or one of its training datasets."""
+        return self._keywords_api._delete(
+            feature_view_obj,
+            keyword,
+            training_dataset_version=training_dataset_version,
         )
 
     def _get_parent_feature_groups(
@@ -1664,17 +1716,37 @@ class FeatureViewEngine:
         return logging_features
 
     def _enable_feature_logging(
-        self, fv, extra_log_columns: feature.Feature | dict[str, Any] | None = None
+        self,
+        fv,
+        extra_log_columns: feature.Feature | dict[str, Any] | None = None,
+        materialization_interval: str | None = None,
+        transport: str | None = None,
     ) -> feature_view.FeatureView:
         """Function to enable feature logging for a feature view. This function creates logging feature groups for the feature view.
 
         Parameters:
             fv: Feature view object to enable feature logging for.
             extra_log_columns: List of features to be logged.
+            materialization_interval: `"hour"` or `"day"`; `None` keeps the platform default schedule.
+            transport: `"realtime"` or `"job"`; `None` keeps the platform default.
 
         Returns:
             Feature view object with feature logging enabled.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the view already logs through the other transport.
         """
+        transport = None if transport is None else _transport(transport)
+        if fv.logging_enabled and transport is not None:
+            current = self._get_feature_logging(fv)
+            active = current.transport if current is not None else None
+            if active is not None and active != transport:
+                raise FeatureStoreException(
+                    f"Feature view {fv.name} v{fv.version} already logs through the "
+                    f"{active!r} transport, and a feature view logs through one "
+                    f"transport at a time. Call delete_log(transport={transport!r}) "
+                    "to drop the logged rows and switch."
+                )
         logging_features = (
             [
                 feature.Feature.from_response_json(feat)
@@ -1686,12 +1758,83 @@ class FeatureViewEngine:
             else []
         )
 
-        feature_logging = FeatureLogging(extra_logging_columns=logging_features)
+        feature_logging = FeatureLogging(
+            extra_logging_columns=logging_features,
+            materialization_interval=materialization_interval,
+            transport=transport,
+        )
         self._feature_view_api._enable_feature_logging(
             fv.name, fv.version, feature_logging
         )
         fv.logging_enabled = True
+        fv._feature_logging = None
+        created = self._get_feature_logging(fv)
+        if created is not None and created.transport == "job":
+            self._commit_job(fv, created, materialization_interval)
+        elif materialization_interval is not None:
+            self._schedule_log_materialization(fv, materialization_interval)
         return fv
+
+    def _schedule_log_materialization(self, fv, interval: str) -> None:
+        """Put the logging group's materialization job on the hourly or daily schedule.
+
+        The schedule lives on the job, so this also works for a group whose
+        backend predates the `materializationInterval` field.
+        """
+        cron = _materialization_cron(interval)
+        feature_logging = self._get_feature_logging(fv)
+        logging_fg = (
+            feature_logging.get_feature_group(None) if feature_logging else None
+        )
+        if logging_fg is None:
+            raise FeatureStoreException(
+                f"Feature view {fv.name} v{fv.version} has no logging feature group; "
+                "enable logging before choosing a materialization interval."
+            )
+        if feature_logging.transport == "job":
+            self._commit_job(fv, feature_logging, interval)
+            return
+        logging_fg.materialization_job.schedule(cron)
+
+    def _commit_job(self, fv, feature_logging, interval: str | None = None):
+        """The `job` transport's commit job for the view, created and scheduled on first use.
+
+        The job runs the packaged `feature_log_commit_job.py`, uploaded next to
+        the view's staging directory, with the view's name and version as
+        arguments. Hourly unless the view chose a materialization interval.
+        """
+        from hopsworks_common.core.dataset_api import DatasetApi
+        from hopsworks_common.core.feature_logging_file import (
+            _commit_job_name,
+            _mkdirs,
+            _staging_dir,
+        )
+        from hopsworks_common.core.job_api import JobApi
+        from hsfs.core import feature_log_commit_job
+
+        job_api = JobApi()
+        name = _commit_job_name(fv.name, fv.version)
+        job = job_api.get_job(name) if job_api.exists(name) else None
+        # The script is the client's own copy, so every call refreshes it and
+        # the job keeps pace with the installed client.
+        staging_dir = _staging_dir(fv.name, fv.version)
+        dataset_api = DatasetApi()
+        _mkdirs(dataset_api, staging_dir)
+        script = dataset_api.upload(
+            feature_log_commit_job.__file__, staging_dir, overwrite=True
+        )
+        if job is None:
+            config = job_api.get_configuration("PYTHON")
+            config["appPath"] = script
+            config["defaultArgs"] = f"--feature-view {fv.name} --version {fv.version}"
+            job = job_api.create_job(name, config)
+        if interval is not None or job.job_schedule is None:
+            job.schedule(
+                _materialization_cron(interval)
+                if interval is not None
+                else LOG_MATERIALIZATION_INTERVALS["hour"]
+            )
+        return job
 
     def _get_feature_logging(self, fv):
         return self._feature_view_api._get_feature_logging(fv.name, fv.version)
@@ -1822,6 +1965,28 @@ class FeatureViewEngine:
 
         # FSTORE-1871 combines the untransformed and transformed logging feature groups.
         # Transformed and untransformed logging features groups are retrived here to maintain backwards compatibility.
+        # Legacy rows (still carrying both feature groups) route per data kind like the
+        # pre-FSTORE-1871 client did: the transformed feature group only receives rows when
+        # transformed data was actually supplied, instead of a copy of every logged row.
+        if feature_logging._is_legacy:
+            logging_meta_data = getattr(logs, "hopsworks_logging_metadata", None)
+            has_transformed_data = transformed_features is not None or (
+                logging_meta_data is not None
+                and bool(logging_meta_data.transformed_features)
+            )
+            has_untransformed_data = (
+                logs is not None
+                or untransformed_features is not None
+                or (
+                    logging_meta_data is not None
+                    and bool(logging_meta_data.untransformed_features)
+                )
+                or not has_transformed_data
+            )
+        else:
+            has_untransformed_data = True
+            has_transformed_data = True
+
         if logger:
             logger.log(
                 **{
@@ -1845,28 +2010,30 @@ class FeatureViewEngine:
                             model_version=model_version,
                             return_list=True,
                         )
-                        if fg
+                        if fg and has_data
                         else None
                     )
-                    for key, fg in [
+                    for key, fg, has_data in [
                         (
                             constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                             feature_logging.untransformed_features,
+                            has_untransformed_data,
                         ),
                         (
                             constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
                             feature_logging.transformed_features,
+                            has_transformed_data,
                         ),
                     ]
                 }
             )
 
         else:
-            for fg in [
-                feature_logging.untransformed_features,
-                feature_logging.transformed_features,
+            for fg, has_data in [
+                (feature_logging.untransformed_features, has_untransformed_data),
+                (feature_logging.transformed_features, has_transformed_data),
             ]:
-                if fg:
+                if fg and has_data:
                     logging_df = self._get_feature_logging_data(
                         fv=fv,
                         logging_feature_group=fg,
@@ -2016,11 +2183,6 @@ class FeatureViewEngine:
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]
-        logging_features = [
-            feature_name
-            for feature_name in logging_feature_group_feature_names
-            if feature_name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
-        ]
         model_name = (
             model_name if model_name else hsml_model.name if hsml_model else None
         )
@@ -2032,6 +2194,33 @@ class FeatureViewEngine:
             else None
         )
 
+        # Logging feature groups created before FSTORE-1871 store the model identity in a single
+        # hsml_model column instead of model_name/model_version. Write that column (with the
+        # concatenated value the old schema used) so the model identity is not silently dropped.
+        model_col_name = constants.FEATURE_LOGGING.MODEL_COLUMN_NAME
+        if FeatureLogging._uses_legacy_model_column(
+            logging_feature_group_feature_names
+        ):
+            model_col_name = constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+            # Half a model identity would be stored where no model filter can select it again,
+            # since the read side matches the full "<name>_<version>" value only.
+            if (model_name is None) != (model_version is None):
+                raise FeatureStoreException(
+                    "This logging feature group predates the model_name/model_version columns and "
+                    "stores the model as a single `<name>_<version>` value, so `model_name` and "
+                    "`model_version` must be passed together. Pass both, or `model`."
+                )
+            if model_name is not None:
+                model_name = f"{model_name}_{model_version}"
+
+        metadata_column_names = set(constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS)
+        metadata_column_names.add(model_col_name)
+        logging_features = [
+            feature_name
+            for feature_name in logging_feature_group_feature_names
+            if feature_name not in metadata_column_names
+        ]
+
         if return_list:
             logging_data, additional_logging_features, missing_logging_features = (
                 engine._get_instance()._get_feature_logging_list(
@@ -2041,17 +2230,17 @@ class FeatureViewEngine:
                     logging_features=logging_features,
                     transformed_features=(
                         transformed_features,
-                        fv._transformed_feature_names,
+                        fv._get_transformed_feature_names(training_dataset_version),
                         constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
                     ),
                     untransformed_features=(
                         untransformed_features,
-                        fv._untransformed_feature_names,
+                        fv._get_untransformed_feature_names(training_dataset_version),
                         constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                     ),
                     predictions=(
                         predictions,
-                        list(fv._label_column_names),
+                        list(fv._get_label_column_names(training_dataset_version)),
                         constants.FEATURE_LOGGING.PREDICTIONS,
                     ),
                     serving_keys=(
@@ -2069,11 +2258,7 @@ class FeatureViewEngine:
                         fv.request_parameters,
                         constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
                     ),
-                    event_time=(
-                        event_time,
-                        [fv._root_feature_group_event_time_column_name],
-                        constants.FEATURE_LOGGING.EVENT_TIME,
-                    ),
+                    event_time=_event_time_log_component(fv, event_time),
                     request_id=(
                         [request_id] if isinstance(request_id, str) else request_id,
                         [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
@@ -2086,7 +2271,7 @@ class FeatureViewEngine:
                     ),
                     td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
                     time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-                    model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                    model_col_name=model_col_name,
                     training_dataset_version=training_dataset_version,
                     model_name=model_name,
                     model_version=model_version,
@@ -2101,17 +2286,17 @@ class FeatureViewEngine:
                     logging_features=logging_features,
                     transformed_features=(
                         transformed_features,
-                        fv._transformed_feature_names,
+                        fv._get_transformed_feature_names(training_dataset_version),
                         constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
                     ),
                     untransformed_features=(
                         untransformed_features,
-                        fv._untransformed_feature_names,
+                        fv._get_untransformed_feature_names(training_dataset_version),
                         constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                     ),
                     predictions=(
                         predictions,
-                        list(fv._label_column_names),
+                        list(fv._get_label_column_names(training_dataset_version)),
                         constants.FEATURE_LOGGING.PREDICTIONS,
                     ),
                     serving_keys=(
@@ -2129,11 +2314,7 @@ class FeatureViewEngine:
                         fv.request_parameters,
                         constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
                     ),
-                    event_time=(
-                        event_time,
-                        [fv._root_feature_group_event_time_column_name],
-                        constants.FEATURE_LOGGING.EVENT_TIME,
-                    ),
+                    event_time=_event_time_log_component(fv, event_time),
                     request_id=(
                         [request_id] if isinstance(request_id, str) else request_id,
                         [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
@@ -2146,7 +2327,7 @@ class FeatureViewEngine:
                     ),
                     td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
                     time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-                    model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                    model_col_name=model_col_name,
                     training_dataset_version=training_dataset_version,
                     model_name=model_name,
                     model_version=model_version,
@@ -2175,8 +2356,29 @@ class FeatureViewEngine:
         hsml_model=None,
         model_name: str | None = None,
         model_version: int | None = None,
+        online: bool = False,
     ):
-        fg = self._get_logging_fg(fv, transformed)
+        feature_logging = self._get_feature_logging(fv)
+        fg = feature_logging.get_feature_group(transformed) if feature_logging else None
+        if (
+            online
+            and feature_logging is not None
+            and feature_logging.transport == "job"
+        ):
+            raise FeatureStoreException(
+                f"Feature view {fv.name} v{fv.version} logs through the 'job' "
+                "transport, which keeps no online copy of the log; read it with "
+                "online=False after materialize_log()."
+            )
+        if online and fg is not None and not getattr(fg, "online_enabled", False):
+            # A group created before the online copy existed is a stream group, so the
+            # transport check above passes it through; reading it online reaches MySQL
+            # for a table that was never created.
+            raise FeatureStoreException(
+                f"The logging feature group of feature view {fv.name} v{fv.version} "
+                "has no online copy, so it predates online feature logging; recreate "
+                "it with delete_log() or read it with online=False."
+            )
         fv_feat_name_map = self._get_fv_feature_name_map(fv)
         query = fg.select_all()
         if start_time:
@@ -2196,33 +2398,69 @@ class FeatureViewEngine:
                 )
                 == training_dataset_version
             )
+        # Logging feature groups created before FSTORE-1871 store the model identity in a single
+        # hsml_model column ("<name>_<version>") instead of model_name/model_version.
+        legacy_model_column = FeatureLogging._uses_legacy_model_column(
+            {feature.name for feature in fg.columns}
+        )
         if hsml_model:
-            query = query.filter(
-                (
-                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
-                    == hsml_model.name
+            if legacy_model_column:
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME)
+                    == self._get_hsml_model_value(hsml_model)
                 )
-                and (
-                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
-                    == hsml_model.version
+            else:
+                query = query.filter(
+                    (
+                        fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
+                        == hsml_model.name
+                    )
+                    & (
+                        fg.get_feature(
+                            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME
+                        )
+                        == hsml_model.version
+                    )
                 )
-            )
         if model_name:
-            query = query.filter(
-                fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
-                == model_name
-            )
+            if legacy_model_column:
+                # A LIKE prefix match on the concatenated value cannot express "this name,
+                # any version": `_` is a wildcard and sibling names share the prefix.
+                if not model_version:
+                    raise FeatureStoreException(
+                        "This logging feature group predates the model_name/model_version columns and "
+                        "stores the model as a single `<name>_<version>` value, so filtering by model_name "
+                        "alone is not supported. Pass `model_version` as well, or `model`."
+                    )
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME)
+                    == self._get_hsml_model_value(
+                        None, model_name=model_name, model_version=model_version
+                    )
+                )
+            else:
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
+                    == model_name
+                )
         if model_version:
-            query = query.filter(
-                fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
-                == model_version
-            )
+            if legacy_model_column:
+                if not model_name and not hsml_model:
+                    raise FeatureStoreException(
+                        "This logging feature group predates the model_name/model_version columns, so "
+                        "filtering by model_version alone is not supported. Pass `model` or `model_name` as well."
+                    )
+            else:
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
+                    == model_version
+                )
         if filter:
             query = query.filter(
                 self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)
             )
         return engine._get_instance()._read_feature_log(
-            query, constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME
+            query, constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, online=online
         )
 
     @staticmethod
@@ -2283,15 +2521,31 @@ class FeatureViewEngine:
 
     def _pause_logging(self, fv):
         self._feature_view_api._pause_feature_logging(fv.name, fv.version)
+        feature_logging = self._get_feature_logging(fv)
+        if feature_logging is not None and feature_logging.transport == "job":
+            # The job transport's schedule lives on the commit job, not on a
+            # materialization job the backend knows about.
+            self._commit_job(fv, feature_logging).pause_schedule()
 
     def _resume_logging(self, fv):
         self._feature_view_api._resume_feature_logging(fv.name, fv.version)
+        feature_logging = self._get_feature_logging(fv)
+        if feature_logging is not None and feature_logging.transport == "job":
+            self._commit_job(fv, feature_logging).resume_schedule()
 
     def _materialize_feature_logs(self, fv, wait, transform):
+        feature_logging = self._get_feature_logging(fv)
+        if feature_logging is not None and feature_logging.transport == "job":
+            # The job transport has no materialization job: the commit job is
+            # what moves staged chunks into the offline table.
+            job = self._commit_job(fv, feature_logging)
+            job.run(await_termination=False)
+            if wait:
+                job._wait_for_job(wait)
+            return [job]
         # FSTORE-1871 combines the untransformed and transformed logging feature groups.
         # Here we are checking are fetching both transformed and untransformed logging feature groups to maintain backwards compatibility.
         if transform is None:
-            feature_logging = self._get_feature_logging(fv)
             logging_feature_groups = [
                 feature_logging.untransformed_features,
                 feature_logging.transformed_features,
@@ -2306,6 +2560,51 @@ class FeatureViewEngine:
                 job._wait_for_job(wait)
         return jobs
 
-    def _delete_feature_logs(self, fv, feature_logging, transformed):
-        self._feature_view_api._delete_feature_logs(fv.name, fv.version, transformed)
-        feature_logging._update(self._get_feature_logging(fv))
+    def _delete_feature_logs(self, fv, feature_logging, transformed, transport=None):
+        transport = None if transport is None else _transport(transport)
+        was_job = feature_logging is not None and feature_logging.transport == "job"
+        self._feature_view_api._delete_feature_logs(
+            fv.name, fv.version, transformed, transport
+        )
+        recreated = self._get_feature_logging(fv)
+        feature_logging._update(recreated)
+        if was_job:
+            # The backend drops the logging feature group, not the chunks
+            # deployments staged in HopsFS. Left there, the next commit job run
+            # appends pre-delete rows to the group that replaced it.
+            self._discard_staged_chunks(fv)
+        if recreated is not None and recreated.transport == "job":
+            self._commit_job(fv, recreated)
+        elif was_job:
+            self._unschedule_commit_job(fv)
+
+    def _discard_staged_chunks(self, fv) -> None:
+        """Drop the job transport's staged chunks for the view, claimed or not.
+
+        `failed/` is left alone: nothing there is ever committed, and it is where a chunk goes to be looked at.
+        """
+        from hopsworks_common.core.dataset_api import DatasetApi
+        from hopsworks_common.core.feature_logging_file import _staging_dir
+
+        dataset_api = DatasetApi()
+        staging_dir = _staging_dir(fv.name, fv.version)
+        for name in ("uploading", "pending", "claimed"):
+            path = f"{staging_dir}/{name}"
+            if dataset_api.exists(path):
+                dataset_api.remove(path)
+
+    def _unschedule_commit_job(self, fv) -> None:
+        """Stop the commit job of a view that no longer logs through the job transport.
+
+        The job and its execution history stay; `_commit_job` schedules it again if the view moves back.
+        """
+        from hopsworks_common.core.feature_logging_file import _commit_job_name
+        from hopsworks_common.core.job_api import JobApi
+
+        job_api = JobApi()
+        name = _commit_job_name(fv.name, fv.version)
+        if not job_api.exists(name):
+            return
+        job = job_api.get_job(name)
+        if job is not None and job.job_schedule is not None:
+            job.unschedule()

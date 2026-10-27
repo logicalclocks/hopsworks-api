@@ -13,6 +13,7 @@ agent-only lookup that excludes model-backed deployments.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +106,13 @@ def agent_info(ctx: click.Context, name: str) -> None:
     help="HopsFS directory under which agent files are placed.",
 )
 @click.option("--description", default=None, help="Agent description.")
+@click.option(
+    "--memory",
+    type=click.IntRange(min=256),
+    default=None,
+    help="Memory limit in MB; the platform default otherwise. An agent that loads "
+    "a model (e.g. torch and an embedder) needs more than the default 1 GB.",
+)
 @click.pass_context
 def agent_create(
     ctx: click.Context,
@@ -114,6 +122,7 @@ def agent_create(
     environment: str | None,
     upload_dir: str,
     description: str | None,
+    memory: int | None,
 ) -> None:
     """Create (or update) an agent from a local script or package.
 
@@ -130,6 +139,7 @@ def agent_create(
         environment: Python environment name.
         upload_dir: HopsFS upload directory.
         description: Description string.
+        memory: Memory limit in MB.
     """
     ms = _get_model_serving(ctx)
     try:
@@ -140,6 +150,7 @@ def agent_create(
             environment=environment,
             upload_dir=upload_dir,
             description=description,
+            resources=_memory_limit(memory),
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Agent create failed: {exc}") from exc
@@ -225,7 +236,9 @@ def agent_query(
     """
     if not data and not file_path:
         raise click.UsageError("Provide --data or --file.")
-    payload_str = Path(file_path).read_text() if file_path else (data or "")
+    payload_str = (
+        Path(file_path).read_text(encoding="utf-8") if file_path else (data or "")
+    )
     try:
         payload = json.loads(payload_str)
     except json.JSONDecodeError as exc:
@@ -257,11 +270,12 @@ def agent_query(
 @click.option(
     "--source",
     type=click.Choice(["opensearch", "kubernetes"]),
-    default="opensearch",
+    default="kubernetes",
     show_default=True,
     help=(
-        "opensearch: historical logs from the project serving index "
-        "(works for stopped agents). kubernetes: live pod-tailing."
+        "kubernetes: live pod logs. opensearch: deprecated; new backends "
+        "serve it from the Kubernetes path as well. Logs of stopped agents "
+        "are retrieved with --download."
     ),
 )
 @click.option("--since", help="ISO-8601 lower bound on log timestamp.")
@@ -279,6 +293,23 @@ def agent_query(
     show_default=True,
     help="Seconds between polls when --follow is set.",
 )
+@click.option(
+    "--download",
+    is_flag=True,
+    help=(
+        "Download the HopsFS log archives written when the agent was "
+        "stopped or deleted. Cannot be combined with --follow or --source."
+    ),
+)
+@click.option(
+    "--dir",
+    "log_dir",
+    type=click.Path(file_okay=False),
+    help="With --download, the directory to download into, created if missing; "
+    "the working directory by default. Keep logs out of a git work tree, such "
+    "as an ML system's directory: in the factory, "
+    "${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>.",
+)
 @click.pass_context
 def agent_logs(
     ctx: click.Context,
@@ -290,6 +321,8 @@ def agent_logs(
     until: str | None,
     follow: bool,
     interval: float,
+    download: bool,
+    log_dir: str | None,
 ) -> None:
     """Read or follow logs from an agent component.
 
@@ -298,13 +331,38 @@ def agent_logs(
         name: Agent name.
         component: Component to query (e.g. ``predictor``, ``transformer``).
         tail: Number of lines.
-        source: ``opensearch`` or ``kubernetes``.
+        source: ``kubernetes`` or ``opensearch`` (deprecated).
         since: ISO-8601 lower bound on log timestamp.
         until: ISO-8601 upper bound on log timestamp.
         follow: Stream new lines instead of returning a one-shot tail.
         interval: Seconds between polls when following.
+        download: Download the HopsFS log archives instead of reading pods.
+        log_dir: With ``--download``, the directory to download into.
     """
     agent = _get_agent(ctx, name)
+
+    if download:
+        source_given = (
+            ctx.get_parameter_source("source") is not click.core.ParameterSource.DEFAULT
+        )
+        if follow or source_given:
+            raise click.UsageError(
+                "--download cannot be combined with --follow or --source."
+            )
+        try:
+            path = None
+            if log_dir is not None:
+                path = os.path.expanduser(log_dir)
+                os.makedirs(path, exist_ok=True)
+            local_paths = agent.download_logs(path=path)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Log download failed: {exc}") from exc
+        if output.JSON_MODE:
+            output.print_json({"paths": local_paths})
+            return
+        for local_path in local_paths:
+            click.echo(local_path)
+        return
 
     if follow:
         try:
@@ -366,6 +424,15 @@ def _get_model_serving(ctx: click.Context) -> Any:
     return project.get_model_serving()
 
 
+def _memory_limit(memory: int | None) -> Any:
+    """The predictor resources with this memory limit, the rest at their defaults."""
+    if memory is None:
+        return None
+    from hsml.resources import PredictorResources, Resources
+
+    return PredictorResources(limits=Resources(cores=None, memory=memory, gpus=None))
+
+
 def _get_agent(ctx: click.Context, name: str) -> Any:
     ms = _get_model_serving(ctx)
     try:
@@ -396,6 +463,21 @@ def _predictor_attr(d: Any, attr: str, default: Any) -> Any:
 
 
 def _deployment_status(d: Any) -> str:
+    """Whether the agent is running, which has to be asked for rather than read.
+
+    A deployment's state is not an attribute on the object: `get_state()` fetches
+    it. Reading `status`/`deployment_state`/`_state` off a deployment that had not
+    been asked found nothing every time, so `hops agent info` printed `Status -`
+    for a pod that was running and answering -- the one line anybody runs the
+    command for. The attributes stay as a fallback for an object that carries one.
+    """
+    try:
+        state = d.get_state()
+    except Exception:  # noqa: BLE001 -- a status we cannot fetch is not a failed command
+        state = None
+    status = getattr(state, "status", None)
+    if status:
+        return str(status)
     for attr in ("status", "deployment_state", "_state"):
         value = getattr(d, attr, None)
         if value:

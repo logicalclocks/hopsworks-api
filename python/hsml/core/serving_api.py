@@ -16,14 +16,19 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from typing import Any
 
+import requests
 from hopsworks_common import tag
+from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hsml import (
     client,
     decorators,
     deployable_component_logs,
     deployment,
+    deployment_version,
     inference_endpoint,
     predictor_state,
 )
@@ -33,6 +38,12 @@ from hsml.client.istio.utils.infer_type import (
     InferRequest,
 )
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+
+
+_logger = logging.getLogger(__name__)
+# Guards the lazy creation of the gRPC channel of a deployment object that has no lock of its own.
+# Concurrent first callers would otherwise each build one and keep only the last, leaking the rest for the lifetime of the object.
+_GRPC_CHANNEL_LOCK = threading.Lock()
 
 
 class ServingApi:
@@ -232,11 +243,51 @@ class ServingApi:
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
-    def _put(self, deployment_instance: deployment.Deployment) -> deployment.Deployment:
+    def _get_vllm_image_tags(self) -> dict[str, Any]:
+        """Get the vLLM runtime image tags the cluster advertises.
+
+        Returns:
+            One entry per vLLM variant, each with its advertised tags and the default tag.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "vllmImageTags"]
+        return _client._send_request("GET", path_params)
+
+    def _get_schema(
+        self,
+        deployment_id: int,
+        schema_id: str | None = None,
+        format: str = "schema",
+    ) -> dict[str, Any]:
+        """Fetch a deployment schema document from the backend.
+
+        Parameters:
+            deployment_id: Id of the deployment.
+            schema_id: A schema the deployment has published; defaults to the one its current revision serves.
+            format: `schema`, `jsonschema`, or `openapi`.
+
+        Returns:
+            The document as parsed JSON.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_id),
+            "schema",
+        ]
+        query_params = {"format": format, "schemaId": schema_id}
+        return _client._send_request("GET", path_params, query_params=query_params)
+
+    def _put(
+        self, deployment_instance: deployment.Deployment, new_version: bool = False
+    ) -> deployment.Deployment:
         """Save deployment metadata to model serving.
 
         Parameters:
             deployment_instance: Metadata object of deployment to be saved.
+            new_version: Store the update as a new version of the deployment instead of editing the active one.
 
         Returns:
             Updated metadata object of the deployment.
@@ -244,13 +295,122 @@ class ServingApi:
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving"]
         headers = {"content-type": "application/json"}
+        query_params = {"newVersion": "true"} if new_version else None
 
         deployment_instance = deployment_instance.update_from_response_json(
             _client._send_request(
                 "PUT",
                 path_params,
+                query_params=query_params,
                 headers=headers,
                 data=deployment_instance.json(),
+            )
+        )
+        deployment_instance.model_registry_id = _client._project_id
+        deployment_instance.project_name = _client._project_name
+        return deployment_instance
+
+    @staticmethod
+    def _is_versions_endpoint_missing(e: RestAPIError) -> bool:
+        """Whether a 404 means the backend predates deployment versions.
+
+        A deleted deployment is a 404 too, but it carries the deployment-not-found code.
+        """
+        return (
+            e.response.status_code == 404
+            and getattr(e, "error_code", None)
+            != deployment.Deployment.NOT_FOUND_ERROR_CODE
+        )
+
+    def _supports_versions(self, deployment_instance: deployment.Deployment) -> bool:
+        """Whether the backend keeps deployment versions; one that predates them has no versions endpoint."""
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "versions",
+        ]
+        try:
+            _client._send_request(
+                "GET", path_params, query_params={"offset": 0, "limit": 1}
+            )
+        except RestAPIError as e:
+            if self._is_versions_endpoint_missing(e):
+                return False
+            raise
+        return True
+
+    def _get_versions(
+        self, deployment_instance: deployment.Deployment
+    ) -> list[deployment_version.DeploymentVersion]:
+        """Get every retained configuration version of a deployment, newest first.
+
+        Raises:
+            ModelServingException: If the deployment is not saved yet or the backend predates deployment versions.
+        """
+        if deployment_instance.id is None:
+            raise ModelServingException(
+                "The deployment has not been saved yet, so it has no versions."
+            )
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "versions",
+        ]
+        versions = {}
+        offset = 0
+        limit = 100
+        while True:
+            try:
+                response = _client._send_request(
+                    "GET", path_params, query_params={"offset": offset, "limit": limit}
+                )
+            except RestAPIError as e:
+                if self._is_versions_endpoint_missing(e):
+                    raise ModelServingException(
+                        "Deployment versioning requires a newer Hopsworks release."
+                    ) from e
+                raise
+            page = deployment_version.DeploymentVersion.from_response_json(response)
+            for item in page:
+                versions[item.version] = item
+            offset += len(page)
+            count = response.get("count")
+            if not page or count is None or offset >= count:
+                return sorted(versions.values(), key=lambda v: v.version, reverse=True)
+
+    def _rollback(
+        self, deployment_instance: deployment.Deployment, version: int
+    ) -> deployment.Deployment:
+        """Make an earlier version of the deployment the active one.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+            version: The version to activate.
+
+        Returns:
+            The deployment metadata object, updated from the response.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "rollback",
+        ]
+        headers = {"content-type": "application/json"}
+        deployment_instance = deployment_instance.update_from_response_json(
+            _client._send_request(
+                "POST",
+                path_params,
+                headers=headers,
+                data=json.dumps({"version": version}),
             )
         )
         deployment_instance.model_registry_id = _client._project_id
@@ -397,15 +557,7 @@ class ServingApi:
     def _send_inference_request_via_grpc_protocol(
         self, deployment_instance, data: list[InferInput]
     ) -> list[InferOutput]:
-        # get grpc channel
-        if deployment_instance._grpc_channel is None:
-            # The gRPC channel is lazily initialized. The first call to deployment.predict() will initialize
-            # the channel, which will be reused in all following calls on the same deployment object.
-            # The gRPC channel is freed when calling deployment.stop()
-            print("Initializing gRPC channel...")
-            deployment_instance._grpc_channel = self._create_grpc_channel(
-                deployment_instance
-            )
+        channel = self._grpc_channel(deployment_instance)
         # build an infer request
         request = InferRequest(
             infer_inputs=data,
@@ -413,17 +565,96 @@ class ServingApi:
         )
 
         # send infer request
-        infer_response = deployment_instance._grpc_channel.infer(
-            infer_request=request, headers=None
-        )
+        infer_response = channel.infer(infer_request=request, headers=None)
 
         # extract infer outputs
         return infer_response.outputs
 
+    def _warm_rest_transport(
+        self, deployment_instance, through_hopsworks: bool = False
+    ) -> None:
+        """Open the connection the first REST prediction reuses, without predicting.
+
+        A `GET` of the model's metadata has no side effects.
+        Any HTTP answer means the session now holds a connection with its TLS handshake done, so an error status is not raised.
+        A DNS, connect or TLS failure opened nothing, so it is raised: the first prediction would otherwise meet it instead.
+        Requests sent through Hopsworks use the client session that logging in and downloading the schema have already opened.
+
+        Raises:
+            requests.exceptions.RequestException: The model's endpoint could not be reached.
+        """
+        if through_hopsworks:
+            return
+        _client = client.istio._get_instance()
+        if _client is None:
+            return
+        path_params = self._get_istio_model_metadata_path(deployment_instance)
+        try:
+            _client._send_request("GET", path_params, with_base_path_params=False)
+        except RestAPIError as e:
+            _logger.debug(
+                "Warm-up request to %s answered %s", path_params, e.response.status_code
+            )
+
+    def _is_routed(self, deployment_instance, timeout: float | None = None) -> bool:
+        """Whether the ingress gateway routes requests to the deployment.
+
+        A `GET` of the model's metadata through the gateway, as `_warm_rest_transport` sends.
+        The gateway answers a host it has no route for with a 404 and an empty body.
+        Any other answer, an error status or a 404 with a body included, came from the deployment.
+        A gateway that cannot be reached, or does not answer within `timeout`, does not route it yet either.
+        Without an Istio client, requests go through Hopsworks, which needs no gateway route.
+
+        Parameters:
+            deployment_instance: The deployment to check.
+            timeout: Seconds to wait for the connection and for the answer.
+        """
+        _client = client.istio._get_instance()
+        if _client is None:
+            return True
+        try:
+            _client._send_request(
+                "GET",
+                self._get_istio_model_metadata_path(deployment_instance),
+                with_base_path_params=False,
+                timeout=timeout,
+            )
+        except RestAPIError as e:
+            return not (
+                e.response is not None
+                and e.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
+                and not e.response.content
+            )
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            return False
+        return True
+
+    def _get_istio_model_metadata_path(self, deployment_instance) -> list[str]:
+        return self._get_istio_inference_path(deployment_instance, base_only=True) + [
+            "v1",
+            "models",
+            deployment_instance.name,
+        ]
+
+    def _grpc_channel(self, deployment_instance):
+        """The deployment's gRPC channel, created once and reused by every later call.
+
+        The channel is freed when calling `deployment.stop()`.
+        """
+        if deployment_instance._grpc_channel is None:
+            # Per deployment, so a slow first channel for one deployment does not hold up another's.
+            with getattr(deployment_instance, "_grpc_channel_lock", _GRPC_CHANNEL_LOCK):
+                if deployment_instance._grpc_channel is None:
+                    _logger.debug("Initializing gRPC channel")
+                    deployment_instance._grpc_channel = self._create_grpc_channel(
+                        deployment_instance
+                    )
+        return deployment_instance._grpc_channel
+
     def _create_grpc_channel(self, deployment_instance):
         _client = client.istio._get_instance()
         path_prefix = (
-            f"/v1/{deployment_instance.project_name}/{deployment_instance.name}"
+            f"/v1/{deployment_instance.project_namespace}/{deployment_instance.name}"
         )
         return _client._create_grpc_channel(path_prefix)
 
@@ -477,27 +708,35 @@ class ServingApi:
         self,
         deployment_instance: deployment.Deployment,
         component: str,
-        tail: int,
+        tail: int | None,
         source: str | None = None,
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
+        timestamps: bool = False,
     ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 
         Parameters:
             deployment_instance: Metadata object of the deployment to get logs from.
             component: Deployment component (e.g., predictor or transformer).
-            tail: Number of tailing lines to retrieve.
-            source: ``"opensearch"`` for historical logs from the project's
-                serving index (works for stopped deployments), ``"kubernetes"``
-                for live pod-tailing. Default ``None`` lets the backend
-                pick the legacy Kubernetes path.
-            since: ISO-8601 lower bound on the log timestamp; ignored on
-                the Kubernetes path.
+            tail: Number of tailing lines to retrieve, or ``None`` to send no
+                bound and let the backend apply its default. A cursor resume
+                passes ``None``: a tail bound keeps the newest N lines of the
+                matched range, which on a resume would discard exactly the
+                lines being resumed.
+            source: ``"kubernetes"`` for live pod logs, or the deprecated
+                ``"opensearch"`` (served from the Kubernetes path by new
+                backends). Default ``None`` lets the backend pick the
+                legacy Kubernetes path.
+            since: ISO-8601 lower bound on the log timestamp. New backends
+                honor it on the Kubernetes path (kubelet ``sinceTime``,
+                second granularity); old backends ignore it there.
             until: ISO-8601 upper bound on the log timestamp; ignored on
                 the Kubernetes path.
             pod: Restrict to a single instance / container name.
+            timestamps: Prefix each line with the kubelet timestamp, which
+                is what a caller needs to build a resume cursor.
 
         Returns:
             Deployment logs.
@@ -510,7 +749,9 @@ class ServingApi:
             deployment_instance.id,
             "logs",
         ]
-        query_params: dict = {"component": component, "tail": tail}
+        query_params: dict = {"component": component}
+        if tail is not None:
+            query_params["tail"] = tail
         # Only forward optional params when set so the wire format stays
         # identical to the pre-CLI release for old call sites.
         if source is not None:
@@ -521,6 +762,8 @@ class ServingApi:
             query_params["until"] = until
         if pod is not None:
             query_params["pod"] = pod
+        if timestamps:
+            query_params["timestamps"] = "true"
         return deployable_component_logs.DeployableComponentLogs.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)
         )
@@ -559,7 +802,11 @@ class ServingApi:
         Returns:
             List of path segments.
         """
-        base_path = ["v1", deployment_instance.project_name, deployment_instance.name]
+        base_path = [
+            "v1",
+            deployment_instance.project_namespace,
+            deployment_instance.name,
+        ]
         if base_only:
             return base_path
         return base_path + ["v1", "models", deployment_instance.name + ":predict"]

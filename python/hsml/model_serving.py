@@ -26,7 +26,7 @@ from hopsworks_apigen import public
 from hopsworks_common import tag, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.constants import PREDICTOR_STATE
+from hopsworks_common.constants import PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.core import dataset_api as _dataset_api
 from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
@@ -52,13 +52,19 @@ _SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 if TYPE_CHECKING:
+    from hsml.deployment_logging_config import DeploymentLoggingConfig
+    from hsml.deployment_memory_config import DeploymentMemoryConfig
+    from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_endpoint import InferenceEndpoint
     from hsml.inference_logger import InferenceLogger
     from hsml.model import Model
     from hsml.resources import PredictorResources
-    from hsml.scaling_config import PredictorScalingConfig, TransformerScalingConfig
+    from hsml.scaling_config import (
+        PredictorScalingConfig,
+        TransformerScalingConfig,
+    )
 
 
 @public
@@ -199,6 +205,45 @@ class ModelServing:
         return self._serving_api._get_inference_endpoints()
 
     @public
+    def get_vllm_image_tags(
+        self, variant: str = PREDICTOR.VLLM_VARIANT_VLLM
+    ) -> list[str]:
+        """Get the vLLM runtime image tags a cluster administrator advertises.
+
+        Use this to pick a valid `vllm_image_tag` when creating an LLM deployment.
+        Tags come back newest first, so the first one is what a deployment gets when no tag is
+        given.
+        A deployment keeps the tag it was created with even if that tag stops being advertised,
+        so this list can be missing the tag an existing deployment uses.
+
+        Example:
+            ```python
+            # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
+
+            # list the tags this cluster advertises for standard vLLM
+            image_tags = ms.get_vllm_image_tags()
+            ```
+
+        Parameters:
+            variant: The vLLM variant to list tags for, `VLLM` or `VLLM_OMNI`.
+
+        Returns:
+            Advertised image tags, newest first. Empty if the variant advertises none.
+        """
+        variants = [PREDICTOR.VLLM_VARIANT_VLLM, PREDICTOR.VLLM_VARIANT_OMNI]
+        if variant not in variants:
+            raise ValueError(
+                "vLLM variant '{}' is not valid. Possible values are '{}'".format(
+                    variant, ", ".join(variants)
+                )
+            )
+        image_tags = self._serving_api._get_vllm_image_tags()
+        for item in image_tags["items"]:
+            if item["variant"] == variant:
+                return item["tags"] or []
+        return []
+
+    @public
     @usage._method_logger
     def create_predictor(
         self,
@@ -220,7 +265,12 @@ class ModelServing:
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
+        feature_logging: DeploymentLoggingConfig | dict | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        schema: DeploymentSchema | dict | None = None,
+        passed_features: list[str] | None = None,
+        default_predictor: bool | None = None,
+        knative_mode: bool | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -249,7 +299,8 @@ class ModelServing:
         Parameters:
             model: Model to be deployed.
             name: Name of the predictor.
-            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
+            artifact_version: (**Deprecated**) Ignored.
+                Deployments are versioned as a whole, see [`Deployment.save`][hsml.deployment.Deployment.save].
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS. The script must implement a `Predictor` class with a `predict(self, inputs)` method that takes the model inputs and returns the model predictions. The script is passed to the model deployment and can be accessed via the `SCRIPT_FILE_PATH` environment variable from within the predictor script.
             config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
@@ -259,16 +310,37 @@ class ModelServing:
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
+            api_protocol: API protocol of the deployment, 'REST' or 'GRPC'. Defaults to
+                'REST', which is the protocol `curl` and the published OpenAPI document
+                use; a deployment serves one protocol, not both. 'GRPC' costs less per
+                request under concurrency and is served by the default predictor, but a
+                predictor script written for REST rows cannot read the v2 tensors a gRPC
+                request carries.
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
-            vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            vllm_image_tag: vLLM image tag override.
+                If set, it must be one of the tags `ModelServing.get_vllm_image_tags`
+                returns for the matching `vllm_variant`; the two variants advertise
+                different tags, and an unqualified call lists the standard vLLM ones.
+                On a new deployment, `None` selects the newest advertised tag of that
+                variant. On an update, `None` means "unchanged": the deployment keeps
+                its current tag, so moving it to the cluster default takes naming that
+                tag explicitly. A deployment also keeps its tag after an admin stops
+                advertising it. Ignored for non-vLLM model servers.
             tracing: Tracing configuration for the predictor.
+            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig].
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
+            schema: Deployment schema describing the prediction requests; see [`Model.deploy`][hsml.model.Model.deploy].
+            passed_features: Feature view features whose values clients send with each request; see [`Model.deploy`][hsml.model.Model.deploy].
+            default_predictor: Whether the library's default predictor serves the model; see [`Model.deploy`][hsml.model.Model.deploy].
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
 
         Returns:
             The predictor metadata object.
@@ -293,7 +365,82 @@ class ModelServing:
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
             tracing=tracing,
+            feature_logging=feature_logging,
             tags=tags,
+            schema=schema,
+            passed_features=passed_features,
+            default_predictor=default_predictor,
+            knative_mode=knative_mode,
+        )
+
+    @public
+    @usage._method_logger
+    def create_feature_view_predictor(
+        self,
+        feature_view: Any,
+        name: str | None = None,
+        description: str | None = None,
+        training_dataset_version: int | None = None,
+        passed_features: list[str] | None = None,
+        schema: DeploymentSchema | dict | None = None,
+        script_file: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        scaling_configuration: PredictorScalingConfig | dict | None = None,
+        environment: str | None = None,
+        env_vars: dict | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        knative_mode: bool | None = None,
+    ) -> Predictor:
+        """Create the predictor of a feature view deployment, which serves transformed feature vectors without a model.
+
+        Same contract as a model deployment with the default predictor; the
+        response carries one feature vector per request row under
+        `predictions` and the column names under `columns`.
+
+        Note: Lazy
+            This method is lazy and does not persist any metadata or deploy anything on its own.
+            To create a deployment using this predictor, call the `deploy()` method.
+
+        Parameters:
+            feature_view: The feature view to serve.
+            name: Deployment name; defaults to the view name and version without special characters.
+            description: Deployment description.
+            training_dataset_version: Training dataset whose statistics the transformations use; defaults to the last one accessed in this session.
+            passed_features: Features of the view whose values clients send with each request.
+            schema: A refinement of the inferred deployment schema, keeping its fields.
+            script_file: A script subclassing `hsml.default_predictor.DefaultPredict` that ends with the `run_kserve_wrapper()` hand-over.
+            resources: Resources to be allocated for the predictor.
+            scaling_configuration: Scaling configuration for the predictor.
+            environment: The inference environment to use.
+            env_vars: Environment variables to set on the predictor.
+            tags: Tags to attach to the deployment when it is created.
+            knative_mode: Whether to deploy in KServe Knative mode; see [`ModelServing.create_predictor`][hsml.model_serving.ModelServing.create_predictor].
+
+        Example:
+            ```python
+            predictor = ms.create_feature_view_predictor(
+                feature_view, name="transactionsfv", passed_features=["amount"]
+            )
+            deployment = ms.create_deployment(predictor)
+            ```
+
+        Returns:
+            The predictor metadata object.
+        """
+        return Predictor.for_feature_view(
+            feature_view,
+            name=name,
+            description=description,
+            training_dataset_version=training_dataset_version,
+            passed_features=passed_features,
+            schema=schema,
+            script_file=script_file,
+            resources=resources,
+            scaling_configuration=scaling_configuration,
+            environment=environment,
+            env_vars=env_vars,
+            tags=tags,
+            knative_mode=knative_mode,
         )
 
     @public
@@ -304,6 +451,7 @@ class ModelServing:
         resources: PredictorResources | dict | None = None,
         scaling_configuration: TransformerScalingConfig | dict | None = None,
         env_vars: dict | None = None,
+        environment: str | None = None,
     ) -> Transformer:
         """Create a Transformer metadata object.
 
@@ -360,6 +508,7 @@ class ModelServing:
             resources: Resources to be allocated for the transformer.
             scaling_configuration: Scaling configuration for the transformer.
             env_vars: Environment variables to set on the transformer.
+            environment: The project Python environment the transformer runs in; defaults to the predictor's, or to the one the deployment names when the predictor runs a fixed runtime image and has none of its own.
 
         Returns:
             The transformer metadata object.
@@ -369,6 +518,7 @@ class ModelServing:
             resources=resources,
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
+            environment=environment,
         )
 
     @public
@@ -390,6 +540,11 @@ class ModelServing:
         git_provider: str | None = None,
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
+        knative_mode: bool | None = None,
+        # Appended rather than inserted: everything above it shipped in 5.0, so
+        # a position in the middle would move parameters callers may already be
+        # passing positionally.
+        memory: DeploymentMemoryConfig | dict | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -426,6 +581,12 @@ class ModelServing:
             git_branch: Optional branch to clone for git-backed endpoints.
             git_auto_redeploy: Roll the endpoint to the branch HEAD whenever a new commit is pushed.
                 Only valid together with `git_url`.
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            memory: Memory given to an agent that configures none itself; see
+                [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
 
         Returns:
             The predictor metadata object.
@@ -452,10 +613,12 @@ class ModelServing:
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
             tracing=tracing,
+            memory=memory,
             git_url=git_url,
             git_provider=git_provider,
             git_branch=git_branch,
             git_auto_redeploy=git_auto_redeploy,
+            knative_mode=knative_mode,
         )
 
     @public
@@ -478,6 +641,9 @@ class ModelServing:
         git_provider: str | None = None,
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
+        knative_mode: bool | None = None,
+        # Appended rather than inserted, for the reason create_endpoint gives.
+        memory: DeploymentMemoryConfig | dict | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -528,6 +694,15 @@ class ModelServing:
             git_auto_redeploy: Roll the agent to the branch HEAD whenever a new commit is pushed.
                 Only valid together with `git_url`.
                 The running agent keeps serving until the new version is ready.
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
+                Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            memory:
+                Memory the deployment gives the agent, for an agent that configures none in
+                its own code; see [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
+                The agent SDK applies it only when the agent passed no memory store of its
+                own, so code always wins over it.
 
         Returns:
             The deployment metadata object.
@@ -627,10 +802,12 @@ class ModelServing:
             environment=env_name,
             scaling_configuration=scaling_configuration,
             tracing=tracing,
+            memory=memory,
             git_url=git_url if git_backed else None,
             git_provider=git_provider if git_backed else None,
             git_branch=git_branch if git_backed else None,
             git_auto_redeploy=git_auto_redeploy if git_backed else False,
+            knative_mode=knative_mode,
         )
 
         existing = self.get_deployment(name)
@@ -639,6 +816,13 @@ class ModelServing:
             # existing record instead of creating a new one.
             predictor._id = existing.predictor.id
             predictor._version = existing.predictor.version
+            # And carry over a memory policy this call said nothing about. The
+            # documented way to roll out new code is to run deploy_agent again,
+            # and the backend overwrites an agent's memory column with whatever
+            # arrives -- so omitting `memory=` silently switched off memory
+            # that had been configured in the UI or on the first deploy.
+            if memory is None and existing.predictor.memory is not None:
+                predictor._memory = existing.predictor.memory
             existing.predictor = predictor
             existing.description = description
             existing.save()

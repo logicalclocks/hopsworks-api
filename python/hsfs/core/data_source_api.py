@@ -20,10 +20,12 @@ from typing import TYPE_CHECKING
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import (
+    FeatureStoreException,
     PlatformIntelligenceException,
     RestAPIError,
 )
 from hsfs.core import data_source as ds
+from hsfs.core import data_source_credentials_api
 from hsfs.core import data_source_data as dsd
 from hsfs.core import inferred_metadata as im
 
@@ -39,6 +41,30 @@ _BREWER_METADATA_INFERENCE_FAILED = 520013
 
 
 class DataSourceApi:
+    def _browse(
+        self,
+        storage_connector: sc.StorageConnector,
+        path_params: list,
+        query_params: dict | None = None,
+    ):
+        """A GET on the data source as the caller, whose missing or incomplete provided credentials are the errors worth rephrasing."""
+        _client = client._get_instance()
+        try:
+            return _client._send_request("GET", path_params, query_params)
+        except RestAPIError as err:
+            codes = RestAPIError.FeatureStoreErrorCode
+            if err.error_code == codes.DATA_SOURCE_CREDENTIALS_NOT_PROVIDED:
+                status = "MISSING"
+            elif err.error_code == codes.DATA_SOURCE_CREDENTIALS_INCOMPLETE:
+                status = "INCOMPLETE"
+            else:
+                raise
+            raise FeatureStoreException(
+                data_source_credentials_api._not_provided_message(
+                    storage_connector._name, status
+                )
+            ) from err
+
     def _get_databases(self, storage_connector: sc.StorageConnector) -> list[str]:
         _client = client._get_instance()
         path_params = [
@@ -52,7 +78,7 @@ class DataSourceApi:
             "databases",
         ]
 
-        return _client._send_request("GET", path_params)
+        return self._browse(storage_connector, path_params)
 
     def _get_google_sheet_names(
         self, storage_connector: sc.StorageConnector
@@ -110,7 +136,7 @@ class DataSourceApi:
         # one-row responses) and ``None`` for an empty body. Normalize both so
         # the contract matches the type hint and callers can iterate freely.
         result = ds.DataSource.from_response_json(
-            _client._send_request("GET", path_params, query_params),
+            self._browse(storage_connector, path_params, query_params),
             storage_connector=storage_connector,
         )
         if result is None:
@@ -276,7 +302,7 @@ class DataSourceApi:
         query_params = data_source.to_dict()
 
         return dsd.DataSourceData.from_response_json(
-            _client._send_request("GET", path_params, query_params)
+            self._browse(data_source._storage_connector, path_params, query_params)
         )
 
     def _get_metadata(self, data_source: ds.DataSource) -> dict:
@@ -294,7 +320,7 @@ class DataSourceApi:
 
         query_params = data_source.to_dict()
 
-        return _client._send_request("GET", path_params, query_params)
+        return self._browse(data_source._storage_connector, path_params, query_params)
 
     def _infer_metadata(
         self,
@@ -328,8 +354,13 @@ class DataSourceApi:
                     else None
                 )
                 values.append(cell.get("value1") if isinstance(cell, dict) else None)
+            # column_name, not name: Feature.__init__ runs the feature-store autofix over `name`
+            # (lower-cased, spaces to underscores), and the backend echoes whatever we send back as
+            # `originalName`. Sending the sanitized form means a source column called USER_ID or
+            # "Order Date" comes back as user_id / order_date, matches no real column, and the caller
+            # silently drops every rename, type and description it was given.
             columns.append(
-                {"name": feature.name, "type": feature.type, "values": values}
+                {"name": feature.column_name, "type": feature.type, "values": values}
             )
 
         try:

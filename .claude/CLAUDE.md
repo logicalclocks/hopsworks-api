@@ -19,7 +19,8 @@ uv run --project python docsig python/hopsworks python/hsfs python/hsml python/h
 - Every function/method is either public (`@public`, documented) or private (leading underscore `_`); a public-named symbol without `@public`/`@deprecated` is a defect (CI-enforced by `python/scripts/check_pep8_public.py`). Deprecated public symbols use `@deprecated("replacement.path")`. Decide visibility deliberately per symbol, and get explicit confirmation before promoting to `@public` or privatizing anything that might be user-facing — when unsure, ask, don't guess. See @docs/conventions/public-api.md for the decision rule and carve-outs
 - Annotation-only imports must live inside `if TYPE_CHECKING:` blocks
 - Code using optional packages (`polars`, `confluent_kafka`, `great_expectations`, `pyarrow`) must be gated by a decorator from `hopsworks_common.decorators` (e.g. `@uses_polars`)
-- `hopsworks_common` must not runtime-import `hopsworks`, `hsfs`, or `hsml`; `hsfs` and `hsml` must not runtime-import each other or `hopsworks`
+- `hopsworks_common` must not runtime-import `hopsworks`, `hsfs`, or `hsml`; `hsfs` and `hsml` must not runtime-import each other or `hopsworks`.
+  A module that ships as a job entry point rather than as library code is exempt inside the function that runs the job, since the job process has no client until it logs in (`hsfs/core/feature_log_commit_job.py`)
 - Never commit or log API keys, tokens, or credentials
 - If you want to mark a section of a file with a comment, use `# region Region Name`
 

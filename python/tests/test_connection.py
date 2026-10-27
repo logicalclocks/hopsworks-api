@@ -145,19 +145,25 @@ class TestConnection:
 
 
 class TestProvideProject:
-    # Tests for hopsworks_common.connection.Connection._provide_project, which runs
-    # during hopsworks.login() after the client is initialized and is responsible for
-    # loading the default model serving configuration.
+    # Tests for Connection._provide_project (runs during hopsworks.login() after the
+    # client is initialized) and Connection._load_serving_defaults (runs on first use
+    # of anything model-serving related).
 
     @pytest.fixture
     def conn(self):
         conn = MagicMock(spec=Connection)
         conn._connected = True
         conn._project = None
+        conn._engine = "python"
+        conn._serving_defaults_loaded = False
+        conn._serving_defaults_loading = False
         conn._variable_api = MagicMock()
         conn._model_serving_api = MagicMock()
-        # Bind the real method so the decorator can read _connected from our mock.
+        # Bind the real methods so the decorator can read _connected from our mock.
         conn._provide_project = Connection._provide_project.__get__(conn, Connection)
+        conn._load_serving_defaults = Connection._load_serving_defaults.__get__(
+            conn, Connection
+        )
         return conn
 
     @pytest.fixture
@@ -173,7 +179,7 @@ class TestProvideProject:
 
     @pytest.fixture(autouse=True)
     def _stub_hsfs_engine(self, mocker):
-        mocker.patch("hsfs.engine._get_instance")
+        self.engine_get = mocker.patch("hsfs.engine._get_instance")
 
     def _make_rest_error(self, status_error_code, error_code):
         err = RestAPIError.__new__(RestAPIError)
@@ -183,67 +189,85 @@ class TestProvideProject:
         return err
 
     def test_name_delegates_to_external_client(self, conn, client_instance):
-        conn._variable_api._get_data_science_profile_enabled.return_value = False
-
         conn._provide_project(name="proj")
-
         assert conn._project == "proj"
         client_instance._provide_project.assert_called_once_with("proj")
 
     def test_name_is_not_forwarded_when_internal(self, conn, client_instance):
         client_instance._is_external.return_value = False
-        conn._variable_api._get_data_science_profile_enabled.return_value = False
-
         conn._provide_project(name="proj")
-
         assert conn._project == "proj"
         client_instance._provide_project.assert_not_called()
 
     def test_uses_client_project_name_when_already_set(self, conn, client_instance):
         client_instance._project_name = "already-set"
-        conn._variable_api._get_data_science_profile_enabled.return_value = False
-
         conn._provide_project()
-
         assert conn._project == "already-set"
 
     def test_short_circuits_when_no_project(self, conn, client_instance):
         conn._provide_project()
-
+        conn._load_serving_defaults()
         conn._variable_api._get_data_science_profile_enabled.assert_not_called()
         conn._model_serving_api._load_default_configuration.assert_not_called()
+
+    def test_provide_project_defers_serving_defaults(self, conn, client_instance):
+        # Login no longer pays for the serving lookups; they run on first use.
+        client_instance._project_name = "proj"
+        conn._variable_api._get_data_science_profile_enabled.return_value = True
+        conn._provide_project()
+        conn._model_serving_api._load_default_configuration.assert_not_called()
+        conn._variable_api._get_data_science_profile_enabled.assert_not_called()
+
+    def test_python_engine_does_not_warm_up_hsfs(self, conn, client_instance):
+        client_instance._project_name = "proj"
+        conn._provide_project()
+        self.engine_get.assert_not_called()
+        conn._engine = "spark"
+        conn._provide_project()
+        self.engine_get.assert_called_once()
 
     def test_loads_default_configuration_when_profile_enabled(
         self, conn, client_instance
     ):
         client_instance._project_name = "proj"
         conn._variable_api._get_data_science_profile_enabled.return_value = True
-
         conn._provide_project()
-
+        conn._load_serving_defaults()
+        conn._load_serving_defaults()  # idempotent
         conn._model_serving_api._load_default_configuration.assert_called_once()
 
     def test_skips_default_configuration_when_profile_disabled(
-        self, conn, client_instance
+        self, conn, client_instance, mocker
     ):
+        set_kserve = mocker.patch(
+            "hopsworks_common.connection.client._set_kserve_installed"
+        )
+        set_limits = mocker.patch(
+            "hopsworks_common.connection.client._set_serving_num_instances_limits"
+        )
+        set_knative = mocker.patch(
+            "hopsworks_common.connection.client._set_knative_domain"
+        )
         client_instance._project_name = "proj"
         conn._variable_api._get_data_science_profile_enabled.return_value = False
-
         conn._provide_project()
-
+        conn._load_serving_defaults()
         conn._model_serving_api._load_default_configuration.assert_not_called()
+        # Serving off: the getters get definite values rather than None.
+        set_kserve.assert_called_once_with(False)
+        set_limits.assert_called_once_with([-1, -1])
+        set_knative.assert_called_once_with("")
 
     def test_missing_serving_scope_is_swallowed(self, conn, client_instance, capsys):
         # 403 + 320004 means the API key lacks the SERVING scope; model serving is disabled
-        # but login must still succeed.
+        # but the caller must still succeed.
         client_instance._project_name = "proj"
         conn._variable_api._get_data_science_profile_enabled.return_value = True
         conn._model_serving_api._load_default_configuration.side_effect = (
             self._make_rest_error(status_error_code=403, error_code=320004)
         )
-
         conn._provide_project()
-
+        conn._load_serving_defaults()
         assert "SERVING" in capsys.readouterr().out
 
     def test_other_rest_api_errors_are_reraised(self, conn, client_instance):
@@ -252,6 +276,42 @@ class TestProvideProject:
         conn._model_serving_api._load_default_configuration.side_effect = (
             self._make_rest_error(status_error_code=500, error_code=999999)
         )
-
+        conn._provide_project()
         with pytest.raises(RestAPIError):
-            conn._provide_project()
+            conn._load_serving_defaults()
+        # A failed load must not be remembered as done: the next call retries.
+        assert conn._serving_defaults_loaded is False
+        conn._model_serving_api._load_default_configuration.side_effect = None
+        conn._load_serving_defaults()
+        assert conn._serving_defaults_loaded is True
+        assert conn._model_serving_api._load_default_configuration.call_count == 2
+
+    def test_load_is_not_reentrant(self, conn, client_instance):
+        # Loading reads the serving settings itself; a nested call must no-op
+        # instead of recursing, and the load still counts as done afterwards.
+        client_instance._project_name = "proj"
+        conn._variable_api._get_data_science_profile_enabled.return_value = True
+        conn._model_serving_api._load_default_configuration.side_effect = lambda: (
+            conn._load_serving_defaults()
+        )
+        conn._provide_project()
+        conn._load_serving_defaults()
+        conn._model_serving_api._load_default_configuration.assert_called_once()
+        assert conn._serving_defaults_loaded is True
+
+    def test_missing_scope_counts_as_loaded(
+        self, conn, client_instance, capsys, mocker
+    ):
+        set_kserve = mocker.patch(
+            "hopsworks_common.connection.client._set_kserve_installed"
+        )
+        client_instance._project_name = "proj"
+        conn._variable_api._get_data_science_profile_enabled.return_value = True
+        conn._model_serving_api._load_default_configuration.side_effect = (
+            self._make_rest_error(status_error_code=403, error_code=320004)
+        )
+        conn._provide_project()
+        conn._load_serving_defaults()
+        conn._load_serving_defaults()
+        assert capsys.readouterr().out.count("SERVING") == 1
+        set_kserve.assert_called_once_with(False)

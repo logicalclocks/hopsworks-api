@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import lineage, output, session
+from hopsworks.cli import lineage, output, session, versions
 
 
 @click.group("td")
@@ -49,11 +49,13 @@ def td_list(
     version = fv_version if fv_version is not None else version_opt
     fs = session.get_feature_store(ctx)
     try:
-        fv = fs.get_feature_view(feature_view, version=version)
+        fv = versions.feature_view(fs, feature_view, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Feature view '{feature_view}' not found: {exc}"
         ) from exc
+    if fv is None:
+        raise click.ClickException(f"Feature view '{feature_view}' not found.")
 
     try:
         tds = fv.get_training_datasets()
@@ -110,8 +112,13 @@ def td_compute(
         description: Free-form description.
         data_format: Output format (parquet, csv, tfrecord, ...).
     """
-    fv = _get_fv(ctx, feature_view, fv_version)
     splits = _parse_splits(split)
+    # A random split has no time window: the split's own time bounds would turn it into a time split.
+    if splits and (start_time or end_time):
+        raise click.UsageError(
+            "--start-time and --end-time cannot be used with --split."
+        )
+    fv = _get_fv(ctx, feature_view, fv_version)
 
     try:
         if splits:
@@ -119,8 +126,6 @@ def td_compute(
                 test_size=splits.get("test") or splits.get("validation") or 0.2,
                 description=description,
                 data_format=data_format,
-                start_time=start_time,
-                end_time=end_time,
             )
         else:
             td_version, _ = fv.create_training_data(
@@ -313,12 +318,119 @@ def td_lineage(
     lineage.render(label, sections)
 
 
-def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
+@td_group.command("keywords")
+@click.argument("feature_view")
+@click.argument("td_version", type=int)
+@click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
+@click.pass_context
+def td_keywords(
+    ctx: click.Context, feature_view: str, td_version: int, fv_version: int | None
+) -> None:
+    """Show all keywords attached to a training dataset.
+
+    Args:
+        ctx: Click context.
+        feature_view: Feature view name.
+        td_version: Training dataset version.
+        fv_version: Feature view version; latest if omitted.
+    """
+    fv = _get_fv(ctx, feature_view, fv_version)
+    try:
+        keywords = fv.get_training_dataset_keywords_metadata(td_version)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read keywords: {exc}") from exc
+
+    if output.JSON_MODE:
+        output.print_json(
+            {k: output.format_ts(v, empty=None) for k, v in (keywords or {}).items()}
+        )
+        return
+    rows = [[k, output.format_ts(v)] for k, v in (keywords or {}).items()]
+    output.print_table(["KEYWORD", "ADDED"], rows)
+
+
+@td_group.command("add-keyword")
+@click.argument("feature_view")
+@click.argument("td_version", type=int)
+@click.argument("keyword")
+@click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
+@click.pass_context
+def td_add_keyword(
+    ctx: click.Context,
+    feature_view: str,
+    td_version: int,
+    keyword: str,
+    fv_version: int | None,
+) -> None:
+    """Attach a keyword to a training dataset.
+
+    Args:
+        ctx: Click context.
+        feature_view: Feature view name.
+        td_version: Training dataset version.
+        keyword: The keyword.
+        fv_version: Feature view version; latest if omitted.
+    """
+    fv = _get_fv(ctx, feature_view, fv_version)
+    try:
+        fv.add_training_dataset_keywords(td_version, [keyword])
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add keyword: {exc}") from exc
+    output.success(
+        "✓ Added keyword '%s' to %s td v%s", keyword, feature_view, td_version
+    )
+
+
+@td_group.command("remove-keyword")
+@click.argument("feature_view")
+@click.argument("td_version", type=int)
+@click.argument("keyword")
+@click.option(
+    "--fv-version",
+    "fv_version",
+    type=int,
+    help="Feature view version; required when multiple exist.",
+)
+@click.pass_context
+def td_remove_keyword(
+    ctx: click.Context,
+    feature_view: str,
+    td_version: int,
+    keyword: str,
+    fv_version: int | None,
+) -> None:
+    """Remove a keyword from a training dataset.
+
+    Args:
+        ctx: Click context.
+        feature_view: Feature view name.
+        td_version: Training dataset version.
+        keyword: The keyword.
+        fv_version: Feature view version; latest if omitted.
+    """
+    fv = _get_fv(ctx, feature_view, fv_version, exact=True)
+    try:
+        fv.delete_training_dataset_keyword(td_version, keyword)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove keyword: {exc}") from exc
+    output.success(
+        "✓ Removed keyword '%s' from %s td v%s", keyword, feature_view, td_version
+    )
+
+
+def _get_fv(
+    ctx: click.Context, name: str, version: int | None, exact: bool = False
+) -> Any:
     fs = session.get_feature_store(ctx)
     try:
-        return fs.get_feature_view(name, version=version)
+        fv = versions.feature_view(fs, name, version, exact=exact)
+    except versions.AmbiguousVersionError:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    if fv is None:
+        raise click.ClickException(f"Feature view '{name}' not found.")
+    return fv
 
 
 def _format_splits(td: Any) -> str:

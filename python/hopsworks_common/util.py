@@ -17,11 +17,13 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import contextlib
 import inspect
 import itertools
 import json
+import logging
 import os
-import queue
 import re
 import shutil
 import sys
@@ -46,8 +48,14 @@ from hopsworks_common.git_file_status import GitFileStatus
 from six import string_types
 
 
-if HAS_PANDAS:
-    import pandas as pd
+def _pandas():
+    """pandas, if something has imported it; else None.
+
+    A pandas object can only exist once pandas is imported, so the isinstance
+    checks below need nothing more, and ``import hopsworks`` no longer pays the
+    ~0.4 s pandas import for callers that never use a DataFrame.
+    """
+    return sys.modules.get("pandas") if HAS_PANDAS else None
 
 
 FEATURE_STORE_NAME_SUFFIX = "_featurestore"
@@ -56,6 +64,7 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import pandas as pd
     from hsfs import feature_group
 
 
@@ -91,7 +100,10 @@ class NumpyEncoder(json.JSONEncoder):
                 return np.vectorize(encode_binary)(obj), True
             return obj.tolist(), True
 
-        if isinstance(obj, datetime) or (HAS_PANDAS and isinstance(obj, pd.Timestamp)):
+        pd = _pandas()
+        if isinstance(obj, datetime) or (
+            pd is not None and isinstance(obj, pd.Timestamp)
+        ):
             return obj.isoformat(), True
         if isinstance(obj, (bytes, bytearray)):
             return encode_binary(obj), True
@@ -218,6 +230,12 @@ def _check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$": "%Y%m%d%H%M%S",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})$": "%Y%m%d%H%M%S%f",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{6})Z$": "ISO",
+        # ISO-8601 with milliseconds, which is what the backend itself emits: the REST
+        # layer serializes every date as ``yyyy-MM-dd'T'HH:mm:ss.SSSXXX``, so a value
+        # read straight back off a DTO (``FeatureGroup.created``, e.g.
+        # ``2026-09-21T13:04:38.000Z``) has three fractional digits and matched neither
+        # the six-digit pattern above nor the no-fraction one below.
+        r"^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})Z$": "ISO",
         # ISO-8601 without fractional seconds. The job scheduler injects
         # HOPS_START_TIME / HOPS_END_TIME as e.g. ``2026-06-01T10:17:16Z`` (no
         # microseconds), which the %f-mandatory pattern above rejects, so a
@@ -282,17 +300,6 @@ def _get_delta_datestr_from_timestamp(timestamp: int) -> str:
             "%Y-%m-%d %H:%M:%S.%f"
         )[:-3]
         + "Z"
-    )
-
-
-@also_available_as("hopsworks.util._get_event_date_int_from_timestamp")
-def _get_event_date_int_from_timestamp(timestamp: int | None) -> int | None:
-    # Convert an epoch-millisecond timestamp to the `YYYYMMDD` UTC date integer
-    # used as the event-date partition key of materialized training datasets.
-    if timestamp is None:
-        return None
-    return int(
-        datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime("%Y%m%d")
     )
 
 
@@ -361,6 +368,15 @@ def _verify_attribute_key_names(
     external_feature_group: bool = False,
 ) -> None:
     feature_names = {feat.name for feat in feature_group_obj.columns}
+    # With no columns every key check below finds its key missing, so each one blames the
+    # key the caller did give rather than the schema that is not there.
+    if not feature_names:
+        raise FeatureStoreException(
+            f"Feature group '{feature_group_obj.name}' has no features,"
+            " so its keys cannot be verified."
+            " Pass the schema explicitly as `features`,"
+            " or a dataframe to infer it from."
+        )
     if feature_group_obj.primary_key:
         diff = set(feature_group_obj.primary_key) - feature_names
         if diff:
@@ -575,10 +591,16 @@ def _convert_to_project_rel_path(path, current_proj_name):
 
 @also_available_as("hopsworks.util._validate_job_conf")
 def _validate_job_conf(config, project_name):
-    # User is required to set the appPath programmatically after getting the configuration
+    # User is required to set the appPath programmatically after getting the
+    # configuration. Docker, ingestion and agent jobs carry no script: an agent
+    # task's instructions are its `prompt`.
     if (
-        config["type"] != "dockerJobConfiguration"
-        and config["type"] != "ingestionJobConfiguration"
+        config["type"]
+        not in (
+            "dockerJobConfiguration",
+            "ingestionJobConfiguration",
+            "agentJobConfiguration",
+        )
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")
@@ -674,11 +696,12 @@ def _handle_tensor_input(input_tensor):
 
 @also_available_as("hsml.util._handle_dataframe_input")
 def _handle_dataframe_input(input_ex):
-    if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
+    pd = _pandas()
+    if pd is not None and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
             return input_ex.iloc[0].tolist()
         raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
-    if HAS_PANDAS and isinstance(input_ex, pd.Series):
+    if pd is not None and isinstance(input_ex, pd.Series):
         if not input_ex.empty:
             return input_ex.tolist()
         raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
@@ -932,6 +955,7 @@ class AsyncTask:
         task_function: Callable,
         task_args: tuple = (),
         requires_connection_pool: bool = False,
+        retry_on_connection_error: bool = False,
         **kwargs,
     ):
         """Construct an AsyncTask.
@@ -940,6 +964,10 @@ class AsyncTask:
             task_function: The function to run asynchronously.
             task_args: Arguments to be passed to the function.
             requires_connection_pool: Whether the task requires a connection pool.
+            retry_on_connection_error: Whether the task may be run a second time
+                when the first attempt fails because its pooled connection was
+                no longer usable. Only set it for an operation that is safe to
+                repeat, which in practice means a read.
         """
         self.task_function = task_function
         self.task_args = task_args
@@ -947,6 +975,7 @@ class AsyncTask:
         self._event: threading.Event = threading.Event()
         self._result: Any = None
         self._requires_connection_pool = requires_connection_pool
+        self._retry_on_connection_error = retry_on_connection_error
 
     @property
     def result(self) -> Any:
@@ -971,6 +1000,32 @@ class AsyncTask:
         """Whether the task requires a connection pool."""
         return self._requires_connection_pool
 
+    @property
+    def retry_on_connection_error(self) -> bool:
+        """Whether the task may be repeated after a dead pooled connection."""
+        return self._retry_on_connection_error
+
+
+SHUTDOWN_TIMEOUT_S = 15
+# How many pool-backed tasks may be in flight at once. Requests beyond it wait
+# in the loop rather than opening more connections than the pool holds, so the
+# bound belongs with the pool size the client configures.
+_logger = logging.getLogger(__name__)
+
+DEFAULT_MAX_CONCURRENT_TASKS = 16
+# Tells "no timeout given" from an explicit `timeout=None`, which means wait
+# indefinitely.
+_UNSET: Any = object()
+# How long an unbounded wait sleeps before it checks that the thread serving it
+# is still alive. Not a timeout: it only bounds how long a caller waits on a
+# worker that has already stopped.
+_LIVENESS_POLL_SECONDS = 0.5
+
+
+def _is_never(_error: BaseException) -> bool:
+    """Recognise no error as a connection failure, the default for a thread with no driver."""
+    return False
+
 
 class AsyncTaskThread(threading.Thread):
     """Generic thread class that can be used to run async tasks in a separate thread.
@@ -978,6 +1033,12 @@ class AsyncTaskThread(threading.Thread):
     The thread will create its own event loop and run submitted tasks in that loop.
 
     The thread also store and fetches a connection pool that can be used by the async tasks.
+
+    Call `_shutdown()` when done with the thread.
+    The owner is reachable from the running thread through the callbacks it is
+    constructed with, and a running thread is a garbage collection root, so an
+    owner that relies on its own `__del__` to shut this down is never collected
+    and the thread and its connection pool live for the life of the process.
     """
 
     def __init__(
@@ -985,6 +1046,9 @@ class AsyncTaskThread(threading.Thread):
         connection_pool_initializer: Callable | None = None,
         connection_test: Callable | None = None,
         connection_pool_params: tuple = (),
+        max_concurrent_tasks: int = DEFAULT_MAX_CONCURRENT_TASKS,
+        is_connection_error: Callable[[BaseException], bool] | None = None,
+        default_timeout: float | None = None,
         *thread_args,
         **thread_kwargs,
     ):
@@ -992,108 +1056,332 @@ class AsyncTaskThread(threading.Thread):
 
         Parameters:
             connection_pool_initializer: A function that initializes a connection pool.
-            connection_test: A function that tests the connection to mysql, it should raise an exception if the connection is not healthy.
+            connection_test: A function that tests the connection to the database, it should raise an exception if the connection is not healthy.
             connection_pool_params: The parameters to pass to the connection pool initializer.
+            max_concurrent_tasks: How many pool-backed tasks may run at once.
+            is_connection_error: Tells a dead pooled connection from any other
+                failure. The driver's exception types stay with the caller that
+                owns the driver, so this module needs no database dependency.
+            default_timeout: Seconds `_submit` waits when a caller names no
+                timeout. `None` waits indefinitely, which is what callers that
+                predate this argument got.
             *thread_args: Arguments to be passed to the thread.
             **thread_kwargs: Key word arguments to be passed to the thread.
         """
         super().__init__(*thread_args, **thread_kwargs)
-        self._task_queue: queue.Queue[AsyncTask] = queue.Queue()
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
+        # Set by run() once startup is done. _shutdown waits on it so it cannot
+        # stop the loop while run_until_complete is still initialising the pool.
+        self._ready = threading.Event()
         self._connection_pool_initializer: Callable | None = connection_pool_initializer
         self._connection_test_function: Callable | None = connection_test
         self._connection_pool_params: tuple = connection_pool_params
         self._connection_pool = None
+        self._max_concurrent_tasks = max_concurrent_tasks
+        self._is_connection_error = is_connection_error or _is_never
+        self._default_timeout = default_timeout
+        # Created inside run(), on the loop that acquires it.
+        self._pool_slots: asyncio.Semaphore | None = None
+        # What run() failed with, so a caller waits for an answer rather than
+        # for a thread that is never going to serve it.
+        self._startup_error: BaseException | None = None
         self.daemon = True  # Setting the thread as a daemon thread by default, so it will be terminated when the main thread is terminated.
 
-    async def _execute_task(self):
-        """Execute the async tasks for the queue."""
-        asyncio.set_event_loop(self._event_loop)
+    def _schedule(self, task: AsyncTask) -> concurrent.futures.Future:
+        """Hand one task to the loop from any thread.
 
-        while not self.stop_event.is_set():
-            # Fetch a task from the queue.
-            task = self.task_queue.get()
-            # Run the task in the event loop and get the result
+        Each task becomes its own coroutine, so independent submissions run
+        concurrently and one caller's round trip no longer holds up the next.
+        """
+        return asyncio.run_coroutine_threadsafe(self._run_task(task), self._event_loop)
+
+    async def _run_task(self, task: AsyncTask) -> Any:
+        """Run one submitted task and publish its outcome to whoever is waiting."""
+        try:
+            if task.requires_connection_pool and self.stop_event.is_set():
+                # The pool is being closed; a read now would hold it open.
+                raise RuntimeError("The async task thread is shutting down.")
+            if task.requires_connection_pool:
+                task.result = await self._run_pool_task(task)
+            else:
+                task.result = await task.task_function(
+                    *task.task_args, **task.task_kwargs
+                )
+        except Exception as e:
+            task.result = e
+        finally:
+            # Unblock a caller waiting on the event rather than on the future.
+            task.event.set()
+        return task.result
+
+    async def _run_pool_task(self, task: AsyncTask) -> Any:
+        """Run a task that needs a pooled connection, bounded and self-healing.
+
+        There is no liveness round trip before the query. A pooled connection
+        that died while idle surfaces as a connection error on the read itself,
+        and a task that says it is safe to repeat is then run once more against
+        a checked pool. Every other failure is the caller's to see.
+        """
+        async with self._pool_slots:
             try:
-                if task.requires_connection_pool:
-                    # Try checking connection to mysql and refresh it if required before running the task.
-                    try:
-                        await self._connection_test_function(self._connection_pool)
-                    except Exception as e:
-                        raise e
+                return await self._call_with_pool(task)
+            except Exception as error:
+                if not (
+                    task.retry_on_connection_error and self._is_connection_error(error)
+                ):
+                    raise
+                if self._connection_test_function is not None:
+                    await self._connection_test_function(self._connection_pool)
+                return await self._call_with_pool(task)
 
-                    task.result = await task.task_function(
-                        *task.task_args,
-                        **task.task_kwargs,
-                        connection_pool=self.connection_pool,
-                    )
-                else:
-                    task.result = await task.task_function(
-                        *task.task_args, **task.task_kwargs
-                    )
+    async def _call_with_pool(self, task: AsyncTask) -> Any:
+        return await task.task_function(
+            *task.task_args,
+            **task.task_kwargs,
+            connection_pool=self._connection_pool,
+        )
 
-                # Unblock the task, so the submit function can return the result.
-                task.event.set()
-            except Exception as e:
-                task.result = e
-                task.event.set()
+    async def _close_connection_pool(self, pool) -> None:
+        """Close every connection the pool holds, free and checked out alike."""
+        pool.close()
+        await pool.wait_closed()
 
-    def _stop(self):
-        """Stop the thread and close the event loop."""
+    async def _cancel_in_flight(self) -> None:
+        """Cancel whatever is still running and wait for it to unwind.
+
+        A loop closed with tasks still pending abandons them: their connections
+        are never released and asyncio reports each one as destroyed while
+        pending. Cancelling and awaiting here is what makes a shutdown after a
+        timed-out read leave nothing behind.
+        """
+        running = asyncio.current_task()
+        pending = [task for task in asyncio.all_tasks() if task is not running]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    def _shutdown(self, timeout: float = SHUTDOWN_TIMEOUT_S) -> bool:
+        """Close the connection pool, end the event loop and let the thread exit.
+
+        Returns whether the shutdown finished: the pool closed, if there was one,
+        and the event loop reached a closed state, both within the timeout. A
+        caller that gets False still holds a pool worth retrying.
+
+        Not named `_stop`.
+        `threading.Thread._stop` is the internal method CPython calls from
+        `_wait_for_tstate_lock` to mark a thread finished, so a subclass that
+        defines `_stop` breaks `is_alive()` and `join()` for every instance.
+
+        In-flight tasks are cancelled first.
+        `wait_closed()` waits for every checked-out connection to come back, so a
+        close issued under a running read waits for that read, which with no
+        timeout can be forever.
+
+        The pool is then closed from inside the loop, before the loop stops.
+        `aiomysql.Connection.close()` only calls `transport.close()`, and a
+        selector transport does not touch the socket itself: it schedules
+        `_call_connection_lost` on the loop, which is where the socket is closed.
+        Stopping the loop first leaves every connection open on the server.
+
+        The loop is never closed from here. `run()` closes it in a `finally`, and
+        closing a loop that is still running raises `RuntimeError`.
+        """
+        # Let run() finish starting, and give up rather than act on a loop that
+        # is still starting. Stopping the loop under `run_until_complete`, or
+        # cancelling the task it waits on, raises out of run(): the thread dies
+        # with a traceback and the loop is never closed, so every wait below
+        # would then time out anyway.
+        if self.is_alive() and not self._ready.wait(timeout=timeout):
+            return False
+
+        loop = self._event_loop
+        if loop.is_closed():
+            return True
+        if not self.is_alive():
+            # The loop is open but nothing is running it, so the pool cannot be
+            # closed from here. Say so and keep the handle for another attempt.
+            return False
+
+        # Refuse new work, then cancel what is running so its connections are
+        # released before the pool waits for them.
         self.stop_event.set()
-        self._event_loop.stop()
-        self._event_loop.close()
+        with contextlib.suppress(RuntimeError, concurrent.futures.TimeoutError):
+            asyncio.run_coroutine_threadsafe(self._cancel_in_flight(), loop).result(
+                timeout=timeout
+            )
+
+        pool_closed = True
+        pool = self._connection_pool
+        if pool is not None:
+            closing = AsyncTask(
+                task_function=self._close_connection_pool, task_args=(pool,)
+            )
+            # Scheduled rather than bounded by the pool slots: a close must not
+            # queue behind the reads it is closing the connections of.
+            with contextlib.suppress(RuntimeError):
+                self._schedule(closing)
+            # Only let go of the pool once it is actually closed. Dropping the
+            # handle on a timeout would leave its connections open on the server
+            # with nothing left to retry the close.
+            pool_closed = closing.event.wait(timeout=timeout)
+            if pool_closed and isinstance(closing.result, BaseException):
+                # The event says the task finished, not that it succeeded: a
+                # task that raises publishes the exception as its result and
+                # sets the event in a finally. Treating that as a clean close
+                # would drop the only handle left to retry it while its
+                # connections are still open on the server.
+                _logger.warning(
+                    "Closing the online store connection pool failed: %s",
+                    closing.result,
+                )
+                pool_closed = False
+            if pool_closed:
+                self._connection_pool = None
+            else:
+                # Stopping the loop now would leave the pool with no loop to close it on, and a later shutdown would see the closed loop and report success.
+                # The loop stays up so that shutdown can be retried.
+                _logger.warning(
+                    "Online store connection pool did not close within %s seconds; "
+                    "the task thread is kept so a later shutdown can retry.",
+                    timeout,
+                )
+                return False
+
+        # Loop may already be closing under us; the wait below still settles it.
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(loop.stop)
+
+        deadline = time.monotonic() + timeout
+        while not loop.is_closed() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return pool_closed and loop.is_closed()
 
     def run(self):
-        """Execute the async tasks for the queue."""
+        """Own the event loop the submitted tasks run on."""
         asyncio.set_event_loop(self._event_loop)
-        # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
-        if self._connection_pool_initializer:
-            self._connection_pool = self._event_loop.run_until_complete(
-                self._connection_pool_initializer(*self._connection_pool_params)
-            )
-        self._event_loop.create_task(self._execute_task())
         try:
+            self._pool_slots = asyncio.Semaphore(self._max_concurrent_tasks)
+            # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
+            if self._connection_pool_initializer:
+                # Creating the pool is the startup check: it opens its first
+                # connections, so a host, port or credential that cannot serve
+                # fails here, before traffic. A separate liveness round trip
+                # here only widened the window in which a shutdown races
+                # startup, and turned one transient connect failure into a
+                # thread that stayed dead. A connection that goes stale later is
+                # recovered on the read that finds it.
+                self._connection_pool = self._event_loop.run_until_complete(
+                    self._connection_pool_initializer(*self._connection_pool_params)
+                )
+            # The pool exists and the loop is about to run, so a shutdown from
+            # another thread can now see the pool and stop the loop cleanly.
+            self._ready.set()
             self._event_loop.run_forever()
         except Exception as e:
-            print(
-                f"An error occurred in the async task thread the event loop has been closed: {str(e)}"
+            # Recorded so a caller is told why nothing will run, rather than
+            # waiting on a thread that has already given up.
+            self._startup_error = e
+            _logger.error(
+                "The online store task thread could not start and has stopped: %s",
+                e,
+                exc_info=e,
             )
             self._event_loop.stop()
             self._event_loop.close()
             # raise e
         finally:
+            # Never leave a shutdown waiting on a thread that is already done.
+            self._ready.set()
             self._event_loop.close()
 
-    def _submit(self, task: AsyncTask) -> Any:
-        """Submit a async task to the thread and block until the execution of the function is completed.
+    def _submit(self, task: AsyncTask, timeout: float | None = _UNSET) -> Any:
+        """Submit an async task to the thread and block until it has finished.
 
         Parameters:
             task: The async task to be executed in the thread.
+            timeout: Seconds to wait. Defaults to the thread's `default_timeout`.
+                `None` waits indefinitely.
 
         Returns:
             The result of the async task.
-        """
-        # Submit a task to the queue.
-        self.task_queue.put(task)
-        # Block the execution until the task is finished.
-        task.event.wait()
 
-        if isinstance(task.result, Exception):
-            raise task.result
+        Raises:
+            TimeoutError: The task did not finish within the timeout. The work
+                is cancelled rather than left to run unobserved.
+        """
+        wait_for = self._default_timeout if timeout is _UNSET else timeout
+        # Waiting for startup spends the caller's deadline rather than being
+        # added to it: the pool is built before any task can run, so a slow or
+        # stuck initializer is time the caller is waiting for its answer.
+        started = time.monotonic()
+        self._raise_startup_error(wait_for)
+        if wait_for is not None:
+            wait_for = max(wait_for - (time.monotonic() - started), 0.0)
+        future = self._schedule(task)
+        try:
+            result = self._wait_for(future, wait_for)
+        except concurrent.futures.TimeoutError:
+            # Cancels the coroutine too: the future returned by
+            # run_coroutine_threadsafe is chained to the task on the loop.
+            future.cancel()
+            raise TimeoutError(
+                f"The async task did not finish within {wait_for} seconds."
+            ) from None
+        except concurrent.futures.CancelledError as e:
+            raise TimeoutError("The async task was cancelled.") from e
+
+        if isinstance(result, Exception):
+            raise result
         # Return the result of the task.
-        return task.result
+        return result
+
+    def _wait_for(
+        self, future: concurrent.futures.Future, timeout: float | None
+    ) -> Any:
+        """Wait for a submitted task, and stop waiting if the thread stops.
+
+        A task scheduled on a loop that then closes never completes, so a caller
+        that named no timeout would wait for an answer nobody is going to give.
+        The wait is therefore taken in slices, and a dead thread ends it with
+        whatever killed the thread.
+        """
+        if timeout is not None:
+            return future.result(timeout=timeout)
+        while True:
+            try:
+                return future.result(timeout=_LIVENESS_POLL_SECONDS)
+            except concurrent.futures.TimeoutError:
+                if not self.is_alive() and not future.done():
+                    if self._startup_error is not None:
+                        raise self._startup_error from None
+                    raise RuntimeError(
+                        "The async task thread stopped before the task completed."
+                    ) from None
+
+    def _raise_startup_error(self, timeout: float | None = None) -> None:
+        """Fail a submission to a thread whose startup failed, rather than wait for it.
+
+        Parameters:
+            timeout: Seconds to wait for startup to finish. `None` waits
+                indefinitely, which is what a caller that names no deadline
+                asks for. A caller that named one gets `TimeoutError` rather
+                than a wait that outlasts it, because an initializer that never
+                returns would otherwise hold every submission open.
+        """
+        if self.is_alive() and not self._ready.wait(timeout=timeout):
+            raise TimeoutError(
+                f"The online store connection was still being established after "
+                f"{timeout} seconds."
+            )
+        if self._startup_error is not None:
+            raise self._startup_error
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
         """The event loop used by the thread."""
         return self._event_loop
-
-    @property
-    def task_queue(self) -> queue.Queue[AsyncTask]:
-        """The queue used to submit tasks to the thread."""
-        return self._task_queue
 
     @property
     def connection_pool(self):

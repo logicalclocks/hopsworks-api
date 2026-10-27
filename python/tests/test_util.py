@@ -24,7 +24,7 @@ import hopsworks_common.util
 import pytest
 import pytz
 from hopsworks_common import util
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import FeatureStoreException, JobException
 from hopsworks_common.constants import MODEL
 from hopsworks_common.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hsfs.embedding import EmbeddingFeature, EmbeddingIndex
@@ -392,7 +392,9 @@ class TestUtil:
             pass
 
         pred_base = mocker.patch(
-            "hsml.predictor.Predictor.__init__", return_value=None, spec=pred_base_spec
+            "hsml.predictor.Predictor.__init__",
+            return_value=None,
+            spec=pred_base_spec,
         )
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
@@ -791,6 +793,35 @@ class TestUtil:
         )
         assert timestamp == 1640995200000
 
+    def test_convert_event_time_to_timestamp_iso_milliseconds(self):
+        # What the backend itself emits: the REST layer serializes every date as
+        # `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`, so anything read back off a DTO carries three
+        # fractional digits. That fell between the six-digit and no-fraction patterns
+        # and raised, which is how `FeatureGroup.created` came back unparseable.
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
+            "2022-01-01T00:00:00.000Z"
+        )
+        assert timestamp == 1640995200000
+
+    def test_convert_event_time_to_timestamp_iso_milliseconds_are_kept(self):
+        # The milliseconds are part of the value, not padding to be dropped.
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
+            "2022-01-01T00:00:00.123Z"
+        )
+        assert timestamp == 1640995200123
+
+    def test_convert_event_time_to_timestamp_iso_microseconds(self):
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
+            "2022-01-01T00:00:00.123456Z"
+        )
+        assert timestamp == 1640995200123
+
+    def test_convert_event_time_to_timestamp_iso_no_fractional_seconds(self):
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
+            "2022-01-01T00:00:00Z"
+        )
+        assert timestamp == 1640995200000
+
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error(self):
         with pytest.raises(ValueError):
             hopsworks_common.util._get_timestamp_from_date_string("2022-13-01 00:00:00")
@@ -971,3 +1002,47 @@ class TestUtil:
                 match="Event loop is not running. Please invoke this co-routine from a running loop or provide an event loop.",
             ):
                 asyncio.run(util_sql._create_async_engine(online_connector, True, 1))
+
+
+class TestValidateJobConf:
+    def test_agent_job_configuration_needs_no_app_path(self):
+        # An agent task's instructions are its `prompt`; there is no script to
+        # resolve, so the appPath requirement must not apply.
+        config = {
+            "type": "agentJobConfiguration",
+            "appName": "nightly-report",
+            "prompt": "Summarise yesterday's feature group statistics.",
+        }
+
+        assert util._validate_job_conf(config, "proj") is config
+
+    def test_python_job_configuration_requires_app_path(self):
+        with pytest.raises(JobException):
+            util._validate_job_conf({"type": "pythonJobConfiguration"}, "proj")
+
+
+class TestVerifyAttributeKeyNames:
+    class _FeatureGroupStub:
+        def __init__(self, columns):
+            self.name = "fg_name"
+            self.columns = columns
+            self.primary_key = ["id"]
+            self.event_time = None
+            self.partition_key = []
+            self.foreign_key = []
+
+    def test_empty_schema_is_refused_before_the_key_checks(self):
+        # With no columns the primary key check reports the key the caller did give as
+        # missing, so it has to be the schema that is reported instead.
+        fg = self._FeatureGroupStub(columns=[])
+
+        with pytest.raises(FeatureStoreException) as e_info:
+            util._verify_attribute_key_names(fg, True)
+
+        assert "has no features" in str(e_info.value)
+        assert "Provided primary key" not in str(e_info.value)
+
+    def test_a_schema_that_has_the_key_passes(self):
+        fg = self._FeatureGroupStub(columns=[Feature(name="id", type="int")])
+
+        assert util._verify_attribute_key_names(fg, True) is None

@@ -14,6 +14,8 @@
 #   limitations under the License.
 
 import inspect
+import os
+import tempfile
 
 from hsml import constants
 
@@ -58,7 +60,11 @@ class TestConstants:
             "HOPSFS_MOUNT_PREFIX": "/hopsfs/",
             "MODELS_DATASET": "Models",
             "MODEL_FILES_DIR_NAME": "Files",
-            "MODEL_CACHE_DIR_DEFAULT": "/tmp/hopsworks/models",
+            "MODEL_CACHE_DIR_DEFAULT": os.path.join(
+                tempfile.gettempdir(), "hopsworks", "models"
+            )
+            if os.name == "nt"
+            else "/tmp/hopsworks/models",
         }
 
         # Assert
@@ -72,10 +78,38 @@ class TestConstants:
 
     def test_model_serving_constants(self):
         # Arrange
+        reserved = (
+            "SERVING_SCHEMA_ID",
+            "SERVING_FEATURE_VIEW_NAME",
+            "SERVING_FEATURE_LOGGING",
+            "SERVING_FEATURE_VIEW_VERSION",
+            "SERVING_TRAINING_DATASET_VERSION",
+            "SERVING_SCRIPT_KIND",
+            "SERVING_SCHEMA_ENFORCER",
+        )
         model_serving = {
             "DEPLOYMENTS_DATASET": "Deployments",
             "ARTIFACTS_DIR_NAME": "Artifacts",
             "DEPLOYMENT_RESOURCES_DIR": "resources",
+            "LOGS_DATASET": "Logs",
+            "ARCHIVED_LOGS_DIR": "Serving",
+            "DEPLOYMENT_SCHEMA_DIR": "schema",
+            "DEPLOYMENT_SCHEMA_JSON_SCHEMA_SUFFIX": ".jsonschema.json",
+            "DEPLOYMENT_SCHEMA_OPENAPI_SUFFIX": ".openapi.json",
+            "DEFAULT_PREDICTOR_SCRIPT": "default_predictor.py",
+            "DEPLOYMENT_SCHEMA_ID_ENV_VAR": "SERVING_SCHEMA_ID",
+            "FEATURE_VIEW_NAME_ENV_VAR": "SERVING_FEATURE_VIEW_NAME",
+            "FEATURE_LOGGING_ENV_VAR": "SERVING_FEATURE_LOGGING",
+            "FEATURE_VIEW_VERSION_ENV_VAR": "SERVING_FEATURE_VIEW_VERSION",
+            "TRAINING_DATASET_VERSION_ENV_VAR": "SERVING_TRAINING_DATASET_VERSION",
+            "MAX_BATCH_ROWS_ENV_VAR": "SERVING_MAX_BATCH_ROWS",
+            "SCRIPT_KIND_ENV_VAR": "SERVING_SCRIPT_KIND",
+            "SCRIPT_KIND_PREDICTOR": "predictor",
+            "SCHEMA_ENFORCER_ENV_VAR": "SERVING_SCHEMA_ENFORCER",
+            "SCHEMA_ENFORCER_PREDICTOR": "predictor",
+            "SCHEMA_ENFORCER_TRANSFORMER": "transformer",
+            "RESERVED_ENV_VARS": reserved,
+            "DEFAULT_MAX_BATCH_ROWS": 512,
         }
 
         # Assert

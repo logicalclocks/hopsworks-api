@@ -15,11 +15,17 @@
 #
 
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.client.exceptions import (
+    ModelServingException,
+    RestAPIError,
+)
+from hsml.client.istio.utils.infer_type import InferInput
+from hsml.constants import INFERENCE_ENDPOINTS as IE
 from hsml.core.serving_api import ServingApi
 
 
@@ -44,8 +50,75 @@ def _patch_client(mocker, send_request_return) -> MagicMock:
     return client_instance
 
 
+# The advertised vLLM image tags, as the backend serves them: one entry per
+# variant, tags newest first, and a variant that advertises nothing still gets
+# an entry so a caller can tell "none advertised" from "unknown variant".
+_VLLM_IMAGE_TAGS_RESPONSE = {
+    "items": [
+        {
+            "variant": "VLLM",
+            "tags": ["v0.21.0", "v0.15.0"],
+            "defaultTag": "v0.21.0",
+        },
+        {"variant": "VLLM_OMNI", "tags": [], "defaultTag": None},
+    ]
+}
+
+
 def _deployment() -> SimpleNamespace:
     return SimpleNamespace(id=12)
+
+
+# The relation between a project's name and the Kubernetes namespace its
+# deployments run in, over the cluster configurations that exist. Istio routes
+# inference on the namespace, so every one of these has to be addressed by it.
+#
+#   identical   the backend created the namespace from a project name that was
+#               already a legal namespace, so the two strings coincide
+#   derived     the backend created the namespace from a project name that was
+#               not, lowercasing it and replacing the characters it had to
+#   unrelated   an administrator pre-created the namespace, which is how
+#               Hopsworks is deployed on OpenShift, and it bears no relation to
+#               the project name
+#   unstamped   the deployment carries no project name at all, which is its
+#               state between `from_response_json` and the client stamping one
+NAMESPACE_CASES = [
+    pytest.param("myproject", "myproject", id="identical"),
+    pytest.param("my_project", "my-project", id="derived"),
+    pytest.param(
+        "model_serving_int_MhGJP", "loadtest-kserve-0-main-000", id="unrelated"
+    ),
+    pytest.param(None, "pre-created-ns", id="unstamped"),
+]
+
+# The two cases a cluster that names its own namespaces can produce.
+BACKEND_DERIVED_NAMESPACE_CASES = NAMESPACE_CASES[:2]
+
+
+def _inference_deployment(
+    project_name: str | None,
+    project_namespace: str,
+    name: str = "skdepl",
+    api_protocol: str = IE.API_PROTOCOL_REST,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        name=name,
+        project_name=project_name,
+        project_namespace=project_namespace,
+        api_protocol=api_protocol,
+        _grpc_channel=None,
+    )
+
+
+def _as_gateway_authority(segment: str) -> str:
+    """Normalize a path segment the way the istio gateway does.
+
+    The gateway turns `/v1/<segment>/<deployment>/...` into the authority it
+    routes on, lowercasing the segment and replacing every character outside
+    `[a-z0-9-]` with a hyphen. See `charts/kserve/files/envoyfilter.yaml` in
+    hopsworks-helm.
+    """
+    return re.sub(r"[^a-z0-9-]", "-", segment.lower())
 
 
 class TestServingApi:
@@ -115,3 +188,402 @@ class TestServingApi:
 
         # Assert
         assert result == {"t": bad_value}
+
+    # inference addressing
+
+    # Regression: Istio routes on the namespace a deployment runs in, and the
+    # backend reports that namespace on every deployment the client parses.
+    # Addressing by project name still reached the deployment on a cluster that
+    # derives one from the other, so this was invisible everywhere except the
+    # pre-created-namespace clusters where it broke every prediction.
+
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_istio_inference_path_addresses_the_namespace(
+        self, project_name, project_namespace
+    ):
+        # Arrange
+        api = ServingApi()
+        deployment = _inference_deployment(project_name, project_namespace)
+
+        # Act
+        path = api._get_istio_inference_path(deployment)
+
+        # Assert
+        assert path == [
+            "v1",
+            project_namespace,
+            "skdepl",
+            "v1",
+            "models",
+            "skdepl:predict",
+        ]
+
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_istio_inference_base_path_addresses_the_namespace(
+        self, project_name, project_namespace
+    ):
+        # Arrange: vLLM deployments and Python deployments without a model
+        # address the base path and append their own suffix.
+        api = ServingApi()
+        deployment = _inference_deployment(
+            project_name, project_namespace, name="vllmdepl"
+        )
+
+        # Act
+        path = api._get_istio_inference_path(deployment, base_only=True)
+
+        # Assert
+        assert path == ["v1", project_namespace, "vllmdepl"]
+
+    @pytest.mark.parametrize("project_namespace", ["myproject", "pre-created-ns"])
+    @pytest.mark.parametrize("base_only", [False, True])
+    def test_istio_inference_path_ignores_the_project_name(
+        self, base_only, project_namespace
+    ):
+        # Arrange
+        api = ServingApi()
+
+        # Act: every project name a deployment in this namespace could carry,
+        # including one equal to the namespace, where asserting on the path
+        # cannot tell which of the two it was built from.
+        paths = {
+            tuple(
+                api._get_istio_inference_path(
+                    _inference_deployment(project_name, project_namespace),
+                    base_only=base_only,
+                )
+            )
+            for project_name in (
+                None,
+                "myproject",
+                "my_project",
+                "model_serving_int_MhGJP",
+            )
+        }
+
+        # Assert
+        assert len(paths) == 1
+
+    @pytest.mark.parametrize(
+        ("project_name", "project_namespace"), BACKEND_DERIVED_NAMESPACE_CASES
+    )
+    def test_namespace_addressing_is_inert_on_backend_created_namespaces(
+        self, project_name, project_namespace
+    ):
+        # Arrange
+        api = ServingApi()
+
+        # Act
+        segment = api._get_istio_inference_path(
+            _inference_deployment(project_name, project_namespace)
+        )[1]
+
+        # Assert: the gateway normalizes whichever of the two it is handed, and
+        # the namespace is what that normalization produces from the project
+        # name, so on a cluster that names its own namespaces the request this
+        # builds is the one the gateway already routed.
+        assert _as_gateway_authority(project_name) == project_namespace
+        assert _as_gateway_authority(project_namespace) == project_namespace
+        assert _as_gateway_authority(segment) == _as_gateway_authority(project_name)
+
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_rest_inference_request_posts_to_the_namespace_path(
+        self, mocker, project_name, project_namespace
+    ):
+        # Arrange
+        api = ServingApi()
+        istio_client = MagicMock()
+        istio_client._send_request.return_value = {"predictions": [1]}
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance",
+            return_value=istio_client,
+        )
+        deployment = _inference_deployment(project_name, project_namespace)
+
+        # Act
+        response = api._send_inference_request(deployment, {"inputs": [[1]]})
+
+        # Assert
+        assert response == {"predictions": [1]}
+        args, kwargs = istio_client._send_request.call_args
+        assert args[0] == "POST"
+        assert args[1] == [
+            "v1",
+            project_namespace,
+            "skdepl",
+            "v1",
+            "models",
+            "skdepl:predict",
+        ]
+        assert kwargs["with_base_path_params"] is False
+        # Inference moved from host-based to path-based routing in 4.8: the
+        # gateway derives the authority from the path it is given, so a host
+        # header here would be a return to the scheme this path replaced.
+        assert "host" not in {header.lower() for header in kwargs["headers"]}
+
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_grpc_channel_prefixes_the_namespace(
+        self, mocker, project_name, project_namespace
+    ):
+        # Arrange
+        api = ServingApi()
+        istio_client = MagicMock()
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance",
+            return_value=istio_client,
+        )
+
+        # Act
+        api._create_grpc_channel(_inference_deployment(project_name, project_namespace))
+
+        # Assert
+        istio_client._create_grpc_channel.assert_called_once_with(
+            f"/v1/{project_namespace}/skdepl"
+        )
+
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_grpc_inference_request_addresses_the_namespace(
+        self, mocker, project_name, project_namespace
+    ):
+        # Arrange
+        api = ServingApi()
+        istio_client = MagicMock()
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance",
+            return_value=istio_client,
+        )
+        deployment = _inference_deployment(
+            project_name, project_namespace, api_protocol=IE.API_PROTOCOL_GRPC
+        )
+        infer_input = InferInput(name="input", shape=[1], datatype="FP32", data=[1.0])
+
+        # Act
+        api._send_inference_request(deployment, [infer_input])
+
+        # Assert
+        istio_client._create_grpc_channel.assert_called_once_with(
+            f"/v1/{project_namespace}/skdepl"
+        )
+        # The channel is built once and kept on the deployment, so an address
+        # built here outlives the call that built it.
+        assert (
+            deployment._grpc_channel is istio_client._create_grpc_channel.return_value
+        )
+
+    def test_rest_inference_request_through_hopsworks_addresses_neither(self, mocker):
+        # Arrange
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"predictions": [1]})
+        deployment = _inference_deployment(
+            "model_serving_int_MhGJP", "loadtest-kserve-0-main-000"
+        )
+
+        # Act
+        api._send_inference_request(
+            deployment, {"inputs": [[1]]}, through_hopsworks=True
+        )
+
+        # Assert: Hopsworks proxies by deployment name under the project id and
+        # resolves the namespace itself, so neither name belongs in this path.
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[1] == ["project", 1, "inference", "models", "skdepl:predict"]
+        assert kwargs["with_base_path_params"] is True
+
+    def test_rest_inference_request_without_istio_falls_back_to_hopsworks(self, mocker):
+        # Arrange
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"predictions": [1]})
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance", return_value=None
+        )
+        deployment = _inference_deployment(
+            "model_serving_int_MhGJP", "loadtest-kserve-0-main-000"
+        )
+
+        # Act
+        api._send_inference_request(deployment, {"inputs": [[1]]})
+
+        # Assert
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[1] == ["project", 1, "inference", "models", "skdepl:predict"]
+
+    def test_get_vllm_image_tags_addresses_the_project_serving_path(self, mocker):
+        # Arrange
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, _VLLM_IMAGE_TAGS_RESPONSE)
+
+        # Act
+        response = api._get_vllm_image_tags()
+
+        # Assert
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[0] == "GET"
+        assert args[1] == ["project", 1, "serving", "vllmImageTags"]
+        assert response == _VLLM_IMAGE_TAGS_RESPONSE
+
+
+class TestGrpcChannelLockIsPerDeployment:
+    def test_a_slow_first_channel_does_not_hold_up_another_deployment(self, mocker):
+        import threading
+
+        from hsml.core import serving_api as serving_api_module
+
+        api = serving_api_module.ServingApi()
+        slow_started = threading.Event()
+        release = threading.Event()
+
+        def create(deployment):
+            if deployment.name == "slow":
+                slow_started.set()
+                release.wait(5)
+            return f"channel-{deployment.name}"
+
+        mocker.patch.object(api, "_create_grpc_channel", side_effect=create)
+
+        def deployment(name):
+            d = mocker.Mock()
+            d.name = name
+            d._grpc_channel = None
+            d._grpc_channel_lock = threading.Lock()
+            return d
+
+        slow, fast = deployment("slow"), deployment("fast")
+        worker = threading.Thread(target=api._grpc_channel, args=(slow,))
+        worker.start()
+        try:
+            assert slow_started.wait(5)
+            # Returns while the slow deployment is still creating its channel.
+            assert api._grpc_channel(fast) == "channel-fast"
+        finally:
+            release.set()
+            worker.join(5)
+        assert slow._grpc_channel == "channel-slow"
+
+
+def _versionable_deployment(mocker, deployment_id=5):
+    deployment = mocker.Mock()
+    deployment.id = deployment_id
+    deployment.json.return_value = "{}"
+    deployment.update_from_response_json.side_effect = lambda _json: deployment
+    return deployment
+
+
+class TestVersioning:
+    @staticmethod
+    def _error(mocker, status, body=None):
+        response = mocker.MagicMock()
+        response.status_code = status
+        response.json.return_value = body or {}
+        return RestAPIError("", response)
+
+    def test_supports_versions_asks_for_one_version(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"count": 1, "items": []})
+
+        assert api._supports_versions(_versionable_deployment(mocker)) is True
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[1] == ["project", 1, "serving", 5, "versions"]
+        assert kwargs["query_params"] == {"offset": 0, "limit": 1}
+
+    def test_backend_without_versions_endpoint_is_unsupported(self, mocker):
+        api = ServingApi()
+        _patch_client(mocker, self._error(mocker, 404))
+
+        assert api._supports_versions(_versionable_deployment(mocker)) is False
+
+    def test_deleted_deployment_is_raised_not_unsupported(self, mocker):
+        api = ServingApi()
+        _patch_client(mocker, self._error(mocker, 404, {"errorCode": 240000}))
+
+        with pytest.raises(RestAPIError):
+            api._supports_versions(_versionable_deployment(mocker))
+
+    def test_other_errors_are_raised(self, mocker):
+        api = ServingApi()
+        _patch_client(mocker, self._error(mocker, 500))
+
+        with pytest.raises(RestAPIError):
+            api._supports_versions(_versionable_deployment(mocker))
+
+    def test_put_in_place_sends_no_query_params(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {})
+        deployment = _versionable_deployment(mocker)
+
+        api._put(deployment)
+
+        _, kwargs = hopsworks_client._send_request.call_args
+        assert kwargs["query_params"] is None
+
+    def test_put_new_version_sends_the_flag(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {})
+        deployment = _versionable_deployment(mocker)
+
+        api._put(deployment, new_version=True)
+
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[0] == "PUT"
+        assert args[1] == ["project", 1, "serving"]
+        assert kwargs["query_params"] == {"newVersion": "true"}
+
+    def test_get_versions_pages_through_the_list(self, mocker):
+        api = ServingApi()
+        first = {
+            "count": 101,
+            "items": [{"version": 101 - i, "active": i == 0} for i in range(100)],
+        }
+        second = {"count": 101, "items": [{"version": 1, "active": False}]}
+        hopsworks_client = _patch_client(mocker, first)
+        hopsworks_client._send_request.side_effect = [first, second]
+        deployment = _versionable_deployment(mocker)
+
+        versions = api._get_versions(deployment)
+
+        assert [v.version for v in versions][:2] == [101, 100]
+        assert len(versions) == 101
+        assert versions[0].active is True
+        calls = hopsworks_client._send_request.call_args_list
+        assert calls[0].args[1] == ["project", 1, "serving", 5, "versions"]
+        assert calls[0].kwargs["query_params"] == {"offset": 0, "limit": 100}
+        assert calls[1].kwargs["query_params"] == {"offset": 100, "limit": 100}
+
+    def test_get_versions_dedupes_and_follows_count(self, mocker):
+        api = ServingApi()
+        first = {"count": 3, "items": [{"version": 3}, {"version": 2}]}
+        second = {"count": 3, "items": [{"version": 2}, {"version": 1}]}
+        hopsworks_client = _patch_client(mocker, first)
+        hopsworks_client._send_request.side_effect = [first, second]
+
+        versions = api._get_versions(_versionable_deployment(mocker))
+
+        assert [v.version for v in versions] == [3, 2, 1]
+
+    def test_get_versions_of_an_unsaved_deployment_is_refused(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {})
+
+        with pytest.raises(ModelServingException, match="not been saved"):
+            api._get_versions(_versionable_deployment(mocker, deployment_id=None))
+        hopsworks_client._send_request.assert_not_called()
+
+    def test_get_versions_on_an_old_backend_raises_a_clear_error(self, mocker):
+        api = ServingApi()
+        _patch_client(mocker, self._error(mocker, 404))
+
+        with pytest.raises(ModelServingException, match="newer Hopsworks"):
+            api._get_versions(_versionable_deployment(mocker))
+
+    def test_rollback_posts_the_version_and_applies_the_response(self, mocker):
+        api = ServingApi()
+        response = {"id": 5, "version": 2}
+        hopsworks_client = _patch_client(mocker, response)
+        deployment = _versionable_deployment(mocker)
+
+        api._rollback(deployment, 2)
+
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[0] == "POST"
+        assert args[1] == ["project", 1, "serving", 5, "rollback"]
+        assert json.loads(kwargs["data"]) == {"version": 2}
+        deployment.update_from_response_json.assert_called_once_with(response)

@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: card_daily_features
+    description: Each card's activity per active day, its trailing 7 and 30 active days, and whether fraud follows on its next active day.
+    columns:
+      - name: card_day_id
+        data_tests: [not_null, unique]
+      - name: card_number
+        data_tests: [not_null]
+      - name: feature_date
+        data_tests: [not_null]
+      - name: txn_count
+        data_tests: [not_null]
+      - name: total_amount_eur
+        data_tests: [not_null]
+  - name: card_spending_baselines
+    description: Each card's spending baseline over its last 30 active days, as of its latest active day, for online lookup.
+    columns:
+      - name: card_number
+        data_tests: [not_null, unique]
+      - name: avg_daily_amount_eur_30d
+        data_tests: [not_null]

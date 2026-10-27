@@ -12,14 +12,19 @@ from __future__ import annotations
 import os
 import platform
 import re
+import secrets
 import socket
+import ssl
+import sys
 import time
+import urllib.parse
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 import click
 import requests
-from hopsworks.cli import auth, config, output
+from hopsworks.cli import auth, config, output, scaffold
 
 
 TOKEN_FLOW_CREATE = "/token-flow/create"
@@ -30,17 +35,36 @@ KEY_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_-]{1,45}$")
 
 
 def _suggest_key_name() -> str:
-    """Produce a default API key name like ``jim-laptop`` or ``jdowling-dev``.
+    """Produce a default API key name like ``jim-laptop-k3x9``.
 
     Uses ``$USER`` and the short hostname; any character outside ``[a-z0-9_-]``
     is stripped so the result satisfies the backend's validation regex on the
-    first try. Length is clipped to 45.
+    first try. The suffix makes every run's suggestion unique: a setup whose
+    key was minted but whose verification failed leaves that key on the
+    server, and a retry suggesting the same name is refused as a duplicate.
+    Length is clipped to 45.
     """
     user = os.environ.get("USER") or os.environ.get("USERNAME") or "hops"
     host = socket.gethostname().split(".", 1)[0] or platform.node().split(".", 1)[0]
     raw = f"{user}-{host}".lower()
     sanitized = re.sub(r"[^a-z0-9_-]+", "-", raw).strip("-") or "hops-cli"
-    return sanitized[:45]
+    suffix = secrets.token_hex(2)
+    return f"{sanitized[:40]}-{suffix}"
+
+
+def _prefer_host_scheme(web_url: str, host: str) -> str:
+    """Give ``web_url`` the scheme of ``host`` when both name the same server.
+
+    Behind the ingress the backend sees plain http and builds the flow URL
+    from that, so the CLI would print an http link to a cluster the user
+    reached over https (the browser then redirects, and the page's service
+    worker fails on the mixed origin).
+    """
+    web = urllib.parse.urlsplit(web_url)
+    wanted = urllib.parse.urlsplit(host)
+    if web.netloc != wanted.netloc or web.scheme == wanted.scheme:
+        return web_url
+    return urllib.parse.urlunsplit((wanted.scheme,) + web[1:])
 
 
 def _open_browser(url: str, headless: bool) -> bool:
@@ -245,6 +269,11 @@ def _wait_for_key(
         "the API key and is a MITM target."
     ),
 )
+@click.option(
+    "--no-scaffold",
+    is_flag=True,
+    help=("Skip writing the agent instruction files into the current directory."),
+)
 @click.pass_context
 def setup_cmd(
     ctx: click.Context,
@@ -255,6 +284,7 @@ def setup_cmd(
     timeout: int,
     ca_bundle: str | None,
     insecure: bool,
+    no_scaffold: bool,
 ) -> None:
     """Authenticate with Hopsworks and cache an API key in ``~/.hops.toml``.
 
@@ -272,18 +302,40 @@ def setup_cmd(
         timeout: Seconds to wait for browser completion before erroring out.
         ca_bundle: Path to a CA bundle for TLS verification.
         insecure: When True, skip TLS verification entirely (with warning).
+        no_scaffold: When True, do not write agent instruction files.
     """
     cfg = config.load(flag_host=host_flag)
+    if host_flag and not cfg.internal:
+        _forget_other_cluster(cfg, host_flag)
+
+    # The global --verify/--no-verify flag is accepted on every command and
+    # lands on the shared config via the root's eager callback. An explicit
+    # --no-verify must reach the token flow too — silently ignoring it strands
+    # the user on a self-signed cluster with an SSL error that contradicts the
+    # flag they passed. --insecure and --ca-bundle stay the primary controls,
+    # and the strict default is unchanged when no flag was given.
+    shared = ctx.ensure_object(dict).get("config")
+    if (
+        not insecure
+        and not ca_bundle
+        and shared is not None
+        and shared.hostname_verification_explicit
+        and not shared.hostname_verification
+    ):
+        insecure = True
 
     if cfg.internal:
-        _handle_internal(cfg)
+        _handle_internal(cfg, no_scaffold)
         return None
 
-    if not force and cfg.is_authenticated():
-        _verify_and_report(cfg)
+    if not force and cfg.is_authenticated() and _cached_key_works(cfg):
+        # Still scaffold: the cached key short-circuit is the path a returning
+        # user takes, so skipping it would leave a new repository with no
+        # instruction file and would never refresh one after an SDK upgrade.
+        _scaffold_here(internal=False, project=cfg.project, skip=no_scaffold)
         return None
 
-    host = cfg.host or click.prompt("Hopsworks host", default=config.DEFAULT_HOST)
+    host = _resolve_host(cfg, host_flag)
     host = auth.normalize_host(host)
     api_base = auth.api_base(host)
 
@@ -316,29 +368,26 @@ def setup_cmd(
         api_key, project = _manual_browser_flow(host, key_name)
         server_key_name = key_name
         # Skip the browser-flow block below by jumping to the verify+save tail.
-        return _finalize_setup(host, api_key, project, server_key_name, cfg)
+        return _finalize_setup(
+            host, api_key, project, server_key_name, cfg, no_scaffold
+        )
     except requests.RequestException as exc:
-        raise click.ClickException(f"Could not start token flow: {exc}") from exc
+        raise _failed(host, exc) from exc
 
     flow_id = created["flowId"]
     wait_secret = created["waitSecret"]
-    web_url = created["webUrl"]
+    web_url = _prefer_host_scheme(created["webUrl"], host)
 
     opened = _open_browser(web_url, headless=no_browser)
-    output.info("")
-    output.info("The hops CLI needs to authenticate with Hopsworks.")
     if opened:
         output.info("Opening your browser: %s", web_url)
     else:
-        output.info("Visit this URL in a browser to continue:")
-        output.info("  %s", web_url)
-    output.info("")
-    output.info("Waiting for authentication...")
+        output.info("Visit this URL in a browser to continue: %s", web_url)
 
     try:
         completed = _wait_for_key(api_base, flow_id, wait_secret, timeout, verify)
     except requests.RequestException as exc:
-        raise click.ClickException(f"Token flow failed: {exc}") from exc
+        raise _failed(host, exc) from exc
 
     api_key = completed.get("apiKey")
     project = completed.get("workspaceUsername")
@@ -351,10 +400,63 @@ def setup_cmd(
     server_key_name = completed.get("apiKeyName")
 
     if not api_key:
-        raise click.ClickException("Server did not return an API key.")
+        raise _failed(host, "the server did not return an API key")
 
-    _finalize_setup(host, api_key, project, server_key_name, cfg)
+    _finalize_setup(host, api_key, project, server_key_name, cfg, no_scaffold)
     return None
+
+
+def _interactive() -> bool:
+    """Whether we can prompt the user, false under scripts, CI, and piped input."""
+    return sys.stdin.isatty()
+
+
+def _resolve_host(cfg: config.HopsConfig, host_flag: str | None) -> str:
+    """Choose the host to set up, letting an interactive user switch clusters.
+
+    An explicit ``--host`` always wins.
+    Otherwise, on a terminal, prompt with the cached host as the default so a
+    user whose cluster moved or died can type the new address instead of being
+    stuck re-authenticating against the dead one, the gap that made repeated
+    ``hops setup`` runs hammer the same unreachable host.
+    Without a terminal (scripts, CI) keep the cached host so a non-interactive
+    re-run does not block on a prompt.
+    """
+    if host_flag:
+        return host_flag
+    if cfg.host and not _interactive():
+        return cfg.host
+    host = click.prompt("Hopsworks host", default=cfg.host or config.DEFAULT_HOST)
+    _forget_other_cluster(cfg, host)
+    return host
+
+
+def _forget_other_cluster(cfg: config.HopsConfig, new_host: str) -> None:
+    """Drop the cached key and project when ``new_host`` names another cluster.
+
+    ``config.load`` layers the resolved host over the cached profile, so the
+    cached key kept ``is_authenticated()`` true and the short-circuit verified
+    the old project against the new host ("project X not found") instead of
+    setting the new cluster up.
+    It also leaves ``project_id`` / ``feature_store_id`` from the old cluster in
+    place, which ``_finalize_setup`` never overwrites.
+    The project is chosen again in the token flow.
+    """
+    cached_host = config.load().host
+    if not cached_host:
+        return
+    if auth.normalize_host(cached_host) == auth.normalize_host(new_host):
+        return
+    output.info(
+        "Host %s differs from the cached %s; setting up the new cluster from scratch.",
+        auth.normalize_host(new_host),
+        cached_host,
+    )
+    cfg.api_key = None
+    cfg.api_key_name = None
+    cfg.project = None
+    cfg.project_id = None
+    cfg.feature_store_id = None
 
 
 def _finalize_setup(
@@ -363,6 +465,7 @@ def _finalize_setup(
     project: str | None,
     server_key_name: str | None,
     cfg: config.HopsConfig,
+    no_scaffold: bool = False,
 ) -> None:
     """Verify the freshly-minted API key, then persist it to ``~/.hops.toml``.
 
@@ -374,10 +477,9 @@ def _finalize_setup(
     try:
         auth.verify(host=host, api_key_value=api_key, project=project)
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
-        raise click.ClickException(
-            f"Server returned an API key but verification failed: {exc}. "
-            "No changes written to ~/.hops.toml. Re-run `hops setup`."
-        ) from exc
+        # Nothing is written until the key verifies, so a failure here leaves the
+        # previous configuration intact and `hops setup` can simply be run again.
+        raise _failed(host, exc) from exc
 
     cfg.host = host
     cfg.api_key = api_key
@@ -385,19 +487,11 @@ def _finalize_setup(
     cfg.project = project
     config.save(cfg)
 
-    output.success(
-        "✓ Connected to %s as %s",
-        host.replace("https://", "").replace("http://", ""),
-        project or "(no project)",
-    )
-    output.info(
-        "Token written to %s with api-key name %s",
-        config.CONFIG_PATH,
-        server_key_name or "(server-assigned)",
-    )
+    output.success("✓ Connected to %s as %s", host, project or "(no project)")
+    _scaffold_here(internal=False, project=project, skip=no_scaffold)
 
 
-def _handle_internal(cfg: config.HopsConfig) -> None:
+def _handle_internal(cfg: config.HopsConfig, no_scaffold: bool = False) -> None:
     """Internal mode: JWT is already mounted, no browser flow needed.
 
     Pass ``internal=True`` so ``auth.login`` invokes ``hopsworks.login()``
@@ -405,7 +499,13 @@ def _handle_internal(cfg: config.HopsConfig) -> None:
     ``$SECRETS_DIR/token.jwt`` from the pod environment itself. Doing the
     same lookup at the CLI layer would be duplicative and would silently
     drift if the SDK ever changes its in-pod auth contract.
+
+    Scaffolding runs before the login it does not depend on.
+    The terminal images call this command at container start purely to lay the
+    files down, and making that wait on a backend round trip would skip it
+    entirely whenever the cluster is briefly unreachable.
     """
+    _scaffold_here(internal=True, project=cfg.project, skip=no_scaffold)
     try:
         project = auth.login(host=cfg.host or "", project=cfg.project, internal=True)
     except Exception as exc:  # noqa: BLE001
@@ -416,24 +516,125 @@ def _handle_internal(cfg: config.HopsConfig) -> None:
     )
 
 
-def _verify_and_report(cfg: config.HopsConfig) -> None:
-    """Already-configured short-circuit: verify the cached key, print status, exit 0."""
+def _reason(exc: object) -> str:
+    """The first line of ``exc``, clipped, so one failure prints as one line.
+
+    SDK errors run to several lines and embed the whole response body; the rest
+    is recoverable from the logs when someone needs it.
+    """
+    first = str(exc).strip().splitlines()
+    text = first[0] if first else exc.__class__.__name__
+    return text if len(text) <= 160 else text[:157] + "..."
+
+
+def _failed(host: str, exc: object) -> click.ClickException:
+    """The one line every failing path of this command prints.
+
+    A TLS failure names its remedy, since the flags that fix it are on this very
+    command and the raw urllib3 message never mentions them.
+    """
+    hint = ""
+    if isinstance(exc, BaseException) and _is_ssl_error(exc):
+        hint = (
+            " (self-signed certificate? re-run with --insecure, or --ca-bundle <path>)"
+        )
+    return click.ClickException(f"Failed to connect to {host}: {_reason(exc)}{hint}")
+
+
+def _is_ssl_error(exc: BaseException) -> bool:
+    """Whether ``exc`` or anything it wraps is a TLS verification failure."""
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, (requests.exceptions.SSLError, ssl.SSLError)):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+def _cached_key_works(cfg: config.HopsConfig) -> bool:
+    """Report whether the cached key still authenticates, and say so in one line.
+
+    A key that no longer works is not a failure of this command: the caller falls
+    through to the browser flow, so `hops setup` ends connected whether it was run
+    once or ten times, and `--force` is for replacing a key that still works.
+    """
     try:
         project = auth.verify(
             host=cfg.host or "",
             api_key_value=cfg.api_key or "",
             project=cfg.project,
         )
-    except Exception as exc:  # noqa: BLE001
-        output.warn(
-            "Cached key in %s no longer works: %s. Re-run with --force to refresh.",
-            config.CONFIG_PATH,
-            exc,
+    except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
+        output.info(
+            "Cached key for %s no longer works (%s); signing in again.",
+            cfg.host or "?",
+            _reason(exc),
         )
-        raise click.ClickException("Authentication failed.") from exc
+        return False
     output.success(
-        "✓ Connected to %s as %s (key: %s)",
-        (cfg.host or "").replace("https://", "").replace("http://", ""),
+        "✓ Connected to %s as %s",
+        cfg.host or "?",
         getattr(project, "name", cfg.project or "?"),
-        cfg.api_key_name or "unnamed",
+    )
+    return True
+
+
+def _scaffold_here(*, internal: bool, project: str | None, skip: bool) -> None:
+    """Write the agent instruction files into the current directory.
+
+    Never fatal.
+    Authentication has already succeeded and been persisted by the time this
+    runs, so a read-only directory or an unparseable settings file must not
+    turn a working setup into a command that exits non-zero.
+    """
+    if skip:
+        return
+    root = Path.cwd()
+    try:
+        files = scaffold.build_files(internal=internal, project=project)
+        result = scaffold.scaffold(root, files)
+        changed = scaffold.ensure_permission(root / ".claude/settings.local.json")
+    except (OSError, ValueError) as exc:
+        output.warn("Could not write agent instruction files: %s", _reason(exc))
+        return
+
+    for path in result.written:
+        output.success("✓ Wrote %s", path)
+    for path in result.refreshed:
+        output.success("✓ Updated %s", path)
+    for path in result.removed:
+        output.info("- Removed %s (no longer shipped)", path)
+    for path in result.kept + result.orphaned:
+        output.info("= Kept your %s", path)
+    if changed:
+        output.success(
+            "✓ Allowed %s in .claude/settings.local.json", scaffold.HOPS_PERMISSION
+        )
+    if not internal:
+        _suggest_skills_install(root)
+
+
+def _suggest_skills_install(root: Path) -> None:
+    """Point at ``hops skills install`` when this repository has no platform skills yet.
+
+    Outside a cluster nothing has put them anywhere an agent looks, and the
+    step is not guessable from what setup prints on its own. Suppressed once
+    they are there, so a re-run of setup stays quiet.
+    """
+    from hopsworks.cli.commands import skills as skills_cmd
+
+    source = skills_cmd._packaged_skills_dir()
+    if source is None:
+        return
+    shipped = {path.parent.name for path in source.glob("*/*/SKILL.md")}
+    if not shipped:
+        return
+    for target in skills_cmd.AGENT_SKILL_DIRS.values():
+        if any((root / target / name).is_dir() for name in shipped):
+            return
+    output.info(
+        "Run `hops skills install` to add the %d Hopsworks skills to this repository "
+        "(--agent codex|copilot|opencode for other agents).",
+        len(shipped),
     )

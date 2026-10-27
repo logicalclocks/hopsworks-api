@@ -1,0 +1,60 @@
+# Hopsworks skills
+
+Markdown playbooks (`SKILL.md`) that drive an agent through Hopsworks workflows.
+The **live, canonical list is `hops skills list`** (read one with
+`hops skills show <name>`); this file is a static index for browsing.
+
+Skills are routed by their **directory name** (e.g. `hops-fg`). They are grouped
+into bucket folders:
+
+## data/ — discovery, sources, SQL, Spark, table maintenance
+- [hops-airflow](data/hops-airflow/SKILL.md) — orchestrate Hopsworks jobs with Airflow DAGs.
+- [hops-data-discovery](data/hops-data-discovery/SKILL.md) — find FGs, data sources, search, files.
+- [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion / copy or sync SharePoint folders into a dataset.
+- [hops-sharepoint-search](data/hops-sharepoint-search/SKILL.md) — search the files a SharePoint sync copied in, through its index feature group, with the DuckDB CLI.
+- [hops-delta](data/hops-delta/SKILL.md) — maintain Delta feature groups: optimize, vacuum, write modes and layout.
+- [hops-partitioning](data/hops-partitioning/SKILL.md) — Whether a derived feature group should be partitioned by time, from the source table's files.
+- [hops-analytics](data/hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.
+- [hops-dbt](data/hops-dbt/SKILL.md) — dbt models over feature groups in Trino, with tests and an execution graph.
+- [hops-spark](data/hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta).
+- [hops-synthetic-data](data/hops-synthetic-data/SKILL.md) — seeded synthetic batch tables or event streams into feature groups.
+- [hops-table-maintenance](data/hops-table-maintenance/SKILL.md) — Table layout maintenance for offline feature groups.
+- [hops-trino-sql](data/hops-trino-sql/SKILL.md) — Trino SQL via the `hops` CLI.
+- [hops-unstructured-data](data/hops-unstructured-data/SKILL.md) — parse files into a feature group.
+
+## ml/ — FTI pipeline architecture: feature store, training, inference
+- [hops-reqs](ml/hops-reqs/SKILL.md) — specify and build an ML system recorded in one `system.yaml` (what `/hops-build` loads).
+- [hops-features](ml/hops-features/SKILL.md) — specify a feature pipeline.
+- [hops-eda](ml/hops-eda/SKILL.md) — EDA before training: profiler, leakage first, the full checklist.
+- [hops-fg](ml/hops-fg/SKILL.md) — feature groups.
+- [hops-fv](ml/hops-fv/SKILL.md) — feature views, training data, online vectors.
+- [hops-transformations](ml/hops-transformations/SKILL.md) — built-in/custom/on-demand transforms + transformation store.
+- [hops-train](ml/hops-train/SKILL.md) — train + register a model.
+- [hops-batch-inference](ml/hops-batch-inference/SKILL.md) — batch scoring + prediction logging.
+- [hops-online-inference](ml/hops-online-inference/SKILL.md) — KServe model deployment.
+- [hops-monitoring](ml/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
+
+## agents/ — served agents, their evaluation, and scheduled agent tasks
+- [hops-agent-deployment](agents/hops-agent-deployment/SKILL.md) — served, chat-ready interactive agent (`AgentApp`); talk to it from Python.
+- [hops-agent-evals](agents/hops-agent-evals/SKILL.md) — suites, LLM judges, traces and feedback, failure analysis into regression tests.
+- [hops-agent-task](agents/hops-agent-task/SKILL.md) — scheduled coding-agent task (claude-code / codex job).
+
+## dashboards/ — apps and BI
+- [hops-app](dashboards/hops-app/SKILL.md) — Python app deployments (Streamlit + custom apps).
+- [hops-app-db](dashboards/hops-app-db/SKILL.md) — app / agent access to the project's online database (`db_access`) and, via Trino, the offline feature groups (Python, SQL, Node.js with `@hopsworks/app`).
+- [hops-superset](dashboards/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
+
+## scaling/ — how served workloads scale (models and agents alike)
+- [hops-autoscaling](scaling/hops-autoscaling/SKILL.md) — deployment mode, autoscaler and scale metric, scale to zero when idle, and how to prove a deployment scales.
+
+## platform/ — cross-cutting platform knowledge and compute
+- [hops-job](platform/hops-job/SKILL.md) — jobs and Airflow DAGs.
+- [hops-environments](platform/hops-environments/SKILL.md) — clone a Python env, install custom libs.
+- [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
+- [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, per-namespace compute cost, and feature store/dataset sharing.
+- [hops-kubectl-debug](platform/hops-kubectl-debug/SKILL.md) — diagnose failed workloads from namespace-scoped pod state, events, and logs.
+- [hops-factory](platform/hops-factory/SKILL.md) — software factories: definitions, cloning, import and export.
+
+A `SKILL.md` carries what every task using the skill needs; deep dives,
+copy-paste variants and long tables live in the skill's `references/` folder
+(see `TEMPLATE_action.md` / `TEMPLATE_knowledge.md` for the shape).

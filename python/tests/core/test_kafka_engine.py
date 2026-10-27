@@ -14,13 +14,20 @@
 #   limitations under the License.
 #
 import importlib
+import io
+import json
+import time
+from datetime import datetime, timezone
 
+import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import constants
 from hsfs import feature_group, storage_connector
 from hsfs.core import kafka_engine, online_ingestion
 
 
 if constants.HAS_CONFLUENT_KAFKA:
+    from confluent_kafka import KafkaError, KafkaException
     from confluent_kafka.admin import PartitionMetadata, TopicMetadata
 
 
@@ -375,6 +382,329 @@ class TestKafkaEngine:
         # Assert
         assert result == f"{topic_name},0:0"
 
+    @staticmethod
+    def _patch_time(mocker, monotonic=time.monotonic):
+        # kafka_engine's own name for time: patching time.sleep or time.monotonic would replace them for
+        # every thread in the process, and a thread that calls them meanwhile skews these counts and clocks.
+        mock_time = mocker.patch("hsfs.core.kafka_engine.time")
+        mock_time.monotonic.side_effect = monotonic
+        return mock_time
+
+    def _single_partition_consumer(self, mocker, get_watermark_offsets):
+        partition_metadata = PartitionMetadata()
+        partition_metadata.id = 0
+        topic_metadata = TopicMetadata()
+        topic_metadata.partitions = {partition_metadata.id: partition_metadata}
+        topic_mock = mocker.MagicMock()
+        topic_mock.topics = {"test_topic": topic_metadata}
+
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        consumer.get_watermark_offsets = get_watermark_offsets
+        mocker.patch(
+            "hsfs.core.kafka_engine._init_kafka_consumer",
+            return_value=consumer,
+        )
+        return consumer
+
+    def test_kafka_get_offsets_retries_a_partition_whose_leader_is_not_serving_yet(
+        self, mocker
+    ):
+        # Arrange: a topic created a moment ago, whose broker has not loaded partition 0 yet
+        sleep = self._patch_time(mocker).sleep
+        get_watermark_offsets = mocker.MagicMock(
+            side_effect=[
+                KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION)),
+                KafkaException(KafkaError(KafkaError.LEADER_NOT_AVAILABLE)),
+                (0, 11),
+            ]
+        )
+        consumer = self._single_partition_consumer(mocker, get_watermark_offsets)
+
+        # Act
+        result = kafka_engine._kafka_get_offsets(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            high=True,
+        )
+
+        # Assert
+        assert result == "test_topic,0:11"
+        assert get_watermark_offsets.call_count == 3
+        assert sleep.call_count == 2
+        consumer.close.assert_called_once()
+
+    def test_kafka_get_offsets_does_not_retry_other_errors(self, mocker):
+        # Arrange
+        sleep = self._patch_time(mocker).sleep
+        get_watermark_offsets = mocker.MagicMock(
+            side_effect=KafkaException(
+                KafkaError(KafkaError.TOPIC_AUTHORIZATION_FAILED)
+            )
+        )
+        consumer = self._single_partition_consumer(mocker, get_watermark_offsets)
+
+        # Act
+        with pytest.raises(KafkaException):
+            kafka_engine._kafka_get_offsets(
+                topic_name="test_topic",
+                feature_store_id=99,
+                offline_write_options={},
+                high=True,
+            )
+
+        # Assert
+        assert get_watermark_offsets.call_count == 1
+        sleep.assert_not_called()
+        consumer.close.assert_called_once()
+
+    def test_kafka_get_offsets_gives_up_on_a_leader_that_never_serves(self, mocker):
+        # Arrange: a clock that moves a second per reading, against a two second timeout
+        clock = iter(range(100))
+        self._patch_time(mocker, monotonic=lambda: next(clock))
+        get_watermark_offsets = mocker.MagicMock(
+            side_effect=KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION))
+        )
+        consumer = self._single_partition_consumer(mocker, get_watermark_offsets)
+
+        # Act
+        with pytest.raises(KafkaException):
+            kafka_engine._kafka_get_offsets(
+                topic_name="test_topic",
+                feature_store_id=99,
+                offline_write_options={"kafka_timeout": 2},
+                high=True,
+            )
+
+        # Assert
+        assert get_watermark_offsets.call_count == 2
+        consumer.close.assert_called_once()
+
+    def test_kafka_get_offsets_for_times_retries_a_partition_whose_leader_is_not_serving_yet(
+        self, mocker
+    ):
+        # Arrange
+        self._patch_time(mocker)
+        consumer = self._offsets_for_times_consumer(
+            mocker, partitions={0: (0, 11)}, results={0: (5, None)}
+        )
+        consumer.get_watermark_offsets.side_effect = [
+            KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION)),
+            (0, 11),
+            (0, 11),
+        ]
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1000,
+        )
+
+        # Assert
+        assert result == "test_topic,0:5"
+        assert consumer.get_watermark_offsets.call_count == 3
+
+    def _offsets_for_times_consumer(self, mocker, partitions, results):
+        """A consumer over `partitions` whose offsets_for_times answers with `results`.
+
+        `results` maps a partition id to the (offset, error) pair the lookup returns, and
+        `partitions` maps it to its (low, high) watermarks.
+        """
+        topic_metadata = TopicMetadata()
+        topic_metadata.partitions = {}
+        for partition_id in partitions:
+            partition_metadata = PartitionMetadata()
+            partition_metadata.id = partition_id
+            topic_metadata.partitions[partition_id] = partition_metadata
+        topic_mock = mocker.MagicMock()
+        topic_mock.topics = {"test_topic": topic_metadata}
+
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        consumer.get_watermark_offsets = mocker.MagicMock(
+            side_effect=lambda partition: partitions[partition.partition]
+        )
+
+        def offsets_for_times(lookups, timeout=None):
+            answers = []
+            for lookup in lookups:
+                offset, error = results[lookup.partition]
+                answer = mocker.MagicMock()
+                answer.partition = lookup.partition
+                answer.offset = offset
+                answer.error = error
+                answers.append(answer)
+            return answers
+
+        consumer.offsets_for_times = mocker.MagicMock(side_effect=offsets_for_times)
+        mocker.patch(
+            "hsfs.core.kafka_engine._init_kafka_consumer",
+            return_value=consumer,
+        )
+        return consumer
+
+    def test_kafka_get_offsets_for_times(self, mocker):
+        # Arrange - the timestamp lands mid-partition, which is the whole point: the
+        # offsets returned skip the records written before it.
+        consumer = self._offsets_for_times_consumer(
+            mocker,
+            partitions={0: (0, 100), 1: (0, 100)},
+            results={0: (37, None), 1: (61, None)},
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - and the timestamp is what was looked up, in the offset field
+        assert result == "test_topic,0:37,1:61"
+        lookups = consumer.offsets_for_times.call_args[0][0]
+        assert [lookup.offset for lookup in lookups] == [1789984800000, 1789984800000]
+        consumer.close.assert_called_once()
+
+    def test_kafka_get_offsets_for_times_past_the_last_record(self, mocker):
+        # Arrange - Kafka answers a timestamp newer than every record with a negative
+        # offset. The partition holds nothing worth reading, so the reader belongs at its
+        # end rather than at its start.
+        self._offsets_for_times_consumer(
+            mocker, partitions={0: (5, 100)}, results={0: (-1, None)}
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert
+        assert result == "test_topic,0:100"
+
+    def test_kafka_get_offsets_for_times_record_appended_during_lookup(self, mocker):
+        # Arrange - the lookup finds nothing past the timestamp at end offset 10, and a
+        # producer appends offset 10 right after it answers.
+        consumer = self._offsets_for_times_consumer(
+            mocker, partitions={0: (0, 10)}, results={0: (-1, None)}
+        )
+        answer = consumer.offsets_for_times.side_effect
+
+        def offsets_for_times_then_append(lookups, timeout=None):
+            answers = answer(lookups, timeout=timeout)
+            consumer.get_watermark_offsets.side_effect = lambda partition: (0, 11)
+            return answers
+
+        consumer.offsets_for_times.side_effect = offsets_for_times_then_append
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - reading starts at the appended record rather than past it
+        assert result == "test_topic,0:10"
+
+    def test_kafka_get_offsets_for_times_floors_at_the_low_watermark(self, mocker):
+        # Arrange - retention dropped the record the lookup landed on, leaving an offset
+        # that is no longer readable.
+        self._offsets_for_times_consumer(
+            mocker, partitions={0: (40, 100)}, results={0: (12, None)}
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert
+        assert result == "test_topic,0:40"
+
+    def test_kafka_get_offsets_for_times_past_the_last_record_floors_at_the_low_watermark(
+        self, mocker
+    ):
+        # Arrange - the lookup finds nothing past the timestamp at end offset 10, and by
+        # the time the low watermark is read retention has dropped everything below 15.
+        consumer = self._offsets_for_times_consumer(
+            mocker, partitions={0: (0, 10)}, results={0: (-1, None)}
+        )
+        answer = consumer.offsets_for_times.side_effect
+
+        def offsets_for_times_then_retain(lookups, timeout=None):
+            answers = answer(lookups, timeout=timeout)
+            consumer.get_watermark_offsets.side_effect = lambda partition: (15, 20)
+            return answers
+
+        consumer.offsets_for_times.side_effect = offsets_for_times_then_retain
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - reading starts at the first offset still readable
+        assert result == "test_topic,0:15"
+
+    def test_kafka_get_offsets_for_times_falls_back_on_partition_error(self, mocker):
+        # Arrange - one partition could not be answered for. Reading it from the start is
+        # wasteful, which is what this lookup exists to avoid, but re-reading records is
+        # recoverable where skipping them is not.
+        self._offsets_for_times_consumer(
+            mocker,
+            partitions={0: (7, 100), 1: (3, 100)},
+            results={0: (-1, mocker.Mock()), 1: (61, None)},
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - the unanswered partition reads from its low watermark, not from its end
+        assert result == "test_topic,0:7,1:61"
+
+    def test_kafka_get_offsets_for_times_no_topic(self, mocker):
+        # Arrange
+        topic_mock = mocker.MagicMock()
+        topic_mock.topics = {}
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        mocker.patch(
+            "hsfs.core.kafka_engine._init_kafka_consumer",
+            return_value=consumer,
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - and the consumer is still closed on the way out
+        assert result == ""
+        consumer.offsets_for_times.assert_not_called()
+        consumer.close.assert_called_once()
+
     def test_kafka_get_offsets_no_topic(self, mocker):
         # Arrange
         topic_name = "test_topic"
@@ -588,6 +918,79 @@ class TestKafkaEngine:
             "subjectId": b"823",
         }
 
+    def test_get_headers_storage_online(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_online_ingestion_api = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi"
+        )
+        json = backend_fixtures["online_ingestion"]["get"]["response"]
+        oi = online_ingestion.OnlineIngestion.from_response_json(json)
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine._get_headers(fg, num_entries=10, storage="online")
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "onlineIngestionId": b"1",
+            "projectId": b"234",
+            "storage": b"online",
+            "subjectId": b"823",
+        }
+
+    def test_get_headers_storage_offline(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_online_ingestion_api = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi"
+        )
+        json = backend_fixtures["online_ingestion"]["get"]["response"]
+        oi = online_ingestion.OnlineIngestion.from_response_json(json)
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine._get_headers(fg, num_entries=10, storage="offline")
+
+        # Assert: an offline-only write reaches no online store, so it gets no online
+        # ingestion to report progress against.
+        assert results == {
+            "featureGroupId": b"111",
+            "projectId": b"234",
+            "storage": b"offline",
+            "subjectId": b"823",
+        }
+        mock_online_ingestion_api.return_value._create_online_ingestion.assert_not_called()
+
     def test_get_headers_upsert_if_newer_true(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
@@ -666,3 +1069,196 @@ class TestKafkaEngine:
             "projectId": b"234",
             "subjectId": b"823",
         }
+
+    def test_wait_for_online_ingestion_waits_on_the_header_ingestion(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(
+            fg,
+            {"subjectId": b"823", "onlineIngestionId": b"42"},
+            {
+                "wait_for_online_ingestion": True,
+                "online_ingestion_options": {"timeout": 5},
+            },
+        )
+
+        # Assert: the latest ingestion is picked by id on the backend, which with several
+        # mysqlds can be an older one, so the wait has to follow the id the records carry.
+        fg.get_online_ingestion.assert_called_once_with(42)
+        fg.get_online_ingestion.return_value.wait_for_completion.assert_called_once_with(
+            options={"timeout": 5}
+        )
+        fg.get_latest_online_ingestion.assert_not_called()
+
+    def test_wait_for_online_ingestion_pruned_ingestion_warns(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+        fg.name = "test"
+        fg.get_online_ingestion.return_value = None
+
+        # Act
+        with pytest.warns(UserWarning, match="Online ingestion 42 .* was pruned"):
+            kafka_engine._wait_for_online_ingestion(
+                fg, {"onlineIngestionId": b"42"}, {"wait_for_online_ingestion": True}
+            )
+
+        # Assert
+        fg.get_online_ingestion.assert_called_once_with(42)
+
+    def test_wait_for_online_ingestion_not_requested(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(fg, {"onlineIngestionId": b"42"}, {})
+
+        # Assert
+        fg.get_online_ingestion.assert_not_called()
+
+    def test_wait_for_online_ingestion_without_ingestion_id(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(
+            fg, {"storage": b"offline"}, {"wait_for_online_ingestion": True}
+        )
+
+        # Assert: an offline-only write has no online ingestion, and waiting on any other
+        # would block on whichever ingestion happened to run before it.
+        fg.get_online_ingestion.assert_not_called()
+        fg.get_latest_online_ingestion.assert_not_called()
+
+    def _acked_error(self, mocker, code, is_multi_part_insert=False):
+        msg = mocker.Mock()
+        msg.topic.return_value = "test_topic"
+        msg.partition.return_value = 3
+        acked, _ = kafka_engine._build_ack_callback_and_optional_progress_bar(
+            n_rows=10,
+            is_multi_part_insert=is_multi_part_insert,
+            offline_write_options={},
+        )
+        with pytest.raises(FeatureStoreException) as error:
+            acked(KafkaError(code), msg)
+        return error.value
+
+    @pytest.mark.skipif(
+        not constants.HAS_CONFLUENT_KAFKA, reason="confluent-kafka not installed"
+    )
+    def test_acked_raises_on_size_error(self, mocker):
+        # Act
+        error = self._acked_error(mocker, KafkaError.MSG_SIZE_TOO_LARGE)
+
+        # Assert
+        assert "test_topic" in str(error)
+        assert "partition 3" in str(error)
+        assert "max.message.bytes" in str(error)
+        # KafkaError is not a BaseException subclass, so it is wrapped to stay catchable
+        assert isinstance(error.__cause__, KafkaException)
+        assert error.__cause__.args[0].code() == KafkaError.MSG_SIZE_TOO_LARGE
+
+    @pytest.mark.skipif(
+        not constants.HAS_CONFLUENT_KAFKA, reason="confluent-kafka not installed"
+    )
+    def test_acked_raises_on_any_delivery_error(self, mocker):
+        # Act
+        error = self._acked_error(mocker, KafkaError.BROKER_NOT_AVAILABLE)
+
+        # Assert
+        # errors other than the two previously special cased codes must not be swallowed
+        assert "BROKER_NOT_AVAILABLE" in str(error)
+        assert "max.message.bytes" not in str(error)
+
+    @pytest.mark.skipif(
+        not constants.HAS_CONFLUENT_KAFKA, reason="confluent-kafka not installed"
+    )
+    def test_acked_raises_without_progress_bar(self, mocker):
+        # Act
+        # a multi part insert has no progress bar to colour; reporting the error must still work
+        error = self._acked_error(
+            mocker, KafkaError.MSG_SIZE_TOO_LARGE, is_multi_part_insert=True
+        )
+
+        # Assert
+        assert "MSG_SIZE_TOO_LARGE" in str(error)
+
+    @pytest.mark.skipif(
+        not constants.HAS_CONFLUENT_KAFKA, reason="confluent-kafka not installed"
+    )
+    def test_acked_updates_progress_bar_on_success(self, mocker):
+        # Arrange
+        acked, progress_bar = (
+            kafka_engine._build_ack_callback_and_optional_progress_bar(
+                n_rows=2, is_multi_part_insert=False, offline_write_options={}
+            )
+        )
+
+        # Act
+        acked(None, mocker.Mock())
+
+        # Assert
+        assert progress_bar.n == 1
+
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            (None, None),
+            ("nat", None),
+            ("naive", datetime(2026, 9, 10, 4, 0, 0, 123456, tzinfo=timezone.utc)),
+        ],
+    )
+    def test_encode_row_nullable_timestamp(self, value, expected):
+        pd = pytest.importorskip("pandas")
+        fastavro = pytest.importorskip("fastavro")
+        schema = {
+            "type": "record",
+            "name": "row",
+            "fields": [
+                {
+                    "name": "observed_at",
+                    "type": [
+                        "null",
+                        {"type": "long", "logicalType": "timestamp-micros"},
+                    ],
+                }
+            ],
+        }
+        writer = kafka_engine._get_encoder_func(json.dumps(schema))
+        if value == "nat":
+            value = pd.NaT
+        elif value == "naive":
+            value = pd.Timestamp("2026-09-10T04:00:00.123456")
+
+        encoded = kafka_engine._encode_row({}, writer, {"observed_at": value})
+
+        decoded = fastavro.schemaless_reader(
+            io.BytesIO(encoded), fastavro.parse_schema(schema)
+        )
+        assert decoded["observed_at"] == expected
+
+    def test_encode_row_nullable_boolean_column(self):
+        # A "boolean" column with a hole in it yields numpy.bool_ from itertuples, which
+        # avro matched to no branch of ["null", "boolean"], so the whole insert failed.
+        pd = pytest.importorskip("pandas")
+        fastavro = pytest.importorskip("fastavro")
+        schema = {
+            "type": "record",
+            "name": "row",
+            "fields": [{"name": "passed", "type": ["null", "boolean"]}],
+        }
+        writer = kafka_engine._get_encoder_func(json.dumps(schema))
+        frame = pd.DataFrame(
+            {"passed": pd.Series([True, None, False]).astype("boolean")}
+        )
+
+        decoded = [
+            fastavro.schemaless_reader(
+                io.BytesIO(kafka_engine._encode_row({}, writer, row._asdict())),
+                fastavro.parse_schema(schema),
+            )["passed"]
+            for row in frame.itertuples(index=False)
+        ]
+
+        assert decoded == [True, None, False]

@@ -83,9 +83,17 @@ class App:
         latest_branch=None,
         entrypoint_script=None,
         app_base_path=None,
+        proxy_path_mode=None,
         readiness_probe_path=None,
         public_access=None,
         public_token=None,
+        db_access=None,
+        managed_db=None,
+        table_prefix=None,
+        table_count=None,
+        idle_scale_to_zero=None,
+        idle_cooldown_seconds=None,
+        cold_start_timeout_seconds=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -117,9 +125,18 @@ class App:
         self._latest_branch = latest_branch
         self._entrypoint_script = entrypoint_script
         self._app_base_path = app_base_path
+        self._proxy_path_mode = proxy_path_mode
         self._readiness_probe_path = readiness_probe_path
         self._public_access = public_access or False
         self._public_token = public_token
+        # Backend default is True; None only happens for responses from older servers.
+        self._db_access = True if db_access is None else bool(db_access)
+        self._managed_db = bool(managed_db)
+        self._table_prefix = table_prefix
+        self._table_count = table_count or 0
+        self._idle_scale_to_zero = bool(idle_scale_to_zero)
+        self._idle_cooldown_seconds = idle_cooldown_seconds
+        self._cold_start_timeout_seconds = cold_start_timeout_seconds
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -151,7 +168,10 @@ class App:
     @public
     @property
     def state(self) -> str:
-        """Current state of the app (RUNNING, KILLED, FAILED, STOPPED, etc.)."""
+        """Current state of the app (RUNNING, IDLE, KILLED, FAILED, STOPPED, etc.).
+
+        `IDLE` is an app that scales to zero when idle and has no pod right now; opening it wakes it.
+        """
         return self._state
 
     @public
@@ -163,7 +183,9 @@ class App:
     @public
     @property
     def app_url(self) -> str | None:
-        """URL to the Streamlit UI, or None if not serving.
+        """URL to the app, or None while it is not serving.
+
+        An app that scales to zero when idle keeps its URL in the `IDLE` state: a request to it is what wakes it.
 
         Example:
             ```python
@@ -173,7 +195,7 @@ class App:
                 print(app.app_url)
             ```
         """
-        if self._serving and self._app_url:
+        if (self._serving or self._state == "IDLE") and self._app_url:
             _client = client._get_instance()
             base_url = _client._base_url.rstrip("/")
             app_url = self._app_url.lstrip("/")
@@ -265,6 +287,12 @@ class App:
     def app_base_path(self) -> str | None:
         """Configured app base path."""
         return self._app_base_path
+
+    @public
+    @property
+    def proxy_path_mode(self) -> str | None:
+        """ROOT when the proxy strips the browser mount before the app sees a request, PREFIX when it forwards it."""
+        return self._proxy_path_mode
 
     @public
     @property
@@ -361,6 +389,60 @@ class App:
 
     @public
     @property
+    def db_access(self) -> bool:
+        """Whether the app gets access to the project's online feature store database.
+
+        When True, the database is created on demand when the app starts and the
+        `MYSQL_*` connection environment variables are injected into the app container.
+        Trino access to the offline tables (`TRINO_*`) does not depend on this flag.
+        """
+        return self._db_access
+
+    @public
+    @property
+    def managed_db(self) -> bool:
+        """Whether the app owns a registered set of tables in the project's online database.
+
+        Such an app connects as its own database user, which can read the project database but can only create and write tables registered with `register_table`.
+        Apps created before table registration existed connect as the user who started them and have no registered tables.
+        """
+        return self._managed_db
+
+    @public
+    @property
+    def table_prefix(self) -> str | None:
+        """The prefix every table of the app must start with, for example `app_reviews__`; `None` when `managed_db` is False."""
+        return self._table_prefix
+
+    @public
+    @property
+    def table_count(self) -> int:
+        """How many tables the app has registered."""
+        return self._table_count
+
+    @public
+    @property
+    def idle_scale_to_zero(self) -> bool:
+        """Whether the app scales to zero when idle.
+
+        The pod goes away once no request has been in flight for `idle_cooldown_seconds`, the app shows the `IDLE` state, and the next request brings the pod back, held for up to `cold_start_timeout_seconds`.
+        """
+        return self._idle_scale_to_zero
+
+    @public
+    @property
+    def idle_cooldown_seconds(self) -> int | None:
+        """Seconds without a request before the app scales to zero, when `idle_scale_to_zero` is set."""
+        return self._idle_cooldown_seconds
+
+    @public
+    @property
+    def cold_start_timeout_seconds(self) -> int | None:
+        """Seconds the first request waits for the app to wake, when `idle_scale_to_zero` is set."""
+        return self._cold_start_timeout_seconds
+
+    @public
+    @property
     def public_url(self) -> str | None:
         """Public share URL.
 
@@ -387,8 +469,118 @@ class App:
 
     @public
     @usage._method_logger
+    def register_table(self, name: str) -> str:
+        """Reserve a table name for the app in the project's online database, without creating the table.
+
+        The app's database user is granted the registered table only, and the table is dropped when the app is deleted.
+        [`create_table`][hopsworks_common.app.App.create_table] registers the table too, so most apps only call that.
+        Registering a table the app already owns does nothing, so it is safe on every start.
+
+        Parameters:
+            name: The table name, with or without the app's `table_prefix`; the prefix is added when missing.
+
+        Returns:
+            The full table name to use in SQL.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the name is not lowercase `a-z`, `0-9` and `_`, is longer than 64 characters with the prefix, already exists as another table, or belongs to another app, or if the app does not register tables (`managed_db` is False).
+        """
+        registered = self._app_api._register_table(
+            self._name, self._full_table_name(name)
+        )
+        return registered["name"]
+
+    def _full_table_name(self, name: str) -> str:
+        if self._table_prefix is None or name.startswith(self._table_prefix):
+            return name
+        return self._table_prefix + name
+
+    @public
+    @usage._method_logger
+    def create_table(self, name: str, definition: str) -> str:
+        """Create a table of the app in the project's online database, stored on disk in RonDB.
+
+        The app's database user cannot create or alter tables, so Hopsworks runs the `CREATE TABLE`, registering the table first.
+        Hopsworks sets the engine, tablespace and `STORAGE DISK`; RonDB keeps primary-key and other indexed columns in memory.
+        Creating a table that exists does nothing, so it is safe on every start.
+
+        ```python
+        notes = app.create_table("notes", "id BIGINT AUTO_INCREMENT PRIMARY KEY, note TEXT")
+        ```
+
+        Parameters:
+            name: The table name, with or without the app's `table_prefix`; the prefix is added when missing.
+            definition: The columns and indexes, as written inside the parentheses of `CREATE TABLE`.
+
+        Returns:
+            The full table name to use in SQL.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the name is refused as by [`register_table`][hopsworks_common.app.App.register_table], if the definition sets an engine, tablespace or storage, or if the database refuses the definition.
+        """
+        table_name = self._full_table_name(name)
+        created = self._app_api._register_table(self._name, table_name, definition)
+        return created["name"]
+
+    @public
+    @usage._method_logger
+    def alter_table(self, name: str, alteration: str) -> None:
+        """Change a table of the app, for example to add a column; the table stays on disk.
+
+        ```python
+        app.alter_table("notes", "ADD COLUMN score DOUBLE")
+        ```
+
+        Parameters:
+            name: The table name, with or without the app's `table_prefix`.
+            alteration: What follows `ALTER TABLE <name>`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the app does not own the table, if the alteration sets an engine, tablespace or storage, or if the database refuses it.
+        """
+        self._app_api._alter_table(self._name, self._full_table_name(name), alteration)
+
+    @public
+    @usage._method_logger
+    def get_tables(self) -> list[dict]:
+        """List the tables the app registered.
+
+        Returns:
+            One dict per table with `name`, `registered`, `created` (False until the app runs its `CREATE TABLE`) and `rows` (an estimate).
+        """
+        return self._app_api._get_tables(self._name)
+
+    @public
+    @usage._method_logger
+    def get_table(self, name: str) -> dict:
+        """Get a registered table with its columns.
+
+        Parameters:
+            name: The full table name.
+
+        Returns:
+            The table dict of `get_tables` plus `columns`, each with `name`, `type`, `nullable`, `primary` and `default_value`.
+        """
+        return humps.decamelize(self._app_api._get_table(self._name, name))
+
+    @public
+    @usage._method_logger
+    def preview_table(self, name: str, limit: int = 20) -> dict:
+        """Read the first rows of a registered table.
+
+        Parameters:
+            name: The full table name.
+            limit: How many rows, at most 100.
+
+        Returns:
+            A dict with `columns`, the column names, and `rows`, a list of rows whose values are strings or `None`.
+        """
+        return self._app_api._preview_table(self._name, name, limit)
+
+    @public
+    @usage._method_logger
     def make_public(self) -> str | None:
-        """Make this Streamlit app reachable without a Hopsworks login.
+        """Make this app reachable without a Hopsworks login.
 
         Returns:
             `str`. The share URL to give out.
@@ -397,7 +589,7 @@ class App:
             Anyone with the link can use the app with the app's own credentials,
             data access, and secrets.
             This is not read-only access.
-            Only data owners can enable it, and only Streamlit apps are eligible.
+            Only data owners can enable it, and only when the administrator allows public apps.
         """
         _logger.info("Making app public: %s", self._name)
         response = self._app_api._set_public(self._name, True)
@@ -519,6 +711,13 @@ class App:
         self._entrypoint_script = updated._entrypoint_script
         self._public_access = updated._public_access
         self._public_token = updated._public_token
+        self._db_access = updated._db_access
+        self._managed_db = updated._managed_db
+        self._table_prefix = updated._table_prefix
+        self._table_count = updated._table_count
+        self._idle_scale_to_zero = updated._idle_scale_to_zero
+        self._idle_cooldown_seconds = updated._idle_cooldown_seconds
+        self._cold_start_timeout_seconds = updated._cold_start_timeout_seconds
         return self
 
     def _wait_for_serving(self) -> App:

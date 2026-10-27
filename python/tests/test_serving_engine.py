@@ -14,14 +14,43 @@
 #   limitations under the License.
 #
 
+import concurrent.futures
+import os
+import threading
+import time
+
+import pytest
+from hopsworks_common.client.exceptions import ModelServingException
+from hsml.constants import PREDICTOR_STATE
 from hsml.engine import serving_engine
 
 
 class _FakePredictor:
-    def __init__(self, script_file=None, config_file=None, transformer=None):
+    def __init__(
+        self,
+        script_file=None,
+        config_file=None,
+        transformer=None,
+        default_predictor=False,
+        schema=None,
+        env_vars=None,
+    ):
         self.script_file = script_file
         self.config_file = config_file
         self.transformer = transformer
+        self.default_predictor = default_predictor
+        self._schema = schema
+        self.env_vars = env_vars
+
+    @property
+    def schema(self):
+        return self._schema
+
+    @property
+    def schema_id(self):
+        if self._schema is not None:
+            return self._schema.schema_id
+        return (self.env_vars or {}).get("SERVING_SCHEMA_ID")
 
 
 class _FakeTransformer:
@@ -80,6 +109,36 @@ class TestUploadLocalServingFiles:
             predictor.transformer.script_file
             == "hopsfs::transformer.script_file::./transformer.py"
         )
+
+    def test_a_git_backed_script_is_left_as_the_path_inside_the_repository(
+        self, mocker
+    ):
+        # The pod clones the repository and runs the script from it, so the
+        # path must reach the backend exactly as given: resolving it would
+        # either fail (the cwd does not hold the repository) or upload a copy
+        # and rewrite the field to an absolute HopsFS path the backend refuses.
+        eng = self._engine(mocker)
+        mock_resolve = mocker.patch.object(
+            serving_engine,
+            "_resolve_serving_file",
+            side_effect=lambda engine, name, p, **kw: f"hopsfs::{p}",
+        )
+
+        predictor = _FakePredictor(
+            script_file="chinook/support_agent.py",
+            config_file="./c.yaml",
+            transformer=None,
+        )
+        predictor.git_url = "https://github.com/org/repo.git"
+        deployment = _FakeDeployment(predictor, name="my_dep")
+
+        eng._upload_local_serving_files(deployment)
+
+        assert predictor.script_file == "chinook/support_agent.py"
+        assert predictor.config_file == "hopsfs::./c.yaml"
+        assert [c.kwargs["field_name"] for c in mock_resolve.mock_calls] == [
+            "config_file"
+        ]
 
     def test_each_field_uploads_to_its_own_subdir(self, mocker):
         # Per-role subdirs prevent basename collisions when predictor and
@@ -229,5 +288,1239 @@ class TestSave:
         eng._save(deployment, await_update=0)
 
         mock_upload.assert_called_once_with(deployment)
-        eng._update.assert_called_once_with(deployment, 0)
+        eng._update.assert_called_once_with(deployment, 0, False)
         eng._create.assert_not_called()
+
+    def test_new_version_is_passed_to_update(self, mocker):
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+
+        deployment = _FakeDeployment(
+            _FakePredictor(script_file="./p.py"), name="dep", id=7
+        )
+
+        eng._save(deployment, await_update=0, new_version=True)
+
+        eng._update.assert_called_once_with(deployment, 0, True)
+
+    def test_new_version_rejected_on_create(self, mocker):
+        eng = self._engine(mocker)
+        mock_upload = mocker.patch.object(eng, "_upload_local_serving_files")
+        mock_publish = mocker.patch.object(eng, "_publish_schema")
+
+        deployment = _FakeDeployment(
+            _FakePredictor(script_file="./p.py"), name="dep", id=None
+        )
+
+        with pytest.raises(ModelServingException):
+            eng._save(deployment, await_update=0, new_version=True)
+        # Rejected before anything is written to HopsFS.
+        mock_upload.assert_not_called()
+        mock_publish.assert_not_called()
+        eng._create.assert_not_called()
+
+
+class TestVersionedSave:
+    """A new version is only asked of a backend that keeps versions, and the refusal comes before any write."""
+
+    def _engine(self, mocker, supports):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._supports_versions.return_value = supports
+        eng._update = mocker.Mock()
+        eng._create = mocker.Mock()
+        return eng
+
+    def _deployment(self):
+        return _FakeDeployment(_FakePredictor(script_file="./p.py"), name="dep", id=7)
+
+    def test_old_backend_is_rejected_before_any_write(self, mocker):
+        eng = self._engine(mocker, supports=False)
+        mock_upload = mocker.patch.object(eng, "_upload_local_serving_files")
+        mock_publish = mocker.patch.object(eng, "_publish_schema")
+
+        with pytest.raises(ModelServingException, match="nothing was saved"):
+            eng._save(self._deployment(), await_update=0, new_version=True)
+        mock_upload.assert_not_called()
+        mock_publish.assert_not_called()
+        eng._update.assert_not_called()
+
+    def test_in_place_save_does_not_probe(self, mocker):
+        eng = self._engine(mocker, supports=False)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        mocker.patch.object(eng, "_publish_schema")
+        deployment = self._deployment()
+
+        eng._save(deployment, await_update=0)
+
+        eng._serving_api._supports_versions.assert_not_called()
+        eng._update.assert_called_once_with(deployment, 0, False)
+
+
+class TestRollback:
+    """Rollback goes through the update state gate, except that it is accepted while updating."""
+
+    def _engine(self, mocker, status):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._get_versions.return_value = []
+        eng._poll_deployment_status = mocker.Mock(return_value=None)
+        deployment = mocker.Mock()
+        deployment.get_state.return_value = mocker.Mock(status=status)
+        deployment.get_url.return_value = "http://x"
+        return eng, deployment
+
+    @pytest.mark.parametrize(
+        "status", [PREDICTOR_STATE.STATUS_RUNNING, PREDICTOR_STATE.STATUS_UPDATING]
+    )
+    def test_running_or_updating_deployment_is_rolled_and_awaited(self, mocker, status):
+        eng, deployment = self._engine(mocker, status)
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_called_once_with(deployment, 2)
+        eng._poll_deployment_status.assert_called_once_with(
+            deployment, PREDICTOR_STATE.STATUS_RUNNING, 9
+        )
+
+    def test_rollback_to_the_active_version_does_nothing(self, mocker, capsys):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_RUNNING)
+        eng._serving_api._get_versions.return_value = [
+            mocker.Mock(version=2, active=True),
+            mocker.Mock(version=1, active=False),
+        ]
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_not_called()
+        assert "Deployment updated" not in capsys.readouterr().out
+
+    def test_await_none_does_not_wait(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_RUNNING)
+
+        eng._rollback(deployment, 2, None)
+
+        eng._poll_deployment_status.assert_called_once_with(
+            deployment, PREDICTOR_STATE.STATUS_RUNNING, 0
+        )
+
+    def test_stopped_deployment_only_moves_the_pointer(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_STOPPED)
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_called_once_with(deployment, 2)
+        eng._poll_deployment_status.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            PREDICTOR_STATE.STATUS_STARTING,
+            PREDICTOR_STATE.STATUS_STOPPING,
+        ],
+    )
+    def test_busy_deployment_is_rejected(self, mocker, status):
+        eng, deployment = self._engine(mocker, status)
+
+        with pytest.raises(ModelServingException):
+            eng._rollback(deployment, 2, 9)
+        eng._serving_api._rollback.assert_not_called()
+
+    def test_save_is_still_rejected_while_updating(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_UPDATING)
+
+        with pytest.raises(ModelServingException):
+            eng._update(deployment, 9)
+        eng._serving_api._put.assert_not_called()
+
+
+class TestPollDeploymentStatus:
+    @pytest.mark.parametrize("await_status", [1, 4])
+    def test_short_await_polls_once_then_raises(self, mocker, await_status):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        mocker.patch("time.sleep")
+        eng._get_available_instances = mocker.Mock(return_value=0)
+        deployment = mocker.Mock()
+        deployment.get_state.return_value = mocker.Mock(
+            status=PREDICTOR_STATE.STATUS_UPDATING
+        )
+
+        with pytest.raises(ModelServingException):
+            eng._poll_deployment_status(
+                deployment, PREDICTOR_STATE.STATUS_RUNNING, await_status
+            )
+        assert deployment.get_state.call_count == 1
+
+
+class TestSchemaPublishing:
+    """The stub and the content-addressed schema file are in place before the PUT."""
+
+    def _engine(self, mocker):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._engine = mocker.Mock()
+        eng._engine._dataset_api.exists.return_value = False
+        eng._serving_api = mocker.Mock()
+        eng._dataset_api = mocker.Mock()
+        eng._update = mocker.Mock()
+        eng._create = mocker.Mock()
+        return eng
+
+    def test_stub_uploaded_for_default_predictor_without_script(self, mocker):
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        resolve = mocker.patch(
+            "hsml.engine.serving_engine._resolve_serving_file",
+            return_value="/Projects/p/Deployments/dep/resources/predictor/default_predictor.py",
+        )
+        predictor = _FakePredictor(default_predictor=True)
+        deployment = _FakeDeployment(predictor, name="dep")
+
+        eng._save(deployment, await_update=0)
+
+        assert predictor.script_file.endswith("default_predictor.py")
+        assert resolve.call_args.kwargs["subdir"] == "predictor"
+        assert resolve.call_args.args[2].endswith("default_predictor.py")
+        eng._create.assert_called_once_with(deployment)
+
+    def test_custom_script_is_kept(self, mocker):
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        predictor = _FakePredictor(
+            script_file="/Projects/p/mine.py", default_predictor=True
+        )
+
+        eng._save(_FakeDeployment(predictor, name="dep"), await_update=0)
+
+        assert predictor.script_file == "/Projects/p/mine.py"
+
+    def test_schema_written_once_and_env_var_set_before_put(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        mocker.patch("hsml.engine.serving_engine._ensure_dataset_dir")
+        schema = DeploymentSchema(serving_keys=["k"])
+        predictor = _FakePredictor(
+            script_file="/Projects/p/s.py", schema=schema, env_vars={"A": "1"}
+        )
+        order = []
+        eng._engine._upload.side_effect = lambda *a, **k: order.append("upload")
+        eng._create.side_effect = lambda d: order.append("put")
+
+        eng._save(_FakeDeployment(predictor, name="dep"), await_update=0)
+
+        assert order == ["upload", "upload", "upload", "put"]
+        uploaded = [c.args for c in eng._engine._upload.call_args_list]
+        assert {remote for _, remote in uploaded} == {
+            "Deployments/dep/resources/schema"
+        }
+        assert [os.path.basename(local) for local, _ in uploaded] == [
+            f"{schema.schema_id}.json",
+            f"{schema.schema_id}.jsonschema.json",
+            f"{schema.schema_id}.openapi.json",
+        ]
+        assert predictor.env_vars == {
+            "A": "1",
+            "SERVING_SCHEMA_ID": schema.schema_id,
+            "SERVING_SCHEMA_ENFORCER": "predictor",
+        }
+
+        eng._engine._dataset_api.exists.return_value = True
+        eng._engine._upload.reset_mock()
+        eng._save(_FakeDeployment(predictor, name="dep", id=3), await_update=0)
+        eng._engine._upload.assert_not_called()
+
+    def test_renderings_use_the_configured_batch_limit(self, mocker):
+        import json
+
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        mocker.patch("hsml.engine.serving_engine._ensure_dataset_dir")
+        uploaded = {}
+
+        def upload(local, remote, **k):
+            with open(local) as f:
+                uploaded[os.path.basename(local)] = f.read()
+
+        eng._engine._upload.side_effect = upload
+        schema = DeploymentSchema(serving_keys=["k"])
+        predictor = _FakePredictor(
+            script_file="/Projects/p/s.py",
+            schema=schema,
+            env_vars={"SERVING_MAX_BATCH_ROWS": "16"},
+        )
+
+        eng._save(_FakeDeployment(predictor, name="dep"), await_update=0)
+
+        # the limit is contract content: a new id is published and enforced
+        published = predictor._schema
+        assert published.max_batch_rows == 16
+        assert published.schema_id != schema.schema_id
+        assert predictor.env_vars["SERVING_SCHEMA_ID"] == published.schema_id
+        rendered = json.loads(uploaded[f"{published.schema_id}.jsonschema.json"])
+        batches = rendered["request"]["properties"]["instances"]["oneOf"]
+        assert {b["maxItems"] for b in batches} == {16}
+        assert json.loads(uploaded[f"{published.schema_id}.json"])["maxBatchRows"] == 16
+
+    def test_published_schema_pins_logging_identity_and_clears_previous_view(
+        self, mocker
+    ):
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_write_schema_documents")
+        schema = DeploymentSchema(
+            serving_keys=["k"],
+            feature_view={"name": "features", "version": 2},
+            training_dataset_version=3,
+        )
+        predictor = _FakePredictor(
+            schema=schema,
+            env_vars={"SERVING_FEATURE_VIEW_NAME": "old_view", "OTHER": "kept"},
+        )
+        deployment = _FakeDeployment(predictor, name="dep")
+        eng._publish_schema(deployment)
+        assert predictor.env_vars["SERVING_SCHEMA_ID"] == schema.schema_id
+        assert predictor.env_vars["SERVING_FEATURE_VIEW_NAME"] == "features"
+        assert predictor.env_vars["SERVING_FEATURE_VIEW_VERSION"] == "2"
+        assert predictor.env_vars["SERVING_TRAINING_DATASET_VERSION"] == "3"
+        predictor._schema = DeploymentSchema(passed_features=["k"])
+        eng._publish_schema(deployment)
+        assert "SERVING_FEATURE_VIEW_NAME" not in predictor.env_vars
+        assert "SERVING_FEATURE_VIEW_VERSION" not in predictor.env_vars
+        assert "SERVING_TRAINING_DATASET_VERSION" not in predictor.env_vars
+        assert predictor.env_vars["OTHER"] == "kept"
+
+    def test_publish_propagates_an_unloaded_schema_to_a_new_transformer(self, mocker):
+        """A fetched deployment carries only the id; attaching a transformer must hand it over."""
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        transformer = _FakeTransformer(script_file="/Projects/p/t.py")
+        transformer.env_vars = None
+        predictor = _FakePredictor(
+            script_file="/Projects/p/s.py",
+            schema=None,
+            env_vars={"SERVING_SCHEMA_ID": "0123456789abcdef"},
+            transformer=transformer,
+        )
+
+        eng._save(_FakeDeployment(predictor, name="dep"), await_update=0)
+
+        assert transformer.env_vars["SERVING_SCHEMA_ID"] == "0123456789abcdef"
+        assert transformer.env_vars["SERVING_SCHEMA_ENFORCER"] == "transformer"
+        assert predictor.env_vars["SERVING_SCHEMA_ENFORCER"] == "transformer"
+        eng._engine._upload.assert_not_called()
+
+    def test_publish_pins_the_enforcer_role_in_the_revision(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        mocker.patch("hsml.engine.serving_engine._ensure_dataset_dir")
+        alone = _FakePredictor(
+            script_file="/Projects/p/s.py", schema=DeploymentSchema(serving_keys=["k"])
+        )
+
+        eng._save(_FakeDeployment(alone, name="dep"), await_update=0)
+
+        assert alone.env_vars["SERVING_SCHEMA_ENFORCER"] == "predictor"
+
+    def test_transformer_gets_schema_id_too(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        mocker.patch("hsml.engine.serving_engine._ensure_dataset_dir")
+        schema = DeploymentSchema(serving_keys=["k"])
+        transformer = _FakeTransformer(script_file="/Projects/p/t.py")
+        transformer.env_vars = {"T": "1"}
+        predictor = _FakePredictor(
+            script_file="/Projects/p/s.py", schema=schema, transformer=transformer
+        )
+
+        eng._save(_FakeDeployment(predictor, name="dep"), await_update=0)
+
+        assert predictor.env_vars == {
+            "SERVING_SCHEMA_ID": schema.schema_id,
+            "SERVING_SCHEMA_ENFORCER": "transformer",
+        }
+        assert transformer.env_vars == {
+            "T": "1",
+            "SERVING_SCHEMA_ID": schema.schema_id,
+            "SERVING_SCHEMA_ENFORCER": "transformer",
+        }
+
+    def test_schema_dir_removed_on_delete(self, mocker):
+        eng = self._engine(mocker)
+        eng._engine._dataset_api.exists.return_value = True
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=mocker.Mock(_project_name="p"),
+        )
+        deployment = mocker.Mock()
+        deployment.name = "dep"
+        deployment.get_state.return_value.status = "Stopped"
+
+        eng._delete(deployment)
+
+        eng._engine._dataset_api.remove.assert_called_once_with(
+            "/Projects/p/Deployments/dep/resources/schema"
+        )
+
+    def test_read_schema_from_backend(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        schema = DeploymentSchema(serving_keys=["k"])
+        eng._serving_api._get_schema.return_value = schema.to_dict()
+        predictor = mocker.Mock(id=7)
+
+        assert eng._read_schema(predictor, schema.schema_id) == schema
+        eng._serving_api._get_schema.assert_called_once_with(7, schema.schema_id)
+        eng._dataset_api.read_content.assert_not_called()
+
+    def test_read_schema_backend_says_gone(self, mocker):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        eng = self._engine(mocker)
+        response = mocker.Mock(status_code=404)
+        response.json.return_value = {"errorCode": 240037, "errorMsg": "gone"}
+        eng._serving_api._get_schema.side_effect = RestAPIError("url", response)
+
+        assert eng._read_schema(mocker.Mock(id=7), "abc") is None
+        eng._dataset_api.read_content.assert_not_called()
+
+    def test_read_schema_other_404_codes_propagate(self, mocker):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        eng = self._engine(mocker)
+        response = mocker.Mock(status_code=404)
+        response.json.return_value = {
+            "errorCode": 240000,
+            "errorMsg": "no such deployment",
+        }
+        eng._serving_api._get_schema.side_effect = RestAPIError("url", response)
+
+        with pytest.raises(RestAPIError):
+            eng._read_schema(mocker.Mock(id=7), "abc")
+        eng._dataset_api.read_content.assert_not_called()
+
+    @pytest.mark.parametrize("predictor_id", [None, 7])
+    def test_read_schema_falls_back_to_dataset(self, mocker, predictor_id):
+        from hopsworks_common.client.exceptions import RestAPIError
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=mocker.Mock(_project_name="p"),
+        )
+        # a backend without the endpoint answers a bare 404 without an error code
+        response = mocker.Mock(status_code=404)
+        response.json.side_effect = ValueError("not json")
+        eng._serving_api._get_schema.side_effect = RestAPIError("url", response)
+        schema = DeploymentSchema(serving_keys=["k"])
+        eng._dataset_api.read_content.return_value = mocker.Mock(
+            content=schema.json().encode()
+        )
+        predictor = mocker.Mock(id=predictor_id)
+        predictor.name = "dep"
+
+        assert eng._read_schema(predictor, schema.schema_id) == schema
+        eng._dataset_api.read_content.assert_called_once_with(
+            f"/Projects/p/Deployments/dep/resources/schema/{schema.schema_id}.json"
+        )
+        eng._dataset_api.read_content.return_value = None
+        assert eng._read_schema(predictor, "gone") is None
+
+    def test_read_schema_other_backend_errors_propagate(self, mocker):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        eng = self._engine(mocker)
+        response = mocker.Mock(status_code=500)
+        response.json.return_value = {"errorCode": 240002}
+        eng._serving_api._get_schema.side_effect = RestAPIError("url", response)
+
+        with pytest.raises(RestAPIError):
+            eng._read_schema(mocker.Mock(id=7), "abc")
+
+
+class TestPredictValidation:
+    def _engine(self, mocker):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._send_inference_request.return_value = {"predictions": [1]}
+        return eng
+
+    def _deployment(self, mocker, schema):
+        import datetime
+
+        d = mocker.Mock()
+        d.name = "dep"
+        d.model_server = "PYTHON"
+        d.api_protocol = "REST"
+        d.predictor.serving_tool = "KSERVE"
+        d.schema = schema
+        self.now = datetime.datetime(2026, 9, 6, 10, 0, 0)
+        return d
+
+    def test_rows_encoded_and_validated(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
+
+        eng = self._engine(mocker)
+        schema = DeploymentSchema(
+            serving_keys=[{"name": "k", "type": "bigint"}],
+            passed_features=[{"name": "ts", "type": "timestamp"}],
+        )
+        d = self._deployment(mocker, schema)
+
+        eng._predict(d, None, [{"k": 1, "ts": self.now}])
+
+        payload = eng._serving_api._send_inference_request.call_args.args[1]
+        assert payload == {"instances": [{"k": 1, "ts": "2026-09-06T10:00:00Z"}]}
+
+        with pytest.raises(DeploymentSchemaError, match="'k' must not be null"):
+            eng._predict(d, {"instances": [[None, 1]]}, None)
+        eng._predict(d, {"instances": [[None, 1]]}, None, validate=False)
+
+    def test_grpc_rows_are_validated_and_sent_as_tensors(self, mocker):
+        from hsml import deployment_schema as deployment_schema
+        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
+
+        eng = self._engine(mocker)
+        eng._serving_api._send_inference_request.return_value = [
+            {"name": "predictions", "shape": [1], "datatype": "FP64", "data": [0.25]}
+        ]
+        schema = DeploymentSchema(
+            serving_keys=[{"name": "k", "type": "bigint"}],
+            passed_features=[{"name": "ts", "type": "timestamp"}],
+        )
+        d = self._deployment(mocker, schema)
+        d.api_protocol = "GRPC"
+
+        assert eng._predict(d, None, [{"k": 1, "ts": self.now}]) == {
+            "predictions": [0.25]
+        }
+
+        tensors = eng._serving_api._send_inference_request.call_args.args[1]
+        assert [(t.name, t.datatype, t.data) for t in tensors] == [
+            ("k", "INT64", [1]),
+            ("ts", "BYTES", ['"2026-09-06T10:00:00Z"']),
+        ]
+
+        with pytest.raises(DeploymentSchemaError, match="'k' must not be null"):
+            eng._predict(d, None, [[None, self.now]])
+
+        # an optional field no row carries stays absent instead of becoming null
+        schema._extra_logging_features = deployment_schema._to_fields(["note"])
+        eng._predict(d, None, [{"k": 1, "ts": self.now}])
+        tensors = eng._serving_api._send_inference_request.call_args.args[1]
+        assert [t.name for t in tensors] == ["k", "ts"]
+
+    def test_grpc_takes_the_rest_data_form_and_refuses_both_at_once(self, mocker):
+        """The REST data form describes rows on gRPC too.
+
+        A schema-backed gRPC deployment encodes it rather than refusing the
+        dictionary and naming a parameter that is already in use.
+        """
+        from hopsworks_common.client.exceptions import ModelServingException
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        eng._serving_api._send_inference_request.return_value = [
+            {"name": "predictions", "shape": [1], "datatype": "FP64", "data": [0.25]}
+        ]
+        schema = DeploymentSchema(serving_keys=[{"name": "k", "type": "bigint"}])
+        d = self._deployment(mocker, schema)
+        d.api_protocol = "GRPC"
+
+        assert eng._predict(d, {"instances": [{"k": 1}]}, None) == {
+            "predictions": [0.25]
+        }
+        tensors = eng._serving_api._send_inference_request.call_args.args[1]
+        assert [(t.name, t.datatype, t.data) for t in tensors] == [("k", "INT64", [1])]
+
+        with pytest.raises(ModelServingException, match="cannot be provided together"):
+            eng._predict(d, {"instances": [{"k": 1}]}, [{"k": 1}])
+        with pytest.raises(ModelServingException, match="missing 'instances' key"):
+            eng._predict(d, {"rows": [{"k": 1}]}, None)
+
+    def test_configured_batch_limit_applies_client_side(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
+
+        eng = self._engine(mocker)
+        schema = DeploymentSchema(
+            serving_keys=[{"name": "k", "type": "bigint"}], max_batch_rows=1
+        )
+        d = self._deployment(mocker, schema)
+
+        with pytest.raises(
+            DeploymentSchemaError, match="batch has 2 rows, the limit is 1"
+        ):
+            eng._predict(d, None, [{"k": 1}, {"k": 2}])
+        eng._predict(d, None, [{"k": 1}])
+
+    def test_no_schema_or_raw_data_skips_validation(self, mocker):
+        eng = self._engine(mocker)
+        d = self._deployment(mocker, None)
+        eng._predict(d, None, [{"anything": 1}])
+        d.api_protocol = "GRPC"
+        d.schema = mocker.Mock()
+        mocker.patch.object(eng, "_validate_inference_payload")
+        mocker.patch.object(
+            eng, "_build_inference_payload", return_value="grpc-payload"
+        )
+        eng._predict(d, "data", None)
+        d.schema.validate_instances.assert_not_called()
+
+    def test_single_dict_input_is_one_row(self, mocker):
+        eng = self._engine(mocker)
+
+        assert eng._parse_inference_inputs("REST", {"k": 1}) == {
+            "instances": [{"k": 1}]
+        }
+        assert eng._parse_inference_inputs("REST", 1.5) == {"instances": [[1.5]]}
+        assert eng._parse_inference_inputs("REST", [1, 2]) == {"instances": [[1, 2]]}
+
+
+class TestPredictErrorMapping:
+    def _engine_raising(self, mocker, status, body):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = mocker.Mock(status_code=status)
+        response.json.return_value = body
+        error = RestAPIError.__new__(RestAPIError)
+        error.response = response
+        error.error_code = None
+        error.args = ("boom",)
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._send_inference_request.side_effect = error
+        return eng, error
+
+    def _deployment(self, mocker):
+        d = mocker.Mock()
+        d.model_server = "PYTHON"
+        d.api_protocol = "REST"
+        d.predictor.serving_tool = "KSERVE"
+        d.schema = None
+        return d
+
+    def test_bare_404_means_not_running(self, mocker):
+        from hopsworks_common.client.exceptions import ModelServingException
+
+        eng, _ = self._engine_raising(mocker, 404, {"error": "model not found"})
+        with pytest.raises(ModelServingException, match="not created or running"):
+            eng._predict(self._deployment(mocker), None, [[1]])
+
+    def test_structured_404_is_kept(self, mocker):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        eng, error = self._engine_raising(
+            mocker,
+            404,
+            {"detail": {"code": "ENTITY_NOT_FOUND", "message": "x", "errors": []}},
+        )
+        with pytest.raises(RestAPIError) as info:
+            eng._predict(self._deployment(mocker), None, [[1]])
+        assert info.value is error
+        assert "get_logs" in info.value.args[0]
+
+
+class TestStartWithoutWaiting:
+    def test_start_with_zero_wait_returns_before_the_state_is_known(self, mocker):
+        """`start(await_running=0)` used to dereference the None the poller returns for a zero wait."""
+        from hopsworks_common.constants import PREDICTOR_STATE
+        from hsml.engine import serving_engine
+
+        eng = serving_engine.ServingEngine()
+        eng._serving_api = mocker.Mock()
+        eng._check_status = mocker.Mock(
+            return_value=(False, mocker.Mock(status=PREDICTOR_STATE.STATUS_STOPPED))
+        )
+        eng._get_available_instances = mocker.Mock(return_value=1)
+        eng._get_starting_progress = mocker.Mock(return_value=(0, ""))
+        deployment = mocker.Mock(
+            name="dep", model_server="PYTHON", has_model=True, requested_instances=1
+        )
+
+        eng._start(deployment, await_status=0)
+
+        eng._serving_api._post.assert_called_once()
+
+
+class TestStartAndSaveAwaitTheRoute:
+    """start() and save() wait for the ingress gateway to route a deployment that just reported Running."""
+
+    @pytest.fixture
+    def clock(self, mocker):
+        # The engine's own reference to time, not the time module: any other thread's
+        # time.sleep would otherwise advance this clock.
+        now = [0.0]
+        fake_time = mocker.Mock(wraps=time)
+        fake_time.monotonic.side_effect = lambda: now[0]
+        fake_time.sleep.side_effect = lambda seconds: now.__setitem__(
+            0, now[0] + seconds
+        )
+        mocker.patch.object(serving_engine, "time", fake_time)
+        return now
+
+    def _engine(self, mocker, routed):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._is_routed.side_effect = routed
+        return eng
+
+    def _deployment(self, mocker, serving_tool="KSERVE", api_protocol="REST"):
+        deployment = mocker.Mock(
+            model_server="PYTHON", has_model=True, api_protocol=api_protocol
+        )
+        deployment.name = "fraud"
+        deployment.predictor.serving_tool = serving_tool
+        return deployment
+
+    def test_a_routed_deployment_costs_one_probe(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [True])
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 1
+        assert clock[0] == 0
+        assert not recwarn.list
+
+    def test_returns_once_the_route_appears(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [False, False, True])
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 3
+        assert clock[0] == 1.5  # 0.5 + 1
+        assert not recwarn.list
+
+    def test_a_route_that_never_appears_warns_after_the_cap(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+
+        with pytest.warns(UserWarning, match="fraud"):
+            eng._await_route(self._deployment(mocker), 600)
+
+        assert clock[0] == serving_engine._ROUTE_WAIT_MAX_SECONDS
+
+    def test_the_wait_stays_within_the_callers_budget(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+
+        with pytest.warns(UserWarning):
+            eng._await_route(self._deployment(mocker), 5)
+
+        assert clock[0] == 5
+
+    def test_an_exhausted_budget_sends_no_probe(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+
+        eng._await_route(self._deployment(mocker), -3)
+
+        eng._serving_api._is_routed.assert_not_called()
+        assert not recwarn.list
+
+    def test_each_probe_waits_at_most_the_remaining_budget(self, mocker, clock):
+        calls = []
+
+        def probe(deployment, timeout):
+            calls.append((clock[0], timeout))
+            return False
+
+        eng = self._engine(mocker, probe)
+
+        with pytest.warns(UserWarning):
+            eng._await_route(self._deployment(mocker), 7)
+
+        assert [timeout for _, timeout in calls] == [5, 5, 5, 3.5]
+        assert all(timeout <= 7 - at for at, timeout in calls)
+
+    def test_a_probe_that_times_out_is_retried(self, mocker, clock, recwarn):
+        answers = iter([False, True])
+
+        def probe(deployment, timeout):
+            clock[0] += timeout  # the request used its whole timeout
+            return next(answers)
+
+        eng = self._engine(mocker, probe)
+
+        eng._await_route(self._deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+        assert not recwarn.list
+
+    def test_probes_that_keep_timing_out_stay_within_the_budget(self, mocker, clock):
+        def probe(deployment, timeout):
+            clock[0] += timeout
+            return False
+
+        eng = self._engine(mocker, probe)
+
+        with pytest.warns(UserWarning, match="does not route"):
+            eng._await_route(self._deployment(mocker), 12)
+
+        assert clock[0] == 12
+
+    def test_a_grpc_deployment_is_probed_too(self, mocker, clock, recwarn):
+        eng = self._engine(mocker, [True])
+
+        eng._await_route(self._deployment(mocker, api_protocol="GRPC"), 600)
+
+        assert eng._serving_api._is_routed.call_count == 1
+        assert not recwarn.list
+
+    def test_a_failing_probe_only_warns(self, mocker, clock):
+        import requests
+
+        eng = self._engine(
+            mocker, requests.exceptions.ConnectionError("no route to host")
+        )
+
+        with pytest.warns(UserWarning, match="no route to host"):
+            eng._await_route(self._deployment(mocker), 600)
+
+    def test_a_deployment_served_through_hopsworks_is_not_probed(self, mocker, clock):
+        eng = self._engine(mocker, [False])
+
+        eng._await_route(self._deployment(mocker, serving_tool="DEFAULT"), 600)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def _starting_engine(self, mocker, routed, status_before):
+        eng = self._engine(mocker, routed)
+        eng._check_status = mocker.Mock(
+            return_value=(
+                status_before == PREDICTOR_STATE.STATUS_RUNNING,
+                mocker.Mock(status=status_before),
+            )
+        )
+        eng._get_min_starting_instances = mocker.Mock(return_value=1)
+        eng._get_starting_progress = mocker.Mock(return_value=(0, None))
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+        return eng
+
+    def test_start_waits_for_the_route_after_running(self, mocker, clock):
+        eng = self._starting_engine(
+            mocker, [False, True], PREDICTOR_STATE.STATUS_STOPPED
+        )
+
+        eng._start(self._deployment(mocker), await_status=600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+
+    def test_start_of_a_running_deployment_does_not_probe(self, mocker, clock):
+        eng = self._starting_engine(mocker, [False], PREDICTOR_STATE.STATUS_RUNNING)
+
+        eng._start(self._deployment(mocker), await_status=600)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def test_start_without_waiting_does_not_probe(self, mocker, clock):
+        eng = self._starting_engine(mocker, [False], PREDICTOR_STATE.STATUS_STOPPED)
+        eng._poll_deployment_status.return_value = None
+
+        eng._start(self._deployment(mocker), await_status=0)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def _running_deployment(self, mocker):
+        deployment = self._deployment(mocker)
+        deployment.get_state.return_value = mocker.Mock(
+            status=PREDICTOR_STATE.STATUS_RUNNING
+        )
+        return deployment
+
+    def test_save_of_a_running_deployment_waits_for_the_route(self, mocker, clock):
+        eng = self._engine(mocker, [False, True])
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+
+        eng._update(self._running_deployment(mocker), 600)
+
+        assert eng._serving_api._is_routed.call_count == 2
+
+    @pytest.mark.parametrize("await_update", [0, None])
+    def test_save_without_waiting_does_not_probe(self, mocker, clock, await_update):
+        eng = self._engine(mocker, [False])
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(return_value=None)
+
+        eng._update(self._running_deployment(mocker), await_update)
+
+        eng._serving_api._is_routed.assert_not_called()
+
+    def test_the_warning_points_at_the_callers_start(self, mocker, clock):
+        eng = self._starting_engine(
+            mocker, lambda deployment, timeout: False, PREDICTOR_STATE.STATUS_STOPPED
+        )
+
+        with pytest.warns(UserWarning, match="does not route") as warned:
+            eng._start(self._deployment(mocker), await_status=600)
+
+        assert warned[0].filename == __file__
+
+    def test_the_warning_points_at_the_callers_save(self, mocker, clock):
+        eng = self._engine(mocker, lambda deployment, timeout: False)
+        eng._put_and_check = mocker.Mock()
+        eng._poll_deployment_status = mocker.Mock(
+            return_value=mocker.Mock(status=PREDICTOR_STATE.STATUS_RUNNING)
+        )
+
+        with pytest.warns(UserWarning, match="does not route") as warned:
+            eng._update(self._running_deployment(mocker), 600)
+
+        assert warned[0].filename == __file__
+
+    def test_a_failing_probes_warning_points_at_the_caller(self, mocker, clock):
+        eng = self._engine(mocker, RuntimeError("boom"))
+
+        with pytest.warns(UserWarning, match="boom") as warned:
+            eng._await_route(self._deployment(mocker), 600)
+
+        assert warned[0].filename == __file__
+
+
+class TestInitPredict:
+    """Preparation happens once, off the request path, and never by predicting."""
+
+    def _engine(self, mocker):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        return eng
+
+    def _deployment(self, mocker, protocol="REST", serving_tool="KSERVE"):
+        deployment = mocker.Mock()
+        deployment.api_protocol = protocol
+        deployment.predictor.serving_tool = serving_tool
+        deployment._predict_init_lock = threading.Lock()
+        deployment._predict_prepared = False
+        return deployment
+
+    def test_rest_prepares_the_schema_and_opens_the_connection(self, mocker):
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker)
+
+        eng._init_predict(deployment)
+
+        eng._serving_api._warm_rest_transport.assert_called_once_with(deployment, False)
+        eng._serving_api._grpc_channel.assert_not_called()
+        eng._serving_api._send_inference_request.assert_not_called()
+        assert deployment._predict_prepared is True
+
+    def test_a_deployment_behind_hopsworks_warms_through_hopsworks(self, mocker):
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, serving_tool="DEFAULT")
+
+        eng._init_predict(deployment)
+
+        eng._serving_api._warm_rest_transport.assert_called_once_with(deployment, True)
+
+    def test_grpc_prepares_the_channel(self, mocker):
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, protocol="GRPC")
+
+        eng._init_predict(deployment)
+
+        eng._serving_api._grpc_channel.assert_called_once_with(deployment)
+        eng._serving_api._warm_rest_transport.assert_not_called()
+        eng._serving_api._send_inference_request.assert_not_called()
+
+    def test_preparation_never_sends_a_prediction(self, mocker):
+        """A prediction can log rows and have side effects, so it is not a warm-up."""
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker)
+
+        eng._init_predict(deployment)
+
+        assert eng._serving_api._send_inference_request.call_count == 0
+
+    def test_concurrent_callers_prepare_once(self, mocker):
+        """Four first callers must not each download the schema and open a transport."""
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, protocol="GRPC")
+        entered = []
+
+        def channel(_deployment):
+            entered.append(len(entered))
+            time.sleep(0.02)
+            return "channel"
+
+        eng._serving_api._grpc_channel.side_effect = channel
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as callers:
+            list(callers.map(lambda _: eng._init_predict(deployment), range(4)))
+
+        assert entered == [0]
+
+    def test_predict_shares_the_preparation(self, mocker):
+        """A predict racing init_predict must not prepare a second time."""
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, protocol="GRPC")
+
+        eng._init_predict(deployment)
+        eng._prepare_predict(deployment)
+
+        eng._serving_api._grpc_channel.assert_called_once_with(deployment)
+
+    def test_a_failed_preparation_is_tried_again(self, mocker):
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, protocol="GRPC")
+        eng._serving_api._grpc_channel.side_effect = [RuntimeError("down"), "channel"]
+
+        with pytest.raises(RuntimeError):
+            eng._prepare_predict(deployment)
+        assert deployment._predict_prepared is False
+
+        eng._prepare_predict(deployment)
+        assert deployment._predict_prepared is True
+
+
+class TestPredictWithoutValidation:
+    def test_a_rest_prediction_that_skips_validation_never_reads_the_schema(
+        self, mocker
+    ):
+        """validate=False must keep working when the schema artifact cannot be read."""
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._send_inference_request.return_value = {"predictions": [1]}
+        deployment = mocker.Mock()
+        deployment.api_protocol = "REST"
+        deployment.model_server = "PYTHON"
+        deployment.predictor.serving_tool = "KSERVE"
+        deployment._predict_prepared = False
+        type(deployment).schema = mocker.PropertyMock(
+            side_effect=AssertionError("the schema was read")
+        )
+
+        result = eng._predict(
+            deployment, data={"instances": [[1, 2]]}, inputs=None, validate=False
+        )
+
+        assert result == {"predictions": [1]}
+
+
+class TestWarmRestTransport:
+    def test_a_metadata_get_opens_the_connection(self, mocker):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        deployment = mocker.Mock()
+        deployment.name = "fraud"
+        deployment.project_namespace = "proj"
+
+        serving_api.ServingApi()._warm_rest_transport(deployment)
+
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
+        )
+
+    def test_an_error_answer_is_not_raised(self, mocker):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = mocker.Mock(status_code=404)
+        response.json.return_value = {"errorMsg": "no such model"}
+        istio.return_value._send_request.side_effect = RestAPIError("url", response)
+
+        serving_api.ServingApi()._warm_rest_transport(mocker.Mock())
+
+    def test_a_connection_failure_is_raised(self, mocker):
+        """Nothing was opened, so init_predict must not report the transport as ready."""
+        import requests
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        istio.return_value._send_request.side_effect = (
+            requests.exceptions.ConnectionError("no route to host")
+        )
+
+        with pytest.raises(requests.exceptions.ConnectionError):
+            serving_api.ServingApi()._warm_rest_transport(mocker.Mock())
+
+    def test_through_hopsworks_sends_nothing(self, mocker):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+
+        serving_api.ServingApi()._warm_rest_transport(mocker.Mock(), True)
+
+        istio.assert_not_called()
+
+
+class TestIsRouted:
+    """Only the gateway's empty 404 means the deployment has no route yet."""
+
+    def _probe(self, mocker, answer, api_protocol="REST", timeout=None):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        if answer is not None:
+            istio.return_value._send_request.side_effect = answer
+        deployment = mocker.Mock(api_protocol=api_protocol)
+        deployment.name = "fraud"
+        deployment.project_namespace = "proj"
+        return serving_api.ServingApi()._is_routed(deployment, timeout=timeout), istio
+
+    def _error(self, mocker, status_code, content):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = mocker.Mock(status_code=status_code, content=content)
+        response.json.return_value = {}
+        return RestAPIError("url", response)
+
+    def test_the_gateways_empty_404_is_not_routed(self, mocker):
+        routed, istio = self._probe(mocker, self._error(mocker, 404, b""))
+
+        assert routed is False
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
+            timeout=None,
+        )
+
+    def test_the_timeout_bounds_the_probe(self, mocker):
+        _, istio = self._probe(mocker, None, timeout=3.5)
+
+        assert istio.return_value._send_request.call_args.kwargs["timeout"] == 3.5
+
+    @pytest.mark.parametrize(
+        ("status_code", "content"),
+        [(200, b"{}"), (415, b"Unsupported Media Type"), (404, b"not found")],
+    )
+    def test_a_grpc_deployment_is_probed_over_rest(self, mocker, status_code, content):
+        """The route belongs to the host, so a gRPC deployment's server answers the REST metadata GET too."""
+        answer = (
+            None if status_code == 200 else self._error(mocker, status_code, content)
+        )
+
+        routed, istio = self._probe(mocker, answer, api_protocol="GRPC")
+
+        assert routed is True
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
+            timeout=None,
+        )
+
+    @pytest.mark.parametrize(
+        ("status_code", "content"),
+        [
+            (404, b'{"error": "Model with name fraud does not exist."}'),
+            (503, b""),
+            (500, b"boom"),
+        ],
+    )
+    def test_any_answer_from_the_deployment_is_routed(
+        self, mocker, status_code, content
+    ):
+        routed, _ = self._probe(mocker, self._error(mocker, status_code, content))
+
+        assert routed is True
+
+    def test_a_metadata_answer_is_routed(self, mocker):
+        routed, _ = self._probe(mocker, None)
+
+        assert routed is True
+
+    def test_without_an_istio_client_it_counts_as_routed(self, mocker):
+        from hsml.core import serving_api
+
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance", return_value=None
+        )
+
+        assert serving_api.ServingApi()._is_routed(mocker.Mock()) is True
+
+    @pytest.mark.parametrize(
+        "failure",
+        ["ConnectionError", "ConnectTimeout", "ReadTimeout"],
+    )
+    def test_an_unreachable_or_silent_gateway_is_not_routed(self, mocker, failure):
+        import requests
+
+        routed, _ = self._probe(
+            mocker, getattr(requests.exceptions, failure)("no answer"), timeout=5
+        )
+
+        assert routed is False
+
+
+class TestSchemaIsRetryable:
+    """A failed schema download must not leave the deployment permanently schema-less."""
+
+    def _predictor(self, mocker):
+        from hsml import predictor as predictor_mod
+
+        p = predictor_mod.Predictor.__new__(predictor_mod.Predictor)
+        p._schema = None
+        p._schema_loaded = False
+        p._env_vars = {"SERVING_SCHEMA_ID": "abc123"}
+        return p
+
+    def test_a_failed_read_is_tried_again(self, mocker):
+        p = self._predictor(mocker)
+        read = mocker.patch.object(
+            serving_engine.ServingEngine,
+            "_read_schema",
+            side_effect=[ConnectionError("boom"), "schema"],
+        )
+
+        with pytest.raises(ConnectionError):
+            _ = p.schema
+        assert p.schema == "schema"
+        assert read.call_count == 2
+
+    def test_a_missing_schema_is_read_once(self, mocker):
+        """A 404 is an answer, so it is cached; only a failure is retried."""
+        p = self._predictor(mocker)
+        read = mocker.patch.object(
+            serving_engine.ServingEngine, "_read_schema", return_value=None
+        )
+
+        assert p.schema is None
+        assert p.schema is None
+        assert read.call_count == 1
+
+
+def test_dropped_scaling_fields_names_what_an_older_backend_left_out():
+    from hsml.engine.serving_engine import _dropped_scaling_fields
+
+    sent = {
+        "min_instances": 0,
+        "autoscaler": "KEDA",
+        "idle_scale_to_zero": True,
+        "idle_cooldown_seconds": 60,
+        "scale_metric": "CPU",
+    }
+    # A 5.2 backend keeps everything.
+    assert _dropped_scaling_fields(sent, dict(sent)) == []
+    # A 5.1 backend keeps the fields it knows and drops the rest without a word.
+    assert _dropped_scaling_fields(
+        sent, {"min_instances": 0, "scale_metric": "CPU"}
+    ) == [
+        "autoscaler",
+        "idle_scale_to_zero",
+        "idle_cooldown_seconds",
+    ]
+    # A false idle flag is left out of the stored configuration on purpose.
+    assert (
+        _dropped_scaling_fields(
+            {"min_instances": 1, "idle_scale_to_zero": False}, {"min_instances": 1}
+        )
+        == []
+    )
+    assert _dropped_scaling_fields(None, {}) == []
+    assert _dropped_scaling_fields(sent, None) == []

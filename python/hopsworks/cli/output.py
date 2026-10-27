@@ -78,6 +78,70 @@ def read_tags(obj: Any) -> dict[str, Any]:
     return {name: getattr(t, "value", t) for name, t in (raw or {}).items()}
 
 
+def format_ts(value: Any, empty: str = "-") -> str:
+    """Render a datetime (or None) as an ISO-8601 table cell.
+
+    Args:
+        value: A datetime, or None when the timestamp is unknown.
+        empty: Fallback returned for None.
+
+    Returns:
+        An ISO-8601 string, or the ``empty`` placeholder.
+    """
+    if value is None:
+        return empty
+    if hasattr(value, "isoformat"):
+        return value.isoformat(sep=" ", timespec="seconds")
+    return str(value)
+
+
+def parse_tag_value(raw: str) -> Any:
+    """Parse a ``--value`` option as JSON, falling back to the raw string.
+
+    Tag values are arbitrary JSON; a bare word like ``prod`` is accepted as a
+    plain string rather than rejected for not being valid JSON.
+
+    Args:
+        raw: The option value as typed.
+
+    Returns:
+        The decoded JSON value, or ``raw`` unchanged.
+    """
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def render_tags(tags: Any) -> None:
+    """Render a ``{name: Tag}`` mapping as a NAME/VALUE/ADDED table or JSON.
+
+    Args:
+        tags: Mapping of tag name to SDK ``Tag`` objects (with ``value`` and
+            ``created_on``), as returned by the ``get_tags_metadata`` methods.
+    """
+    if JSON_MODE:
+        print_json(
+            {
+                k: {
+                    "value": getattr(t, "value", t),
+                    "added": format_ts(getattr(t, "created_on", None), empty=None),
+                }
+                for k, t in (tags or {}).items()
+            }
+        )
+        return
+    rows = [
+        [
+            k,
+            json.dumps(getattr(t, "value", t), default=str),
+            format_ts(getattr(t, "created_on", None)),
+        ]
+        for k, t in (tags or {}).items()
+    ]
+    print_table(["NAME", "VALUE", "ADDED"], rows)
+
+
 def format_mapping(values: Any, empty: str = "-") -> str:
     """Render a small mapping as ``key=value`` pairs for a one-line cell.
 

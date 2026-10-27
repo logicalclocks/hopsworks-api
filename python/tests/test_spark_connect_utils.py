@@ -108,7 +108,7 @@ class TestIsSparkDataframe:
     def test_classic_dataframe_returns_true(self):
         from pyspark.sql import DataFrame as ClassicDataFrame
 
-        instance = ClassicDataFrame.__new__(ClassicDataFrame)
+        instance = object.__new__(ClassicDataFrame)
         assert _is_spark_dataframe(instance) is True
 
     def test_connect_dataframe_returns_true(self):

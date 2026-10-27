@@ -43,6 +43,8 @@ from hsfs.core.type_systems import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     import great_expectations
     from hsfs.constructor.filter import Filter, Logic
     from hsfs.training_dataset import TrainingDataset
@@ -56,7 +58,10 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hopsworks_common.core.type_systems import _create_extended_type
+from hopsworks_common.core.type_systems import (
+    _convert_offline_type_to_pyarrow_type,
+    _create_extended_type,
+)
 from hopsworks_common.decorators import _uses_great_expectations, _uses_polars
 from hopsworks_common.util import _generate_fully_qualified_feature_name
 from hsfs import (
@@ -93,7 +98,7 @@ from hsfs.core.constants import (
     HAS_PYARROW,
     HAS_SQLALCHEMY,
 )
-from hsfs.core.feature_logging import LoggingMetaData
+from hsfs.core.feature_logging import FeatureLogging, LoggingMetaData
 from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
@@ -121,16 +126,19 @@ if HAS_POLARS:
 
 _logger = logging.getLogger(__name__)
 
-# Hive-partition column keying the rows of an incremental training dataset by
-# their UTC event date as a `YYYYMMDD` integer (truncated to the dataset's
-# partition precision). Must match `Engine.DATE_PARTITION_COLUMN` in the
-# Spark engine, which owns the write path.
-DATE_PARTITION_COLUMN = "_hopsworks_event_date"
 
-# Hive-partition column keying each increment by a counter when the data has
-# no event time; such datasets are appendable but not time-addressable. Must
-# match `Engine.COUNTER_PARTITION_COLUMN` in the Spark engine.
-COUNTER_PARTITION_COLUMN = "_hopsworks_append_id"
+def _request_parameters_json(row: pd.Series) -> dict:
+    """One request-parameter row as a JSON-serialisable dict.
+
+    pandas 2's `to_dict` turns `pd.NA` and `NaT` into `None`; pandas 1.x hands them over
+    as they are and `json.dumps` raises `TypeError` on the `NAType`. Both must produce
+    the same stored string, so the conversion is done here rather than left to the
+    installed pandas.
+    """
+    return {
+        name: None if value is pd.NA or value is pd.NaT else value
+        for name, value in row.to_dict().items()
+    }
 
 
 class Engine:
@@ -168,6 +176,12 @@ class Engine:
                 ),
             )
         return self._jdbc(sql_query, online_conn, dataframe_type, read_options, schema)
+
+    def _register_spine_temporary_view(self, spine: Any, alias: str) -> None:
+        raise FeatureStoreException(
+            "ASOF batch inference needs the Hopsworks Query Service, which is not available for"
+            " this query. Remove read_options={'use_spark': True} or enable the service."
+        )
 
     def _is_flyingduck_query_supported(
         self, query: query.Query, read_options: dict[str, Any] | None = None
@@ -324,6 +338,166 @@ class Engine:
             result_df = Engine._cast_columns(result_df, schema)
         return self._return_dataframe_type(result_df, dataframe_type)
 
+    def _stream_batches(
+        self,
+        sql_query: str | FsQuery,
+        connector: sc.JdbcConnector | None,
+        read_options: dict[str, Any] | None,
+        online: bool,
+        batch_size: int,
+        arrow_flight_config: dict[str, Any] | None = None,
+        schema: list[feature.Feature] | None = None,
+    ) -> Iterator[pa.RecordBatch]:
+        """The record batches of a read, without materialising the whole result.
+
+        Online reads go through a server-side cursor and fetch `batch_size` rows
+        at a time, so the client holds a batch rather than the result. Wrapping
+        an already buffered result in chunks would not: the buffering is what
+        costs the memory. Offline reads take the Arrow Flight stream as the
+        server produces it.
+
+        The cursor and its connection are released when the caller stops,
+        whether it ran out of batches, left early or raised.
+
+        Every batch of an online read is built against one schema, taken from
+        the query's own feature types. Letting each batch describe itself from
+        the values it happens to hold makes the batches of one read disagree: a
+        nullable column is `null` in an all-null batch and `string` in the next,
+        and a decimal's precision and scale follow whichever values arrived, so
+        putting the batches back together fails.
+        """
+        if not online:
+            if not isinstance(sql_query, FsQuery):
+                raise ValueError(
+                    "Streaming an offline read needs the Hopsworks Query Service."
+                )
+            from hsfs.core import arrow_flight_client
+
+            yield from arrow_flight_client._get_instance()._stream_query(
+                sql_query, arrow_flight_config or {}
+            )
+            return
+
+        if self._mysql_online_fs_engine is None:
+            self._mysql_online_fs_engine = util_sql._create_mysql_engine(
+                connector,
+                (
+                    client._is_external()
+                    if not read_options or "external" not in read_options
+                    else read_options["external"]
+                ),
+            )
+        statement = sql.text(sql_query) if isinstance(sql_query, str) else sql_query
+        # stream_results asks the driver for a server-side cursor; without it
+        # the whole result is already in the client before the first partition.
+        with self._mysql_online_fs_engine.connect().execution_options(
+            stream_results=True, max_row_buffer=batch_size
+        ) as connection:
+            result = connection.execute(statement)
+            names = list(result.keys())
+            declared = Engine._declared_arrow_types(schema)
+            batch_schema = None
+            # fetchmany rather than partitions(): partitions() is only in
+            # SQLAlchemy from 1.4.24 and this client supports 1.x from earlier
+            # than that, while fetchmany streams the same way on both.
+            while True:
+                rows = result.fetchmany(batch_size)
+                if not rows:
+                    break
+                columns = list(zip(*rows, strict=True))
+                arrays = [
+                    Engine._online_array(list(column), declared.get(name))
+                    for column, name in zip(columns, names, strict=True)
+                ]
+                if batch_schema is None:
+                    # Declared where the query says so, and settled here for
+                    # anything it does not describe, so that the stream has one
+                    # schema either way.
+                    batch_schema = pa.schema(
+                        [
+                            pa.field(name, array.type)
+                            for name, array in zip(names, arrays, strict=True)
+                        ]
+                    )
+                else:
+                    arrays = [
+                        Engine._as_batch_field(array, field)
+                        for array, field in zip(arrays, batch_schema, strict=True)
+                    ]
+                yield pa.RecordBatch.from_arrays(arrays, schema=batch_schema)
+
+    @staticmethod
+    def _as_batch_field(array: pa.Array, field: pa.Field) -> pa.Array:
+        """One column of a later batch, as the schema of the read describes it.
+
+        A column the query does not describe is settled by the first batch, and
+        a first batch that was entirely null settles it as null, because nothing
+        else can be read from it. A later batch with real values cannot be cast
+        to that, so the caller is told which column it was and what to do about
+        it rather than being handed an Arrow cast error it never asked for.
+        Passing the query's features, as `read_batches` does, describes the
+        column before any row is read and this cannot arise.
+        """
+        if array.type == field.type:
+            return array
+        try:
+            return array.cast(field.type)
+        except pa.ArrowInvalid as error:
+            raise FeatureStoreException(
+                f"Column {field.name!r} arrived as {array.type} after the read "
+                f"settled on {field.type}, so the batches of this read cannot "
+                "share one schema. That column has no declared type: pass the "
+                "query's features so that it is known before the first row."
+            ) from error
+
+    @staticmethod
+    def _online_array(values: list[Any], declared: pa.DataType | None) -> pa.Array:
+        """One column of an online batch, built against its declared type."""
+        if declared is not None and pa.types.is_boolean(declared):
+            # The online store keeps a boolean as TINYINT, so it arrives as 0 or 1.
+            return pa.array(values).cast(pa.bool_())
+        return pa.array(values, type=declared)
+
+    @staticmethod
+    def _declared_arrow_types(
+        schema: list[feature.Feature] | None,
+    ) -> dict[str, pa.DataType]:
+        """The Arrow type each column of an online read arrives as, where it is known.
+
+        Building every batch against a declared type is what makes an all-null
+        batch describe its column the same way a full one does, and keeps a
+        decimal's precision and scale from following the values that happened to
+        arrive. A feature whose type has no Arrow equivalent is left out, and the
+        first batch settles that column for the rest of the read.
+
+        The online store keeps arrays, maps and structs serialised in VARBINARY,
+        so those columns are declared binary, which is what the rows hold.
+        A name two features share with different types is left out too, since
+        the column it names cannot be told apart.
+        """
+        declared = {}
+        ambiguous = set()
+        for feat in schema or []:
+            offline_type = (feat.type or "").strip().lower()
+            if offline_type.startswith(("array<", "map<", "struct<")):
+                arrow_type = pa.binary()
+            else:
+                try:
+                    arrow_type = _convert_offline_type_to_pyarrow_type(feat.type)
+                except Exception:  # noqa: BLE001 - an unmappable type is settled by the first batch
+                    _logger.debug(
+                        "No Arrow type for feature %s (%s); its batches follow the first",
+                        feat.name,
+                        feat.type,
+                    )
+                    continue
+            if declared.get(feat.name, arrow_type) != arrow_type:
+                ambiguous.add(feat.name)
+            declared[feat.name] = arrow_type
+        for name in ambiguous:
+            del declared[name]
+        return declared
+
     def _jdbc(
         self,
         sql_query: str,
@@ -366,21 +540,9 @@ class Engine:
         if not data_format:
             raise FeatureStoreException("data_format is not specified")
 
-        # Internal keys carrying a time-range read of an incremental training
-        # dataset (see `FeatureViewEngine._read_from_storage_connector`);
-        # popped so they never reach the readers as reader options.
-        read_options = dict(read_options) if read_options else {}
-        event_start_time = read_options.pop("event_start_time", None)
-        event_end_time = read_options.pop("event_end_time", None)
-
         if storage_connector.type == storage_connector.HOPSFS:
             df_list = self._read_hopsfs(
-                location,
-                data_format,
-                read_options,
-                dataframe_type,
-                event_start_time=event_start_time,
-                event_end_time=event_end_time,
+                location, data_format, read_options, dataframe_type
             )
         elif storage_connector.type in (
             storage_connector.S3,
@@ -391,12 +553,7 @@ class Engine:
             # way as for an S3 connector. Reading a Glue-registered table by
             # database/table is a Spark-engine, catalog-mediated path instead.
             df_list = self._read_s3(
-                storage_connector,
-                location,
-                data_format,
-                dataframe_type,
-                event_start_time=event_start_time,
-                event_end_time=event_end_time,
+                storage_connector, location, data_format, dataframe_type
             )
         else:
             raise NotImplementedError(
@@ -452,46 +609,15 @@ class Engine:
     def _is_metadata_file(self, path):
         return Path(path).stem.startswith("_")
 
-    def _date_partition_value(self, name: str) -> int | None:
-        """Parse an event-date Hive partition name into its `YYYYMMDD` value.
-
-        Returns the integer value of a `_hopsworks_event_date=<v>` directory
-        name (see `DATE_PARTITION_COLUMN` in the Spark engine), or `None`
-        when `name` is not a date partition.
-        """
-        prefix = DATE_PARTITION_COLUMN + "="
-        if name.startswith(prefix) and name[len(prefix) :].isdigit():
-            return int(name[len(prefix) :])
-        return None
-
-    def _is_counter_partition(self, name: str) -> bool:
-        """Whether `name` is a counter-keyed Hive partition (data without an event time)."""
-        return name.startswith(COUNTER_PARTITION_COLUMN + "=")
-
-    def _raise_not_time_addressable(self) -> None:
-        raise FeatureStoreException(
-            "A time-range read requires a training dataset partitioned by "
-            "event time, but this dataset is not (its data has no event-time "
-            "column, or it was materialized before event-time partitioning "
-            "was supported). Read it without `start_time`/`end_time` instead."
-        )
-
     def _read_hopsfs(
         self,
         location: str,
         data_format: str,
         read_options: dict[str, Any] | None = None,
         dataframe_type: str = "default",
-        event_start_time: int | None = None,
-        event_end_time: int | None = None,
     ) -> list[pd.DataFrame | pl.DataFrame]:
         return self._read_hopsfs_remote(
-            location,
-            data_format,
-            read_options or {},
-            dataframe_type,
-            event_start_time=event_start_time,
-            event_end_time=event_end_time,
+            location, data_format, read_options or {}, dataframe_type
         )
 
     # This read method uses the Hopsworks REST APIs or Flyingduck Server
@@ -502,9 +628,8 @@ class Engine:
         data_format: str,
         read_options: dict[str, Any] | None = None,
         dataframe_type: str = "default",
-        event_start_time: int | None = None,
-        event_end_time: int | None = None,
     ) -> list[pd.DataFrame | pl.DataFrame]:
+        df_list = []
         if read_options is None:
             read_options = {}
 
@@ -513,99 +638,29 @@ class Engine:
         is_dir = path_metadata.get("attributes", {}).get("dir", False)
 
         if is_dir:
-            return self._read_hopsfs_dir(
-                location,
-                data_format,
-                read_options,
-                dataframe_type,
-                event_start_time=event_start_time,
-                event_end_time=event_end_time,
-            )
+            # Location is a directory, list all files
+            total_count = 10000
+            offset = 0
+            while offset < total_count:
+                total_count, inode_list = self._dataset_api._list_dataset_path(
+                    location, inode.Inode, offset=offset, limit=100
+                )
 
-        if event_start_time is not None or event_end_time is not None:
-            # A single file has no partition layout to prune.
-            self._raise_not_time_addressable()
-
-        # Location is a single file, read it directly
-        if self._is_metadata_file(location):
-            return []
-        return [
-            self._read_single_hopsfs_file(
-                location, data_format, read_options, dataframe_type
-            )
-        ]
-
-    def _read_hopsfs_dir(
-        self,
-        location: str,
-        data_format: str,
-        read_options: dict[str, Any],
-        dataframe_type: str = "default",
-        event_start_time: int | None = None,
-        event_end_time: int | None = None,
-    ) -> list[pd.DataFrame | pl.DataFrame]:
-        # Recurse into subdirectories so Hive-partitioned training datasets
-        # (e.g. `_hopsworks_event_date=<v>/`) are read too, not just flat
-        # files directly under the location. A time-range read prunes the
-        # append partitions by their event-date value at this level; the
-        # content of a matching partition is then read in full, so the range
-        # is not propagated into the recursion.
-        range_requested = event_start_time is not None or event_end_time is not None
-        saw_date_partition = False
-        df_list = []
-        total_count = 10000
-        offset = 0
-        while offset < total_count:
-            total_count, inode_list = self._dataset_api._list_dataset_path(
-                location, inode.Inode, offset=offset, limit=100
-            )
-
-            for inode_entry in inode_list:
-                if inode_entry.dir:
-                    name = Path(inode_entry.path).name
-                    if range_requested and self._is_counter_partition(name):
-                        # A counter-keyed increment (materialized without an
-                        # event time) never matches a time range, whatever
-                        # the bounds.
-                        continue
-                    partition_value = self._date_partition_value(name)
-                    if range_requested and partition_value is not None:
-                        saw_date_partition = True
-                        if (
-                            event_start_time is not None
-                            and partition_value < event_start_time
-                        ) or (
-                            event_end_time is not None
-                            and partition_value > event_end_time
-                        ):
-                            continue
-                    df_list.extend(
-                        self._read_hopsfs_dir(
-                            inode_entry.path,
-                            data_format,
-                            read_options,
-                            dataframe_type,
+                for inode_entry in inode_list:
+                    if not self._is_metadata_file(inode_entry.path):
+                        df = self._read_single_hopsfs_file(
+                            inode_entry.path, data_format, read_options, dataframe_type
                         )
-                    )
-                elif not self._is_metadata_file(inode_entry.path):
-                    if range_requested:
-                        # A data file directly under the location means the
-                        # dataset is not partitioned by event time.
-                        self._raise_not_time_addressable()
-                    df_list.append(
-                        self._read_single_hopsfs_file(
-                            inode_entry.path,
-                            data_format,
-                            read_options,
-                            dataframe_type,
-                        )
-                    )
-            offset += len(inode_list)
+                        df_list.append(df)
+                offset += len(inode_list)
+        else:
+            # Location is a single file, read it directly
+            if not self._is_metadata_file(location):
+                df = self._read_single_hopsfs_file(
+                    location, data_format, read_options, dataframe_type
+                )
+                df_list.append(df)
 
-        if range_requested and not saw_date_partition:
-            # Nothing here is keyed by an event date — the dataset was
-            # materialized without an event time (counter partitions only).
-            self._raise_not_time_addressable()
         return df_list
 
     def _read_single_hopsfs_file(
@@ -635,8 +690,6 @@ class Engine:
         location: str,
         data_format: str,
         dataframe_type: str = "default",
-        event_start_time: int | None = None,
-        event_end_time: int | None = None,
     ) -> list[pd.DataFrame | pl.DataFrame]:
         # get key prefix
         path_parts = location.replace("s3://", "").split("/")
@@ -665,8 +718,6 @@ class Engine:
                 region_name=storage_connector.region,
             )
 
-        range_requested = event_start_time is not None or event_end_time is not None
-        saw_date_partition = False
         df_list = []
         object_list = {"is_truncated": True}
         while object_list.get("is_truncated", False):
@@ -686,39 +737,6 @@ class Engine:
 
             for obj in object_list["Contents"]:
                 if not self._is_metadata_file(obj["Key"]) and obj["Size"] > 0:
-                    if range_requested:
-                        # S3 lists objects flat; the partition appears as a
-                        # key segment. Prune the rows outside the requested
-                        # event-date range by that segment; counter-keyed
-                        # increments (data without an event time) never match
-                        # a time range, whatever the bounds.
-                        segments = obj["Key"].split("/")
-                        if any(
-                            self._is_counter_partition(segment) for segment in segments
-                        ):
-                            continue
-                        partition_values = [
-                            value
-                            for value in (
-                                self._date_partition_value(segment)
-                                for segment in segments
-                            )
-                            if value is not None
-                        ]
-                        if not partition_values:
-                            # A data object without a date partition segment
-                            # means the dataset is not partitioned by event
-                            # time.
-                            self._raise_not_time_addressable()
-                        saw_date_partition = True
-                        if (
-                            event_start_time is not None
-                            and partition_values[0] < event_start_time
-                        ) or (
-                            event_end_time is not None
-                            and partition_values[0] > event_end_time
-                        ):
-                            continue
                     obj = s3.get_object(
                         Bucket=bucket,
                         Key=obj["Key"],
@@ -727,10 +745,6 @@ class Engine:
                         df_list.append(self._read_polars(data_format, obj["Body"]))
                     else:
                         df_list.append(self._read_pandas(data_format, obj["Body"]))
-        if range_requested and not saw_date_partition:
-            # Nothing here is keyed by an event date — the dataset was
-            # materialized without an event time (counter partitions only).
-            self._raise_not_time_addressable()
         return df_list
 
     def _read_options(
@@ -781,6 +795,16 @@ class Engine:
         else:
             df = pd.DataFrame(results, columns=feature_names, index=None)
         return self._return_dataframe_type(df, dataframe_type)
+
+    def _is_source_pushdown_supported(self) -> bool:
+        # FlyingDuck fetches each feature group separately through its own connector entry, so a
+        # single pushed-down query has nowhere to go until that payload can carry one.
+        return False
+
+    def _register_pushdown_query(self, fs_query: FsQuery) -> str:
+        raise NotImplementedError(
+            "Source pushdown is not supported by the python engine."
+        )
 
     def _register_external_temporary_table(
         self, external_fg: ExternalFeatureGroup, alias: str
@@ -1292,12 +1316,14 @@ class Engine:
             not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
             and feature_group.stream
         ):
-            # Streaming feature groups require the same data to be written on online and offline storage
+            # Both stores of a streaming feature group are fed from the topic, so
+            # `storage` selects which of its two consumers reads the records rather than
+            # which write happens: it travels with them as the Kafka storage header.
             return self._run_materialization_job(
                 feature_group,
                 dataframe,
                 offline_write_options,
-                None,  # doesnt support storage parameter
+                storage,
             )
 
         inserted = False
@@ -1342,8 +1368,25 @@ class Engine:
             )
             inserted = True
         if storage in [None, "online"] and feature_group.online_enabled:
+            # Mark the records for OnlineFS alone whenever this call has already covered the
+            # offline leg itself — the direct write above (`inserted`), a feature group with
+            # no offline store at all, or a caller that asked for online only — so that a
+            # materialization job cannot write the same rows to the offline table a second
+            # time.
+            # Anything else leaves the offline leg to a consumer of the topic, so the records
+            # stay unmarked and both consumers read them.
+            kafka_storage = (
+                kafka_engine._STORAGE_ONLINE
+                if inserted
+                or isinstance(feature_group, fg_mod.ExternalFeatureGroup)
+                or storage == "online"
+                else None
+            )
             self._write_dataframe_kafka(
-                feature_group, dataframe, offline_write_options, storage
+                feature_group,
+                dataframe,
+                offline_write_options,
+                kafka_storage,
             )
             inserted = True
 
@@ -1703,11 +1746,6 @@ class Engine:
             and not transformation_context
             and not has_user_supplied_sink
         ):
-            # The materialized layout is Hive-partitioned by each row's
-            # event-time day; force the event-time column through the query
-            # when the user did not select it, and tell the Query Service to
-            # drop it again after deriving the partition keys.
-            event_time_column, drop_event_time = dataset._include_left_event_time()
             query_obj, _ = dataset._prep_read(False, user_write_options)
             return util._run_with_loading_animation(
                 "Materializing data to Hopsworks, using Hopsworks Feature Query Service",
@@ -1716,12 +1754,6 @@ class Engine:
                 training_dataset,
                 query_obj,
                 user_write_options.get("arrow_flight_config", {}),
-                overwrite=(save_mode == "overwrite"),
-                event_time_column=event_time_column,
-                drop_event_time=drop_event_time,
-                partition_precision=user_write_options.get(
-                    "partition_precision", "day"
-                ),
             )
 
         # As for creating a feature group, users have the possibility of passing
@@ -1847,7 +1879,7 @@ class Engine:
         if not file.startswith("file://"):
             file = "hdfs://" + file
 
-        local_file = os.path.join("/tmp", os.path.basename(file))
+        local_file = os.path.join(constants._temp_dir(), os.path.basename(file))
         if not os.path.exists(local_file):
             content_stream = self._dataset_api.read_content(
                 file, util._get_dataset_type(file)
@@ -2063,6 +2095,40 @@ class Engine:
     ) -> np.ndarray:
         return feature_dataframe[feature_name].unique()
 
+    @staticmethod
+    def _iter_dataframe_rows(
+        dataframe: pd.DataFrame | pl.DataFrame,
+    ) -> Iterator[dict[str, Any]]:
+        if isinstance(dataframe, pd.DataFrame):
+            # itertuples returns Python NamedTuple; convert to dict to serialize via Avro
+            for row in dataframe.itertuples(index=False):
+                yield row._asdict()
+        else:
+            yield from dataframe.iter_rows(named=True)
+
+    @staticmethod
+    def _produce_row_kafka(
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        producer: Any,
+        row: dict[str, Any],
+        headers: dict[str, bytes],
+        feature_writers: dict[str, Any],
+        writer: Any,
+        acked: Any,
+        offline_write_options: dict[str, Any],
+    ) -> None:
+        encoded_row = kafka_engine._encode_row(feature_writers, writer, row)
+        key = "".join([str(row[pk]) for pk in sorted(feature_group.primary_key)])
+        kafka_engine._kafka_produce(
+            producer=producer,
+            key=key,
+            encoded_row=encoded_row,
+            topic_name=feature_group._online_topic_name,
+            headers=headers,
+            acked=acked,
+            debug_kafka=offline_write_options.get("debug_kafka", False),
+        )
+
     def _write_dataframe_kafka(
         self,
         feature_group: FeatureGroup | ExternalFeatureGroup,
@@ -2070,12 +2136,20 @@ class Engine:
         offline_write_options: dict[str, Any],
         storage: str | None,
     ) -> None:
+        """Produce `dataframe` to the online topic of `feature_group`.
+
+        `storage` is the destination of the records: `"online"` when only OnlineFS is
+        meant to ingest them, `"offline"` when only the offline materialization job is,
+        `None` when both are.
+        It travels with every record as the Kafka storage header, except that a row the
+        online store has no use for is marked `"offline"` individually.
+        """
         # Compute per-row online flags before building the Avro schema so the
         # marker never enters the writer and avoids column name mangling.
         online_flags = None
         if (
             feature_group.online_enabled
-            and storage in [None, "online"]
+            and storage in [None, kafka_engine._STORAGE_ONLINE]
             and offline_write_options.get("online_ingestion_options", {}).get(
                 "mark_online_rows", True
             )
@@ -2086,7 +2160,7 @@ class Engine:
             "disable_online_ingestion_count", False
         ):
             n_rows = None
-        elif online_flags is not None and storage == "online":
+        elif online_flags is not None and storage == kafka_engine._STORAGE_ONLINE:
             # we will only produce rows marked for online ingestion, so count those for accurate progress bar and Kafka producer configuration
             n_rows = sum(online_flags)
         else:
@@ -2097,6 +2171,7 @@ class Engine:
             feature_group,
             offline_write_options,
             num_entries=n_rows,
+            storage=storage,
         )
 
         acked, progress_bar = (
@@ -2107,46 +2182,36 @@ class Engine:
             )
         )
 
-        if isinstance(dataframe, pd.DataFrame):
-            row_iterator = dataframe.itertuples(index=False)
-        else:
-            row_iterator = dataframe.iter_rows(named=True)
-
         # loop over rows
         for row, online_flag in zip(
-            row_iterator,
+            self._iter_dataframe_rows(dataframe),
             online_flags if online_flags is not None else itertools.repeat(None),
             strict=False,
         ):
-            if isinstance(dataframe, pd.DataFrame):
-                # itertuples returns Python NamedTuple; _convert to dict to serialize via Avro
-                row = row._asdict()
-
-            # Set per-row storage header based on the online flag when present.
+            # A row the online store has no use for goes to the offline table alone, so
+            # override the destination of the write for that row only.
+            # Rows that do belong online keep the headers of the write: they are the common
+            # case, and leaving the header out of them is what keeps the default insert cheap
+            # on the wire.
             row_headers = headers
-            if online_flag is not None:
-                if not online_flag and storage == "online":
-                    # Online-only write — skip rows not destined for online store.
+            if online_flag is not None and not online_flag:
+                if storage == kafka_engine._STORAGE_ONLINE:
+                    # Online-only write — nobody would read the row, so do not produce it.
                     continue
-                # b"1" = ingest online, b"0" = offline only
                 row_headers = {
                     **headers,
-                    "storage": b"1" if online_flag else b"0",
+                    "storage": kafka_engine._STORAGE_OFFLINE.encode("utf8"),
                 }
 
-            encoded_row = kafka_engine._encode_row(feature_writers, writer, row)
-
-            # assemble key
-            key = "".join([str(row[pk]) for pk in sorted(feature_group.primary_key)])
-
-            kafka_engine._kafka_produce(
-                producer=producer,
-                key=key,
-                encoded_row=encoded_row,
-                topic_name=feature_group._online_topic_name,
-                headers=row_headers,
-                acked=acked,
-                debug_kafka=offline_write_options.get("debug_kafka", False),
+            self._produce_row_kafka(
+                feature_group,
+                producer,
+                row,
+                row_headers,
+                feature_writers,
+                writer,
+                acked,
+                offline_write_options,
             )
 
         # make sure producer blocks and everything is delivered
@@ -2155,13 +2220,82 @@ class Engine:
             del producer
             progress_bar.close()
 
-        # wait for online _ingestion
-        if feature_group.online_enabled and offline_write_options.get(
-            "wait_for_online_ingestion", False
-        ):
-            feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=offline_write_options.get("online_ingestion_options", {})
+        kafka_engine._wait_for_online_ingestion(
+            feature_group, headers, offline_write_options
+        )
+
+    def _delete_dataframe_kafka(
+        self,
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+        offline_write_options: dict[str, Any],
+    ) -> None:
+        # Produce an online delete tombstone for every row in `dataframe`.
+        # Each message carries the row encoded against the feature group Avro
+        # schema plus an `operation: delete` header; OnlineFS deletes the row by
+        # primary key and ignores the values. `dataframe` needs to carry only the
+        # primary key: non-key fields are filled with null so the record serializes.
+        fill_values = kafka_engine._online_delete_fill_values(feature_group)
+        n_rows = (
+            None
+            if offline_write_options.get("online_ingestion_options", {}).get(
+                "disable_online_ingestion_count", False
             )
+            else len(dataframe)
+        )
+        # The tombstone is for OnlineFS alone: remove_rows has already applied the offline
+        # delete directly to the table, so the storage header keeps the materialization job
+        # from re-inserting the key the delete removed.
+        # `operation` is what makes it a delete rather than an upsert: OnlineFsHandler.getRow
+        # turns it into Row.delete.
+        # The materialization job also drops records carrying it, which is what protects the
+        # offline table against tombstones from clients that predate the storage header.
+        producer, headers, feature_writers, writer = kafka_engine._get_kafka_resources(
+            feature_group,
+            offline_write_options,
+            num_entries=n_rows,
+            storage=kafka_engine._STORAGE_ONLINE,
+        )
+
+        acked, progress_bar = (
+            kafka_engine._build_ack_callback_and_optional_progress_bar(
+                n_rows=n_rows,
+                is_multi_part_insert=feature_group._multi_part_insert,
+                offline_write_options=offline_write_options,
+            )
+        )
+
+        row_headers = {**headers, "operation": b"delete"}
+
+        for row in self._iter_dataframe_rows(dataframe):
+            # Build the tombstone from the primary key only: null every non-key
+            # field and keep just the caller's primary-key values. Any other columns
+            # in `delete_df` are ignored for the online delete (OnlineFS deletes by
+            # primary key and discards the values), so a stale or unserializable
+            # non-key value cannot fail the tombstone after the offline delete has
+            # already committed.
+            row = {**fill_values, **{pk: row[pk] for pk in feature_group.primary_key}}
+            self._produce_row_kafka(
+                feature_group,
+                producer,
+                row,
+                row_headers,
+                feature_writers,
+                writer,
+                acked,
+                offline_write_options,
+            )
+
+        producer.flush()
+        del producer
+        if progress_bar is not None:
+            progress_bar.close()
+
+        # wait for online ingestion so callers that set wait_for_online_ingestion do not
+        # return before OnlineFS has applied the deletes (matches the insert path).
+        kafka_engine._wait_for_online_ingestion(
+            feature_group, headers, offline_write_options
+        )
 
     def _run_materialization_job(
         self,
@@ -2172,7 +2306,8 @@ class Engine:
     ) -> job.Job | None:
         initial_check_point = ""
 
-        if not feature_group._multi_part_insert:
+        online_only = storage == kafka_engine._STORAGE_ONLINE
+        if not feature_group._multi_part_insert and not online_only:
             # set initial_check_point to the current offset
             initial_check_point = kafka_engine._kafka_get_offsets(
                 topic_name=feature_group._online_topic_name,
@@ -2184,6 +2319,11 @@ class Engine:
         self._write_dataframe_kafka(
             feature_group, dataframe, offline_write_options, storage
         )
+
+        # An online-only write is written for OnlineFS alone and carries a storage header
+        # the materialization job skips, so running that job would materialize nothing.
+        if online_only:
+            return None
 
         # start materialization job if not an external feature group, otherwise return None
         if isinstance(feature_group, ExternalFeatureGroup):
@@ -2213,21 +2353,7 @@ class Engine:
                 ),
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
-            offline_backfill_every_hr = offline_write_options.pop(
-                "offline_backfill_every_hr", None
-            )
-            if offline_backfill_every_hr:
-                if isinstance(offline_backfill_every_hr, str):
-                    cron_expression = offline_backfill_every_hr
-                elif isinstance(offline_backfill_every_hr, int):
-                    cron_expression = f"{now.second} {now.minute} {now.hour}/{offline_backfill_every_hr} ? * * *"
-                feature_group.materialization_job.schedule(
-                    cron_expression=cron_expression,
-                    # added 2 seconds after the current time to avoid retriggering the job directly
-                    start_time=now + timedelta(seconds=2),
-                )
-            else:
-                _logger.info("Materialisation job was not scheduled.")
+            self._schedule_materialization(feature_group, offline_write_options, now)
 
         elif self._start_offline_materialization(offline_write_options):
             if not offline_write_options.get(
@@ -2248,7 +2374,39 @@ class Engine:
                 await_termination=offline_write_options.get("wait_for_job", False),
             )
 
+        if "offline_backfill_every_hr" in offline_write_options:
+            # Set only by the insert that creates the group. The branch above attaches it
+            # only when the topic did not exist yet, but a new group's topic already exists.
+            self._schedule_materialization(
+                feature_group, offline_write_options, datetime.now(timezone.utc)
+            )
+
         return feature_group.materialization_job
+
+    @staticmethod
+    def _schedule_materialization(
+        feature_group: FeatureGroup,
+        offline_write_options: dict[str, Any],
+        now: datetime,
+    ) -> None:
+        offline_backfill_every_hr = offline_write_options.pop(
+            "offline_backfill_every_hr", None
+        )
+        if not offline_backfill_every_hr:
+            _logger.info("Materialisation job was not scheduled.")
+            return
+        if isinstance(offline_backfill_every_hr, str):
+            cron_expression = offline_backfill_every_hr
+        else:
+            # The scheduler accepts only 0 in the seconds field. Quartz reads `h/n` as
+            # "from hour h", so start at h mod n to fire every n hours all day long.
+            every = offline_backfill_every_hr
+            cron_expression = f"0 {now.minute} {now.hour % every}/{every} ? * * *"
+        feature_group.materialization_job.schedule(
+            cron_expression=cron_expression,
+            # added 2 seconds after the current time to avoid retriggering the job directly
+            start_time=now + timedelta(seconds=2),
+        )
 
     @staticmethod
     def _cast_columns(
@@ -2374,14 +2532,17 @@ class Engine:
                 for _ in range(size)
             ],
             model_col_name: [model_name for _ in range(size)],
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME: [
-                str(model_version) for _ in range(size)
-            ],
             time_col_name: pd.Series([now for _ in range(size)]),
             constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME: [
                 str(uuid.uuid4()) for _ in range(size)
             ],
         }
+        # Legacy (pre-FSTORE-1871) logging feature groups carry the version inside the
+        # hsml_model value and have no model_version column to receive it.
+        if model_col_name != constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME:
+            metadata[constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME] = [
+                str(model_version) for _ in range(size)
+            ]
 
         if not batch:
             for k, v in metadata.items():
@@ -2582,16 +2743,20 @@ class Engine:
                         # Higher precedence is given if the user explicitly passed the logging component.
                         logging_df[col] = df[col]
 
-        # Rename prediction columns
+        # Rename prediction columns to the name they take in the logging feature group
+        # (predicted_<label>, or the bare label name for legacy pre-FSTORE-1871 feature groups).
         _, predictions_feature_names, _ = predictions
         if predictions_feature_names:
-            for feature_name in predictions_feature_names:
-                logging_df = logging_df.rename(
-                    columns={
-                        feature_name: constants.FEATURE_LOGGING.PREFIX_PREDICTIONS
-                        + feature_name
-                    }
-                )
+            prediction_column_names = FeatureLogging._prediction_column_names(
+                predictions_feature_names, logging_feature_group_feature_names
+            )
+            logging_df = logging_df.rename(
+                columns={
+                    feature_name: target_name
+                    for feature_name, target_name in prediction_column_names.items()
+                    if target_name != feature_name
+                }
+            )
 
         # Creating a json column for request parameters
         request_parameter_data, request_parameter_columns, _ = request_parameters
@@ -2621,7 +2786,7 @@ class Engine:
                 constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
                 if request_parameter_data.empty
                 else request_parameter_data.apply(
-                    lambda x: json.dumps(x.to_dict()), axis=1
+                    lambda x: json.dumps(_request_parameters_json(x)), axis=1
                 )
             )
 
@@ -2827,6 +2992,11 @@ class Engine:
             A list of dictionaries with all the logging components
         """
         _, label_columns, _ = predictions
+        # Name each label column takes in the logging feature group (predicted_<label>, or the bare
+        # label name for legacy pre-FSTORE-1871 feature groups).
+        prediction_column_names = FeatureLogging._prediction_column_names(
+            label_columns or [], logging_feature_group_feature_names
+        )
         # If any of the logging components is a dataframe, we use the _get_feature_logging_df function to get a dataframe and then _convert it to a list of dictionaries.
         if any(
             (HAS_PANDAS and isinstance(data, pd.DataFrame))
@@ -2891,7 +3061,9 @@ class Engine:
             if not data:
                 if log_component_name == constants.FEATURE_LOGGING.PREDICTIONS:
                     feature_names = [
-                        constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + name
+                        prediction_column_names.get(
+                            name, constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + name
+                        )
                         for name in feature_names
                     ]
                 all_missing_columns.update(set(feature_names))
@@ -2921,7 +3093,7 @@ class Engine:
                             else {
                                 col
                                 if col not in label_columns
-                                else constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + col
+                                else prediction_column_names[col]
                                 for col in row
                             }
                         )
@@ -2987,10 +3159,9 @@ class Engine:
         if predictions_feature_names:
             for log_vector in log_vectors:
                 for feature_name in predictions_feature_names:
-                    if feature_name in log_vector:
-                        log_vector[
-                            constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + feature_name
-                        ] = log_vector.pop(feature_name)
+                    target_name = prediction_column_names[feature_name]
+                    if feature_name in log_vector and target_name != feature_name:
+                        log_vector[target_name] = log_vector.pop(feature_name)
 
         # Create a json column for request parameters
         request_parameter_data, request_parameter_names, _ = request_parameters
@@ -3053,8 +3224,8 @@ class Engine:
         return log_vectors, None, None
 
     @staticmethod
-    def _read_feature_log(query, time_col):
-        df = query.read()
+    def _read_feature_log(query, time_col, online: bool = False):
+        df = query.read(online=online)
         return df.drop(["log_id", time_col], axis=1)
 
     def _check_supported_dataframe(self, dataframe: Any) -> bool:

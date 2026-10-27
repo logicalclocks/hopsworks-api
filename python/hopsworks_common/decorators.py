@@ -25,6 +25,7 @@ from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
     HAS_POLARS,
+    HAS_PYARROW,
     HAS_PYICEBERG,
     HAS_TRINO,
     confluent_kafka_not_installed_message,
@@ -165,6 +166,16 @@ def _uses_polars(f):
     def g(*args, **kwds):
         if not HAS_POLARS:
             raise ModuleNotFoundError(polars_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
+
+
+def _uses_pyarrow(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_PYARROW:
+            raise ModuleNotFoundError("PyArrow is required for Arrow feature logging")
         return f(*args, **kwds)
 
     return g

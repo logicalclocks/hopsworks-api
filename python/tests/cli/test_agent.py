@@ -126,7 +126,7 @@ def test_agent_query_requires_data_or_file(mock_project):
     assert "Provide --data or --file" in result.output
 
 
-def test_agent_logs_one_shot(mock_project):
+def test_agent_logs_one_shot_defaults_to_kubernetes_source(mock_project):
     ms = mock.MagicMock()
     agent = _agent_mock("my-agent")
     agent.read_logs.return_value = "line1\nline2"
@@ -136,9 +136,39 @@ def test_agent_logs_one_shot(mock_project):
     result = CliRunner().invoke(cli, ["agent", "logs", "my-agent", "--tail", "5"])
     assert result.exit_code == 0, result.output
     agent.read_logs.assert_called_with(
-        component="predictor", tail=5, source="opensearch", since=None, until=None
+        component="predictor", tail=5, source="kubernetes", since=None, until=None
     )
     assert "line1" in result.output
+
+
+def test_agent_logs_download_calls_download_logs(mock_project):
+    ms = mock.MagicMock()
+    agent = _agent_mock("my-agent")
+    agent.download_logs.return_value = ["/tmp/a.log", "/tmp/b.log"]
+    ms.get_deployment.return_value = agent
+    mock_project.get_model_serving.return_value = ms
+
+    result = CliRunner().invoke(cli, ["agent", "logs", "my-agent", "--download"])
+    assert result.exit_code == 0, result.output
+    agent.download_logs.assert_called_once_with(path=None)
+    agent.read_logs.assert_not_called()
+    assert "/tmp/a.log" in result.output
+    assert "/tmp/b.log" in result.output
+
+
+def test_agent_logs_download_conflicts_with_follow_and_source(mock_project):
+    ms = mock.MagicMock()
+    agent = _agent_mock("my-agent")
+    ms.get_deployment.return_value = agent
+    mock_project.get_model_serving.return_value = ms
+
+    for extra in (["--follow"], ["--source", "kubernetes"]):
+        result = CliRunner().invoke(
+            cli, ["agent", "logs", "my-agent", "--download", *extra]
+        )
+        assert result.exit_code != 0
+        assert "--download cannot be combined" in result.output
+    agent.download_logs.assert_not_called()
 
 
 def test_agent_delete(mock_project):
@@ -179,6 +209,23 @@ def test_agent_create_invokes_deploy_agent(mock_project, tmp_path):
     assert kwargs["entry"] == str(entry)
     assert kwargs["name"] == "my-agent"
     assert kwargs["description"] == "demo"
+    assert kwargs["resources"] is None
+
+
+def test_agent_create_sets_a_memory_limit(mock_project, tmp_path):
+    ms = mock.MagicMock()
+    ms.deploy_agent.return_value = _agent_mock("entry")
+    mock_project.get_model_serving.return_value = ms
+    entry = tmp_path / "entry.py"
+    entry.write_text("")
+    result = CliRunner().invoke(
+        cli, ["agent", "create", str(entry), "--memory", "3072"]
+    )
+    assert result.exit_code == 0, result.output
+    resources = ms.deploy_agent.call_args.kwargs["resources"]
+    assert resources.limits.memory == 3072
+    # The rest keep the platform defaults.
+    assert resources.limits.cores is not None and resources.requests.memory is not None
 
 
 def test_agent_list_falls_back_to_model_name_heuristic(mock_project):
@@ -205,3 +252,44 @@ def test_agent_list_falls_back_to_model_name_heuristic(mock_project):
     assert result.exit_code == 0, result.output
     assert "legacy-agent" in result.output
     assert "legacy-model" not in result.output
+
+
+class TestInfoShowsTheStatus:
+    """`hops agent info` printing `Status -` for a running agent.
+
+    A deployment's state is fetched, not stored: `get_state()` asks serving for it.
+    Reading `status` off the object found nothing every time, so the one line the
+    command exists for was always a dash while the pod was up and answering.
+    """
+
+    @staticmethod
+    def _deployment(status=None, raises=False):
+        class State:
+            def __init__(self, status):
+                self.status = status
+
+        class Deployment:
+            def get_state(self):
+                if raises:
+                    raise RuntimeError("serving unreachable")
+                return State(status)
+
+        return Deployment()
+
+    def test_the_fetched_status_is_used(self):
+        from hopsworks.cli.commands.agent import _deployment_status
+
+        assert _deployment_status(self._deployment("Running")) == "Running"
+
+    def test_a_status_that_cannot_be_fetched_is_a_dash_not_a_crash(self):
+        from hopsworks.cli.commands.agent import _deployment_status
+
+        assert _deployment_status(self._deployment(raises=True)) == "-"
+
+    def test_an_object_carrying_its_own_status_still_works(self):
+        from hopsworks.cli.commands.agent import _deployment_status
+
+        class Legacy:
+            status = "Stopped"
+
+        assert _deployment_status(Legacy()) == "Stopped"

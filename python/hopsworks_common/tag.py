@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 import humps
@@ -39,6 +40,7 @@ class Tag:
         self,
         name: str,
         value: dict[str, Any] | str,
+        created_on: datetime | None = None,
         schema=None,
         href=None,
         expand=None,
@@ -53,10 +55,12 @@ class Tag:
             raise ValueError("Tag value cannot be None")
         self._name = name
         self._value = value
+        self._created_on = created_on
 
     def to_dict(self):
         # Backend expects value to always be a string
         # If value is a dict, serialize it to JSON string
+        # created_on is server-assigned, so it is deliberately not sent back
         value = self._value
         if isinstance(value, dict):
             value = json.dumps(value)
@@ -111,7 +115,14 @@ class Tag:
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        if "count" not in json_decamelized or json_decamelized["count"] == 0:
+        # A request naming one tag answers with that tag, not with a collection: the dataset tag
+        # endpoints do this, and reading it as an empty collection lost the tag entirely.
+        if "count" not in json_decamelized:
+            if "name" in json_decamelized and "value" in json_decamelized:
+                json_decamelized = {"count": 1, "items": [json_decamelized]}
+            else:
+                return []
+        if json_decamelized["count"] == 0:
             return []
         tags = []
         for tag_dict in json_decamelized["items"]:
@@ -124,9 +135,38 @@ class Tag:
                 with contextlib.suppress(json.JSONDecodeError, ValueError):
                     tag_dict["value"] = json.loads(tag_dict["value"])
 
-            # Only pass name and value to avoid issues with extra fields like schema
-            tags.append(cls(name=tag_dict["name"], value=tag_dict["value"]))
+            tags.append(
+                cls(
+                    name=tag_dict["name"],
+                    value=tag_dict["value"],
+                    created_on=cls._parse_created_on(tag_dict.get("created_on")),
+                )
+            )
         return tags
+
+    @staticmethod
+    def _parse_created_on(raw: Any) -> datetime | None:
+        """Parse the attachment time the backend sent, in whichever form it sent it.
+
+        Both epoch milliseconds and ISO-8601 are accepted because the backend's JSON date format
+        is not pinned across versions, and a client that only understood one of them would report
+        no attachment time at all against the other.
+        Anything unrecognized becomes None rather than raising: an unreadable timestamp must not
+        stop a tag from being read.
+        """
+        if raw is None:
+            return None
+        if isinstance(raw, datetime):
+            return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+        if isinstance(raw, (int, float)):
+            return datetime.fromtimestamp(raw / 1000, tz=timezone.utc)
+        if isinstance(raw, str):
+            with contextlib.suppress(ValueError):
+                return datetime.fromtimestamp(int(raw) / 1000, tz=timezone.utc)
+            with contextlib.suppress(ValueError):
+                parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return None
 
     @public
     @property
@@ -151,6 +191,18 @@ class Tag:
         if value is None:
             raise ValueError("Tag value cannot be None")
         self._value = value
+
+    @public
+    @property
+    def created_on(self) -> datetime | None:
+        """When the tag was attached, as an aware UTC datetime.
+
+        `None` for a tag attached before Hopsworks recorded attachment times, and for legacy
+        per-file dataset tags, which are stored as HopsFS extended attributes and carry no
+        timestamp.
+        `None` therefore means the attachment time is unknown, not that the tag is new.
+        """
+        return self._created_on
 
     def __str__(self):
         return self.json()

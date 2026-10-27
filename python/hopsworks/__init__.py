@@ -39,7 +39,13 @@ from hopsworks_common.constants import CLIENT
 # PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
 # entry points (the ``hops`` CLI, dependent libraries' import-time checks)
 # that don't need the full feature-store / model-registry surface area.
-from hopsworks_common.core import env_var_api, project_api, secret_api
+from hopsworks_common.core import (
+    costs_api,
+    env_var_api,
+    project_api,
+    secret_api,
+    users_api,
+)
 from hopsworks_common.decorators import NoHopsworksConnectionError
 from requests.exceptions import SSLError
 
@@ -56,6 +62,8 @@ _connected_project = None
 _secrets_api = None
 _env_vars_api = None
 _project_api = None
+_users_api = None
+_costs_api = None
 
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
@@ -247,7 +255,7 @@ def login(
         trust_store_path: Path on the file system containing the Hopsworks certificates.
         cert_folder:
             The directory to store downloaded certificates.
-            Defaults to the system temp directory.
+            Defaults to `/tmp` on Linux and macOS, and to the user's temp directory (`%TEMP%`) on Windows.
         engine:
             Specifies the engine to use.
             The default value is `None`, which automatically selects the engine based on the environment:
@@ -503,6 +511,8 @@ def logout():
     global _project_api
     global _secrets_api
     global _env_vars_api
+    global _users_api
+    global _costs_api
 
     if _is_connection_active():
         _hw_connection._close()
@@ -511,6 +521,8 @@ def logout():
     _project_api = None
     _secrets_api = None
     _env_vars_api = None
+    _users_api = None
+    _costs_api = None
     _hw_connection = _make_connection
 
 
@@ -545,9 +557,13 @@ def _initialize_module_apis():
     global _project_api
     global _secrets_api
     global _env_vars_api
+    global _users_api
+    global _costs_api
     _project_api = project_api.ProjectApi()
     _secrets_api = secret_api.SecretsApi()
     _env_vars_api = env_var_api.EnvVarsApi()
+    _users_api = users_api.UsersApi()
+    _costs_api = costs_api.CostsApi()
 
 
 @public
@@ -556,6 +572,7 @@ def create_project(
     description: str | None = None,
     feature_store_topic: str | None = None,
     namespace: str | None = None,
+    department: str | None = None,
 ) -> project.Project | None:
     """Create a new project.
 
@@ -574,6 +591,8 @@ def create_project(
         feature_store_topic: Feature store topic name.
         namespace: Kubernetes namespace to use for the project. If ``None`` the
             backend derives one from the project name.
+        department: Name of the department to create the project in.
+            If ``None`` the project goes to the default department.
 
     Returns:
         The Project object to perform operations on.
@@ -585,7 +604,7 @@ def create_project(
         raise NoHopsworksConnectionError
 
     new_project = _hw_connection._project_api._create_project(
-        name, description, feature_store_topic, namespace
+        name, description, feature_store_topic, namespace, department
     )
     if _connected_project is None:
         _connected_project = new_project
@@ -615,6 +634,58 @@ def get_secrets_api() -> secret_api.SecretsApi:
 
 
 @public
+def get_users_api() -> users_api.UsersApi:
+    """Get the platform users administration api.
+
+    This is an admin-only capability; the logged-in account must hold the
+    `HOPS_ADMIN` platform role for its methods to succeed.
+
+    Example:
+        ```python
+        import hopsworks
+
+        hopsworks.login()
+        users_api = hopsworks.get_users_api()
+
+        for user in users_api.get_users():
+            print(user.email, user.roles)
+        ```
+
+    Returns:
+        The Users API handle.
+    """
+    global _users_api
+    if not _is_connection_active():
+        raise NoHopsworksConnectionError
+    return _users_api
+
+
+@public
+def get_costs_api() -> costs_api.CostsApi:
+    """Get the api for the Kubernetes cost of each namespace.
+
+    Its cluster-wide methods need the `HOPS_ADMIN` platform role; [`get_project_costs`][hopsworks_common.core.costs_api.CostsApi.get_project_costs] needs only the data owner role in the project.
+
+    Example:
+        ```python
+        import hopsworks
+
+        hopsworks.login()
+        costs = hopsworks.get_costs_api().get_namespace_costs("week")
+
+        print(costs.to_pandas())
+        ```
+
+    Returns:
+        The Costs API handle.
+    """
+    global _costs_api
+    if not _is_connection_active():
+        raise NoHopsworksConnectionError
+    return _costs_api
+
+
+@public
 def get_env_vars_api() -> env_var_api.EnvVarsApi:
     """Get the environment variables api.
 
@@ -630,7 +701,9 @@ def get_env_vars_api() -> env_var_api.EnvVarsApi:
 def _set_active_project(project):
     _client = client._get_instance()
     if _client._is_external():
-        _client._provide_project(project.name)
+        # login already fetched this project; hand the id over instead of
+        # letting the client look it up a second time.
+        _client._provide_project(project.name, project_id=project.id)
 
 
 @public

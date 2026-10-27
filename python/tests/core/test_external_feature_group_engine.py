@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 import pytest
+from hopsworks_common.client.exceptions import DataSourceException
 from hsfs import feature, feature_group, storage_connector
 from hsfs.client import exceptions
 from hsfs.core import data_source as ds
@@ -90,6 +91,137 @@ class TestExternalFeatureGroupEngine:
         assert mock_fg_api.return_value._save.call_count == 1
         assert len(mock_fg_api.return_value._save.call_args[0][0].columns) == 1
         assert not mock_fg_api.return_value._save.call_args[0][0].columns[0].primary
+
+    @pytest.mark.parametrize(
+        ("make_data", "expected"),
+        [
+            (lambda: dsd.DataSourceData(features=[]), "returned no columns"),
+            (lambda: None, "returned an empty response"),
+        ],
+    )
+    def test_save_arrowflight_empty_schema(self, mocker, make_data, expected):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.core.arrow_flight_client._supports", return_value=True)
+        mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
+        external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=["id"],
+            id=10,
+            data_source=ds.DataSource(query="SELECT * FROM events"),
+        )
+
+        mock_get_data.return_value = make_data()
+
+        # Act
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            external_fg_engine._save(feature_group=fg)
+
+        # Assert
+        assert expected in str(e_info.value)
+        assert "query 'SELECT * FROM events'" in str(e_info.value)
+        assert "feature group 'test'" in str(e_info.value)
+        assert mock_fg_api.return_value._save.call_count == 0
+
+    def test_save_arrowflight_empty_schema_names_a_path_source(self, mocker):
+        # The branch this guard sits in also takes path-only sources, which name
+        # neither a table nor a query.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.core.arrow_flight_client._supports", return_value=True)
+        mock_get_data = mocker.patch("hsfs.core.data_source.DataSource.get_data")
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
+        external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=["id"],
+            id=10,
+            data_source=ds.DataSource(path="s3://bucket/events"),
+        )
+
+        mock_get_data.return_value = dsd.DataSourceData(features=[])
+
+        # Act
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            external_fg_engine._save(feature_group=fg)
+
+        # Assert
+        assert "path 's3://bucket/events'" in str(e_info.value)
+        assert "None" not in str(e_info.value)
+
+    def test_save_arrowflight_failed_schema_fetch(self, mocker):
+        """A refused read reaches the caller as the source's own message, through _save.
+
+        The whole path is live here: only the REST call the backend answers is mocked,
+        so the raise in StorageConnector.get_data and the guard in _save are both real.
+        """
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.core.arrow_flight_client._supports", return_value=True)
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+
+        connector = storage_connector.SqlConnector(
+            id=1, name="clickhouse", featurestore_id=feature_store_id
+        )
+        mocker.patch.object(
+            connector._data_source_api,
+            "_get_data",
+            return_value=dsd.DataSourceData(
+                schema_fetch_failed=True,
+                schema_fetch_logs="Code: 60. DB::Exception: Unknown table expression"
+                " identifier 'loadtest.does_not_exist'",
+            ),
+        )
+
+        external_fg_engine = external_feature_group_engine.ExternalFeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=["id"],
+            id=10,
+            data_source=ds.DataSource(
+                query="SELECT * FROM loadtest.does_not_exist",
+                storage_connector=connector,
+            ),
+        )
+
+        # Act
+        with pytest.raises(DataSourceException) as e_info:
+            external_fg_engine._save(feature_group=fg)
+
+        # Assert
+        assert "DB::Exception" in str(e_info.value)
+        assert "loadtest.does_not_exist" in str(e_info.value)
+        assert "clickhouse" in str(e_info.value)
+        # The message the reported failure showed instead of the ClickHouse one.
+        assert "Provided primary key" not in str(e_info.value)
+        # Callers catching the feature store hierarchy still catch this.
+        assert isinstance(e_info.value, exceptions.FeatureStoreException)
+        assert mock_fg_api.return_value._save.call_count == 0
 
     def test_save_arrowflight_query(self, mocker):
         # Arrange

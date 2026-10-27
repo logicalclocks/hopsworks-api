@@ -17,12 +17,13 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import logging
 import os
 import struct
+import tempfile
 import time
-from pathlib import Path
 
 import furl
 import requests
@@ -35,6 +36,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, exceptions
+from hopsworks_common.constants import _temp_dir
 from hopsworks_common.decorators import _connected
 
 
@@ -129,6 +131,7 @@ class Client:
         stream: bool = False,
         files: dict | None = None,
         with_base_path_params: bool = True,
+        timeout: float | tuple[float, float] | None = None,
     ) -> dict:
         """Send REST request to Hopsworks.
 
@@ -143,6 +146,8 @@ class Client:
             stream: Set if response should be a stream, defaults to False
             files: dictionary for multipart encoding upload
             with_base_path_params: Whether to include the base path parameters (hopsworks-api/api) in the request URL.
+            timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
+                Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
 
         Returns:
             Response json
@@ -171,12 +176,14 @@ class Client:
         _logger.debug(f"url:{url} hostname_verification:{self._verify}")
 
         prepped = self._session.prepare_request(request)
-        response = self._session.send(prepped, verify=self._verify, stream=stream)
+        response = self._session.send(
+            prepped, verify=self._verify, stream=stream, timeout=timeout
+        )
 
         if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
             # refresh token and retry request - only on hopsworks
             response = self._retry_token_expired(
-                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1
+                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1, timeout
             )
 
         if response.status_code // 100 != 2:
@@ -189,7 +196,7 @@ class Client:
             return None
         return response.json()
 
-    def _retry_token_expired(self, request, stream, wait, retries):
+    def _retry_token_expired(self, request, stream, wait, retries, timeout=None):
         """Refresh the JWT token and retry the request. Only on Hopsworks.
 
         As the token might take a while to get refreshed. Keep trying.
@@ -201,11 +208,15 @@ class Client:
         # Update request with the new token
         request.auth = self._auth
         prepped = self._session.prepare_request(request)
-        response = self._session.send(prepped, verify=self._verify, stream=stream)
+        response = self._session.send(
+            prepped, verify=self._verify, stream=stream, timeout=timeout
+        )
 
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
             # Try again.
-            return self._retry_token_expired(request, stream, wait * 2, retries + 1)
+            return self._retry_token_expired(
+                request, stream, wait * 2, retries + 1, timeout
+            )
         # If the number of retries have expired, the _send_request method
         # will throw an exception to the user as part of the status_code validation.
         return response
@@ -383,16 +394,47 @@ class Client:
         ks_keys, ks_certs = self._load_jks(keystore_path, keystore_pw)
         _, ts_certs = self._load_jks(truststore_path, truststore_pw)
 
-        ca_chain_path = os.path.join("/tmp", f"{prefix}_ca_chain.pem")
+        ca_chain_path = os.path.join(_temp_dir(), f"{prefix}_ca_chain.pem")
         self._write_ca_chain(ks_certs, ts_certs, ca_chain_path)
 
-        client_cert_path = os.path.join("/tmp", f"{prefix}_client_cert.pem")
+        client_cert_path = os.path.join(_temp_dir(), f"{prefix}_client_cert.pem")
         self._write_client_cert(ks_keys, client_cert_path)
 
-        client_key_path = os.path.join("/tmp", f"{prefix}_client_key.pem")
+        client_key_path = os.path.join(_temp_dir(), f"{prefix}_client_key.pem")
         self._write_client_key(ks_keys, client_key_path)
 
         return ca_chain_path, client_cert_path, client_key_path
+
+    @staticmethod
+    def _replace_file(path, content):
+        """Write `content` to `path` so that a reader sees the old file or the new one, never a partial one.
+
+        The PEM paths are derived from the project and connector id only, so every connector object for the same Kafka connector in a process writes the same files.
+        Truncating one in place made a concurrent confluent_kafka Producer fail with "no certificate or crl found".
+        The file is created with mode 0600 whatever the umask, since one of them is an unencrypted private key in the shared temp directory.
+        A file that already holds `content` is left alone: the stores rarely change, and Windows refuses to replace a file another handle has open.
+        """
+        with contextlib.suppress(OSError), open(path) as f:
+            if f.read() == content:
+                return
+        directory, name = os.path.split(path)
+        fd, temp_path = tempfile.mkstemp(dir=directory or None, prefix=f".{name}.")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(content)
+            for attempt in range(50):
+                try:
+                    os.replace(temp_path, path)
+                    break
+                except PermissionError:
+                    # Windows: a reader has the target open; it is released within milliseconds.
+                    if attempt == 49:
+                        raise
+                    time.sleep(0.02)
+        except BaseException:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temp_path)
+            raise
 
     @staticmethod
     def _der_to_pem(der_bytes, pem_type="CERTIFICATE"):
@@ -411,8 +453,7 @@ class Client:
         for cert_der in ks_certs + ts_certs:
             ca_chain += self._der_to_pem(cert_der)
 
-        with Path(ca_chain_path).open("w") as f:
-            f.write(ca_chain)
+        self._replace_file(ca_chain_path, ca_chain)
 
     def _write_client_cert(self, ks_keys, client_cert_path):
         """Writes client certificate PEM from keystore private key entries."""
@@ -421,8 +462,7 @@ class Client:
             for cert_der in cert_chain:
                 client_cert += self._der_to_pem(cert_der)
 
-        with Path(client_cert_path).open("w") as f:
-            f.write(client_cert)
+        self._replace_file(client_cert_path, client_cert)
 
     def _write_client_key(self, ks_keys, client_key_path):
         """Writes client private key PEM from keystore."""
@@ -433,5 +473,4 @@ class Client:
                 Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
             ).decode()
 
-        with Path(client_key_path).open("w") as f:
-            f.write(client_key)
+        self._replace_file(client_key_path, client_key)

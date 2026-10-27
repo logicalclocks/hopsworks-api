@@ -103,8 +103,9 @@ class InferredFeature:
 class InferredMetadata:
     """The metadata suggestions returned by `DataSource.infer_metadata`.
 
-    Holds per-feature renames, types, and descriptions, plus suggestions for the
-    primary key and event-time columns.
+    Holds per-feature renames, types, and descriptions, suggestions for the
+    primary key and event-time columns, and a description for the feature group
+    as a whole.
     """
 
     def __init__(
@@ -112,6 +113,7 @@ class InferredMetadata:
         features: list[InferredFeature] | list[dict] | None = None,
         suggested_primary_key: list[str] | None = None,
         suggested_event_time: str | None = None,
+        suggested_description: str | None = None,
         **kwargs,
     ):
         if features is None:
@@ -123,6 +125,7 @@ class InferredMetadata:
             ]
         self._suggested_primary_key = suggested_primary_key or []
         self._suggested_event_time = suggested_event_time
+        self._suggested_description = suggested_description
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> InferredMetadata:
@@ -156,6 +159,12 @@ class InferredMetadata:
         """The feature name (using `new_name`) suggested as the event time, or `None`."""
         return self._suggested_event_time
 
+    @public
+    @property
+    def suggested_description(self) -> str | None:
+        """The suggested description for the feature group built from this table, or `None`."""
+        return self._suggested_description
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize this InferredMetadata back to the camelCase JSON shape.
 
@@ -166,11 +175,13 @@ class InferredMetadata:
             "features": [f.to_dict() for f in self._features],
             "suggestedPrimaryKey": self._suggested_primary_key,
             "suggestedEventTime": self._suggested_event_time,
+            "suggestedDescription": self._suggested_description,
         }
 
     def __repr__(self) -> str:
         return (
             f"InferredMetadata(features={len(self._features)}, "
             f"suggested_primary_key={self._suggested_primary_key!r}, "
-            f"suggested_event_time={self._suggested_event_time!r})"
+            f"suggested_event_time={self._suggested_event_time!r}, "
+            f"suggested_description={self._suggested_description!r})"
         )

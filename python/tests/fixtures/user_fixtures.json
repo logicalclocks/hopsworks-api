@@ -21,5 +21,15 @@
   },
   "get_basic_info": {
     "response": {}
+  },
+  "get_with_roles": {
+    "response": {
+      "username": "test_username",
+      "role": [
+        {
+          "groupName": "HOPS_ADMIN"
+        }
+      ]
+    }
   }
 }

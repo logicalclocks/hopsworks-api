@@ -7,7 +7,7 @@ import json
 import os
 import sys
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import fsspec.implementations.arrow as pfs
@@ -101,11 +101,8 @@ def create_td(job_conf: dict[Any, Any]) -> None:
     feature_store = job_conf.pop("feature_store")
     fs = get_feature_store_handle(feature_store)
 
-    # Extract the query object. Use the full deserializer (not _hopsworks_json)
-    # because this job reads the query locally to build the dataframe, which
-    # needs a fully-hydrated left_feature_group / joins, not the partial form
-    # that _hopsworks_json produces for send-straight-back-to-Hopsworks use.
-    q = query.Query.from_response_json(job_conf.pop("query"))
+    # Extract the query object
+    q = query.Query._hopsworks_json(job_conf.pop("query"))
 
     td = fs.get_training_dataset(name=job_conf["name"], version=job_conf["version"])
     td.insert(
@@ -128,40 +125,47 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
     training_helper_columns = user_write_options.get("training_helper_columns")
     primary_keys = user_write_options.get("primary_keys")
     event_time = user_write_options.get("event_time")
-
-    # `overwrite=False` means this job materializes an `insert_training_data`
-    # append: the batch becomes a new partition of the existing training
-    # dataset instead of replacing it. Absent (old backend) means overwrite.
-    overwrite = job_conf.pop("overwrite", True)
-    save_mode = fv_engine._APPEND if overwrite is False else fv_engine._OVERWRITE
-
-    # The per-call event-time window is not part of the persisted training
-    # dataset metadata (which carries the create-time window); the client
-    # sends it in the write options. Apply it to the fetched metadata so the
-    # job materializes the requested batch. Values crossed the backend's
-    # Map<String, String> job config, so they arrive as strings.
-    training_dataset_obj = None
-    event_start_time = user_write_options.get("event_start_time")
-    event_end_time = user_write_options.get("event_end_time")
-    if event_start_time is not None or event_end_time is not None:
-        training_dataset_obj = fv_engine._get_training_dataset_metadata(
-            fv, job_conf["td_version"]
-        )
-        if event_start_time is not None:
-            training_dataset_obj.event_start_time = int(event_start_time)
-        if event_end_time is not None:
-            training_dataset_obj.event_end_time = int(event_end_time)
-
+    spine = job_conf.pop("spine", None)
     fv_engine._compute_training_dataset(
         feature_view_obj=fv,
         user_write_options=user_write_options,
         primary_keys=primary_keys,
         event_time=event_time,
         training_helper_columns=training_helper_columns,
-        training_dataset_obj=training_dataset_obj,
         training_dataset_version=job_conf["td_version"],
-        save_mode=save_mode,
+        spine_df=None if spine is None else read_staged_spine(fs, spine),
     )
+
+
+def read_staged_spine(fs: Any, spine: dict[str, Any]) -> Any:
+    """The spine the client staged for this job, read back as a Spark DataFrame in spine order.
+
+    The client wrote the file under its own Resources/.hopsworks_spine/ and the backend checked it
+    against the feature view before naming it in the job configuration. The job rebuilds the query
+    from the feature view, so without this the training data would silently be the root feature
+    group's rows rather than the population the caller asked for. A file that is gone, because the
+    sweeper's featurestore_asof_spine_max_file_age_ms passed before the job ran or because it was
+    removed by hand, is an error: the job cannot build the population it was given and must not
+    build another.
+    """
+    from hopsworks_common.client.exceptions import FeatureStoreException
+    from hsfs.constructor.inference_spine import ROW_ID_COLUMN, SPINE_DIR
+
+    basename = spine.get("parquetBasename")
+    if not basename:
+        raise FeatureStoreException(
+            "The training dataset job was given a spine that names no staged file."
+        )
+    path = f"hdfs:///Projects/{fs.project_name}/{SPINE_DIR}/{basename}"
+    try:
+        frame = setup_spark().read.parquet(path)
+    except Exception as e:
+        raise FeatureStoreException(
+            f"The spine this training dataset was built from could not be read at {path}: {e}."
+            " Spine files are kept for featurestore_asof_spine_max_file_age_ms after they are"
+            " written; recreate the training dataset with the same `spine_df` to stage it again."
+        ) from e
+    return frame.orderBy(ROW_ID_COLUMN).drop(ROW_ID_COLUMN)
 
 
 def compute_stats(job_conf: dict[Any, Any]) -> None:
@@ -325,7 +329,24 @@ def offline_fg_materialization(
     )
 
     # get starting offsets
-    offset_location = entity.prepare_spark_location() + "/kafka_offsets"
+    location = entity.prepare_spark_location()
+    offset_location = location + "/kafka_offsets"
+    # The offsets a run intends to consume, written before its append and removed after the
+    # offsets file is saved. A run that finds one repeats exactly that range, so its Delta
+    # transaction version matches the earlier attempt's and an append that did commit is skipped
+    # instead of being widened by rows that arrived since.
+    # It lives beside the feature group directory, not inside it like kafka_offsets: on the
+    # first run the table does not exist yet, and Delta refuses to create one at a location
+    # that already holds a file (DELTA_MISSING_DELTA_TABLE), which left every later run of a
+    # clustered feature group failing on the file the first one wrote. Deleting the feature
+    # group removes only its directory, so the name carries the group's id: a group recreated
+    # under the same name and version has a new id and never reads the old group's claim.
+    pending_offset_location = (
+        f"{location.rstrip('/')}_kafka_offsets_pending_{entity.id}"
+    )
+    pending_offsets = _pending_offsets(
+        spark, location, offset_location + "_pending", pending_offset_location
+    )
     try:
         if initial_check_point_string:
             starting_offset_string = json.dumps(
@@ -346,6 +367,13 @@ def offline_fg_materialization(
     )
     low_offsets = _build_offsets(low_offsets_string)
 
+    if not starting_offset_string:
+        # Nothing said where this run should start, so the low watermark would be the whole
+        # retained topic. Bound it by when the feature group came into existence instead.
+        low_offsets = _offsets_since_creation(
+            entity, low_offsets, write_options_of(job_conf)
+        )
+
     # validate and reconcile saved offsets against current topic state
     starting_offset_string = json.dumps(
         _reconcile_offsets(
@@ -362,7 +390,21 @@ def offline_fg_materialization(
         high=True,
     )
     ending_offset_string = json.dumps(_build_offsets(ending_offset_string))
+    appends = write_options_of(job_conf).get("operation") == "insert"
+    if pending_offsets and appends:
+        ending_offset_string = pending_offsets
+        print(
+            f"repeating the range of an unfinished run, endingOffsets: {ending_offset_string}"
+        )
     print(f"endingOffsets: {ending_offset_string}")
+    if appends:
+        # Claim the range before reading it, not after the append. Written after,
+        # it fences nothing: a second execution starting in between (a manual
+        # materialize_log(), or the self re-trigger) reads a wider range, derives
+        # a different txnVersion and appends the overlap a second time.
+        spark.createDataFrame([json.loads(ending_offset_string)]).coalesce(
+            1
+        ).write.mode("overwrite").json(pending_offset_location)
 
     # read kafka topic
     df = (
@@ -390,12 +432,38 @@ def offline_fg_materialization(
         == str(entity.subject["id"])
     )
 
+    # The storage header names the consumer a record is meant for: "online" is for OnlineFS
+    # alone, because whoever produced it already wrote the offline leg itself (or has none),
+    # so materializing it would write the same rows to the table a second time.
+    # Anything else belongs here: the header is absent when both consumers read the record,
+    # "offline" when this job is the only one that should, and "1"/"0" from clients that
+    # predate this contract meant "ingest online"/"skip online" without ever excluding the
+    # offline table.
+    storage_header = expr(
+        "CAST(filter(headers, header -> header.key = 'storage')[0].value AS STRING)"
+    )
+    filtered_df = filtered_df.filter(
+        storage_header.isNull() | (storage_header != "online")
+    )
+
+    # A delete tombstone is on the topic for OnlineFS only: remove_rows has already applied the
+    # offline delete directly to the table, so materializing the tombstone re-inserts the key it
+    # deleted.
+    # New clients mark it "online" above, so this covers the ones that do not.
+    # The header is absent on inserts, so null means keep.
+    # Exact match on the value, as in OnlineFsHandler.getRow.
+    operation_header = expr(
+        "CAST(filter(headers, header -> header.key = 'operation')[0].value AS STRING)"
+    )
+    filtered_df = filtered_df.filter(
+        operation_header.isNull() | (operation_header != "delete")
+    )
+
     # limit the number of records ingested
     # default limit is 5M
     limit = 5000000
-    write_options = job_conf.get("write_options", {})
-    if write_options:
-        limit = int(write_options.get("job_limit", limit))
+    write_options = write_options_of(job_conf)
+    limit = int(write_options.get("job_limit", limit))
     filtered_df = filtered_df.limit(limit)
 
     # deserialize dataframe so that it can be properly saved
@@ -423,8 +491,9 @@ def offline_fg_materialization(
     deduped_df = deduped_df.select("value.*")
 
     # get offsets (do it before inserting to avoid skipping records if data was deleted during the job execution)
+    filtered_count = filtered_df.count()
     df_offsets = (
-        (df if limit > filtered_df.count() else filtered_df)
+        (df if limit > filtered_count else filtered_df)
         .groupBy("partition")
         .agg(max("offset").alias("offset"))
         .collect()
@@ -438,17 +507,33 @@ def offline_fg_materialization(
     entity.stream = False  # to make sure we dont write to kafka
 
     # Do not apply transformation function at this point since the data written to Kafka already has transformations applied.
-    entity.insert(
-        deduped_df,
-        storage="offline",
-        transform=False,
-        write_options=write_options,
-        validation_options={"schema_validation": False},
-    )
+    # A feature log is append-only, so its job configuration carries operation=insert; every other
+    # stream group keeps the upsert on its primary key. An append has no key to make a retry
+    # idempotent, so the run identifies itself to Delta by the offsets it consumed: a rerun after a
+    # commit that never reached the offset file carries the same version and Delta skips it.
+    if write_options.get("operation") == "insert":
+        write_options = dict(write_options)
+        write_options["txnAppId"] = f"hopsworks_feature_log_materialization_{entity.id}"
+        write_options["txnVersion"] = str(
+            sum(int(v) for v in offset_dict[f"{entity._online_topic_name}"].values())
+        )
+    if filtered_count == 0 and _offline_table_exists(spark, entity, location):
+        print("No records for the offline table in this range, skipping the insert")
+    else:
+        entity.insert(
+            deduped_df,
+            storage="offline",
+            operation=write_options.get("operation", "upsert"),
+            transform=False,
+            write_options=write_options,
+            validation_options={"schema_validation": False},
+        )
 
     # save offsets
     offset_df = spark.createDataFrame([offset_dict])
     offset_df.coalesce(1).write.mode("overwrite").json(offset_location)
+    if write_options.get("operation") == "insert":
+        _remove_path(spark, pending_offset_location)
 
 
 def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> None:
@@ -462,6 +547,140 @@ def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> Non
 
     entity.stream = False
     engine._get_instance()._update_table_schema(entity)
+
+
+def write_options_of(job_conf) -> dict:
+    return job_conf.get("write_options", {}) or {}
+
+
+def _path_exists(spark, location: str) -> bool:
+    jvm = spark._jvm
+    path = jvm.org.apache.hadoop.fs.Path(location)
+    return path.getFileSystem(spark._jsc.hadoopConfiguration()).exists(path)
+
+
+def _offline_table_exists(spark, entity, location: str) -> bool:
+    """Whether the offline table exists; until it does, the insert creates it."""
+    marker = {"DELTA": "_delta_log", "HUDI": ".hoodie"}.get(
+        (entity.time_travel_format or "").upper()
+    )
+    return marker is not None and _path_exists(
+        spark, f"{location.rstrip('/')}/{marker}"
+    )
+
+
+def _remove_path(spark, location: str) -> None:
+    jvm = spark._jvm
+    path = jvm.org.apache.hadoop.fs.Path(location)
+    path.getFileSystem(spark._jsc.hadoopConfiguration()).delete(path, True)
+
+
+def _move_path(spark, source: str, target: str) -> None:
+    jvm = spark._jvm
+    src = jvm.org.apache.hadoop.fs.Path(source)
+    if not src.getFileSystem(spark._jsc.hadoopConfiguration()).rename(
+        src, jvm.org.apache.hadoop.fs.Path(target)
+    ):
+        raise OSError(f"Could not move {source} to {target}")
+
+
+def _pending_offsets(
+    spark, location: str, legacy_location: str, pending_location: str
+) -> str | None:
+    """The range an unfinished append claimed, as the JSON offsets string, or None.
+
+    `legacy_location` is where clients before this one wrote the claim: inside the
+    table directory, where a claim written before the table was created stopped Delta
+    from ever creating it. With no `_delta_log` there, nothing was appended, so the claim
+    covers nothing and only stands in the way of the create; it is removed. With a table
+    there, the claim belongs to an interrupted append and is moved to `pending_location`
+    so the retry repeats its range. A claim in the new place always wins over a legacy
+    one, because the two share their starting offsets and the newer range covers the
+    older one.
+
+    Absence is the only reading of a missing file. A storage, permission or corruption
+    error has to stop the run: treating it as "no pending range" would widen the range
+    to the offsets that arrived since and append rows the earlier attempt's transaction
+    version no longer covers.
+    """
+    if _path_exists(spark, legacy_location):
+        if _path_exists(spark, pending_location) or not _path_exists(
+            spark, location + "/_delta_log"
+        ):
+            _remove_path(spark, legacy_location)
+        else:
+            _move_path(spark, legacy_location, pending_location)
+    if not _path_exists(spark, pending_location):
+        return None
+    return spark.read.json(pending_location).toJSON().first()
+
+
+def _timestamp_ms(date_string: str) -> int:
+    """Milliseconds since the epoch for a date the backend serialized.
+
+    Parsed here rather than through `hsfs.util`, deliberately. This file ships in the
+    spark-feature-pipeline image beside whatever SDK that image happens to carry, so a
+    parser reached through the SDK is a second thing that has to be current for the floor
+    below to work at all — and when it is not, the floor does not fail loudly, it quietly
+    falls back to reading the whole topic.
+
+    `fromisoformat` also accepts the whole of the backend's `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`
+    format, including the `+02:00` rendering of that trailing `XXX`, which the SDK's
+    pattern list does not.
+    """
+    parsed = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        # The backend always sends an offset; anything that does not is read as UTC
+        # rather than as the job container's local time.
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.timestamp() * 1000)
+
+
+def _offsets_since_creation(entity, low_offsets: dict, write_options: dict) -> dict:
+    """Offsets a first materialization run should start from, floored at the feature group's creation.
+
+    A run gets told where to start by `-initialCheckPointString`, which only the Python
+    client passes, or by the offsets file a previous run saved. With neither, the start
+    falls back to the topic's low watermark, and the topic is by default
+    `<project>_onlinefs`, shared by every online-enabled feature group in the project: the
+    run reads the whole retained history of all of them just to drop nearly all of it in
+    the featureGroupId filter.
+
+    No record of a feature group can predate the feature group, so its creation time is a
+    sound floor. Kafka stamps a record with the producing client's clock by default, so a
+    client whose clock lags the backend's could stamp one just before that time;
+    `initial_offset_margin_hours` (1 by default) is how far back the floor is moved to
+    absorb the skew, and raising it costs only a longer read.
+
+    The low watermark offsets are returned unchanged whenever the floor cannot be
+    established, so a failed lookup reads too much rather than too little.
+    """
+    if not low_offsets or not entity.created:
+        return low_offsets
+
+    # Everything the floor is derived from is under the guard: an unparseable margin or
+    # creation time is as much a reason to fall back as a broker that will not answer,
+    # and none of the three may take the materialization job down with it.
+    try:
+        margin_hours = float(write_options.get("initial_offset_margin_hours", 1))
+        timestamp = _timestamp_ms(entity.created) - int(margin_hours * 60 * 60 * 1000)
+        offsets = _build_offsets(
+            kafka_engine._kafka_get_offsets_for_times(
+                topic_name=entity._online_topic_name,
+                feature_store_id=entity.feature_store_id,
+                offline_write_options={},
+                timestamp=timestamp,
+            )
+        )
+    except Exception as e:
+        print(f"Failed to look offsets up by creation time: {e}")
+        return low_offsets
+
+    if not offsets:
+        return low_offsets
+
+    print(f"No saved offsets, starting from the feature group's creation: {offsets}")
+    return offsets
 
 
 def _build_offsets(initial_check_point_string: str):
@@ -556,6 +775,7 @@ if __name__ == "__main__":
             "insert_fg",
             "create_td",
             "create_fv_td",
+            "create_fv_td_spine",
             "compute_stats",
             "ge_validate",
             "import_fg",
@@ -614,7 +834,10 @@ if __name__ == "__main__":
             insert_fg(spark, job_conf)
         elif args.op == "create_td":
             create_td(job_conf)
-        elif args.op == "create_fv_td":
+        elif args.op in ("create_fv_td", "create_fv_td_spine"):
+            # The backend launches a spine-anchored job under its own op so an image whose
+            # entrypoint predates spines refuses it here, at argument parsing, rather than
+            # building the feature view's own rows under the requested version.
             create_fv_td(job_conf)
         elif args.op == "compute_stats":
             compute_stats(job_conf)

@@ -44,6 +44,7 @@ class TestFsQuery:
         )
         assert q.query_online == "test_query_online"
         assert q.pit_query == "test_pit_query"
+        assert q.pushdown_query == "test_pushdown_query"
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange
@@ -58,3 +59,4 @@ class TestFsQuery:
         assert len(q._hudi_cached_feature_groups) == 0
         assert q.query_online is None
         assert q.pit_query is None
+        assert q.pushdown_query is None

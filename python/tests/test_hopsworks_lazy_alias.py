@@ -26,19 +26,27 @@ import sys
 import textwrap
 
 
-def _run_isolated(snippet: str) -> tuple[int, str]:
-    """Execute ``snippet`` in a fresh interpreter for clean ``sys.modules``."""
+def _run_isolated(snippet: str) -> tuple[int, str, str]:
+    """Execute ``snippet`` in a fresh interpreter for clean ``sys.modules``.
+
+    The sentinel is asserted against stdout alone: optional dependencies log
+    to stderr on import (great_expectations prints "Multiple declarations of
+    metric ..." whenever it loads), and concatenating the streams put that
+    noise after the sentinel, failing every test on environments that have
+    the extras installed. The merged output is returned for failure messages.
+    """
     proc = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(snippet)],
         capture_output=True,
         text=True,
     )
-    return proc.returncode, (proc.stdout + proc.stderr).strip()
+    merged = (proc.stdout + proc.stderr).strip()
+    return proc.returncode, proc.stdout.strip(), merged
 
 
 def test_import_hopsworks_does_not_load_hsfs():
     """``import hopsworks`` must not eagerly load ``hsfs`` or ``hsml``."""
-    rc, out = _run_isolated(
+    rc, out, log = _run_isolated(
         """
         import sys
         import hopsworks  # noqa: F401
@@ -49,24 +57,24 @@ def test_import_hopsworks_does_not_load_hsfs():
         print('OK')
         """
     )
-    assert rc == 0 and out.endswith("OK"), out
+    assert rc == 0 and out.endswith("OK"), log
 
 
 def test_dotted_submodule_import_works():
     """``from hopsworks.hsfs.X import Y`` resolves via the meta-path finder."""
-    rc, out = _run_isolated(
+    rc, out, log = _run_isolated(
         """
         from hopsworks.hsfs.builtin_transformations import one_hot_encoder
         assert one_hot_encoder is not None
         print('OK')
         """
     )
-    assert rc == 0 and out.endswith("OK"), out
+    assert rc == 0 and out.endswith("OK"), log
 
 
 def test_dotted_submodule_import_lazily_loads_hsfs():
     """The dotted import is what triggers the real ``hsfs`` load, not ``import hopsworks``."""
-    rc, out = _run_isolated(
+    rc, out, log = _run_isolated(
         """
         import sys
         import hopsworks  # noqa: F401
@@ -77,12 +85,12 @@ def test_dotted_submodule_import_lazily_loads_hsfs():
         print('OK')
         """
     )
-    assert rc == 0 and out.endswith("OK"), out
+    assert rc == 0 and out.endswith("OK"), log
 
 
 def test_attribute_access_still_works():
     """The PEP 562 ``__getattr__`` path is unaffected by the finder."""
-    rc, out = _run_isolated(
+    rc, out, log = _run_isolated(
         """
         import hopsworks
         _ = hopsworks.hsfs
@@ -91,12 +99,12 @@ def test_attribute_access_still_works():
         print('OK')
         """
     )
-    assert rc == 0 and out.endswith("OK"), out
+    assert rc == 0 and out.endswith("OK"), log
 
 
 def test_alias_and_real_module_are_identical():
     """``hopsworks.hsfs`` and ``hsfs`` must be the same module object."""
-    rc, out = _run_isolated(
+    rc, out, log = _run_isolated(
         """
         import hopsworks.hsfs
         import hsfs
@@ -107,12 +115,12 @@ def test_alias_and_real_module_are_identical():
         print('OK')
         """
     )
-    assert rc == 0 and out.endswith("OK"), out
+    assert rc == 0 and out.endswith("OK"), log
 
 
 def test_repeated_dotted_imports_are_idempotent():
     """Re-importing a dotted submodule must hand back the same object."""
-    rc, out = _run_isolated(
+    rc, out, log = _run_isolated(
         """
         from hopsworks.hsfs.builtin_transformations import one_hot_encoder as a
         from hopsworks.hsfs.builtin_transformations import one_hot_encoder as b
@@ -120,4 +128,4 @@ def test_repeated_dotted_imports_are_idempotent():
         print('OK')
         """
     )
-    assert rc == 0 and out.endswith("OK"), out
+    assert rc == 0 and out.endswith("OK"), log

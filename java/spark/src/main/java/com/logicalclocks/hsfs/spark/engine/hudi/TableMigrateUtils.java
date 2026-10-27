@@ -57,24 +57,24 @@ public class TableMigrateUtils {
             .setLoadActiveTimelineOnLoad(false)
             .build();
     
-    // During Hudi upgrades we might need to bump this version. This version matches Hudi 1.0.2
+    // During Hudi upgrades we might need to bump this version. This version matches Hudi 1.2.0
     if (metaClient.getTableConfig().contains(HoodieTableConfig.VERSION)
-        && metaClient.getTableConfig().getTableVersion() != HoodieTableVersion.EIGHT) {
+        && metaClient.getTableConfig().getTableVersion() != HoodieTableVersion.NINE) {
       doHiveSync(writeOptions, javaSparkContext, metaClient);
       // Migrate to version 6 first if the table is older than version 6.
-      // If the table is version 6 or 7, it will be migrated to version 8 directly
+      // If the table is version 6, 7 or 8, it will be migrated to version 9 directly.
       if (metaClient.getTableConfig().getTableVersion().lesserThan(HoodieTableVersion.SIX)) {
         migrateToVersionSix(writeOptions, metaClient, javaSparkContext);
-      } else if (metaClient.getTableConfig().getTableVersion().greaterThan(HoodieTableVersion.EIGHT)) {
+      } else if (metaClient.getTableConfig().getTableVersion().greaterThan(HoodieTableVersion.NINE)) {
         return;
       }
       migratePartitionFields(metaClient);
       metaClient.getTableConfig().setValue(HudiEngine.HUDI_TABLE_VERSION,
-          String.valueOf(HoodieTableVersion.EIGHT.versionCode()));
+          String.valueOf(HoodieTableVersion.NINE.versionCode()));
       new UpgradeDowngrade(metaClient, getUpdatedWriteConfig(writeOptions, metaClient),
           new HoodieSparkEngineContext(javaSparkContext),
-          SparkUpgradeDowngradeHelper.getInstance()).run(HoodieTableVersion.EIGHT, null);
-      LOG.info("Migration to version 8 completed");
+          SparkUpgradeDowngradeHelper.getInstance()).run(HoodieTableVersion.NINE, null);
+      LOG.info("Migration to version 9 completed");
     }
   }
 

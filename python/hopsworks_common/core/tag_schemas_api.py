@@ -83,7 +83,9 @@ class TagSchemasApi:
         return _client._send_request("GET", self._path() + [name])
 
     @public
-    def create(self, name: str, schema: dict | str) -> dict[str, Any]:
+    def create(
+        self, name: str, schema: dict | str, archive: bool = False
+    ) -> dict[str, Any]:
         """Register a new schematized tag.
 
         Tag schemas are JSON-Schema definitions that constrain the value
@@ -107,6 +109,9 @@ class TagSchemasApi:
                 "required": ["owner"],
             }
             TagSchemasApi().create("ownership", schema)
+
+            # keep deleted attachments of this tag for analytics
+            TagSchemasApi().create("ownership", schema, archive=True)
             ```
 
         Parameters:
@@ -114,6 +119,9 @@ class TagSchemasApi:
                 tag instances to entities).
             schema: JSON-Schema definition. May be a Python dict (the
                 preferred form) or a JSON string already serialized.
+            archive: Whether attachments of this tag are kept once they
+                are deleted, for later analytics. Defaults to `False`,
+                which discards them with the attachment.
 
         Returns:
             The created schema payload as returned by the backend.
@@ -144,7 +152,7 @@ class TagSchemasApi:
             return _client._send_request(
                 "POST",
                 self._path(),
-                query_params={"name": name},
+                query_params={"name": name, "archive": archive},
                 headers={"content-type": "application/json"},
                 data=body,
             )

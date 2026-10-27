@@ -50,8 +50,9 @@ from pyspark.sql.types import (
 
 # TODO : Remove skipping UT in windows after Greater expectations has been upgraded to 1.0 or after it has been made optional
 @pytest.mark.skipif(
-    os.name == "nt",
-    reason="Skip tests in windows since it fails due to dependency problem with greater expectations 0.18.2, Fixed on upgrading to 1.0",
+    os.name == "nt"
+    or tuple(int(part) for part in pd.__version__.split(".")[:2]) < (2, 2),
+    reason="Skip on unsupported Spark runtime: Windows, or pandas < 2.2 for PySpark 4.1.",
 )
 class TestPythonSparkTransformationFunctions:
     def _create_training_dataset(self):

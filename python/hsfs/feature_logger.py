@@ -24,6 +24,25 @@ from hopsworks_apigen import public
 @public
 class FeatureLogger(ABC):
     @public
+    def log_batch(
+        self, payload: bytes, attributes: dict[str, str], rows: int = 1
+    ) -> None:
+        """Submit one Arrow IPC feature batch to a capable inference logger.
+
+        Implementations opt in by overriding this method. Callers must also
+        check the injector's protocol capability before submitting a batch.
+
+        Parameters:
+            payload: One uncompressed Arrow IPC stream containing one batch.
+            attributes: Binary CloudEvent headers, including revision identity.
+            rows: Number of rows already known by the batch builder.
+
+        Raises:
+            NotImplementedError: This logger supports row logging only.
+        """
+        raise NotImplementedError("This feature logger does not support Arrow batches")
+
+    @public
     @abstractmethod
     def log(
         self,

@@ -16,6 +16,7 @@
 import decimal
 import json
 import logging
+import os
 from datetime import date, datetime, timedelta, timezone
 
 import hopsworks_common
@@ -819,149 +820,6 @@ class TestPython:
         assert mock_dataset_api.return_value._list_dataset_path.call_count == 1
         assert mock_python_engine_read_pandas.call_count == 3
 
-    def test_read_hopsfs_remote_partitioned(self, mocker):
-        # Hive-partitioned training datasets nest parquet files under
-        # partition subdirs (here a counter-keyed increment); the reader must
-        # recurse into them.
-        # Arrange
-        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
-        mock_python_engine_read_pandas = mocker.patch(
-            "hsfs.engine.python.Engine._read_pandas"
-        )
-
-        python_engine = python.Engine()
-
-        # Top level reports the location is a directory holding one partition dir.
-        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
-        partition_dir = inode.Inode(
-            attributes={"path": "td/_hopsworks_append_id=0", "dir": True}
-        )
-        parquet_file = inode.Inode(
-            attributes={"path": "td/_hopsworks_append_id=0/part-00000.parquet"}
-        )
-
-        # First listing (the location) -> the partition dir; second listing
-        # (the partition dir) -> the parquet file. Each returns total_count 0 so
-        # the paging loop stops after one page.
-        mock_dataset_api.return_value._list_dataset_path.side_effect = [
-            (0, [partition_dir]),
-            (0, [parquet_file]),
-        ]
-        mock_dataset_api.return_value.read_content.return_value.content = b""
-
-        # Act
-        python_engine._read_hopsfs_remote(location="td", data_format=None)
-
-        # Assert: recursed into the partition dir and read the single file.
-        assert mock_dataset_api.return_value._list_dataset_path.call_count == 2
-        assert mock_python_engine_read_pandas.call_count == 1
-
-    def test_read_hopsfs_remote_time_range_prunes_partitions(self, mocker):
-        # A time-range read skips the partition dirs whose event-window start
-        # falls outside the range, without listing their content.
-        # Arrange
-        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
-        mock_python_engine_read_pandas = mocker.patch(
-            "hsfs.engine.python.Engine._read_pandas"
-        )
-
-        python_engine = python.Engine()
-
-        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
-        early = inode.Inode(
-            attributes={"path": "td/_hopsworks_event_date=20260628", "dir": True}
-        )
-        in_range = inode.Inode(
-            attributes={"path": "td/_hopsworks_event_date=20260701", "dir": True}
-        )
-        late = inode.Inode(
-            attributes={"path": "td/_hopsworks_event_date=20260703", "dir": True}
-        )
-        parquet_file = inode.Inode(
-            attributes={"path": "td/_hopsworks_event_date=20260701/part-00000.parquet"}
-        )
-
-        # The location listing yields all three partitions; only the in-range
-        # one is listed further.
-        mock_dataset_api.return_value._list_dataset_path.side_effect = [
-            (0, [early, in_range, late]),
-            (0, [parquet_file]),
-        ]
-        mock_dataset_api.return_value.read_content.return_value.content = b""
-
-        # Act
-        python_engine._read_hopsfs_remote(
-            location="td",
-            data_format=None,
-            event_start_time=20260630,
-            event_end_time=20260702,
-        )
-
-        # Assert: only the in-range partition dir was recursed into and read.
-        assert mock_dataset_api.return_value._list_dataset_path.call_count == 2
-        assert (
-            mock_dataset_api.return_value._list_dataset_path.call_args_list[1][0][0]
-            == "td/_hopsworks_event_date=20260701"
-        )
-        assert mock_python_engine_read_pandas.call_count == 1
-
-    def test_read_hopsfs_remote_time_range_counter_partitions_raise(self, mocker):
-        # A dataset whose partitions are all counter-keyed (materialized
-        # without an event time) is not time-addressable; failing beats
-        # silently returning an empty result.
-        # Arrange
-        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
-        mocker.patch("hsfs.engine.python.Engine._read_pandas")
-
-        python_engine = python.Engine()
-
-        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
-        counter_0 = inode.Inode(
-            attributes={"path": "td/_hopsworks_append_id=0", "dir": True}
-        )
-        counter_1 = inode.Inode(
-            attributes={"path": "td/_hopsworks_append_id=1", "dir": True}
-        )
-        mock_dataset_api.return_value._list_dataset_path.return_value = (
-            0,
-            [counter_0, counter_1],
-        )
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine._read_hopsfs_remote(
-                location="td",
-                data_format=None,
-                event_start_time=20260101,
-            )
-        assert "partitioned by event time" in str(e_info.value)
-
-    def test_read_hopsfs_remote_time_range_not_partitioned_raises(self, mocker):
-        # A time-range read of a dataset with flat data files (no event-time
-        # partitions) cannot be pruned; failing beats silently returning
-        # everything.
-        # Arrange
-        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
-        mocker.patch("hsfs.engine.python.Engine._read_pandas")
-
-        python_engine = python.Engine()
-
-        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
-        flat_file = inode.Inode(attributes={"path": "td/part-00000.parquet"})
-        mock_dataset_api.return_value._list_dataset_path.return_value = (
-            0,
-            [flat_file],
-        )
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine._read_hopsfs_remote(
-                location="td",
-                data_format=None,
-                event_start_time=20260630,
-            )
-        assert "partitioned by event time" in str(e_info.value)
-
     def test_read_s3(self, mocker):
         # Arrange
         mock_boto3_client = mocker.patch("boto3.client")
@@ -994,117 +852,6 @@ class TestPython:
         assert "aws_session_token" not in mock_boto3_client.call_args[1]
         assert mock_boto3_client.call_count == 1
         assert mock_python_engine_read_pandas.call_count == 2
-
-    def test_read_s3_time_range_prunes_partitions(self, mocker):
-        # S3 lists objects flat; a time-range read prunes by the append
-        # partition segment in the object key.
-        # Arrange
-        mock_boto3_client = mocker.patch("boto3.client")
-        mock_python_engine_read_pandas = mocker.patch(
-            "hsfs.engine.python.Engine._read_pandas"
-        )
-
-        python_engine = python.Engine()
-
-        connector = storage_connector.S3Connector(
-            id=1, name="test_connector", featurestore_id=1
-        )
-
-        mock_boto3_client.return_value.list_objects_v2.return_value = {
-            "is_truncated": False,
-            "Contents": [
-                {
-                    "Key": "td/_hopsworks_event_date=20260628/part-0.parquet",
-                    "Size": 1,
-                    "Body": "",
-                },
-                {
-                    "Key": "td/_hopsworks_event_date=20260701/part-0.parquet",
-                    "Size": 1,
-                    "Body": "",
-                },
-                {
-                    "Key": "td/_hopsworks_event_date=20260703/part-0.parquet",
-                    "Size": 1,
-                    "Body": "",
-                },
-            ],
-        }
-
-        # Act
-        python_engine._read_s3(
-            storage_connector=connector,
-            location="",
-            data_format=None,
-            event_start_time=20260630,
-            event_end_time=20260702,
-        )
-
-        # Assert: only the in-range increment was fetched and read.
-        assert mock_boto3_client.return_value.get_object.call_count == 1
-        assert (
-            mock_boto3_client.return_value.get_object.call_args[1]["Key"]
-            == "td/_hopsworks_event_date=20260701/part-0.parquet"
-        )
-        assert mock_python_engine_read_pandas.call_count == 1
-
-    def test_read_s3_time_range_counter_partitions_raise(self, mocker):
-        # Arrange
-        mock_boto3_client = mocker.patch("boto3.client")
-        mocker.patch("hsfs.engine.python.Engine._read_pandas")
-
-        python_engine = python.Engine()
-
-        connector = storage_connector.S3Connector(
-            id=1, name="test_connector", featurestore_id=1
-        )
-
-        mock_boto3_client.return_value.list_objects_v2.return_value = {
-            "is_truncated": False,
-            "Contents": [
-                {
-                    "Key": "td/_hopsworks_append_id=0/part-0.parquet",
-                    "Size": 1,
-                    "Body": "",
-                }
-            ],
-        }
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine._read_s3(
-                storage_connector=connector,
-                location="",
-                data_format=None,
-                event_start_time=20260101,
-            )
-        assert "partitioned by event time" in str(e_info.value)
-
-    def test_read_s3_time_range_not_partitioned_raises(self, mocker):
-        # Arrange
-        mock_boto3_client = mocker.patch("boto3.client")
-        mocker.patch("hsfs.engine.python.Engine._read_pandas")
-
-        python_engine = python.Engine()
-
-        connector = storage_connector.S3Connector(
-            id=1, name="test_connector", featurestore_id=1
-        )
-
-        mock_boto3_client.return_value.list_objects_v2.return_value = {
-            "is_truncated": False,
-            "Contents": [{"Key": "td/part-0.parquet", "Size": 1, "Body": ""}],
-        }
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            python_engine._read_s3(
-                storage_connector=connector,
-                location="",
-                data_format=None,
-                event_start_time=20260630,
-            )
-        assert "partitioned by event time" in str(e_info.value)
 
     def test_read_s3_session_token(self, mocker):
         # Arrange
@@ -4056,6 +3803,26 @@ class TestPython:
         # Assert
         assert result == file
 
+    def test_add_file_downloads_to_temp_dir(self, mocker):
+        # Arrange
+        python_engine = python.Engine()
+        python_engine._dataset_api = mocker.MagicMock()
+        python_engine._dataset_api.read_content.return_value.content = b"store"
+        name = f"hworks_3521_{os.getpid()}.jks"
+        local_file = os.path.join(constants._temp_dir(), name)
+
+        # Act
+        try:
+            result = python_engine._add_file(file=f"file:///Projects/p/{name}")
+
+            # Assert
+            assert result == local_file
+            with open(local_file, "rb") as f:
+                assert f.read() == b"store"
+        finally:
+            if os.path.exists(local_file):
+                os.remove(local_file)
+
     def test_get_unique_values(self):
         # Arrange
         python_engine = python.Engine()
@@ -4137,6 +3904,59 @@ class TestPython:
             args="defaults",
             await_termination=False,
         )
+
+    @pytest.mark.parametrize("multi_part", [False, True])
+    def test_materialization_schedule_is_attached_when_the_group_is_created(
+        self, mocker, multi_part
+    ):
+        # Arrange: a new group's topic already exists, so offsets come back and the
+        # first-ingestion branch, which used to be the only one scheduling, is skipped.
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
+        mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._kafka_produce")
+        mocker.patch(
+            "hsfs.core.kafka_engine._kafka_get_offsets", return_value="topic,0:0"
+        )
+        mocker.patch("hsfs.util._get_job_url")
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=True,
+            time_travel_format="DELTA",
+        )
+        fg.feature_store = mocker.Mock()
+        fg._online_topic_name = "test_topic"
+        fg._multi_part_insert = multi_part
+        job_mock = mocker.MagicMock()
+        job_mock.config = {"defaultArgs": "defaults"}
+        fg._materialization_job = job_mock
+        mocker.patch.object(python_engine, "_write_dataframe_kafka")
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=pd.DataFrame(data={"col1": [1]}),
+            offline_write_options={
+                "offline_backfill_every_hr": 1,
+                "start_offline_materialization": False,
+            },
+            storage=None,
+        )
+
+        # Assert: scheduled hourly, and no materialization run was started for it.
+        job_mock.schedule.assert_called_once()
+        cron = job_mock.schedule.call_args.kwargs["cron_expression"]
+        assert cron.split()[0] == "0"
+        assert cron.split()[2] == "0/1"
+        job_mock.run.assert_not_called()
 
     def test_materialization_kafka_first_job_execution(self, mocker):
         # Arrange
@@ -4326,6 +4146,300 @@ class TestPython:
         job_mock.run.assert_called_once_with(
             args="defaults -initialCheckPointString tests_offsets",
             await_termination=False,
+        )
+
+    def _setup_storage_header_mocks(self, mocker):
+        """Mock everything between _run_materialization_job and the Kafka producer."""
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
+        mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
+        mocker.patch("hsfs.util._get_job_url")
+        mocker.patch(
+            "hsfs.core.kafka_engine._kafka_get_offsets",
+            return_value=" tests_offsets",
+        )
+        mocker.patch(
+            "hsfs.core.job_api.JobApi.last_execution",
+            return_value=["", ""],
+        )
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_create_online_ingestion = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
+        mock_kafka_produce = mocker.patch("hsfs.core.kafka_engine._kafka_produce")
+        return mock_kafka_produce, mock_create_online_ingestion
+
+    def _make_storage_header_fg(self, mocker):
+        """An online-enabled stream feature group with a primary key, plus a duplicate-key df."""
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=True,
+            online_enabled=True,
+        )
+        # an id makes the feature group backend-initialized, which derives the primary key
+        # from the (here empty) feature list
+        fg.primary_key = ["col1"]
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+        fg._subject = {"id": 823}
+        fg._online_topic_name = "test_topic"
+        job_mock = mocker.MagicMock()
+        job_mock.config = {"defaultArgs": "defaults"}
+        fg._materialization_job = job_mock
+        # col1 = 2 twice: the first occurrence is superseded online, but still belongs offline.
+        df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
+        return fg, df, job_mock
+
+    def test_materialization_kafka_marks_superseded_rows_offline(self, mocker):
+        # Arrange
+        mock_kafka_produce, _ = self._setup_storage_header_mocks(mocker)
+        python_engine = python.Engine()
+        fg, df, job_mock = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+            storage=None,
+        )
+
+        # Assert: both consumers read the rows that go online, so they carry no storage
+        # header; the superseded row is for the materialization job alone.
+        headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
+        assert len(headers) == 4
+        assert [header.get("storage") for header in headers] == [
+            None,
+            b"offline",
+            None,
+            None,
+        ]
+        job_mock.run.assert_called_once()
+
+    def test_materialization_kafka_storage_online(self, mocker):
+        # Arrange
+        mock_kafka_produce, mock_create_online_ingestion = (
+            self._setup_storage_header_mocks(mocker)
+        )
+        python_engine = python.Engine()
+        fg, df, job_mock = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+            storage="online",
+        )
+
+        # Assert: only the rows OnlineFS ingests are produced, marked for it alone, and
+        # the materialization job would find nothing to materialize.
+        headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
+        assert len(headers) == 3
+        assert all(header["storage"] == b"online" for header in headers)
+        job_mock.run.assert_not_called()
+        # the superseded row is never produced, so it is not counted either
+        assert mock_create_online_ingestion.call_args[0][1].num_entries == 3
+
+    def test_materialization_kafka_storage_offline(self, mocker):
+        # Arrange
+        mock_kafka_produce, mock_create_online_ingestion = (
+            self._setup_storage_header_mocks(mocker)
+        )
+        python_engine = python.Engine()
+        fg, df, job_mock = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+            storage="offline",
+        )
+
+        # Assert: every row is produced for the materialization job alone, and no online
+        # ingestion is created for a write that reaches no online store.
+        headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
+        assert len(headers) == 4
+        assert all(header["storage"] == b"offline" for header in headers)
+        assert all("onlineIngestionId" not in header for header in headers)
+        mock_create_online_ingestion.assert_not_called()
+        job_mock.run.assert_called_once()
+
+    @pytest.mark.parametrize("storage", [None, "online"])
+    def test_materialization_kafka_waits_on_its_own_online_ingestion(
+        self, mocker, storage
+    ):
+        # Arrange
+        self._setup_storage_header_mocks(mocker)
+        mock_get_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_online_ingestion"
+        )
+        mock_get_latest_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_latest_online_ingestion"
+        )
+        python_engine = python.Engine()
+        fg, df, _ = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={
+                "start_offline_materialization": True,
+                "wait_for_online_ingestion": True,
+            },
+            storage=storage,
+        )
+
+        # Assert: the wait follows the ingestion this insert created, not whichever one the
+        # backend reports as latest.
+        mock_get_online_ingestion.assert_called_once_with(123)
+        mock_get_online_ingestion.return_value.wait_for_completion.assert_called_once()
+        mock_get_latest_online_ingestion.assert_not_called()
+
+    def test_materialization_kafka_storage_offline_does_not_wait_online(self, mocker):
+        # Arrange
+        self._setup_storage_header_mocks(mocker)
+        mock_get_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_online_ingestion"
+        )
+        mock_get_latest_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_latest_online_ingestion"
+        )
+        python_engine = python.Engine()
+        fg, df, _ = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={
+                "start_offline_materialization": True,
+                "wait_for_online_ingestion": True,
+            },
+            storage="offline",
+        )
+
+        # Assert
+        mock_get_online_ingestion.assert_not_called()
+        mock_get_latest_online_ingestion.assert_not_called()
+
+    def test_save_dataframe_stream_passes_storage(self, mocker):
+        # Arrange
+        mock_python_engine_run_materialization_job = mocker.patch(
+            "hsfs.engine.python.Engine._run_materialization_job"
+        )
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=True,
+        )
+
+        # Act
+        python_engine._save_dataframe(
+            feature_group=fg,
+            dataframe=None,
+            operation=None,
+            online_enabled=None,
+            storage="online",
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        mock_python_engine_run_materialization_job.assert_called_once_with(
+            fg, None, None, "online"
+        )
+
+    def test_save_dataframe_delta_online_write_is_online_only(self, mocker):
+        # Arrange
+        mock_python_engine_write_dataframe_kafka = mocker.patch(
+            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        )
+        mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="DELTA",
+            online_enabled=True,
+        )
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3]})
+
+        # Act
+        python_engine._save_dataframe(
+            feature_group=fg,
+            dataframe=test_dataframe,
+            operation="insert",
+            online_enabled=True,
+            storage=None,
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert: the offline leg went straight to the Delta table, so the records on the
+        # topic are for OnlineFS alone.
+        mock_python_engine_write_dataframe_kafka.assert_called_once_with(
+            fg, test_dataframe, {}, "online"
+        )
+
+    def test_save_dataframe_hudi_online_write_stays_unmarked(self, mocker):
+        # Arrange
+        mock_python_engine_write_dataframe_kafka = mocker.patch(
+            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        )
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="HUDI",
+            online_enabled=True,
+        )
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3]})
+
+        # Act
+        python_engine._save_dataframe(
+            feature_group=fg,
+            dataframe=test_dataframe,
+            operation="insert",
+            online_enabled=True,
+            storage=None,
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert: nothing wrote the offline leg in this call, so the records must stay
+        # readable by both consumers rather than being claimed for OnlineFS.
+        mock_python_engine_write_dataframe_kafka.assert_called_once_with(
+            fg, test_dataframe, {}, None
         )
 
     def test_test(self, mocker):
@@ -10227,3 +10341,179 @@ class TestPython:
                 self._get_val_multi(result, {"user_id": 1, "item_id": 10}, "val")
                 == "new"
             )
+
+    @staticmethod
+    def _legacy_logging_fg_features():
+        return [
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+                primary=True,
+                type="string",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+                type="int",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, type="timestamp"
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME, type="string"
+            ),
+            feature.Feature("feature_1", type="double"),
+            feature.Feature("feature_2", type="double"),
+            feature.Feature("label", type="string"),
+        ]
+
+    @staticmethod
+    def _legacy_logging_arguments(logging_feature_group_features, **data_kwargs):
+        column_names = {
+            "untransformed_features": ["feature_1", "feature_2"],
+            "transformed_features": ["feature_1", "feature_2"],
+            "predictions": ["label"],
+            "serving_keys": [],
+            "helper_columns": [],
+            "request_parameters": [],
+            "event_time": [],
+            "request_id": [],
+            "extra_logging_features": [],
+        }
+        args = TestPython.get_logging_arguments(
+            column_names=column_names,
+            logging_feature_group_features=logging_feature_group_features,
+            **data_kwargs,
+        )
+        # Mirror the shared layer's legacy handling: hsml_model is the metadata model
+        # column and never an expected user data column.
+        args["model_col_name"] = constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+        args["model_name"] = "test_model_1"
+        args["logging_features"] = [
+            name
+            for name in args["logging_features"]
+            if name != constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+        ]
+        return args
+
+    def test_get_feature_logging_df_legacy_feature_group(self, mocker):
+        # Prepare
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+
+        logging_feature_group_features = TestPython._legacy_logging_fg_features()
+        untransformed_df = pd.DataFrame(
+            {"feature_1": [0.1, 0.2], "feature_2": [0.3, 0.4]}
+        )
+        predictions_df = pd.DataFrame({"label": ["a", "b"]})
+        args = TestPython._legacy_logging_arguments(
+            logging_feature_group_features,
+            untransformed_features=untransformed_df,
+            predictions=predictions_df,
+        )
+
+        # Act
+        logging_dataframe, additional_logging_features, _ = (
+            python_engine._get_feature_logging_df(**args)
+        )
+
+        # Assert: predictions stay under the bare label name, the model identity lands
+        # in the legacy hsml_model column, and no current-schema metadata column is
+        # reported as additional (that report is a per-write user warning).
+        assert not additional_logging_features
+        assert list(logging_dataframe.columns) == [
+            feat.name for feat in logging_feature_group_features
+        ]
+        assert logging_dataframe["label"].tolist() == ["a", "b"]
+        assert logging_dataframe[
+            constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+        ].tolist() == ["test_model_1", "test_model_1"]
+
+    def test_get_feature_logging_df_corrupted_feature_group_fails_closed(self, mocker):
+        # Prepare
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+
+        # A combined feature group polluted with a stray hsml_model column: predictions
+        # must still be written to predicted_<label> (current schema wins).
+        logging_feature_group_features = [
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+                primary=True,
+                type="string",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+                type="int",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, type="timestamp"
+            ),
+            feature.Feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME, type="string"),
+            feature.Feature(
+                constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME, type="string"
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME, type="string"
+            ),
+            feature.Feature("feature_1", type="double"),
+            feature.Feature("feature_2", type="double"),
+            feature.Feature(
+                constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label", type="string"
+            ),
+        ]
+        column_names = {
+            "untransformed_features": ["feature_1", "feature_2"],
+            "transformed_features": ["feature_1", "feature_2"],
+            "predictions": ["label"],
+            "serving_keys": [],
+            "helper_columns": [],
+            "request_parameters": [],
+            "event_time": [],
+            "request_id": [],
+            "extra_logging_features": [],
+        }
+        args = TestPython.get_logging_arguments(
+            column_names=column_names,
+            logging_feature_group_features=logging_feature_group_features,
+            untransformed_features=pd.DataFrame(
+                {"feature_1": [0.1, 0.2], "feature_2": [0.3, 0.4]}
+            ),
+            predictions=pd.DataFrame({"label": ["a", "b"]}),
+        )
+
+        # Act
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
+
+        # Assert
+        assert logging_dataframe[
+            constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"
+        ].tolist() == ["a", "b"]
+        assert (
+            logging_dataframe[constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME]
+            .isna()
+            .all()
+        )
+
+    def test_get_feature_logging_list_legacy_feature_group(self, mocker):
+        # Prepare
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+
+        logging_feature_group_features = TestPython._legacy_logging_fg_features()
+        args = TestPython._legacy_logging_arguments(
+            logging_feature_group_features,
+            untransformed_features=[[0.1, 0.3], [0.2, 0.4]],
+            predictions=[["a"], ["b"]],
+        )
+
+        # Act
+        log_vectors, _, _ = python_engine._get_feature_logging_list(**args)
+
+        # Assert: rows keep the bare label key instead of predicted_<label>.
+        assert [row["label"] for row in log_vectors] == ["a", "b"]
+        assert all(
+            constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label" not in row
+            for row in log_vectors
+        )

@@ -707,6 +707,145 @@ class TestFeatureMonitoringResultEngine:
         # Should not raise
         result_engine._validate_detection_and_reference_statistics(det, ref)
 
+    def test_drop_features_without_reference_keeps_only_shared_features(self, caplog):
+        # A training-dataset reference has no statistics for the logging FG's
+        # predicted_*, serving key and metadata columns; they are skipped, not fatal.
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        det = [
+            FeatureDescriptiveStatistics(
+                feature_name=name, feature_type="Fractional", count=10
+            )
+            for name in ["sepal_length", "predicted_label", "log_id", "id"]
+        ]
+        ref = [
+            FeatureDescriptiveStatistics(
+                feature_name="sepal_length", feature_type="Fractional", count=10
+            )
+        ]
+
+        with caplog.at_level("WARNING"):
+            kept = result_engine._drop_features_without_reference(det, ref)
+
+        assert [fds.feature_name for fds in kept] == ["sepal_length"]
+        assert "Skipping features without reference statistics" in caplog.text
+        for skipped in ["id", "log_id", "predicted_label"]:
+            assert skipped in caplog.text
+        assert "sepal_length" not in caplog.text
+        # the validator that used to fail on the length mismatch now passes
+        result_engine._validate_detection_and_reference_statistics(kept, ref)
+
+    def test_drop_features_without_reference_raises_when_nothing_is_left(self):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        det = [
+            FeatureDescriptiveStatistics(
+                feature_name="log_id", feature_type="String", count=10
+            )
+        ]
+        ref = [
+            FeatureDescriptiveStatistics(
+                feature_name="sepal_length", feature_type="Fractional", count=10
+            )
+        ]
+
+        with pytest.raises(FeatureStoreException):
+            result_engine._drop_features_without_reference(det, ref)
+
+    @staticmethod
+    def _make_two_feature_config(model_name):
+        """Scalar mean comparison on 'good' and 'missing_ref' against a TD reference."""
+        from hsfs.core import feature_monitoring_config as fmc
+        from hsfs.core import monitoring_window_config as mwc
+        from hsfs.core.feature_statistics_config import FeatureStatisticsConfig
+        from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+
+        fs_configs = [
+            FeatureStatisticsConfig(
+                feature_name=name,
+                statistics_comparison_configs=[
+                    StatisticsComparisonConfig(metric="mean", threshold=1.0, id=i)
+                ],
+            )
+            for i, name in enumerate(["good", "missing_ref"], start=301)
+        ]
+        return fmc.FeatureMonitoringConfig(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+            feature_monitoring_type=fmc.FeatureMonitoringType.STATISTICS_COMPARISON,
+            name="two_features",
+            id=DEFAULT_CONFIG_ID,
+            model_name=model_name,
+            model_version=1 if model_name else None,
+            feature_statistics_configs=fs_configs,
+            reference_window_config=mwc.MonitoringWindowConfig(
+                window_config_type=mwc.WindowConfigType.TRAINING_DATASET,
+                training_dataset_version=1,
+            ),
+        )
+
+    @staticmethod
+    def _make_two_feature_stats():
+        det = [
+            FeatureDescriptiveStatistics(
+                feature_name=name, feature_type="Fractional", count=10, mean=1.5
+            )
+            for name in ["good", "missing_ref"]
+        ]
+        ref = [
+            FeatureDescriptiveStatistics(
+                feature_name="good", feature_type="Fractional", count=10, mean=1.0
+            )
+        ]
+        return det, ref
+
+    def test_model_monitoring_td_reference_skips_configured_feature_without_reference(
+        self, mocker
+    ):
+        # Model monitoring against a training dataset: the logging FG carries columns
+        # the TD has no statistics for, so the run compares what it can.
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        mocker.patch.object(result_engine, "_save", side_effect=lambda r: r)
+        det, ref = self._make_two_feature_stats()
+
+        fm_result = result_engine._run_and_save_statistics_comparison(
+            fm_config=self._make_two_feature_config(model_name="iris"),
+            detection_statistics=det,
+            reference_statistics=ref,
+        )
+
+        assert [fsr.feature_name for fsr in fm_result.feature_statistics_results] == [
+            "good"
+        ]
+
+    def test_plain_config_still_fails_when_configured_feature_lacks_reference(
+        self, mocker
+    ):
+        # Outside model monitoring a configured feature with no reference statistics
+        # is a real inconsistency and must keep failing the run.
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        mocker.patch.object(result_engine, "_save", side_effect=lambda r: r)
+        det, ref = self._make_two_feature_stats()
+
+        with pytest.raises(AssertionError):
+            result_engine._run_and_save_statistics_comparison(
+                fm_config=self._make_two_feature_config(model_name=None),
+                detection_statistics=det,
+                reference_statistics=ref,
+            )
+
     def test_validate_raises_when_detection_feature_missing_from_reference(self):
         result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
             feature_store_id=DEFAULT_FEATURE_STORE_ID,

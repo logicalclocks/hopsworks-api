@@ -1,5 +1,9 @@
 # Plan: Port `hops` CLI from Go to Python (in-tree)
 
+> Historical record: `hops init` no longer scaffolds the CLI bundle; `hops setup`
+> does that. `hops skills install` materializes the skills into a repository;
+> `hops init` is a hidden, deprecated alias of it.
+
 Target: replace the Go `hopsworks-cli` (`hops` binary) with a Python CLI that ships as part of the `hopsworks` pip package, built on top of the existing Python SDK, with REST fall-throughs for anything the SDK does not expose. The CLI is consumed by three terminal images in `docker-images` (`terminal-server`, `terminal-gpu`, `terminal-spark`), which currently `git clone + go build` the Go CLI into `/usr/local/bin/hops`.
 
 ## 1. Background and constraints
@@ -83,7 +87,7 @@ Config file: **`~/.hops.toml`** (Modal-style), e.g.
 
 ```toml
 [default]
-host = "https://c.app.hopsworks.ai"
+host = "https://eu-west.cloud.hopsworks.ai"
 api_key = "XXXX.YYYY"
 api_key_name = "dowling-jim"
 project = "my_project"
@@ -293,14 +297,14 @@ After Phase 0.5 backend patches, `/create` and `/complete` also accept `key_name
 
 ### 10.2 Client flow (`hops setup`)
 
-1. **Resolve host.** From `--host`, then `HOPSWORKS_HOST`/`REST_ENDPOINT`, then prompt (default `https://c.app.hopsworks.ai`). Do **not** require a stored API key — that's the whole point.
+1. **Resolve host.** From `--host`, then `HOPSWORKS_HOST`/`REST_ENDPOINT`, then prompt (default `https://eu-west.cloud.hopsworks.ai`). Do **not** require a stored API key — that's the whole point.
 2. **Short-circuit if already configured.** If `~/.hops.toml` has a valid key and `--force` is not set: call `hopsworks.login(host, api_key_value, project)` and print `Connected as <username>@<project> (key: <api_key_name>)`; exit 0. Print nothing to stdout beyond that single line so scripts can grep it.
 3. **Suggest a key name.** Default suggestion: `<last>-<first>` if we can read the user's full name from a prior login cache, else `${USER}-$(hostname -s)` sanitized to `[a-z0-9_-]`. Prompt `API key name [dowling-jim]:` with editable default via `click.prompt(default=…)`. Skip the prompt if `--key-name` flag is given.
 4. **Create flow.** `POST /token-flow/create?key_name=<suggested>&utm_source=hops-cli`. Parse `{flowId, waitSecret, webUrl}`.
 5. **Splash.** Print something close to Modal's `token new`:
    ```
    The hops CLI needs to authenticate with Hopsworks.
-   Opening your browser: https://c.app.hopsworks.ai/token-flow/tf-abc123
+   Opening your browser: https://eu-west.cloud.hopsworks.ai/token-flow/tf-abc123
 
    If the browser doesn't open, visit the URL above manually.
 
@@ -310,7 +314,7 @@ After Phase 0.5 backend patches, `/create` and `/complete` also accept `key_name
 7. **Long poll.** Loop `GET /token-flow/wait/{flowId}?wait_secret=…&timeout=40`. Per-call timeout is 45s (server waits 40). Give up after `--timeout` total minutes (default 15, matching server TTL). Between calls that return `timeout=true`, immediately re-issue — no backoff (that's Modal's behavior).
 8. **Persist.** On non-timeout response, write `~/.hops.toml` atomically (write to `~/.hops.toml.tmp`, `os.replace`, `chmod 0600`). Print:
    ```
-   ✓ Connected to c.app.hopsworks.ai as dowling-jim
+   ✓ Connected to eu-west.cloud.hopsworks.ai as dowling-jim
    Token written to /home/jdowling/.hops.toml with api-key name dowling-jim
    ```
 9. **Verify.** Call `hopsworks.login(...)` once with the new key to confirm it works end-to-end; if it 401s, print a clear error and leave the config in place so the user can debug.

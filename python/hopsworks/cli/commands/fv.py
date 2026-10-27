@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import joinspec, lineage, output, session
+from hopsworks.cli import joinspec, lineage, output, session, versions
 
 
 @click.group("fv")
@@ -49,6 +49,22 @@ def fv_list(ctx: click.Context) -> None:
     output.print_table(["ID", "NAME", "VERSION", "LABELS", "DESCRIPTION"], rows)
 
 
+def _get_fv(
+    ctx: click.Context, name: str, version: int | None, exact: bool = False
+) -> Any:
+    """Resolve a feature view or fail with a clean CLI error."""
+    fs = session.get_feature_store(ctx)
+    try:
+        fv = versions.feature_view(fs, name, version, exact=exact)
+    except versions.AmbiguousVersionError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    if fv is None:
+        raise click.ClickException(f"Feature view '{name}' not found.")
+    return fv
+
+
 @fv_group.command("info")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version; defaults to latest.")
@@ -61,11 +77,7 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
         name: Feature view name.
         version: Specific version to inspect.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     if output.JSON_MODE:
         output.print_json(_fv_to_dict(fv))
@@ -137,11 +149,7 @@ def fv_lineage(ctx: click.Context, name: str, version: int | None) -> None:
         name: Feature view name.
         version: Specific version; latest if omitted.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
     label = f"feature view {getattr(fv, 'name', name)} v{getattr(fv, 'version', '?')}"
     sections = [
         (
@@ -278,9 +286,11 @@ def fv_create(
     fs = session.get_feature_store(ctx)
     base_name, base_ver = _split_name_version(base_fg)
     try:
-        base = fs.get_feature_group(base_name, version=base_ver)
+        base = versions.feature_group(fs, base_name, base_ver)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+    if base is None:
+        raise click.ClickException(f"Base FG '{base_fg}' not found.")
 
     query = base.select_all()
     for raw in joins:
@@ -289,11 +299,13 @@ def fv_create(
         except joinspec.JoinSpecError as exc:
             raise click.BadParameter(str(exc), param_hint="--join") from exc
         try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
+            other = versions.feature_group(fs, spec.fg_name, spec.version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
                 f"Joined FG '{spec.fg_name}' not found: {exc}"
             ) from exc
+        if other is None:
+            raise click.ClickException(f"Joined FG '{spec.fg_name}' not found.")
         query = query.join(
             other.select_all(),
             on=[spec.on] if not spec.right_on else None,
@@ -325,6 +337,96 @@ def fv_create(
     )
 
 
+@fv_group.command("deploy")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature view version; defaults to latest.")
+@click.option(
+    "--deployment-name",
+    "deployment_name",
+    help="Deployment name; defaults to the feature view name.",
+)
+@click.option("--description", default=None, help="Deployment description.")
+@click.option(
+    "--passed-feature",
+    "passed_features",
+    multiple=True,
+    help="Feature whose value clients send with each request (repeatable).",
+)
+@click.option(
+    "--training-dataset-version",
+    "training_dataset_version",
+    type=int,
+    help="Training dataset whose statistics the transformations use.",
+)
+@click.option("--env", "environment", help="Inference environment name.")
+@click.option(
+    "--script",
+    "script_file",
+    help="Script subclassing DefaultPredict, local or HopsFS.",
+)
+@click.pass_context
+def fv_deploy(
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    deployment_name: str | None,
+    description: str | None,
+    passed_features: tuple[str, ...],
+    training_dataset_version: int | None,
+    environment: str | None,
+    script_file: str | None,
+) -> None:
+    """Deploy a feature view as an endpoint returning transformed feature vectors.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Feature view version.
+        deployment_name: Deployment name.
+        description: Deployment description.
+        passed_features: Features clients send with each request.
+        training_dataset_version: Training dataset version to pin.
+        environment: Inference environment name.
+        script_file: Custom ``DefaultPredict`` subclass script.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        deployment = fv.deploy(
+            name=deployment_name,
+            description=description,
+            training_dataset_version=training_dataset_version,
+            passed_features=list(passed_features) or None,
+            script_file=script_file,
+            environment=environment,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Deployment creation failed: {exc}") from exc
+
+    output.success(
+        "✓ Deployed feature view %s v%s as %s",
+        getattr(fv, "name", name),
+        getattr(fv, "version", "?"),
+        getattr(deployment, "name", deployment_name or name),
+    )
+    schema = getattr(deployment, "schema", None)
+    if schema is not None:
+        unresolved = ", ".join(schema.unresolved)
+        output.success(
+            "✓ Deployment schema %s with %d field(s)%s",
+            schema.schema_id,
+            len(schema.columns),
+            f"; unresolved types: {unresolved}" if unresolved else "",
+        )
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                "name": getattr(deployment, "name", None),
+                "schema_id": getattr(deployment, "schema_id", None),
+                "unresolved": schema.unresolved if schema is not None else [],
+            }
+        )
+
+
 @fv_group.command("get")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")
@@ -343,11 +445,7 @@ def fv_get(ctx: click.Context, name: str, version: int | None, entry: str) -> No
         version: Feature view version.
         entry: Comma-separated ``key=value`` pairs for the primary keys.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     entry_dict = _parse_entry(entry)
     try:
@@ -396,11 +494,7 @@ def fv_read(
         start_time: ISO timestamp lower bound.
         end_time: ISO timestamp upper bound.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     try:
         df = fv.get_batch_data(
@@ -427,7 +521,9 @@ def fv_read(
 
 @fv_group.command("delete")
 @click.argument("name")
-@click.option("--version", type=int, help="Feature view version.")
+@click.option(
+    "--version", type=int, help="Feature view version; required when multiple exist."
+)
 @click.option("--yes", is_flag=True, help="Skip confirmation prompt.")
 @click.option("--force", is_flag=True, help="Delete even when training data exists.")
 @click.pass_context
@@ -447,11 +543,7 @@ def fv_delete(
         yes: Skip confirmation when True.
         force: Pass ``force=True`` to the SDK.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version, exact=True)
 
     if not yes and not output.JSON_MODE:
         click.confirm(
@@ -463,6 +555,153 @@ def fv_delete(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted feature view %s", name)
+
+
+@fv_group.command("tags")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_tags(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show all tags attached to a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        tags = fv.get_tags_metadata()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read tags: {exc}") from exc
+    output.render_tags(tags)
+
+
+@fv_group.command("add-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.option("--value", required=True, help="Tag value, JSON or a plain string.")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_add_tag(
+    ctx: click.Context, name: str, tag: str, value: str, version: int | None
+) -> None:
+    """Attach a tag (name/value pair) to a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        tag: Tag name (a registered tag schema).
+        value: Tag value, JSON or a plain string.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        fv.add_tag(name=tag, value=output.parse_tag_value(value))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add tag: {exc}") from exc
+    output.success("✓ Added tag '%s' to %s", tag, name)
+
+
+@fv_group.command("remove-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.option(
+    "--version", type=int, help="Feature view version; required when multiple exist."
+)
+@click.pass_context
+def fv_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
+    """Remove a tag from a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        tag: Tag name.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version, exact=True)
+    try:
+        fv.delete_tag(tag)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove tag: {exc}") from exc
+    output.success("✓ Removed tag '%s' from %s", tag, name)
+
+
+@fv_group.command("keywords")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_keywords(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show all keywords attached to a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        keywords = fv.get_keywords_metadata()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read keywords: {exc}") from exc
+
+    if output.JSON_MODE:
+        output.print_json(
+            {k: output.format_ts(v, empty=None) for k, v in (keywords or {}).items()}
+        )
+        return
+    rows = [[k, output.format_ts(v)] for k, v in (keywords or {}).items()]
+    output.print_table(["KEYWORD", "ADDED"], rows)
+
+
+@fv_group.command("add-keyword")
+@click.argument("name")
+@click.argument("keyword")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_add_keyword(
+    ctx: click.Context, name: str, keyword: str, version: int | None
+) -> None:
+    """Attach a keyword to a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        keyword: The keyword.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        fv.add_keywords([keyword])
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add keyword: {exc}") from exc
+    output.success("✓ Added keyword '%s' to %s", keyword, name)
+
+
+@fv_group.command("remove-keyword")
+@click.argument("name")
+@click.argument("keyword")
+@click.option(
+    "--version", type=int, help="Feature view version; required when multiple exist."
+)
+@click.pass_context
+def fv_remove_keyword(
+    ctx: click.Context, name: str, keyword: str, version: int | None
+) -> None:
+    """Remove a keyword from a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        keyword: The keyword.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version, exact=True)
+    try:
+        fv.delete_keyword(keyword)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove keyword: {exc}") from exc
+    output.success("✓ Removed keyword '%s' from %s", keyword, name)
 
 
 # region Helpers
