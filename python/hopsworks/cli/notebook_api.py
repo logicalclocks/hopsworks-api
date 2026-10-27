@@ -35,14 +35,19 @@ _roots: dict[int, str] = {}
 class Run(NamedTuple):
     """A cell's run.
 
-    Its outputs in nbformat, its execution count, whether it finished in time, and its timings
-    as JupyterLab keeps them in the cell's ``metadata.execution``.
+    Its outputs in nbformat, its execution count, whether it finished in time, its timings
+    as JupyterLab keeps them in the cell's ``metadata.execution``, and its message id.
     """
 
     outputs: list[dict]
     count: int | None
     finished: bool
     execution: dict[str, str]
+    msg_id: str
+
+
+class Unreached(RuntimeError):
+    """The kernel's socket closed before any message about the cell: the kernel did not run it."""
 
 
 def server(project_id: int) -> dict | None:
@@ -329,6 +334,7 @@ class Jupyter:
 
     def execute(self, session: dict, cell_id: str, code: str, timeout: float) -> Run:
         """Run ``code`` on the session's kernel; a cell still running at ``timeout`` is interrupted."""
+        from websockets.exceptions import ConnectionClosed  # noqa: PLC0415
         from websockets.sync.client import connect as ws_connect  # noqa: PLC0415
 
         kernel_id = session["kernel"]["id"]
@@ -375,65 +381,75 @@ class Jupyter:
         finished = True
         execution: dict[str, str] = {}
         idle = False
+        heard = False
         deadline = time.monotonic() + timeout
-        with ws_connect(
-            url,
-            additional_headers={"Authorization": f"token {self.token}"},
-            ssl=ssl_context,
-            max_size=None,
-            open_timeout=60,
-        ) as ws:
-            ws.send(json.dumps(request))
-            while True:
-                left = deadline - time.monotonic()
-                if idle and (left <= 0 or "shell.execute_reply" in execution):
-                    return Run(outputs, count, finished, execution)
-                if left <= 0:
-                    if not finished:
-                        raise TimeoutError(
-                            "The kernel did not stop the cell after an interrupt."
-                        )
-                    # Wait for the interrupted cell to end: a cell sent while the kernel is still
-                    # handling the interrupt is aborted with it.
-                    self.interrupt(kernel_id)
-                    finished = False
-                    deadline = time.monotonic() + 30
-                    continue
-                try:
-                    message = json.loads(ws.recv(timeout=left))
-                except TimeoutError:
-                    continue
-                if message.get("parent_header", {}).get("msg_id") != msg_id:
-                    continue
-                kind = message["header"]["msg_type"]
-                date = message["header"].get("date")
-                content = message.get("content", {})
-                if kind == "execute_reply":
-                    if content.get("status") == "aborted":
-                        raise RuntimeError("The kernel aborted the cell; run it again.")
-                    started = message.get("metadata", {}).get("started")
-                    if started:
-                        execution["shell.execute_reply.started"] = started
-                    if date:
-                        execution["shell.execute_reply"] = date
-                if message.get("channel") == "iopub":
-                    state = content.get("execution_state")
-                    if kind == "status" and state in ("busy", "idle") and date:
-                        execution[f"iopub.status.{state}"] = date
-                    if kind == "status" and state == "idle":
-                        # The shell's reply, with the kernel's timings, may come just after.
-                        idle = True
-                        deadline = min(deadline, time.monotonic() + 2)
-                    elif kind == "execute_input":
-                        count = content.get("execution_count")
+        try:
+            with ws_connect(
+                url,
+                additional_headers={"Authorization": f"token {self.token}"},
+                ssl=ssl_context,
+                max_size=None,
+                open_timeout=60,
+            ) as ws:
+                ws.send(json.dumps(request))
+                while True:
+                    left = deadline - time.monotonic()
+                    if idle and (left <= 0 or "shell.execute_reply" in execution):
+                        return Run(outputs, count, finished, execution, msg_id)
+                    if left <= 0:
+                        if not finished:
+                            raise TimeoutError(
+                                "The kernel did not stop the cell after an interrupt."
+                            )
+                        # Wait for the interrupted cell to end: a cell sent while the kernel is still
+                        # handling the interrupt is aborted with it.
+                        self.interrupt(kernel_id)
+                        finished = False
+                        deadline = time.monotonic() + 30
+                        continue
+                    try:
+                        message = json.loads(ws.recv(timeout=left))
+                    except TimeoutError:
+                        continue
+                    if message.get("parent_header", {}).get("msg_id") != msg_id:
+                        continue
+                    heard = True
+                    kind = message["header"]["msg_type"]
+                    date = message["header"].get("date")
+                    content = message.get("content", {})
+                    if kind == "execute_reply":
+                        if content.get("status") == "aborted":
+                            raise RuntimeError(
+                                "The kernel aborted the cell; run it again."
+                            )
+                        started = message.get("metadata", {}).get("started")
+                        if started:
+                            execution["shell.execute_reply.started"] = started
                         if date:
-                            execution["iopub.execute_input"] = date
-                    elif kind == "clear_output":
-                        outputs.clear()
-                    else:
-                        output = to_output(kind, content)
-                        if output is not None:
-                            _append(outputs, output)
+                            execution["shell.execute_reply"] = date
+                    if message.get("channel") == "iopub":
+                        state = content.get("execution_state")
+                        if kind == "status" and state in ("busy", "idle") and date:
+                            execution[f"iopub.status.{state}"] = date
+                        if kind == "status" and state == "idle":
+                            # The shell's reply, with the kernel's timings, may come just after.
+                            idle = True
+                            deadline = min(deadline, time.monotonic() + 2)
+                        elif kind == "execute_input":
+                            count = content.get("execution_count")
+                            if date:
+                                execution["iopub.execute_input"] = date
+                        elif kind == "clear_output":
+                            outputs.clear()
+                        else:
+                            output = to_output(kind, content)
+                            if output is not None:
+                                _append(outputs, output)
+
+        except ConnectionClosed as exc:
+            if not heard:
+                raise Unreached(str(exc)) from exc
+            raise
 
 
 def to_output(kind: str, content: dict) -> dict | None:

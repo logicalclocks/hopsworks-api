@@ -148,9 +148,10 @@ A notebook is cells run on the user's own Jupyter kernel and saved with their ou
    code cell per step: the read (`fs.get_feature_group("<t>", version=<n>).read()`), a look at the
    rows, one chart each.
 3. A model's predictions: load the model from the registry and score the test part of the training
-   dataset it was trained on, `fv.get_train_test_split(training_dataset_version=<n>)` with `<n>`
-   from `Training dataset` in `hops model info <m>`. Never a new split: it puts rows the model
-   trained on into the test part.
+   dataset it was trained on, with `<n>` from `Training dataset` in `hops model info <m>`:
+   `fv.get_train_validation_test_split(training_dataset_version=<n>)` for a three-way split,
+   `fv.get_train_test_split(training_dataset_version=<n>)` for a two-way one (`hops td list <fv>`
+   shows the splits). Never a new split: it puts rows the model trained on into the test part.
 4. A cell that raised: fix it in place with `--cell N`, never with a new cell after it.
 5. Never change a cell you did not write unless the user asks: the user may have the notebook open
    in JupyterLab.

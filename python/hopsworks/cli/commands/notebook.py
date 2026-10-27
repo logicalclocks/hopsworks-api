@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 
 import click
 from hopsworks.cli import notebook_api, output, session
@@ -177,9 +178,18 @@ def notebook_run(
         _report(project_path, index, None, [], True)
         return
     try:
-        outputs, count, finished, execution = jupyter.execute(
-            jupyter_session, new["id"], text, timeout
-        )
+        # A kernel still starting may close a socket before it takes the cell: nothing ran, so
+        # the cell is sent again, a few times at most.
+        for attempt in range(3):
+            try:
+                run = jupyter.execute(jupyter_session, new["id"], text, timeout)
+                break
+            except notebook_api.Unreached:
+                if attempt == 2:
+                    raise
+                time.sleep(2)
+                jupyter_session = jupyter.session(path, kernel_name)
+        outputs, count, finished, execution, _ = run
         # The user may have edited the notebook in JupyterLab meanwhile: save onto the latest.
         latest = jupyter.read(path) or notebook
         for c in latest["cells"]:
