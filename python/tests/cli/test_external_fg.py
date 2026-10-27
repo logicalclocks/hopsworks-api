@@ -194,3 +194,11 @@ def test_preview_rows_flattens_the_rows_the_backend_nests():
     }
     assert _preview_rows(nested) == [{"id": "387", "city": "Paris"}]
     assert _preview_rows(None) == []
+
+
+def test_preview_rows_keeps_a_null_cell():
+    # The backend leaves value1 out of a null cell (seen on Shopify products: image, published_at).
+    nested = {
+        "preview": [{"values": [{"value0": "id", "value1": "1"}, {"value0": "image"}]}]
+    }
+    assert _preview_rows(nested) == [{"id": "1", "image": None}]

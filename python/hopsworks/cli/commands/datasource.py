@@ -1949,12 +1949,12 @@ def _preview_rows(preview) -> list[dict]:
     """Flatten the backend's preview into one ``{column: value}`` dict per row.
 
     The backend nests the rows as ``{"preview": [{"values": [{"value0": column,
-    "value1": value}, ...]}, ...]}``.
+    "value1": value}, ...]}, ...]}``; a null cell has no ``value1``.
     """
     if isinstance(preview, dict):
         preview = preview.get("preview")
     return [
-        {cell["value0"]: cell["value1"] for cell in row.get("values", [])}
+        {cell["value0"]: cell.get("value1") for cell in row.get("values", [])}
         for row in preview or []
         if isinstance(row, dict)
     ]
