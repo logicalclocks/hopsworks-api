@@ -28,6 +28,8 @@ import subprocess
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_common import events
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -449,12 +451,13 @@ class Deleter:
         if asset.owned_by:
             return f"kept {asset}: not created by {asset.owned_by}"
         try:
-            rest._send_request(
-                "DELETE",
-                rest._project_path(
-                    "featurestores", self.fs.id, "storageconnectors", asset.name
-                ),
-            )
+            with events.tracked("datasource", "delete", name=asset.name):
+                rest._send_request(
+                    "DELETE",
+                    rest._project_path(
+                        "featurestores", self.fs.id, "storageconnectors", asset.name
+                    ),
+                )
         except Exception as exc:
             if _missing(exc):
                 return "gone"

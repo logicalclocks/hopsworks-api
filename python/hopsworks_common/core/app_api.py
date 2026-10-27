@@ -21,7 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
-from hopsworks_common import client, usage, util
+from hopsworks_common import client, events, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
 
 
@@ -117,6 +117,7 @@ class AppApi:
 
     @public
     @usage._method_logger
+    @events.tracking("app", "create", key=lambda self, name, *a, **k: {"name": name})
     def create_app(
         self,
         name: str,
@@ -352,6 +353,9 @@ class AppApi:
         created._env_vars = dict(env_vars) if env_vars else None
         return created
 
+    @events.tracking(
+        "app", "update", key=lambda self, app_name, *a, **k: {"name": app_name}
+    )
     def _start(self, app_name: str, env_vars: dict[str, str] | None = None):
         """Start an app execution.
 
@@ -376,6 +380,9 @@ class AppApi:
         headers = {"content-type": "text/plain"}
         return _client._send_request("POST", path_params, headers=headers)
 
+    @events.tracking(
+        "app", "update", key=lambda self, app_name, *a, **k: {"name": app_name}
+    )
     def _stop(self, app_name: str, execution_id: int):
         """Stop an app execution."""
         _client = client._get_instance()
@@ -393,6 +400,9 @@ class AppApi:
             "PUT", path_params, headers=headers, data=json.dumps({"state": "stopped"})
         )
 
+    @events.tracking(
+        "app", "update", key=lambda self, app_name, *a, **k: {"name": app_name}
+    )
     def _redeploy(self, app_name: str):
         """Redeploy a running app."""
         _client = client._get_instance()
@@ -488,6 +498,9 @@ class AppApi:
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers) or {}
 
+    @events.tracking(
+        "app", "delete", key=lambda self, app_name, *a, **k: {"name": app_name}
+    )
     def _delete(self, app_name: str):
         """Delete an app."""
         _client = client._get_instance()

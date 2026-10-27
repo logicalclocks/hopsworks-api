@@ -33,7 +33,7 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 from hopsworks_apigen import deprecated, deprecation, public
-from hopsworks_common import client, job, spark_connect_utils
+from hopsworks_common import client, events, job, spark_connect_utils
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -5047,6 +5047,11 @@ class FeatureGroup(FeatureGroupBase):
         return self._feature_group_engine._commit_details(self, wallclock_time, limit)
 
     @public
+    @events.tracking(
+        "fg",
+        "update",
+        key=lambda self, *a, **k: {"name": self.name, "version": self.version},
+    )
     def remove_rows(
         self,
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821

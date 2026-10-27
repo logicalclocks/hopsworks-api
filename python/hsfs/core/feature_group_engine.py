@@ -17,6 +17,7 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_common import events
 from hopsworks_common.client import exceptions
 from hopsworks_common.core.constants import HAS_PYICEBERG
 from hopsworks_common.core.sink_job_configuration import (
@@ -230,6 +231,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ) from e
         return df
 
+    @events.tracking(
+        "fg",
+        "update",
+        long=True,
+        key=lambda self, feature_group, *a, **k: {
+            "name": feature_group.name,
+            "version": feature_group.version,
+        },
+    )
     def _insert(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
@@ -243,6 +253,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         transform: bool = True,
         n_processes: int | None = None,
     ):
+        # A Spark frame has no cheap length; its count is not computed for this.
+        rows = len(feature_dataframe) if hasattr(feature_dataframe, "__len__") else None
+        if rows is not None:
+            events.progress(0, rows, "rows")
+            events.note(rows=rows)
         dataframe_features = engine._get_instance()._parse_schema_feature_group(
             feature_dataframe,
             feature_group.time_travel_format,
@@ -813,6 +828,14 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group, self._new_feature_list(feature_group, updated_features)
         )
 
+    @events.tracking(
+        "fg",
+        "update",
+        key=lambda self, feature_group, *a, **k: {
+            "name": feature_group.name,
+            "version": feature_group.version,
+        },
+    )
     def _append_features(
         self, feature_group: fg.FeatureGroup, new_features: list[Feature]
     ) -> None:
@@ -984,6 +1007,14 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             write_options,
         )
 
+    @events.tracking(
+        "fg",
+        "create",
+        key=lambda self, feature_group, *a, **k: {
+            "name": feature_group.name,
+            "version": feature_group.version,
+        },
+    )
     def _save_feature_group_metadata(
         self,
         feature_group,

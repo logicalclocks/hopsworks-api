@@ -24,7 +24,7 @@ import tempfile
 import time
 from typing import TYPE_CHECKING
 
-from hopsworks_common import client, constants, util
+from hopsworks_common import client, constants, events, util
 from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIError
 from hopsworks_common.core import dataset_api, inode
 from hsml.core import model_api
@@ -405,6 +405,15 @@ class ModelEngine:
     def _build_resource_path(self, model_instance, artifact):
         return f"{model_instance.version_path}/{artifact}"
 
+    @events.tracking(
+        "model",
+        "create",
+        long=True,
+        key=lambda self, model_instance, *a, **k: {
+            "name": model_instance.name,
+            "version": model_instance.version,
+        },
+    )
     def _save(
         self,
         model_instance,
@@ -901,6 +910,14 @@ class ModelEngine:
                     tmp_dir.cleanup()
         return None
 
+    @events.tracking(
+        "model",
+        "delete",
+        key=lambda self, model_instance, *a, **k: {
+            "name": model_instance.name,
+            "version": model_instance.version,
+        },
+    )
     def _delete(self, model_instance):
         self._engine._delete(model_instance)
 
