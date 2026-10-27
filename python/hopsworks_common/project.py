@@ -450,14 +450,15 @@ class Project:
         Parameters:
             email: Email address of the user to add.
             role: The project role to grant, one of `Data owner`, `Data scientist`,
-                `Observer`, `Feature store restricted`.
+                `Observer`, `Feature store restricted`, or a custom project role.
+                Matched regardless of case.
 
         Returns:
             The newly added `ProjectMember`.
 
         Raises:
-            ValueError: If `role` is not a settable project role.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner.
+            ValueError: If `role` is not a role of the project.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner or may not give the role.
         """
         return self._project_members_api.add_member(email, role)
 
