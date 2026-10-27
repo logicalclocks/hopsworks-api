@@ -21,6 +21,7 @@ import threading
 import pytest
 import requests
 from hopsworks_common import constants
+from hopsworks_common.client import auth
 from hsfs.client.base import Client
 from hsfs.client.exceptions import RestAPIError
 
@@ -125,7 +126,7 @@ class TestBaseClient:
         client = Client()
         client._connected = True
         client._base_url = ""
-        client._auth = None
+        client._auth = auth.BearerAuth("token")
         client._verify = False
         client._session = requests.session()
         client.TOKEN_EXPIRED_RETRY_INTERVAL = 0  # Disable wait for tests
