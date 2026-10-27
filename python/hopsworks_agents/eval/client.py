@@ -241,6 +241,9 @@ class HopsworksAgentClient:
                 error=f"the agent kept asking: {_MAX_RESUMES} questions in one turn",
                 status_code=response.status_code,
                 interrupts=asked,
+                # each pause answered 200: the limit is the agent's doing, and a
+                # trial it never finishes is a failed one, not one to set aside
+                agent_at_fault=True,
             )
         return AgentResponse(
             text=text,

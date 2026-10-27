@@ -429,6 +429,30 @@ class TestATrialThatPausesToAskAPerson:
         )
         assert "connection reset" in result.error and result.status_code == 0
 
+    def test_an_agent_that_keeps_asking_is_graded_as_failing_the_trial(self):
+        # every pause answers 200, so without the client's finding the runner
+        # filed the exhausted limit as INFRA_ERROR and left it out of the score
+        from fastapi.testclient import TestClient  # noqa: PLC0415
+
+        from hopsworks_agents.eval.runner import TrialStatus, _classify  # noqa: PLC0415
+        from hopsworks_agents.protocol import AgentApp  # noqa: PLC0415
+
+        app = AgentApp(tracing=False)
+        asked = [0]
+
+        @app.chat
+        async def chat(request, ctx):
+            asked[0] += 1
+            ctx.interrupt("One more thing?", key=f"q-{asked[0]}")
+            return "never"
+
+        result = client(TestClient(app))._send_prompt(
+            "q", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert "kept asking" in result.error and result.status_code == 200
+        assert result.agent_at_fault
+        assert _classify(result, None) is TrialStatus.AGENT_ERROR
+
     def test_an_agent_that_never_stops_asking_fails_the_trial(self):
         session = SequenceSession(FakeResponse(self.PAUSED))
         result = client(session)._send_prompt(

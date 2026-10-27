@@ -70,6 +70,10 @@ class AgentResponse:
     #: What the agent paused to ask during the turn, and the run answered on the
     #: trial's behalf (the task context's `interrupt_answers`, else cancelled).
     interrupts: list[dict[str, Any]] = field(default_factory=list)
+    #: The client's finding that the agent itself failed the turn although it
+    #: answered 200, as when it kept asking past the number of questions a
+    #: trial answers. Graded like a crash rather than set aside.
+    agent_at_fault: bool = False
 
 
 class AgentClient(Protocol):
@@ -253,8 +257,9 @@ def _agent_at_fault(response: AgentResponse) -> bool:
     drops, so an agent that crashed on two of three tasks reported a pass rate
     of 1.0 and passed its gate.
     """
-    if response.error == _AGENT_REPORTED_FAILURE:
-        # The agent answered 200 and said in the body that it had failed.
+    if response.error == _AGENT_REPORTED_FAILURE or response.agent_at_fault:
+        # The agent answered 200 and said in the body that it had failed, or the
+        # client found it failing the turn (it never stopped asking).
         return True
     code = response.status_code or _status_in(response.error)
     return bool(code) and code >= 500 and code not in _GATEWAY_STATUSES
