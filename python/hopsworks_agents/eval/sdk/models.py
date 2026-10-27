@@ -908,6 +908,14 @@ class Feedback(ApiModel):
         ]
 
     @property
+    def given_via(self) -> str | None:
+        """Where the verdict was given, when the client said so: ``chat-app`` for the agent's chat app.
+
+        Not `source`, which is who gave it.
+        """
+        return self.raw.get("source") or None
+
+    @property
     def source(self) -> str:
         """Who gave it: a reviewer, an end user of the agent, a detector, or an online judge.
 

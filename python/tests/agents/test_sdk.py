@@ -2757,3 +2757,20 @@ class TestChatApp:
         _, support, session = agent(Reply(status=204))
         support.delete_chat_app()
         assert session.sent == [("DELETE", "/serving/7/chatapp", None, None)]
+
+
+class TestWhereFeedbackWasGiven:
+    def test_a_verdict_from_the_chat_app_says_so(self):
+        from hopsworks_agents.eval.sdk.models import Feedback
+
+        given = Feedback.from_api(
+            {"feedbackId": "f", "reviewer": "user:meb10000", "source": "chat-app"}
+        )
+        assert given.given_via == "chat-app"
+        # who gave it is a separate question
+        assert given.source != "chat-app"
+
+    def test_a_verdict_that_does_not_say_has_none(self):
+        from hopsworks_agents.eval.sdk.models import Feedback
+
+        assert Feedback.from_api({"feedbackId": "f"}).given_via is None
