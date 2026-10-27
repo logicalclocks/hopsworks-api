@@ -208,6 +208,7 @@ class ArrowFlightClient:
         StorageConnector.HOPSWORKS,
         StorageConnector.S3,
         StorageConnector.GLUE,
+        StorageConnector.HOPSFS,
     ]
     # Oracle rides on StorageConnector.SQL above — it's distinguished on the
     # backend by sqlConnector.databaseType == "ORACLE". Keep that routing in
