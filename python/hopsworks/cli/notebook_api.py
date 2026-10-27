@@ -198,6 +198,12 @@ def connect(project_id: int, timeout: float, env: str | None = None) -> Jupyter:
             watch.fail("Check the cluster's free resources, or raise --timeout.")
         watch.sleep()
         running = server(project_id)
+        if running is None:
+            # It existed a poll ago, so it was stopped, not still starting.
+            raise RuntimeError(
+                "Jupyter was stopped by another client while it was starting. "
+                "Start it again with `hops notebook start`."
+            )
     jupyter = _jupyter(running)
     if not quiet:
         watch.see(running.get("status") or "running")
