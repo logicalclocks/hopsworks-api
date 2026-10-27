@@ -2012,11 +2012,15 @@ def connector_preview(
         raise
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Preview failed: {exc}") from exc
-    if output.JSON_MODE:
-        to_dict = getattr(data, "to_dict", None)
-        output.print_json(to_dict() if callable(to_dict) else str(data))
-        return
-    click.echo(str(data))
+    if data.schema_fetch_failed:
+        raise click.ClickException(
+            f"Preview failed: {data.schema_fetch_logs or 'no schema'}"
+        )
+    # Each row is {"values": [{"value0": column, "value1": cell}, ...]} in column order.
+    output.print_table(
+        [f.column_name for f in data.features],
+        [[c.get("value1") for c in row.get("values", [])] for row in data.preview],
+    )
 
 
 @datasource_group.command("infer-metadata")
