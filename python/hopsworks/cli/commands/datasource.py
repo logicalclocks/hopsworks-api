@@ -2012,6 +2012,10 @@ def connector_preview(
         raise
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Preview failed: {exc}") from exc
+    if data is None:
+        raise click.ClickException(
+            f"Preview failed: Hopsworks returned no data for {name}."
+        )
     if data.schema_fetch_failed:
         raise click.ClickException(
             f"Preview failed: {data.schema_fetch_logs or 'no schema'}"
