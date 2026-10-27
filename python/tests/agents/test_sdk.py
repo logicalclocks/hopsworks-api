@@ -2715,3 +2715,45 @@ class TestAPausedTurn:
         body = session.sent[1][3]
         assert "message" not in body
         assert body["resume"] == [{"interrupt_id": "refund-42", "status": "cancelled"}]
+
+
+class TestChatApp:
+    """The agent's chat app: created, read and deleted through the deployment, returned as the platform's App."""
+
+    @pytest.fixture(autouse=True)
+    def apps(self, monkeypatch):
+        from hopsworks_common.core import app_api
+
+        found = {}
+
+        class FakeAppApi:
+            def get_app(self, name):
+                found["name"] = name
+                return f"App({name})"
+
+        monkeypatch.setattr(app_api, "AppApi", FakeAppApi)
+        return found
+
+    def test_creating_one_asks_the_deployment_and_returns_the_app(self, apps):
+        _, support, session = agent(Reply({"name": "support_chat", "id": 3}))
+        assert support.create_chat_app() == "App(support_chat)"
+        assert session.sent == [("POST", "/serving/7/chatapp", None, {})]
+
+    def test_a_name_can_be_chosen(self):
+        _, support, session = agent(Reply({"name": "helpdesk"}))
+        support.create_chat_app("helpdesk")
+        assert session.sent[0][3] == {"name": "helpdesk"}
+
+    def test_an_agent_without_one_has_none(self):
+        _, support, _ = agent(Reply({"message": "no chat app"}, status=404))
+        assert support.chat_app() is None
+
+    def test_reading_it_returns_the_app(self):
+        _, support, session = agent(Reply({"name": "support_chat"}))
+        assert support.chat_app() == "App(support_chat)"
+        assert session.sent == [("GET", "/serving/7/chatapp", None, None)]
+
+    def test_deleting_it(self):
+        _, support, session = agent(Reply(status=204))
+        support.delete_chat_app()
+        assert session.sent == [("DELETE", "/serving/7/chatapp", None, None)]

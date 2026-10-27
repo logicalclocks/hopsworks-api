@@ -280,6 +280,8 @@ for event in reply.metadata.get("tool_events", []):
 
 Messages go through the cluster's inference gateway, the route the chat panel uses; the logged-in user's credential is accepted there. From outside Hopsworks, log in with an API key.
 
+**A ready-made chat app for people outside Hopsworks**: `app = agent.create_chat_app()` (or `deploy_agent(..., chat_app=True)`, or "Create chat app" on the deployment page) creates and starts a Hopsworks app named `<agent>_chat` that speaks AG-UI to the agent: streaming, tool calls, attachments, the agent's questions, and thumbs up or down. Members open it with their Hopsworks login; turning on the app's public link shares it. Each visitor is anonymous with their own memory (the app sets the subject), and no serving key reaches the browser. Title, welcome text and tool-call visibility are the app's `CHAT_TITLE`, `CHAT_WELCOME` and `CHAT_SHOW_TOOL_CALLS` variables. `agent.chat_app()` returns it, and it is deleted with the agent.
+
 **A custom chat UI** talks to `agent.url` directly with the serving credential: `POST /v1/chat`
 with `{"message": {"role": "user", "content": [{"type": "text", "text": "..."}]}}`, and its users
 rate a reply with `POST /v1/feedback` `{"trace_id": reply.metadata.trace_id, "verdict":

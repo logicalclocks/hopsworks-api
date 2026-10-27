@@ -40,6 +40,8 @@ from .models import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Sequence
 
+    from hopsworks_common.app import App
+
     from .client import AgentServing
     from .models import EvalJob, ReviewJob, Task
 
@@ -1174,6 +1176,69 @@ class Agent:
         """Run the failure analysis now; the job is created with defaults if the deployment has none."""
         job = self.review_job() or self._client.jobs.ensure_review_job(self.id)
         return self._client.jobs.analyse(job, **kwargs)
+
+    # ── sharing it ─────────────────────────────────────────────────────────
+
+    @public
+    def create_chat_app(self, name: str | None = None) -> App:
+        """Create a chat app for this agent and start it, or return the one it already has.
+
+        The chat app is a Hopsworks app that speaks AG-UI to the agent, for people who do not use Hopsworks.
+        Project members open it through their Hopsworks login, and turning on the app's public link shares it with anyone holding the link.
+        Each visitor is anonymous and gets their own memory, and no serving key reaches their browser.
+        It is deleted with the agent.
+
+        Example:
+            ```python
+            agent = project.get_agent_serving().get_agent("support")
+            app = agent.create_chat_app()
+            ```
+
+        Parameters:
+            name: The app's name; `<agent name>_chat` when omitted.
+
+        Returns:
+            `App`: the chat app.
+
+        Raises:
+            `AgentServingError`: If this deployment is not an agent, or the name is taken by another job or app.
+        """
+        body = self._http.post(
+            f"/serving/{self.id}/chatapp", json={"name": name} if name else {}
+        )
+        return self._app(str(body["name"]))
+
+    @public
+    def chat_app(self) -> App | None:
+        """The agent's chat app, or `None` when it has none.
+
+        Returns:
+            `App | None`: the chat app.
+        """
+        try:
+            body = self._http.get(f"/serving/{self.id}/chatapp")
+        except AgentServingError as err:
+            if err.status == 404:
+                return None
+            raise
+        return self._app(str(body["name"]))
+
+    @public
+    def delete_chat_app(self) -> None:
+        """Delete the agent's chat app; nothing happens when it has none.
+
+        Raises:
+            `AgentServingError`: If the app could not be deleted; only a data owner may delete one.
+        """
+        self._http.delete(f"/serving/{self.id}/chatapp")
+
+    def _app(self, name: str) -> App:
+        from hopsworks_common.core import app_api  # noqa: PLC0415
+
+        found = app_api.AppApi().get_app(name)
+        if found is None:  # pragma: no cover - the app was just created or listed
+            raise AgentServingError(f"the chat app {name} vanished")
+        return found
 
 
 def _memory_feature_store(feature_store: Any) -> Any:
