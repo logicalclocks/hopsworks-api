@@ -590,18 +590,31 @@ _CRM_NEEDS = {
         "--impersonated-email",
         "--refresh-token",
     ),
-    "SHOPIFY": ("--shop-url", "--private-app-password"),
+    "SHOPIFY": ("--shop-url",),
 }
+# Shopify takes a private app password, or an app's client ID and secret (a token is
+# minted at each run).
+_SHOPIFY_AUTH = ("--private-app-password", "--client-id", "--client-secret")
 
 
-_CRM_FLAGS = frozenset(f for flags in _CRM_NEEDS.values() for f in flags)
+_CRM_FLAGS = frozenset(
+    f for flags in (*_CRM_NEEDS.values(), _SHOPIFY_AUTH) for f in flags
+)
 
 
 def _check_crm(v: dict[str, Any]) -> str | None:
     crm = v["crm_type"]
-    return _needs(v, f"--crm-type {crm}", *_CRM_NEEDS[crm]) or _refuses(
-        v, f"--crm-type {crm}", *sorted(_CRM_FLAGS - set(_CRM_NEEDS[crm]))
+    allowed = set(_CRM_NEEDS[crm]) | (set(_SHOPIFY_AUTH) if crm == "SHOPIFY" else set())
+    problem = _needs(v, f"--crm-type {crm}", *_CRM_NEEDS[crm]) or _refuses(
+        v, f"--crm-type {crm}", *sorted(_CRM_FLAGS - allowed)
     )
+    if problem or crm != "SHOPIFY":
+        return problem
+    if _given(v, "--client-id") or _given(v, "--client-secret"):
+        return _needs(v, "--client-id", "--client-id", "--client-secret") or _refuses(
+            v, "--client-id", "--private-app-password"
+        )
+    return _needs(v, f"--crm-type {crm}", "--private-app-password")
 
 
 def _check_mongodb(v: dict[str, Any]) -> str | None:
@@ -1248,7 +1261,19 @@ _SPECS: dict[str, _Spec] = {
             _Opt(
                 "--private-app-password",
                 "privateAppPassword",
-                "Private app password, for SHOPIFY.",
+                "Private app password, for SHOPIFY. Or pass --client-id and --client-secret.",
+                secret=True,
+            ),
+            _Opt(
+                "--client-id",
+                "clientId",
+                "App client ID, for SHOPIFY: each run mints a token valid 24 h from issuance. "
+                "The shop URL must then be https://<shop>.myshopify.com.",
+            ),
+            _Opt(
+                "--client-secret",
+                "clientSecret",
+                "App client secret, for SHOPIFY with --client-id.",
                 secret=True,
             ),
         ),
