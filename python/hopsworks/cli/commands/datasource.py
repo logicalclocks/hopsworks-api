@@ -25,6 +25,7 @@ import click
 from click.core import ParameterSource
 from hopsworks.cli import output, session
 from hopsworks.cli.commands import job as job_cmd
+from hopsworks.cli.redact import redact
 
 
 if TYPE_CHECKING:
@@ -90,7 +91,7 @@ def connector_info(ctx: click.Context, name: str) -> None:
     if output.JSON_MODE:
         to_dict = getattr(sc, "to_dict", None)
         payload = to_dict() if callable(to_dict) else _connector_to_dict(sc)
-        output.print_json(payload)
+        output.print_json(redact(payload))
         return
 
     rows = [
@@ -589,18 +590,31 @@ _CRM_NEEDS = {
         "--impersonated-email",
         "--refresh-token",
     ),
-    "SHOPIFY": ("--shop-url", "--private-app-password"),
+    "SHOPIFY": ("--shop-url",),
 }
+# Shopify takes a private app password, or an app's client ID and secret (a token is
+# minted at each run).
+_SHOPIFY_AUTH = ("--private-app-password", "--client-id", "--client-secret")
 
 
-_CRM_FLAGS = frozenset(f for flags in _CRM_NEEDS.values() for f in flags)
+_CRM_FLAGS = frozenset(
+    f for flags in (*_CRM_NEEDS.values(), _SHOPIFY_AUTH) for f in flags
+)
 
 
 def _check_crm(v: dict[str, Any]) -> str | None:
     crm = v["crm_type"]
-    return _needs(v, f"--crm-type {crm}", *_CRM_NEEDS[crm]) or _refuses(
-        v, f"--crm-type {crm}", *sorted(_CRM_FLAGS - set(_CRM_NEEDS[crm]))
+    allowed = set(_CRM_NEEDS[crm]) | (set(_SHOPIFY_AUTH) if crm == "SHOPIFY" else set())
+    problem = _needs(v, f"--crm-type {crm}", *_CRM_NEEDS[crm]) or _refuses(
+        v, f"--crm-type {crm}", *sorted(_CRM_FLAGS - allowed)
     )
+    if problem or crm != "SHOPIFY":
+        return problem
+    if _given(v, "--client-id") or _given(v, "--client-secret"):
+        return _needs(v, "--client-id", "--client-id", "--client-secret") or _refuses(
+            v, "--client-id", "--private-app-password"
+        )
+    return _needs(v, f"--crm-type {crm}", "--private-app-password")
 
 
 def _check_mongodb(v: dict[str, Any]) -> str | None:
@@ -1247,7 +1261,19 @@ _SPECS: dict[str, _Spec] = {
             _Opt(
                 "--private-app-password",
                 "privateAppPassword",
-                "Private app password, for SHOPIFY.",
+                "Private app password, for SHOPIFY. Or pass --client-id and --client-secret.",
+                secret=True,
+            ),
+            _Opt(
+                "--client-id",
+                "clientId",
+                "App client ID, for SHOPIFY: each run mints a token valid 24 h from issuance. "
+                "The shop URL must then be https://<shop>.myshopify.com.",
+            ),
+            _Opt(
+                "--client-secret",
+                "clientSecret",
+                "App client secret, for SHOPIFY with --client-id.",
                 secret=True,
             ),
         ),
@@ -1748,7 +1774,7 @@ def credentials_set(ctx: click.Context, name: str, **values: Any) -> None:  # no
         raise
     output.success("✓ Saved your credentials for %s", name)
     if output.JSON_MODE:
-        output.print_json(binding)
+        output.print_json(redact(binding))
     else:
         output.print_table(["FIELD", "VALUE"], _binding_rows(binding))
 
@@ -1778,7 +1804,7 @@ def credentials_validate(ctx: click.Context, name: str, **values: Any) -> None: 
     finally:
         _discard_wallet(ctx, staged)
     if output.JSON_MODE:
-        output.print_json(result)
+        output.print_json(redact(result))
         return
     output.success("✓ Data source %s accepted the credentials", name)
 
@@ -1799,7 +1825,7 @@ def credentials_show(ctx: click.Context, name: str) -> None:
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not read your credentials: {exc}") from exc
     if output.JSON_MODE:
-        output.print_json(binding)
+        output.print_json(redact(binding))
         return
     output.print_table(["FIELD", "VALUE"], _binding_rows(binding))
 

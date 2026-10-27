@@ -4161,3 +4161,33 @@ class TestStorageConnectorList:
             storage_connector.StorageConnector.from_response_json(
                 {"storageConnectorType": "FUTURE", "id": 9, "name": "x"}
             )
+
+
+class TestCRMShopifyConnector:
+    def test_shopify_client_credentials_round_trip(self):
+        sc = storage_connector.StorageConnector.from_response_json(
+            {
+                "type": "featurestoreCRMConnectorDTO",
+                "storageConnectorType": "CRM",
+                "id": 11,
+                "name": "shop",
+                "featurestoreId": 67,
+                "crmType": "shopify",
+                "shopUrl": "https://s.myshopify.com",
+                "clientId": "id",
+                "clientSecret": "secret",
+            }
+        )
+        assert isinstance(sc, storage_connector.CRMAndAnalyticsConnector)
+        assert (sc.shop_url, sc.client_id, sc.client_secret) == (
+            "https://s.myshopify.com",
+            "id",
+            "secret",
+        )
+        payload = sc.to_dict()
+        assert (payload["shopUrl"], payload["clientId"], payload["clientSecret"]) == (
+            "https://s.myshopify.com",
+            "id",
+            "secret",
+        )
+        assert payload["privateAppPassword"] is None
