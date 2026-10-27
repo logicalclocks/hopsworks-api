@@ -70,7 +70,7 @@ index must be loaded, or the source is an API with no table to mount.
 | --- | --- | --- | --- |
 | adls | Azure Data Lake Storage | `--account-name`, `--generation`, `--directory-id`, `--application-id` | `--service-credential` (`HOPSWORKS_DS_ADLS_SERVICE_CREDENTIAL`) |
 | bigquery | Google BigQuery | `--parent-project`, `--key-path` | none; the key file is uploaded to HopsFS first |
-| crm | CRM and analytics APIs | `--crm-type` | `--api-key`, `--password`, `--dev-token`, `--refresh-token`, `--private-app-password` (`HOPSWORKS_DS_CRM_<OPTION>`) |
+| crm | CRM and analytics APIs | `--crm-type` | `--api-key`, `--password`, `--dev-token`, `--refresh-token`, `--private-app-password`, `--client-secret` (`HOPSWORKS_DS_CRM_<OPTION>`) |
 | elasticsearch | Elasticsearch | `--host` | `--password`, `--api-key`, `--truststore-password` (`HOPSWORKS_DS_ELASTICSEARCH_<OPTION>`) |
 | gcs | Google Cloud Storage | `--bucket`, `--key-path` | `--encryption-key` (`HOPSWORKS_DS_GCS_ENCRYPTION_KEY`) |
 | glue | AWS Glue Data Catalog | `--database`, `--region` | `--secret-key`, `--session-token` (`HOPSWORKS_DS_GLUE_<OPTION>`) |
@@ -85,6 +85,7 @@ index must be loaded, or the source is an API with no table to mount.
 | rest | A REST API | `--base-url`, `--auth-type` | `--api-key`, `--bearer-token`, `--password`, `--client-secret`, `--access-token` (`HOPSWORKS_DS_REST_<OPTION>`) |
 | s3 | Amazon S3 | `--bucket` | `--secret-key` (`HOPSWORKS_DS_S3_SECRET_KEY`) |
 | sap-hana | SAP HANA | `--host`, `--user` | `--password` (`HOPSWORKS_DS_SAP_HANA_PASSWORD`) |
+| sharepoint | SharePoint Online document libraries, copied into a dataset rather than mounted | `--tenant-id`, `--client-id`, `--site-url` | `--client-secret` (`HOPSWORKS_DS_SHAREPOINT_CLIENT_SECRET`) |
 | snowflake | Snowflake | `--url`, `--user`, `--database`, `--schema`, `--warehouse` | `--password` (`HOPSWORKS_DS_SNOWFLAKE_PASSWORD`) |
 | sql | MySQL, PostgreSQL, Oracle, SQL Server, ClickHouse, Teradata and other SQL databases; `--user` too unless `--credentials-mode PROVIDED` (Oracle only), where each member saves their own | `--database-type`, `--port`, `--database` | `--password`, `--wallet-password` (`HOPSWORKS_DS_SQL_<OPTION>`) |
 | unity-catalog | Databricks Unity Catalog | `--workspace-url` | `--access-token`, `--client-secret` (`HOPSWORKS_DS_UNITY_CATALOG_<OPTION>`) |
@@ -93,6 +94,11 @@ index must be loaded, or the source is an API with no table to mount.
 (`--refresh-token` is `HOPSWORKS_DS_CRM_REFRESH_TOKEN`). The auth mode decides
 which secret a type needs: ask which mode the user has, then list only its
 secrets under `needs`.
+
+Shopify (`--crm-type SHOPIFY --shop-url https://<shop>.myshopify.com`) takes
+`--private-app-password`, or an app's `--client-id` and `--client-secret`: each
+run then mints a token valid 24 h from issuance, so a run (queue time included)
+must finish within that.
 
 After creating the connector, find and inspect the table before deciding how it
 enters the feature store:
