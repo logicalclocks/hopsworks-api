@@ -48,11 +48,20 @@ class Evaluator(Protocol):
 
 
 def _ungradable(name: str, kind: str, reason: str) -> EvaluatorResult:
+    """No verdict, rather than a failing one.
+
+    `score` and `passed` are left unset. They used to be 0.0 and False beside
+    `ungradable`, so the row said both things at once and anything that read
+    the verdict without also reading the flag -- `run.results()`, a SQL query
+    over the results table, a column in the UI -- showed a check that could not
+    run as a check the agent failed. The pass metrics already excluded it; the
+    row itself did not.
+    """
     return EvaluatorResult(
         evaluator_name=name,
         evaluator_type=kind,
-        score=0.0,
-        passed=False,
+        score=None,
+        passed=None,
         reason=reason,
         ungradable=True,
     )

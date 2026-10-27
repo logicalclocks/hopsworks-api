@@ -520,6 +520,7 @@ class LlmJudgeEvaluator:
             tool_calls=calls,
             tool_results=results,
             transcript=trial.transcript,
+            subject=getattr(task, "subject", "") or "",
         )
 
         try:
@@ -590,15 +591,11 @@ class LlmJudgeEvaluator:
         if category and category not in FAILURE_CATEGORIES:
             category = "other"
 
-        if breached:
-            reason = "below the floor on " + ", ".join(breached)
-        elif passed:
-            reason = ""
-        else:
-            reason = (
-                f"scored {weighted:.2f} of {self.config.score_max:g}, "
-                f"needs {self.config.pass_score:g}"
-            )
+        scored = (
+            f"scored {weighted:.2f} of {self.config.score_max:g}, "
+            f"needs {self.config.pass_score:g}"
+        )
+        reason = "below the floor on " + ", ".join(breached) if breached else scored
         detail = (
             "; ".join(f"{name}: {text}" for name, text in reasons.items() if text)
             if isinstance(reasons, dict)
@@ -610,7 +607,13 @@ class LlmJudgeEvaluator:
             evaluator_type=self.type,
             score=self.config._normalise(weighted),
             passed=passed,
-            reason=(reason + (f" ({detail})" if detail and not passed else ""))[:1000],
+            # A pass says why it passed, as a failure says why it failed. A pass used
+            # to carry nothing at all, and a judge that waved through a reply
+            # contradicting the correction it was grading against was then
+            # indistinguishable from one that read it properly: the only way to
+            # doubt a green result was to open the trial and read the conversation.
+            # The judge's own per-criterion reasoning is what makes it checkable.
+            reason=(reason + (f" ({detail})" if detail else ""))[:1000],
             assertions={
                 # Raw, in the scale the judge was asked for, so a person reading
                 # this sees the numbers the prompt talked about.

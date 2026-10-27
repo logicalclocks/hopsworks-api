@@ -16,7 +16,12 @@ from hopsworks_agents.eval.sdk import (
     Task,
     check,
 )
-from hopsworks_agents.eval.sdk.models import EvaluatorTemplate, Run, as_datetime
+from hopsworks_agents.eval.sdk.models import (
+    EvaluatorTemplate,
+    Feedback,
+    Run,
+    as_datetime,
+)
 
 
 class Reply:
@@ -126,13 +131,13 @@ class TestTransport:
         assert "the agent refused this turn on purpose" in str(err.value)
         assert "contract_refusal" in str(err.value)
 
-    def test_a_retryable_refusal_says_so(self):
-        evals, _ = client(
-            Reply(
-                {"detail": {"code": "vector_purge_failed", "retryable": True}},
-                status=500,
-            )
-        )
+    def test_a_retryable_refusal_says_so(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import _transport
+
+        monkeypatch.setattr(_transport.time, "sleep", lambda _s: None)
+        refusal = {"detail": {"code": "vector_purge_failed", "retryable": True}}
+        # a read is retried on a 5xx, so the server has to refuse every attempt
+        evals, _ = client(*(Reply(refusal, status=500) for _ in range(3)))
         with pytest.raises(AgentServingError) as err:
             evals.suites.list()
         assert err.value.retryable is True
@@ -570,13 +575,15 @@ class TestRuns:
         evals, _ = client(Reply({"id": 7, "status": "Idle"}))
         assert evals.runs.agent_status(Run(run_id="r", deployment_id=7)) == ""
 
-    def test_failures_are_analysed_unless_a_caller_says_not_to(self):
-        # A failure nobody explains is one somebody reads twice, so a job
-        # created without an opinion gets the analysis; one that says no
-        # keeps its model calls.
+    def test_an_opinion_about_analysis_is_sent_and_silence_is_not(self):
+        # A failure nobody explains is one somebody reads twice, so a new job
+        # gets the analysis -- but that default belongs to the server, not to
+        # this call. Sending True for a caller who said nothing turned analysis
+        # back on for a job where somebody had deliberately turned it off,
+        # because ensure now applies what it is sent.
         evals, session = client(Reply({"name": "nightly"}), Reply({"name": "n2"}))
         evals.jobs.ensure_eval_job(7)
-        assert session.sent[0][3]["analyseFailures"] is True
+        assert "analyseFailures" not in session.sent[0][3]
 
         evals.jobs.ensure_eval_job(7, analyse_failures=False)
         assert session.sent[1][3]["analyseFailures"] is False
@@ -659,6 +666,46 @@ class TestRuns:
         # a difference names the question it asks, when the tasks are readable
         assert diff.unchanged[0].question == "Analyze TSLA."
         assert "1 regressed" in str(diff) and "1 added" in str(diff)
+
+    def test_the_same_question_asked_as_two_people_is_two_cases(self):
+        # Keyed on the turns alone, the two overwrote each other: one newly
+        # failing task beside a passing one compared as "0 regressed, 1 unchanged".
+        question = json.dumps([{"role": "user", "content": "What do you remember?"}])
+        tasks = [
+            {
+                "taskId": "dana",
+                "inputMessages": question,
+                "subject": "dana@example.com",
+            },
+            {
+                "taskId": "marcus",
+                "inputMessages": question,
+                "subject": "marcus@example.com",
+            },
+        ]
+        evals, _ = client(
+            Reply({"runId": "old", "suiteId": "s", "suiteVersion": 1}),
+            Reply({"runId": "new", "suiteId": "s", "suiteVersion": 1}),
+            Reply(
+                [
+                    {"taskId": "dana", "status": "PASSED"},
+                    {"taskId": "marcus", "status": "PASSED"},
+                ]
+            ),
+            Reply(
+                [
+                    {"taskId": "dana", "status": "FAILED"},
+                    {"taskId": "marcus", "status": "PASSED"},
+                ]
+            ),
+            Reply(tasks),
+            Reply(tasks),
+        )
+
+        diff = evals.runs.compare("old", "new")
+
+        assert [t.task_id for t in diff.regressed] == ["dana"]
+        assert [t.task_id for t in diff.unchanged] == ["marcus"]
 
     def test_the_failure_history_says_which_failures_are_new(self):
         # "seventeen failed" is not something anyone can act on; "one of them
@@ -851,7 +898,6 @@ class TestJobs:
             "evaluators": ["tmpl"],
             "monitor": True,
             # the analysis comes with it unless the caller says otherwise
-            "analyseFailures": True,
             "cores": 2,
         }
 
@@ -1209,6 +1255,248 @@ class TestTracing:
             None,
         )
 
+    def test_promoting_a_verdict_carries_its_conversation(self):
+        # A failure on the fourth turn cannot be reproduced by asking the fourth
+        # question of a fresh agent, and a conversation is several traces
+        # sharing a session id -- so the turns that set it up are in the traces
+        # before the one the verdict is about.
+        evals, agent7, session = agent(
+            Reply(
+                {
+                    "items": [
+                        {
+                            "traceId": "t1",
+                            "startTimeNs": 1,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "my email is d@e.com"}]
+                            ),
+                        },
+                        {
+                            "traceId": "t2",
+                            "startTimeNs": 2,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "ticker MSFT"}]
+                            ),
+                        },
+                        {
+                            "traceId": "t3",
+                            "startTimeNs": 3,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "propose strategies"}]
+                            ),
+                        },
+                        {
+                            "traceId": "t4",
+                            "startTimeNs": 4,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "a later, unrelated turn"}]
+                            ),
+                        },
+                    ]
+                }
+            ),
+            Reply({"taskId": "task"}),
+        )
+        row = Feedback(
+            feedback_id="f",
+            trace_id="t3",
+            session_id="s1",
+            issue_category="wrong_answer",
+            corrected_answer="Strategies, with the disclaimer.",
+        )
+
+        task = agent7.promote_feedback(row)
+
+        assert task.task_id == "task"
+        # The session id travels as a query parameter, not in the path.
+        assert session.sent[0][1] == "/otel/servings/7/traces/sessions"
+        assert session.sent[0][2]["sessionId"] == "s1"
+        # Up to and including the verdict's turn, and no further.
+        assert json.loads(session.sent[1][3]["inputMessages"]) == [
+            {"role": "user", "content": "my email is d@e.com"},
+            {"role": "user", "content": "ticker MSFT"},
+            {"role": "user", "content": "propose strategies"},
+        ]
+        # The category and the correction are on the verdict, not the trace, so
+        # promoting one without them produced a task the redaction gate refuses.
+        assert session.sent[1][3]["category"] == "wrong_answer"
+        assert session.sent[1][3]["expectations"] == {
+            "expected": "Strategies, with the disclaimer."
+        }
+
+    def test_a_repeated_request_is_kept(self):
+        # Deduplicating by text lost a genuine repeat: a user who says
+        # "continue" twice got one "continue", so the task replayed a different
+        # conversation from the one that failed -- and if the failure needs the
+        # second continuation, it cannot be reproduced at all.
+        evals, agent7, session = agent(
+            Reply(
+                {
+                    "items": [
+                        {
+                            "traceId": f"t{i}",
+                            "startTimeNs": i,
+                            "messages": json.dumps([{"role": "user", "content": text}]),
+                        }
+                        for i, text in enumerate(
+                            ["continue", "continue", "what next?"], start=1
+                        )
+                    ]
+                }
+            ),
+            Reply({"taskId": "task"}),
+        )
+
+        agent7.promote_feedback(
+            Feedback(feedback_id="f", trace_id="t3", session_id="s")
+        )
+
+        assert json.loads(session.sent[1][3]["inputMessages"]) == [
+            {"role": "user", "content": "continue"},
+            {"role": "user", "content": "continue"},
+            {"role": "user", "content": "what next?"},
+        ]
+
+    def test_a_trace_that_repeats_the_history_is_not_counted_twice(self):
+        # The other half: some frameworks put the whole conversation on every
+        # trace, so appending each trace's turns blindly would say everything
+        # twice. Position decides, not text.
+        evals, agent7, session = agent(
+            Reply(
+                {
+                    "items": [
+                        {
+                            "traceId": "t1",
+                            "startTimeNs": 1,
+                            "messages": json.dumps(
+                                [{"role": "user", "content": "first"}]
+                            ),
+                        },
+                        {
+                            "traceId": "t2",
+                            "startTimeNs": 2,
+                            "messages": json.dumps(
+                                [
+                                    {"role": "user", "content": "first"},
+                                    {"role": "user", "content": "second"},
+                                ]
+                            ),
+                        },
+                    ]
+                }
+            ),
+            Reply({"taskId": "task"}),
+        )
+
+        agent7.promote_feedback(
+            Feedback(feedback_id="f", trace_id="t2", session_id="s")
+        )
+
+        assert json.loads(session.sent[1][3]["inputMessages"]) == [
+            {"role": "user", "content": "first"},
+            {"role": "user", "content": "second"},
+        ]
+
+    def test_a_cluster_promotes_the_member_whose_correction_it_uses(self):
+        # A cluster groups by failure signature, not by question, so its members
+        # ask different things. Pairing one member's correction with another's
+        # question wrote an expected answer to a question nobody asked.
+        evals, agent7, session = agent(
+            Reply(
+                [
+                    {
+                        "clusterId": "c",
+                        "size": 2,
+                        "representativeTraceId": "t-rep",
+                        "representativeFeedbackId": "f-rep",
+                    }
+                ]
+            ),
+            Reply(
+                [
+                    {"triageId": "x", "feedbackId": "f-rep", "traceId": "t-rep"},
+                    {
+                        "triageId": "y",
+                        "feedbackId": "f-other",
+                        "traceId": "t-other",
+                        "normalizedCorrection": "Order 43 was delivered on Monday.",
+                    },
+                ]
+            ),
+            Reply(
+                {"count": 1, "items": [{"feedbackId": "f-other", "traceId": "t-other"}]}
+            ),
+            Reply({"taskId": "task"}),
+            Reply(None),
+        )
+        [cluster] = agent7.clusters()
+
+        agent7.promote_cluster(cluster)
+
+        # The correcting member's trace, so the question and the expected answer
+        # are the same exchange.
+        assert session.sent[3][1] == "/agent-evals/tasks/from-trace/t-other"
+        assert session.sent[3][3]["expectations"] == {
+            "expected": "Order 43 was delivered on Monday."
+        }
+
+    def test_promoting_one_turn_on_its_own_is_still_possible(self):
+        evals, agent7, session = agent(Reply({"taskId": "task"}))
+        row = Feedback(
+            feedback_id="f",
+            trace_id="t3",
+            session_id="s1",
+            trace_messages=json.dumps(
+                [{"role": "user", "content": "propose strategies"}]
+            ),
+        )
+
+        agent7.promote_feedback(row, conversation=False)
+
+        # No session read at all: the one turn, as the verdict's trace has it.
+        assert session.sent[0][1] == "/agent-evals/tasks/from-trace/t3"
+        assert json.loads(session.sent[0][3]["inputMessages"]) == [
+            {"role": "user", "content": "propose strategies"}
+        ]
+
+    def test_a_cluster_takes_a_correction_from_any_member(self):
+        # A cluster is one failure seen several times and only some of those
+        # verdicts carry a correction. Insisting on the representative's left
+        # the task with nothing to grade against, and the judge it is graded by
+        # reads the expected answer.
+        evals, agent7, session = agent(
+            Reply(
+                [
+                    {
+                        "clusterId": "c",
+                        "size": 2,
+                        "representativeTraceId": "t",
+                        "representativeFeedbackId": "f",
+                    }
+                ]
+            ),
+            Reply(
+                [
+                    {"triageId": "x", "feedbackId": "f"},
+                    {
+                        "triageId": "y",
+                        "feedbackId": "other",
+                        "normalizedCorrection": "Say it with the disclaimer.",
+                    },
+                ]
+            ),
+            Reply({"count": 1, "items": [{"feedbackId": "f", "traceId": "t"}]}),
+            Reply({"taskId": "task"}),
+            Reply(None),
+        )
+        [cluster] = agent7.clusters()
+
+        agent7.promote_cluster(cluster)
+
+        assert session.sent[3][3]["expectations"] == {
+            "expected": "Say it with the disclaimer."
+        }
+
     def test_dismiss_rename_and_reopen(self):
         evals, agent7, session = agent(Reply(None), Reply(None), Reply(None))
         deployment = agent7
@@ -1415,6 +1703,231 @@ class TestAgents:
         assert (method, url) == ("GET", "https://gw/v1/g1/support/v1/conversations")
         # and nothing was invented for what the caller left out
         assert params == {"subject": "alice@example.com"}
+
+    def test_what_the_agents_memory_holds_is_read_from_its_feature_groups(self):
+        # From the feature groups, not the agent: what an agent remembered is
+        # still readable when it is stopped, which is when someone usually asks.
+        import pandas as pd
+
+        class Column:
+            def __init__(self, name):
+                self.name = name
+
+            def __eq__(self, value):
+                return Condition(lambda row: row.get(self.name) == value)
+
+        class Condition:
+            def __init__(self, test):
+                self.test = test
+
+            def __and__(self, other):
+                return Condition(lambda row: self.test(row) and other.test(row))
+
+        class Group:
+            def __init__(self, rows):
+                self.rows = rows
+                self.condition = None
+
+            def get_feature(self, name):
+                return Column(name)
+
+            def select_all(self):
+                return self
+
+            def filter(self, condition):
+                self.condition = condition
+                return self
+
+            def read(self, online=False):
+                assert online, "memory is read from the online store"
+                return pd.DataFrame([r for r in self.rows if self.condition.test(r)])
+
+        def message(i, conversation, role, content, subject, **extra):
+            return {
+                "id": i,
+                "deployment_id": "7",
+                "conversation_id": conversation,
+                "turn_id": f"t{i}",
+                "message_id": None,
+                "role": role,
+                "content": content,
+                "subject": subject,
+                "memory_type": "message",
+                "status": "closed",
+                "created_at": pd.Timestamp(f"2026-10-24 10:0{i}:00"),
+                **extra,
+            }
+
+        groups = {
+            "agent_memory_messages": [
+                message(1, "c1", "user", "hi", "c1"),
+                message(2, "c1", "user", "dana@example.com", "dana@example.com"),
+                message(3, "c1", "assistant", "hello Dana", "dana@example.com"),
+                message(
+                    4, "c1", "assistant", "...", "dana@example.com", memory_type="event"
+                ),
+                message(5, "c2", "user", "someone else", "bob@example.com"),
+                # another agent's row in the same group
+                {
+                    **message(6, "c9", "user", "not ours", "dana@example.com"),
+                    "deployment_id": "8",
+                },
+            ],
+            "agent_memory_conversations": [
+                {
+                    "deployment_id": "7",
+                    "conversation_id": "c1",
+                    "summary": "Dana said hi",
+                    "last_summarized_item_id": 2,
+                },
+            ],
+            "agent_memory_facts": [
+                {
+                    "deployment_id": "7",
+                    "scope": "user",
+                    "owner": "dana@example.com",
+                    "state_key": "diet",
+                    "value": "vegetarian",
+                    "written_by": "agent",
+                    "source_ref": None,
+                    "updated_at": pd.Timestamp("2026-10-24 10:00"),
+                    "expires_at": None,
+                },
+                {
+                    "deployment_id": "7",
+                    "scope": "user",
+                    "owner": "dana@example.com",
+                    "state_key": "old",
+                    "value": "gone",
+                    "written_by": "agent",
+                    "source_ref": None,
+                    "updated_at": pd.Timestamp("2026-01-01"),
+                    "expires_at": pd.Timestamp("2026-02-01"),
+                },
+                {
+                    "deployment_id": "8",
+                    "scope": "user",
+                    "owner": "dana@example.com",
+                    "state_key": "elsewhere",
+                    "value": "x",
+                    "written_by": "agent",
+                    "source_ref": None,
+                    "updated_at": pd.Timestamp("2026-10-24"),
+                    "expires_at": None,
+                },
+            ],
+        }
+
+        class Store:
+            def get_feature_group(self, name, version):
+                assert version == 1
+                return Group(groups[name]) if name in groups else None
+
+        _, agent7, session = agent()
+        store = Store()
+
+        listed = agent7.memory_conversations(
+            subject="dana@example.com", feature_store=store
+        )
+        assert [c["conversation_id"] for c in listed] == ["c1"]
+        assert listed[0]["subject"] == "dana@example.com"
+        # the turn before she was identified counts too: it is in her transcript
+        assert listed[0]["message_count"] == 3
+        assert listed[0]["summary"] == "Dana said hi"
+
+        stored = agent7.memory_transcript("c1", feature_store=store)
+        # the identity it arrived at, not the conversation id it started under
+        assert stored["subject"] == "dana@example.com"
+        assert [m["content"] for m in stored["messages"]] == [
+            "hi",
+            "dana@example.com",
+            "hello Dana",
+        ]
+        assert stored["summarized_through"] == 2
+        assert (
+            len(
+                agent7.memory_transcript(
+                    "c1", include_events=True, feature_store=store
+                )["messages"]
+            )
+            == 4
+        )
+
+        facts = agent7.memory_facts("dana@example.com", feature_store=store)
+        # expired facts are left out, and another agent's are not ours
+        assert [(f["key"], f["value"]) for f in facts] == [("diet", "vegetarian")]
+
+        # and none of it went through the agent
+        assert session.sent == []
+
+    def test_tags_read_back_as_a_list(self):
+        # Read back as JSON text, `[agent.name, *suite.tags]` iterated its
+        # characters and wrote them onto every suite it touched.
+        from hopsworks_agents.eval.sdk.models import EvaluatorTemplate, Suite
+
+        suite = Suite.from_api({"suiteId": "s", "tags": '["red-team", "safety"]'})
+        assert suite.tags == ["red-team", "safety"]
+        assert ["advisor", *suite.tags] == ["advisor", "red-team", "safety"]
+        assert Suite.from_api({"suiteId": "s"}).tags == []
+        entry = EvaluatorTemplate.from_api({"templateId": "e", "tags": "[]"})
+        assert entry.tags == [] and entry.tag_list == []
+
+    def test_an_agent_with_no_memory_has_nothing_to_read(self):
+        _, agent7, _ = agent()
+
+        class Store:
+            def get_feature_group(self, name, version):
+                return None
+
+        assert agent7.memory_conversations(feature_store=Store()) == []
+        assert agent7.memory_facts("x", feature_store=Store()) == []
+        assert agent7.memory_transcript("c1", feature_store=Store())["messages"] == []
+
+    def test_a_memory_search_embeds_the_query_with_the_model_that_embedded_the_memory(
+        self,
+    ):
+        _, agent7, _ = agent()
+        asked = []
+
+        class Group:
+            description = "Hopsworks agent memory (all-MiniLM-L6-v2, 3d, cosine)"
+            features = []
+
+            def find_neighbors(self, vector, col, k, filter=None):
+                asked.append((vector, k))
+                return []
+
+        class Store:
+            def get_feature_group(self, name, version):
+                assert (name, version) == ("agent_memory_7", 1)
+                return Group()
+
+        def embed(text):
+            return [1.0, 0.0, 0.0]
+
+        embed.model_id = "all-MiniLM-L6-v2"
+        agent7.memory_search("vegetarian", k=3, embedder=embed, feature_store=Store())
+        assert asked and asked[0][0] == [1.0, 0.0, 0.0]
+
+        # another model's vectors would answer, and mean nothing
+        embed.model_id = "text-embedding-3-small"
+        with pytest.raises(ValueError, match="all-MiniLM-L6-v2"):
+            agent7.memory_search("vegetarian", embedder=embed, feature_store=Store())
+
+    def test_an_agent_with_no_memory_feature_group_finds_nothing_and_creates_none(self):
+        _, agent7, _ = agent()
+
+        class Store:
+            def get_feature_group(self, name, version):
+                return None
+
+            def get_or_create_feature_group(self, **kwargs):
+                raise AssertionError("a read created a memory feature group")
+
+        assert (
+            agent7.memory_search("x", embedder=lambda t: [0.0], feature_store=Store())
+            == []
+        )
 
     def test_chat_speaks_the_protocol_and_threads_a_conversation(self):
         _, agent7, session = agent(
@@ -1721,6 +2234,79 @@ class TestCompositeIdsDoNotGoInPaths:
         assert body["passed"] is True
 
 
+class TestTasksThatShareAnOpeningLine:
+    """Three scripted conversations that start the same way are three cases.
+
+    A suite whose tasks all begin by giving the same email address keyed every
+    one of them on that line: the comparison saw one case, reported it unchanged,
+    and found none of the regressions `changes()` reported for the same run. A
+    release gate reading either got a different answer.
+    """
+
+    @staticmethod
+    def _tasks(suffixes):
+        return [
+            {
+                "taskId": f"t{i}",
+                "inputMessages": json.dumps(
+                    [
+                        {"role": "user", "content": "dana@example.com"},
+                        {"role": "user", "content": tail},
+                    ]
+                ),
+            }
+            for i, tail in enumerate(suffixes)
+        ]
+
+    def _diff(self, before_status, after_status):
+        tails = ["Analyze MSFT.", "Propose strategies.", "Plan execution."]
+        return client(
+            Reply(
+                {
+                    "runId": "v1",
+                    "suiteId": "s",
+                    "suiteVersion": 1,
+                    "status": "SUCCEEDED",
+                }
+            ),
+            Reply(
+                {
+                    "runId": "v2",
+                    "suiteId": "s",
+                    "suiteVersion": 2,
+                    "status": "SUCCEEDED",
+                }
+            ),
+            Reply(
+                [{"taskId": f"t{i}", "status": s} for i, s in enumerate(before_status)]
+            ),
+            Reply(
+                [{"taskId": f"t{i}", "status": s} for i, s in enumerate(after_status)]
+            ),
+            Reply(self._tasks(tails)),
+            Reply(self._tasks(tails)),
+        )
+
+    def test_each_is_its_own_case(self):
+        evals, _ = self._diff(["PASSED"] * 3, ["PASSED"] * 3)
+        diff = evals.runs.compare("v1", "v2")
+        assert len(diff.tasks) == 3, f"{diff.tasks}"
+        assert len(diff.unchanged) == 3
+
+    def test_a_regression_in_one_of_them_is_seen(self):
+        evals, _ = self._diff(
+            ["PASSED", "PASSED", "PASSED"], ["PASSED", "FAILED", "PASSED"]
+        )
+        diff = evals.runs.compare("v1", "v2")
+        assert [t.task_id for t in diff.regressed] == ["t1"], f"{diff.tasks}"
+        assert not diff.added and not diff.removed
+
+    def test_the_difference_is_still_named_by_its_opening_question(self):
+        evals, _ = self._diff(["PASSED"] * 3, ["PASSED", "FAILED", "PASSED"])
+        diff = evals.runs.compare("v1", "v2")
+        assert diff.regressed[0].question == "dana@example.com"
+
+
 class TestComparingAcrossSuiteVersions:
     """A new version copies its tasks, and a copy is a new row with a new id.
 
@@ -1780,3 +2366,224 @@ class TestComparingAcrossSuiteVersions:
         )
         assert not diff.added and not diff.removed, f"{diff}"
         assert diff.regressed[0].question == "Where is order 4182?"
+
+
+class TestTraceAttributes:
+    """A span read back carries what was recorded on it.
+
+    The API sends attributes as one flat list for the whole trace, keyed by span, because
+    that is how they are stored. Everything that says what a span did -- its kind, the
+    model, the prompt, the answer -- is in there, so a span on its own said only its name
+    and when it ran, and reading a trace meant knowing about a second list.
+    """
+
+    @staticmethod
+    def _trace():
+        from hopsworks_agents.eval.sdk.models import Trace
+
+        return Trace.from_api(
+            {
+                "spans": [
+                    {"spanId": "a", "name": "invoke_agent"},
+                    {"spanId": "b", "name": "chat"},
+                ],
+                "spanAttributes": [
+                    {
+                        "spanId": "a",
+                        "attrKey": "openinference.span.kind",
+                        "attrValue": "AGENT",
+                    },
+                    {
+                        "spanId": "b",
+                        "attrKey": "openinference.span.kind",
+                        "attrValue": "LLM",
+                    },
+                    {"spanId": "b", "attrKey": "llm.model_name", "attrValue": "gpt-5"},
+                ],
+                "events": [{"eventId": 7, "spanId": "b", "name": "gen_ai.choice"}],
+                "eventAttributes": [
+                    {"eventId": 7, "attrKey": "role", "attrValue": "assistant"}
+                ],
+            }
+        )
+
+    def test_each_span_carries_its_own_attributes(self):
+        spans = {s["spanId"]: s for s in self._trace().spans}
+        assert spans["a"]["attributes"]["openinference.span.kind"] == "AGENT"
+        assert spans["b"]["attributes"]["llm.model_name"] == "gpt-5"
+
+    def test_a_span_with_none_gets_an_empty_dict_not_a_missing_key(self):
+        from hopsworks_agents.eval.sdk.models import Trace
+
+        trace = Trace.from_api({"spans": [{"spanId": "z"}], "spanAttributes": []})
+        assert trace.spans[0]["attributes"] == {}
+
+    def test_events_carry_theirs_too(self):
+        assert self._trace().events[0]["attributes"]["role"] == "assistant"
+
+    def test_the_flat_lists_are_still_there(self):
+        trace = self._trace()
+        assert len(trace.span_attributes) == 3
+        assert trace.attributes_of("b")["llm.model_name"] == "gpt-5"
+
+
+class TestATaskCarriesWhoItIsAskedAs:
+    """B25: a promoted memory failure has to be asked by the person it happened to.
+
+    The task had no subject and no context, so a regression of "what do you
+    already know about me?" replayed as a stranger the agent never had memory of,
+    and passed every time.
+    """
+
+    def test_create_sends_them(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.create(
+            "What do you know about me?",
+            subject="marcus@example.com",
+            context={"plan": "pro"},
+        )
+        body = session.sent[0][3]
+        assert body["subject"] == "marcus@example.com"
+        assert json.loads(body["context"]) == {"plan": "pro"}
+
+    def test_promote_leaves_them_to_the_trace_unless_told(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.promote(7, "trace-1")
+        body = session.sent[0][3]
+        assert "subject" not in body and "context" not in body
+
+    def test_promote_can_ask_anonymously_or_as_someone_else(self):
+        evals, session = client(Reply({"taskId": "t"}), Reply({"taskId": "u"}))
+        evals.tasks.promote(7, "trace-1", subject="")
+        evals.tasks.promote(7, "trace-1", subject="test-user@example.com")
+        assert session.sent[0][3]["subject"] == ""
+        assert session.sent[1][3]["subject"] == "test-user@example.com"
+
+    def test_an_edit_can_clear_them(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.update("t", subject="", context={})
+        body = session.sent[0][3]
+        assert body == {"subject": "", "context": ""}
+
+    def test_the_redaction_reviewer_can_change_the_subject(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.confirm_redaction("t", subject="test-user@example.com")
+        assert session.sent[0][3]["subject"] == "test-user@example.com"
+
+    def test_the_model_reads_them_back(self):
+        from hopsworks_agents.eval.sdk.models import Task
+
+        task = Task.from_api(
+            {
+                "taskId": "t",
+                "subject": "marcus@example.com",
+                "context": '{"plan": "pro"}',
+            }
+        )
+        assert task.subject == "marcus@example.com"
+        assert task.request_context == {"plan": "pro"}
+        assert Task.from_api({"taskId": "t"}).request_context == {}
+
+
+class TestSuiteVersionsAsOneSuite:
+    """A version is a row because a run records it; tearing a suite down took a pass per version."""
+
+    LISTING = [
+        {"suiteId": "a", "version": 1, "name": "A"},
+        {"suiteId": "a", "version": 2, "name": "A"},
+        {"suiteId": "b", "version": 1, "name": "B"},
+    ]
+
+    def test_latest_keeps_the_newest_of_each(self):
+        evals, _ = client(Reply(self.LISTING))
+        assert sorted(
+            (s.suite_id, s.version) for s in evals.suites.list(latest=True)
+        ) == [
+            ("a", 2),
+            ("b", 1),
+        ]
+
+    def test_the_plain_listing_is_every_version(self):
+        evals, _ = client(Reply(self.LISTING))
+        assert len(evals.suites.list()) == 3
+
+    def test_all_versions_deletes_each_newest_first(self):
+        evals, session = client(Reply(self.LISTING), Reply(None), Reply(None))
+        evals.suites.delete("a", force=True, all_versions=True)
+        deletes = [(m, u, p) for m, u, p, _ in session.sent if m == "DELETE"]
+        assert [p["version"] for _, _, p in deletes] == [2, 1]
+        assert all(p["force"] == "true" for _, _, p in deletes)
+
+
+class TestAReadRidesOutATransientServerError:
+    """`run.metrics()` failed once with a 500 straight after a run and worked a minute later."""
+
+    def test_a_get_is_retried_after_a_5xx(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import _transport
+
+        monkeypatch.setattr(_transport.time, "sleep", lambda _s: None)
+        evals, session = client(
+            Reply({"usrMsg": "host not found"}, status=500), Reply([])
+        )
+        assert evals.runs.metrics("run-1") == []
+        assert len(session.sent) == 2
+
+    def test_a_refusal_is_not_retried(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import _transport
+
+        monkeypatch.setattr(_transport.time, "sleep", lambda _s: None)
+        evals, session = client(Reply({"usrMsg": "no"}, status=404))
+        with pytest.raises(AgentServingError):
+            evals.runs.metrics("run-1")
+        assert len(session.sent) == 1
+
+    def test_a_write_is_not_retried(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import _transport
+
+        monkeypatch.setattr(_transport.time, "sleep", lambda _s: None)
+        evals, session = client(Reply({"usrMsg": "boom"}, status=500))
+        with pytest.raises(AgentServingError):
+            evals.tasks.create("hi")
+        assert len(session.sent) == 1
+
+
+class TestATraceReadStraightAfterTheReply:
+    """A trace lands span by span, and was served before its model calls arrived.
+
+    0.4 s after the reply: no LLM span, 0 tokens, 0 cost -- a turn that read as free.
+    """
+
+    HALF = {"spans": [{"spanId": "tool", "traceId": "t"}], "spanAttributes": []}
+    WHOLE = {
+        "spans": [
+            {"spanId": "turn", "traceId": "t"},
+            {"spanId": "llm", "traceId": "t"},
+        ],
+        "spanAttributes": [
+            {"spanId": "turn", "attrKey": "hopsworks.response_id", "attrValue": "r1"},
+            {"spanId": "llm", "attrKey": "openinference.span.kind", "attrValue": "LLM"},
+        ],
+        "totalInputTokens": 2784,
+    }
+
+    def test_wait_holds_out_for_the_turn_to_close(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import agent as agent_module
+
+        monkeypatch.setattr(agent_module.time, "sleep", lambda _s: None)
+        _, agent7, _ = agent(Reply(self.HALF), Reply(self.WHOLE))
+        trace = agent7.trace("t", wait=10)
+        assert trace.total_input_tokens == 2784
+
+    def test_wait_rides_out_not_found_too(self, monkeypatch):
+        from hopsworks_agents.eval.sdk import agent as agent_module
+
+        monkeypatch.setattr(agent_module.time, "sleep", lambda _s: None)
+        _, agent7, _ = agent(
+            Reply({"usrMsg": "Trace not found"}, status=404), Reply(self.WHOLE)
+        )
+        assert agent7.trace("t", wait=10).total_input_tokens == 2784
+
+    def test_without_wait_it_is_one_read(self):
+        _, agent7, session = agent(Reply(self.HALF))
+        agent7.trace("t")
+        assert len(session.sent) == 1

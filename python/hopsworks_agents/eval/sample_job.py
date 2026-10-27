@@ -35,10 +35,11 @@ import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from ._retry import _retrying
 from .evaluators import Evaluator, Trace, _verdict
 from .models import PassPolicy, Task, TraceStatus, Trial, TrialStatus
 from .run_fields import _run_trials
-from .runner import RunResult, _transcript
+from .runner import RunnerConfig, RunResult, _cost, _transcript
 
 
 if TYPE_CHECKING:
@@ -170,6 +171,14 @@ def _question_and_answer(detail: dict[str, Any]) -> tuple[str, str]:
     return "", ""
 
 
+def _subject_of(detail: dict[str, Any]) -> str:
+    """The person a production turn was for, as its turn span records it; "" when nobody said."""
+    for attribute in detail.get("spanAttributes") or []:
+        if attribute.get("attrKey") == "user.id" and attribute.get("attrValue"):
+            return str(attribute["attrValue"])
+    return ""
+
+
 def _turn_of(messages_raw: Any) -> tuple[str, str]:
     """One trace's user question and final agent answer, from its messages."""
     try:
@@ -222,9 +231,11 @@ def _conversation_before(
         return []
     if session_id not in cache:
         try:
+            # The id as a query parameter: a trial's session id has slashes in
+            # it, which in the path is a different route.
             response = session.get(
-                f"{base}/traces/sessions/{session_id}",
-                params={"limit": SESSION_PAGE},
+                f"{base}/traces/sessions",
+                params={"sessionId": session_id, "limit": SESSION_PAGE},
                 timeout=60,
             )
             response.raise_for_status()
@@ -307,6 +318,9 @@ def _grade_trace(
     task = Task(
         task_id=trace_id,
         input_messages=json.dumps([{"role": "user", "content": question}]),
+        # Who the turn was for, when the application said: the judge is told, so
+        # a turn that rightly skipped "who are you?" is not failed for it.
+        subject=_subject_of(detail),
     )
     trial = _as_trial(run_id, deployment_id, trace_id, answer, trace)
     trial.session_id = session_id
@@ -325,12 +339,18 @@ def _grade_trace(
     # way, and counting it as a failure would make an unconfigured sample look
     # like a broken agent.
     outcome = _verdict(trial.evaluator_results, PassPolicy.ALL)
+    # Nothing reached a verdict: for want of a trace, or because the evaluators could
+    # not -- a judge whose provider refused the call (out of credits, a bad key). That
+    # second case used to be TRACE_MISSING too, so a window graded by a judge with no
+    # credits read as a broken tracing pipeline while every trace was there.
     trial.status = (
         TrialStatus.PASSED
         if outcome
         else TrialStatus.FAILED
         if outcome is False
         else TrialStatus.TRACE_MISSING
+        if trace is None
+        else TrialStatus.EVALUATOR_ERROR
     )
     return trial
 
@@ -368,6 +388,13 @@ def _run_sample(
     """
     deployment_id = int(run["deploymentId"])
     started = datetime.now(tz=timezone.utc)
+    # The deployment's prices, which every run carries. A suite run applied them
+    # and a sample did not, so every monitor run reported estimated_cost 0.0 for
+    # the same traffic a suite run costed -- read as free, not as unpriced.
+    prices = RunnerConfig(
+        input_token_price_per_million=run.get("inputTokenPricePerMillion"),
+        output_token_price_per_million=run.get("outputTokenPricePerMillion"),
+    )
     base = (
         f"{api_base.rstrip('/')}/hopsworks-api/api/project/{project_id}"
         f"/otel/servings/{deployment_id}"
@@ -380,34 +407,42 @@ def _run_sample(
         run.get("sampleTo") or datetime.now(tz=timezone.utc).timestamp() * 1000
     )
     graded_limit = _run_trials(run, 0)
+
     # The window, in SQL, oldest first. Asking for "the newest 500 traces" and
     # filtering them here meant that above 500 in a window the monitor graded
     # the newest slice and skipped everything older -- and said nothing, because
     # the list it compared against had already been cut server-side. `count` is
     # what the window holds, so the run knows what it is leaving behind.
-    listing = session.get(
-        f"{base}/traces",
-        params={
-            "limit": graded_limit or LISTING_LIMIT,
-            "from": int(start_ms),
-            "to": int(end_ms),
-            "order": "random" if strategy == "random" else "oldest",
-            # Not the deployment's own suite runs. They are traffic it served, on the same
-            # deployment, so a monitor grading "the last hour" graded a nightly suite's
-            # questions as if customers had asked them -- and a safety suite's injection
-            # attempts, which are meant to be refused and so drag a production pass rate down
-            # by design. Filtered again below for a backend that does not know the parameter.
-            "excludeEval": "true",
-            # Seeded from the window, which every sample run of one execution
-            # shares: each evaluator then draws the same conversations, so their
-            # verdicts are about the same traffic and can be compared. It also
-            # makes a re-run of a window grade what it graded before, which is
-            # what you want when checking a fixed judge against the old one.
-            **({"seed": int(start_ms)} if strategy == "random" and shared else {}),
-        },
-        timeout=60,
-    )
-    listing.raise_for_status()
+    def _list_window():
+        answer = session.get(
+            f"{base}/traces",
+            params={
+                "limit": graded_limit or LISTING_LIMIT,
+                "from": int(start_ms),
+                "to": int(end_ms),
+                "order": "random" if strategy == "random" else "oldest",
+                # Not the deployment's own suite runs. They are traffic it served, on the same
+                # deployment, so a monitor grading "the last hour" graded a nightly suite's
+                # questions as if customers had asked them -- and a safety suite's injection
+                # attempts, which are meant to be refused and so drag a production pass rate down
+                # by design. Filtered again below for a backend that does not know the parameter.
+                "excludeEval": "true",
+                # Seeded from the window, which every sample run of one execution
+                # shares: each evaluator then draws the same conversations, so their
+                # verdicts are about the same traffic and can be compared. It also
+                # makes a re-run of a window grade what it graded before, which is
+                # what you want when checking a fixed judge against the old one.
+                **({"seed": int(start_ms)} if strategy == "random" and shared else {}),
+            },
+            timeout=60,
+        )
+        answer.raise_for_status()
+        return answer
+
+    # Retried: a monitor whose listing gets a 500 under load grades nothing, and
+    # the shared-sample guarantee -- every evaluator grades the same draw -- breaks
+    # for the whole execution. The seed is the window, so a retry draws the same.
+    listing = _retrying(_list_window, what="listing the window's traces")
     body = listing.json()
     summaries = body.get("items") or []
     # Filtered again here, and sorted again below: a cluster whose backend
@@ -469,18 +504,19 @@ def _run_sample(
         earlier = _conversation_before(
             session, base, session_id, _started_ns(summary, detail), sessions
         )
-        trials.append(
-            _grade_trace(
-                evaluators,
-                run["runId"],
-                deployment_id,
-                trace_id,
-                detail,
-                trace,
-                earlier_turns=earlier,
-                session_id=session_id,
-            )
+        graded = _grade_trace(
+            evaluators,
+            run["runId"],
+            deployment_id,
+            trace_id,
+            detail,
+            trace,
+            earlier_turns=earlier,
+            session_id=session_id,
         )
+        # The same rule a suite trial is priced by: unpriced stays None.
+        graded.estimated_cost = _cost(graded, prices)
+        trials.append(graded)
         # Written as they are graded, so a monitor that is stopped half way
         # through a long window leaves what it graded rather than nothing.
         if on_progress is not None and len(trials) - reported >= WRITE_BATCH:

@@ -125,10 +125,25 @@ class Suites:
         self._http: Transport = client.http
 
     @public
-    def list(self) -> list[Suite]:
-        return self._client._bind_all(
+    def list(self, *, latest: bool = False) -> list[Suite]:
+        """Every suite version in the project, or with ``latest=True`` one row per suite.
+
+        A version is a row because a run records the version it executed, so v1
+        and v2 of one suite are both real and both listed. That makes the plain
+        listing grow with every ``new_version()``; ``latest=True`` is the view a
+        person usually means -- the newest version of each suite.
+        """
+        suites = self._client._bind_all(
             Suite.list_from_api(self._http.get(f"{EVALS}/suites"))
         )
+        if not latest:
+            return suites
+        newest: dict[str, Suite] = {}
+        for suite in suites:
+            kept = newest.get(suite.suite_id)
+            if kept is None or (suite.version or 0) > (kept.version or 0):
+                newest[suite.suite_id] = suite
+        return list(newest.values())
 
     @public
     def get(self, suite_id: str, version: int | None = None) -> Suite:
@@ -193,7 +208,7 @@ class Suites:
             "suiteId": current.suite_id,
             "name": current.name,
             "description": current.description,
-            "tags": current.tags,
+            "tags": json.dumps(list(current.tags)),
             "executionMode": current.execution_mode,
             "blocksAreSuccess": current.blocks_are_success,
             "runOnUpdate": current.run_on_update,
@@ -263,8 +278,28 @@ class Suites:
 
     @public
     def delete(
-        self, suite: Suite | str, version: int | None = None, force: bool = False
+        self,
+        suite: Suite | str,
+        version: int | None = None,
+        force: bool = False,
+        *,
+        all_versions: bool = False,
     ) -> None:
+        """Delete one version of a suite, or with ``all_versions=True`` every version of it.
+
+        One version per call is the default because a version is what a run
+        recorded; tearing a suite down entirely used to take one pass per version
+        over the listing. ``force`` is needed for a version that has runs.
+        """
+        if all_versions:
+            suite_id = suite.suite_id if isinstance(suite, Suite) else str(suite)
+            versions = sorted(
+                (s.version for s in self.list() if s.suite_id == suite_id),
+                reverse=True,
+            )
+            for each in versions:
+                self.delete(suite_id, each, force)
+            return
         suite_id, version = _suite_ref(suite, version)
         self._http.delete(
             f"{EVALS}/suites/{suite_id}",
@@ -372,14 +407,27 @@ class Tasks:
         *,
         expectations: dict[str, str] | None = None,
         category: str | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Task:
-        """Author a task on its own; it joins a suite with :meth:`add_to_suite`."""
+        """Author a task on its own; it joins a suite with :meth:`add_to_suite`.
+
+        ``subject`` asks it as somebody -- the request's ``subject`` on every
+        turn, which is what keys the agent's long-term memory -- and ``context``
+        is the request context sent with it. Under evaluation the agent reads
+        that person's memory and writes only the trial's, so a suite can ask as
+        a real user without changing what is stored about them.
+        """
         input_messages, task_type = _messages(question)
         body: dict[str, Any] = {"inputMessages": input_messages, "taskType": task_type}
         if expectations:
             body["expectations"] = expectations
         if category:
             body["category"] = category
+        if subject:
+            body["subject"] = subject
+        if context:
+            body["context"] = _context_text(context)
         return self._client._bind(
             Task.from_api(self._http.post(f"{EVALS}/tasks", body))
         )
@@ -392,8 +440,13 @@ class Tasks:
         *,
         expectations: dict[str, str] | None = None,
         category: str | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Task:
         """Change a task in a draft suite: what it asks, and what each check expects of it.
+
+        ``subject=""`` and ``context={}`` clear them, so the task is asked
+        anonymously again; left as None they are left alone.
 
         Only what is passed changes, so correcting one expectation does not mean
         resending the question it answers::
@@ -414,6 +467,10 @@ class Tasks:
             body["expectations"] = expectations
         if category is not None:
             body["category"] = category
+        if subject is not None:
+            body["subject"] = subject
+        if context is not None:
+            body["context"] = _context_text(context)
         return self._client._bind(
             Task.from_api(self._http.put(f"{EVALS}/tasks/{_task_id(task)}", body))
         )
@@ -505,8 +562,19 @@ class Tasks:
         expectations: dict[str, str] | None = None,
         question: str | Sequence[str] | Sequence[dict[str, Any]] | None = None,
         category: str | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Task:
-        """A task from a production trace. Lands PENDING_REDACTION: a person confirms before it joins."""
+        """A task from a production trace. Lands PENDING_REDACTION: a person confirms before it joins.
+
+        It is asked as whoever the trace's turn ran as, with the context the
+        client sent, both read off the trace: a memory or personalisation
+        failure only happens to someone the agent has memory of, and asked
+        anonymously its regression would pass. Pass ``subject=""`` to ask it
+        anonymously anyway, or a subject of your own -- a test user with the same
+        stored profile -- to keep a customer's address out of the suite. The
+        reviewer sees and can change both before the task can join one.
+        """
         body: dict[str, Any] = {"taskType": "single_turn"}
         if question is not None:
             body["inputMessages"], body["taskType"] = _messages(question)
@@ -514,6 +582,10 @@ class Tasks:
             body["expectations"] = expectations
         if category:
             body["category"] = category
+        if subject is not None:
+            body["subject"] = subject
+        if context is not None:
+            body["context"] = _context_text(context)
         return self._client._bind(
             Task.from_api(
                 self._http.post(
@@ -531,8 +603,15 @@ class Tasks:
         *,
         input_messages: str | Sequence[dict[str, Any]] | None = None,
         expectations: dict[str, str] | None = None,
+        subject: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> Task:
-        """Record that a named person checked a promoted task for personal data, with any edits."""
+        """Record that a named person checked a promoted task for personal data, with any edits.
+
+        The subject and context are part of what is checked: a promoted task
+        carries the address of the person whose turn it was. ``subject=""``
+        removes it, or name a test user who has the same stored memory.
+        """
         body: dict[str, Any] = {}
         if input_messages is not None:
             body["inputMessages"] = (
@@ -542,6 +621,10 @@ class Tasks:
             )
         if expectations is not None:
             body["expectations"] = expectations
+        if subject is not None:
+            body["subject"] = subject
+        if context is not None:
+            body["context"] = _context_text(context)
         return self._client._bind(
             Task.from_api(
                 self._http.post(f"{EVALS}/tasks/{_task_id(task)}/redaction", body)
@@ -571,10 +654,23 @@ class Tasks:
 
     @public
     def add_to_regressions(
-        self, task: Task | str, *, input_messages: str | None = None
+        self,
+        task: Task | str,
+        *,
+        input_messages: str | None = None,
+        subject: str | None = None,
     ) -> Task:
-        """Confirm the redaction if pending and join the deployment's standing regression suite, in one call."""
-        body = {"inputMessages": input_messages} if input_messages is not None else {}
+        """Confirm the redaction if pending and join the deployment's standing regression suite, in one call.
+
+        ``subject`` changes who the task is asked as while confirming it -- ``""``
+        to ask anonymously, a test user's to keep a customer's address out of the
+        suite. Left as None the task keeps the subject it was promoted with.
+        """
+        body: dict[str, Any] = {}
+        if input_messages is not None:
+            body["inputMessages"] = input_messages
+        if subject is not None:
+            body["subject"] = subject
         return self._client._bind(
             Task.from_api(
                 self._http.post(f"{EVALS}/tasks/{_task_id(task)}/regressions", body)
@@ -650,7 +746,7 @@ class Evaluators:
             "templateId": current.template_id,
             "name": current.name if name is None else name,
             "description": current.description if description is None else description,
-            "tags": current.tags
+            "tags": json.dumps(list(current.tags))
             if tags is None
             else json.dumps([str(t) for t in tags]),
             "spec": current.spec if checks is None else _spec(checks),
@@ -893,10 +989,13 @@ class Runs:
         by_task_after = _by_task(self.trials(after))
 
         asked: dict[str, str] = {}
+        keys: dict[str, str] = {}
         if questions:
             for run in (before, after):
                 if run.suite_id:
-                    asked.update(self._questions(run))
+                    for task_id, (question, key) in self._questions(run).items():
+                        asked[task_id] = question
+                        keys[task_id] = key
 
         # A new version of a suite copies its tasks, and a copy is a new row with
         # a new id -- so comparing on ids alone made every carried-over case
@@ -904,8 +1003,8 @@ class Runs:
         # task asks is what identifies the case; it is already how the backend
         # deduplicates an import. Falls back to the id when the questions were
         # not read, where the two runs are of one version and ids line up.
-        before_key = _case_keys(by_task_before, asked)
-        after_key = _case_keys(by_task_after, asked)
+        before_key = _case_keys(by_task_before, keys)
+        after_key = _case_keys(by_task_after, keys)
         cases: dict[str, str] = {}
         for task_id, key in (*after_key.items(), *before_key.items()):
             # the candidate's ids win, so a difference names the task a reader
@@ -931,10 +1030,16 @@ class Runs:
             )
         return RunDiff(baseline=before, candidate=after, tasks=diffs)
 
-    def _questions(self, run: Run) -> dict[str, str]:
-        """Each task's first user turn, for the suite this run executed.
+    def _questions(self, run: Run) -> dict[str, tuple[str, str]]:
+        """Per task of the suite this run executed: what it asks, and what it is.
 
-        Best effort: a suite deleted since the run leaves the comparison with
+        The first user turn names the case in one line, for a reader. Every user
+        turn identifies it, for the matching -- three tasks that all open by
+        giving the same email address are three cases, and keyed on that opening
+        line they collapsed into one, so a three-task suite compared as a single
+        unchanged case and none of the regressions `changes()` found appeared here.
+
+        One read per run: a suite deleted since the run leaves the comparison with
         ids, which is worse than questions and better than an error on a
         comparison that is otherwise fine.
         """
@@ -943,12 +1048,12 @@ class Runs:
         except AgentServingError:
             log.debug("could not read the tasks of suite %s", run.suite_id)
             return {}
-        asked = {}
+        index: dict[str, tuple[str, str]] = {}
         for task in tasks:
-            question = _first_user_turn(task.input_messages)
-            if question:
-                asked[task.task_id] = question
-        return asked
+            turns = [turn for turn in _user_turns(task.input_messages) if turn]
+            if turns:
+                index[task.task_id] = (turns[0], _case_key(task, turns))
+        return index
 
     @public
     def metrics(self, run: Run | str) -> list[RunMetric]:
@@ -1073,9 +1178,10 @@ def _case_keys(
 ) -> dict[str, str]:
     """What identifies each task as a *case*, across versions of its suite.
 
-    The question it asks, when that was read; its id otherwise. Two versions of
-    one suite hold two rows for the same case -- copying mints a new id -- so an
-    id is the identity of a row and the question is the identity of the case.
+    The conversation it scripts, when that was read; its id otherwise. Two
+    versions of one suite hold two rows for the same case -- copying mints a new
+    id -- so an id is the identity of a row and the scripted turns are the
+    identity of the case.
     """
     return {
         task_id: (asked.get(task_id) or "").strip() or task_id for task_id in by_task
@@ -1089,24 +1195,38 @@ def _by_task(trials: Sequence[Trial]) -> dict[str, list[Trial]]:
     return grouped
 
 
+def _context_text(context: dict[str, Any]) -> str:
+    """A request context as the API keeps it: JSON text, and empty for none."""
+    if not isinstance(context, dict):
+        raise TypeError("context must be a dict")
+    return json.dumps(context) if context else ""
+
+
+def _user_turns(input_messages: str | None) -> list[str]:
+    """Every user turn a task scripts, in order."""
+    if not input_messages:
+        return []
+    try:
+        messages = json.loads(input_messages)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(messages, list):
+        return []
+    return [
+        str(message.get("content") or "").strip()
+        for message in messages
+        if isinstance(message, dict) and message.get("role") == "user"
+    ]
+
+
 def _first_user_turn(input_messages: str | None) -> str:
     """What the task asks, from the messages it scripts.
 
     The first user turn, which is what names a case in one line. A task that
     scripts a conversation has more; the rest are in the run detail.
     """
-    if not input_messages:
-        return ""
-    try:
-        messages = json.loads(input_messages)
-    except (TypeError, ValueError):
-        return ""
-    if not isinstance(messages, list):
-        return ""
-    for message in messages:
-        if isinstance(message, dict) and message.get("role") == "user":
-            return str(message.get("content") or "").strip()
-    return ""
+    turns = [turn for turn in _user_turns(input_messages) if turn]
+    return turns[0] if turns else ""
 
 
 class Jobs:
@@ -1145,7 +1265,8 @@ class Jobs:
         sample_strategy: str | None = None,
         shared_sample: bool | None = None,
         parallel_runs: int | None = None,
-        analyse_failures: bool | None = True,
+        trial_timeout_s: int | None = None,
+        analyse_failures: bool | None = None,
         analysis_budget_calls: int | None = None,
         judge_provider: str | None = None,
         judge_model: str | None = None,
@@ -1156,15 +1277,22 @@ class Jobs:
     ) -> EvalJob:
         """The deployment's evaluation job, created if it has none.
 
-        One per deployment: an existing one is returned untouched whatever name is asked
-        for, since what used to be a second job is this one's suites, its monitors and its
-        schedule. It runs one execution at a time -- a run asked for while one is going is
-        queued -- unless ``parallel_runs`` says otherwise.
+        One per deployment, whatever name is asked for, since what used to be a second job
+        is this one's suites, its monitors and its schedule. An existing job is configured
+        with whatever this call passes and left alone in every other respect, so naming the
+        deployment and nothing else returns it unchanged. It runs one execution at a time --
+        a run asked for while one is going is queued -- unless ``parallel_runs`` says
+        otherwise.
 
-        ``analyse_failures`` is on: a run that breaks something has it explained, by the
-        deployment's analysis job, which this creates alongside. A failure nobody explains is
-        one somebody reads twice. Pass False for a deployment that should not spend model
-        calls on it. The provider is guessed from the agent's framework when
+        ``trial_timeout_s`` is how long one turn of a trial may take before it is recorded
+        as TIMEOUT: ten minutes when unset. Raise it for an agent whose turn runs for longer,
+        such as an analyst pipeline with web search.
+
+        ``analyse_failures`` is on for a new job: a run that breaks something has it
+        explained, by the deployment's analysis job, which this creates alongside. A failure
+        nobody explains is one somebody reads twice. Pass False for a deployment that should
+        not spend model calls on it. Left unsaid it is not sent at all, so calling this on a
+        job where somebody turned analysis off does not quietly turn it back on. The provider is guessed from the agent's framework when
         ``judge_provider`` names none -- an agent on the OpenAI Agents SDK has an OpenAI key
         in its environment, one on the Claude SDK an Anthropic one.
         """
@@ -1186,6 +1314,7 @@ class Jobs:
             "sampleStrategy": sample_strategy,
             "sharedSample": shared_sample,
             "parallelRuns": parallel_runs,
+            "trialTimeoutS": trial_timeout_s,
             "analyseFailures": analyse_failures,
             "analysisBudgetCalls": analysis_budget_calls,
             "judgeProvider": judge_provider,
@@ -1216,6 +1345,7 @@ class Jobs:
         sample_strategy: str | None = None,
         shared_sample: bool | None = None,
         parallel_runs: int | None = None,
+        trial_timeout_s: int | None = None,
         analyse_failures: bool | None = None,
         analysis_budget_calls: int | None = None,
         judge_provider: str | None = None,
@@ -1242,6 +1372,7 @@ class Jobs:
             ("sampleStrategy", sample_strategy),
             ("sharedSample", shared_sample),
             ("parallelRuns", parallel_runs),
+            ("trialTimeoutS", trial_timeout_s),
             ("analyseFailures", analyse_failures),
             ("analysisBudgetCalls", analysis_budget_calls),
             ("judgeProvider", judge_provider),
@@ -1371,11 +1502,20 @@ class Jobs:
         )
 
     @public
-    def run_regressions(self, deployment_id: int) -> Run:
-        """Publish the draft regressions, if any, and run them against the deployment."""
+    def run_regressions(self, deployment_id: int, n_trials: int | None = None) -> Run:
+        """Publish the draft regressions, if any, and run them against the deployment.
+
+        ``n_trials`` tries each task several times, pass^k: every trial must pass. A
+        failure promoted from feedback is often one that happens some of the time, and
+        one trial of it passes as often as not.
+        """
         return self._client._bind(
             Run.from_api(
-                self._http.post(f"{EVALS}/regressions/run", deploymentId=deployment_id)
+                self._http.post(
+                    f"{EVALS}/regressions/run",
+                    deploymentId=deployment_id,
+                    nTrials=n_trials,
+                )
             )
         )
 
@@ -1393,3 +1533,21 @@ def _review_body(settings: dict[str, Any]) -> dict[str, Any]:
             "".join(p.capitalize() if i else p for i, p in enumerate(key.split("_")))
         ] = value
     return body
+
+
+def _case_key(task: Task, turns: list[str]) -> str:
+    """What makes a task the case it is: what it asks, and as whom.
+
+    The subject and the request context are part of a task's identity, as they
+    are in the backend's case digest: the same question asked as two people is
+    two cases. Keyed on the turns alone, two subjects asking the same question
+    overwrote each other's results, so one newly failing task beside a passing
+    one compared as a single unchanged case.
+    """
+    key = "\n\u241f".join(turns)
+    if task.subject:
+        key += "\n\u241esubject:" + task.subject
+    context = task.request_context
+    if context:
+        key += "\n\u241econtext:" + json.dumps(context, sort_keys=True)
+    return key

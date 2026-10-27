@@ -407,7 +407,7 @@ class AppApi:
         return _client._send_request("POST", path_params, headers=headers)
 
     def _set_public(self, app_name: str, enabled: bool):
-        """Enable or disable public (no-login) access for a Streamlit app.
+        """Enable or disable public (no-login) access for an app.
 
         On enable the response carries the share token (data-owner only); the
         caller builds the share URL from it.
@@ -423,6 +423,53 @@ class AppApi:
         headers = {"content-type": "application/json"}
         return _client._send_request(
             "POST", path_params, headers=headers, data=json.dumps({"enabled": enabled})
+        )
+
+    def _tables_path(self, app_name: str, *rest: str) -> list:
+        _client = client._get_instance()
+        return ["project", _client._project_id, "apps", app_name, "tables", *rest]
+
+    def _get_tables(self, app_name: str) -> list[dict]:
+        """List the tables the app registered."""
+        return client._get_instance()._send_request("GET", self._tables_path(app_name))
+
+    def _register_table(
+        self, app_name: str, table_name: str, definition: str | None = None
+    ) -> dict:
+        """Register a table of the app, and create it on disk from `definition` when given; idempotent."""
+        headers = {"content-type": "application/json"}
+        body = {"name": table_name}
+        if definition is not None:
+            body["definition"] = definition
+        return client._get_instance()._send_request(
+            "POST",
+            self._tables_path(app_name),
+            headers=headers,
+            data=json.dumps(body),
+        )
+
+    def _alter_table(self, app_name: str, table_name: str, alteration: str) -> dict:
+        """Change a table of the app with `alteration`, what follows ALTER TABLE."""
+        headers = {"content-type": "application/json"}
+        return client._get_instance()._send_request(
+            "POST",
+            self._tables_path(app_name, table_name, "alter"),
+            headers=headers,
+            data=json.dumps({"alteration": alteration}),
+        )
+
+    def _get_table(self, app_name: str, table_name: str) -> dict:
+        """Get one registered table with its columns."""
+        return client._get_instance()._send_request(
+            "GET", self._tables_path(app_name, table_name)
+        )
+
+    def _preview_table(self, app_name: str, table_name: str, limit: int) -> dict:
+        """Get up to `limit` rows of a registered table."""
+        return client._get_instance()._send_request(
+            "GET",
+            self._tables_path(app_name, table_name, "preview"),
+            query_params={"limit": limit},
         )
 
     def _get_log(self, app_name: str, execution_id: int, log_type: str) -> dict:

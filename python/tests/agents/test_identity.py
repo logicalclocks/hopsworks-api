@@ -468,3 +468,76 @@ class TestTheConversationsOwnSubject:
         seen = self._subject_seen(Broken("cust-1"), conversation_id="conv-7")
 
         assert seen["subject"] == "conv-7"
+
+
+class TestAClientAssertedSubjectIsOnTheTrace:
+    """The identity that keys memory is the one the traces table was missing.
+
+    `agent.chat(..., subject="marcus@example.com")` is what makes a second
+    conversation start knowing him. It reached the span's `user.id` and nothing
+    else: the conversation-subjects table is what the traces list, feedback by
+    user and failure analysis by user all read, and it only ever held what the
+    agent's own code recorded. So the one real identity showed as no identity.
+    """
+
+    @staticmethod
+    def _app_with_index(recorded):
+        class Index:
+            def record(self, conversation_id, subject, source):
+                recorded.append((conversation_id, subject, source))
+                return True
+
+        app = AgentApp(name="Identified agent", tracing=False)
+        app._subjects = Index()
+
+        @app.chat
+        async def chat(request):
+            return "ok"
+
+        return app
+
+    def test_the_clients_subject_is_recorded_as_the_clients(self):
+        recorded = []
+        app = self._app_with_index(recorded)
+        TestClient(app).post(
+            "/v1/chat", json=make_request(subject="marcus@example.com")
+        )
+        assert recorded == [("c1", "marcus@example.com", "client")]
+
+    def test_a_turn_with_no_subject_records_nothing(self):
+        recorded = []
+        app = self._app_with_index(recorded)
+        TestClient(app).post("/v1/chat", json=make_request("hi"))
+        assert recorded == []
+
+
+class TestAModelLabelDoesNotReplaceABinding:
+    """`identify` again on turn three replaced the app's binding with a model label.
+
+    The index keeps one row per conversation, last claim wins, so every trace of a
+    conversation the app had bound read subject_source "model" -- and the agent,
+    never told it was identified, asked again.
+    """
+
+    def test_record_subject_from_the_model_is_refused_when_bound(self):
+        index = FakeIndex()
+        ctx = context(index, subject="dana@example.com")
+        assert ctx.record_subject("dana@example.com", source="model") is False
+        assert index.rows == []
+
+    def test_an_unbound_conversation_still_takes_the_label(self):
+        index = FakeIndex()
+        ctx = context(index)
+        assert ctx.record_subject("dana@example.com", source="model") is True
+
+    def test_identify_tells_the_model_it_is_already_identified(self):
+        from hopsworks_agents.protocol.autoevents import current_context
+        from hopsworks_agents.protocol.tools import identify
+
+        ctx = context(FakeIndex(), subject="dana@example.com")
+        token = current_context.set(ctx)
+        try:
+            answer = identify("dana@example.com")
+        finally:
+            current_context.reset(token)
+        assert "already identified as dana@example.com" in answer

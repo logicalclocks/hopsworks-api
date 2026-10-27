@@ -252,3 +252,44 @@ def test_agent_list_falls_back_to_model_name_heuristic(mock_project):
     assert result.exit_code == 0, result.output
     assert "legacy-agent" in result.output
     assert "legacy-model" not in result.output
+
+
+class TestInfoShowsTheStatus:
+    """`hops agent info` printing `Status -` for a running agent.
+
+    A deployment's state is fetched, not stored: `get_state()` asks serving for it.
+    Reading `status` off the object found nothing every time, so the one line the
+    command exists for was always a dash while the pod was up and answering.
+    """
+
+    @staticmethod
+    def _deployment(status=None, raises=False):
+        class State:
+            def __init__(self, status):
+                self.status = status
+
+        class Deployment:
+            def get_state(self):
+                if raises:
+                    raise RuntimeError("serving unreachable")
+                return State(status)
+
+        return Deployment()
+
+    def test_the_fetched_status_is_used(self):
+        from hopsworks.cli.commands.agent import _deployment_status
+
+        assert _deployment_status(self._deployment("Running")) == "Running"
+
+    def test_a_status_that_cannot_be_fetched_is_a_dash_not_a_crash(self):
+        from hopsworks.cli.commands.agent import _deployment_status
+
+        assert _deployment_status(self._deployment(raises=True)) == "-"
+
+    def test_an_object_carrying_its_own_status_still_works(self):
+        from hopsworks.cli.commands.agent import _deployment_status
+
+        class Legacy:
+            status = "Stopped"
+
+        assert _deployment_status(Legacy()) == "Stopped"

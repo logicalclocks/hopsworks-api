@@ -85,6 +85,15 @@ class Task:
     expectations: dict[str, str] = field(default_factory=dict)
     category: str = ""
     tags: list[str] = field(default_factory=list)
+    #: Who the task is asked as, sent as the request's ``subject`` on every turn.
+    #: Empty asks anonymously. A task promoted from a production turn carries the
+    #: subject that turn ran as, because a memory or personalisation failure only
+    #: happens to someone the agent has memory of -- asked anonymously, its
+    #: regression passes. The agent reads that person's memory and, under
+    #: evaluation, writes only its own.
+    subject: str = ""
+    #: The request ``context`` the client sent, replayed as sent.
+    context: dict[str, Any] = field(default_factory=dict)
 
     def _expects_text(self, name: str) -> str:
         """What this task expects of the named check, as written."""

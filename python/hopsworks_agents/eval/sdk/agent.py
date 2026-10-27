@@ -8,7 +8,9 @@ agent handle. The handle is fetched through :meth:`AgentServing.get_agent`.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
@@ -36,7 +38,7 @@ from .models import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
 
     from .client import AgentServing
     from .models import EvalJob, ReviewJob, Task
@@ -45,6 +47,10 @@ VERDICTS = ("positive", "negative", "false_alarm")
 MANIFEST_PATH = ".well-known/hopsworks-agent.json"
 DEFAULT_CHAT_PATH = "/v1/chat"
 DEFAULT_STREAM_PATH = "/v1/chat/stream"
+#: The feature groups an agent's memory is kept in, every deployment's rows together.
+MEMORY_MESSAGES_FG = "agent_memory_messages"
+MEMORY_CONVERSATIONS_FG = "agent_memory_conversations"
+MEMORY_FACTS_FG = "agent_memory_facts"
 
 
 @public
@@ -333,21 +339,62 @@ class Agent:
         )
 
     @public
-    def trace(self, trace_id: str) -> Trace:
-        """A whole trace: spans, attributes, events and totals."""
-        return Trace.from_api(self._http.get(f"{self._otel}/traces/{trace_id}"))
+    def trace(self, trace_id: str, *, wait: float = 0.0) -> Trace:
+        """A whole trace: spans, attributes, events and totals.
+
+        A trace is written a moment after the reply, span by span, so one read
+        straight after ``chat()`` can be missing -- or worse, present without its
+        model calls: no LLM span, zero tokens, zero cost, which reads as a turn
+        that cost nothing. ``wait`` (seconds) polls until the turn has closed --
+        its span carries the response id, which the SDK stamps last -- or the time
+        runs out, and returns what is there by then. An agent that does not use
+        the Hopsworks agent SDK never stamps it, so ``wait`` costs it the full time.
+
+        Raises:
+            AgentServingError: the trace was not found, after ``wait`` if one was given.
+        """
+        deadline = time.monotonic() + max(0.0, wait)
+        while True:
+            try:
+                trace = Trace.from_api(
+                    self._http.get(f"{self._otel}/traces/{trace_id}")
+                )
+            except AgentServingError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.5)
+                continue
+            if wait <= 0 or _turn_closed(trace) or time.monotonic() >= deadline:
+                return trace
+            time.sleep(0.5)
 
     @public
     def session(self, session_id: str, *, limit: int = -1) -> list[TraceSummary]:
-        """Every trace of a conversation, oldest first."""
+        """Every trace of a conversation, oldest first.
+
+        The id travels as a query parameter, not in the path: an evaluation
+        trial's session id is its trial id, ``"<run>/<task>/<version>/<index>"``,
+        and interpolating that into the path made it four path segments -- a
+        different route, answering 404 -- so the earlier turns of a multi-turn
+        trial could not be read at all.
+        """
         rows = TraceSummary.list_from_api(
-            self._http.get(f"{self._otel}/traces/sessions/{session_id}", limit=limit)
+            self._http.get(
+                f"{self._otel}/traces/sessions", sessionId=session_id, limit=limit
+            )
         )
         return sorted(rows, key=lambda t: t.start_time_ns)
 
     @public
     def conversation(self, session_id: str) -> list[dict[str, str]]:
-        """The conversation as the user had it: one user and one assistant message per turn."""
+        """The conversation as the user had it, one entry per turn.
+
+        Each entry is ``{"trace_id": ..., "user": ..., "assistant": ...}`` --
+        the turn's two sides already paired, which is the shape a reader of a
+        conversation wants. Not ``role``/``content``: that is what
+        :meth:`session` gives, one message per element, and pairing those is
+        what this does.
+        """
         turns: list[dict[str, str]] = []
         previous: list[dict[str, Any]] = []
         for trace in self.session(session_id):
@@ -376,6 +423,276 @@ class Agent:
             )
             previous = messages
         return turns
+
+    # ── what the agent's memory holds ────────────────────────────────────────
+
+    @public
+    def memory_conversations(
+        self,
+        *,
+        subject: str | None = None,
+        limit: int = 50,
+        feature_store: Any = None,
+    ) -> list[dict[str, Any]]:
+        """The conversations the agent's memory holds, most recently active first.
+
+        Read from the agent's memory feature groups, `agent_memory_messages` and `agent_memory_conversations`, so the agent need not be running.
+        It lists what the agent will remember, under the person each conversation is filed under.
+        `conversation` reconstructs what was said from the traces instead, which exist whether or not the agent keeps memory.
+
+        Example:
+            ```python
+            for c in agent.memory_conversations(subject="marcus@example.com"):
+                print(c["conversation_id"], c["message_count"], c["last_active_at"])
+            ```
+
+        Parameters:
+            subject: Only the conversations filed under this person.
+            limit: How many to return.
+            feature_store: The feature store holding the agent's memory; the logged-in project's when omitted.
+
+        Returns:
+            One entry per conversation, with `conversation_id`, `subject`, `message_count` and `last_active_at`, and the rolling `summary` when the agent keeps one.
+            Empty when the agent keeps no memory.
+        """
+        store = _memory_feature_store(feature_store)
+        # Every message, not only those stamped with the subject: the turns before the
+        # person was identified are filed under the conversation, and counting only the
+        # subject's rows reported a conversation a turn short of its transcript. Whose
+        # it is is its latest subject, filtered on below.
+        rows = _memory_rows(
+            store,
+            MEMORY_MESSAGES_FG,
+            str(self.id),
+            memory_type="message",
+            status="closed",
+        )
+        conversations: dict[str, dict[str, Any]] = {}
+        for row in sorted(rows, key=lambda r: r.get("id") or 0):
+            entry = conversations.setdefault(
+                str(row.get("conversation_id")),
+                {
+                    "conversation_id": str(row.get("conversation_id")),
+                    "subject": None,
+                    "message_count": 0,
+                    "last_active_at": None,
+                },
+            )
+            entry["message_count"] += 1
+            # The newest subject, as the store reports it: an agent that identifies
+            # the caller mid-conversation rebinds, and it is the identity it arrived
+            # at that the memory is filed under.
+            if row.get("subject"):
+                entry["subject"] = row["subject"]
+            created = _iso(row.get("created_at"))
+            if created and (entry["last_active_at"] or "") < created:
+                entry["last_active_at"] = created
+        listed = sorted(
+            (
+                c
+                for c in conversations.values()
+                if not subject or c["subject"] == subject
+            ),
+            key=lambda c: c["last_active_at"] or "",
+            reverse=True,
+        )[: max(1, limit)]
+        summaries = {
+            str(row.get("conversation_id")): row.get("summary")
+            for row in _memory_rows(store, MEMORY_CONVERSATIONS_FG, str(self.id))
+            if row.get("summary")
+        }
+        for entry in listed:
+            if entry["conversation_id"] in summaries:
+                entry["summary"] = summaries[entry["conversation_id"]]
+        return listed
+
+    @public
+    def memory_transcript(
+        self,
+        conversation_id: str,
+        *,
+        include_events: bool = False,
+        feature_store: Any = None,
+    ) -> dict[str, Any]:
+        """One conversation as the agent's memory stored it.
+
+        Read from the agent's memory feature groups, so the agent need not be running.
+        The stored record differs from what the model reads on its next turn.
+        Once a conversation grows past the summarizer's limit, older turns are folded into `summary` and leave the model's history, but they stay in `messages`; `summarized_through` is the id of the last message folded.
+
+        Example:
+            ```python
+            stored = agent.memory_transcript(reply.conversation_id)
+            print(stored["subject"], stored["summary"])
+            for message in stored["messages"]:
+                print(message["role"], message["content"])
+            ```
+
+        Parameters:
+            conversation_id: The conversation, as `ChatReply.conversation_id` or `memory_conversations` gives it.
+            include_events: Include the turns' tool calls and events, and the turns the agent abandoned, not only the completed messages.
+            feature_store: The feature store holding the agent's memory; the logged-in project's when omitted.
+
+        Returns:
+            The `conversation_id`, the `messages` in order (each with `id`, `role`, `content`, `turn_id`, `memory_type`, `status` and `created_at`), the rolling `summary`, `summarized_through`, and the `subject` the conversation is filed under, which may be one the agent bound mid-conversation and the client was never told.
+        """
+        store = _memory_feature_store(feature_store)
+        rows = sorted(
+            _memory_rows(
+                store,
+                MEMORY_MESSAGES_FG,
+                str(self.id),
+                conversation_id=conversation_id,
+            ),
+            key=lambda r: r.get("id") or 0,
+        )
+        subject = next((r["subject"] for r in reversed(rows) if r.get("subject")), None)
+        if not include_events:
+            rows = [
+                r
+                for r in rows
+                if r.get("memory_type") == "message" and r.get("status") == "closed"
+            ]
+        session = next(
+            iter(
+                _memory_rows(
+                    store,
+                    MEMORY_CONVERSATIONS_FG,
+                    str(self.id),
+                    conversation_id=conversation_id,
+                )
+            ),
+            {},
+        )
+        return {
+            "conversation_id": conversation_id,
+            "messages": [
+                {
+                    "id": r.get("id"),
+                    "turn_id": r.get("turn_id"),
+                    "message_id": r.get("message_id"),
+                    "role": r.get("role"),
+                    "content": r.get("content"),
+                    "memory_type": r.get("memory_type"),
+                    "status": r.get("status"),
+                    "created_at": _iso(r.get("created_at")),
+                }
+                for r in rows
+            ],
+            "summary": session.get("summary"),
+            "summarized_through": int(session.get("last_summarized_item_id") or 0),
+            "subject": subject,
+        }
+
+    @public
+    def memory_facts(
+        self, subject: str, *, feature_store: Any = None
+    ) -> list[dict[str, Any]]:
+        """What the agent remembers about one person: their `user`-scope facts.
+
+        Read from the agent's `agent_memory_facts` feature group, so the agent need not be running.
+        These are the facts the agent stored with `remember` for this subject, which load into every later conversation with them; expired ones are left out, as the agent leaves them out.
+        Worth reading after a conversation, because a person can talk an agent into remembering something false about them.
+
+        Example:
+            ```python
+            for fact in agent.memory_facts("marcus@example.com"):
+                print(fact["key"], fact["value"], fact["updated_at"])
+            ```
+
+        Parameters:
+            subject: The person as the agent identified them, either the `subject` asserted on the request or the one the agent bound.
+            feature_store: The feature store holding the agent's memory; the logged-in project's when omitted.
+
+        Returns:
+            One entry per fact, most recently updated first, with `key`, `value`, `written_by`, `source_ref` (the turn it came from), `updated_at` and `expires_at`.
+        """
+        store = _memory_feature_store(feature_store)
+        now = datetime.now(tz=timezone.utc).isoformat()
+        facts = [
+            {
+                "key": row.get("state_key"),
+                "value": row.get("value"),
+                "scope": row.get("scope"),
+                "owner": row.get("owner"),
+                "written_by": row.get("written_by"),
+                "source_ref": row.get("source_ref"),
+                "updated_at": _iso(row.get("updated_at")),
+                "expires_at": _iso(row.get("expires_at")),
+            }
+            for row in _memory_rows(
+                store, MEMORY_FACTS_FG, str(self.id), scope="user", owner=subject
+            )
+        ]
+        live = [f for f in facts if not f["expires_at"] or f["expires_at"] > now]
+        return sorted(live, key=lambda f: f["updated_at"] or "", reverse=True)
+
+    @public
+    def memory_search(
+        self,
+        query: str,
+        *,
+        subject: str | None = None,
+        conversation_id: str | None = None,
+        k: int = 5,
+        embedder: Callable[[str], list[float]] | None = None,
+        feature_store: Any = None,
+    ) -> list[dict[str, Any]]:
+        """Messages from the agent's earlier conversations nearest in meaning to `query`.
+
+        A similarity search over the agent's memory feature group, `agent_memory_<deployment id>`, which holds an embedding of every message the agent ingested.
+        It is the search the agent itself runs with its `search` tool, done from outside: the same feature group, the same subject and conversation filters, and no running agent needed.
+
+        The query has to be embedded by the model that embedded the messages, or the distances mean nothing.
+        That model is recorded in the feature group's description; by default it is loaded as a sentence-transformers model, which needs `sentence-transformers` installed.
+        Pass `embedder` for any other model.
+
+        Example:
+            ```python
+            for hit in agent.memory_search("vegetarian", subject="dana@example.com"):
+                print(hit["score"], hit["role"], hit["content"])
+            ```
+
+        Parameters:
+            query: What to look for, in natural language.
+            subject: Only that person's messages.
+            conversation_id: Only one conversation's messages.
+            k: How many messages to return.
+            embedder: Embeds the query; it must be the model that embedded the messages, and when it carries a `model_id`, that is checked against the one recorded.
+            feature_store: The feature store holding the agent's memory; the logged-in project's when omitted.
+
+        Returns:
+            The nearest messages, most similar first, each with `conversation_id`, `subject`, `role`, `content`, `created_at` and `score`.
+            Empty when the agent keeps no embeddings or nothing matches.
+
+        Raises:
+            `ValueError`: If `embedder` was made with a different model than the one recorded on the feature group.
+        """
+        from hopsworks_agents.protocol.vectorstore import HopsworksVectorStore
+
+        if feature_store is None:
+            import hopsworks
+
+            feature_store = hopsworks.get_current_project().get_feature_store()
+        store = HopsworksVectorStore._existing(feature_store, str(self.id))
+        if store is None:
+            return []
+        if embedder is None:
+            from hopsworks_agents.protocol.summarizers import (
+                sentence_transformer_embedder,
+            )
+
+            embedder = sentence_transformer_embedder(store._embedder_id)
+        recorded = store._embedder_id
+        given = getattr(embedder, "model_id", None)
+        if given is not None and given != recorded:
+            raise ValueError(
+                f"the agent's memory was embedded with {recorded!r}; an embedder for "
+                f"{given!r} would return distances that mean nothing"
+            )
+        return store.search(
+            embedder(query), k=k, subject=subject, conversation_id=conversation_id
+        )
 
     # ── feedback ───────────────────────────────────────────────────────────
 
@@ -460,13 +777,23 @@ class Agent:
         )
 
     @public
-    def retract_feedback(self, trace_id: str, *, reviewer: str | None = None) -> None:
+    def retract_feedback(
+        self, trace: Feedback | str, *, reviewer: str | None = None
+    ) -> None:
         """Take back your own verdict on a trace, or an end user's.
+
+        Takes a trace id or the ``Feedback`` row itself, as ``promote_feedback``
+        does: the two are used together, on the same row, and taking only the id
+        here meant a row passed by mistake went into the URL as its repr and came
+        back as "Invalid URI" rather than as anything about feedback.
 
         ``reviewer`` may only name an end user (``user:<subject>``), whose verdict
         the agent relayed and who has no session here to take it back from; a
         project member's verdict is theirs alone and naming an account is refused.
         """
+        trace_id = trace.trace_id if isinstance(trace, Feedback) else str(trace)
+        if not trace_id:
+            raise ValueError("retract_feedback needs a trace id or a feedback row")
         self._http.delete(f"{self._otel}/traces/{trace_id}/feedback", reviewer=reviewer)
 
     @public
@@ -564,6 +891,8 @@ class Agent:
         """Promote the cluster's representative trace to a task and record it on the cluster."""
         if not cluster.representative_trace_id:
             raise ValueError("the cluster has no representative trace")
+        promote_from = cluster.representative_feedback_id
+        trace_id = cluster.representative_trace_id
         if expectations is None:
             expectations = {}
             members = self.cluster_members(cluster)
@@ -575,21 +904,103 @@ class Agent:
                 ),
                 None,
             )
-            if representative and representative.normalized_correction:
-                expectations = {"expected": representative.normalized_correction}
+            # The member whose correction this is, and that member's trace. A
+            # cluster groups by failure signature, not by question, so members
+            # ask different things -- pairing one member's correction with
+            # another's question writes an expected answer to a question nobody
+            # asked. Only some verdicts carry a correction, so when the
+            # representative has none the task comes from the member that does,
+            # conversation and all. The cluster is still marked promoted: the
+            # task covers the failure, whichever of its members it was taken
+            # from.
+            corrected = next(
+                (
+                    m
+                    for m in [representative, *members]
+                    if m is not None and m.normalized_correction
+                ),
+                None,
+            )
+            if corrected is not None:
+                expectations = {"expected": corrected.normalized_correction}
+                promote_from = corrected.feedback_id or promote_from
+                trace_id = corrected.trace_id or trace_id
         task = self._client.tasks.promote(
             self.id,
-            cluster.representative_trace_id,
+            trace_id,
             # What the user asked, off the verdict the cluster named. Without it
             # the promotion produces a task with no content: the platform stores
             # what it is given, and the redaction gate then refuses to confirm a
             # task with nothing in it -- so the cluster became a row nobody
             # could ever put in a suite.
-            question=self._asked_in(cluster.representative_feedback_id) or None,
+            # Every user turn up to the one that went wrong, not only that turn:
+            # a failure on the fourth turn cannot be reproduced by asking the
+            # fourth question of a fresh agent. The platform stores what it is
+            # given and does not go back to the transcript, so a promotion with
+            # no question at all produces a task the redaction gate then refuses
+            # to confirm -- a cluster nobody could ever put in a suite.
+            question=self._asked_up_to(promote_from) or None,
             expectations=expectations,
         )
         self.mark_cluster_promoted(cluster, task)
         return task
+
+    @public
+    def promote_feedback(
+        self,
+        feedback: Feedback | str,
+        *,
+        conversation: bool = True,
+        expectations: dict[str, str] | None = None,
+        subject: str | None = None,
+    ) -> Task:
+        """One reviewer's verdict as a task, with what it was about and what it expected.
+
+        It is asked as whoever the original turn ran as, read off the trace, so a
+        verdict about what the agent remembered is replayed by the person it
+        remembered. ``subject=""`` asks anonymously; a subject of your own asks as
+        a test user instead of the customer.
+
+        What ``tasks.promote`` cannot do on its own: it stores the content it is
+        handed, and the question, the correction and the category are all on the
+        feedback row rather than on the trace. Promoting a verdict meant reading
+        those out and passing them yourself, and promoting it with no arguments
+        produced a task with no content and no expectation -- one the redaction
+        gate refuses, so it could never reach a suite.
+
+        ``conversation`` carries every user turn up to the one the verdict is
+        about; pass False for the failing turn alone, which is right when the
+        turn stands on its own and wrong when it depends on what came before.
+
+        ``feedback.promoted_task_id`` says whether a verdict has already been
+        promoted, through its cluster or otherwise. This does not check it: two
+        reviewers' verdicts on one trace are two tasks on purpose.
+        """
+        row = self._feedback_row(feedback)
+        if row is None:
+            raise ValueError(f"no such feedback: {feedback}")
+        if expectations is None:
+            expectations = (
+                {"expected": row.corrected_answer} if row.corrected_answer else {}
+            )
+        return self._client.tasks.promote(
+            self.id,
+            row.trace_id,
+            question=(self._asked_up_to(row) if conversation else row.questions)
+            or None,
+            category=row.issue_category or None,
+            expectations=expectations,
+            subject=subject,
+        )
+
+    def _feedback_row(self, feedback: Feedback | str) -> Feedback | None:
+        if isinstance(feedback, Feedback):
+            return feedback
+        try:
+            rows = self.feedback(feedback_id=feedback, limit=1).feedback
+        except AgentServingError:
+            return None
+        return rows[0] if rows else None
 
     def _asked_in(self, feedback_id: str | None) -> list[str]:
         """The user's turns in the trace one verdict is about.
@@ -600,11 +1011,58 @@ class Agent:
         """
         if not feedback_id:
             return []
-        try:
-            rows = self.feedback(feedback_id=feedback_id, limit=1).feedback
-        except AgentServingError:
+        row = self._feedback_row(feedback_id) if feedback_id else None
+        return row.questions if row else []
+
+    def _asked_up_to(self, feedback: Feedback | str | None) -> list[str]:
+        """Every user turn of the conversation up to and including that verdict's.
+
+        A conversation is several traces sharing a session id, and a verdict is
+        about one of them -- so the turn's own trace carries one question and
+        the ones that set it up are in the traces before it. Reading only the
+        verdict's trace made a four-turn failure into a one-turn task that asks
+        the last question of an agent that was never told the first three.
+
+        Falls back to that one turn when the trace names no session or the
+        session cannot be read: a task with its last question is worth more than
+        no task at all.
+        """
+        row = self._feedback_row(feedback) if feedback else None
+        if row is None:
             return []
-        return rows[0].questions if rows else []
+        if not row.session_id:
+            return row.questions
+        try:
+            traces = self.session(row.session_id)
+        except AgentServingError:
+            return row.questions
+        asked: list[str] = []
+        for trace in traces:
+            turns = [
+                str(message.get("content") or "")
+                for message in trace.conversation
+                if message.get("role") == "user" and message.get("content")
+            ]
+            # By position and length, not by text. A trace carries either its
+            # own turn or the whole conversation up to it, depending on the
+            # framework, so a trace that repeats history must not be counted
+            # twice -- but dropping anything already seen deduplicated genuine
+            # repeats, and a user who says "continue" twice got one
+            # "continue", replaying a different conversation from the one that
+            # failed. A trace only repeats history when it carries more turns
+            # than are already accounted for and begins with them; one turn is
+            # always its own.
+            if len(turns) > len(asked) and turns[: len(asked)] == asked:
+                asked.extend(turns[len(asked) :])
+            else:
+                asked.extend(turns)
+            if trace.trace_id == row.trace_id:
+                break
+        else:
+            # The verdict's own trace was not in the session listing, so the
+            # turns above are some other conversation's.
+            return row.questions
+        return asked or row.questions
 
     def _decide_cluster(self, cluster: Cluster | str, **params: Any) -> None:
         cluster_id = cluster.cluster_id if isinstance(cluster, Cluster) else cluster
@@ -700,6 +1158,59 @@ class Agent:
         """Run the failure analysis now; the job is created with defaults if the deployment has none."""
         job = self.review_job() or self._client.jobs.ensure_review_job(self.id)
         return self._client.jobs.analyse(job, **kwargs)
+
+
+def _memory_feature_store(feature_store: Any) -> Any:
+    if feature_store is not None:
+        return feature_store
+    import hopsworks
+
+    return hopsworks.get_current_project().get_feature_store()
+
+
+def _memory_rows(
+    feature_store: Any, name: str, deployment_id: str, **equals: str
+) -> list[dict[str, Any]]:
+    """One deployment's rows of a memory feature group, read online, as dicts.
+
+    `deployment_id` is text in these groups: the memory store also runs outside
+    Hopsworks, where a deployment is any name, so it is compared as a string.
+    No rows when the group does not exist, which is an agent that keeps no
+    memory of that kind.
+    """
+    try:
+        group = feature_store.get_feature_group(name, 1)
+    except Exception:  # noqa: BLE001 -- hsfs raises its own types for "no such group"
+        return []
+    if group is None:
+        return []
+    condition = group.get_feature("deployment_id") == deployment_id
+    for column, value in equals.items():
+        condition = condition & (group.get_feature(column) == value)
+    frame = group.select_all().filter(condition).read(online=True)
+    return [] if frame is None else frame.to_dict("records")
+
+
+def _iso(value: Any) -> str | None:
+    """A timestamp as UTC ISO text, whatever the online read returned it as."""
+    if value is None or value != value:  # None, or NaN and NaT
+        return None
+    if isinstance(value, str):
+        return value
+    if getattr(value, "tzinfo", None) is None and hasattr(value, "replace"):
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
+def _turn_closed(trace: Trace) -> bool:
+    """Whether the turn this trace records has finished landing.
+
+    The response id is stamped on the turn span when the turn closes, and that span
+    ends after every span inside it, so its presence means the rest are in.
+    """
+    return any(
+        a.get("attrKey") == "hopsworks.response_id" for a in trace.span_attributes
+    )
 
 
 def _chat_payload(

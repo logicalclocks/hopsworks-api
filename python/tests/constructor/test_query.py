@@ -16,6 +16,7 @@
 import logging
 import warnings
 
+import pandas as pd
 import pytest
 from hsfs import feature, feature_group
 from hsfs.client.exceptions import FeatureStoreException
@@ -937,6 +938,73 @@ class TestQuery:
 
         # The query sent to the backend should have _limit == 7 during _prep_read
         assert captured_limit[0] == 7
+
+
+class TestQueryReadLimit:
+    def _read(
+        self, mocker, result, limit, engine_type="python", dataframe_type="default"
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value=engine_type)
+        mock_engine = mocker.MagicMock()
+        self.engine = mock_engine
+        mock_engine._sql.return_value = result
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = None
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.on_demand_feature_groups = []
+        mock_fs_query.hudi_cached_feature_groups = []
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+        query = TestQuery.fg1.select_all()
+        if limit is not None:
+            query = query.limit(limit)
+        return query.read(dataframe_type=dataframe_type)
+
+    def test_an_engine_that_ignores_the_limit_is_cut_down(self, mocker):
+        result = self._read(mocker, pd.DataFrame({"id": range(100)}), 10)
+        assert len(result) == 10
+
+    def test_lists_are_cut_down_too(self, mocker):
+        assert self._read(mocker, [[i] for i in range(100)], 5) == [
+            [i] for i in range(5)
+        ]
+
+    def test_without_a_limit_the_result_is_untouched(self, mocker):
+        result = self._read(mocker, pd.DataFrame({"id": range(100)}), None)
+        assert len(result) == 100
+
+    def test_a_zero_limit_returns_no_rows(self, mocker):
+        result = self._read(mocker, pd.DataFrame({"id": range(100)}), 0)
+        assert len(result) == 0
+
+    def test_spark_limits_before_converting_to_the_requested_type(self, mocker):
+        spark_df = mocker.MagicMock()
+        self._read(mocker, spark_df, 50, engine_type="spark", dataframe_type="pandas")
+
+        # The Spark DataFrame is requested, limited, and only then converted.
+        assert self.engine._sql.call_args[0][3] == "default"
+        spark_df.limit.assert_called_once_with(50)
+        self.engine._return_dataframe_type.assert_called_once_with(
+            spark_df.limit.return_value, "pandas"
+        )
+
+    def test_an_online_embedding_read_passes_the_limit(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_engine = mocker.MagicMock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        query = TestQuery.fg1.select_all().limit(5)
+        mocker.patch.object(query, "_check_read_supported")
+        mocker.patch.object(
+            query._left_feature_group.__class__,
+            "embedding_index",
+            new_callable=mocker.PropertyMock,
+            return_value=mocker.MagicMock(),
+        )
+        query.read(online=True)
+        assert mock_engine._read_vector_db.call_args[1]["n"] == 5
 
 
 class TestQueryRead:

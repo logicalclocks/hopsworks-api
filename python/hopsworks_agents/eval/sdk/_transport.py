@@ -15,6 +15,7 @@ logged in with ``hopsworks.login()`` and through the same session otherwise.
 from __future__ import annotations
 
 import os
+import time
 from typing import Any
 
 from hopsworks_apigen import public
@@ -23,6 +24,12 @@ from ..api import EvalApiError, _hopsworks_session, _StaticAuth
 
 
 TIMEOUT_S = 60
+#: Waits before retrying a read the platform failed with a 5xx, in seconds.
+#: A read is safe to repeat, and under load the platform refuses one it would
+#: answer a moment later -- `run.metrics()` straight after a run finished came
+#: back "host not found ... onlinefs.mysql.service.consul" and worked a minute
+#: on. Writes are not retried: a POST that reached the server may have acted.
+READ_RETRY_DELAYS: tuple[float, ...] = (1.0, 3.0)
 
 
 class AgentServingError(EvalApiError):
@@ -169,21 +176,26 @@ class Transport:
         if params:
             # None means "not given", never the string "None"
             clean = {k: v for k, v in params.items() if v is not None} or None
-        response = self._session.request(
-            method,
-            self.base + path,
-            params=clean,
-            json=json,
-            data=data,
-            headers=headers,
-            timeout=TIMEOUT_S,
-            # Bytes have to come back undecoded. Inside Hopsworks the session is
-            # the connected client, which parses every response as JSON before
-            # returning it -- so reading an attachment raised a JSON decode
-            # error on the picture's first byte. Streaming is how that client
-            # hands back a response nobody has parsed.
-            **({"stream": True} if raw else {}),
-        )
+        delays = READ_RETRY_DELAYS if method.upper() == "GET" else ()
+        for delay in (*delays, None):
+            response = self._session.request(
+                method,
+                self.base + path,
+                params=clean,
+                json=json,
+                data=data,
+                headers=headers,
+                timeout=TIMEOUT_S,
+                # Bytes have to come back undecoded. Inside Hopsworks the session is
+                # the connected client, which parses every response as JSON before
+                # returning it -- so reading an attachment raised a JSON decode
+                # error on the picture's first byte. Streaming is how that client
+                # hands back a response nobody has parsed.
+                **({"stream": True} if raw else {}),
+            )
+            if response.status_code < 500 or delay is None:
+                break
+            time.sleep(delay)
         if response.status_code >= 400:
             raise _refusal(response)
         if raw:
