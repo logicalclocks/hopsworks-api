@@ -104,7 +104,12 @@ class DeploymentTracingConfig:
 
     @classmethod
     def from_json(cls, json_decamelized):
-        return DeploymentTracingConfig(**cls.extract_fields_from_json(json_decamelized))
+        kwargs = cls.extract_fields_from_json(json_decamelized)
+        # Validated on write only: a value stored before the range check must not make the deployment unreadable.
+        sampling_percentage = kwargs.pop("sampling_percentage", None)
+        config = DeploymentTracingConfig(**kwargs)
+        config._sampling_percentage = sampling_percentage
+        return config
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
@@ -251,5 +256,6 @@ class DeploymentTracingConfig:
             f"{self._input_token_price_per_million_tokens!r}, "
             f"output_token_price_per_million_tokens: "
             f"{self._output_token_price_per_million_tokens!r}, "
-            f"sampling_percentage: {self._sampling_percentage!r})"
+            f"sampling_percentage: {self._sampling_percentage!r}, "
+            f"active: {self._active!r})"
         )

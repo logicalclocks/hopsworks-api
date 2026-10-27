@@ -310,7 +310,7 @@ class VectorServer:
             external = client._is_external()
         # `init_prepared_statement` should be the last because other initialisations
         # has to be done successfully before it is able to fetch feature vectors.
-        self._init_transformation(entity)
+        self._init_transformation(entity, timed=True)
         self._set_return_feature_value_handlers(features=entity.features)
 
         if self._init_rest_client and self.__all_feature_groups_online:
@@ -341,6 +341,7 @@ class VectorServer:
     def _init_transformation(
         self,
         entity: feature_view.FeatureView,
+        timed: bool = False,
     ):
         # attach transformation functions
         model_dependent_transformations = tf_engine_mod.TransformationFunctionEngine._get_ready_to_use_transformation_fns(
@@ -385,7 +386,8 @@ class VectorServer:
                 self._model_dependent_transformation_functions
             )
         )
-        # Built only where the model server set tracing up; the hot paths also skip it while tracing is switched off.
+        # Built only for serving, where the model server set tracing up: a batch scoring server of the same feature view version would replace its series.
+        # The hot paths also skip it while tracing is switched off.
         self._telemetry = (
             transformation_telemetry._Telemetry(
                 self._feature_view_name,
@@ -395,7 +397,7 @@ class VectorServer:
                     transformation_telemetry.KIND_MODEL_DEPENDENT: self._model_dependent_transformation_functions_execution_graph,
                 },
             )
-            if tracing._is_available()
+            if timed and tracing._is_available()
             else None
         )
 

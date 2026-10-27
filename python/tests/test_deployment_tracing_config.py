@@ -68,3 +68,12 @@ class TestDeploymentTracingConfig:
     def test_rejects_sampling_percentage_out_of_range(self, percentage):
         with pytest.raises(ValueError, match="between 0 and 100"):
             DeploymentTracingConfig(sampling_percentage=percentage)
+
+    def test_reads_a_stored_sampling_percentage_out_of_range(self):
+        # Agent deployments stored any integer before the range check.
+        config = DeploymentTracingConfig.from_response_json(
+            {"enabled": True, "samplingPercentage": 150, "active": False}
+        )
+
+        assert config.sampling_percentage == 150
+        assert "active: False" in repr(config)

@@ -4967,6 +4967,7 @@ class FeatureView:
         env_vars: dict[str, str] | None = None,
         tags: Any = None,
         feature_logging: Any = None,
+        tracing: Any = None,
     ) -> Any:
         """Deploy this feature view as an online endpoint that returns transformed feature vectors.
 
@@ -5002,6 +5003,8 @@ class FeatureView:
             env_vars: Environment variables to set on the predictor.
             tags: Tags to attach to the deployment when it is created.
             feature_logging: Feature logging configuration for the predictor and its feature-log sidecar, a [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig] or an equivalent dict.
+            tracing: Transformation tracing for the deployment, a [`DeploymentTracingConfig`][hsml.deployment_tracing_config.DeploymentTracingConfig] or an equivalent dict such as `{"enabled": True, "sampling_percentage": 10}`.
+                Off by default.
 
         Returns:
             The deployment metadata object, created but not started.
@@ -5028,6 +5031,7 @@ class FeatureView:
             env_vars=env_vars,
             tags=tags,
             feature_logging=feature_logging,
+            tracing=tracing,
         )
         return predictor.deploy()
 

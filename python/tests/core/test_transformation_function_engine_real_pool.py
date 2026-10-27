@@ -471,8 +471,6 @@ class TestRealPoolExecution:
         assert cls._TransformationFunctionEngine__process_pool is None
         assert cls._TransformationFunctionEngine__process_pool_n_processes is None
 
-
-class TestRealPoolTelemetry:
     def test_pooled_functions_are_timed_and_traced(self, span_exporter, mocker):
         prometheus_client = pytest.importorskip("prometheus_client")
         trace = pytest.importorskip("opentelemetry.trace")

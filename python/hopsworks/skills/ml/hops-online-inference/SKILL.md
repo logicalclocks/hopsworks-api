@@ -192,7 +192,7 @@ deployment.set_tracing(active=True, sampling_percentage=50)
 ```
 
 The same over REST: `PUT /hopsworks-api/api/project/{project_id}/serving/{deployment_id}/tracing` with `{"active": false}` or `{"active": true, "samplingPercentage": 50}`; omitted fields keep their values.
-It answers 400 (`240058`) for a deployment created without tracing, and the deployment page has the same switch on its Transformations section.
+It answers 400 (`240059`) for a deployment created without tracing, and the deployment page has the same switch on its Transformations section.
 
 While tracing is on, every request is counted on the predictor's Prometheus endpoint:
 

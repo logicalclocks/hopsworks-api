@@ -203,6 +203,25 @@ class TestEnabled:
             == 2
         )
 
+    def test_only_the_serving_vector_server_is_timed(self, mocker, telemetry_on):
+        # A batch scoring server of the same feature view version would replace the serving one's series.
+        mocker.patch.object(
+            vector_server.tf_engine_mod.TransformationFunctionEngine,
+            "_get_ready_to_use_transformation_fns",
+            return_value=[],
+        )
+        entity = mocker.Mock(labels=[], features=[])
+        entity._on_demand_transformation_functions = []
+        server = vector_server.VectorServer.__new__(vector_server.VectorServer)
+        server._feature_view_name = FEATURE_VIEW
+        server._feature_view_version = VERSION
+        server._training_dataset_version = None
+
+        server._init_transformation(entity)
+        assert server._telemetry is None
+        server._init_transformation(entity, timed=True)
+        assert server._telemetry is not None
+
     def test_separate_phase_passes_each_trace_the_first_row(
         self, mocker, graphs, telemetry_on
     ):

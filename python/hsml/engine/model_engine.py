@@ -892,7 +892,7 @@ class ModelEngine:
         # serving pod its Go runtime then stays in the predictor process with heap bursts of
         # hundreds of MB that OOM-kill it at the default memory limit.
         response = self._dataset_api.read_content(hdfs_resource_path)
-        return json.loads(getattr(response, "content", response))
+        return json.loads(response.content)
 
     def _delete(self, model_instance):
         self._engine._delete(model_instance)

@@ -2299,6 +2299,7 @@ class TestFeatureViewDeploy:
             name="d",
             passed_features=["a"],
             training_dataset_version=3,
+            tracing={"enabled": True},
         )
 
         for_feature_view.assert_called_once_with(
@@ -2315,6 +2316,7 @@ class TestFeatureViewDeploy:
             env_vars=None,
             tags=None,
             feature_logging=None,
+            tracing={"enabled": True},
         )
         assert result is for_feature_view.return_value.deploy.return_value
 
