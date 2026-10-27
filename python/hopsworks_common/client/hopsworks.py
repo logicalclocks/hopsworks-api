@@ -73,6 +73,7 @@ class Client(base.Client):
             self._hostname_verification, self._hopsworks_ca_trust_store_path
         )
         self._session = requests.session()
+        self._retry_window = base._retry_window()
 
         self._connected = True
 

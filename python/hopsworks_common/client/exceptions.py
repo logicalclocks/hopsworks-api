@@ -321,3 +321,24 @@ class PlatformIntelligenceException(Exception):
 @also_available_as("hsml.client.exceptions.TrinoException")
 class TrinoException(Exception):
     """Generic Trino exception."""
+
+
+@public("hopsworks.client.exceptions.BackendUnavailableError")
+@also_available_as("hsml.client.exceptions.BackendUnavailableError")
+class BackendUnavailableError(Exception):
+    """The backend was unavailable during a call: unreachable, a gateway error, or a Payara error page.
+
+    `response` is the last response, or `None` when the backend did not answer at all.
+    """
+
+    def __init__(
+        self,
+        method: str,
+        path: str,
+        detail: str = "the request may or may not have been applied",
+        response: requests.Response | None = None,
+    ) -> None:
+        super().__init__(f"Backend unavailable during {method} {path}; {detail}.")
+        self.method = method
+        self.path = path
+        self.response = response
