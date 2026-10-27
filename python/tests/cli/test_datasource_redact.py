@@ -180,3 +180,27 @@ def test_the_account_entry_names_of_a_binding_stay():
         "wallet_password_secret_name": "ds_oracle_sales_67_wallet_password",
     }
     assert redact(binding) == binding
+
+
+def test_info_json_of_a_shopify_source_prints_neither_credential():
+    for secret_field in ("clientSecret", "privateAppPassword"):
+        connector = sc.StorageConnector.from_response_json(
+            {
+                "type": "featurestoreCRMConnectorDTO",
+                "storageConnectorType": "CRM",
+                "id": 11,
+                "name": "shop",
+                "featurestoreId": 67,
+                "crmType": "shopify",
+                "shopUrl": "https://s.myshopify.com",
+                "clientId": "id",
+                secret_field: "MARKER-shopify-7f3a",
+            }
+        )
+        payload = connector.to_dict()
+        # The control: the SDK keeps the credential, so the check below can fail.
+        assert "MARKER" in json.dumps(payload, default=str)
+        # What `hops --json datasource info` prints (datasource.py, info).
+        printed = json.dumps(redact(payload), default=str)
+        assert "MARKER" not in printed
+        assert json.loads(printed)["shopUrl"] == "https://s.myshopify.com"
