@@ -9,10 +9,12 @@ reject after the request.
 
 from __future__ import annotations
 
+import json
 from unittest import mock
 
 import pytest
 from click.testing import CliRunner
+from hopsworks.cli import output
 from hopsworks.cli.commands import datasource as ds
 from hopsworks.cli.main import cli
 
@@ -94,6 +96,16 @@ _MINIMAL: dict[str, list[str]] = {
     "hopsworks": ["--host", "h", "--project", "p", "--api-key", "k"],
     "glue": ["--database", "d", "--region", "eu-north-1"],
     "google-sheets": ["--key-path", "/Projects/p/k.json"],
+    "sharepoint": [
+        "--tenant-id",
+        "t",
+        "--client-id",
+        "c",
+        "--client-secret",
+        "s",
+        "--site-url",
+        "https://contoso.sharepoint.com/sites/Finance",
+    ],
 }
 
 # The Jackson subtype name and the FeaturestoreConnectorType each command sends.
@@ -118,6 +130,7 @@ _DTOS: dict[str, tuple[str, str]] = {
     "hopsworks": ("featurestoreHopsworksConnectorDTO", "HOPSWORKS"),
     "glue": ("featurestoreGlueConnectorDTO", "GLUE"),
     "google-sheets": ("featurestoreGoogleSheetsConnectorDTO", "GOOGLE_SHEETS"),
+    "sharepoint": ("featurestoreSharePointConnectorDTO", "SHAREPOINT"),
 }
 
 
@@ -991,3 +1004,411 @@ def test_a_failed_test_exits_with_the_checkers_output():
 
     assert result.exit_code == 1
     assert "refused" in result.output
+
+
+def test_sharepoint_sends_the_site_and_the_secret():
+    body = _create(
+        [
+            "sharepoint",
+            "n",
+            *_MINIMAL["sharepoint"],
+            "--cloud",
+            "US_GOV",
+            "--site-id",
+            "sid",
+        ]
+    )
+
+    assert body["tenantId"] == "t"
+    assert body["clientId"] == "c"
+    assert body["clientSecret"] == "s"
+    assert body["siteUrl"] == "https://contoso.sharepoint.com/sites/Finance"
+    assert body["siteId"] == "sid"
+    assert body["cloud"] == "US_GOV"
+
+
+def test_sharepoint_secret_is_read_from_its_scoped_environment_variable():
+    argv = _without(_MINIMAL["sharepoint"], "--client-secret")
+    body = _create(
+        ["sharepoint", "n", *argv],
+        env={"HOPSWORKS_DS_SHAREPOINT_CLIENT_SECRET": "from-env"},
+    )
+
+    assert body["clientSecret"] == "from-env"
+
+
+# region hops datasource sharepoint
+
+
+def _sharepoint(argv: list[str], connector_type: str = "SHAREPOINT"):
+    """Run ``datasource sharepoint ...`` against a mocked connector; return (result, connector)."""
+    from hsfs.storage_connector import SharePointConnector
+
+    sc = mock.create_autospec(SharePointConnector, instance=True)
+    sc.type = connector_type
+    sc.script_path = "/Projects/p/DataSources/n/sharepoint_sync.py"
+    with mock.patch.object(ds.session, "get_feature_store") as fs:
+        fs.return_value.get_data_source.return_value.storage_connector = sc
+        result = CliRunner().invoke(cli, ["datasource", "sharepoint", *argv])
+    return result, sc
+
+
+def _a_sync(**fields):
+    sync = mock.Mock()
+    sync.configure_mock(
+        id=5,
+        dataset_name="sharepoint",
+        drive_id="b!1",
+        drive_name="Documents",
+        folder_path="Reports",
+        cron_expression="0 0 * ? * *",
+        paused=False,
+        state="IDLE",
+        last_run_finished=None,
+        files_total=3,
+        bytes_total=30,
+        audit_path="/Projects/p/DataSources/n/audit/sharepoint",
+        **fields,
+    )
+    return sync
+
+
+def test_sharepoint_commands_refuse_another_type_of_data_source():
+    result, sc = _sharepoint(["drives", "n"], connector_type="S3")
+
+    assert result.exit_code == 1
+    assert "not SHAREPOINT" in result.output
+    sc.list_drives.assert_not_called()
+
+
+def test_sharepoint_drives_and_folders():
+    result, sc = _sharepoint(["drives", "n"])
+    assert result.exit_code == 0, result.output
+    sc.list_drives.assert_called_once_with()
+
+    result, sc = _sharepoint(["folders", "n", "--drive", "b!1", "--path", "Reports"])
+    assert result.exit_code == 0, result.output
+    sc.list_folders.assert_called_once_with("b!1", "Reports")
+
+
+def test_sharepoint_copy_is_a_copy_folder():
+    result, sc = _sharepoint(["copy", "n", "--drive", "b!1", "--folder", "Reports"])
+
+    assert result.exit_code == 0, result.output
+    sc.copy_folder.assert_called_once_with(
+        drive_id="b!1",
+        folder_path="Reports",
+        dataset_name="sharepoint",
+        alert_receiver=None,
+        index_files=False,
+    )
+
+
+def test_sharepoint_sync_create_defaults_to_an_hourly_mirror_run_now():
+    result, sc = _sharepoint(["sync", "create", "n", "--drive", "b!1"])
+
+    assert result.exit_code == 0, result.output
+    sc.create_sync.assert_called_once_with(
+        drive_id="b!1",
+        folder_path="",
+        dataset_name="sharepoint",
+        schedule="0 0 * ? * *",
+        include=[],
+        exclude=[],
+        max_file_size_mb=1024,
+        mirror_deletions=True,
+        alert_receiver=None,
+        run_now=True,
+        index_files=False,
+        index_feature_group=None,
+    )
+
+
+def test_sharepoint_sync_create_passes_every_option():
+    result, sc = _sharepoint(
+        [
+            "sync",
+            "create",
+            "n",
+            "--drive",
+            "b!1",
+            "--folder",
+            "Reports",
+            "--dataset",
+            "reports",
+            "--cron",
+            "0 0 2 ? * *",
+            "--include",
+            "*.pdf",
+            "--include",
+            "*.xlsx",
+            "--exclude",
+            "drafts/**",
+            "--max-file-size-mb",
+            "0",
+            "--no-mirror-deletions",
+            "--alert-receiver",
+            "ops",
+            "--no-run-now",
+            "--index-feature-group",
+            "reports_index",
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    kwargs = sc.create_sync.call_args.kwargs
+    assert kwargs["schedule"] == "0 0 2 ? * *"
+    assert kwargs["include"] == ["*.pdf", "*.xlsx"]
+    assert kwargs["exclude"] == ["drafts/**"]
+    assert kwargs["max_file_size_mb"] == 0
+    assert kwargs["mirror_deletions"] is False
+    assert kwargs["alert_receiver"] == "ops"
+    assert kwargs["run_now"] is False
+    assert kwargs["index_feature_group"] == "reports_index"
+
+
+def test_sharepoint_sync_list():
+    result, sc = _sharepoint(["sync", "list", "n"])
+    assert result.exit_code == 0, result.output
+    sc.get_syncs.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("command", "method"),
+    [
+        ("run", "run"),
+        ("pause", "pause"),
+        ("resume", "resume"),
+        ("resync", "force_full_resync"),
+        ("status", "status"),
+    ],
+)
+def test_sharepoint_sync_actions_call_the_sync(command, method):
+    sync = _a_sync()
+    sync.status.return_value = {"state": "IDLE"}
+    with mock.patch.object(ds, "_sync", return_value=sync) as get:
+        result = CliRunner().invoke(
+            cli, ["datasource", "sharepoint", "sync", command, "n", "5"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert get.call_args.args[1:] == ("n", 5)
+    getattr(sync, method).assert_called_once_with()
+
+
+_EXECUTION = mock.Mock(
+    spec=["id", "state", "final_status", "submission_time"],
+    id=901,
+    state="INITIALIZING",
+    final_status="UNDEFINED",
+    submission_time=None,
+)
+
+
+@pytest.mark.parametrize(
+    ("returned", "expected"),
+    [(_EXECUTION, {"id": 901, "state": "INITIALIZING"}), (None, None)],
+)
+def test_sharepoint_sync_resync_prints_the_execution_as_json(
+    monkeypatch, returned, expected
+):
+    monkeypatch.setattr(output, "JSON_MODE", False)
+    sync = _a_sync()
+    sync.force_full_resync.return_value = returned
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli, ["--json", "datasource", "sharepoint", "sync", "resync", "n", "5"]
+        )
+
+    assert result.exit_code == 0, result.output
+    printed = json.loads(result.output)
+    if expected is None:
+        assert printed is None
+    else:
+        assert printed.items() >= expected.items()
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [(["--cron", "0 0 2 ? * *"], "0 0 2 ? * *"), (["--none"], None)],
+)
+def test_sharepoint_sync_schedule(argv, expected):
+    sync = _a_sync()
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli, ["datasource", "sharepoint", "sync", "schedule", "n", "5", *argv]
+        )
+
+    assert result.exit_code == 0, result.output
+    sync.set_schedule.assert_called_once_with(expected)
+
+
+@pytest.mark.parametrize("argv", [[], ["--cron", "0 0 2 ? * *", "--none"]])
+def test_sharepoint_sync_schedule_takes_exactly_one_of_cron_and_none(argv):
+    sync = _a_sync()
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli, ["datasource", "sharepoint", "sync", "schedule", "n", "5", *argv]
+        )
+
+    assert result.exit_code == 2
+    sync.set_schedule.assert_not_called()
+
+
+def test_sharepoint_sync_set_folder():
+    sync = _a_sync()
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "sharepoint",
+                "sync",
+                "set-folder",
+                "n",
+                "5",
+                "--folder",
+                "R",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    sync.set_folder.assert_called_once_with("R")
+
+
+@pytest.mark.parametrize(
+    "argv,fields",
+    [
+        (["--on"], {"index_files": True}),
+        (
+            ["--on", "--feature-group", "docs"],
+            {"index_files": True, "index_feature_group": "docs"},
+        ),
+        (["--off"], {"index_files": False}),
+    ],
+)
+def test_sharepoint_sync_index(argv, fields):
+    sync = _a_sync()
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli, ["datasource", "sharepoint", "sync", "index", "n", "5", *argv]
+        )
+
+    assert result.exit_code == 0, result.output
+    sync.update.assert_called_once_with(**fields)
+
+
+def test_sharepoint_sync_delete_confirms_and_passes_its_flags():
+    sync = _a_sync()
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        aborted = CliRunner().invoke(
+            cli, ["datasource", "sharepoint", "sync", "delete", "n", "5"], input="n\n"
+        )
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "sharepoint",
+                "sync",
+                "delete",
+                "n",
+                "5",
+                "--keep-files",
+                "--force",
+                "--yes",
+            ],
+        )
+
+    assert aborted.exit_code == 1
+    assert result.exit_code == 0, result.output
+    sync.delete.assert_called_once_with(keep_files=True, force=True)
+    assert "Deleted sync 5" in result.output
+
+
+def test_sharepoint_sync_delete_reports_a_pending_delete():
+    sync = _a_sync()
+    sync.delete.return_value = False
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "sharepoint",
+                "sync",
+                "delete",
+                "n",
+                "5",
+                "--force",
+                "--yes",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "Deleted sync" not in result.output
+    assert "still DELETING" in result.output
+    assert "hops datasource sharepoint sync delete n 5 --force --yes" in result.output
+
+
+@pytest.mark.parametrize("deleted", [True, False])
+def test_sharepoint_sync_delete_json_says_whether_it_finished(monkeypatch, deleted):
+    monkeypatch.setattr(output, "JSON_MODE", False)
+    sync = _a_sync()
+    sync.delete.return_value = deleted
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "datasource",
+                "sharepoint",
+                "sync",
+                "delete",
+                "n",
+                "5",
+                "--force",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {"id": 5, "deleted": deleted}
+
+
+def test_sharepoint_sync_audit_prints_the_rows():
+    sync = _a_sync()
+    sync.get_audit.return_value = [
+        {
+            "execution_id": 812,
+            "op": "renamed",
+            "kind": "file",
+            "path": "new.csv",
+            "src_path": "old.csv",
+        }
+    ]
+    with mock.patch.object(ds, "_sync", return_value=sync):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "sharepoint",
+                "sync",
+                "audit",
+                "n",
+                "5",
+                "--day",
+                "2026-10-20",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    sync.get_audit.assert_called_once_with(day="2026-10-20")
+    assert "old.csv" in result.output
+
+
+def test_sharepoint_reset_script():
+    result, sc = _sharepoint(["reset-script", "n", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    sc.reset_script.assert_called_once_with()
+
+
+# endregion

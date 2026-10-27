@@ -1114,5 +1114,62 @@
             "temporaryCredentials": true
         },
         "headers": null
+    },
+    "get_sharepoint": {
+        "response": {
+            "type": "featurestoreSharePointConnectorDTO",
+            "description": "SharePoint connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_sharepoint",
+            "storageConnectorType": "SHAREPOINT",
+            "cloud": "GLOBAL",
+            "authMode": "APP",
+            "tenantId": "tenant-1",
+            "clientId": "client-1",
+            "clientSecretSet": true,
+            "siteUrl": "https://contoso.sharepoint.com/sites/Finance",
+            "siteId": null,
+            "pinned": true,
+            "scriptPath": "/Projects/finance/DataSources/test_sharepoint/sharepoint_sync.py",
+            "scriptTemplateVersion": 1,
+            "scriptModified": false,
+            "currentTemplateVersion": 1
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_sharepoint"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_sharepoint_basic_info": {
+        "response": {
+            "type": "featurestoreSharePointConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_sharepoint",
+            "storageConnectorType": "SHAREPOINT"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_sharepoint"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
     }
 }
