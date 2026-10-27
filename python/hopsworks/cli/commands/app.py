@@ -24,7 +24,7 @@ import inspect
 from typing import Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import output, session, waits
 
 
 @click.group("app")
@@ -737,8 +737,14 @@ def app_deploy(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not start app '{name}': {exc}") from exc
 
-    a = _await_new_execution(apps, name, previous, timeout)
-    url = getattr(a, "app_url", None)
+    a = _await_new_execution(
+        name,
+        previous,
+        timeout,
+        "deploy",
+        f"Read `hops app logs {name}`, or raise --timeout.",
+    )
+    url = a.get("appUrl")
     output.success("✓ App %s serves the new files", name)
     if check_path is not None:
         _check_route(project, name, url, check_path)
@@ -747,7 +753,7 @@ def app_deploy(
             {
                 "name": name,
                 "url": url,
-                "state": getattr(a, "state", None),
+                "state": a.get("state"),
                 "environment": env_name,
                 "source": remote_dir,
                 "files": [
@@ -864,34 +870,49 @@ def _deploy_environment(
     output.success("✓ Environment %s ready", env_name)
 
 
-def _await_new_execution(
-    apps: Any, name: str, previous: int | None, timeout: int
-) -> Any:
-    """Poll until an execution other than `previous` serves, so the old pod never counts."""
-    import time
+def _app_json(name: str) -> dict:
+    """The app as the backend returns it: the SDK's App drops the pod's kubeMonitor."""
+    from hopsworks_common import client
 
+    _client = client._get_instance()
+    return (
+        _client._send_request("GET", ["project", _client._project_id, "apps", name])
+        or {}
+    )
+
+
+def _await_new_execution(
+    name: str, previous: Any, timeout: float, verb: str, hint: str
+) -> dict:
+    """Poll until an execution other than `previous` serves, so the old pod never counts.
+
+    Prints each state of the new execution with the reason its pod gives; returns the app's JSON.
+    """
     from hopsworks_common.app import _FAILED_STATES
 
-    deadline = time.monotonic() + timeout
-    state = None
+    watch = waits.Watch(f"App {name}", timeout, _POLL_SECONDS)
+    # A final execution has no kubeMonitor: its failure keeps the last reason its pod gave.
+    reason = None
     while True:
-        a = apps.get_app(name)
-        state = getattr(a, "state", None)
-        execution = getattr(a, "execution_id", None)
-        if execution is not None and execution != previous:
-            if getattr(a, "serving", False):
+        a = _app_json(name)
+        execution = a.get("executionId")
+        if execution is None or execution == previous:
+            watch.see("waiting for the new execution")
+        else:
+            state = a.get("state") or "?"
+            watch.see(state, waits.kube_reason(a.get("kubeMonitor")))
+            reason = watch.reason or reason
+            if a.get("serving"):
                 return a
             if state in _FAILED_STATES:
+                because = f": {reason.rstrip('.')}" if reason else ""
                 raise click.ClickException(
-                    f"Could not deploy app '{name}': it stopped in state {state}. "
+                    f"Could not {verb} app '{name}': it stopped in state {state}{because}. "
                     f"Read `hops app logs {name}`."
                 )
-        if time.monotonic() >= deadline:
-            raise click.ClickException(
-                f"Could not deploy app '{name}': not serving after {timeout} s "
-                f"(state {state}). Read `hops app logs {name}`, or raise --timeout."
-            )
-        time.sleep(_POLL_SECONDS)
+        if watch.expired():
+            watch.fail(hint)
+        watch.sleep()
 
 
 @app_group.command("stop")
@@ -987,38 +1008,36 @@ def _get_app(ctx: click.Context, name: str) -> Any:
 
 
 def _start(a: Any, await_serving: bool = True) -> None:
-    try:
-        a.run(await_serving=await_serving)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(
-            f"Could not start app '{getattr(a, 'name', '?')}': {exc}"
-        ) from exc
-    url = getattr(a, "app_url", None)
-    state = getattr(a, "state", "-")
-    serving = getattr(a, "serving", False)
-    output.success(
-        "✓ Started app %s (state=%s, serving=%s)",
-        getattr(a, "name", "?"),
-        state,
-        "yes" if serving else "no",
-    )
-    if url:
-        click.echo(url)
+    _launch(a, a.run, "start", "Started", await_serving)
 
 
 def _redeploy(a: Any, await_serving: bool = True) -> None:
+    _launch(a, a.redeploy, "redeploy", "Redeployed", await_serving)
+
+
+def _launch(a: Any, action: Any, verb: str, done: str, await_serving: bool) -> None:
+    """Start or redeploy the app; with `await_serving`, wait for its new execution to serve."""
+    from hopsworks_common.app import SERVING_TIMEOUT
+
+    name = getattr(a, "name", "?")
+    previous = getattr(a, "execution_id", None)
     try:
-        a.redeploy(await_serving=await_serving)
+        action(await_serving=False)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(
-            f"Could not redeploy app '{getattr(a, 'name', '?')}': {exc}"
-        ) from exc
-    url = getattr(a, "app_url", None)
-    state = getattr(a, "state", "-")
-    serving = getattr(a, "serving", False)
+        raise click.ClickException(f"Could not {verb} app '{name}': {exc}") from exc
+    if await_serving:
+        app = _await_new_execution(
+            name, previous, SERVING_TIMEOUT, verb, f"Read `hops app logs {name}`."
+        )
+        url, state, serving = app.get("appUrl"), app.get("state"), app.get("serving")
+    else:
+        url = getattr(a, "app_url", None)
+        state = getattr(a, "state", "-")
+        serving = getattr(a, "serving", False)
     output.success(
-        "✓ Redeployed app %s (state=%s, serving=%s)",
-        getattr(a, "name", "?"),
+        "✓ %s app %s (state=%s, serving=%s)",
+        done,
+        name,
         state,
         "yes" if serving else "no",
     )

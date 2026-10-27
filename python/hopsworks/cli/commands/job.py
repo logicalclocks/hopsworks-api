@@ -13,13 +13,24 @@ import tempfile
 from typing import TYPE_CHECKING, Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import output, session, waits
 from hopsworks.cli.commands.alert import job_alert_group
 from hopsworks.cli.commands.files import makedirs
 
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+
+START_TIMEOUT = 600
+
+_start_timeout_option = click.option(
+    "--start-timeout",
+    type=int,
+    default=START_TIMEOUT,
+    show_default=True,
+    help="Seconds to wait for the execution to reach RUNNING; past it the command fails and leaves the execution as is.",
+)
 
 
 def _user_label(value: Any) -> str:
@@ -279,6 +290,7 @@ def job_create(
     show_default=True,
     help="Overwrite the uploaded script if it exists: a redeploy runs the new script.",
 )
+@_start_timeout_option
 @click.pass_context
 def job_deploy(
     ctx: click.Context,
@@ -292,6 +304,7 @@ def job_deploy(
     wait: bool,
     upload_dir: str | None,
     overwrite: bool,
+    start_timeout: int,
 ) -> None:
     """Upload, configure, schedule and run a job in one step.
 
@@ -311,6 +324,7 @@ def job_deploy(
         wait: With `do_run`, block until the execution terminates.
         upload_dir: HopsFS directory for a local script upload.
         overwrite: Overwrite an existing uploaded script.
+        start_timeout: With `wait`, seconds to wait for the execution to reach RUNNING.
     """
     project = session.get_project(ctx)
     api = project.get_job_api()
@@ -361,14 +375,20 @@ def job_deploy(
 
     # 5. Run.
     if do_run:
-        _run(job, name, wait, "run", args=app_args)
+        _run(job, name, wait, "run", start_timeout=start_timeout, args=app_args)
 
 
 LOG_TAIL = 50
 
 
 def _run(
-    job: Any, name: str, wait: bool, verb: str, window: str = "", **run_args: Any
+    job: Any,
+    name: str,
+    wait: bool,
+    verb: str,
+    window: str = "",
+    start_timeout: int = START_TIMEOUT,
+    **run_args: Any,
 ) -> Any:
     """Run `job` once, report it, and on a failed wait print its log tails and exit non-zero."""
     try:
@@ -376,21 +396,33 @@ def _run(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not {verb} job '{name}': {exc}") from exc
     if wait and execution is not None:
-        execution = _await(job, name, execution, None, window)
+        execution = _await(job, name, execution, None, window, start_timeout)
     _report_run(name, execution, wait, window)
     return execution
 
 
 def _await(
-    job: Any, name: str, execution: Any, timeout: int | None, window: str = ""
+    job: Any,
+    name: str,
+    execution: Any,
+    timeout: int | None,
+    window: str = "",
+    start_timeout: int = START_TIMEOUT,
 ) -> Any:
-    """The execution once it ends; a failure prints its log tails and exits 1."""
+    """The execution once it ends; a failure prints its log tails and exits 1.
+
+    Prints each state of the execution. The wait for RUNNING is bounded by `start_timeout`,
+    the whole wait by `timeout` (unbounded when None).
+    """
     from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
         JobExecutionException,
     )
 
+    left = _follow(name, execution.id, window, start_timeout, timeout)
     try:
-        execution.await_termination(timeout)
+        if left is None or left > 0:
+            # Waits for the logs to be aggregated, and raises on a failed execution.
+            execution.await_termination(left)
     except JobExecutionException:
         _failed(job, name, _refreshed(job, execution), window)
     final = _refreshed(job, execution)
@@ -401,6 +433,69 @@ def _await(
             f"{name}{window}: execution #{final.id} still {final.state} after {timeout}s."
         )
     return final
+
+
+# States of an execution waiting for its pod: scheduling (QUEUED) or pulling the image (DEPLOYING).
+_STARTING = ("INITIALIZING", "QUEUED", "DEPLOYING")
+_STARTED = ("RUNNING", "AGGREGATING_LOGS")
+_POLL_SECONDS = 3.0
+
+
+def _execution_json(name: str, ident: int, kube: bool) -> dict:
+    """The execution as the backend returns it; with `kube`, with its pod's KubeMonitorDTO when there is one."""
+    from hopsworks_common import client  # noqa: PLC0415 - SDK loaded on use
+    from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
+        RestAPIError,
+    )
+
+    _client = client._get_instance()
+    path = ["project", _client._project_id, "jobs", name, "executions", ident]
+    if kube:
+        try:
+            return (
+                _client._send_request(
+                    "GET", path, query_params={"expand": "kube_monitor"}
+                )
+                or {}
+            )
+        except RestAPIError as exc:
+            # A backend without the kube_monitor expansion answers 404.
+            if exc.response.status_code != 404:
+                raise
+    return _client._send_request("GET", path) or {}
+
+
+def _follow(
+    name: str, ident: int, window: str, start_timeout: int, timeout: int | None
+) -> float | None:
+    """Print each state of the execution until it ends; the seconds left of `timeout`, None when unbounded."""
+    from hopsworks_common.constants import JOBS  # noqa: PLC0415 - SDK loaded on use
+
+    final = {*JOBS.SUCCESS_STATES, *JOBS.ERROR_STATES}
+    watch = waits.Watch(
+        f"{name}{window}: execution #{ident}", start_timeout, _POLL_SECONDS
+    )
+    started = False
+    kube = True
+    while True:
+        execution = _execution_json(name, ident, kube)
+        state = execution.get("state") or "?"
+        kube = state in _STARTING
+        watch.see(
+            state, waits.kube_reason(execution.get("kubeMonitor")) if kube else None
+        )
+        started = started or state in _STARTED
+        if state in final:
+            break
+        if not started and watch.expired():
+            watch.fail(
+                f"The execution is left as is: `hops job stop {name}` ends it, "
+                "or raise --start-timeout."
+            )
+        if timeout is not None and watch.elapsed() >= timeout:
+            break
+        watch.sleep()
+    return None if timeout is None else max(0.0, timeout - watch.elapsed())
 
 
 def _failed(job: Any, name: str, execution: Any, window: str = "") -> None:
@@ -486,6 +581,7 @@ _DT_FORMATS = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"]
     default=None,
     help="ISO timestamp for HOPS_END_TIME (data interval end). Requires --start-time.",
 )
+@_start_timeout_option
 @click.pass_context
 def job_run(
     ctx: click.Context,
@@ -494,6 +590,7 @@ def job_run(
     wait: bool,
     start_time: datetime | None,
     end_time: datetime | None,
+    start_timeout: int,
 ) -> None:
     """Run a job once now.
 
@@ -510,12 +607,20 @@ def job_run(
         wait: Block until the execution terminates.
         start_time: ISO timestamp for `HOPS_START_TIME`.
         end_time: ISO timestamp for `HOPS_END_TIME`.
+        start_timeout: With `wait`, seconds to wait for the execution to reach RUNNING.
     """
     if end_time is not None and start_time is None:
         raise click.UsageError("--end-time requires --start-time.")
     job = _get_job(ctx, name)
     execution = _run(
-        job, name, wait, "run", args=app_args, start_time=start_time, end_time=end_time
+        job,
+        name,
+        wait,
+        "run",
+        start_timeout=start_timeout,
+        args=app_args,
+        start_time=start_time,
+        end_time=end_time,
     )
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(execution))
@@ -547,6 +652,7 @@ def job_run(
     show_default=True,
     help="Block until the execution terminates (default: yes).",
 )
+@_start_timeout_option
 @click.pass_context
 def job_backfill(
     ctx: click.Context,
@@ -555,6 +661,7 @@ def job_backfill(
     end_time: datetime,
     app_args: str | None,
     wait: bool,
+    start_timeout: int,
 ) -> None:
     """Run a job once over a start/end time window.
 
@@ -573,6 +680,7 @@ def job_backfill(
         end_time: ISO timestamp for the end of the backfill window.
         app_args: Argument string passed to this execution.
         wait: Block until the execution terminates.
+        start_timeout: With `wait`, seconds to wait for the execution to reach RUNNING.
     """
     if end_time <= start_time:
         raise click.UsageError("--end-time must be strictly after --start-time.")
@@ -583,6 +691,7 @@ def job_backfill(
         wait,
         "backfill",
         f" for {start_time.isoformat()} to {end_time.isoformat()}",
+        start_timeout,
         args=app_args,
         start_time=start_time,
         end_time=end_time,
@@ -605,9 +714,14 @@ def job_backfill(
     default=None,
     help="Seconds to wait before giving up; unbounded by default.",
 )
+@_start_timeout_option
 @click.pass_context
 def job_wait(
-    ctx: click.Context, name: str, execution_id: int | None, timeout: int | None
+    ctx: click.Context,
+    name: str,
+    execution_id: int | None,
+    timeout: int | None,
+    start_timeout: int,
 ) -> None:
     """Wait for an execution to end.
 
@@ -619,6 +733,7 @@ def job_wait(
         name: Job name.
         execution_id: Specific execution; latest if omitted.
         timeout: Seconds to wait; unbounded when omitted.
+        start_timeout: Seconds to wait for the execution to reach RUNNING.
     """
     job = _get_job(ctx, name)
     executions = _executions(job)
@@ -630,7 +745,7 @@ def job_wait(
         if not matches:
             raise click.ClickException(f"Execution #{execution_id} not found.")
         target = matches[0]
-    final = _await(job, name, target, timeout)
+    final = _await(job, name, target, timeout, start_timeout=start_timeout)
     _report_run(name, final, True)
     if output.JSON_MODE:
         output.print_json(_execution_to_dict(final))

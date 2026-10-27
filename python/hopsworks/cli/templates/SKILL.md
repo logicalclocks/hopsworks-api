@@ -181,7 +181,7 @@ Register flags:
 hops deployment list
 hops deployment info <name>
 hops deployment create <model> [--version N] [--script predict.py]
-hops deployment start <name> [--no-wait] [--timeout 600]
+hops deployment start <name> [--no-wait] [--timeout 600]   # prints each status; a stuck one fails naming it and its reason
 hops deployment stop <name>
 hops deployment predict <name> --data '{"instances": [[1,2,3]]}'
 hops deployment logs <name> [--component predictor] [--tail 50]
@@ -200,7 +200,7 @@ hops deployment delete <name> --yes
 hops job list
 hops job info <name>
 hops job create <name> --type python --app-path Resources/jobs/x.py [--env <environment>]
-hops job run <name> [--wait] [--args "..."]
+hops job run <name> [--wait] [--start-timeout 600] [--args "..."]   # --wait prints each state; stuck before RUNNING past --start-timeout, it fails and leaves the execution
 hops job stop <name>
 hops job logs <name> [--execution ID]
 hops job history <name>

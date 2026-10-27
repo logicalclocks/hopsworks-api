@@ -1,0 +1,105 @@
+{
+  "jobId": 14388,
+  "name": "hopsable-test-echo",
+  "creationTime": 1792456353000,
+  "state": "INITIALIZING",
+  "finalStatus": "UNDEFINED",
+  "executionId": 26723,
+  "executionStart": 1792498831000,
+  "creator": "hopsable-test-member2@hopsable.com",
+  "creatorFirstname": "hopsable-test",
+  "creatorLastname": "member2",
+  "environmentName": "python-agent-pipeline",
+  "appPath": "hdfs:///Projects/blah/Users/hopsabl2/apps/hopsable-test-echo/app.py",
+  "gitAutoRedeploy": false,
+  "appPort": 8080,
+  "appKind": "CUSTOM",
+  "appBasePath": "/",
+  "proxyPathMode": "ROOT",
+  "readinessProbePath": "/health",
+  "entrypointCommand": "python app.py",
+  "monitoringConfig": {
+    "enabled": true,
+    "routes": []
+  },
+  "kubeMonitor": {
+    "deployment": {
+      "name": "pythonapp-blah--hopsable-test-echo",
+      "namespace": "blah",
+      "desiredReplicas": 1,
+      "availableReplicas": 0,
+      "readyReplicas": 0,
+      "unavailableReplicas": 1,
+      "updatedReplicas": 1,
+      "rollingOut": false,
+      "lastCondition": {
+        "type": "Available",
+        "reason": "MinimumReplicasUnavailable",
+        "lastUpdateTime": "2026-10-20T12:39:09Z",
+        "lastTransitionTime": "2026-10-20T12:39:09Z",
+        "message": "Deployment does not have minimum availability.",
+        "age": "40s"
+      },
+      "events": {
+        "items": [
+          {
+            "type": "Normal",
+            "reason": "ScalingReplicaSet",
+            "age": "41s",
+            "from": "deployment-controller",
+            "message": "Scaled up replica set pythonapp-blah--hopsable-test-echo-67cb65cbd9 from 0 to 1"
+          }
+        ]
+      },
+      "pods": {
+        "items": [
+          {
+            "name": "pythonapp-blah--hopsable-test-echo-67cb65cbd9-q4m8z",
+            "status": "Pending",
+            "ready": false,
+            "lastCondition": {
+              "type": "PodScheduled",
+              "reason": "Unschedulable",
+              "lastTransitionTime": "2026-10-20T12:39:09Z",
+              "message": "0/6 nodes are available: 1 node(s) didn't match Pod's node affinity/selector, 5 Insufficient memory. preemption: 0/6 nodes are available: 1 Preemption is not helpful for scheduling, 5 No preemption victims found for incoming pod.",
+              "age": "40s"
+            },
+            "events": {
+              "items": [
+                {
+                  "type": "Warning",
+                  "reason": "FailedScheduling",
+                  "age": "40s",
+                  "from": "default-scheduler",
+                  "message": "0/6 nodes are available: 1 node(s) didn't match Pod's node affinity/selector, 5 Insufficient memory. preemption: 0/6 nodes are available: 1 Preemption is not helpful for scheduling, 5 No preemption victims found for incoming pod."
+                }
+              ]
+            }
+          }
+        ],
+        "count": 1
+      }
+    }
+  },
+  "stdoutPath": "/Projects/blah/Logs/PythonApp/hopsable-test-echo/26723/stdout.log",
+  "stderrPath": "/Projects/blah/Logs/PythonApp/hopsable-test-echo/26723/stderr.log",
+  "serving": false,
+  "cpuRequested": "1.0",
+  "memoryRequested": "2048Mi",
+  "publicAccess": false,
+  "dbAccess": true,
+  "idleScaleToZero": false,
+  "idleScaleToZeroConfigured": false,
+  "platformEnvVars": {
+    "MYSQL_USER": "<redacted>",
+    "MYSQL_PASSWORD_SECRET_NAME": "<redacted>",
+    "MYSQL_DB": "<redacted>",
+    "MYSQL_HOST": "<redacted>",
+    "MYSQL_PORT": "<redacted>",
+    "TRINO_HOST": "<redacted>",
+    "TRINO_PORT": "<redacted>",
+    "TRINO_USER": "<redacted>",
+    "TRINO_PASSWORD_SECRET_NAME": "<redacted>",
+    "TRINO_SCHEMA": "<redacted>"
+  }
+}

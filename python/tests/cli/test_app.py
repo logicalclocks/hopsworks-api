@@ -5,8 +5,14 @@ from __future__ import annotations
 import json
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
+
+
+@pytest.fixture(autouse=True)
+def _fast_waits(clock):
+    """Every wait here runs on the fake clock."""
 
 
 def _fake_app(**overrides):
@@ -705,29 +711,35 @@ def test_app_create_with_start_triggers_run(mock_project):
     apps = mock_project.get_app_api.return_value
     a = _fake_app(name="dash", state="RUNNING", serving=True, app_url="https://h/x")
     apps.create_app.return_value = a
-    result = CliRunner().invoke(
-        cli,
-        [
-            "app",
-            "create",
-            "dash",
-            "--path",
-            "Resources/dash.py",
-            "--start",
-        ],
-    )
+    with _polls(_serving("https://h/x")):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "app",
+                "create",
+                "dash",
+                "--path",
+                "Resources/dash.py",
+                "--start",
+            ],
+        )
     assert result.exit_code == 0, result.output
-    a.run.assert_called_once_with(await_serving=True)
+    a.run.assert_called_once_with(await_serving=False)
     assert "https://h/x" in result.output
 
 
-def test_app_start_defaults_await_serving_true(mock_project):
-    apps = mock_project.get_app_api.return_value
-    a = _fake_app(state="RUNNING", serving=True, app_url="https://h/x")
-    apps.get_app.return_value = a
-    result = CliRunner().invoke(cli, ["app", "start", "dash"])
-    assert result.exit_code == 0, result.output
-    a.run.assert_called_once_with(await_serving=True)
+def _serving(url="https://h/x", execution=9):
+    return {
+        "state": "RUNNING",
+        "serving": True,
+        "appUrl": url,
+        "executionId": execution,
+    }
+
+
+def _polls(*apps):
+    """The app's JSON as each poll of the CLI's wait sees it."""
+    return mock.patch("hopsworks.cli.commands.app._app_json", side_effect=[*apps])
 
 
 def test_app_start_no_wait_passes_false(mock_project):
@@ -737,15 +749,6 @@ def test_app_start_no_wait_passes_false(mock_project):
     result = CliRunner().invoke(cli, ["app", "start", "dash", "--no-wait"])
     assert result.exit_code == 0, result.output
     a.run.assert_called_once_with(await_serving=False)
-
-
-def test_app_redeploy_defaults_await_serving_true(mock_project):
-    apps = mock_project.get_app_api.return_value
-    a = _fake_app(state="RUNNING", serving=True, app_url="https://h/x")
-    apps.get_app.return_value = a
-    result = CliRunner().invoke(cli, ["app", "redeploy", "dash"])
-    assert result.exit_code == 0, result.output
-    a.redeploy.assert_called_once_with(await_serving=True)
 
 
 def test_app_redeploy_no_wait_passes_false(mock_project):
@@ -831,7 +834,7 @@ def _deploy(
     returns, and `remote` the text of the requirements uploaded last time.
     """
     apps = mock_project.get_app_api.return_value
-    apps.get_app.side_effect = [existing, *polls]
+    apps.get_app.return_value = existing
     dataset_api = mock_project.get_dataset_api.return_value
     present = {"Users/scott"}
     if remote is not None:
@@ -855,10 +858,20 @@ def _deploy(
     ]
     with (
         mock.patch("hopsworks.get_users_api", return_value=users_api, create=True),
-        mock.patch("hopsworks.cli.commands.app._POLL_SECONDS", 0),
+        _polls(*[a if isinstance(a, dict) else _json(a) for a in polls]) as polled,
     ):
         result = CliRunner().invoke(cli, argv)
+    apps.polled = polled
     return result, apps, dataset_api
+
+
+def _json(a):
+    return {
+        "state": a.state,
+        "serving": a.serving,
+        "executionId": a.execution_id,
+        "appUrl": a.app_url,
+    }
 
 
 def _app(execution_id, state="RUNNING", serving=True, env="python-agent-pipeline"):
@@ -941,7 +954,7 @@ def test_deploy_waits_for_the_new_execution_of_a_running_app(mock_project, tmp_p
     assert result.exit_code == 0, result.output
     running.redeploy.assert_called_once_with(await_serving=False)
     apps.create_app.assert_not_called()
-    assert apps.get_app.call_count == 3
+    assert apps.polled.call_count == 2
 
 
 def test_deploy_starts_a_stopped_app(mock_project, tmp_path):
@@ -959,7 +972,7 @@ def test_deploy_fails_when_the_new_execution_fails(mock_project, tmp_path):
         mock_project, root, existing=_app(3), polls=[_app(4, "FAILED", serving=False)]
     )
     assert result.exit_code == 1
-    assert "Could not deploy app 'shop': it stopped in state FAILED" in result.output
+    assert "Could not deploy app 'shop': it stopped in state FAILED." in result.output
     assert "hops app logs shop" in result.output
 
 

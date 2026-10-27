@@ -19,6 +19,7 @@ import uuid
 from typing import Any, NamedTuple
 
 import requests
+from hopsworks.cli import waits
 from hopsworks_common import client
 from hopsworks_common.client import exceptions
 
@@ -26,6 +27,7 @@ from hopsworks_common.client import exceptions
 NBFORMAT = 4
 NBFORMAT_MINOR = 5
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_POLL_SECONDS = 2.0
 # Jupyter's root per project, as root() found it: one lookup per process.
 _roots: dict[int, str] = {}
 
@@ -145,12 +147,34 @@ def in_jupyter(path: str, root: str) -> str:
     return path[len(root) + 1 :]
 
 
+def monitor(project_id: int) -> dict | None:
+    """The Kubernetes view of the caller's Jupyter pod (a KubeMonitorDTO), or None when there is none yet."""
+    try:
+        return client._get_instance()._send_request(
+            "GET", ["project", project_id, "jupyter", "monitor"]
+        )
+    except Exception:  # noqa: BLE001 - no pod yet, or no monitor on this cluster: no reason to show
+        return None
+
+
+def _ready(running: dict | None) -> bool:
+    # Starting returns before the pod is scheduled; `ready` is absent on older clusters.
+    return bool(
+        running
+        and running.get("port")
+        and running.get("token")
+        and running.get("ready", True)
+    )
+
+
 def connect(project_id: int, timeout: float, env: str | None = None) -> Jupyter:
     """A client for the caller's Jupyter server, started first when it is not running.
 
-    With ``env``, the server must run in that environment: a running one in another is left alone,
+    A server that is not ready yet is waited for, printing each status it goes through. With
+    ``env``, the server must run in that environment: a running one in another is left alone,
     since stopping it would end the user's kernels.
     """
+    watch = waits.Watch("Jupyter", timeout, _POLL_SECONDS)
     running = server(project_id)
     if running and env is not None:
         current = environment(settings(project_id))
@@ -159,9 +183,26 @@ def connect(project_id: int, timeout: float, env: str | None = None) -> Jupyter:
                 f"Jupyter runs in the environment '{current}'. Stop it with "
                 f"`hops notebook stop` to start it in '{env}'; that ends its kernels."
             )
+    # A server that is up has no status changes to report, so `hops notebook run` stays quiet.
+    quiet = _ready(running)
     running = running or start(project_id, env)
+    while not _ready(running):
+        status = (running or {}).get("status") or "starting"
+        watch.see(status, waits.kube_reason(monitor(project_id)))
+        if watch.expired():
+            watch.fail("Check the cluster's free resources, or raise --timeout.")
+        watch.sleep()
+        running = server(project_id)
     jupyter = _jupyter(running)
-    jupyter.wait_ready(timeout)
+    if not quiet:
+        watch.see(running.get("status") or "running")
+    try:
+        jupyter.wait_ready(watch.left())
+    except TimeoutError:
+        watch.see(watch.state or "not answering")
+        watch.fail("The server does not answer yet; raise --timeout.")
+    if not quiet:
+        watch.see("answering")
     return jupyter
 
 
@@ -172,12 +213,7 @@ def attach(project_id: int, timeout: float) -> Jupyter:
     A server not running is started and waited for by ``connect``.
     """
     running = server(project_id)
-    if not (
-        running
-        and running.get("port")
-        and running.get("token")
-        and running.get("ready", True)
-    ):
+    if not _ready(running):
         return connect(project_id, timeout)
     return _jupyter(running)
 

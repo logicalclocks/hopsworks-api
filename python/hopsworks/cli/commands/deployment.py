@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import lineage, output, session, versions
+from hopsworks.cli import lineage, output, session, versions, waits
 from hopsworks.cli.commands.files import makedirs
 
 
@@ -459,13 +459,29 @@ def deployment_start(ctx: click.Context, name: str, wait: bool, timeout: int) ->
         wait: Whether to wait for RUNNING.
         timeout: Seconds to wait.
     """
+    from hopsworks_common.constants import PREDICTOR_STATE
+
     deployment = _get_deployment(ctx, name)
+    watch = waits.Watch(f"Deployment {name}", timeout, _DEPLOYMENT_POLL_SECONDS)
+    # The backend starts a deployment only once it is created.
+    if wait and _state(deployment, name).status == PREDICTOR_STATE.STATUS_CREATING:
+        _await_deployment(deployment, name, watch, {PREDICTOR_STATE.STATUS_CREATED})
     try:
-        deployment.start(await_running=timeout if wait else 0)
+        deployment.start(await_running=0)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Could not start deployment '{name}': {exc}"
         ) from exc
+    if wait:
+        _await_deployment(
+            deployment,
+            name,
+            watch,
+            {PREDICTOR_STATE.STATUS_RUNNING, PREDICTOR_STATE.STATUS_IDLE},
+            failed=PREDICTOR_STATE.STATUS_FAILED,
+        )
+        # A prediction sent before the gateway routes to the deployment gets a 404; this only warns.
+        deployment._serving_engine._await_route(deployment, watch.left())
     output.success("✓ Started deployment %s", name)
 
 
@@ -495,14 +511,54 @@ def deployment_stop(ctx: click.Context, name: str, wait: bool, timeout: int) -> 
         wait: Whether to wait for STOPPED.
         timeout: Seconds to wait.
     """
+    from hopsworks_common.constants import PREDICTOR_STATE
+
     deployment = _get_deployment(ctx, name)
     try:
-        deployment.stop(await_stopped=timeout if wait else 0)
+        deployment.stop(await_stopped=0)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Could not stop deployment '{name}': {exc}"
         ) from exc
+    if wait:
+        watch = waits.Watch(f"Deployment {name}", timeout, _DEPLOYMENT_POLL_SECONDS)
+        _await_deployment(deployment, name, watch, {PREDICTOR_STATE.STATUS_STOPPED})
     output.success("✓ Stopped deployment %s", name)
+
+
+_DEPLOYMENT_POLL_SECONDS = 5
+
+
+def _state(deployment: Any, name: str) -> Any:
+    state = deployment.get_state()
+    if state is None:
+        raise click.ClickException(f"Deployment '{name}' not found.")
+    return state
+
+
+def _await_deployment(
+    deployment: Any,
+    name: str,
+    watch: waits.Watch,
+    done: set[str],
+    failed: str | None = None,
+) -> None:
+    """Poll the deployment until its status is in `done`, printing each status and its reason."""
+    while True:
+        state = _state(deployment, name)
+        condition = state.condition
+        watch.see(state.status, condition.reason if condition is not None else None)
+        if state.status in done:
+            return
+        if state.status == failed:
+            raise click.ClickException(
+                f"Deployment {name} failed"
+                + (f": {watch.reason.rstrip('.')}" if watch.reason else "")
+                + f". Read `hops deployment logs {name}`."
+            )
+        if watch.expired():
+            watch.fail(f"Read `hops deployment logs {name}`, or raise --timeout.")
+        watch.sleep()
 
 
 @deployment_group.command("predict")

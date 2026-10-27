@@ -1,0 +1,59 @@
+{
+  "deployment": {
+    "name": "jupyter-blah--hopsabl2",
+    "namespace": "blah",
+    "desiredReplicas": 1,
+    "availableReplicas": 0,
+    "readyReplicas": 0,
+    "unavailableReplicas": 1,
+    "updatedReplicas": 1,
+    "rollingOut": false,
+    "lastCondition": {
+      "type": "Available",
+      "reason": "MinimumReplicasUnavailable",
+      "lastUpdateTime": "2026-10-20T12:39:09Z",
+      "lastTransitionTime": "2026-10-20T12:39:09Z",
+      "message": "Deployment does not have minimum availability.",
+      "age": "40s"
+    },
+    "events": {
+      "items": [
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "age": "41s",
+          "from": "deployment-controller",
+          "message": "Scaled up replica set jupyter-blah--hopsabl2-c8cd5bb76 from 0 to 1"
+        }
+      ]
+    },
+    "pods": {
+      "items": [
+        {
+          "name": "jupyter-blah--hopsabl2-c8cd5bb76-q7x2m",
+          "status": "Pending",
+          "ready": false,
+          "lastCondition": {
+            "type": "PodScheduled",
+            "reason": "Unschedulable",
+            "lastTransitionTime": "2026-10-20T12:39:09Z",
+            "message": "0/6 nodes are available: 1 node(s) didn't match Pod's node affinity/selector, 5 Insufficient memory. preemption: 0/6 nodes are available: 1 Preemption is not helpful for scheduling, 5 No preemption victims found for incoming pod.",
+            "age": "40s"
+          },
+          "events": {
+            "items": [
+              {
+                "type": "Warning",
+                "reason": "FailedScheduling",
+                "age": "40s",
+                "from": "default-scheduler",
+                "message": "0/6 nodes are available: 1 node(s) didn't match Pod's node affinity/selector, 5 Insufficient memory. preemption: 0/6 nodes are available: 1 Preemption is not helpful for scheduling, 5 No preemption victims found for incoming pod."
+              }
+            ]
+          }
+        }
+      ],
+      "count": 1
+    }
+  }
+}
