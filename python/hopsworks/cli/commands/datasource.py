@@ -2053,6 +2053,8 @@ def connector_infer_metadata(
 
     if bool(table) == bool(path):
         raise click.UsageError("Pass either a TABLE or --path with --data-format.")
+    if data_format and not path:
+        raise click.UsageError("--data-format needs --path.")
     fs = session.get_feature_store(ctx)
     if path:
         try:

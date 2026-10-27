@@ -1472,3 +1472,12 @@ def test_preview_refuses_path_with_table():
     )
     assert result.exit_code == 2
     assert "not both" in result.output
+
+
+def test_infer_metadata_refuses_format_with_table():
+    result = CliRunner().invoke(
+        cli,
+        ["datasource", "infer-metadata", "s", "t", "--data-format", "parquet"],
+    )
+    assert result.exit_code == 2
+    assert "--data-format needs --path" in result.output
