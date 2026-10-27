@@ -65,8 +65,8 @@ may be absent on older deployed `hops` binaries.
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
 - Does the app still depend on `APP_BASE_URL_PATH`? Then it is a **migration** task (see **Routing and readiness**); confirm whether the code can switch to root routing.
 - Does the app need **monitoring** narrowed to specific routes? Monitoring is on by default and routes are optional.
-- Does the app need **public access**? Streamlit sharing is feature-flagged; only ask for it when the platform has it enabled.
-- Does the app keep **its own state** (sessions, notes, agent memory)? Database access is on by default (`db_access=True`): the project's online feature store database is created at start and `MYSQL_*` variables are injected. Only a **Data Owner** start gets write privileges; a Data Scientist start is read-only. Pass `db_access=False` for an app that needs no database. Details in **hops-app-db**.
+- Does the app need **public access**? Public sharing of any app kind is feature-flagged; only ask for it when the platform has it enabled.
+- Does the app keep **its own state** (sessions, notes, agent memory)? Database access is on by default (`db_access=True`): the project's online feature store database is created at start and `MYSQL_*` variables are injected. The app connects as its own database user, reads the project database, and writes only the tables it creates with `app.create_table()` (Hopsworks runs the DDL and keeps them on disk), which are dropped with the app; whoever starts it, it can do the same. Pass `db_access=False` for an app that needs no database. Details in **hops-app-db**.
 - **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
 
 ## Routing and readiness
@@ -194,7 +194,7 @@ three things are app-specific:
   never calls a deployment, because a batch system has none; a what-if score uses the embedded
   model above.
 - **Calling a deployment** (real-time systems only): check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
-- **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Keep app tables there with an `app_` prefix and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, privileges per role, and RonDB table rules: **hops-app-db**.
+- **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Create and alter app tables with `app.create_table()` and `app.alter_table()`, which keep them on disk in RonDB (the app's own user cannot run `CREATE` or `ALTER TABLE`), and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, table registration, and RonDB table rules: **hops-app-db**.
 
 ### Reading Trino from a JavaScript app
 
