@@ -663,7 +663,7 @@ class HandlerContext:
         if data is not None:
             payload["data"] = data
         if args is not None:
-            payload["args"] = _bounded_text(args)
+            payload["args"] = _bounded_text(args, _MAX_ARGS_TEXT)
         if result is not None:
             payload["result"] = _bounded_text(result)
         self._dispatch(payload)
@@ -783,9 +783,13 @@ class HandlerContext:
 # Arguments and results ride on progress events and into the memory transcript,
 # so a tool that returns a whole document does not get to fill either.
 _MAX_EVENT_TEXT = 4000
+# A tool call's arguments are JSON a client may parse (the chat panel shows
+# them as the call was made), so they are bounded far more loosely than a
+# result or a message, which are read by a person.
+_MAX_ARGS_TEXT = 64_000
 
 
-def _bounded_text(value: Any) -> str:
+def _bounded_text(value: Any, limit: int = _MAX_EVENT_TEXT) -> str:
     if isinstance(value, str):
         text = value
     else:
@@ -793,8 +797,8 @@ def _bounded_text(value: Any) -> str:
             text = json.dumps(value, default=str)
         except (TypeError, ValueError):
             text = str(value)
-    if len(text) > _MAX_EVENT_TEXT:
-        return text[:_MAX_EVENT_TEXT] + "…"
+    if len(text) > limit:
+        return text[:limit] + "…"
     return text
 
 

@@ -914,10 +914,8 @@ class AgentApp(FastAPI):
                 "unknown_interrupt",
                 400,
             )
-        from datetime import datetime, timezone  # noqa: PLC0415
-
-        now = datetime.now(timezone.utc).isoformat()
-        expired = sorted(i for i, at in expires.items() if at and at < now)
+        now = datetime.now(timezone.utc)
+        expired = sorted(i for i, at in expires.items() if at and _before(at, now))
         if expired:
             raise AgentError(
                 "These questions expired before they were answered: "
@@ -1721,6 +1719,21 @@ def _annotate_span(ctx: HandlerContext, response: ChatResponse) -> None:
         response.metadata.setdefault("trace_id", format(ctxt.trace_id, "032x"))
     except Exception:  # noqa: BLE001 — correlation is best-effort
         pass
+
+
+def _before(stamp: str, now: datetime) -> bool:
+    """Whether an ISO timestamp is in the past: as a time, not as text.
+
+    Compared as strings, "+00:00" against "Z" or a different precision gave the
+    wrong answer for a stamp a client wrote itself.
+    """
+    try:
+        at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return stamp < now.isoformat()
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return at < now
 
 
 def _resume_in_progress() -> AgentError:
