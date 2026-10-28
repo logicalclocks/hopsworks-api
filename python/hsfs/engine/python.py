@@ -1269,10 +1269,12 @@ class Engine:
                     # only relabels and would silently misclassify rows from non-UTC
                     # zones. Naive datetimes are interpreted as UTC, mirroring the
                     # pandas branch's pd.to_datetime(..., utc=True).
+                    # A row without an event time cannot be shown unexpired, so it stays offline, as in pandas and Spark.
                     return (
                         dataframe[event_time]
                         .cast(pl.Datetime(time_zone="UTC"))
                         .gt(threshold)
+                        .fill_null(False)
                         .to_list()
                     )
                 return [True] * len(dataframe)
@@ -2156,23 +2158,28 @@ class Engine:
         ):
             online_flags = self._mark_online_rows(feature_group, dataframe)
 
+        # n_rows counts the records produced, num_entries those OnlineFS is meant to ingest.
         if offline_write_options.get("online_ingestion_options", {}).get(
             "disable_online_ingestion_count", False
         ):
-            n_rows = None
-        elif online_flags is not None and storage == kafka_engine._STORAGE_ONLINE:
-            # we will only produce rows marked for online ingestion, so count those for accurate progress bar and Kafka producer configuration
-            n_rows = sum(online_flags)
+            n_rows = num_entries = None
         else:
-            # if we are writing to offline or not marking online rows, all rows will be produced, so count the entire dataframe
             n_rows = len(dataframe)
+            num_entries = n_rows if online_flags is None else sum(online_flags)
+            if storage == kafka_engine._STORAGE_ONLINE:
+                n_rows = num_entries
 
         producer, headers, feature_writers, writer = kafka_engine._get_kafka_resources(
             feature_group,
             offline_write_options,
-            num_entries=n_rows,
+            num_entries=num_entries,
             storage=storage,
         )
+        # A skipped row is left out of the online ingestion, by its count and by carrying no ingestion id: OnlineFS before 2.4 reports nothing for a record it skips, so counting it would leave the ingestion short forever.
+        offline_row_headers = {
+            key: value for key, value in headers.items() if key != "onlineIngestionId"
+        }
+        offline_row_headers["storage"] = kafka_engine._STORAGE_OFFLINE_HEADER
 
         acked, progress_bar = (
             kafka_engine._build_ack_callback_and_optional_progress_bar(
@@ -2198,10 +2205,7 @@ class Engine:
                 if storage == kafka_engine._STORAGE_ONLINE:
                     # Online-only write — nobody would read the row, so do not produce it.
                     continue
-                row_headers = {
-                    **headers,
-                    "storage": kafka_engine._STORAGE_OFFLINE.encode("utf8"),
-                }
+                row_headers = offline_row_headers
 
             self._produce_row_kafka(
                 feature_group,
