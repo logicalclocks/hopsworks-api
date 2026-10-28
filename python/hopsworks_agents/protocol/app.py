@@ -35,7 +35,7 @@ from hopsworks_apigen import public
 
 from . import conventions
 from .agui import RunStream, _resume_answer, _to_chat_request
-from .context import HandlerContext, Interrupted, question_fingerprint
+from .context import HandlerContext, Interrupted, _question_fingerprint
 from .evaluation import RunVerifier, env_eval_mode, parse_baggage
 from .evaluation import active as eval_active
 from .memory import TURN_ABANDONED, TURN_CLOSED, ChatMemory, MemoryEraseError
@@ -969,7 +969,7 @@ class AgentApp(FastAPI):
             "request": kept.model_dump(mode="json"),
             "expires": {q["id"]: q.get("expires_at") for q in interrupts},
             # what each question asked: its answer is for that question only
-            "asked": {q["id"]: question_fingerprint(q) for q in interrupts},
+            "asked": {q["id"]: _question_fingerprint(q) for q in interrupts},
         }
         try:
             await asyncio.to_thread(

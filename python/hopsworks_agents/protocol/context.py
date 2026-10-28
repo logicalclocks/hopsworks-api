@@ -584,7 +584,7 @@ class HandlerContext:
         # answer is to what was asked then, so a question that is not the same one,
         # under the same id, is asked again instead of taking the earlier answer.
         if answer is not None and (
-            answer.asked is None or answer.asked == question_fingerprint(question)
+            answer.asked is None or answer.asked == _question_fingerprint(question)
         ):
             return answer
         if expires_in is not None:
@@ -812,7 +812,7 @@ def _bounded_text(value: Any, limit: int = _MAX_EVENT_TEXT) -> str:
 _ASKED_KEYS = ("message", "reason", "response_schema", "tool_call_id", "metadata")
 
 
-def question_fingerprint(question: dict[str, Any]) -> str:
+def _question_fingerprint(question: dict[str, Any]) -> str:
     """A digest of what a question asks, to tell an answer's question from another under the same id."""
     import hashlib  # noqa: PLC0415
 
