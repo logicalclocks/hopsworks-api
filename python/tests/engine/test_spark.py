@@ -3781,12 +3781,18 @@ class TestSpark:
             )
 
         # Assert
-        for name in fractions:
-            rows = [
-                sorted(r["id"] for r in result[name].collect()) for result in results
-            ]
-            assert rows[0] == rows[1]
-            assert rows[0]
+        try:
+            for name in fractions:
+                rows = [
+                    sorted(r["id"] for r in result[name].collect())
+                    for result in results
+                ]
+                assert rows[0] == rows[1]
+                assert rows[0]
+        finally:
+            for result in results:
+                for split_df in result.values():
+                    split_df.unpersist()
 
     def test_random_split_depends_on_seed(self, mocker):
         # Different seeds must yield different splits, proving the seed is
