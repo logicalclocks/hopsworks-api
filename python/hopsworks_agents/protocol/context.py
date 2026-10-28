@@ -541,7 +541,7 @@ class HandlerContext:
                 order = await find_order(request.text)
                 answer = ctx.interrupt(
                     f"Refund {order.amount} to order {order.id}?",
-                    key=f"refund-{order.id}",
+                    key=f"refund-{order.id}-{order.amount}",
                     response_schema={
                         "type": "object",
                         "properties": {"approved": {"type": "boolean"}},
