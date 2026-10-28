@@ -65,6 +65,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 /**
  * Random training dataset split by a keyed hash of each row.
@@ -139,13 +140,16 @@ public final class HashSplit {
       }
       hashed[i] = prepare(col("`" + names.get(i) + "`"), dataType).alias("c" + i);
     }
+    List<String> splitNames = new ArrayList<>();
     List<Double> fractions = new ArrayList<>();
     for (Split split : trainingDataset.getSplits()) {
+      splitNames.add(split.getName());
       // The percentage arrives as a decimal number: read it as the same double the Python client uses.
       fractions.add(Double.parseDouble(split.getPercentage().toString()));
     }
     UserDefinedFunction bucket = functions.udf(
-        new Bucket(parseTypes(types), salt(trainingDataset), bounds(fractions)), DataTypes.IntegerType);
+        new Bucket(parseTypes(types), salt(trainingDataset), bounds(fractions, order(splitNames)),
+            order(splitNames)), DataTypes.IntegerType);
     String splitColumn = "_SPLIT_INDEX_" + UUID.randomUUID().toString().replace("-", "");
     // Hash each row once: the splits are cached from the hashed frame, which is then released. The caller
     // unpersists the splits once it no longer reads them; on a failure here they are released before the throw.
@@ -184,23 +188,35 @@ public final class HashSplit {
     return (trainingDataset.getId() + ":" + trainingDataset.getVersion()).getBytes(StandardCharsets.UTF_8);
   }
 
-  static BigInteger[] bounds(List<Double> fractions) {
+  /**
+   * The split positions in the order of the split names, as the Python client sorts them (by code point, which
+   * is the order of the UTF-8 bytes). The bucket ranges are cumulative in this order, never the list order, so
+   * a list the server returns in another order than the creation gives the same rows per split name.
+   */
+  static int[] order(List<String> names) {
+    return IntStream.range(0, names.size()).boxed()
+        .sorted((a, b) -> Arrays.compareUnsigned(
+            names.get(a).getBytes(StandardCharsets.UTF_8), names.get(b).getBytes(StandardCharsets.UTF_8)))
+        .mapToInt(Integer::intValue).toArray();
+  }
+
+  static BigInteger[] bounds(List<Double> fractions, int[] order) {
     BigInteger[] bounds = new BigInteger[fractions.size() - 1];
     double total = 0.0;
     for (int i = 0; i < bounds.length; i++) {
-      total += fractions.get(i);
+      total += fractions.get(order[i]);
       bounds[i] = new BigDecimal(total).multiply(new BigDecimal(TWO_POW_64)).toBigInteger();
     }
     return bounds;
   }
 
-  static int bucket(long hash, BigInteger[] bounds) {
+  static int bucket(long hash, BigInteger[] bounds, int[] order) {
     BigInteger unsigned = new BigInteger(Long.toUnsignedString(hash));
     int index = 0;
     while (index < bounds.length && bounds[index].compareTo(unsigned) <= 0) {
       index++;
     }
-    return index;
+    return order[index];
   }
 
   /**
@@ -351,8 +367,10 @@ public final class HashSplit {
     private final Type[] types;
     private final byte[] salt;
     private final BigInteger[] bounds;
+    private final int[] order;
 
-    Bucket(Type[] types, byte[] salt, BigInteger[] bounds) {
+    Bucket(Type[] types, byte[] salt, BigInteger[] bounds, int[] order) {
+      this.order = order;
       this.types = types;
       this.salt = salt;
       this.bounds = bounds;
@@ -364,7 +382,7 @@ public final class HashSplit {
       for (int i = 0; i < values.length; i++) {
         values[i] = row.get(i);
       }
-      return bucket(rowHash(values, types, salt), bounds);
+      return bucket(rowHash(values, types, salt), bounds, order);
     }
   }
 

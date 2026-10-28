@@ -37,7 +37,7 @@
   ],
   "expected": {
     "hashes": ["6b2625276fde4909", "2dc475880b6bc6ec", "0c0cdeb73642f142", "40bc5e45c6909fd2", "13657f4f19636a34", "774afaf36371689c", "f8cdafead9801be0", "d9688f7daf3fb1c9"],
-    "buckets": [0, 0, 0, 0, 0, 0, 2, 2],
-    "legacy_buckets": [0, 1, 0, 0, 1, 2, 2, 1]
+    "buckets": [0, 2, 2, 0, 2, 0, 1, 1],
+    "legacy_buckets": [2, 0, 2, 0, 0, 1, 1, 0]
   }
 }

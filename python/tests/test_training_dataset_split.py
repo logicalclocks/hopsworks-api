@@ -244,7 +244,7 @@ class TestGoldenVectors:
     def test_hashes_and_splits(self):
         golden, _, types, rows = _golden()
         salt = golden["seed"].to_bytes(8, "big", signed=True)
-        fractions = [fraction for _, fraction in golden["splits"]]
+        fractions = [tuple(split) for split in golden["splits"]]
         columns = [list(column) for column in zip(*rows, strict=True)]
 
         assert [

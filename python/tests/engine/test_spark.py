@@ -3738,7 +3738,7 @@ class TestSpark:
             [list(range(100))],
             ["bigint"],
             training_dataset_split._split_salt(td),
-            [0.5, 0.5],
+            [("test_split1", 0.5), ("test_split2", 0.5)],
         )
         expected = {
             name: [row for row, index in enumerate(indexes) if index == i]
@@ -3753,6 +3753,40 @@ class TestSpark:
         for name in ("test_split1", "test_split2"):
             assert sorted(r["col_0"] for r in first[name].collect()) == expected[name]
             assert sorted(r["col_0"] for r in second[name].collect()) == expected[name]
+
+    def test_random_split_ignores_the_split_list_order(self, mocker):
+        # The server returns the persisted splits in another order than the creation:
+        # the rows per split name stay the same.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        spark_df = spark_engine._spark_session.range(500)
+        fractions = {"train": 0.6, "validation": 0.2, "test": 0.2}
+        results = []
+        for order in (["train", "validation", "test"], ["test", "train", "validation"]):
+            td = training_dataset.TrainingDataset(
+                name="test",
+                version=1,
+                data_format="CSV",
+                featurestore_id=99,
+                splits={name: fractions[name] for name in order},
+                seed=42,
+                id=10,
+                split_method="hash",
+            )
+
+            # Act
+            results.append(
+                spark_engine._random_split(dataset=spark_df, training_dataset=td)
+            )
+
+        # Assert
+        for name in fractions:
+            rows = [
+                sorted(r["id"] for r in result[name].collect()) for result in results
+            ]
+            assert rows[0] == rows[1]
+            assert rows[0]
 
     def test_random_split_depends_on_seed(self, mocker):
         # Different seeds must yield different splits, proving the seed is

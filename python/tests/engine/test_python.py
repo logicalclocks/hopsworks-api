@@ -2576,7 +2576,7 @@ class TestPython:
             [big, [[b, None] for b in big]],
             ["bigint", "array<bigint>"],
             training_dataset_split._split_salt(td),
-            [split.percentage for split in td.splits],
+            [(split.name, split.percentage) for split in td.splits],
         )
         assert {name: set(df["k"]) for name, df in result.items()} == {
             split.name: {k for k in range(60) if indexes[k] == i}
@@ -2636,6 +2636,39 @@ class TestPython:
         assert sum(len(v) for v in keys.values()) == n
         for name, fraction in {"train": 0.6, "validation": 0.2, "test": 0.2}.items():
             assert abs(len(keys[name]) / n - fraction) < tolerance
+
+    @pytest.mark.parametrize("frame", ["pandas", "polars"])
+    def test_random_split_ignores_the_split_list_order(self, mocker, frame):
+        # The server returns the persisted splits in another order than the creation:
+        # the rows per split name stay the same.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        data = {"k": list(range(500))}
+        results = []
+        for order in (["train", "validation", "test"], ["test", "train", "validation"]):
+            td = training_dataset.TrainingDataset(
+                name="test",
+                version=1,
+                data_format="CSV",
+                featurestore_id=99,
+                splits={
+                    name: {"train": 0.6, "validation": 0.2, "test": 0.2}[name]
+                    for name in order
+                },
+                seed=42,
+                id=10,
+                split_method="hash",
+            )
+            df = pl.DataFrame(data) if frame == "polars" else pd.DataFrame(data)
+
+            # Act
+            results.append(python_engine._random_split(df, td))
+
+        # Assert
+        for name in ("train", "validation", "test"):
+            assert sorted(results[0][name]["k"]) == sorted(results[1][name]["k"])
+        assert all(len(result[name]) > 0 for result in results for name in result)
 
     def test_random_split_without_split_method_keeps_the_legacy_split(self, mocker):
         # A training dataset created before split methods reads the rows it was created with:

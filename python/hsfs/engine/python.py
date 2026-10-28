@@ -1692,7 +1692,7 @@ class Engine:
                 ],
                 [offline_type for _, offline_type in columns],
                 training_dataset_split._split_salt(training_dataset_obj),
-                [split.percentage for split in splits],
+                [(split.name, split.percentage) for split in splits],
             )
         else:
             # Created before split methods: keep the split it was created with.

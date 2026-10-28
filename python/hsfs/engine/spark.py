@@ -1426,7 +1426,9 @@ class Engine:
             hashed.append(_hash_prep(col(f"`{name}`"), data_type).alias(f"c{index}"))
             offline_types.append(declared or data_type.simpleString())
         salt = training_dataset_split._split_salt(training_dataset)
-        fractions = [split.percentage for split in training_dataset.splits]
+        named_fractions = [
+            (split.name, split.percentage) for split in training_dataset.splits
+        ]
 
         def bucket(rows: pd.DataFrame) -> pd.Series:
             return pd.Series(
@@ -1434,7 +1436,7 @@ class Engine:
                     [rows[name].tolist() for name in rows.columns],
                     offline_types,
                     salt,
-                    fractions,
+                    named_fractions,
                 ),
                 dtype="int32",
             )

@@ -403,26 +403,31 @@ def _canonical_row_bytes(values, types) -> bytes:
     return bytes(out)
 
 
-def _split_indexes(columns, types, salt: bytes, fractions) -> list[int]:
+def _split_indexes(columns, types, salt: bytes, splits) -> list[int]:
     """Assign each row to a split by a keyed hash of its content.
 
-    `columns` holds one list of values per column. The index is that of the split whose
-    cumulative fraction range holds the row's hash, read as a fraction of 2^64.
+    `columns` holds one list of values per column. `splits` is the list of (name, fraction) in the
+    caller's order. The bucket ranges are cumulative in the order of the split names, never the list
+    order, so a list order the server returns differently from the creation gives the same rows per
+    split name. The index returned is the position of the row's split in `splits`.
     """
+    by_name = sorted(range(len(splits)), key=lambda i: splits[i][0])
     bounds, total = [], 0.0
-    for fraction in fractions[:-1]:
-        total += fraction
+    for i in by_name[:-1]:
+        total += splits[i][1]
         bounds.append(int(total * 2**64))
     return [
-        bisect.bisect_right(
-            bounds,
-            int.from_bytes(
-                hashlib.blake2b(
-                    _canonical_row_bytes(row, types), key=salt, digest_size=8
-                ).digest(),
-                "big",
-            ),
-        )
+        by_name[
+            bisect.bisect_right(
+                bounds,
+                int.from_bytes(
+                    hashlib.blake2b(
+                        _canonical_row_bytes(row, types), key=salt, digest_size=8
+                    ).digest(),
+                    "big",
+                ),
+            )
+        ]
         for row in zip(*columns, strict=True)
     ]
 

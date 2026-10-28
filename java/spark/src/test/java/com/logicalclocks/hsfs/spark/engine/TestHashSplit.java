@@ -238,6 +238,44 @@ public class TestHashSplit {
   }
 
   @Test
+  public void testSplitIgnoresTheSplitListOrder() {
+    // The server returns the persisted splits in another order than the creation: the rows per split
+    // name stay the same.
+    // Arrange
+    Dataset<Row> dataset = SparkEngine.getInstance().getSparkSession().range(500).toDF();
+    Map<String, Float> fractions = new HashMap<>();
+    fractions.put("train", 0.6f);
+    fractions.put("validation", 0.2f);
+    fractions.put("test", 0.2f);
+    List<Map<String, Set<Long>>> results = new ArrayList<>();
+    for (String[] order : new String[][] {{"train", "validation", "test"}, {"test", "train", "validation"}}) {
+      TrainingDataset trainingDataset = new TrainingDataset();
+      List<Split> splits = new ArrayList<>();
+      for (String name : order) {
+        splits.add(new Split(name, fractions.get(name)));
+      }
+      trainingDataset.setSplits(splits);
+      trainingDataset.setSeed(42L);
+      trainingDataset.setSplitMethod(HashSplit.METHOD);
+
+      // Act
+      Dataset<Row>[] result = HashSplit.split(dataset, trainingDataset, null);
+
+      // Assert
+      Map<String, Set<Long>> byName = new HashMap<>();
+      for (int i = 0; i < result.length; i++) {
+        Set<Long> ids = new HashSet<>();
+        result[i].select("id").collectAsList().forEach(r -> ids.add(r.getLong(0)));
+        byName.put(order[i], ids);
+      }
+      results.add(byName);
+      HashSplit.unpersist(result);
+    }
+    Assertions.assertEquals(results.get(0), results.get(1));
+    results.get(0).values().forEach(ids -> Assertions.assertFalse(ids.isEmpty()));
+  }
+
+  @Test
   public void testTrainingDatasetWithoutSplitMethodKeepsTheLegacySplit() {
     // Arrange
     Dataset<Row> dataset = SparkEngine.getInstance().getSparkSession().range(200).toDF().coalesce(1);
