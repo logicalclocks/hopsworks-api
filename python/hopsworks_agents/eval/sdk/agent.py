@@ -1224,6 +1224,33 @@ class Agent:
         return self._app(str(body["name"]))
 
     @public
+    def customize_chat_app(self) -> App:
+        """Run the agent's chat app from a folder of the project, where its page and server can be changed.
+
+        The folder is `Resources/chat-apps/<app name>`.
+        On its next start, which this triggers, the app copies its template there (nothing already there is overwritten) and runs from it.
+        The template holds a `server.mjs`, a React page in `web/`, a `theme.css`, and an `AGENTS.md` for whoever changes it, coding agents in the Hopsworks terminal included.
+        The chat's core (who is chatting, whose conversations are whose, how the agent is reached) stays the image's `@hopsworks/agent-chat` package, so it keeps getting fixes.
+        Restart the app (`app.redeploy()`) to see a change; one that fails to load or build is logged and the default page is served instead.
+        Customizing an app that already is keeps its folder.
+
+        Example:
+            ```python
+            agent = project.get_agent_serving().get_agent("support")
+            app = agent.customize_chat_app()  # now edit Resources/chat-apps/support_chat
+            app.redeploy()  # after a change
+            ```
+
+        Returns:
+            `App`: the chat app.
+
+        Raises:
+            `AgentServingError`: If the agent has no chat app.
+        """
+        body = self._http.post(f"/serving/{self.id}/chatapp/customize", json={})
+        return self._app(str(body["name"]))
+
+    @public
     def delete_chat_app(self) -> None:
         """Delete the agent's chat app; nothing happens when it has none.
 

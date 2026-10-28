@@ -2753,6 +2753,18 @@ class TestChatApp:
         assert support.chat_app() == "App(support_chat)"
         assert session.sent == [("GET", "/serving/7/chatapp", None, None)]
 
+    def test_customizing_it_asks_the_deployment_and_returns_the_app(self):
+        _, support, session = agent(
+            Reply(
+                {
+                    "name": "support_chat",
+                    "customDir": "Resources/chat-apps/support_chat",
+                }
+            )
+        )
+        assert support.customize_chat_app() == "App(support_chat)"
+        assert session.sent == [("POST", "/serving/7/chatapp/customize", None, {})]
+
     def test_deleting_it(self):
         _, support, session = agent(Reply(status=204))
         support.delete_chat_app()
