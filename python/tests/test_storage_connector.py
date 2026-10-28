@@ -3892,7 +3892,7 @@ class TestHopsworksConnector:
         }
         assert payload["verify"] is False
 
-    def test_get_tables_defaults_to_the_remote_project_feature_store(self, mocker):
+    def test_get_tables_leaves_the_default_feature_store_to_the_server(self, mocker):
         sc = self._connector()
         mock_get_tables = mocker.patch.object(
             sc._data_source_api, "_get_tables", return_value=[]
@@ -3900,7 +3900,7 @@ class TestHopsworksConnector:
 
         sc.get_tables()
 
-        mock_get_tables.assert_called_once_with(sc, "sales_featurestore")
+        mock_get_tables.assert_called_once_with(sc, None)
 
     def test_get_tables_takes_a_shared_feature_store(self, mocker):
         sc = self._connector()
@@ -3911,13 +3911,6 @@ class TestHopsworksConnector:
         sc.get_tables("marketing_featurestore")
 
         mock_get_tables.assert_called_once_with(sc, "marketing_featurestore")
-
-    def test_get_tables_without_project_needs_a_database(self, mocker):
-        sc = self._connector(project=None)
-        mocker.patch.object(sc, "_refetch")
-
-        with pytest.raises(ValueError, match="remote feature store name"):
-            sc.get_tables()
 
     def test_read_points_to_an_external_feature_group(self):
         with pytest.raises(NotImplementedError, match="external feature group"):
