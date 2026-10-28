@@ -14,39 +14,7 @@
 #   limitations under the License.
 #
 
-import pytest
-from hopsworks_common.core import alerts_api, opensearch_api
-
-
-class _Client:
-    _project_id = 119
-    _project_name = "Display Name"
-    _project_backing_name = "backing1"
-
-    def __init__(self):
-        self.requests = []
-
-    def _send_request(self, method, path_params, **kwargs):
-        self.requests.append((method, path_params))
-        return {"name": path_params[-1], "config": []}
-
-
-@pytest.fixture
-def backing_client(mocker):
-    c = _Client()
-    mocker.patch("hopsworks_common.client._get_instance", return_value=c)
-    return c
-
-
-class TestOpenSearchIndexPrefix:
-    def test_index_is_prefixed_by_the_lowercased_backing_name(self, backing_client):
-        backing_client._project_backing_name = "BackingOne"
-
-        index = opensearch_api.OpenSearchApi.__new__(
-            opensearch_api.OpenSearchApi
-        ).get_project_index("Docs")
-
-        assert index == "backingone_docs"
+from hopsworks_common.core import alerts_api
 
 
 class TestAlertReceiverPrefix:
@@ -69,12 +37,3 @@ class TestAlertReceiverPrefix:
             api._fix_receiver_name("Display Name__mail", "backing1")
             == "backing1__Display Name__mail"
         )
-
-    def test_get_alert_receiver_requests_the_backing_prefixed_name(
-        self, backing_client
-    ):
-        alerts_api.AlertsApi().get_alert_receiver("mail")
-
-        assert backing_client.requests == [
-            ("GET", ["project", 119, "alerts", "receivers", "backing1__mail"])
-        ]

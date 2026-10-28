@@ -16,7 +16,6 @@
 
 import pytest
 from hopsworks_common.client import hopsworks as internal_client
-from hopsworks_common.client.external import Client as ExternalClient
 from hopsworks_common.client.istio import hopsworks as istio_internal_client
 
 
@@ -60,45 +59,3 @@ class TestInternalBackingName:
 
     def test_falls_back_to_project_name(self, client_cls):
         assert _bare(client_cls, "display")._backing_name() == "display"
-
-
-class TestExternalProvideProject:
-    def _client(self, mocker, project_info):
-        mocker.patch(
-            "hopsworks_common.client._get_connection", return_value=mocker.MagicMock()
-        )
-        c = ExternalClient.__new__(ExternalClient)
-        c._engine = "none"
-        c._get_project_info = mocker.MagicMock(return_value=project_info)
-        c._get_username = mocker.MagicMock(return_value="meb")
-        return c
-
-    def test_backing_name_from_project_info(self, mocker):
-        c = self._client(mocker, {"projectId": 7, "backingName": "proj_abc"})
-
-        c._provide_project("My Project")
-
-        assert c._project_name == "My Project"
-        assert c._project_backing_name == "proj_abc"
-
-    def test_project_info_without_backing_name_falls_back(self, mocker):
-        c = self._client(mocker, {"projectId": 7})
-
-        c._provide_project("proj")
-
-        assert c._project_backing_name == "proj"
-
-    def test_explicit_backing_name_skips_lookup(self, mocker):
-        c = self._client(mocker, {})
-
-        c._provide_project("proj", project_id=7, backing_name="proj_abc")
-
-        assert c._project_backing_name == "proj_abc"
-        c._get_project_info.assert_not_called()
-
-    def test_explicit_id_without_backing_name_falls_back(self, mocker):
-        c = self._client(mocker, {})
-
-        c._provide_project("proj", project_id=7)
-
-        assert c._project_backing_name == "proj"

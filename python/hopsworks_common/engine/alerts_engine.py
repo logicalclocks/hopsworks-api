@@ -65,8 +65,8 @@ class AlertsEngine:
     def _get_receiver(self, name):
         _client = client._get_instance()
         # should only wait for project receivers
-        if not name.startswith(f"{_client._project_name}__"):
-            name = f"{_client._project_name}__{name}"
+        if not name.startswith(f"{_client._project_backing_name}__"):
+            name = f"{_client._project_backing_name}__{name}"
         path_params = ["project", _client._project_id, "alerts", "receivers"]
         query_params = {"expand": True}
         headers = {"content-type": "application/json"}
@@ -121,8 +121,8 @@ class AlertsEngine:
     def _get_route(self, name: str, match: list[dict]):
         _client = client._get_instance()
         # should only wait for project receivers
-        if not name.startswith(f"{_client._project_name}__"):
-            name = f"{_client._project_name}__{name}"
+        if not name.startswith(f"{_client._project_backing_name}__"):
+            name = f"{_client._project_backing_name}__{name}"
         path_params = ["project", _client._project_id, "alerts", "routes"]
         query_params = {"loaded": True}  # we want to get the loaded routes
         headers = {"content-type": "application/json"}
