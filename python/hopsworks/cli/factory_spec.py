@@ -522,6 +522,11 @@ CREDENTIAL_URL = re.compile(
 )
 
 
+def _keeps_code_local(value: dict) -> bool:
+    # A url of "local" is how system.yaml and the playbooks write it.
+    return value.get("local") is True or str(value.get("url") or "").strip().lower() == "local"
+
+
 def repository_problems(value: Any, label: str) -> list[str]:
     """What is wrong with a repository answer, {create: true}, {create: false, url} or {create: false, local: true}.
 
@@ -534,7 +539,7 @@ def repository_problems(value: Any, label: str) -> list[str]:
     """
     if not isinstance(value, dict) or not isinstance(value.get("create", True), bool):
         return [f"{label} must say whether to create a new GitHub repository."]
-    if value.get("create", True) or value.get("local") is True:
+    if value.get("create", True) or _keeps_code_local(value):
         return []
     url = str(value.get("url") or "").strip()
     if not url:
@@ -563,10 +568,10 @@ def repo_record(value: Any) -> dict:
     """
     if isinstance(value, str):
         return {"url": value}
+    if isinstance(value, dict) and _keeps_code_local(value):
+        return {"url": "local", "provider": "local"}
     if not isinstance(value, dict) or value.get("create", True):
         return {"url": "new", "provider": "github"}
-    if value.get("local") is True:
-        return {"url": "local", "provider": "local"}
     url = str(value["url"]).strip()
     return {"url": url, "provider": repo_provider(url)}
 

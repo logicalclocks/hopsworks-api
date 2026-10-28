@@ -187,6 +187,12 @@ def test_a_new_repository_needs_no_url_and_an_existing_one_a_clean_url():
         assert problem in factory_spec.repository_problems(answer, "Repo")[0]
 
 
+@pytest.mark.parametrize("answer", [{"url": "local"}, {"create": False, "url": "local"}, {"create": True, "url": " Local "}])
+def test_a_local_url_keeps_code_in_hopsworks(answer):
+    assert factory_spec.repository_problems(answer, "Repo") == []
+    assert factory_spec.repo_record(answer) == {"url": "local", "provider": "local"}
+
+
 def test_code_kept_in_hopsworks_needs_no_url_and_creates_no_repository():
     answer = {"create": False, "local": True}
     assert factory_spec.repository_problems(answer, "Repo") == []

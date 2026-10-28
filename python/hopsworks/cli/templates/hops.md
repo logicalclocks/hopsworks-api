@@ -67,7 +67,7 @@ is the whole dispatch:
 | dashboard | feature groups with rows | Superset dashboard `<title>` | `hops superset dashboard list` lists `<title>` | **hops-dashboard-builder** (Dashboard below) |
 | app | what it reads: feature groups, or a deployment for predictions (never the model file) | app `<a>` serving | `hops app info <a>` shows `State` `RUNNING` | **hops-app-builder** (App below) |
 | notebook | what it reads: feature groups or a feature view | notebook `<path>.ipynb` with its outputs | `hops notebook info <path>.ipynb` shows a `RUN` number on every code cell, and no cell raised | you, no builder (Notebook below) |
-| analytics layer | bronze: a source; silver: feature groups with rows, used as bronze by name, never copied; gold: silver tables | the layer's tables with rows | `hops fg preview <table> --limit 1` for each table its `system.yaml` lists | `/hops-bronze`, `/hops-silver`, `/hops-gold` |
+| analytics layer | bronze: a source; silver: feature groups with rows, used as bronze by name, never copied; gold: silver tables | the layer's tables with rows | `hops fg preview <table> --limit 1` for each table its `system.yaml` lists | `/hops-bronze` only for the example bronze of generated data, never when the request names a table or this conversation made one (that table is the bronze: `hops factory run analytics-silver` with it by name), then `/hops-silver`, `/hops-gold` |
 
 1. **The goal.** Write down the pieces the request names, each with its asset name. Add a piece
    one of them needs only when that need's exit check fails: "a model on the deals" with no
