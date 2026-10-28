@@ -2637,7 +2637,13 @@ class TestPython:
         for name, fraction in {"train": 0.6, "validation": 0.2, "test": 0.2}.items():
             assert abs(len(keys[name]) / n - fraction) < tolerance
 
-    @pytest.mark.parametrize("frame", ["pandas", "polars"])
+    @pytest.mark.parametrize(
+        "frame",
+        [
+            "pandas",
+            pytest.param("polars", marks=pytest.mark.skipif(not HAS_POLARS, reason="Polars is not installed.")),
+        ],
+    )
     def test_random_split_ignores_the_split_list_order(self, mocker, frame):
         # The server returns the persisted splits in another order than the creation:
         # the rows per split name stay the same.
