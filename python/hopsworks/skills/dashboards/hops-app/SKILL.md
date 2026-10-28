@@ -183,6 +183,25 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ["APP_PORT"]))
 ```
 
+### A chat app for an agent (5.3+)
+
+For a chat page in front of an **agent deployment**, do not write one: every agent can have a ready-made chat app, and it already handles what a hand-written one gets wrong (who is chatting, keeping each person's conversations apart, no serving key in the browser, the agent's questions, feedback, attachments, waking an agent that scales to zero).
+
+```python
+agent = project.get_agent_serving().get_agent("support")
+app = agent.create_chat_app()  # app "support_chat", started; or deploy_agent(..., chat_app=True)
+```
+
+Members open it with their Hopsworks login; `app.make_public()` shares it with anyone holding the link. Branding without code: the app's `CHAT_TITLE`, `CHAT_WELCOME`, `CHAT_ACCENT_COLOR`, `CHAT_LOGO_URL` and `CHAT_THEME_DIR` variables (details in **hops-agent-deployment**).
+
+To change its page, layout or server, **customize** it rather than starting over:
+
+```python
+app = agent.customize_chat_app()  # runs from Resources/chat-apps/support_chat
+```
+
+The app copies its template into that project folder (a `server.mjs` on the image's `@hopsworks/agent-chat` package, a React page in `web/`, `theme.css`) and runs from it. **Read the folder's `AGENTS.md` before changing anything**: it lists the extension points (`<HopsworksChat />` slots and parts, `startChatApp()` options, a `routes` hook given who is asking) and what must stay the package's. The package is in the app's image, not the terminal's, so try a change with `app.redeploy()` and `app.get_logs()`; a folder that fails to build is logged and the default page is served. Removing the app's `CHAT_APP_DIR` variable goes back to the default app.
+
 ### Reading Hopsworks data from the app
 
 The SDK calls are the same as anywhere (hops-fg / hops-fv / hops-online-inference);
