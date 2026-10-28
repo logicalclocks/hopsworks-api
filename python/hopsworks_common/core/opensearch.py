@@ -33,8 +33,10 @@ from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG, OpenSearchAp
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,
+    AuthorizationException,
     ConnectionError,
     ConnectionTimeout,
+    NotFoundError,
     RequestError,
 )
 from retrying import retry
@@ -46,49 +48,53 @@ def _is_timeout(exception):
     )
 
 
+def _request_error_exception(
+    e: RequestError, client_wrapper
+) -> VectorDatabaseException:
+    error = e.info.get("error") or {}
+    caused_by = error.get("caused_by")
+    # A knn query with the filter inside reports k out of range at the top level, without caused_by.
+    if not caused_by and error.get("type") == "illegal_argument_exception":
+        caused_by = error
+    if caused_by and caused_by["type"] == "illegal_argument_exception":
+        if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
+            return client_wrapper._create_vector_database_exception(caused_by["reason"])
+        return VectorDatabaseException(
+            VectorDatabaseException.OTHERS,
+            f"Error in Opensearch request: {caused_by['reason']}",
+            e.info,
+        )
+    return VectorDatabaseException(
+        VectorDatabaseException.OTHERS,
+        f"Error in Opensearch request: {e}",
+        e.info,
+    )
+
+
 def _handle_opensearch_exception(func):
     @wraps(func)
     def error_handler_wrapper(*args, **kw):
+        # args[0] is 'self' - the ProjectOpenSearchClient instance
+        client_wrapper = args[0] if args else None
         try:
             return func(*args, **kw)
         except (ConnectionError, AuthenticationException):
             # OpenSearchConnectionError occurs when connection is closed.
             # OpenSearchAuthenticationException occurs when jwt is expired
-            # args[0] is 'self' - the ProjectOpenSearchClient instance
-            client_wrapper = args[0] if args else None
             if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
                 client_wrapper._refresh_opensearch_connection()
-            return func(*args, **kw)
+            # A RequestError raised in this handler skips the sibling clause below, so the retried request converts its own.
+            try:
+                return func(*args, **kw)
+            except RequestError as e:
+                raise _request_error_exception(e, client_wrapper) from e
         except RequestError as e:
-            error = e.info.get("error") or {}
-            caused_by = error.get("caused_by")
-            # A knn query with the filter inside reports k out of range at the top level, without caused_by.
-            if not caused_by and error.get("type") == "illegal_argument_exception":
-                caused_by = error
-            if caused_by and caused_by["type"] == "illegal_argument_exception":
-                client_wrapper = args[0] if args else None
-                if client_wrapper and isinstance(
-                    client_wrapper, ProjectOpenSearchClient
-                ):
-                    raise client_wrapper._create_vector_database_exception(
-                        caused_by["reason"]
-                    ) from e
-                raise VectorDatabaseException(
-                    VectorDatabaseException.OTHERS,
-                    f"Error in Opensearch request: {caused_by['reason']}",
-                    e.info,
-                ) from e
-            raise VectorDatabaseException(
-                VectorDatabaseException.OTHERS,
-                f"Error in Opensearch request: {e}",
-                e.info,
-            ) from e
+            raise _request_error_exception(e, client_wrapper) from e
         except Exception as e:
             if _is_timeout(e):
                 raise FeatureStoreException(
                     ProjectOpenSearchClient.TIMEOUT_ERROR_MSG
                 ) from e
-            client_wrapper = args[0] if args else None
             # Invalidate the cache for federated connector clients if the error is not a timeout,
             # so that it wont't stuck at a error state.
             if (
@@ -205,12 +211,19 @@ class ProjectOpenSearchClient:
         retry_on_exception=_is_timeout,
     )
     @_handle_opensearch_exception
-    def _get_field_mapping(self, index: str, field: str) -> dict:
+    def _get_field_mapping(self, index: str, field: str) -> dict | None:
+        """The mapping of `field` in `index`, or None when this client may not read it or the index does not exist.
+
+        Both are returned rather than raised, because the error handler closes and replaces a federated client on an exception.
+        """
         # Not GET <index>/_mapping, which the read role of a shared feature group does not allow.
         # No request options: opensearch-py before 2.3 sends the timeout as a query parameter, which this endpoint rejects.
-        return self._get_opensearch_client().indices.get_field_mapping(
-            fields=field, index=index
-        )
+        try:
+            return self._get_opensearch_client().indices.get_field_mapping(
+                fields=field, index=index
+            )
+        except (AuthorizationException, NotFoundError):
+            return None
 
     @retry(
         wait_exponential_multiplier=1000,
