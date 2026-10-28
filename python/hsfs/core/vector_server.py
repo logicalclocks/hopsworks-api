@@ -18,7 +18,9 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import threading
 import warnings
+import weakref
 from base64 import b64decode
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -151,6 +153,18 @@ async def _bounded(awaitable, timeout: float | None):
         raise TimeoutError(f"Online feature read took longer than {timeout}s") from None
 
 
+def _close_sql_client_off_thread(
+    sql_client: online_store_sql_engine.OnlineStoreSqlClient,
+) -> None:
+    """Close the SQL client of a server that was garbage collected, without waiting for it.
+
+    Collection can run on any thread, the client's own task thread included, and closing from there would block the event loop the close has to run on.
+    """
+    threading.Thread(
+        target=sql_client._close, name="online-store-sql-client-close", daemon=True
+    ).start()
+
+
 class VectorServer:
     DEFAULT_REST_CLIENT = "rest"
     DEFAULT_SQL_CLIENT = "sql"
@@ -232,6 +246,9 @@ class VectorServer:
             tf_exec_dag_mod.TransformationExecutionDAG | None
         ) = None
         self._sql_client = None
+        # The task thread keeps the SQL client reachable, so only this server's own
+        # collection can release a pool that nobody closed.
+        self._sql_client_finalizer: weakref.finalize | None = None
 
         self._rest_client_engine = None
         self._init_rest_client: bool | None = None
@@ -265,6 +282,9 @@ class VectorServer:
         config_rest_client: dict[str, Any] | None = None,
         default_client: Literal["rest", "sql"] | None = None,
     ):
+        # A failed re-init must not leave the previous state marked usable, or the
+        # next read would skip the automatic re-init and find no SQL client.
+        self._serving_initialized = False
         self._training_dataset_version = training_dataset_version
 
         self._parent_feature_groups = entity.get_parent_feature_groups().accessible
@@ -325,6 +345,8 @@ class VectorServer:
                 inference_helper_columns=inference_helper_columns,
                 options=options,
             )
+        else:
+            self._release_sql_client()
         self._serving_initialized = True
 
     def _init_batch_scoring(
@@ -416,19 +438,43 @@ class VectorServer:
     ) -> None:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Initialising Online Store SQL client")
-        self._sql_client = online_store_sql_engine.OnlineStoreSqlClient(
+        # Closed before the new one is built, so a failed setup leaves no pool open
+        # and connections never double while both exist.
+        self._release_sql_client()
+        sql_client = online_store_sql_engine.OnlineStoreSqlClient(
             feature_store_id=self._feature_store_id,
             skip_fg_ids=self._skip_fg_ids,
             serving_keys=self.serving_keys,
             external=external,
         )
-        self.sql_client._init_prepared_statements(
-            entity,
-            inference_helper_columns,
-            with_logging_meta_data=self._feature_view_logging_enabled,
-            feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+        try:
+            sql_client._init_prepared_statements(
+                entity,
+                inference_helper_columns,
+                with_logging_meta_data=self._feature_view_logging_enabled,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            )
+            sql_client._init_async_mysql_connection(options=options)
+        except BaseException:
+            # The task thread may already be running with its pool open.
+            sql_client._close()
+            raise
+        self._sql_client = sql_client
+        self._sql_client_finalizer = weakref.finalize(
+            self, _close_sql_client_off_thread, sql_client
         )
-        self.sql_client._init_async_mysql_connection(options=options)
+        # At interpreter exit the sockets close with the process; a clean close
+        # would only delay the exit.
+        self._sql_client_finalizer.atexit = False
+
+    def _release_sql_client(self) -> None:
+        """Close the SQL client now, if there is one, instead of when this server is collected."""
+        if self._sql_client_finalizer is not None:
+            self._sql_client_finalizer.detach()
+            self._sql_client_finalizer = None
+        if self._sql_client is not None:
+            self._sql_client._close()
+            self._sql_client = None
 
     def _setup_rest_client_and_engine(
         self,
@@ -608,7 +654,7 @@ class VectorServer:
     def _feature_vector_steps(
         self,
         entry: dict[str, Any],
-        return_type: Literal["list", "numpy", "pandas", "polars"],
+        return_type: Literal["list", "numpy", "pandas", "polars"] = "list",
         passed_features: dict[str, Any] | None = None,
         vector_db_features: dict[str, Any] | None = None,
         allow_missing: bool = False,
@@ -2290,8 +2336,7 @@ class VectorServer:
         Serving can be initialised again afterwards; a fresh client is built.
         """
         if self._sql_client is not None:
-            self._sql_client._close()
-            self._sql_client = None
+            self._release_sql_client()
             self._serving_initialized = False
 
     @property

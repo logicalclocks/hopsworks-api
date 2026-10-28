@@ -999,6 +999,15 @@ class TestFeatureView:
         server._get_inference_helpers.assert_called_once()
         assert result is server._get_inference_helpers.return_value
 
+    def test_get_inference_helpers_initialises_serving_first(self, mocker):
+        fv, server = self._fv_with_spec_server(mocker)
+        server._serving_initialized = False
+        init_serving = mocker.patch.object(feature_view.FeatureView, "init_serving")
+
+        fv.get_inference_helpers(entry=[{"primary_key": 1}])
+
+        init_serving.assert_called_once()
+
     def test_transformed_feature_name(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
