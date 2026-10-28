@@ -135,6 +135,18 @@ class TestServingApi:
             "active": False
         }
 
+    def test_delete_traces_sends_one_batch(self, mocker):
+        api = ServingApi()
+        client_instance = _patch_client(mocker, {"deleted": 12})
+
+        assert api._delete_traces(_deployment(), 1793145600000, 500) == 12
+
+        method, path_params, query_params = client_instance._send_request.call_args.args
+        assert method == "DELETE"
+        assert path_params[2:4] == ["otel", "servings"]
+        assert path_params[-1] == "traces"
+        assert query_params == {"batchSize": 500, "until": 1793145600000}
+
     def test_get_tag_returns_value_for_name(self, mocker):
         # Arrange
         api = ServingApi()

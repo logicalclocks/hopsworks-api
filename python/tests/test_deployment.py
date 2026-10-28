@@ -15,6 +15,7 @@
 #
 
 import copy
+import datetime
 import os
 
 import humps
@@ -505,6 +506,48 @@ class TestDeployment:
 
         with pytest.raises(ValueError):
             d.set_tracing(sampling_percentage=101)
+        send.assert_not_called()
+
+    # delete_traces
+
+    def test_delete_traces_repeats_batches_until_none_are_left(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._delete_traces",
+            side_effect=[500, 500, 7, 0],
+        )
+
+        deleted = d.delete_traces(
+            until_datetime=datetime.datetime(2026, 10, 28), batch_size=500
+        )
+
+        assert deleted == 1007
+        assert send.call_count == 4
+        send.assert_called_with(d, 1793145600000, 500)
+
+    def test_delete_traces_deletes_all_without_a_date(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._delete_traces", return_value=0
+        )
+
+        assert d.delete_traces() == 0
+        send.assert_called_once_with(d, None, 1000)
+
+    @pytest.mark.parametrize("batch_size", [0, 10001])
+    def test_delete_traces_refuses_a_batch_size_out_of_range(
+        self, mocker, backend_fixtures, batch_size
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._delete_traces")
+
+        with pytest.raises(ValueError):
+            d.delete_traces(batch_size=batch_size)
         send.assert_not_called()
 
     # start

@@ -30,6 +30,7 @@ from hsml.engine import serving_engine
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from datetime import date, datetime
 
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
@@ -220,6 +221,45 @@ class Deployment:
         self._predictor.tracing = DeploymentTracingConfig.from_response_json(
             self._serving_api._set_tracing(self, active, sampling_percentage)
         )
+
+    @public
+    @usage._method_logger
+    def delete_traces(
+        self,
+        until_datetime: str | datetime | date | int | None = None,
+        batch_size: int = 1000,
+    ) -> int:
+        """Delete the deployment's traces: its spans, events and their attributes.
+
+        Each request deletes at most `batch_size` rows from each trace table in one transaction, since the online feature store caps the rows one transaction can hold; the method repeats it until no rows are left.
+        Traces older than the cluster's retention (`serving_tracing_retention_days`, 7 days by default) are already deleted every 5 minutes.
+
+        ```python
+        deployment.delete_traces()
+        deployment.delete_traces(until_datetime=datetime.now() - timedelta(days=1))
+        ```
+
+        Parameters:
+            until_datetime: Delete the traces created before this time, as a datetime, a date, a string such as `"2026-10-28 12:00:00"` or epoch milliseconds; a time without a timezone is taken as UTC.
+                `None` deletes all of them.
+            batch_size: Rows to delete per table per transaction, from 1 to 10000.
+
+        Returns:
+            The number of rows deleted.
+
+        Raises:
+            ValueError: If `batch_size` is outside 1 to 10000.
+            hopsworks.client.exceptions.RestAPIError: If the backend could not delete them; rows deleted before the failure stay deleted, and calling it again continues.
+        """
+        if not 1 <= batch_size <= 10000:
+            raise ValueError("batch_size must be from 1 to 10000.")
+        until_ms = util._convert_event_time_to_timestamp(until_datetime)
+        deleted = 0
+        while True:
+            batch = self._serving_api._delete_traces(self, until_ms, batch_size)
+            if batch == 0:
+                return deleted
+            deleted += batch
 
     @public
     @usage._method_logger
