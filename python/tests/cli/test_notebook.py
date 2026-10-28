@@ -1,11 +1,13 @@
 """``hops notebook``'s Jupyter side against a real Jupyter Server, with no Hopsworks calls.
 
 The commands' path from Hopsworks (start, connect, the project's root) to Jupyter runs end to end
-in Hopsable's live tests, against the dev cluster.
+in Hopsable's live tests, against the dev cluster. The proxy tests put a real HTTP and WebSocket
+hop in front of Jupyter that, like the Hopsworks proxy, answers 401 without a valid ``proxy_session``.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import secrets
 import socket
@@ -16,8 +18,12 @@ import time
 
 import click
 import pytest
+import requests
 from hopsworks.cli import notebook_api
 from hopsworks.cli.commands import notebook
+from hopsworks_common import client
+from hopsworks_common.client import exceptions
+from tornado import httpserver, netutil, web, websocket
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 from websockets.sync.server import serve
@@ -293,3 +299,200 @@ def test_update_reads_its_edits_in_order():
 def test_update_rejects_a_bad_edit_list(stdin, message):
     with pytest.raises(click.UsageError, match=message):
         notebook._edits(stdin)
+
+
+class Gate:
+    """A real HTTP and WebSocket hop in front of Jupyter that answers 401 without a valid proxy_session.
+
+    That is the Hopsworks proxy for a request with no Jupyter login cookie. ``issue`` hands out a token
+    the way the mint endpoint does, ``expire`` ends every token issued, and ``refuse`` makes the hop
+    reject all of them.
+    """
+
+    def __init__(self, jupyter):
+        self.upstream = jupyter.base_url
+        self.valid: set[str] = set()
+        self.issued = 0
+        self.refuse = False
+        self.jupyter_token = jupyter.token
+        self.loop = asyncio.new_event_loop()
+        sockets = netutil.bind_sockets(0, "127.0.0.1")
+        self.port = sockets[0].getsockname()[1]
+        gate = self
+
+        class Http(web.RequestHandler):
+            def prepare(self):
+                if not gate.allows(self.get_cookie("proxy_session")):
+                    self.set_status(401)
+                    self.finish("Unauthorized access.")
+
+            async def _forward(self):
+                from tornado.httpclient import AsyncHTTPClient  # noqa: PLC0415
+
+                response = await AsyncHTTPClient().fetch(
+                    gate.upstream + self.request.uri,
+                    method=self.request.method,
+                    headers={
+                        k: v
+                        for k, v in self.request.headers.items()
+                        if k in ("Authorization", "Content-Type")
+                    },
+                    body=self.request.body or None,
+                    allow_nonstandard_methods=True,
+                    raise_error=False,
+                )
+                self.set_status(response.code)
+                self.set_header(
+                    "Content-Type", response.headers.get("Content-Type", "text/plain")
+                )
+                self.write(response.body or b"")
+
+            get = post = put = delete = patch = _forward
+
+        class Channels(websocket.WebSocketHandler):
+            def check_origin(self, origin):
+                return True
+
+            def prepare(self):
+                if not gate.allows(self.get_cookie("proxy_session")):
+                    self.set_status(401)
+                    self.finish("Unauthorized access.")
+
+            async def open(self):
+                self.up = await websocket.websocket_connect(
+                    gate.upstream.replace("http", "ws", 1) + self.request.uri,
+                    on_message_callback=self.down,
+                )
+
+            def down(self, message):
+                if message is None:
+                    self.close()
+                else:
+                    self.write_message(message, binary=isinstance(message, bytes))
+
+            async def on_message(self, message):
+                await self.up.write_message(message, binary=isinstance(message, bytes))
+
+            def on_close(self):
+                self.up.close()
+
+        app = web.Application(
+            [(r"/api/kernels/[^/]+/channels", Channels), (r".*", Http)]
+        )
+
+        def serve():
+            asyncio.set_event_loop(self.loop)
+            self.server = httpserver.HTTPServer(app)
+            self.server.add_sockets(sockets)
+            self.loop.run_forever()
+
+        threading.Thread(target=serve, daemon=True).start()
+        self.base_url = f"http://127.0.0.1:{self.port}"
+
+    def allows(self, cookie):
+        return not self.refuse and cookie in self.valid
+
+    def issue(self) -> str:
+        self.issued += 1
+        token = secrets.token_hex(8)
+        self.valid.add(token)
+        return token
+
+    def expire(self):
+        self.valid.clear()
+
+    def stop(self):
+        self.loop.call_soon_threadsafe(self.loop.stop)
+
+
+@pytest.fixture
+def gate(jupyter):
+    hop = Gate(jupyter)
+    try:
+        yield hop
+    finally:
+        hop.stop()
+
+
+def test_a_client_without_a_proxy_token_is_refused_by_the_proxy(jupyter, gate):
+    """What the CLI did before it minted one: the Jupyter token alone, and a 401 on every call."""
+    bare = notebook_api.Jupyter(gate.base_url, jupyter.token)
+    with pytest.raises(RuntimeError, match="proxy token"):
+        bare.find_session("a.ipynb")
+
+
+def test_every_call_and_the_kernel_socket_carry_the_proxy_token(jupyter, gate, path):
+    through = notebook_api.Jupyter(gate.base_url, jupyter.token, mint=gate.issue)
+    through.wait_ready(30)
+    through.write(path, notebook_api.new_notebook(through.kernelspec()))
+    assert through.read(path)["nbformat"] == notebook_api.NBFORMAT
+    run = through.execute(through.session(path), "c1", "print(6 * 7)", 60)
+    assert run.outputs == [{"output_type": "stream", "name": "stdout", "text": "42\n"}]
+    assert gate.issued == 1
+
+
+def test_an_expired_proxy_token_is_minted_again_for_a_call(jupyter, gate, path):
+    through = notebook_api.Jupyter(gate.base_url, jupyter.token, mint=gate.issue)
+    through.write(path, notebook_api.new_notebook(through.kernelspec()))
+    gate.expire()
+    assert through.read(path)["nbformat"] == notebook_api.NBFORMAT
+    assert gate.issued == 2
+
+
+def test_an_expired_proxy_token_is_minted_again_for_the_kernel_socket(
+    jupyter, gate, path
+):
+    through = notebook_api.Jupyter(gate.base_url, jupyter.token, mint=gate.issue)
+    session = through.session(path)
+    gate.expire()
+    run = through.execute(session, "c1", "print(6 * 7)", 60)
+    assert run.outputs[0]["text"] == "42\n"
+    assert gate.issued == 2
+
+
+def test_wait_ready_fails_at_once_when_the_proxy_refuses_the_token(jupyter, gate):
+    gate.refuse = True
+    through = notebook_api.Jupyter(gate.base_url, jupyter.token, mint=gate.issue)
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="refused the proxy token"):
+        through.wait_ready(300)
+    assert time.monotonic() - started < 10
+    # One mint, one new mint after the 401, and no more.
+    assert gate.issued == 2
+
+
+def test_the_kernel_socket_fails_at_once_when_the_proxy_refuses_the_token(
+    jupyter, gate, path
+):
+    session = jupyter.session(path)
+    gate.refuse = True
+    through = notebook_api.Jupyter(gate.base_url, jupyter.token, mint=gate.issue)
+    with pytest.raises(RuntimeError, match="refused the proxy token"):
+        through.execute(session, "c1", "1", 60)
+    assert gate.issued == 2
+
+
+class _Hopsworks:
+    def __init__(self, status):
+        self.status = status
+        self.calls = []
+
+    def _send_request(self, method, path, **kwargs):
+        self.calls.append((method, path))
+        response = requests.Response()
+        response.status_code = self.status
+        if self.status == 404:
+            raise exceptions.RestAPIError("http://x", response)
+        return {"token": "jwt", "expiresAt": 1}
+
+
+def test_the_proxy_token_is_minted_for_the_project(monkeypatch):
+    hopsworks = _Hopsworks(200)
+    monkeypatch.setattr(client, "_get_instance", lambda: hopsworks)
+    assert notebook_api.proxy_token(7) == "jwt"
+    assert hopsworks.calls == [("POST", ["project", 7, "jupyter", "proxy-token"])]
+
+
+def test_a_cluster_without_the_proxy_token_endpoint_needs_no_cookie(monkeypatch):
+    monkeypatch.setattr(client, "_get_instance", lambda: _Hopsworks(404))
+    assert notebook_api.proxy_token(7) is None

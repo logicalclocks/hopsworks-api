@@ -1,7 +1,8 @@
 """The user's Jupyter server, for ``hops notebook``.
 
 Hopsworks starts one Jupyter server per user and project (``/project/{id}/jupyter``) and proxies it
-at ``/hopsworks-api/jupyter/{host}:{port}/``, where Jupyter's own token is the credential. These
+at ``/hopsworks-api/jupyter/{host}:{port}/``. Jupyter's own token is the credential for Jupyter, and the
+Hopsworks proxy wants a ``proxy_session`` cookie, which ``proxy_token`` mints from the API key. These
 helpers start it, then use Jupyter's REST API (contents, sessions) and the kernel's WebSocket to
 write cells into an ``.ipynb`` and run them, so the notebook opens as-is in the user's JupyterLab.
 
@@ -16,12 +17,16 @@ import re
 import ssl
 import time
 import uuid
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import requests
 from hopsworks.cli import waits
 from hopsworks_common import client
 from hopsworks_common.client import exceptions
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 NBFORMAT = 4
@@ -89,6 +94,26 @@ def start(project_id: int, env: str | None = None) -> dict:
         headers={"content-type": "application/json"},
         data=json.dumps(saved),
     )
+
+
+def proxy_token(project_id: int) -> str | None:
+    """Mint a Jupyter proxy token for the caller's server in this project, or None on an older cluster.
+
+    The Hopsworks proxy in front of Jupyter takes a ``proxy_session`` cookie, which a browser gets at
+    login and an API-key client does not have. The token is pinned to the Jupyter proxy and this project,
+    non-renewable and short-lived: the proxy still requires the server to be the caller's own.
+
+    Clusters from before the endpoint answer 404 and did not ask for the cookie either; the caller
+    mints it only for a server that is running.
+    """
+    try:
+        return client._get_instance()._send_request(
+            "POST", ["project", project_id, "jupyter", "proxy-token"]
+        )["token"]
+    except exceptions.RestAPIError as exc:
+        if exc.response.status_code != 404:
+            raise
+        return None
 
 
 def stop(project_id: int) -> None:
@@ -208,7 +233,7 @@ def connect(project_id: int, timeout: float, env: str | None = None) -> Jupyter:
                 "Jupyter was stopped by another client while it was starting. "
                 "Start it again with `hops notebook start`."
             )
-    jupyter = _jupyter(running)
+    jupyter = _jupyter(project_id, running)
     if not quiet:
         watch.see(running.get("status") or "running")
     try:
@@ -230,10 +255,10 @@ def attach(project_id: int, timeout: float) -> Jupyter:
     running = server(project_id)
     if not _ready(running):
         return connect(project_id, timeout)
-    return _jupyter(running)
+    return _jupyter(project_id, running)
 
 
-def _jupyter(running: dict) -> Jupyter:
+def _jupyter(project_id: int, running: dict) -> Jupyter:
     """A client for the server ``jupyter/running`` describes, through the Hopsworks proxy."""
     _client = client._get_instance()
     host = running.get("hostName")
@@ -242,23 +267,64 @@ def _jupyter(running: dict) -> Jupyter:
         f"{_client._base_url}/hopsworks-api/jupyter/{address}",
         running["token"],
         _client._verify,
+        lambda: proxy_token(project_id),
     )
 
 
 class Jupyter:
-    """Jupyter Server's REST API and kernel channels, authenticated by the server's token."""
+    """Jupyter Server's REST API and kernel channels, authenticated by the server's token.
 
-    def __init__(self, base_url: str, token: str, verify: bool | str = True):
+    ``mint`` returns a Hopsworks proxy token (or None: no cookie needed). It is sent as the
+    ``proxy_session`` cookie on every request, the WebSocket handshake included. The token is short-lived
+    and not renewable, so an answer of 401 mints a new one and sends the request once more.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        verify: bool | str = True,
+        mint: Callable[[], str | None] | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.verify = verify
+        self.mint = mint
+        self.proxy_session: str | None = None
+        self._minted = False
         self.http = requests.Session()
         self.http.headers["Authorization"] = f"token {token}"
 
+    def _renew(self) -> bool:
+        """Mint a new proxy token. False when there is nothing to mint: no cookie is sent."""
+        self._minted = True
+        self.proxy_session = self.mint() if self.mint else None
+        if self.proxy_session:
+            self.http.cookies.set("proxy_session", self.proxy_session)
+        else:
+            self.http.cookies.clear()
+        return self.proxy_session is not None
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+        """One request through the proxy; on a 401 with a fresh proxy token, once more."""
+        if self.mint and not self._minted:
+            self._renew()
+        for attempt in (0, 1):
+            response = self.http.request(
+                method, f"{self.base_url}{path}", verify=self.verify, **kwargs
+            )
+            if response.status_code != 401:
+                return response
+            if attempt == 0 and self._renew():
+                continue
+            raise RuntimeError(
+                f"Hopsworks refused the proxy token for Jupyter ({method} {path}): "
+                f"{response.text[:300]}. Check that the cluster and the CLI are the same version."
+            )
+        raise AssertionError("unreachable")
+
     def _call(self, method: str, path: str, **kwargs: Any) -> Any:
-        response = self.http.request(
-            method, f"{self.base_url}{path}", verify=self.verify, timeout=60, **kwargs
-        )
+        response = self._request(method, path, timeout=60, **kwargs)
         if response.status_code == 404:
             return None
         if response.status_code // 100 != 2:
@@ -272,9 +338,8 @@ class Jupyter:
         deadline = time.monotonic() + timeout
         while True:
             try:
-                if self.http.get(
-                    f"{self.base_url}/api/status", verify=self.verify, timeout=10
-                ).ok:
+                # A 401 is not a server still starting: _request raises once a new token is refused too.
+                if self._request("GET", "/api/status", timeout=10).ok:
                     return
             except requests.RequestException:
                 pass
@@ -283,6 +348,36 @@ class Jupyter:
                     f"The Jupyter server did not answer within {timeout:.0f} s."
                 )
             time.sleep(1)
+
+    def _open(self, url: str, ssl_context: Any):
+        """The kernel channels' WebSocket, with the proxy token; on a 401 with a fresh one, once more."""
+        from websockets.exceptions import InvalidStatus  # noqa: PLC0415
+        from websockets.sync.client import connect as ws_connect  # noqa: PLC0415
+
+        if self.mint and not self._minted:
+            self._renew()
+        for attempt in (0, 1):
+            headers = {"Authorization": f"token {self.token}"}
+            if self.proxy_session:
+                headers["Cookie"] = f"proxy_session={self.proxy_session}"
+            try:
+                return ws_connect(
+                    url,
+                    additional_headers=headers,
+                    ssl=ssl_context,
+                    max_size=None,
+                    open_timeout=60,
+                )
+            except InvalidStatus as exc:
+                if exc.response.status_code != 401:
+                    raise
+                if attempt == 0 and self._renew():
+                    continue
+                raise RuntimeError(
+                    "Hopsworks refused the proxy token for the kernel channels (401). "
+                    "Check that the cluster and the CLI are the same version."
+                ) from exc
+        raise AssertionError("unreachable")
 
     def read(self, path: str) -> dict | None:
         """The notebook at ``path`` (relative to Jupyter's root), or None when it does not exist."""
@@ -345,7 +440,6 @@ class Jupyter:
     def execute(self, session: dict, cell_id: str, code: str, timeout: float) -> Run:
         """Run ``code`` on the session's kernel; a cell still running at ``timeout`` is interrupted."""
         from websockets.exceptions import ConnectionClosed  # noqa: PLC0415
-        from websockets.sync.client import connect as ws_connect  # noqa: PLC0415
 
         kernel_id = session["kernel"]["id"]
         url = (
@@ -393,13 +487,7 @@ class Jupyter:
         idle = False
         sent = False
         try:
-            with ws_connect(
-                url,
-                additional_headers={"Authorization": f"token {self.token}"},
-                ssl=ssl_context,
-                max_size=None,
-                open_timeout=60,
-            ) as ws:
+            with self._open(url, ssl_context) as ws:
                 # A kernel still starting may close the socket. Its kernel_info reply shows it
                 # takes requests on this socket, so a close before the cell is sent ran nothing.
                 _kernel_info(ws, session["id"])
