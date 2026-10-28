@@ -21,7 +21,9 @@ from hsfs.client.exceptions import VectorDatabaseException
 from hsfs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
 from opensearchpy.exceptions import (
     AuthenticationException,
+    AuthorizationException,
     ConnectionError,
+    NotFoundError,
     RequestError,
 )
 
@@ -154,6 +156,29 @@ class TestOpenSearchClientSingleton:
         mock_refresh.assert_called_once()
         assert e.value.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
         assert isinstance(e.value.__cause__, RequestError)
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            AuthorizationException(403, "security_exception", {}),
+            NotFoundError(404, "index_not_found_exception", {}),
+        ],
+        ids=["refused", "missing"],
+    )
+    def test_field_mapping_unreadable_keeps_federated_client(self, mocker, error):
+        opensearch_client = MagicMock()
+        opensearch_client.indices.get_field_mapping.side_effect = error
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client,
+            feature_store_id=99,
+            is_cluster_client=False,
+        )
+        invalidate = mocker.patch.object(OpenSearchClientSingleton, "_invalidate_cache")
+
+        assert target._get_field_mapping(index="index", field="f2") is None
+
+        invalidate.assert_not_called()
+        opensearch_client.close.assert_not_called()
 
     @pytest.fixture(autouse=True)
     def reset_singleton(self):

@@ -33,8 +33,10 @@ from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG, OpenSearchAp
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import (
     AuthenticationException,
+    AuthorizationException,
     ConnectionError,
     ConnectionTimeout,
+    NotFoundError,
     RequestError,
 )
 from retrying import retry
@@ -209,12 +211,19 @@ class ProjectOpenSearchClient:
         retry_on_exception=_is_timeout,
     )
     @_handle_opensearch_exception
-    def _get_field_mapping(self, index: str, field: str) -> dict:
+    def _get_field_mapping(self, index: str, field: str) -> dict | None:
+        """The mapping of `field` in `index`, or None when this client may not read it or the index does not exist.
+
+        Both are returned rather than raised, because the error handler closes and replaces a federated client on an exception.
+        """
         # Not GET <index>/_mapping, which the read role of a shared feature group does not allow.
         # No request options: opensearch-py before 2.3 sends the timeout as a query parameter, which this endpoint rejects.
-        return self._get_opensearch_client().indices.get_field_mapping(
-            fields=field, index=index
-        )
+        try:
+            return self._get_opensearch_client().indices.get_field_mapping(
+                fields=field, index=index
+            )
+        except (AuthorizationException, NotFoundError):
+            return None
 
     @retry(
         wait_exponential_multiplier=1000,

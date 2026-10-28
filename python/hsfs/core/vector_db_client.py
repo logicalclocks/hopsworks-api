@@ -33,8 +33,6 @@ from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.join import Join
 from hsfs.core.opensearch import OpenSearchClientSingleton
 from opensearchpy.exceptions import (
-    AuthorizationException,
-    NotFoundError,
     RequestError,
     TransportError,
 )
@@ -337,16 +335,14 @@ class VectorDbClient:
                 response = opensearch_client._get_field_mapping(
                     index=index_name, field=col_name
                 )
-            except (AuthorizationException, NotFoundError):
-                _logger.debug(
-                    "Not allowed to read the mapping of %s in %s", col_name, index_name
-                )
-                fields[key] = True
-                return True
             except (FeatureStoreException, VectorDatabaseException, TransportError):
                 _logger.debug(
                     "Could not read the mapping of %s in %s", col_name, index_name
                 )
+                return True
+            if response is None:
+                _logger.debug("No readable mapping of %s in %s", col_name, index_name)
+                fields[key] = True
                 return True
             mapping = next(
                 (
