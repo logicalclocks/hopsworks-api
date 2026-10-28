@@ -156,7 +156,11 @@ terminal = [
 # packages imports lazily and works on the core dependencies alone.
 agents = [
     "fastapi>=0.100",
-    "pydantic>=2.0",
+    "pydantic>=2.11.2",
+    # The wire protocol: AgentApp speaks AG-UI, built from the reference types.
+    # Pinned to a minor version so an upstream change to the protocol fails our
+    # tests rather than a deployed agent.
+    "ag-ui-protocol>=1.0.0,<1.1",
     "opentelemetry-sdk>=1.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.0.0",
 ]

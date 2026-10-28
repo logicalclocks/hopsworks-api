@@ -330,11 +330,23 @@ def _write_results(
 
 
 def _insert_online(feature_store: Any, name: str, rows: Sequence[Any]) -> None:
-    """One upsert into a feature group's online store; safe to repeat."""
+    """One upsert into a feature group's online store; safe to repeat.
+
+    Over SQL, not through the feature group's Kafka topic: only a data owner
+    may produce to that, and a data scientist runs evaluations too.
+    """
     import pandas as pd
 
+    from .online_tables import _write_online  # noqa: PLC0415
+
     group = feature_store.get_feature_group(name, 1)
-    group.insert(_match_schema(group, pd.DataFrame(rows)), storage="online")
+    if group is None:
+        raise RuntimeError(
+            f"feature group {name} v1 does not exist in this project's feature store; "
+            "Hopsworks provisions it when a run is started -- check the server log for why "
+            "that failed"
+        )
+    _write_online(feature_store, group, _match_schema(group, pd.DataFrame(rows)))
 
 
 # What pandas infers, against what a feature group declares. Two dtypes per
