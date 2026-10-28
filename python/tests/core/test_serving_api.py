@@ -135,6 +135,17 @@ class TestServingApi:
             "active": False
         }
 
+    def test_set_tracing_sends_the_days(self, mocker):
+        api = ServingApi()
+        client_instance = _patch_client(mocker, {"enabled": True})
+
+        api._set_tracing(_deployment(), True, None, 30)
+
+        assert json.loads(client_instance._send_request.call_args.kwargs["data"]) == {
+            "active": True,
+            "durationDays": 30,
+        }
+
     def test_delete_traces_sends_one_batch(self, mocker):
         api = ServingApi()
         client_instance = _patch_client(mocker, {"deleted": 12})

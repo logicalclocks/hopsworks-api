@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import humps
 from hopsworks_apigen import public
@@ -40,6 +41,10 @@ class DeploymentTracingConfig:
         active: Whether a model deployment created with tracing records it right now.
             `None` means it does.
             Change it on a running deployment with [`Deployment.set_tracing`][hsml.deployment.Deployment.set_tracing], which needs no restart.
+        duration_days: Days a model deployment's tracing stays on each time it is switched on, from 1.
+            `None` keeps it on for 7 days.
+            Hopsworks then switches it off and records when in `expired_at`.
+            A longer period stores more traces in the online feature store.
     """
 
     STORAGE_ONLINE = "online"
@@ -55,10 +60,14 @@ class DeploymentTracingConfig:
         output_token_price_per_million_tokens: float | None = None,
         sampling_percentage: int | None = None,
         active: bool | None = None,
+        duration_days: int | None = None,
     ):
         self._enabled = enabled
         self._active = active
         self._paused_reason = None
+        self._duration_days = self._validate_duration_days(duration_days)
+        self._active_until = None
+        self._expired_at = None
         self._sampling_percentage = self._validate_sampling_percentage(
             sampling_percentage
         )
@@ -99,6 +108,12 @@ class DeploymentTracingConfig:
         return sampling_percentage
 
     @classmethod
+    def _validate_duration_days(cls, duration_days: int | None):
+        if duration_days is not None and duration_days < 1:
+            raise ValueError(f"duration_days must be at least 1, got {duration_days}.")
+        return duration_days
+
+    @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         return cls.from_json(json_decamelized)
@@ -109,9 +124,13 @@ class DeploymentTracingConfig:
         # Validated on write only: a value stored before the range check must not make the deployment unreadable.
         sampling_percentage = kwargs.pop("sampling_percentage", None)
         paused_reason = kwargs.pop("paused_reason", None)
+        active_until = kwargs.pop("active_until", None)
+        expired_at = kwargs.pop("expired_at", None)
         config = DeploymentTracingConfig(**kwargs)
         config._sampling_percentage = sampling_percentage
         config._paused_reason = paused_reason
+        config._active_until = active_until
+        config._expired_at = expired_at
         return config
 
     @classmethod
@@ -151,11 +170,14 @@ class DeploymentTracingConfig:
         )
         kwargs["active"] = util._extract_field_from_json(config, "active")
         kwargs["paused_reason"] = util._extract_field_from_json(config, "paused_reason")
+        kwargs["duration_days"] = util._extract_field_from_json(config, "duration_days")
+        kwargs["active_until"] = util._extract_field_from_json(config, "active_until")
+        kwargs["expired_at"] = util._extract_field_from_json(config, "expired_at")
         return kwargs
 
     def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        self.__init__(**self.extract_fields_from_json(json_decamelized))
+        updated = self.from_response_json(json_dict)
+        self.__dict__.update(updated.__dict__)
         return self
 
     def json(self):
@@ -180,6 +202,13 @@ class DeploymentTracingConfig:
         # Sent back as read, so saving a deployment does not lift a pause Hopsworks set.
         if self._paused_reason is not None:
             json["pausedReason"] = self._paused_reason
+        if self._duration_days is not None:
+            json["durationDays"] = self._duration_days
+        # Sent back as read, so saving a deployment keeps its tracing period.
+        if self._active_until is not None:
+            json["activeUntil"] = self._active_until
+        if self._expired_at is not None:
+            json["expiredAt"] = self._expired_at
         return json
 
     @public
@@ -211,6 +240,37 @@ class DeploymentTracingConfig:
         Tracing resumes by itself once an administrator adds space.
         """
         return self._paused_reason
+
+    @public
+    @property
+    def duration_days(self) -> int | None:
+        """Days a model deployment's tracing stays on each time it is switched on; `None` means 7."""
+        return self._duration_days
+
+    @duration_days.setter
+    def duration_days(self, duration_days: int | None):
+        self._duration_days = self._validate_duration_days(duration_days)
+
+    @public
+    @property
+    def active_until(self) -> datetime | None:
+        """When Hopsworks switches a model deployment's tracing off, in UTC; `None` before it is first switched on."""
+        return self._from_epoch_ms(self._active_until)
+
+    @public
+    @property
+    def expired_at(self) -> datetime | None:
+        """When Hopsworks switched tracing off because its `duration_days` ran out, in UTC, or `None`.
+
+        Cleared when tracing is switched on again.
+        """
+        return self._from_epoch_ms(self._expired_at)
+
+    @staticmethod
+    def _from_epoch_ms(epoch_ms: int | None) -> datetime | None:
+        if epoch_ms is None:
+            return None
+        return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
 
     @public
     @property
@@ -275,5 +335,8 @@ class DeploymentTracingConfig:
             f"{self._output_token_price_per_million_tokens!r}, "
             f"sampling_percentage: {self._sampling_percentage!r}, "
             f"active: {self._active!r}, "
-            f"paused_reason: {self._paused_reason!r})"
+            f"paused_reason: {self._paused_reason!r}, "
+            f"duration_days: {self._duration_days!r}, "
+            f"active_until: {self.active_until!r}, "
+            f"expired_at: {self.expired_at!r})"
         )

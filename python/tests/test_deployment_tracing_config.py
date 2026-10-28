@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from datetime import datetime, timezone
+
 import pytest
 from hsml.deployment_tracing_config import DeploymentTracingConfig
 
@@ -90,3 +92,32 @@ class TestDeploymentTracingConfig:
         assert config.paused_reason == "DISK_NEARLY_FULL"
         assert config.to_dict()["pausedReason"] == "DISK_NEARLY_FULL"
         assert "pausedReason" not in DeploymentTracingConfig(enabled=True).to_dict()
+
+    def test_the_period_is_read_and_sent_back(self):
+        config = DeploymentTracingConfig.from_response_json(
+            {
+                "enabled": True,
+                "active": False,
+                "durationDays": 7,
+                "activeUntil": 1793145600000,
+                "expiredAt": 1793145600000,
+            }
+        )
+
+        assert config.duration_days == 7
+        assert config.expired_at == datetime(2026, 10, 28, tzinfo=timezone.utc)
+        assert config.to_dict()["activeUntil"] == 1793145600000
+        assert config.to_dict()["expiredAt"] == 1793145600000
+
+    def test_duration_days_from_a_dict(self):
+        config = DeploymentTracingConfig.from_json(
+            {"enabled": True, "duration_days": 30}
+        )
+
+        assert config.to_dict()["durationDays"] == 30
+        assert "activeUntil" not in config.to_dict()
+
+    @pytest.mark.parametrize("days", [0, -1])
+    def test_rejects_duration_days_below_one(self, days):
+        with pytest.raises(ValueError):
+            DeploymentTracingConfig(duration_days=days)

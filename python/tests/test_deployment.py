@@ -492,7 +492,7 @@ class TestDeployment:
 
         d.set_tracing(active=False, sampling_percentage=50)
 
-        send.assert_called_once_with(d, False, 50)
+        send.assert_called_once_with(d, False, 50, None)
         assert d.tracing.enabled is True
         assert d.tracing.active is False
         assert d.tracing.sampling_percentage == 50
@@ -506,6 +506,40 @@ class TestDeployment:
 
         with pytest.raises(ValueError):
             d.set_tracing(sampling_percentage=101)
+        send.assert_not_called()
+
+    def test_set_tracing_sends_the_days_and_reads_the_period(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.stopall()
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._set_tracing",
+            return_value={
+                "enabled": True,
+                "active": True,
+                "durationDays": 30,
+                "activeUntil": 1793145600000,
+            },
+        )
+
+        d.set_tracing(active=True, duration_days=30)
+
+        send.assert_called_once_with(d, True, None, 30)
+        assert d.tracing.duration_days == 30
+        assert d.tracing.active_until == datetime.datetime(
+            2026, 10, 28, 0, 0, tzinfo=datetime.timezone.utc
+        )
+        assert d.tracing.expired_at is None
+
+    def test_set_tracing_refuses_days_below_one(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._set_tracing")
+
+        with pytest.raises(ValueError):
+            d.set_tracing(duration_days=0)
         send.assert_not_called()
 
     # delete_traces

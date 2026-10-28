@@ -422,6 +422,7 @@ class ServingApi:
         deployment_instance: deployment.Deployment,
         active: bool | None,
         sampling_percentage: int | None,
+        duration_days: int | None = None,
     ) -> dict[str, Any]:
         """Switch a running deployment's tracing without redeploying it, returning the stored tracing config."""
         _client = client._get_instance()
@@ -437,6 +438,8 @@ class ServingApi:
             body["active"] = active
         if sampling_percentage is not None:
             body["samplingPercentage"] = sampling_percentage
+        if duration_days is not None:
+            body["durationDays"] = duration_days
         return _client._send_request(
             "PUT",
             path_params,
