@@ -26,8 +26,10 @@ grows over time, one country that dominates), so the question has an answer wort
 **Show it first.** Write the generator as `./data/<name>/generate.py` before anything runs, then
 create the feature group with its schema (`hops fg create <name> --version 1 --primary-key ...
 --event-time ... --features ... --no-statistics`, one description per column), so both appear before the long
-part. The generator builds the frame and inserts it into that group with
-`fg.insert(df, wait=True)`. Run it where you run (a Hopsable sandbox, a terminal, a laptop):
+part. Every integer column is `bigint`. The generator builds the frame, casts it to the declared
+types right before the insert (`pl.Int64` for `bigint`, `pl.Float64` for `double`): `pl.when` over
+int literals gives `Int32`, and the insert refuses a type the group does not have. Then it inserts
+it into that group with `fg.insert(df, wait=True)`. Run it where you run (a Hopsable sandbox, a terminal, a laptop):
 `python data/<name>/generate.py`, which writes `rows` in seconds; print `[time] generate
 <seconds>s` and `[time] insert <seconds>s`. A job only when the frame would not fit in memory
 (rows x columns x 8 bytes over 1 GB), or when the generation runs out of memory. The same program

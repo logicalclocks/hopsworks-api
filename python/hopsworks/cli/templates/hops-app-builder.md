@@ -79,7 +79,8 @@ there is no separate syntax check (a Hopsable sandbox has no Node.js).
 ## Fix loop
 
 On a failed deploy, a stop in serving, or a failed smoke test: `hops app logs <name>`, name the
-cause in one line, change the source, `hops app deploy <name> apps/<name>`, and smoke-test again. A missing library is a pin in
+cause in one line (a running app's log is written only when it stops: `hops app stop <name>` first,
+then `hops app logs <name>`), change the source, `hops app deploy <name> apps/<name>`, and smoke-test again. A missing library is a pin in
 the clone, never a workaround in the code; running out of memory raises `--memory` once. At most
 five attempts, then stop with the last lines of the logs and what was tried.
 

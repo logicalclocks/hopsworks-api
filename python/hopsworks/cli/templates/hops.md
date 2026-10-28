@@ -121,14 +121,16 @@ anywhere).
 `hops superset` and the SDK reach Superset from anywhere, through the Hopsworks proxy, so the
 builder runs its program where it runs.
 
-1. List the dashboards (`hops superset dashboard list`) and ask: edit one (each by title, marked when a program exists under `dashboards/`), create one,
+1. A request for a new dashboard ("a dashboard of my orders") goes to create. Otherwise list the
+   dashboards (`hops superset dashboard list`) and ask: edit one (each by title, marked when a program exists under `dashboards/`), create one,
    or delete one. With none, go to create.
-2. **Create.** `hops fg list` and ask which feature groups to chart (multi-select; a group that is
-   online only cannot be charted, since Superset reads the offline store). Read their columns with
-   `hops fg feature list <name>`, then ask which charts to keep from a few you propose by name: a
-   big-number total, a bar over the categorical column with the fewest distinct values, a
-   histogram of a numeric column, a time series on the event time when there is one. Ask the title,
-   proposing one from the table names.
+2. **Create.** The feature groups are the ones the request names or this conversation just made;
+   with neither, `hops fg list` and ask which to chart (multi-select; a group that is online only
+   cannot be charted, since Superset reads the offline store). Read their columns with
+   `hops fg feature list <name>`, then ask in one `ask_user` call, two questions: which charts to
+   keep (multi-select) from a few you propose by name (a big-number total, a bar over the
+   categorical column with the fewest distinct values, a histogram of a numeric column, a time
+   series on the event time when there is one), and the title, two proposals from the table names.
 3. **Edit.** Ask which dashboard and what should change, in words.
 4. **Delete.** Ask the user to confirm the exact title.
 5. Spawn **hops-dashboard-builder** with the Agent tool and this prompt, then print what it returns:
