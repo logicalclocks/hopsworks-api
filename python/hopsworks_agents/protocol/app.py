@@ -23,6 +23,7 @@ import inspect
 import json
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any
 
 from ag_ui.core import AgentCapabilities, RunAgentInput
