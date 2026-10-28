@@ -558,6 +558,7 @@ class HandlerContext:
             message: What to ask, for the person reading it.
             reason: Why the agent is asking: `confirmation`, `input_required` or `tool_call`, or a word of your own.
             key: A name for this question that is the same each time the turn runs; by default its place among the turn's questions.
+                It must name the action and what it does, not only the object it is about (`refund-42-40EUR`, not `refund-42`): the answer is taken only when the replay asks the same question, the same `message`, `reason`, `response_schema`, `tool_call_id` and `metadata`, and a question that changed since it was answered is asked again.
             response_schema: A JSON Schema the answer's payload should match; the chat panel builds its form from it.
             tool_call_id: The tool call this question is about, when it is about one.
             expires_in: Seconds after which the question can no longer be answered.
@@ -569,9 +570,6 @@ class HandlerContext:
         index = self._interrupts_asked
         self._interrupts_asked += 1
         interrupt_id = key or f"interrupt-{index}"
-        answer = self._resume.get(interrupt_id)
-        if answer is not None:
-            return answer
         question: dict[str, Any] = {"id": interrupt_id, "reason": reason}
         if message is not None:
             question["message"] = message
@@ -579,14 +577,22 @@ class HandlerContext:
             question["tool_call_id"] = tool_call_id
         if response_schema is not None:
             question["response_schema"] = response_schema
+        if metadata is not None:
+            question["metadata"] = metadata
+        answer = self._resume.get(interrupt_id)
+        # The replay is not deterministic (a model drives it, the data moved on): the
+        # answer is to what was asked then, so a question that is not the same one,
+        # under the same id, is asked again instead of taking the earlier answer.
+        if answer is not None and (
+            answer.asked is None or answer.asked == question_fingerprint(question)
+        ):
+            return answer
         if expires_in is not None:
             from datetime import datetime, timedelta, timezone  # noqa: PLC0415
 
             question["expires_at"] = (
                 datetime.now(timezone.utc) + timedelta(seconds=expires_in)
             ).isoformat()
-        if metadata is not None:
-            question["metadata"] = metadata
         raise Interrupted([question])
 
     @public
@@ -800,6 +806,20 @@ def _bounded_text(value: Any, limit: int = _MAX_EVENT_TEXT) -> str:
     if len(text) > limit:
         return text[:limit] + "…"
     return text
+
+
+#: What makes a question the one that was asked: the id names it, these say what it is.
+_ASKED_KEYS = ("message", "reason", "response_schema", "tool_call_id", "metadata")
+
+
+def question_fingerprint(question: dict[str, Any]) -> str:
+    """A digest of what a question asks, to tell an answer's question from another under the same id."""
+    import hashlib  # noqa: PLC0415
+
+    asked = {key: question.get(key) for key in _ASKED_KEYS}
+    return hashlib.sha256(
+        json.dumps(asked, sort_keys=True, default=str).encode()
+    ).hexdigest()[:32]
 
 
 class Interrupted(Exception):  # noqa: N818 -- it is a signal, not an error

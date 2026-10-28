@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+import hopsworks_agents.protocol.app as app_module
 import pytest
 from fastapi.testclient import TestClient
 from hopsworks_agents.protocol import AgentApp, AgentError, AgentResponse
@@ -5749,6 +5750,115 @@ class TestInterrupts:
             "Left as it is."
         )
         assert calls["refunded"] == 0
+
+    def test_an_answer_is_taken_only_by_the_question_it_was_given_for(self):
+        # The replay is not deterministic: the order's amount moved while the turn
+        # was paused, so the same key asks a different question, which the earlier
+        # approval must not answer.
+        app = AgentApp(tracing=False)
+        amount = {"value": 40}
+        calls = {"refunded": 0}
+
+        @app.chat
+        async def chat(request, ctx):
+            answer = ctx.interrupt(
+                f"Refund {amount['value']} EUR to order 42?",
+                key="refund-42",
+                response_schema=self.SCHEMA,
+            )
+            if answer.cancelled or not answer.payload.get("approved"):
+                return "No refund, then."
+            calls["refunded"] += 1
+            return f"Refunded {amount['value']}."
+
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        amount["value"] = 4000
+        again = parse_sse(
+            client.post(
+                "/v1/run",
+                json=self._resume("c1", ("refund-42", "resolved", {"approved": True})),
+            ).text
+        )
+        outcome = again[-1]["outcome"]
+        assert outcome["type"] == "interrupt", again[-1]
+        assert outcome["interrupts"][0]["message"] == "Refund 4000 EUR to order 42?"
+        assert calls["refunded"] == 0, "the approval of 40 refunded 4000"
+        # the new question, answered, is the one that refunds
+        taken = parse_sse(
+            client.post(
+                "/v1/run",
+                json=self._resume("c1", ("refund-42", "resolved", {"approved": True})),
+            ).text
+        )
+        assert streamed_text(taken) == "Refunded 4000."
+        assert calls["refunded"] == 1
+
+    def test_a_disconnect_during_a_resume_keeps_the_claim_until_the_action_ends(self):
+        # A plain def handler runs in a thread a cancel does not stop: the approved
+        # action goes on after the client hung up, so the claim is kept until it
+        # ends, and a retry of the resume meanwhile is refused rather than run twice.
+        import threading
+
+        from hopsworks_agents.protocol.agui import RunStream
+        from hopsworks_agents.protocol.models import ResumeAnswer
+
+        app = AgentApp(tracing=False)
+        gate = threading.Event()
+        calls = {"refunded": 0}
+
+        @app.chat
+        def chat(request, ctx):
+            answer = ctx.interrupt("Refund 40 EUR to order 42?", key="refund-42")
+            assert answer.resolved
+            gate.wait(10)  # the action, still running when the client hangs up
+            calls["refunded"] += 1
+            return "Refunded."
+
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("refund order 42", thread_id="c1"))
+        answers = [
+            ResumeAnswer(
+                interrupt_id="refund-42", status="resolved", payload={"approved": True}
+            )
+        ]
+
+        class _Raw:
+            headers: dict = {}
+
+            async def is_disconnected(self):
+                return False
+
+        async def scenario():
+            replay = await app._check_resume("c1", answers, "r2")
+            ctx = app._prepare(replay)
+            ctx._claimed = True
+            await app._open_turn(ctx)
+            agen = app._run_events(ctx, _Raw(), RunStream("c1", "r2"))
+            await agen.__anext__()  # RUN_STARTED
+            # the next event is awaited while the handler is at the action; the
+            # client hangs up, which Starlette reports by cancelling that await
+            waiting = asyncio.ensure_future(agen.__anext__())
+            await asyncio.sleep(0.05)
+            waiting.cancel()
+            await asyncio.gather(waiting, return_exceptions=True)
+            # a retry while the action runs: the claim is still held
+            with pytest.raises(AgentError) as refused:
+                await app._check_resume("c1", answers, "r3")
+            assert refused.value.code == "resume_in_progress"
+            assert calls["refunded"] == 0
+            gate.set()  # the action ends
+            for _ in range(100):
+                await asyncio.sleep(0.02)
+                if calls["refunded"] and not app_module._DETACHED:
+                    break
+            # settled from the handler's end: answered, so the record is gone
+            with pytest.raises(AgentError) as gone:
+                await app._check_resume("c1", answers, "r4")
+            assert gone.value.code == "nothing_to_resume"
+
+        asyncio.run(scenario())
+        assert calls["refunded"] == 1
 
     def test_a_resume_must_answer_what_was_asked(self):
         app, _ = self._refund_app()

@@ -35,7 +35,7 @@ from hopsworks_apigen import public
 
 from . import conventions
 from .agui import RunStream, _resume_answer, _to_chat_request
-from .context import HandlerContext, Interrupted
+from .context import HandlerContext, Interrupted, question_fingerprint
 from .evaluation import RunVerifier, env_eval_mode, parse_baggage
 from .evaluation import active as eval_active
 from .memory import TURN_ABANDONED, TURN_CLOSED, ChatMemory, MemoryEraseError
@@ -897,8 +897,14 @@ class AgentApp(FastAPI):
         record = json.loads(pending.record)
         paused = _restore_request(record["request"])
         expires: dict[str, str | None] = record["expires"]
+        asked: dict[str, str] = record.get("asked") or {}
         earlier = {a.interrupt_id: a for a in paused.resume}
-        answers = [a for a in answers if a.interrupt_id not in earlier]
+        # each answer carries what it answers, so the replay takes it for that question only
+        answers = [
+            a.model_copy(update={"asked": asked.get(a.interrupt_id)})
+            for a in answers
+            if a.interrupt_id not in earlier
+        ]
         asked = set(expires)
         answered = {answer.interrupt_id for answer in answers}
         if asked - answered:
@@ -948,10 +954,22 @@ class AgentApp(FastAPI):
         Returns the error to end the turn with when it could not be recorded:
         a question the agent cannot recognise the answer to must not be asked.
         """
+        # A question asked again under an id already answered (the replay asked a
+        # different question by it) sheds that answer: the one that comes is for it.
+        asked_now = {q["id"] for q in interrupts}
+        kept = ctx.request.model_copy(
+            update={
+                "resume": [
+                    a for a in ctx.request.resume if a.interrupt_id not in asked_now
+                ]
+            }
+        )
         record = {
             # the request as the handler was given it, answers so far included
-            "request": ctx.request.model_dump(mode="json"),
+            "request": kept.model_dump(mode="json"),
             "expires": {q["id"]: q.get("expires_at") for q in interrupts},
+            # what each question asked: its answer is for that question only
+            "asked": {q["id"]: question_fingerprint(q) for q in interrupts},
         }
         try:
             await asyncio.to_thread(
@@ -977,6 +995,43 @@ class AgentApp(FastAPI):
             span, conventions.TURN_INTERRUPTS, [q["id"] for q in interrupts]
         )
         return None
+
+    @staticmethod
+    def _let_finish(ctx: HandlerContext, task: asyncio.Task) -> bool:
+        """When the client hangs up: whether the handler is left to finish rather than cancelled.
+
+        A resumed turn's handler may be running the action the person approved
+        (a refund, a delete), in a thread a cancel would not stop. Cancelling
+        the task and giving the claim back would let a retry of the resume run
+        the action a second time; so the handler runs to its end, and the
+        record is settled from what it did (``_finish_detached``), while the
+        claim keeps a second resume out. Any other turn is cancelled as before.
+        """
+        if ctx._claimed and not task.done():
+            return True
+        task.cancel()
+        return False
+
+    async def _finish_detached(
+        self, ctx: HandlerContext, task: asyncio.Task, outcome: dict[str, Any]
+    ) -> None:
+        """End a resumed turn whose client hung up, once its handler is really done."""
+        import contextlib  # noqa: PLC0415
+
+        # the pump logged the handler's own failure; what it produced is in `outcome`
+        with contextlib.suppress(BaseException):
+            await task
+        if "interrupt" in outcome:
+            # asked again after the client left: recorded for whoever comes back
+            await self._pause(ctx, None, outcome["interrupt"])
+            await self._finalize_turn(ctx, None)
+            return
+        response = outcome.get("answered")
+        if response is None and (outcome["chunks"] or outcome.get("final")):
+            response = self._merge_stream_result(
+                outcome["chunks"], outcome.get("final"), ctx
+            )
+        await self._finalize_turn(ctx, response)
 
     async def _settle_pending(self, ctx: HandlerContext, *, answered: bool) -> None:
         """Clean up what the conversation waited on, as the turn ends.
@@ -1423,6 +1478,11 @@ class AgentApp(FastAPI):
             ctx._span = span
             trace_id = _trace_id(span)
             completed: ChatResponse | None = None
+            # What the handler produced, kept outside the queue: a resumed turn
+            # whose client hung up is settled from this once the handler is
+            # really done (see _finish_detached), and `detached` says so.
+            outcome: dict[str, Any] = {"chunks": []}
+            detached = False
             try:
                 yield stream._started(trace_id)
                 from .autoevents import current_context
@@ -1439,11 +1499,17 @@ class AgentApp(FastAPI):
                     try:
                         if self._stream_handler is None:
                             response = await self._run_chat(ctx)
+                            outcome["answered"] = response
                             await queue.put(("final", response))
                         else:
                             async for item in self._invoke_stream(ctx):
+                                if isinstance(item, ChatResponse):
+                                    outcome["final"] = item
+                                else:
+                                    outcome["chunks"].append(item)
                                 await queue.put(("item", item))
                     except Interrupted as paused:
+                        outcome["interrupt"] = paused.interrupts
                         await queue.put(("interrupt", paused.interrupts))
                     except AgentError as err:
                         await queue.put(("error", err))
@@ -1476,7 +1542,7 @@ class AgentApp(FastAPI):
                         except asyncio.TimeoutError:
                             if await raw.is_disconnected():
                                 _mark_cancelled(span)
-                                task.cancel()
+                                detached = self._let_finish(ctx, task)
                                 return
                             yield ": keep-alive\n\n"
                             continue
@@ -1488,7 +1554,7 @@ class AgentApp(FastAPI):
                             # with a short latency -- the shape of a fast,
                             # healthy reply.
                             _mark_cancelled(span)
-                            task.cancel()
+                            detached = self._let_finish(ctx, task)
                             return
                         if kind == "error":
                             _record_span_error(span, payload)
@@ -1520,9 +1586,16 @@ class AgentApp(FastAPI):
                     # healthy reply -- and the turn stayed open until the
                     # reaper called it abandoned much later.
                     _mark_cancelled(span)
+                    detached = self._let_finish(ctx, task)
+                    raise
+                except GeneratorExit:
+                    # the same hang-up, as a server that closes the generator
+                    # instead of cancelling it reports it
+                    _mark_cancelled(span)
+                    detached = self._let_finish(ctx, task)
                     raise
                 finally:
-                    if not task.done():
+                    if not detached and not task.done():
                         task.cancel()
 
                 response = answered or self._merge_stream_result(chunks, final, ctx)
@@ -1533,10 +1606,22 @@ class AgentApp(FastAPI):
                     subject_source=ctx.subject_source if ctx.has_subject else None,
                 )
             finally:
-                # Best effort: if the whole task tree is being cancelled this may
-                # not get to run, which is what the store's stale-turn reaper is
-                # there to catch.
-                await self._finalize_turn(ctx, completed)
+                if detached:
+                    # settled when the handler is really done, not now
+                    keeper = asyncio.create_task(
+                        self._finish_detached(ctx, task, outcome)
+                    )
+                    _DETACHED.add(keeper)
+                    keeper.add_done_callback(_DETACHED.discard)
+                else:
+                    # Best effort: if the whole task tree is being cancelled this
+                    # may not get to run, which is what the store's stale-turn
+                    # reaper is there to catch.
+                    await self._finalize_turn(ctx, completed)
+
+
+# Turns settled after their client hung up, held so the loop keeps them.
+_DETACHED: set[asyncio.Task] = set()
 
 
 def _set_span_attribute(span: Any, key: str, value: Any) -> None:

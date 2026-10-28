@@ -83,6 +83,11 @@ class ResumeAnswer(BaseModel):
     status: Literal["resolved", "cancelled"]
     payload: Any = None
     metadata: dict[str, Any] | None = None
+    #: A fingerprint of the question this answers (its message, reason, schema, tool call
+    #: and metadata), set by the agent when it replays the paused turn: the answer is
+    #: taken only when the replay asks that same question, and a question that changed
+    #: is asked again. None for an answer that did not come through a replay.
+    asked: str | None = None
 
     @property
     def resolved(self) -> bool:
