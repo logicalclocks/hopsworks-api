@@ -208,7 +208,14 @@ class _ManagedPendingBase(_PendingQuestions):
                 )
         except Exception:  # noqa: BLE001 -- another replica inserted first: update theirs
             with self._engine.begin() as conn:
-                conn.execute(self._update(conversation_id).values(**values))
+                updated = conn.execute(
+                    self._update(conversation_id).values(**values)
+                ).rowcount
+            if not updated:
+                # The insert failed for its own reason (the table is gone, the
+                # store is down). Swallowed, the question would be asked and
+                # never recorded, and the answer refused with nothing_to_resume.
+                raise
 
     def _claim(self, conversation_id: str, version: int) -> bool:
         from sqlalchemy import or_  # noqa: PLC0415

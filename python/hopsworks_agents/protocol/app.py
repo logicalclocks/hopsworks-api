@@ -93,6 +93,12 @@ NOT_GIVEN = _NotGiven()
 
 #: conversations whose latest trace the app keeps in memory for feedback by conversation
 LAST_TRACE_LIMIT = 10_000
+# How long an AG-UI run may be silent before a comment line keeps the
+# connection alive: a proxy in front (ingress-nginx: 60 s) closes a response
+# it has not seen a byte of, and a long model call or a slow tool is longer.
+# A comment is a transport frame every SSE reader drops; it never becomes an
+# event.
+SSE_KEEP_ALIVE_S = 15.0
 
 
 class AgentApp(FastAPI):
@@ -1464,7 +1470,17 @@ class AgentApp(FastAPI):
                 answered: ChatResponse | None = None
                 try:
                     while True:
-                        kind, payload = await queue.get()
+                        try:
+                            kind, payload = await asyncio.wait_for(
+                                queue.get(), timeout=SSE_KEEP_ALIVE_S
+                            )
+                        except asyncio.TimeoutError:
+                            if await raw.is_disconnected():
+                                _mark_cancelled(span)
+                                task.cancel()
+                                return
+                            yield ": keep-alive\n\n"
+                            continue
                         if kind == "done":
                             break
                         if await raw.is_disconnected():

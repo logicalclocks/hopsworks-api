@@ -1025,6 +1025,59 @@ def assert_valid_agui_order(events):
             assert not (steps or tools or texts), (steps, tools, texts)
 
 
+class TestRunStartedProtocolVersion:
+    def test_run_started_says_which_ag_ui_it_speaks(self):
+        from ag_ui.core.version import PROTOCOL_VERSION
+
+        app = AgentApp()
+
+        @app.chat
+        async def chat(request, ctx):
+            return "ok"
+
+        events = parse_sse(TestClient(app).post("/v1/run", json=make_run("q")).text)
+        assert events[0]["type"] == "RUN_STARTED"
+        # a producer must say it (AG-UI 1.0); a stock client may refuse one that does not
+        assert events[0]["protocolVersion"] == PROTOCOL_VERSION
+
+
+class TestKeepAlive:
+    """A run silent for longer than the proxies in front allow sends a comment line."""
+
+    def test_a_quiet_run_is_kept_alive_with_comments(self, monkeypatch):
+        from hopsworks_agents.protocol import app as app_module
+
+        monkeypatch.setattr(app_module, "SSE_KEEP_ALIVE_S", 0.05)
+        app = AgentApp()
+
+        @app.stream
+        async def stream(request, ctx):
+            await asyncio.sleep(0.3)  # a slow tool, a long model call
+            yield "done"
+
+        body = TestClient(app).post("/v1/run", json=make_run("q")).text
+        comments = [line for line in body.split("\n") if line.startswith(":")]
+        assert len(comments) >= 3, body
+        assert all(line == ": keep-alive" for line in comments)
+        # a comment is a transport frame, never an event
+        events = parse_sse(body)
+        assert streamed_text(events) == "done"
+        assert kinds(events)[-1] == "RUN_FINISHED"
+
+    def test_a_busy_run_sends_none(self, monkeypatch):
+        from hopsworks_agents.protocol import app as app_module
+
+        monkeypatch.setattr(app_module, "SSE_KEEP_ALIVE_S", 10.0)
+        app = AgentApp()
+
+        @app.stream
+        async def stream(request, ctx):
+            yield "quick"
+
+        body = TestClient(app).post("/v1/run", json=make_run("q")).text
+        assert not [line for line in body.split("\n") if line.startswith(":")]
+
+
 class TestStepOrder:
     """Steps the way AG-UI clients count them: one open step per name, all closed at the end."""
 
@@ -5470,6 +5523,47 @@ class TestSharedPendingQuestions:
             again = parse_sse(client.post("/v1/run", json=self._answer(thread)).text)
             assert streamed_text(again) == "Refunded.", route
             assert self._pending(url, thread) is None
+
+    def test_a_question_that_cannot_be_recorded_is_not_asked(
+        self, tmp_path, monkeypatch
+    ):
+        # The insert's fallback (another replica inserted first: update theirs)
+        # must not swallow an insert that failed for its own reason: the
+        # question would go out unrecorded, and its answer get nothing_to_resume.
+        from datetime import datetime, timedelta, timezone
+
+        from hopsworks_agents.protocol import ManagedMemoryService
+
+        url = f"sqlite:///{tmp_path}/memory.db"
+        memory = ManagedMemoryService(url, deployment_id="7")
+        app = AgentApp(tracing=False, memory=memory)
+
+        @app.chat
+        async def chat(request, ctx):
+            ctx.interrupt("Refund 40 EUR?", key="refund-42")
+            return "ok"
+
+        client = TestClient(app)
+        client.post("/v1/run", json=make_run("warm up", thread_id="c0"))
+        store = memory._pending_questions()
+        # the row is new (the first UPDATE matches nothing) and the INSERT breaks
+        # for a reason of its own, so the fallback UPDATE matches nothing either
+        broken = store._table
+
+        def insert_breaks(*_args, **_kwargs):
+            raise RuntimeError("connection lost")
+
+        monkeypatch.setattr(broken, "insert", insert_breaks)
+        with pytest.raises(RuntimeError, match="connection lost"):
+            store._put("c1", "{}", datetime.now(timezone.utc) + timedelta(hours=1))
+        # and over the wire: 503 pending_unavailable, not a question
+        events = parse_sse(
+            client.post(
+                "/v1/run", json=make_run("refund order 42", thread_id="c1")
+            ).text
+        )
+        assert events[-1]["type"] == "RUN_ERROR", kinds(events)
+        assert events[-1]["code"] == "pending_unavailable"
 
     def test_a_new_message_moves_the_conversation_on(self, tmp_path):
         from hopsworks_agents.protocol import ManagedMemoryService

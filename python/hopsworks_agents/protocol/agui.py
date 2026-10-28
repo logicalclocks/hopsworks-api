@@ -40,6 +40,7 @@ from ag_ui.core import (
     ToolCallResultEvent,
     ToolCallStartEvent,
 )
+from ag_ui.core.version import PROTOCOL_VERSION
 from ag_ui.encoder import EventEncoder
 
 from .models import (
@@ -230,7 +231,10 @@ class RunStream:
         metadata = {HOPSWORKS: {"trace_id": trace_id}} if trace_id else None
         return self._encode(
             RunStartedEvent(
-                thread_id=self.thread_id, run_id=self.run_id, metadata=metadata
+                thread_id=self.thread_id,
+                run_id=self.run_id,
+                protocol_version=PROTOCOL_VERSION,
+                metadata=metadata,
             )
         )
 
