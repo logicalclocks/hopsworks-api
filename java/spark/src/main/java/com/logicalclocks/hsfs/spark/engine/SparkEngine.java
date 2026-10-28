@@ -316,15 +316,26 @@ public class SparkEngine extends EngineBase {
       writeSingle(dataset, trainingDataset.getDataFormat(), writeOptions, saveMode, path);
       return new Dataset[] {dataset};
     } else {
+      // The returned splits are the cached ones, so the caller's unpersist releases them: a coalesced view is a
+      // new plan whose unpersist would leave the cache behind.
       Dataset<Row>[] datasetSplits = splitDataset(trainingDataset, query, queryReadOptions, features);
+      Dataset<Row>[] written = datasetSplits.clone();
       if (trainingDataset.getCoalesce()) {
-        for (int i = 0; i < datasetSplits.length; i++) {
-          datasetSplits[i] = datasetSplits[i].coalesce(1);
+        for (int i = 0; i < written.length; i++) {
+          written[i] = written[i].coalesce(1);
         }
       }
-      writeSplits(datasetSplits,
-          trainingDataset.getDataFormat(), writeOptions, saveMode,
-          trainingDataset.getLocation(), trainingDataset.getSplits());
+      boolean done = false;
+      try {
+        writeSplits(written,
+            trainingDataset.getDataFormat(), writeOptions, saveMode,
+            trainingDataset.getLocation(), trainingDataset.getSplits());
+        done = true;
+      } finally {
+        if (!done) {
+          HashSplit.unpersist(datasetSplits);
+        }
+      }
       return datasetSplits;
     }
   }

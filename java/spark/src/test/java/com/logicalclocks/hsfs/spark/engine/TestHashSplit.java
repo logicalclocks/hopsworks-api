@@ -27,6 +27,9 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.api.java.UDF1;
+import org.apache.spark.sql.functions;
+import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -249,5 +252,29 @@ public class TestHashSplit {
     for (int i = 0; i < result.length; i++) {
       Assertions.assertEquals(legacy[i].collectAsList(), result[i].collectAsList());
     }
+  }
+
+  @Test
+  public void testFailedSplitLeavesNoCachedDataset() {
+    // Arrange
+    SparkSession session = SparkEngine.getInstance().getSparkSession();
+    session.catalog().clearCache();
+    Dataset<Row> dataset = session.range(50).toDF().withColumn("broken",
+        functions.udf((UDF1<Long, Long>) v -> {
+          throw new IllegalStateException("unreadable row");
+        }, DataTypes.LongType).apply(functions.col("id")));
+    TrainingDataset trainingDataset = new TrainingDataset();
+    List<Split> splits = new ArrayList<>();
+    splits.add(new Split("train", 0.7f));
+    splits.add(new Split("test", 0.3f));
+    trainingDataset.setSplits(splits);
+    trainingDataset.setSeed(7L);
+    trainingDataset.setSplitMethod(HashSplit.METHOD);
+
+    // Act
+    Assertions.assertThrows(Exception.class, () -> SparkEngine.randomSplit(dataset, trainingDataset, null));
+
+    // Assert
+    Assertions.assertTrue(session.sharedState().cacheManager().isEmpty());
   }
 }

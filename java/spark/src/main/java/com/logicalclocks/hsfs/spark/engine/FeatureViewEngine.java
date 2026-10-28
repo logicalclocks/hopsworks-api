@@ -85,9 +85,10 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
         trainingDataset.getEventEndTime(), true, trainingDataset.getVersion(), Query.class);
     Dataset<Row>[] datasets = SparkEngine.getInstance().write(trainingDataset, query, Maps.newHashMap(),
         writeOptions, SaveMode.Overwrite, featureView.getFeatures());
-    computeStatistics(featureView, trainingDataset, datasets);
-    for (Dataset<Row> dataset : datasets) {
-      dataset.unpersist();
+    try {
+      computeStatistics(featureView, trainingDataset, datasets);
+    } finally {
+      HashSplit.unpersist(datasets);
     }
   }
 

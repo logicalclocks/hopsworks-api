@@ -148,19 +148,32 @@ public final class HashSplit {
         new Bucket(parseTypes(types), salt(trainingDataset), bounds(fractions)), DataTypes.IntegerType);
     String splitColumn = "_SPLIT_INDEX_" + UUID.randomUUID().toString().replace("-", "");
     // Hash each row once: the splits are cached from the hashed frame, which is then released. The caller
-    // unpersists the splits once it no longer reads them.
+    // unpersists the splits once it no longer reads them; on a failure here they are released before the throw.
     Dataset<Row> indexed = dataset.withColumn(splitColumn, bucket.apply(struct(hashed)))
         .persist(StorageLevel.MEMORY_AND_DISK());
     Dataset<Row>[] result = new Dataset[fractions.size()];
+    boolean cached = false;
     try {
       for (int i = 0; i < result.length; i++) {
         result[i] = indexed.filter(col(splitColumn).equalTo(i)).drop(splitColumn).persist();
         result[i].count();
       }
+      cached = true;
     } finally {
+      if (!cached) {
+        unpersist(result);
+      }
       indexed.unpersist();
     }
     return result;
+  }
+
+  static void unpersist(Dataset<Row>[] datasets) {
+    for (Dataset<Row> dataset : datasets) {
+      if (dataset != null) {
+        dataset.unpersist();
+      }
+    }
   }
 
   static byte[] salt(TrainingDataset trainingDataset) {
