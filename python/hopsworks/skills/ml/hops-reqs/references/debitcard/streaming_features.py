@@ -191,7 +191,7 @@ def main():
         statistics_config=False,
         parents=[source],
     )
-    checkpoint = f"/Projects/{project.backing_name}/Resources/{OUTPUT}_v1_p{SHUFFLE_PARTITIONS}_checkpoint"
+    checkpoint = f"/Projects/{getattr(project, 'backing_name', project.name)}/Resources/{OUTPUT}_v1_p{SHUFFLE_PARTITIONS}_checkpoint"
     print(f"Streaming {SOURCE} into {OUTPUT}, checkpoint {checkpoint}")
     fg.insert_stream(
         out,

@@ -293,9 +293,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps([{"id": d["id"], "title": d.get("dashboard_title")} for d in dashboards]))
         return 0
     if args.delete:
-        print(json.dumps(delete(api, project.backing_name)))
+        print(json.dumps(delete(api, getattr(project, "backing_name", project.name))))
         return 0
-    dashboard_id = build(api, project.backing_name)
+    dashboard_id = build(api, getattr(project, "backing_name", project.name))
     host = urlparse(project.get_url())
     print(
         f"{host.scheme}://{host.netloc}/hopsworks-api/superset/superset/dashboard/{dashboard_id}/"
