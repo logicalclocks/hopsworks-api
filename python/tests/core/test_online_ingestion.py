@@ -13,8 +13,17 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import itertools
+import warnings
+from datetime import datetime, timedelta
+
 from hsfs.core import online_ingestion
 from hsfs.core.online_ingestion_failure import OnlineIngestionFailure
+from hsfs.core.online_ingestion_result import OnlineIngestionResult
+
+
+class _StillWaiting(Exception):
+    pass
 
 
 def _log_arguments(**overrides):
@@ -175,3 +184,104 @@ class TestOnlineIngestion:
         # Assert
         assert search.call_count == 1
         mock_print.assert_called_once_with("some failure")
+
+    def _patch_wait(self, mocker, results_after_refresh=None):
+        start = datetime(2026, 1, 1)
+        ticks = itertools.count()
+        mock_datetime = mocker.patch("hsfs.core.online_ingestion.datetime")
+        # every read of the clock is 30 seconds after the previous one
+        mock_datetime.now.side_effect = lambda: (
+            start + timedelta(seconds=30 * next(ticks))
+        )
+        mocker.patch.object(
+            online_ingestion.OnlineIngestion,
+            "refresh",
+            autospec=True,
+            side_effect=lambda self: setattr(
+                self, "_results", results_after_refresh or []
+            ),
+        )
+        sleeps = itertools.count(1)
+
+        def sleep(period):
+            # stands in for the user interrupting a wait that is still polling after 10 rounds
+            if next(sleeps) > 10:
+                raise _StillWaiting
+
+        # Patch the module's own name for time: patching time.sleep would replace it for every thread in
+        # the process, and a thread that sleeps meanwhile (Spark's, in the full suite) uses up these calls.
+        mock_time = mocker.patch("hsfs.core.online_ingestion.time")
+        mock_time.sleep.side_effect = sleep
+        return mock_time.sleep
+
+    def _wait(self, ingestion, options):
+        """Return the warnings the wait emitted and whether it ended on its own."""
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            try:
+                ingestion.wait_for_completion(options=options)
+                ended = True
+            except _StillWaiting:
+                ended = False
+        return [str(warning.message) for warning in record], ended
+
+    def test_wait_for_completion_without_entry_count_warns_it_does_not_end(
+        self, mocker
+    ):
+        # Arrange
+        self._patch_wait(mocker)
+        ingestion = online_ingestion.OnlineIngestion(id=5)
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 0})
+
+        # Assert
+        assert any("5 has no entry count" in message for message in messages)
+        assert not ended
+
+    def test_wait_for_completion_without_entry_count_keeps_explicit_timeout(
+        self, mocker
+    ):
+        # Arrange
+        sleep = self._patch_wait(mocker)
+        ingestion = online_ingestion.OnlineIngestion(id=5)
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 30})
+
+        # Assert
+        assert not any("no entry count" in message for message in messages)
+        assert any("Timeout of 0:00:30 was exceeded" in message for message in messages)
+        assert ended
+        sleep.assert_not_called()
+
+    def test_wait_for_completion_zero_entries(self, mocker):
+        # Arrange
+        sleep = self._patch_wait(mocker)
+        ingestion = online_ingestion.OnlineIngestion(id=5, num_entries=0)
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 0})
+
+        # Assert
+        assert messages == []
+        assert ended
+        sleep.assert_not_called()
+
+    def test_wait_for_completion_with_entry_count_waits_until_ingested(self, mocker):
+        # Arrange
+        sleep = self._patch_wait(
+            mocker,
+            results_after_refresh=[
+                OnlineIngestionResult(online_ingestion_id=5, status="UPSERTED", rows=10)
+            ],
+        )
+        ingestion = online_ingestion.OnlineIngestion(id=5, num_entries=10)
+
+        # Act
+        messages, ended = self._wait(ingestion, {"timeout": 0})
+
+        # Assert
+        assert messages == []
+        assert ended
+        assert sleep.call_count == 1
