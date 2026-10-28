@@ -45,6 +45,7 @@ class Client(istio.Client):
         self._port = port
         self._base_url = f"{scheme}://{self._host}:{str(self._port)}"
         self._project_name = project
+        self._project_backing_name = project
 
         self._auth = auth.ApiKeyAuth(api_key_value)
 

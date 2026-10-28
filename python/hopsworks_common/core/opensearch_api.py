@@ -84,7 +84,7 @@ class OpenSearchApi:
             A valid opensearch index name.
         """
         _client = client._get_instance()
-        return (_client._project_name + "_" + index).lower()
+        return (_client._project_backing_name + "_" + index).lower()
 
     @public
     @usage._method_logger

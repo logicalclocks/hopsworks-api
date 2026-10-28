@@ -84,6 +84,10 @@ class TestPredictor:
 
     def test_artifact_path_is_the_artifact_files_path(self, mocker):
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=mocker.Mock(_project_backing_name="my_project"),
+        )
         p = predictor.Predictor(
             name="my_model",
             model_server=PREDICTOR.MODEL_SERVER_PYTHON,

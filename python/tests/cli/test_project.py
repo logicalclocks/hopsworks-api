@@ -74,6 +74,7 @@ def _use_project(send_request):
     """Run `hops project use demo` with the SDK login and REST client mocked out."""
     project = mock.MagicMock()
     project.name = "demo"
+    project.backing_name = "demo"
     project.id = 119
     fake_client = mock.Mock()
     fake_client._project_id = 119

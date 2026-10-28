@@ -149,6 +149,7 @@ class TestEnvironmentNpm:
         )
         mock_client = mocker.MagicMock()
         mock_client._project_name = "demo"
+        mock_client._project_backing_name = "demo"
         mocker.patch("hopsworks_common.client._get_instance", return_value=mock_client)
 
         # Act: local files

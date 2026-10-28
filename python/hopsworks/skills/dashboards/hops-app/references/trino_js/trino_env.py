@@ -23,7 +23,7 @@ def _main():
         "user": user,
         "password": password,
         "ca": "/tmp/ca_chain.pem",
-        "schema": f"{project.name.lower()}_featurestore",
+        "schema": f"{project.backing_name.lower()}_featurestore",
     }
     if not os.path.exists(connection["ca"]):
         raise SystemExit("trino_env.py: no cluster CA at /tmp/ca_chain.pem")

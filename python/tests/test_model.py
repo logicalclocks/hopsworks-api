@@ -27,6 +27,30 @@ from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 
 
+class TestModelPath:
+    def test_server_model_path_wins(self):
+        m = model.Model(
+            id=1,
+            name="m",
+            project_name="Display",
+            model_path="/Projects/backing1/Models/m",
+        )
+        m._models_path = "/Projects/other/Models"
+
+        assert m.model_path == "/Projects/backing1/Models/m"
+
+    def test_models_path_is_used_without_a_server_path(self):
+        m = model.Model(id=1, name="m", project_name="Display")
+        m._models_path = "/Projects/backing1/Models"
+
+        assert m.model_path == "/Projects/backing1/Models/m"
+
+    def test_falls_back_to_the_project_name(self):
+        m = model.Model(id=1, name="m", project_name="Display")
+
+        assert m.model_path == "/Projects/Display/Models/m"
+
+
 class TestModel:
     # from response json
 

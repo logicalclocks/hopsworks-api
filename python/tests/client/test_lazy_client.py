@@ -143,5 +143,8 @@ def test_set_active_project_passes_id(monkeypatch):
     project = mock.MagicMock()
     project.name = "proj"
     project.id = 119
+    project.backing_name = "proj_b"
     hopsworks._set_active_project(project)
-    hw_client._provide_project.assert_called_once_with("proj", project_id=119)
+    hw_client._provide_project.assert_called_once_with(
+        "proj", project_id=119, backing_name="proj_b"
+    )

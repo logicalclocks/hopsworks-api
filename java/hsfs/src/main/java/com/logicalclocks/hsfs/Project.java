@@ -30,6 +30,8 @@ public class Project {
   @Getter
   @Setter
   private String projectName;
+  @Setter
+  private String backingName;
   @Getter
   @Setter
   private String owner;
@@ -39,5 +41,10 @@ public class Project {
 
   public Project(Integer projectId) {
     this.projectId = projectId;
+  }
+
+  // Older backends return no backingName; there the backing name is the project name.
+  public String getBackingName() {
+    return backingName != null ? backingName : projectName;
   }
 }

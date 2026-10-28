@@ -219,7 +219,7 @@ class Connection:
             A feature store handle object to perform operations on.
         """
         if not name:
-            name = client._get_instance()._project_name
+            name = client._get_instance()._project_backing_name
         return self._feature_store_api._get(util._append_feature_store_suffix(name))
 
     @usage._method_logger

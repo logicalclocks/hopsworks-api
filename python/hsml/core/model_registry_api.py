@@ -39,6 +39,7 @@ class ModelRegistryApi:
 
         model_registry_id = _client._project_id
         shared_registry_project_name = None
+        models_path = None
 
         # In the case of shared model registry, validate that there is Models dataset shared to the connected project from the set project name
         if project is not None:
@@ -48,6 +49,7 @@ class ModelRegistryApi:
                 if registry["name"] == project:
                     model_registry_id = registry["id"]
                     shared_registry_project_name = project
+                    models_path = registry.get("modelsPath")
 
             if shared_registry_project_name is None:
                 raise ModelRegistryException(
@@ -64,4 +66,6 @@ class ModelRegistryApi:
             _client._project_id,
             model_registry_id,
             shared_registry_project_name=shared_registry_project_name,
+            project_backing_name=_client._project_backing_name,
+            models_path=models_path,
         )

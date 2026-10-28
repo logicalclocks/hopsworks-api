@@ -212,7 +212,7 @@ def rows(project, chunks: list, docs_dir: str, encoder) -> pd.DataFrame:
         {
             "chunk_id": [c.chunk_id for c in chunks],
             "doc_name": [c.doc_name for c in chunks],
-            "path": [f"/Projects/{project.name}/{docs_dir}/{c.doc_name}" for c in chunks],
+            "path": [f"/Projects/{project.backing_name}/{docs_dir}/{c.doc_name}" for c in chunks],
             "url": [folder for _ in chunks],
             "page": [c.page for c in chunks],
             "offset": [c.offset for c in chunks],

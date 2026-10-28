@@ -703,7 +703,9 @@ def _set_active_project(project):
     if _client._is_external():
         # login already fetched this project; hand the id over instead of
         # letting the client look it up a second time.
-        _client._provide_project(project.name, project_id=project.id)
+        _client._provide_project(
+            project.name, project_id=project.id, backing_name=project.backing_name
+        )
 
 
 @public

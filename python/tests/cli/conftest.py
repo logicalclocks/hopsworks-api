@@ -64,6 +64,7 @@ def mock_project(authed_config):
     """
     project = mock.MagicMock(name="Project")
     project.name = "demo"
+    project.backing_name = "demo"
     project.id = 119
 
     fs = mock.MagicMock(name="FeatureStore")

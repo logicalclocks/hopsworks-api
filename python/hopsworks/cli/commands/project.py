@@ -86,7 +86,9 @@ def _feature_store_id(project: Any) -> int | None:
     )
 
     _client = client._get_instance()
-    store = util._append_feature_store_suffix(getattr(project, "name", "") or "")
+    store = util._append_feature_store_suffix(
+        getattr(project, "backing_name", "") or ""
+    )
     try:
         raw = _client._send_request(
             "GET", ["project", _client._project_id, "featurestores", store]

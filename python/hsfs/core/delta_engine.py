@@ -769,7 +769,7 @@ class DeltaEngine:
                 raise FeatureStoreException(
                     "Failed to write to delta table in external cluster. Cannot get user name for project."
                 )
-            project_username = f"{_client.project_name}__{user_name}"
+            project_username = f"{_client._project_backing_name}__{user_name}"
             _logger.debug(f"Setting LIBHDFS_DEFAULT_USER to {project_username}")
             os.environ["LIBHDFS_DEFAULT_USER"] = project_username
 

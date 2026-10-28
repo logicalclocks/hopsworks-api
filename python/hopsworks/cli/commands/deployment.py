@@ -378,7 +378,7 @@ def deployment_create(
         # Serving needs an absolute /Projects/<project>/... path; dataset
         # upload returns one relative to the project root.
         if not script_file.startswith("/"):
-            script_file = f"/Projects/{project.name}/{script_file}"
+            script_file = f"/Projects/{project.backing_name}/{script_file}"
         output.success("✓ Uploaded predictor -> %s", script_file)
 
     try:

@@ -142,7 +142,7 @@ def dbt_environment(project) -> dict[str, str]:
         "DBT_TRINO_PORT": str(trino.get_port()),
         "DBT_TRINO_USER": user,
         "DBT_TRINO_PASSWORD": password,
-        "DBT_TRINO_SCHEMA": f"{project.name}_featurestore",
+        "DBT_TRINO_SCHEMA": f"{project.backing_name.lower()}_featurestore",
         "DBT_TRINO_CA": str(trino._get_ca_chain_path(True)),
     }
 
@@ -207,7 +207,7 @@ def ingest(project, name: str, query: str, fetch_size: int) -> int:
     fg = feature_group(fs, name, parents)
     model = MODELS[name]
     connection = project.get_trino_api().connect(
-        catalog="delta", schema=f"{project.name}_featurestore"
+        catalog="delta", schema=f"{project.backing_name.lower()}_featurestore"
     )
     cursor = connection.cursor()
     cursor.execute(query)

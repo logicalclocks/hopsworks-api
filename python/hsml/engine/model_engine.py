@@ -418,11 +418,23 @@ class ModelEngine:
         is_shared_registry = model_instance.shared_registry_project_name is not None
 
         if is_shared_registry:
-            dataset_models_root_path = f"{model_instance.shared_registry_project_name}::{constants.MODEL_REGISTRY.MODELS_DATASET}"
+            # Imported here: hsml.core.model_registry_api imports hsml.model, which imports this module.
+            from hsml.core import model_registry_api
+
+            model_instance._models_path = (
+                model_registry_api.ModelRegistryApi()
+                ._get(model_instance.shared_registry_project_name)
+                ._models_path
+            )
+            dataset_models_root_path = (
+                model_instance._models_path
+                or f"{model_instance.shared_registry_project_name}::{constants.MODEL_REGISTRY.MODELS_DATASET}"
+            )
             model_instance._project_name = model_instance.shared_registry_project_name
         else:
             dataset_models_root_path = constants.MODEL_REGISTRY.MODELS_DATASET
             model_instance._project_name = _client._project_name
+            model_instance._models_path = f"/Projects/{_client._project_backing_name}/{constants.MODEL_REGISTRY.MODELS_DATASET}"
 
         util._validate_metrics(model_instance.training_metrics)
         util._validate_model_name(model_instance._name)

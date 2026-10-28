@@ -917,7 +917,9 @@ class DatasetApi:
         files = []
         for item in items:
             files.append(
-                util._convert_to_project_rel_path(item.path, _client._project_name)
+                util._convert_to_project_rel_path(
+                    item.path, _client._project_backing_name
+                )
             )
         return files
 

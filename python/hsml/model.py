@@ -96,6 +96,9 @@ class Model:
         self._creator = creator
         self._environment = environment
         self._project_name = project_name
+        # modelPath comes from the server; older backends return none.
+        self._server_model_path = kwargs.get("model_path")
+        self._models_path = None
         self._training_metrics = metrics
         self._program = program
         self._user_full_name = user_full_name
@@ -1026,8 +1029,12 @@ class Model:
     def model_path(self):
         """Path of the model with version folder omitted.
 
-        Resolves to `/Projects/{project_name}/Models/{name}`.
+        Resolves to `/Projects/{backing_name}/Models/{name}`.
         """
+        if self._server_model_path:
+            return self._server_model_path
+        if self._models_path:
+            return f"{self._models_path}/{self.name}"
         return f"/Projects/{self.project_name}/Models/{self.name}"
 
     @public
