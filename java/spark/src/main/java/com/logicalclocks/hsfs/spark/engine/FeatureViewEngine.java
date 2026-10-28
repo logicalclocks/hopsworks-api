@@ -174,7 +174,7 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
         trainingDatasetBundle = new TrainingDatasetBundle(trainingDatasetUpdated.getVersion(),
             convertSplitDatasetsToMap(trainingDatasetUpdated.getSplits(), datasets),
             featureView.getLabels());
-        computeStatistics(featureView, trainingDatasetUpdated, datasets);
+        computeStatisticsOrRelease(featureView, trainingDatasetUpdated, datasets);
       } else {
         Dataset<Row> dataset = readDataset(featureView, trainingDatasetUpdated, userReadOptions);
         trainingDatasetBundle = new TrainingDatasetBundle(trainingDatasetUpdated.getVersion(), dataset,
@@ -224,6 +224,21 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
       FeatureView featureView, Integer trainingDatasetVersion) throws IOException, FeatureStoreException {
     return (TrainingDataset) featureViewApi.getTrainingData(featureView.getFeatureStore(), featureView.getName(),
         featureView.getVersion(), trainingDatasetVersion, TrainingDataset.class);
+  }
+
+  // The in-memory splits are cached and nothing else holds them until the bundle reaches the caller.
+  Statistics computeStatisticsOrRelease(FeatureView featureView, TrainingDataset trainingDataset,
+                                        Dataset<Row>[] datasets) throws FeatureStoreException, IOException {
+    boolean done = false;
+    try {
+      Statistics statistics = computeStatistics(featureView, trainingDataset, datasets);
+      done = true;
+      return statistics;
+    } finally {
+      if (!done) {
+        HashSplit.unpersist(datasets);
+      }
+    }
   }
 
   public Statistics computeStatistics(FeatureView featureView, TrainingDataset trainingDataset,

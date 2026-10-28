@@ -23,6 +23,9 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import com.logicalclocks.hsfs.Split;
 import com.logicalclocks.hsfs.TrainingDatasetFeature;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
+import com.logicalclocks.hsfs.spark.TrainingDatasetBundle;
+import com.logicalclocks.hsfs.spark.FeatureView;
+import com.logicalclocks.hsfs.StatisticsConfig;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
@@ -41,6 +44,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -273,6 +277,58 @@ public class TestHashSplit {
 
     // Act
     Assertions.assertThrows(Exception.class, () -> SparkEngine.randomSplit(dataset, trainingDataset, null));
+
+    // Assert
+    Assertions.assertTrue(session.sharedState().cacheManager().isEmpty());
+  }
+
+  @Test
+  public void testFailedInMemoryStatisticsReleasesTheSplits() {
+    // Arrange: hash splits cached as the in-memory read leaves them; statistics on, and no Hopsworks client, so
+    // saving the statistics fails for real.
+    SparkSession session = SparkEngine.getInstance().getSparkSession();
+    session.catalog().clearCache();
+    TrainingDataset trainingDataset = new TrainingDataset();
+    List<Split> splits = new ArrayList<>();
+    splits.add(new Split("train", 0.7f));
+    splits.add(new Split("test", 0.3f));
+    trainingDataset.setSplits(splits);
+    trainingDataset.setSeed(7L);
+    trainingDataset.setSplitMethod(HashSplit.METHOD);
+    trainingDataset.setStatisticsConfig(new StatisticsConfig(true, false, false, false));
+    Dataset<Row>[] datasets = SparkEngine.randomSplit(session.range(50).toDF(), trainingDataset, null);
+    Assertions.assertFalse(session.sharedState().cacheManager().isEmpty());
+
+    // Act
+    Assertions.assertThrows(Exception.class,
+        () -> new FeatureViewEngine().computeStatisticsOrRelease(new FeatureView(), trainingDataset, datasets));
+
+    // Assert
+    Assertions.assertTrue(session.sharedState().cacheManager().isEmpty());
+  }
+
+  @Test
+  public void testBundleUnpersistReleasesTheSplitsAfterALabelProjection() {
+    // Arrange
+    SparkSession session = SparkEngine.getInstance().getSparkSession();
+    session.catalog().clearCache();
+    TrainingDataset trainingDataset = new TrainingDataset();
+    List<Split> splits = new ArrayList<>();
+    splits.add(new Split("train", 0.7f));
+    splits.add(new Split("test", 0.3f));
+    trainingDataset.setSplits(splits);
+    trainingDataset.setSeed(7L);
+    trainingDataset.setSplitMethod(HashSplit.METHOD);
+    Dataset<Row>[] datasets = SparkEngine.randomSplit(
+        session.range(50).toDF().withColumn("label", functions.col("id").mod(2)), trainingDataset, null);
+    Map<String, Dataset<Row>> bySplit = new HashMap<>();
+    bySplit.put("train", datasets[0]);
+    bySplit.put("test", datasets[1]);
+    TrainingDatasetBundle bundle = new TrainingDatasetBundle(1, bySplit, Arrays.asList("label"));
+    bundle.getDataset("train", true).forEach(Dataset::count);
+
+    // Act
+    bundle.unpersist();
 
     // Assert
     Assertions.assertTrue(session.sharedState().cacheManager().isEmpty());

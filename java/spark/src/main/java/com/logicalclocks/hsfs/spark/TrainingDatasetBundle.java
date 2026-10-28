@@ -56,6 +56,16 @@ public class TrainingDatasetBundle {
     this.hasSplit = true;
   }
 
+  // In-memory splits are cached by the engine: release them once read, label projections included.
+  public void unpersist() {
+    if (datasetSplits != null) {
+      datasetSplits.values().forEach(Dataset::unpersist);
+    }
+    if (dataset != null) {
+      dataset.unpersist();
+    }
+  }
+
   @JsonIgnore
   public List<Dataset<Row>> getDataset(Boolean splitLabels) {
     if (inMemory) {
