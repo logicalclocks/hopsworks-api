@@ -91,6 +91,8 @@ class App:
         idle_scale_to_zero=None,
         idle_cooldown_seconds=None,
         cold_start_timeout_seconds=None,
+        agent_deployment_id=None,
+        agent_chat_app=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -131,6 +133,8 @@ class App:
         self._idle_scale_to_zero = bool(idle_scale_to_zero)
         self._idle_cooldown_seconds = idle_cooldown_seconds
         self._cold_start_timeout_seconds = cold_start_timeout_seconds
+        self._agent_deployment_id = agent_deployment_id
+        self._agent_chat_app = bool(agent_chat_app)
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -412,6 +416,18 @@ class App:
     def cold_start_timeout_seconds(self) -> int | None:
         """Seconds the first request waits for the app to wake, when `idle_scale_to_zero` is set."""
         return self._cold_start_timeout_seconds
+
+    @public
+    @property
+    def agent_deployment_id(self) -> int | None:
+        """The id of the agent deployment the app reaches, if it was created with `agent=` or is an agent's chat app; None otherwise."""
+        return self._agent_deployment_id
+
+    @public
+    @property
+    def agent_chat_app(self) -> bool:
+        """Whether the app is an agent's own chat app (`Agent.create_chat_app()`), as opposed to an app of your own that reaches an agent."""
+        return self._agent_chat_app
 
     @public
     @property

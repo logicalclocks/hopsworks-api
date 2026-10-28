@@ -200,7 +200,7 @@ To change its page, layout or server, **customize** it rather than starting over
 app = agent.customize_chat_app()  # runs from Resources/chat-apps/support_chat
 ```
 
-The app copies its template into that project folder (a `server.mjs` on the image's `@hopsworks/agent-chat` package, a React page in `web/`, `theme.css`) and runs from it. **Read the folder's `AGENTS.md` before changing anything**: it lists the extension points (`<HopsworksChat />` slots and parts, `startChatApp()` options, a `routes` hook given who is asking) and what must stay the package's. The package is in the app's image, not the terminal's, so try a change with `app.redeploy()` and `app.get_logs()`; a folder that fails to build is logged and the default page is served. Removing the app's `CHAT_APP_DIR` variable goes back to the default app.
+The app copies its template into that project folder (a `server.mjs` on the image's `@hopsworks/agent-chat` package, a React page in `web/`, `theme.css`) and runs from it. **Read the folder's `AGENTS.md` before changing anything**: it lists the extension points (`<HopsworksChat />` slots and parts, `startChatApp()` options, a `routes` hook given who is asking) and what must stay the package's. The package is in the app's image, not the terminal's, so try a change with `app.redeploy()` and `app.get_logs()`; a folder that fails to build is logged and the default page is served. Removing the app's `CHAT_APP_DIR` variable goes back to the default app. An app that already has a page of its own can hold the chat instead (`create_app(..., agent=agent)` + `hopsworks-agent-chat` beside its server): see **hops-agent-chat**.
 
 ### Reading Hopsworks data from the app
 
