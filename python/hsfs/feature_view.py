@@ -6714,10 +6714,8 @@ class FeatureView:
         Idempotent, and safe on a feature view that never initialised serving.
         `init_serving` can be called again afterwards.
 
-        Releases them now; otherwise they are released only after this feature
-        view is garbage collected. A pool holds one connection per feature group
-        in the view, so a long-lived process that keeps many feature views alive
-        can exhaust the online store's `max_connections`.
+        Releases them now; otherwise they are released only after this feature view is garbage collected.
+        A pool holds one connection per feature group in the view, so a long-lived process that keeps many feature views alive can exhaust the online store's `max_connections`.
         """
         for server in (self.__vector_server, self.__batch_scoring_server):
             if server is not None:

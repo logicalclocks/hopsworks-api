@@ -939,8 +939,7 @@ class _FakePool:
 class TestSqlClientLifecycle:
     """A server holds at most one online store pool, and a collected server holds none.
 
-    The client, its task thread and the close path are real; only the pool, the
-    prepared statements and the connector lookup are faked.
+    The client, its task thread and the close path are real; only the pool, the prepared statements and the connector lookup are faked.
     """
 
     @pytest.fixture(autouse=True)
@@ -1002,11 +1001,25 @@ class TestSqlClientLifecycle:
         server = self._server()
 
         for _ in range(6):
-            self._setup(server, mocker)
+            self._init_serving(server, mocker, init_sql_client=True)
 
         assert len(_FakePool.open_pools) == 1
         server._close()
         assert _FakePool.open_pools == []
+
+    def test_a_reinit_failing_before_the_sql_setup_closes_the_old_pool(self, mocker):
+        server = self._server()
+        self._init_serving(server, mocker, init_sql_client=True)
+        mocker.patch.object(
+            server, "_set_default_client", side_effect=RuntimeError("bad options")
+        )
+
+        with pytest.raises(RuntimeError):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert _FakePool.open_pools == []
+        assert server.sql_client is None
+        assert not server._serving_initialized
 
     def test_reinitialising_without_the_sql_client_closes_it(self, mocker):
         server = self._server()

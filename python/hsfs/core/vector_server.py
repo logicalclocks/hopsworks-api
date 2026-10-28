@@ -246,8 +246,7 @@ class VectorServer:
             tf_exec_dag_mod.TransformationExecutionDAG | None
         ) = None
         self._sql_client = None
-        # The task thread keeps the SQL client reachable, so only this server's own
-        # collection can release a pool that nobody closed.
+        # The task thread keeps the SQL client reachable, so only this server's own collection can release a pool that nobody closed.
         self._sql_client_finalizer: weakref.finalize | None = None
 
         self._rest_client_engine = None
@@ -282,9 +281,10 @@ class VectorServer:
         config_rest_client: dict[str, Any] | None = None,
         default_client: Literal["rest", "sql"] | None = None,
     ):
-        # A failed re-init must not leave the previous state marked usable, or the
-        # next read would skip the automatic re-init and find no SQL client.
+        # A failed re-init must not leave the previous state marked usable, or the next read would skip the automatic re-init and find no SQL client.
         self._serving_initialized = False
+        # Closed before anything else can fail, so a failed re-init leaves no pool open and connections never double while two clients exist.
+        self._release_sql_client()
         self._training_dataset_version = training_dataset_version
 
         self._parent_feature_groups = entity.get_parent_feature_groups().accessible
@@ -345,8 +345,6 @@ class VectorServer:
                 inference_helper_columns=inference_helper_columns,
                 options=options,
             )
-        else:
-            self._release_sql_client()
         self._serving_initialized = True
 
     def _init_batch_scoring(
@@ -438,9 +436,6 @@ class VectorServer:
     ) -> None:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Initialising Online Store SQL client")
-        # Closed before the new one is built, so a failed setup leaves no pool open
-        # and connections never double while both exist.
-        self._release_sql_client()
         sql_client = online_store_sql_engine.OnlineStoreSqlClient(
             feature_store_id=self._feature_store_id,
             skip_fg_ids=self._skip_fg_ids,
@@ -463,8 +458,7 @@ class VectorServer:
         self._sql_client_finalizer = weakref.finalize(
             self, _close_sql_client_off_thread, sql_client
         )
-        # At interpreter exit the sockets close with the process; a clean close
-        # would only delay the exit.
+        # At interpreter exit the sockets close with the process; a clean close would only delay the exit.
         self._sql_client_finalizer.atexit = False
 
     def _release_sql_client(self) -> None:
