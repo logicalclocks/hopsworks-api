@@ -14,11 +14,18 @@
 #   limitations under the License.
 #
 import copy
+import gc
+import time
+import weakref
 from datetime import datetime
 from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
+from hopsworks_common.core.opensearch import (
+    OpenSearchClientSingleton,
+    ProjectOpenSearchClient,
+)
 from hopsworks_common.util import _convert_event_time_to_timestamp
 from hsfs.client.exceptions import FeatureStoreException, VectorDatabaseException
 from hsfs.core import vector_db_client
@@ -26,9 +33,11 @@ from hsfs.embedding import EmbeddingIndex
 from hsfs.feature import Feature
 from hsfs.feature_group import FeatureGroup
 from opensearchpy.exceptions import (
+    AuthenticationException,
     AuthorizationException,
     ConnectionError,
     NotFoundError,
+    RequestError,
 )
 
 
@@ -72,7 +81,8 @@ class TestVectorDbClient:
             "hsfs.core.vector_db_client.OpenSearchClientSingleton",
             return_value=self.mock_os_wrapper,
         )
-        mocker.patch.object(vector_db_client.VectorDbClient, "_field_knn_filter", {})
+        vector_db_client.VectorDbClient._field_knn_filter.clear()
+        vector_db_client.VectorDbClient._knn_filter_refused_until.clear()
 
         self.query = self.fg.select_all()
         self.target = vector_db_client.VectorDbClient(self.query)
@@ -567,9 +577,8 @@ class TestVectorDbClient:
     @pytest.mark.parametrize(
         "lookup, mapping_reads",
         [
-            # Refused or missing: remembered, so the mapping is read once.
-            ({"side_effect": AuthorizationException(403, "security_exception", {})}, 1),
-            ({"side_effect": NotFoundError(404, "index_not_found_exception", {})}, 1),
+            # Refused or missing, which the wrapper answers with None: remembered, so the mapping is read once.
+            ({"return_value": None}, 1),
             # Anything else may be transient, so the next search reads the mapping again.
             ({"side_effect": ConnectionError("N/A", "connection refused", None)}, 2),
             (
@@ -581,7 +590,7 @@ class TestVectorDbClient:
                 2,
             ),
         ],
-        ids=["refused", "not_found", "connection_error", "field_not_in_mapping"],
+        ids=["refused_or_missing", "connection_error", "field_not_in_mapping"],
     )
     def test_find_neighbors_keeps_filter_in_knn_when_engine_unknown(
         self, lookup, mapping_reads
@@ -621,6 +630,31 @@ class TestVectorDbClient:
             self.mock_os_wrapper, 99, index, "11_emb"
         )
 
+    @pytest.mark.parametrize("engines", [("nmslib", "faiss"), ("faiss", "nmslib")])
+    def test_find_neighbors_mapping_cache_is_scoped_to_client(self, mocker, engines):
+        wrappers = []
+        for engine in engines:
+            client = MagicMock()
+            client.indices.get_field_mapping.return_value = self._field_mapping(
+                "f2", engine
+            )
+            client.search.return_value = self.mock_os_wrapper._search.return_value
+            wrapper = ProjectOpenSearchClient(
+                client, feature_store_id=99, is_cluster_client=False
+            )
+            mocker.patch(
+                "hsfs.core.vector_db_client.OpenSearchClientSingleton",
+                return_value=wrapper,
+            )
+
+            self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+            wrappers.append(wrapper)
+            body = client.search.call_args.kwargs["body"]
+            expected_shape = "outside" if engine == "nmslib" else "inside"
+            assert self._knn_shape(body) == (expected_shape, 2)
+            client.indices.get_field_mapping.assert_called_once()
+
     def test_find_neighbors_retries_with_larger_k_on_nmslib(self, mocker):
         # On nmslib the filters can drop most of the k nearest in a default project index, so the search is repeated with a larger k.
         mocker.patch.object(self.embedding_index, "_col_prefix", "1_")
@@ -653,6 +687,333 @@ class TestVectorDbClient:
             2**31 - 1,
             15,
         ]
+
+    @staticmethod
+    def _opensearch_error(error_type, reason, caused_by=None):
+        # The body of an OpenSearch error response, as opensearch-py hands it to RequestError.
+        error = {
+            "root_cause": [{"type": error_type, "reason": reason}],
+            "type": error_type,
+            "reason": reason,
+        }
+        if caused_by:
+            error["caused_by"] = caused_by
+        return RequestError(400, error_type, {"error": error, "status": 400})
+
+    def _opensearch_1_3(
+        self, mocker, col_name="f2", hits=None, search=None, first_error=None
+    ):
+        """The real client wrapper over the low-level client of an OpenSearch 1.3 with a faiss field."""
+        client = MagicMock()
+        client.indices.get_field_mapping.return_value = self._field_mapping(
+            col_name, "faiss"
+        )
+        bodies = []
+
+        def opensearch_search(body, index, params):
+            bodies.append(copy.deepcopy(body))
+            if first_error and len(bodies) == 1:
+                raise first_error
+            if "filter" in body["query"].get("knn", {}).get(col_name, {}):
+                raise self._opensearch_error(
+                    "parsing_exception",
+                    "[knn] unknown token [START_OBJECT] after [filter]",
+                )
+            if search:
+                return search(body)
+            return hits or self.mock_os_wrapper._search.return_value
+
+        client.search.side_effect = opensearch_search
+        mocker.patch(
+            "hsfs.core.vector_db_client.OpenSearchClientSingleton",
+            return_value=ProjectOpenSearchClient(
+                client, feature_store_id=99, is_cluster_client=False
+            ),
+        )
+        return bodies
+
+    @staticmethod
+    def _knn_shape(body, col_name="f2"):
+        if "knn" in body["query"]:
+            return "inside", body["query"]["knn"][col_name]["k"]
+        return "outside", body["query"]["bool"]["must"][0]["knn"][col_name]["k"]
+
+    def test_find_neighbors_moves_filter_out_of_knn_when_opensearch_cannot_parse_it(
+        self, mocker
+    ):
+        # A 5.1 central cluster creates faiss fields on the OpenSearch 1.3 of a 5.0 satellite.
+        bodies = self._opensearch_1_3(mocker)
+
+        results = self.target._find_neighbors(
+            [1.0, 2.0, 3.0], feature=self.f2, k=2, filter=self.f3 > 10
+        )
+
+        assert len(results) == 1
+        assert [self._knn_shape(body) for body in bodies] == [
+            ("inside", 2),
+            ("outside", 2),
+        ]
+        assert bodies[1]["query"] == {
+            "bool": {
+                "must": [{"knn": {"f2": {"vector": [1.0, 2.0, 3.0], "k": 2}}}],
+                "filter": [
+                    {"exists": {"field": "f2"}},
+                    {"range": {"f3": {"gt": 10}}},
+                ],
+            }
+        }
+        assert bodies[1]["size"] == 2
+        assert bodies[1]["_source"] == bodies[0]["_source"]
+
+        # The next search of the field goes straight to the shape OpenSearch can parse.
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+        assert [self._knn_shape(body) for body in bodies[2:]] == [("outside", 2)]
+
+    @pytest.mark.parametrize(
+        "mapping_error",
+        [
+            AuthorizationException(403, "security_exception", {}),
+            NotFoundError(404, "index_not_found_exception", {}),
+        ],
+        ids=["refused", "missing"],
+    )
+    def test_find_neighbors_keeps_federated_client_when_mapping_is_unreadable(
+        self, mocker, mapping_error
+    ):
+        # A satellite's feature store reads its OpenSearch through a federated client, here on OpenSearch 1.3.
+        client = MagicMock()
+        client.indices.get_field_mapping.side_effect = mapping_error
+
+        def opensearch_search(body, index, params):
+            if "knn" in body["query"]:
+                raise self._opensearch_error(
+                    "parsing_exception",
+                    "[knn] unknown token [START_OBJECT] after [filter]",
+                )
+            return self.mock_os_wrapper._search.return_value
+
+        client.search.side_effect = opensearch_search
+        mocker.patch.object(OpenSearchClientSingleton, "_instance", None)
+        mocker.patch.object(OpenSearchClientSingleton, "_wrapper_cache", {})
+        create = mocker.patch.object(
+            OpenSearchClientSingleton,
+            "_get_or_create_opensearch_client",
+            return_value=(False, client),
+        )
+        mocker.patch("hopsworks_common.core.opensearch.OpenSearchApi")
+        mocker.patch(
+            "hsfs.core.vector_db_client.OpenSearchClientSingleton",
+            OpenSearchClientSingleton,
+        )
+
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+        create.assert_called_once()
+        client.close.assert_not_called()
+        client.indices.get_field_mapping.assert_called_once()
+        assert [
+            self._knn_shape(call.kwargs["body"])
+            for call in client.search.call_args_list
+        ] == [("inside", 2), ("outside", 2), ("outside", 2)]
+
+    def test_find_neighbors_moves_filter_out_of_knn_after_a_refresh(self, mocker):
+        # An expired token makes the wrapper refresh the connection and send the search again.
+        mocker.patch.object(ProjectOpenSearchClient, "_refresh_opensearch_connection")
+        bodies = self._opensearch_1_3(
+            mocker,
+            first_error=AuthenticationException(401, "security_exception", {}),
+        )
+
+        results = self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+        assert len(results) == 1
+        assert [self._knn_shape(body) for body in bodies] == [
+            ("inside", 2),
+            ("inside", 2),
+            ("outside", 2),
+        ]
+
+    def test_find_neighbors_refusal_cache_is_scoped_to_client(self, mocker):
+        old_bodies = self._opensearch_1_3(mocker)
+        old_wrapper = vector_db_client.OpenSearchClientSingleton.return_value
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+        modern_client = MagicMock()
+        modern_client.indices.get_field_mapping.return_value = self._field_mapping(
+            "f2", "faiss"
+        )
+        modern_client.search.return_value = self.mock_os_wrapper._search.return_value
+        modern_wrapper = ProjectOpenSearchClient(
+            modern_client, feature_store_id=99, is_cluster_client=False
+        )
+        singleton = mocker.patch(
+            "hsfs.core.vector_db_client.OpenSearchClientSingleton",
+            return_value=modern_wrapper,
+        )
+
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+        modern_body = modern_client.search.call_args.kwargs["body"]
+        assert self._knn_shape(modern_body) == ("inside", 2)
+        modern_client.indices.get_field_mapping.assert_called_once()
+
+        singleton.return_value = old_wrapper
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+        assert [self._knn_shape(body) for body in old_bodies] == [
+            ("inside", 2),
+            ("outside", 2),
+            ("outside", 2),
+        ]
+
+    def test_find_neighbors_tries_filter_in_knn_again_once_the_refusal_expires(
+        self, mocker
+    ):
+        bodies = self._opensearch_1_3(mocker)
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+        key = (99, "2249__embedding_default_embedding", "f2")
+        wrapper = vector_db_client.OpenSearchClientSingleton.return_value
+        vector_db_client.VectorDbClient._knn_filter_refused_until[wrapper][key] = (
+            time.monotonic() - 1
+        )
+
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+        assert [self._knn_shape(body) for body in bodies[2:]] == [
+            ("inside", 2),
+            ("outside", 2),
+        ]
+
+    def test_find_neighbors_keeps_refusal_after_token_refresh(self, mocker):
+        self._opensearch_1_3(mocker)
+        wrapper = vector_db_client.OpenSearchClientSingleton.return_value
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+        transport = wrapper._opensearch_client
+        refresh = mocker.patch.object(wrapper, "_refresh_opensearch_connection")
+        transport.search.side_effect = [
+            AuthenticationException(401, "security_exception", {}),
+            self.mock_os_wrapper._search.return_value,
+        ]
+
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+        refresh.assert_called_once()
+        assert [
+            self._knn_shape(call.kwargs["body"])
+            for call in transport.search.call_args_list[2:]
+        ] == [("outside", 2), ("outside", 2)]
+
+    def test_knn_caches_release_discarded_client(self):
+        client = MagicMock()
+        client.indices.get_field_mapping.return_value = self._field_mapping(
+            "f2", "faiss"
+        )
+        client.search.side_effect = [
+            self._opensearch_error(
+                "parsing_exception", "[knn] unknown token [START_OBJECT] after [filter]"
+            ),
+            self.mock_os_wrapper._search.return_value,
+        ]
+        wrapper = ProjectOpenSearchClient(
+            client, feature_store_id=99, is_cluster_client=False
+        )
+        self.target._knn_search(
+            wrapper,
+            99,
+            "2249__embedding_default_embedding",
+            "f2",
+            {"vector": [1.0, 2.0, 3.0], "k": 2},
+            [{"exists": {"field": "f2"}}],
+            {"size": 2},
+            None,
+        )
+        assert vector_db_client.VectorDbClient._field_knn_filter
+        assert vector_db_client.VectorDbClient._knn_filter_refused_until
+        reference = weakref.ref(wrapper)
+
+        del wrapper, client
+        gc.collect()
+
+        assert reference() is None
+        assert not vector_db_client.VectorDbClient._field_knn_filter
+        assert not vector_db_client.VectorDbClient._knn_filter_refused_until
+
+    def test_find_neighbors_keeps_filter_out_of_knn_for_every_search_of_the_call(
+        self, mocker
+    ):
+        # In a default project index fewer than k can come back, which repeats the search with a larger k after probing the largest k allowed.
+        mocker.patch.object(self.embedding_index, "_col_prefix", "1_")
+        mocker.patch.object(
+            vector_db_client.VectorDbClient, "_index_result_limit_k", {}
+        )
+        hits = {"hits": {"hits": [{"_score": 1.0, "_source": {"1_f1": 4}}]}}
+
+        def search(body):
+            if self._knn_shape(body, "1_f2")[1] == 2**31 - 1:
+                raise self._opensearch_error(
+                    "search_phase_execution_exception",
+                    "all shards failed",
+                    caused_by={
+                        "type": "illegal_argument_exception",
+                        "reason": "[knn] requires k <= 10000",
+                    },
+                )
+            return hits
+
+        bodies = self._opensearch_1_3(mocker, col_name="1_f2", search=search)
+        target = vector_db_client.VectorDbClient(self.fg.select_all())
+
+        target._find_neighbors(
+            [1.0, 2.0, 3.0], feature=self.f2, k=5, filter=self.f3 > 10
+        )
+
+        assert [self._knn_shape(body, "1_f2") for body in bodies] == [
+            ("inside", 5),
+            ("outside", 5),
+            ("outside", 2**31 - 1),
+            ("outside", 15),
+        ]
+        assert all(
+            body["query"]["bool"]["filter"]
+            == [{"exists": {"field": "1_f2"}}, {"range": {"1_f3": {"gt": 10}}}]
+            for body in bodies[1:]
+        )
+
+    @pytest.mark.parametrize(
+        "engine, error",
+        [
+            # Any other request the parser refuses is not the knn filter.
+            ("faiss", ("parsing_exception", "unknown query [knnn]")),
+            # Filters already outside the knn clause have nowhere else to go.
+            (
+                "nmslib",
+                (
+                    "parsing_exception",
+                    "[knn] unknown token [START_OBJECT] after [filter]",
+                ),
+            ),
+        ],
+        ids=["other_parsing_error", "filter_already_outside"],
+    )
+    def test_find_neighbors_does_not_retry_other_errors(self, mocker, engine, error):
+        client = MagicMock()
+        client.indices.get_field_mapping.return_value = self._field_mapping(
+            "f2", engine
+        )
+        client.search.side_effect = self._opensearch_error(*error)
+        mocker.patch(
+            "hsfs.core.vector_db_client.OpenSearchClientSingleton",
+            return_value=ProjectOpenSearchClient(
+                client, feature_store_id=99, is_cluster_client=False
+            ),
+        )
+
+        with pytest.raises(VectorDatabaseException):
+            self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=2)
+
+        assert client.search.call_count == 1
+        assert vector_db_client.VectorDbClient._knn_filter_refused_until == {}
 
     def test_convert_to_pandas_type_timestamp_keeps_milliseconds(self):
         # OpenSearch stores timestamps as epoch ms; sub-second precision must
