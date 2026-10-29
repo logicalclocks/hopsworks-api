@@ -49,7 +49,6 @@ _STYLE = {
     "axes.facecolor": "white",
     "savefig.facecolor": "white",
     "figure.edgecolor": "white",
-    "figure.linewidth": 0,
     "savefig.edgecolor": "none",
 }
 
