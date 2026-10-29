@@ -2,6 +2,8 @@
   "name": "trino-js-app",
   "private": true,
   "type": "module",
+  "main": "server.js",
+  "description": "A feature group's offline table through Trino.",
   "dependencies": {
     "trino-client": "0.2.9"
   }

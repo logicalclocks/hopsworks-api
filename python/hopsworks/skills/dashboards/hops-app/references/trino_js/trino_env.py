@@ -3,8 +3,8 @@
 
 The Node server reads the file (TRINO_CONNECTION, default /tmp/trino.json), so
 the password is never printed, kept in shell history, or exported to every
-process the app starts. hopsworks.login() inside the cluster writes the
-cluster CA to /tmp/ca_chain.pem.
+process the app starts. The CA is the cluster's, where the SDK keeps it after
+login: /tmp/ca_chain.pem in a pod, the session folder outside the cluster.
 """
 
 import json
@@ -22,11 +22,14 @@ def _main():
         "server": f"https://{trino.get_host()}:{trino.get_port()}",
         "user": user,
         "password": password,
-        "ca": "/tmp/ca_chain.pem",
+        "ca": trino._get_ca_chain_path(True),
+        # Off only where the client turns it off: outside the cluster Trino answers
+        # on an IP its certificate does not name.
+        "verifyHostname": os.environ.get("HOPSWORKS_HOSTNAME_VERIFICATION", "true").lower() != "false",
         "schema": f"{project.name.lower()}_featurestore",
     }
     if not os.path.exists(connection["ca"]):
-        raise SystemExit("trino_env.py: no cluster CA at /tmp/ca_chain.pem")
+        raise SystemExit(f"trino_env.py: no cluster CA at {connection['ca']}")
     path = os.environ.get("TRINO_CONNECTION", "/tmp/trino.json")
     # A new file, created 0600 and renamed over the old one: an existing file
     # keeps its mode under O_TRUNC, and the rename replaces a symlink rather

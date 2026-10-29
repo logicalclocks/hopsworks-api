@@ -1516,12 +1516,12 @@ def test_the_app_skeleton_uses_only_relative_urls():
 def test_trino_env_writes_the_connection_to_a_private_file(tmp_path):
     ca = tmp_path / "ca_chain.pem"
     ca.write_text("CA", encoding="utf-8")
-    script = (TRINO_JS / "trino_env.py").read_text(encoding="utf-8")
     (tmp_path / "trino_env.py").write_text(
-        script.replace("/tmp/ca_chain.pem", str(ca)), encoding="utf-8"
+        (TRINO_JS / "trino_env.py").read_text(encoding="utf-8"), encoding="utf-8"
     )
     (tmp_path / "hopsworks.py").write_text(
-        textwrap.dedent(
+        f"CA = {str(ca)!r}\n"
+        + textwrap.dedent(
             """
             class _Trino:
                 def get_basic_auth(self):
@@ -1530,6 +1530,8 @@ def test_trino_env_writes_the_connection_to_a_private_file(tmp_path):
                     return "coordinator.trino.service.consul"
                 def get_port(self):
                     return 8443
+                def _get_ca_chain_path(self, verify):
+                    return CA
 
             class _Project:
                 name = "Demo"
@@ -1553,6 +1555,7 @@ def test_trino_env_writes_the_connection_to_a_private_file(tmp_path):
             **os.environ,
             "PYTHONPATH": str(tmp_path),
             "TRINO_CONNECTION": str(target),
+            "HOPSWORKS_HOSTNAME_VERIFICATION": "false",
         },
     )
     # The password is never printed, so it reaches no log.
@@ -1563,6 +1566,7 @@ def test_trino_env_writes_the_connection_to_a_private_file(tmp_path):
         "user": "Demo__meb10000",
         "password": "p'w $(x) \\",
         "ca": str(ca),
+        "verifyHostname": False,
         "schema": "demo_featurestore",
     }
 

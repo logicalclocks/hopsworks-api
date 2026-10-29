@@ -31,7 +31,11 @@ them, or embeds a downloaded model to predict locally. A custom app is any other
 web service (FastAPI, Django, any WSGI/ASGI server) that binds to `0.0.0.0` and the
 injected `$APP_PORT`. Node.js apps get their dependencies from the npm packages
 installed in the environment (see [hops-environments](../../platform/hops-environments/SKILL.md),
-*npm packages*): nothing is `npm install`ed at app start.
+*npm packages*): nothing is `npm install`ed at app start. `hops app deploy`
+installs package.json `dependencies`, at package-lock.json's versions, into
+`<name>-app-env`, and never uploads `node_modules`. `<name>-app-env` is a clone of
+`python-agent-pipeline`, an agent environment: it runs apps, and Hopsworks
+refuses a job on it (error 300021).
 
 ## Contract
 
@@ -148,7 +152,8 @@ Gradio: call `demo.launch()` with no `server_port` or `root_path`; Hopsworks set
 reads, and a hardcoded port breaks the readiness probe.
 
 Node.js: listen on `process.env.PORT`; `import` resolves the environment's npm
-packages (install them first, e.g. `env.install_npm(["express@latest"])`).
+packages. `hops app deploy` installs package.json `dependencies`, at
+package-lock.json's versions, into `<name>-app-env`, and never uploads `node_modules`.
 
 ```javascript
 // Users/<username>/server.mjs  — app_kind="NODEJS"
@@ -205,8 +210,9 @@ the page. A Node server in the app holds the connection and answers the UI's
 relative `fetch("api/...")` calls with fixed queries, so the browser sends
 parameters, never SQL. `python-agent-pipeline` ships Node.
 
-The connection comes from the SDK: `trino_env.py` logs in, which writes the
-cluster CA to `/tmp/ca_chain.pem`, and writes the coordinator URL, the user
+The connection comes from the SDK: `trino_env.py` logs in and writes the
+path of the cluster CA the SDK keeps, whether to verify Trino's hostname (off
+where `HOPSWORKS_HOSTNAME_VERIFICATION=false`, as outside the cluster), the coordinator URL, the user
 `<project>__<username>`, its password from the secrets store and the schema
 `<project>_featurestore` to `/tmp/trino.json`, readable only by the app's user.
 Never print the password or export it as an environment variable: both leak it
@@ -224,7 +230,8 @@ const trino = Trino.create({
   catalog: "delta",
   schema: conn.schema, // <project>_featurestore
   auth: new BasicAuth(conn.user, conn.password),
-  ssl: { ca: readFileSync(conn.ca) }, // the cluster CA, not in Node's trust store
+  // the cluster CA, not in Node's trust store; no hostname check where the client turns it off
+  ssl: { ca: readFileSync(conn.ca), ...(conn.verifyHostname ? {} : { checkServerIdentity: () => undefined }) },
 });
 
 const query = await trino.query("SELECT * FROM customers_1 LIMIT 100");
@@ -235,20 +242,16 @@ for await (const result of query) {
 ```
 
 The whole app (server with `/health`, `/api/rows` and the static UI) is
-[references/trino_js/](references/trino_js/). Install `trino-client` into the
-app directory before the upload, so the app starts without the network, and
-copy `app.css` from the skeleton (`<skills>` is
+[references/trino_js/](references/trino_js/): its server runs `trino_env.py` at
+start, and `hops app deploy` installs `trino-client` into the app's environment.
+Copy `app.css` from the skeleton (`<skills>` is
 `/opt/hopsworks-api/python/hopsworks/skills` in a Hopsworks terminal):
 
 ```bash
 cp -r <skills>/dashboards/hops-app/references/trino_js apps/customers
 cp <skills>/dashboards/hops-app/references/app_skeleton/static/app.css apps/customers/static/
 (cd apps/customers && npm install --no-audit --no-fund)
-hops files upload apps/customers Users/<user>/apps/ --overwrite
-hops app create customers --path /Projects/<project>/Users/<user>/apps/customers/server.js \
-  --app-kind custom --app-port 8080 --readiness-probe-path /health \
-  --env python-agent-pipeline --start \
-  --entrypoint-command "bash -lc 'python trino_env.py && APP_TABLE=customers_1 exec node server.js'"
+hops app deploy customers apps/customers
 ```
 
 ### Streamlit caching and cold start
@@ -338,11 +341,12 @@ A full dashboard (statistics, monitoring history, data sample) is in
 - **Shape.** A `custom` app: `app.py` (FastAPI) serves a JSON API under `/api`
   and a static UI from `static/` (`index.html`, `app.js` as plain ES modules,
   `app.css`) in one process on `0.0.0.0:$APP_PORT`, with `/health` for the
-  readiness probe. No build step and no CDN, because the app runs air-gapped;
+  readiness probe. Or a `NODEJS` app: package.json `main` names the server,
+  which serves the same routes on `process.env.PORT`. No build step and no CDN, because the app runs air-gapped;
   every URL in the UI is relative (`fetch("api/top")`, `src="static/app.js"`),
   and `index.html` adds the trailing slash relative URLs need under the proxy
-  mount. A framework that needs a build (React, Vue, Svelte) only for a
-  git-backed app whose repository can hold the built assets. Streamlit when the
+  mount. A framework that needs a build (React, Vue, Svelte) is built where the
+  agent runs and its output deployed. Streamlit when the
   description is a data view with no custom interaction.
 - **Nothing moves on interaction.** A list or panel that reloads (a filter, a
   selection) keeps its current content, dimmed with `aria-busy`, until the new

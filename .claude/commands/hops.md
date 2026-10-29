@@ -90,7 +90,9 @@ an external client do not, and list the programs under `./dashboards/` instead.
    Ask the name, proposing a slug from the description. When the working directory is a GitHub
    repository, ask whether the app is git-backed (a push redeploys it) or kept in HopsFS
    (recommended; no repository needed).
-3. **Edit.** Ask what should change, in words, unless the instruction says it.
+3. **Edit.** Ask what should change, in words, unless the instruction says it. A move between
+   Python and Node.js is a new app under the same name: ask the user before
+   `hops app delete <name> --yes --force`, then create it.
 4. **Delete.** Ask the user to confirm the exact name.
 5. Spawn **hops-app-builder** with the Agent tool and this prompt, then print what it returns:
 
@@ -99,6 +101,7 @@ an external client do not, and list the programs under `./dashboards/` instead.
    name: <name>
    description: <the user's words>
    change: <for an edit, the user's words>
+   runtime: <node when the request says Node or an npm framework, else python>
    source: <hopsfs | git>
    where: <Hopsworks terminal | external client>
    ```

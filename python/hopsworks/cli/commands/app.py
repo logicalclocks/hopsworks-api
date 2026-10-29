@@ -25,6 +25,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks_common.core.app_api import AppApi
 
 
 @click.group("app")
@@ -555,6 +556,8 @@ def app_redeploy(ctx: click.Context, name: str, wait: bool) -> None:
 
 _DEPLOY_BASE_ENV = "python-agent-pipeline"
 _DEPLOY_REQUIREMENTS = "app-requirements.txt"
+_DEPLOY_PACKAGE = "package.json"
+_DEPLOY_LOCKFILE = "package-lock.json"
 _DEPLOY_PORT = 8080
 _POLL_SECONDS = 3.0
 
@@ -569,9 +572,9 @@ _POLL_SECONDS = 3.0
     "environment",
     default=None,
     help=(
-        f"Python environment of the app. Default: <name>-app-env cloned from "
-        f"{_DEPLOY_BASE_ENV} when LOCAL_DIR has {_DEPLOY_REQUIREMENTS}, "
-        f"else {_DEPLOY_BASE_ENV}."
+        f"Environment of the app. Default: <name>-app-env cloned from "
+        f"{_DEPLOY_BASE_ENV} when LOCAL_DIR has {_DEPLOY_REQUIREMENTS} or "
+        f"{_DEPLOY_PACKAGE} dependencies, else {_DEPLOY_BASE_ENV}."
     ),
 )
 @click.option(
@@ -592,17 +595,20 @@ def app_deploy(
     """Create or update an app from a local directory.
 
     Uploads LOCAL_DIR to `Users/<user>/apps/<name>/` (overwriting, skipping
-    dotfiles and `__pycache__`), prepares the environment, creates the app
-    (`app.py` as a custom app on port 8080, readiness on `/health`) or
-    redeploys it, and waits until the new execution serves. Prints the URL
+    dotfiles, `__pycache__` and a Node app's `node_modules`), prepares the
+    environment, creates the app or redeploys it, and waits until the new
+    execution serves. `app.py` runs as a custom app; without one, a
+    package.json whose `main` names the server runs as a Node.js app, its
+    `dependencies` installed into the environment at package-lock.json's
+    versions. Both serve on port 8080, readiness on `/health`. Prints the URL
     on the last line; with `--json`, the app and every file's sha256.
 
     \f
     Args:
         ctx: Click context.
         name: App name.
-        local_dir: Directory holding `app.py`.
-        environment: Python environment; derived from LOCAL_DIR when None.
+        local_dir: Directory holding `app.py`, or a Node app's package.json.
+        environment: Environment; derived from LOCAL_DIR when None.
         timeout: Seconds to wait for serving.
     """
     import hashlib
@@ -612,17 +618,18 @@ def app_deploy(
     import hopsworks
     from hopsworks.cli.commands.files import makedirs
 
-    if not os.path.isfile(os.path.join(local_dir, "app.py")):
-        raise click.UsageError(f"{local_dir} has no app.py.")
-    files = _deploy_files(local_dir)
+    kind, entry = _app_entry(local_dir)
+    node = kind == "NODEJS"
+    files = _deploy_files(local_dir, node)
+    wanted = _wanted(local_dir, node)
     project = session.get_project(ctx)
     try:
         username = hopsworks.get_users_api()._get_current_user().username
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not resolve your username: {exc}") from exc
     remote_dir = f"Users/{username}/apps/{name}"
-    app_path = f"/Projects/{project.name}/{remote_dir}/app.py"
-    has_requirements = _DEPLOY_REQUIREMENTS in files
+    app_path = f"/Projects/{project.name}/{remote_dir}/{entry}"
+    has_requirements = wanted is not None
     env_name = environment or (
         f"{name}-app-env" if has_requirements else _DEPLOY_BASE_ENV
     )
@@ -633,14 +640,17 @@ def app_deploy(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not find app '{name}': {exc}") from exc
     if existing is not None:
-        # The SDK cannot change an app's file or environment, so a mismatch
+        # The SDK cannot change an app's kind, file or environment, so a mismatch
         # would keep serving something else than what was uploaded.
-        if not (getattr(existing, "app_path", None) or "").endswith(
-            f"{remote_dir}/app.py"
-        ):
+        existing_kind = (getattr(existing, "app_kind", None) or "CUSTOM").upper()
+        if (existing_kind == "NODEJS") != node or not (
+            getattr(existing, "app_path", None) or ""
+        ).endswith(f"{remote_dir}/{entry}"):
+            label = AppApi.APP_KIND_LABELS.get(existing_kind, existing_kind)
             raise click.ClickException(
-                f"App '{name}' runs {existing.app_path}, not {app_path}. "
-                f"Pick another name, or `hops app delete {name} --yes --force` first."
+                f"App '{name}' is a {label} app running {existing.app_path}, not {app_path}. "
+                f"Pick another name, or delete it with `hops app delete {name} --yes --force` "
+                "(ask the user) and deploy again."
             )
         if getattr(existing, "environment_name", None) != env_name:
             raise click.ClickException(
@@ -651,13 +661,14 @@ def app_deploy(
 
     dataset_api = project.get_dataset_api()
     requirements_remote = f"{remote_dir}/{_DEPLOY_REQUIREMENTS}"
+    # Before the upload: what the environment last got is what HopsFS holds.
     try:
-        requirements_changed = has_requirements and _remote_text(
-            dataset_api, requirements_remote
-        ) != _local_text(os.path.join(local_dir, _DEPLOY_REQUIREMENTS))
+        requirements_changed = (
+            has_requirements and _wanted_remote(dataset_api, remote_dir, node) != wanted
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
-            f"Could not read {requirements_remote}: {exc}"
+            f"Could not read {remote_dir}/{_what(node)}: {exc}"
         ) from exc
 
     try:
@@ -680,8 +691,9 @@ def app_deploy(
         _deploy_environment(
             project.get_environment_api(),
             env_name,
-            f"/Projects/{project.name}/{requirements_remote}",
+            _installer(f"/Projects/{project.name}/{requirements_remote}", node, wanted),
             requirements_changed,
+            _what(node),
         )
 
     previous = None
@@ -692,9 +704,9 @@ def app_deploy(
                     apps.create_app,
                     {
                         "name": name,
-                        "app_kind": "CUSTOM",
+                        "app_kind": kind,
                         "app_path": app_path,
-                        "entrypoint_command": "python app.py",
+                        **({} if node else {"entrypoint_command": "python app.py"}),
                         "app_port": _DEPLOY_PORT,
                         "readiness_probe_path": "/health",
                         "environment": env_name,
@@ -738,13 +750,145 @@ def app_deploy(
         click.echo(url)
 
 
-def _deploy_files(local_dir: str) -> list[str]:
-    """Files of `local_dir`, relative and sorted, without dotfiles and `__pycache__`."""
+def _app_entry(local_dir: str) -> tuple[str, str]:
+    """The app's kind and entry file: `app.py` as a custom app, else package.json's `main` as a Node.js app."""
+    import json
     import os
 
+    if os.path.isfile(os.path.join(local_dir, "app.py")):
+        return "CUSTOM", "app.py"
+    package = os.path.join(local_dir, _DEPLOY_PACKAGE)
+    if os.path.isfile(package):
+        try:
+            main = json.loads(_local_text(package)).get("main")
+        except (ValueError, AttributeError) as exc:
+            raise click.UsageError(f"{package} is not a JSON object: {exc}") from exc
+        if isinstance(main, str) and main.lower().endswith(
+            AppApi.APP_KIND_EXTENSIONS["NODEJS"]
+        ):
+            return "NODEJS", os.path.normpath(main).replace(os.sep, "/")
+    raise click.UsageError(
+        f"{local_dir} has no app.py, nor a {_DEPLOY_PACKAGE} whose main names the server."
+    )
+
+
+def _wanted(local_dir: str, node: bool) -> str | None:
+    """What the app's environment gets installed; None when nothing.
+
+    Python: the text of app-requirements.txt. Node: package.json and
+    package-lock.json as one JSON line, when package.json has `dependencies`.
+    """
+    import json
+    import os
+
+    if not node:
+        path = os.path.join(local_dir, _DEPLOY_REQUIREMENTS)
+        return _local_text(path) if os.path.isfile(path) else None
+    package = _local_text(os.path.join(local_dir, _DEPLOY_PACKAGE))
+    if not json.loads(package).get("dependencies"):
+        return None
+    lockfile = os.path.join(local_dir, _DEPLOY_LOCKFILE)
+    if not os.path.isfile(lockfile):
+        raise click.UsageError(
+            f"{local_dir} has {_DEPLOY_PACKAGE} dependencies but no {_DEPLOY_LOCKFILE}: "
+            f"run npm install in {local_dir}."
+        )
+    return json.dumps({"package": package, "lockfile": _local_text(lockfile)})
+
+
+def _wanted_remote(dataset_api: Any, remote_dir: str, node: bool) -> str | None:
+    """`_wanted` of the app's files in HopsFS, as the last deploy uploaded them."""
+    import json
+
+    if not node:
+        return _remote_text(dataset_api, f"{remote_dir}/{_DEPLOY_REQUIREMENTS}")
+    package = _remote_text(dataset_api, f"{remote_dir}/{_DEPLOY_PACKAGE}")
+    lockfile = _remote_text(dataset_api, f"{remote_dir}/{_DEPLOY_LOCKFILE}")
+    if package is None or lockfile is None:
+        return None
+    return json.dumps({"package": package, "lockfile": lockfile})
+
+
+def _what(node: bool) -> str:
+    return f"{_DEPLOY_PACKAGE} dependencies" if node else _DEPLOY_REQUIREMENTS
+
+
+def _installer(requirements: str, node: bool, wanted: str) -> Any:
+    """Installs `wanted` into an environment: the uploaded requirements file, or the package's dependencies without devDependencies."""
+    import json
+
+    if node:
+        texts = json.loads(wanted)
+        return lambda env: _install_package(env, texts["package"], texts["lockfile"])
+    return lambda env: env.install_requirements(requirements, await_installation=True)
+
+
+def _install_package(env: Any, package: str, lockfile: str) -> None:
+    """Install package.json's `dependencies` at the lockfile's versions, only those the environment lacks.
+
+    Hopsworks refuses a library the environment already has (error 100028), so
+    one there at another version is uninstalled first. When the install then
+    fails, the uninstalled versions go back before the error is raised: a
+    running app's next start uses the environment as it is.
+    """
+    resolved = env.resolve_npm_package_json(
+        content=package, lockfile_content=lockfile, lockfile_name=_DEPLOY_LOCKFILE
+    )
+    entries = [
+        p
+        for p in resolved.get("packages") or []
+        if p.get("dependencyType") != "OPTIONAL_DEPENDENCY"
+    ]
+    unresolved = [
+        f"{p['name']}@{p.get('requested')}: {p.get('reason')}"
+        for p in entries
+        if p.get("status") == "UNRESOLVED"
+    ]
+    if unresolved:
+        raise click.ClickException("Could not resolve " + "; ".join(unresolved) + ".")
+    have = env.library_versions or {}
+    missing = {
+        p["name"]: p["version"]
+        for p in entries
+        if p.get("status") == "RESOLVED" and have.get(p["name"]) != p["version"]
+    }
+    removed = []
+    try:
+        for name in missing:
+            if name in have:
+                env.uninstall(name, package_source="NPM")
+                removed.append(name)
+        if missing:
+            env.install_npm(
+                [{"name": n, "version": v} for n, v in missing.items()],
+                await_installation=True,
+            )
+    except Exception as exc:
+        if not removed:
+            raise
+        back = ", ".join(f"{n}@{have[n]}" for n in removed)
+        try:
+            env.install_npm(
+                [{"name": n, "version": have[n]} for n in removed],
+                await_installation=True,
+            )
+        except Exception as restore_exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not install into environment '{env.name}': {exc}. Could not put back "
+                f"{back} either ({restore_exc}): the app's next start lacks them."
+            ) from exc
+        output.warn("Put back %s in %s after the failed install.", back, env.name)
+        raise
+
+
+def _deploy_files(local_dir: str, node: bool = False) -> list[str]:
+    """Files of `local_dir`, relative and sorted, without dotfiles, `__pycache__` and a Node app's `node_modules`."""
+    import os
+
+    skipped = {"__pycache__", "node_modules"} if node else {"__pycache__"}
     found = []
     for root, dirs, names in os.walk(local_dir):
-        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__"]
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in skipped]
         for file_name in names:
             if not file_name.startswith("."):
                 found.append(
@@ -769,9 +913,13 @@ def _remote_text(dataset_api: Any, path: str) -> str | None:
 
 
 def _deploy_environment(
-    env_api: Any, env_name: str, requirements: str, requirements_changed: bool
+    env_api: Any,
+    env_name: str,
+    installer: Any,
+    requirements_changed: bool,
+    what: str = _DEPLOY_REQUIREMENTS,
 ) -> None:
-    """Clone `env_name` from the base environment once; install on a new clone or new requirements."""
+    """Clone `env_name` from the base environment once; install on a new clone or a new `what`."""
     try:
         env = env_api.get_environment(env_name)
     except Exception as exc:  # noqa: BLE001
@@ -793,9 +941,9 @@ def _deploy_environment(
     elif not requirements_changed:
         output.info("Environment %s is up to date.", env_name)
         return
-    output.info("Installing %s into %s.", _DEPLOY_REQUIREMENTS, env_name)
+    output.info("Installing %s into %s.", what, env_name)
     try:
-        env.install_requirements(requirements, await_installation=True)
+        installer(env)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Could not install into environment '{env_name}': {exc}"

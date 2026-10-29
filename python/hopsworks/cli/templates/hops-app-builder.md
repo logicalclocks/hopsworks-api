@@ -32,6 +32,15 @@ its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skel
   to every browser request while `/health` and a port-forward still pass. In a Hopsworks terminal,
   smoke-test the pod through `kubectl port-forward`: the page and one call of each API route the
   description implies (the proxy URL needs a browser session).
+- **create (Node):** when `runtime` is node: copy `references/trino_js/` (its server,
+  `trino_env.py` and package.json) and the skeleton's `static/app.css` into the app's folder: the
+  copy brings the Trino connection and the server's frame, its routes and page are this app's own;
+  package.json with `main` naming the server, runtime libraries in `dependencies`, build tools in `devDependencies`,
+  `npm install` for the live run (the deploy installs the same `dependencies` into the app's
+  environment and never uploads `node_modules`); the server listens on `process.env.PORT` and `process.env.HOST`, prints
+  `Listening on <port>`, serves `/health`, `api/` and the UI; a UI with a build runs
+  `npm run build` before each deploy. Deploy with the same
+  `hops app deploy`.
 - **edit:** change the source as `change` says, update the docstring so the next edit starts from
   what the app now is, `hops app deploy <name> apps/<name>` (push, for git), and rerun the smoke
   tests.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from unittest import mock
 
 from click.testing import CliRunner
@@ -823,23 +824,33 @@ def _app_dir(tmp_path, requirements=None):
 
 
 def _deploy(
-    mock_project, root, *args, existing=None, polls=(), remote=None, json_mode=False
+    mock_project,
+    root,
+    *args,
+    existing=None,
+    polls=(),
+    remote=None,
+    json_mode=False,
+    hopsfs=None,
 ):
     """Run `hops app deploy shop <root>` against fakes.
 
     `existing` is the app before the deploy, `polls` what each later `get_app`
-    returns, and `remote` the text of the requirements uploaded last time.
+    returns, `remote` the text of the requirements uploaded last time, and
+    `hopsfs` the text of other files the last deploy uploaded, by path.
     """
     apps = mock_project.get_app_api.return_value
     apps.get_app.side_effect = [existing, *polls]
     dataset_api = mock_project.get_dataset_api.return_value
     present = {"Users/scott"}
+    files = dict(hopsfs or {})
     if remote is not None:
-        present.add("Users/scott/apps/shop/app-requirements.txt")
+        files["Users/scott/apps/shop/app-requirements.txt"] = remote
+    present.update(files)
     dataset_api.exists.side_effect = present.__contains__
     dataset_api.mkdir.side_effect = present.add
-    dataset_api.read_content.return_value = (
-        mock.MagicMock(content=remote.encode()) if remote is not None else None
+    dataset_api.read_content.side_effect = lambda path: (
+        mock.MagicMock(content=files[path].encode()) if path in files else None
     )
     user = mock.MagicMock()
     user.username = "scott"
@@ -955,6 +966,216 @@ def test_deploy_needs_app_py(mock_project, tmp_path):
     result = CliRunner().invoke(cli, ["app", "deploy", "shop", str(tmp_path / "empty")])
     assert result.exit_code == 2
     assert "has no app.py" in result.output
+
+
+_PACKAGE = '{"name": "shop", "main": "server.mjs", "dependencies": {"express": "5.3.0"}, "devDependencies": {"vite": "7.0.0"}}'
+_LOCKFILE = '{"lockfileVersion": 3}'
+
+
+def _node_dir(tmp_path, package=_PACKAGE, lockfile=_LOCKFILE):
+    root = tmp_path / "shop"
+    (root / "public").mkdir(parents=True)
+    (root / "package.json").write_text(package)
+    if lockfile is not None:
+        (root / "package-lock.json").write_text(lockfile)
+    (root / "server.mjs").write_text("server")
+    (root / "public" / "index.html").write_text("<p>hi</p>")
+    (root / "node_modules" / "express").mkdir(parents=True)
+    (root / "node_modules" / "express" / "index.js").write_text("express")
+    return root
+
+
+def _resolved(*packages):
+    """What resolve_npm_package_json answers for `packages`, (name, version) pairs."""
+    return {
+        "packages": [
+            {
+                "name": n,
+                "version": v,
+                "status": "RESOLVED",
+                "dependencyType": "DEPENDENCY",
+            }
+            for n, v in packages
+        ]
+    }
+
+
+def _node_app(execution_id, env="shop-app-env"):
+    a = _app(execution_id, env=env)
+    a.app_kind = "NODEJS"
+    a.app_path = "hdfs:///Projects/demo/Users/scott/apps/shop/server.mjs"
+    return a
+
+
+def test_deploy_ships_a_node_app_with_its_dependencies(mock_project, tmp_path):
+    root = _node_dir(tmp_path)
+    mock_project.get_app_api.return_value.create_app.return_value = _fake_app()
+    env_api = mock_project.get_environment_api.return_value
+    env_api.get_environment.return_value = None
+    clone = env_api.create_environment.return_value
+    clone.resolve_npm_package_json.return_value = _resolved(("express", "5.3.0"))
+    clone.library_versions = None
+    result, apps, dataset_api = _deploy(mock_project, root, polls=[_node_app(1)])
+    assert result.exit_code == 0, result.output
+    assert apps.create_app.call_args.kwargs == {
+        "name": "shop",
+        "app_kind": "NODEJS",
+        "app_path": "/Projects/demo/Users/scott/apps/shop/server.mjs",
+        "app_port": 8080,
+        "readiness_probe_path": "/health",
+        "environment": "shop-app-env",
+    }
+    clone.install_npm.assert_called_once_with(
+        [{"name": "express", "version": "5.3.0"}], await_installation=True
+    )
+    # node_modules stays local: the environment holds the dependencies.
+    assert sorted(
+        os.path.relpath(c.kwargs["local_path"], root)
+        for c in dataset_api.upload.call_args_list
+    ) == [
+        "package-lock.json",
+        "package.json",
+        os.path.join("public", "index.html"),
+        "server.mjs",
+    ]
+
+
+def test_deploy_skips_the_install_of_an_unchanged_node_app(mock_project, tmp_path):
+    root = _node_dir(tmp_path)
+    env_api = mock_project.get_environment_api.return_value
+    clone = env_api.get_environment.return_value
+    result, _, _ = _deploy(
+        mock_project,
+        root,
+        existing=_node_app(3),
+        polls=[_node_app(4)],
+        hopsfs={
+            "Users/scott/apps/shop/package.json": _PACKAGE,
+            "Users/scott/apps/shop/package-lock.json": _LOCKFILE,
+        },
+    )
+    assert result.exit_code == 0, result.output
+    assert "Environment shop-app-env is up to date." in result.output
+    clone.install_npm.assert_not_called()
+
+
+def test_deploy_installs_only_the_node_dependencies_the_environment_lacks(
+    mock_project, tmp_path
+):
+    root = _node_dir(tmp_path)
+    env = mock_project.get_environment_api.return_value.get_environment.return_value
+    env.library_versions = {"express": "5.2.0", "ms": "2.1.3"}
+    env.resolve_npm_package_json.return_value = _resolved(
+        ("express", "5.3.0"), ("ms", "2.1.3")
+    )
+    result, _, _ = _deploy(
+        mock_project, root, existing=_node_app(3), polls=[_node_app(4)]
+    )
+    assert result.exit_code == 0, result.output
+    # Hopsworks refuses a second version of a library: the old one goes first.
+    env.uninstall.assert_called_once_with("express", package_source="NPM")
+    env.install_npm.assert_called_once_with(
+        [{"name": "express", "version": "5.3.0"}], await_installation=True
+    )
+
+
+def test_deploy_puts_back_the_old_node_versions_when_the_install_fails(
+    mock_project, tmp_path
+):
+    root = _node_dir(tmp_path)
+    env = mock_project.get_environment_api.return_value.get_environment.return_value
+    env.name = "shop-app-env"
+    env.library_versions = {"express": "5.2.0"}
+    env.resolve_npm_package_json.return_value = _resolved(("express", "5.3.0"))
+    env.install_npm.side_effect = [RuntimeError("registry down"), None]
+    running = _node_app(3)
+    result, _, _ = _deploy(mock_project, root, existing=running)
+    assert result.exit_code == 1
+    assert "registry down" in result.output
+    assert "Put back express@5.2.0 in shop-app-env" in result.output
+    env.uninstall.assert_called_once_with("express", package_source="NPM")
+    assert env.install_npm.call_args_list == [
+        mock.call([{"name": "express", "version": "5.3.0"}], await_installation=True),
+        mock.call([{"name": "express", "version": "5.2.0"}], await_installation=True),
+    ]
+    running.redeploy.assert_not_called()
+
+
+def test_deploy_says_when_the_old_node_versions_could_not_be_put_back(
+    mock_project, tmp_path
+):
+    root = _node_dir(tmp_path)
+    env = mock_project.get_environment_api.return_value.get_environment.return_value
+    env.name = "shop-app-env"
+    env.library_versions = {"express": "5.2.0"}
+    env.resolve_npm_package_json.return_value = _resolved(("express", "5.3.0"))
+    env.install_npm.side_effect = RuntimeError("registry down")
+    result, _, _ = _deploy(mock_project, root, existing=_node_app(3))
+    assert result.exit_code == 1
+    assert "Could not put back express@5.2.0 either" in result.output
+    assert "the app's next start lacks them" in result.output
+
+
+def test_deploy_reports_a_node_dependency_it_cannot_resolve(mock_project, tmp_path):
+    root = _node_dir(tmp_path)
+    env = mock_project.get_environment_api.return_value.get_environment.return_value
+    env.resolve_npm_package_json.return_value = {
+        "packages": [
+            {
+                "name": "nope",
+                "requested": "^9",
+                "status": "UNRESOLVED",
+                "reason": "no such package",
+            }
+        ]
+    }
+    result, _, _ = _deploy(mock_project, root, existing=_node_app(3))
+    assert result.exit_code == 1
+    assert "Could not resolve nope@^9: no such package." in result.output
+    env.install_npm.assert_not_called()
+
+
+def test_deploy_runs_a_node_app_without_dependencies_on_the_base_environment(
+    mock_project, tmp_path
+):
+    root = _node_dir(tmp_path, package='{"main": "server.mjs"}', lockfile=None)
+    mock_project.get_app_api.return_value.create_app.return_value = _fake_app()
+    env_api = mock_project.get_environment_api.return_value
+    result, apps, _ = _deploy(
+        mock_project, root, polls=[_node_app(1, env="python-agent-pipeline")]
+    )
+    assert result.exit_code == 0, result.output
+    assert apps.create_app.call_args.kwargs["environment"] == "python-agent-pipeline"
+    env_api.create_environment.assert_not_called()
+
+
+def test_deploy_needs_the_lockfile_of_node_dependencies(mock_project, tmp_path):
+    root = _node_dir(tmp_path, lockfile=None)
+    result = CliRunner().invoke(cli, ["app", "deploy", "shop", str(root)])
+    assert result.exit_code == 2
+    assert "no package-lock.json: run npm install in" in result.output
+
+
+def test_deploy_needs_a_package_main_that_names_the_server(mock_project, tmp_path):
+    root = _node_dir(tmp_path, package='{"main": "README.md"}')
+    result = CliRunner().invoke(cli, ["app", "deploy", "shop", str(root)])
+    assert result.exit_code == 2
+    assert (
+        "has no app.py, nor a package.json whose main names the server" in result.output
+    )
+
+
+def test_deploy_refuses_a_node_app_under_the_name_of_a_python_app(
+    mock_project, tmp_path
+):
+    root = _node_dir(tmp_path)
+    result, _, dataset_api = _deploy(
+        mock_project, root, existing=_app(3, env="shop-app-env")
+    )
+    assert result.exit_code == 1
+    assert f"App 'shop' is a Streamlit app running hdfs://{_SOURCE}" in result.output
+    assert "hops app delete shop --yes --force` (ask the user)" in result.output
+    dataset_api.upload.assert_not_called()
 
 
 def test_deploy_clones_and_installs_the_requirements(mock_project, tmp_path):
