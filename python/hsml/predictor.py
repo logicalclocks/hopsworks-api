@@ -1216,7 +1216,7 @@ class Predictor(DeployableComponent):
     def llm_gateway(self, llm_gateway: bool):
         self._llm_gateway = llm_gateway
     def kind(self) -> str:
-        """What the deployment serves, one of [`DEPLOYMENT_KIND`][hsml.constants.DEPLOYMENT_KIND].
+        """What the deployment serves, one of `hsml.constants.DEPLOYMENT_KIND`.
 
         `MODEL` serves a registered model, LLMs included; `FEATURE_VIEW` serves a feature view without a model; `AGENT` serves an agent, the only kind with tracing, chat, memory and evaluation; `PYTHON` serves any other HTTP server.
         A backend that predates the kind returns none, and it is then inferred the way the backend infers it: a model makes `MODEL`, a feature view `FEATURE_VIEW`, and anything else `AGENT`.
