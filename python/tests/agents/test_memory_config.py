@@ -280,4 +280,7 @@ class TestCodeWins:
         assert caps["source"] == "deployment"
         assert caps["state"] is True
         # the manifest tells a client where the policy came from
-        assert app._manifest()["capabilities"]["memory"]["source"] == "deployment"
+        assert (
+            app._manifest()["capabilities"]["custom"]["hopsworks"]["memory"]["source"]
+            == "deployment"
+        )

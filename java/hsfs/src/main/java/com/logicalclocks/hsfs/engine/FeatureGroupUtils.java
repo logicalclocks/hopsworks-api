@@ -303,11 +303,14 @@ public class FeatureGroupUtils {
     }
 
     // storage header names the consumer these records are meant for: "online" is skipped by the
-    // offline materialization job, "offline" is skipped by OnlineFS, absent is read by both.
+    // offline materialization job, "0" (Storage.OFFLINE) is skipped by OnlineFS, absent is read by
+    // both. OFFLINE goes on the wire as "0" rather than "offline", which OnlineFS before 2.4
+    // (Hopsworks 5.0) ingests, as the Python client does.
     // Only set it when the records have a single destination, leaving it out is the cheaper
     // default.
     if (storage != null) {
-      headerMap.put("storage", storage.name().toLowerCase().getBytes(StandardCharsets.UTF_8));
+      String value = storage == Storage.OFFLINE ? "0" : storage.name().toLowerCase();
+      headerMap.put("storage", value.getBytes(StandardCharsets.UTF_8));
     }
 
     if (options != null
