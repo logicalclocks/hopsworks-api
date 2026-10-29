@@ -423,7 +423,10 @@ class ModelEngine:
 
             model_instance._models_path = (
                 model_registry_api.ModelRegistryApi()
-                ._get(model_instance.shared_registry_project_name)
+                ._get(
+                    model_instance.shared_registry_project_name,
+                    project_id=model_instance.model_registry_id,
+                )
                 ._models_path
             )
             dataset_models_root_path = (

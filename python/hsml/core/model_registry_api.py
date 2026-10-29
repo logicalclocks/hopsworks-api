@@ -26,11 +26,15 @@ class ModelRegistryApi:
     def __init__(self):
         self._dataset_api = dataset_api.DatasetApi()
 
-    def _get(self, project: str | None = None) -> ModelRegistry:
+    def _get(
+        self, project: str | None = None, project_id: int | None = None
+    ) -> ModelRegistry:
         """Get model registry for specific project.
 
         Parameters:
             project: project of the model registry
+            project_id: id of the project of the model registry; takes precedence over `project`,
+                since display names can repeat across projects
 
         Returns:
             the model registry metadata
@@ -41,20 +45,31 @@ class ModelRegistryApi:
         shared_registry_project_name = None
         models_path = None
 
-        # In the case of shared model registry, validate that there is Models dataset shared to the connected project from the set project name
-        if project is not None:
+        # In the case of shared model registry, validate that there is Models dataset shared to the connected project from the set project
+        if project is not None or project_id is not None:
             path_params = ["project", _client._project_id, "modelregistries"]
             model_registries = _client._send_request("GET", path_params)
-            for registry in model_registries["items"]:
-                if registry["name"] == project:
-                    model_registry_id = registry["id"]
-                    shared_registry_project_name = project
-                    models_path = registry.get("modelsPath")
-
-            if shared_registry_project_name is None:
-                raise ModelRegistryException(
-                    f"No model registry shared with current project {_client._project_name}, from project {project}"
+            matches = [
+                registry
+                for registry in model_registries["items"]
+                if (
+                    registry["id"] == project_id
+                    if project_id is not None
+                    else registry["name"] == project
                 )
+            ]
+            if len(matches) > 1:
+                raise ModelRegistryException(
+                    f"Several model registries shared with current project {_client._project_name} are named {project}, "
+                    f"use the project id: {sorted(registry['id'] for registry in matches)}"
+                )
+            if not matches:
+                raise ModelRegistryException(
+                    f"No model registry shared with current project {_client._project_name}, from project {project if project_id is None else project_id}"
+                )
+            model_registry_id = matches[0]["id"]
+            shared_registry_project_name = matches[0]["name"]
+            models_path = matches[0].get("modelsPath")
         # In the case of default model registry, validate that there is a Models dataset in the connected project
         elif project is None and not self._dataset_api.path_exists("Models"):
             raise ModelRegistryException(
