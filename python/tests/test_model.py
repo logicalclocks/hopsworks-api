@@ -422,6 +422,14 @@ class TestModel:
 
     # to_dict tags
 
+    def test_to_dict_names_the_registry_by_id(self, backend_fixtures):
+        # Two live projects may share a display name, so the body carries the registry's project id.
+        m_json = dict(backend_fixtures["model"]["get_python"]["response"]["items"][0])
+        m_json["modelRegistryId"] = 119
+        m = model.Model.from_response_json(m_json)
+
+        assert m.to_dict()["modelRegistryId"] == 119
+
     def test_to_dict_omits_tags_when_absent(self, mocker, backend_fixtures):
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]

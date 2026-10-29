@@ -845,6 +845,7 @@ class Model:
         model_dict = {
             "id": self._name + "_" + str(self._version),
             "projectName": self._project_name,
+            "modelRegistryId": self._model_registry_id,
             "name": self._name,
             "modelSchema": self._model_schema,
             "version": self._version,
