@@ -148,13 +148,12 @@ def dataset_download(
     output.success("✓ Downloaded to %s", path)
 
 
-def _target_project(target: str) -> Any:
-    """A numeric ``--target`` is a project id, the way to pick one of several projects that share a name."""
-    if not target.isdigit():
-        return target
-    from hopsworks_common.core import project_api  # noqa: PLC0415
+def _target_project(target: str) -> str | int:
+    """A numeric ``--target`` is a project id, the way to pick one of several projects that share a name.
 
-    return project_api.ProjectApi()._get_project_by_id(int(target))
+    It is sent as is: the target need not be a project the caller is a member of.
+    """
+    return int(target) if target.isdigit() else target
 
 
 @files_group.command("share")

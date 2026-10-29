@@ -171,3 +171,57 @@ def test_project_list_marks_the_active_project_by_id(authed_config):
 
     rows = [line.split() for line in result.output.splitlines() if "demo" in line]
     assert [row[0] for row in rows if row[-1] == "*"] == ["9"]
+
+
+def test_files_share_sends_a_numeric_target_as_an_id_without_a_lookup(mock_project):
+    with mock.patch.object(project_api.ProjectApi, "_get_project_by_id") as lookup:
+        result = CliRunner().invoke(
+            cli, ["files", "share", "Resources/d", "--target", "22"]
+        )
+
+    assert result.exit_code == 0, result.output
+    lookup.assert_not_called()
+    dataset_api = mock_project.get_dataset_api.return_value
+    assert dataset_api.share.call_args.kwargs["target_project"] == 22
+
+
+def test_files_unshare_sends_a_numeric_target_as_an_id(mock_project):
+    result = CliRunner().invoke(
+        cli, ["files", "unshare", "Resources/d", "--target", "22"]
+    )
+
+    assert result.exit_code == 0, result.output
+    dataset_api = mock_project.get_dataset_api.return_value
+    assert dataset_api.unshare.call_args.kwargs["target_project"] == 22
+
+
+def test_hops_login_verifies_with_the_saved_project_id(tmp_home):
+    config.save(
+        config.HopsConfig(host="https://h", api_key="k", project="demo", project_id=22)
+    )
+    project = mock.MagicMock()
+    project.name = "demo"
+    project.id = 22
+    with mock.patch.object(auth, "verify", return_value=project) as verify:
+        result = CliRunner().invoke(cli, ["login"])
+
+    assert result.exit_code == 0, result.output
+    assert verify.call_args.kwargs["project_id"] == 22
+
+
+def test_a_saved_id_of_a_deleted_project_names_the_id_and_the_fix(tmp_home):
+    import click
+    from hopsworks.cli import session
+    from hopsworks_common.client.exceptions import ProjectException
+
+    cfg = config.HopsConfig(host="h", api_key="k", project="demo", project_id=22)
+    ctx = click.Context(cli)
+    ctx.obj = {"config": cfg}
+    gone = ProjectException("Could not find project with id 22")
+    with mock.patch.object(auth, "login", side_effect=gone):
+        try:
+            session.get_project(ctx)
+        except click.ClickException as exc:
+            assert "22" in exc.message and "hops project use" in exc.message
+        else:
+            raise AssertionError("expected a ClickException")

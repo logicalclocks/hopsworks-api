@@ -328,6 +328,11 @@ def login(
     if project is None and project_id is None and "HOPSWORKS_PROJECT" in os.environ:
         project = os.environ["HOPSWORKS_PROJECT"]
 
+    # A project name starts with a letter, so an all-digit name is a project id.
+    if project_id is None and project is not None and str(project).isdigit():
+        project_id = int(project)
+        project = None
+
     # If host argument not defined, get HOPSWORKS_HOST environment variable
     if host is None and "HOPSWORKS_HOST" in os.environ:
         host = os.environ["HOPSWORKS_HOST"]
@@ -501,7 +506,9 @@ def _prompt_project(valid_connection, project, is_saas, project_id=None):
         while True:
             print("\nMultiple projects found. \n")
             for index in range(len(saas_projects)):
-                print("\t (" + str(index + 1) + ") " + saas_projects[index].name)
+                print(
+                    f"\t ({index + 1}) {saas_projects[index].name} ({saas_projects[index].id})"
+                )
             while True:
                 project_index = input(
                     "\nEnter number corresponding to the project to use: "

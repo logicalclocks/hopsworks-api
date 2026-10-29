@@ -48,8 +48,8 @@ class Chunk:
         self.retries = 0
 
 
-def _target_project_params(target_project: str | Project) -> dict:
-    """Query params naming the target project. A Project object also sends its id, which the backend prefers to the name."""
+def _target_project_params(target_project: str | int | Project) -> dict:
+    """Query params naming the target project. An id is sent as `target_project_id`; a Project object sends its name too."""
     # Imported here: hopsworks_common.project imports this module.
     from hopsworks_common.project import Project  # noqa: PLC0415
 
@@ -58,6 +58,8 @@ def _target_project_params(target_project: str | Project) -> dict:
             "target_project": target_project.name,
             "target_project_id": target_project.id,
         }
+    if isinstance(target_project, int):
+        return {"target_project_id": target_project}
     return {"target_project": target_project}
 
 
@@ -617,7 +619,7 @@ class DatasetApi:
     def share(
         self,
         path: str,
-        target_project: str | Project,
+        target_project: str | int | Project,
         permission: Literal[
             "READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"
         ] = "READ_ONLY",
@@ -640,7 +642,7 @@ class DatasetApi:
 
         Parameters:
             path: Dataset path in the active project (e.g. ``Resources/my_dir``).
-            target_project: Name of the project to share with, or the Project object. Pass the object when several projects share a name.
+            target_project: Name or id of the project to share with, or the Project object. Pass the id or the object when several projects share a name.
             permission: One of ``READ_ONLY`` (default), ``EDITABLE``,
                 ``EDITABLE_BY_OWNERS``. The target project's data owners
                 still have to accept the share before its members see it.
@@ -658,8 +660,8 @@ class DatasetApi:
                 f"permission must be one of READ_ONLY, EDITABLE, "
                 f"EDITABLE_BY_OWNERS; got {permission!r}"
             )
-        if not target_project:
-            raise ValueError("target_project must be a non-empty project name")
+        if not target_project and target_project != 0:
+            raise ValueError("target_project must be a non-empty project name or id")
         self._refuse_feature_store(path, "share")
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
@@ -682,7 +684,7 @@ class DatasetApi:
 
     @public
     @usage._method_logger
-    def unshare(self, path: str, target_project: str | Project) -> None:
+    def unshare(self, path: str, target_project: str | int | Project) -> None:
         """Revoke a previously-granted dataset share with another project.
 
         Like :meth:`share`, requires Data Owner role in the active (source) project.
@@ -699,7 +701,7 @@ class DatasetApi:
 
         Parameters:
             path: Dataset path in the active project.
-            target_project: Name of the project to revoke the share from, or the Project object. Pass the object when several projects share a name.
+            target_project: Name or id of the project to revoke the share from, or the Project object. Pass the id or the object when several projects share a name.
 
         Raises:
             PermissionError: If the caller lacks the Data Owner role in the
@@ -710,8 +712,8 @@ class DatasetApi:
             ValueError: If ``target_project`` is empty or ``path`` is a feature
                 store (unshare it with ``project.get_feature_store().unshare()``).
         """
-        if not target_project:
-            raise ValueError("target_project must be a non-empty project name")
+        if not target_project and target_project != 0:
+            raise ValueError("target_project must be a non-empty project name or id")
         self._refuse_feature_store(path, "unshare")
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]

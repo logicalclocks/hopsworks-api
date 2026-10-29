@@ -353,3 +353,83 @@ class TestLoginEnvProjectId:
         self._login()
 
         assert prompt.call_args.args[1:] == ("demo", False, None)
+
+
+class TestDigitsAreAnId:
+    @pytest.fixture
+    def prompt(self, mocker, monkeypatch):
+        for key in ("REST_ENDPOINT", "HOPSWORKS_PROJECT", "HOPSWORKS_PROJECT_ID"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setattr(hopsworks, "_hw_connection", MagicMock())
+        mocker.patch.object(hopsworks, "logout")
+        mocker.patch.object(hopsworks, "_set_active_project")
+        mocker.patch.object(hopsworks, "_initialize_module_apis")
+        return mocker.patch.object(hopsworks, "_prompt_project")
+
+    def test_login_with_a_numeric_project_argument(self, prompt):
+        hopsworks.login(host="h", api_key_value="k", project="22")
+
+        assert prompt.call_args.args[1:] == (None, False, 22)
+
+    def test_login_with_a_numeric_project_env(self, prompt, monkeypatch):
+        monkeypatch.setenv("HOPSWORKS_PROJECT", "22")
+
+        hopsworks.login(host="h", api_key_value="k")
+
+        assert prompt.call_args.args[1:] == (None, False, 22)
+
+    def test_connection_project_by_id_asks_the_id_path(self):
+        client = ExternalClient.__new__(ExternalClient)
+        client._engine = "none"
+        client._get_project_info = MagicMock()
+        client._send_request = MagicMock(
+            return_value={"projectId": 22, "projectName": "demo", "backingName": "b"}
+        )
+        client._get_username = MagicMock(return_value="u")
+        connection = MagicMock()
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("hopsworks_common.client._get_connection", lambda: connection)
+            client._provide_project("22")
+
+        client._send_request.assert_called_once_with("GET", ["project", 22])
+        client._get_project_info.assert_not_called()
+        assert (client._project_name, client._project_id) == ("demo", "22")
+        assert client._project_backing_name == "b"
+
+    def test_the_picker_prints_the_id_beside_the_name(self, capsys, monkeypatch):
+        connection = MagicMock()
+        connection._project_api._get_projects.return_value = [
+            _project(7, "demo"),
+            _project(9, "demo"),
+        ]
+        monkeypatch.setattr("builtins.input", lambda _: "2")
+
+        chosen = hopsworks._prompt_project(connection, None, False)
+
+        out = capsys.readouterr().out
+        assert "(1) demo (7)" in out and "(2) demo (9)" in out
+        assert chosen.id == 9
+
+
+def test_dataset_share_sends_a_bare_id_as_the_target_id(mocker):
+    client_instance = MagicMock()
+    client_instance._project_id = 1
+    mocker.patch(
+        "hopsworks_common.core.dataset_api.client._get_instance",
+        return_value=client_instance,
+    )
+
+    DatasetApi().share("Resources/d", 22)
+    DatasetApi().unshare("Resources/d", 22)
+
+    share_call, unshare_call = client_instance._send_request.call_args_list
+    assert share_call.kwargs["query_params"] == {
+        "action": "SHARE",
+        "target_project_id": 22,
+        "permission": "READ_ONLY",
+    }
+    assert unshare_call.kwargs["query_params"] == {
+        "action": "UNSHARE",
+        "target_project_id": 22,
+    }

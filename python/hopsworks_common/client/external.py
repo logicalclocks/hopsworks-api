@@ -107,13 +107,17 @@ class Client(base.Client):
         self._provide_project(project)
 
     def _provide_project(self, project, project_id=None, backing_name=None):
-        self._project_name = project
-        _logger.debug("Project name: %s", self._project_name)
-
         if project_id is None:
-            project_info = self._get_project_info(project)
+            # A project name starts with a letter, so an all-digit name is a project id.
+            if str(project).isdigit():
+                project_info = self._send_request("GET", ["project", int(project)])
+                project = project_info["projectName"]
+            else:
+                project_info = self._get_project_info(project)
             project_id = project_info["projectId"]
             backing_name = project_info.get("backingName")
+        self._project_name = project
+        _logger.debug("Project name: %s", self._project_name)
         self._project_id = str(project_id)
         # Older backends return no backingName; there the backing name is the project name.
         self._project_backing_name = backing_name or project
