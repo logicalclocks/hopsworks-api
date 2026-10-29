@@ -136,7 +136,7 @@ polars = [
     "pyarrow>=17.0,<26",
 ]
 openai = [
-    "openai>=1.0",
+    "openai>=1.0,<4",
 ]
 mcp = [
     "fastmcp>=2.10.5,<=2.13.3",
