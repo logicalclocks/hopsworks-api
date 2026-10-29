@@ -8,7 +8,7 @@ from the image rather than copied into a user's project home:
 
 ml/ — develop and operate ML systems with FTI pipeline architecture (feature groups, feature views, transformations, training, inference, monitoring)
 agents/ — develop and operate agent tasks and agent deployments
-dashboards/ — Streamlit / custom apps and Superset dashboards
+dashboards/ — Streamlit, Gradio, Flask, Node.js and custom apps, and Superset dashboards
 data/ — data discovery, data sources, Trino SQL, dbt, Spark, table maintenance
 platform/ — cross-cutting platform knowledge and compute (jobs, environments, UI navigation, collaboration, kubectl debugging), not tied to one FTI stage
 Every skill under python/hopsworks/skills/ must have a reference in the top-level README.md.

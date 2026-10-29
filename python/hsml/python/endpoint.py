@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-from hsml.constants import PREDICTOR
+from hsml.constants import DEPLOYMENT_KIND, PREDICTOR
 from hsml.predictor import Predictor
 
 
@@ -23,6 +23,7 @@ class Endpoint(Predictor):
 
     def __init__(self, name: str, script_file: str, **kwargs):
         kwargs["model_server"] = PREDICTOR.MODEL_SERVER_PYTHON
+        kwargs.setdefault("kind", DEPLOYMENT_KIND.PYTHON)
 
         if name is None:
             raise ValueError("A deployment name must be provided")
