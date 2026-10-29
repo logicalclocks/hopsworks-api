@@ -65,8 +65,8 @@ may be absent on older deployed `hops` binaries.
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
 - Does the app still depend on `APP_BASE_URL_PATH`? Then it is a **migration** task (see **Routing and readiness**); confirm whether the code can switch to root routing.
 - Does the app need **monitoring** narrowed to specific routes? Monitoring is on by default and routes are optional.
-- Does the app need **public access**? Streamlit sharing is feature-flagged; only ask for it when the platform has it enabled.
-- Does the app keep **its own state** (sessions, notes, agent memory)? Database access is on by default (`db_access=True`): the project's online feature store database is created at start and `MYSQL_*` variables are injected. Only a **Data Owner** start gets write privileges; a Data Scientist start is read-only. Pass `db_access=False` for an app that needs no database. Details in **hops-app-db**.
+- Does the app need **public access**? Public sharing of any app kind is feature-flagged; only ask for it when the platform has it enabled.
+- Does the app keep **its own state** (sessions, notes, agent memory)? Database access is on by default (`db_access=True`): the project's online feature store database is created at start and `MYSQL_*` variables are injected. The app connects as its own database user, reads the project database, and writes only the tables it creates with `app.create_table()` (Hopsworks runs the DDL and keeps them on disk), which are dropped with the app; whoever starts it, it can do the same. Pass `db_access=False` for an app that needs no database. Details in **hops-app-db**.
 - **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
 
 ## Routing and readiness
@@ -183,6 +183,25 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ["APP_PORT"]))
 ```
 
+### A chat app for an agent (5.3+)
+
+For a chat page in front of an **agent deployment**, do not write one: every agent can have a ready-made chat app, and it already handles what a hand-written one gets wrong (who is chatting, keeping each person's conversations apart, no serving key in the browser, the agent's questions, feedback, attachments, waking an agent that scales to zero).
+
+```python
+agent = project.get_agent_serving().get_agent("support")
+app = agent.create_chat_app()  # app "support_chat", started; or deploy_agent(..., chat_app=True)
+```
+
+Members open it with their Hopsworks login; `app.make_public()` shares it with anyone holding the link. Branding without code: the app's `CHAT_TITLE`, `CHAT_WELCOME`, `CHAT_ACCENT_COLOR`, `CHAT_LOGO_URL` and `CHAT_THEME_DIR` variables (details in **hops-agent-deployment**).
+
+To change its page, layout or server, **customize** it rather than starting over:
+
+```python
+app = agent.customize_chat_app()  # runs from Resources/chat-apps/support_chat
+```
+
+The app copies its template into that project folder (a `server.mjs` on the image's `@hopsworks/agent-chat` package, a React page in `web/`, `theme.css`) and runs from it. **Read the folder's `AGENTS.md` before changing anything**: it lists the extension points (`<HopsworksChat />` slots and parts, `startChatApp()` options, a `routes` hook given who is asking) and what must stay the package's. The package is in the app's image, not the terminal's, so try a change with `app.redeploy()` and `app.get_logs()`; a folder that fails to build is logged and the default page is served. Removing the app's `CHAT_APP_DIR` variable goes back to the default app. An app that already has a page of its own can hold the chat instead (`create_app(..., agent=agent)` + `hopsworks-agent-chat` beside its server): see **hops-agent-chat**.
+
 ### Reading Hopsworks data from the app
 
 The SDK calls are the same as anywhere (hops-fg / hops-fv / hops-online-inference);
@@ -194,7 +213,7 @@ three things are app-specific:
   never calls a deployment, because a batch system has none; a what-if score uses the embedded
   model above.
 - **Calling a deployment** (real-time systems only): check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
-- **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Keep app tables there with an `app_` prefix and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, privileges per role, and RonDB table rules: **hops-app-db**.
+- **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Create and alter app tables with `app.create_table()` and `app.alter_table()`, which keep them on disk in RonDB (the app's own user cannot run `CREATE` or `ALTER TABLE`), and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, table registration, and RonDB table rules: **hops-app-db**.
 
 ### Reading Trino from a JavaScript app
 

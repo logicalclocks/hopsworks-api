@@ -17,10 +17,16 @@
 
 package com.logicalclocks.hsfs.engine;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
 import org.junit.Assert;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.logicalclocks.hsfs.FeatureGroupBase;
+import com.logicalclocks.hsfs.Storage;
 
 public class TestFeatureGroupUtils {
 
@@ -72,5 +78,32 @@ public class TestFeatureGroupUtils {
 
     // Assert
     Assert.assertEquals("DATASET", databaseType);
+  }
+
+  @Test
+  void testGetHeadersStorageOffline() throws Exception {
+    // Arrange
+    FeatureGroupBase featureGroup = Mockito.mock(FeatureGroupBase.class, Mockito.RETURNS_DEEP_STUBS);
+    Mockito.when(featureGroup.getOnlineEnabled()).thenReturn(true);
+
+    // Act
+    Map<String, byte[]> headers = FeatureGroupUtils.getHeaders(featureGroup, 10L, null, null, Storage.OFFLINE);
+
+    // Assert: "0" is what OnlineFS before 2.4 skips too, and an offline-only write creates no online ingestion.
+    Assert.assertEquals("0", new String(headers.get("storage"), StandardCharsets.UTF_8));
+    Assert.assertFalse(headers.containsKey("onlineIngestionId"));
+  }
+
+  @Test
+  void testGetHeadersStorageOnline() throws Exception {
+    // Arrange
+    FeatureGroupBase featureGroup = Mockito.mock(FeatureGroupBase.class, Mockito.RETURNS_DEEP_STUBS);
+    Mockito.when(featureGroup.getOnlineEnabled()).thenReturn(false);
+
+    // Act
+    Map<String, byte[]> headers = FeatureGroupUtils.getHeaders(featureGroup, 10L, null, null, Storage.ONLINE);
+
+    // Assert
+    Assert.assertEquals("online", new String(headers.get("storage"), StandardCharsets.UTF_8));
   }
 }
