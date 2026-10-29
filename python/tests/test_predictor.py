@@ -86,20 +86,20 @@ class TestPredictor:
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
             "hopsworks_common.client._get_instance",
-            return_value=mocker.Mock(_project_backing_name="my_project"),
+            return_value=mocker.Mock(_project_name="my_display", _project_backing_name="my_backing"),
         )
         p = predictor.Predictor(
             name="my_model",
             model_server=PREDICTOR.MODEL_SERVER_PYTHON,
             model_name="my_model",
-            model_path="/Projects/p/Models/my_model",
+            model_path="/Projects/my_backing/Models/my_model",
             model_version=2,
             model_framework=MODEL.FRAMEWORK_SKLEARN,
             version=5,
         )
 
         assert p.artifact_path == p.artifact_files_path
-        assert p.artifact_path.endswith("/Deployments/my_model/5")
+        assert p.artifact_files_path == "/Projects/my_backing/Deployments/my_model/5"
 
     def test_to_dict_sends_both_environment_fields(self, mocker):
         # predictorEnvironment for a current backend, environmentDTO so an older one
