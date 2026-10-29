@@ -220,12 +220,19 @@ class Client(base.Client):
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
         return res
 
+    def _cert_project_dir(self) -> str:
+        # Display names can repeat across projects; the backing name cannot.
+        return self._project_backing_name or self._project_name
+
     def _get_certs_folder(self):
         # Custom cert_folder: use directly
         # Default folder: use hierarchical structure for multi-user support
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
             return os.path.join(
-                self._cert_folder_base, self._host, self._project_name, self._username
+                self._cert_folder_base,
+                self._host,
+                self._cert_project_dir(),
+                self._username,
             )
         return self._cert_folder_base
 
@@ -368,7 +375,7 @@ class Client(base.Client):
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
             # Hierarchical structure for multi-user support
             host_dir = os.path.join(self._cert_folder_base, self._host)
-            project_dir = os.path.join(host_dir, self._project_name)
+            project_dir = os.path.join(host_dir, self._cert_project_dir())
 
             # Shared directories with sticky bit
             for directory in (host_dir, project_dir):

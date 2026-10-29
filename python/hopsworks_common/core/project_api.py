@@ -39,8 +39,9 @@ class ProjectApi:
         try:
             self._get_project(name)
             return True
-        except RestAPIError:
-            return False
+        except RestAPIError as e:
+            # Several projects carry the name: it exists.
+            return e.response.status_code == e.STATUS_CODE_CONFLICT
 
     def _get_owned_projects(self) -> list[project.Project]:
         """Get all projects owned by the current user.
@@ -60,7 +61,9 @@ class ProjectApi:
             current_user_uid = project_team_json[0]["user"]["uid"]
             for project_team in project_team_json:
                 if project_team["project"]["owner"]["uid"] == current_user_uid:
-                    projects.append(self._get_project(project_team["project"]["name"]))
+                    projects.append(
+                        self._get_project_by_id(project_team["project"]["id"])
+                    )
         return projects
 
     def _get_project_teams(self) -> str:
@@ -90,7 +93,7 @@ class ProjectApi:
         project_team_json = self._get_project_teams()
         projects = []
         for project_team in project_team_json:
-            projects.append(self._get_project(project_team["project"]["name"]))
+            projects.append(self._get_project_by_id(project_team["project"]["id"]))
         return projects
 
     def _get_project(self, name: str) -> project.Project:
@@ -112,6 +115,22 @@ class ProjectApi:
             name,
         ]
         project_json = _client._send_request("GET", path_params)
+        return project.Project.from_response_json(project_json)
+
+    def _get_project_by_id(self, project_id: int) -> project.Project:
+        """Get a project by its id, which names one project where a display name may name several.
+
+        Parameters:
+            project_id: Id of the project.
+
+        Returns:
+            The Project object.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If unable to get the project.
+        """
+        _client = client._get_instance()
+        project_json = _client._send_request("GET", ["project", project_id])
         return project.Project.from_response_json(project_json)
 
     def _create_project(
@@ -159,7 +178,7 @@ class ProjectApi:
             data["namespace"] = namespace
         if department is not None:
             data["departmentId"] = self._get_department_id(department)
-        _client._send_request(
+        created = _client._send_request(
             "POST",
             path_params,
             headers=headers,
@@ -167,8 +186,13 @@ class ProjectApi:
             data=json.dumps(data),
         )
 
-        # The return of the project creation is not a ProjectDTO, so get the correct object after creation
-        project = self._get_project(name)
+        # The return of the project creation is not a ProjectDTO: its "data" is the new project's id.
+        # Another project may carry the same name, so fetch by id.
+        project_id = (created or {}).get("data")
+        if project_id is not None:
+            project = self._get_project_by_id(project_id)
+        else:
+            project = self._get_project(name)
         print("Project created successfully, explore it at " + project.get_url())
         return project
 

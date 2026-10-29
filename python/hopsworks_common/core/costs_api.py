@@ -114,7 +114,7 @@ class CostsApi:
 
     @public
     def get_project_costs(
-        self, window: _WINDOW_ARG = "week", project: str | None = None
+        self, window: _WINDOW_ARG = "week", project: str | int | None = None
     ) -> NamespaceCosts:
         """Get the cost of one project over a recent time window.
 
@@ -139,7 +139,7 @@ class CostsApi:
 
         Parameters:
             window: Time window ending now, one of `hour`, `day`, `week`, `month`, `year`, matched regardless of case.
-            project: Name of the project; the project logged in to when not given.
+            project: Name or id of the project, the id when several projects share a name; the project logged in to when not given.
 
         Returns:
             The project's costs, totals and per-bucket breakdown for the window.
@@ -151,7 +151,11 @@ class CostsApi:
         query_params = {"window": _normalize_window(window)}
         _client = client._get_instance()
         if project is not None:
-            project_id = project_api.ProjectApi()._get_project(project).id
+            project_id = (
+                project
+                if isinstance(project, int)
+                else project_api.ProjectApi()._get_project(project).id
+            )
         else:
             project_id = getattr(_client, "_project_id", None)
             if project_id is None:
