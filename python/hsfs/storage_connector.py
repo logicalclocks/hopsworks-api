@@ -53,7 +53,10 @@ from hsfs.core import (
 
 
 if TYPE_CHECKING:
+    from datetime import date, datetime
+
     from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+    from hopsworks_common.job import Job
 
     if HAS_NUMPY:
         import numpy as np
@@ -97,6 +100,8 @@ class StorageConnector(ABC):
     ELASTICSEARCH = "ELASTICSEARCH"
     HOPSWORKS = "HOPSWORKS"
     SHAREPOINT = "SHAREPOINT"
+    GMAIL = "GMAIL"
+    OUTLOOK = "OUTLOOK"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -121,6 +126,8 @@ class StorageConnector(ABC):
         ELASTICSEARCH: "featurestoreElasticsearchConnectorDTO",
         HOPSWORKS: "featurestoreHopsworksConnectorDTO",
         SHAREPOINT: "featurestoreSharePointConnectorDTO",
+        GMAIL: "featurestoreGmailConnectorDTO",
+        OUTLOOK: "featurestoreOutlookConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
@@ -166,6 +173,8 @@ class StorageConnector(ABC):
         | ElasticsearchConnector
         | HopsworksConnector
         | SharePointConnector
+        | GmailConnector
+        | OutlookConnector
     ):
         if isinstance(json_dict, list) or "items" in json_dict:
             return cls._from_response_json_list(json_dict)
@@ -228,6 +237,8 @@ class StorageConnector(ABC):
         | ElasticsearchConnector
         | HopsworksConnector
         | SharePointConnector
+        | GmailConnector
+        | OutlookConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -657,6 +668,8 @@ class StorageConnector(ABC):
             StorageConnector.GOOGLE_SHEETS,
             StorageConnector.REST,
             StorageConnector.SHAREPOINT,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
         ]:
             raise ValueError("This connector type does not support fetching databases.")
         self._require_credentials()
@@ -686,7 +699,12 @@ class StorageConnector(ABC):
             A list of DataSource objects representing the tables.
             For Google Sheets connectors, each entry represents a sheet name.
         """
-        if self.type in [StorageConnector.REST, StorageConnector.SHAREPOINT]:
+        if self.type in [
+            StorageConnector.REST,
+            StorageConnector.SHAREPOINT,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
+        ]:
             raise ValueError("This connector type does not support fetching tables.")
         self._require_credentials()
         if not database and self.type != StorageConnector.CRM:
@@ -793,6 +811,10 @@ class StorageConnector(ABC):
         Raises:
             hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source.
         """
+        if self.type in (StorageConnector.GMAIL, StorageConnector.OUTLOOK):
+            raise ValueError(
+                "Mail data sources are not previewed; copy the mailbox with sync() and read its feature group."
+            )
         if self.type in [
             StorageConnector.REST,
             StorageConnector.CRM,
@@ -916,6 +938,8 @@ class StorageConnector(ABC):
             StorageConnector.REST,
             StorageConnector.CRM,
             StorageConnector.GOOGLE_SHEETS,
+            StorageConnector.GMAIL,
+            StorageConnector.OUTLOOK,
         ]:
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api._get_metadata(data_source)
@@ -6869,3 +6893,840 @@ class GoogleSheetsConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         return {}
+
+
+@public
+class MailAccessToken:
+    """A short-lived access token that reads the mailbox of a Gmail or Outlook data source.
+
+    The backend mints it from the data source's stored credentials, which never leave Hopsworks.
+    It is read-only, `gmail.readonly` for Gmail and `Mail.Read` for Outlook, and expires within an hour.
+    """
+
+    def __init__(
+        self,
+        access_token: str,
+        expires_at: int | None = None,
+        mailbox: str | None = None,
+        scope: str | None = None,
+        user_path: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._token = access_token
+        self._expires_at = expires_at
+        self._mailbox = mailbox
+        self._scope = scope
+        self._user_path = user_path
+
+    @public
+    @property
+    def token(self) -> str:
+        """The bearer token, sent as `Authorization: Bearer <token>` to the Gmail API or Microsoft Graph."""
+        return self._token
+
+    @public
+    @property
+    def expires_at(self) -> int | None:
+        """When the token expires, in epoch milliseconds."""
+        return self._expires_at
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """The email address of the mailbox the token reads."""
+        return self._mailbox
+
+    @public
+    @property
+    def scope(self) -> str | None:
+        """The OAuth scope the token was requested with."""
+        return self._scope
+
+    @public
+    @property
+    def user_path(self) -> str | None:
+        """For Outlook, the Microsoft Graph path of the mailbox after `/v1.0/`: `me`, or `users/<mailbox>` for an app-only token; `None` for Gmail."""
+        return self._user_path
+
+    def __repr__(self) -> str:
+        return f"MailAccessToken(mailbox={self._mailbox!r}, expires_at={self._expires_at!r})"
+
+
+@public
+class MailSyncJobConfig:
+    """The configuration of a job that copies a Gmail or Outlook data source into a feature group.
+
+    Returned by `get_sync_job` and `list_sync_jobs` of [`GmailConnector`][hsfs.storage_connector.GmailConnector] and [`OutlookConnector`][hsfs.storage_connector.OutlookConnector].
+    """
+
+    def __init__(
+        self,
+        job_name: str,
+        feature_group_name: str,
+        path: str,
+        query: str | None = None,
+        labels: list[str] | None = None,
+        loading_strategy: str | None = None,
+        initial_value: int | None = None,
+        environment_name: str | None = None,
+        connector_name: str | None = None,
+        mailbox: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._job_name = job_name
+        self._feature_group_name = feature_group_name
+        self._path = path
+        self._query = query or ""
+        self._labels = labels or []
+        self._loading_strategy = loading_strategy
+        self._initial_value = initial_value
+        self._environment_name = environment_name
+        self._connector_name = connector_name
+        self._mailbox = mailbox
+
+    @classmethod
+    def from_response_json(cls, json_dict: dict[str, Any]) -> MailSyncJobConfig:
+        return cls(**humps.decamelize(json_dict))
+
+    @public
+    @property
+    def job_name(self) -> str:
+        """Name of the job, as listed on the Jobs page."""
+        return self._job_name
+
+    @public
+    @property
+    def feature_group_name(self) -> str:
+        """Name of the Delta feature group, version 1, that the job upserts the emails into."""
+        return self._feature_group_name
+
+    @public
+    @property
+    def path(self) -> str:
+        """Directory the attachments are written to, relative to the project root."""
+        return self._path
+
+    @public
+    @property
+    def query(self) -> str:
+        """Gmail search query that selects the messages; empty for all of them, and always for Outlook."""
+        return self._query
+
+    @public
+    @property
+    def labels(self) -> list[str]:
+        """Gmail label ids or Outlook folder ids that select the messages copied: a message in any of them is copied, and without any every message is."""
+        return self._labels
+
+    @public
+    @property
+    def loading_strategy(self) -> str | None:
+        """`FULL_LOAD` or `INCREMENTAL_TIMESTAMP`."""
+        return self._loading_strategy
+
+    @public
+    @property
+    def initial_value(self) -> int | None:
+        """Earliest receive time copied, in epoch milliseconds; `None` for the whole mailbox."""
+        return self._initial_value
+
+    @public
+    @property
+    def environment_name(self) -> str | None:
+        """Python environment the job runs in."""
+        return self._environment_name
+
+    @public
+    @property
+    def connector_name(self) -> str | None:
+        """Name of the data source the job copies."""
+        return self._connector_name
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox the job copies."""
+        return self._mailbox
+
+    def __repr__(self) -> str:
+        return (
+            f"MailSyncJobConfig(job_name={self._job_name!r}, "
+            f"feature_group_name={self._feature_group_name!r}, path={self._path!r}, "
+            f"loading_strategy={self._loading_strategy!r})"
+        )
+
+
+class _MailSyncMixin:
+    """The sync jobs and access tokens shared by the Gmail and Outlook data sources; `_SERVICE` is the REST path segment."""
+
+    _SERVICE: str
+    _STRATEGIES = ("FULL_LOAD", "INCREMENTAL_TIMESTAMP")
+    # Quartz expressions; daily runs at 00:00 UTC.
+    _SCHEDULES = {"hourly": "0 0 * ? * * *", "daily": "0 0 0 * * ? *"}
+
+    def _access_token(self) -> MailAccessToken:
+        return MailAccessToken(
+            **humps.decamelize(
+                self._storage_connector_api._get_mail_access_token(
+                    self._featurestore_id, self._name, self._SERVICE
+                )
+            )
+        )
+
+    def _sync(
+        self,
+        feature_group_name: str | None,
+        attachments_path: str | None,
+        query: str | None,
+        labels: list[str] | None,
+        loading_strategy: str,
+        initial_value: str | int | datetime | date | None,
+        schedule: str | None,
+        job_name: str | None,
+        environment: str | None,
+        start: bool,
+    ) -> Job:
+        from hopsworks_common.core import job_api
+
+        strategy = getattr(loading_strategy, "value", loading_strategy).upper()
+        if strategy not in self._STRATEGIES:
+            raise ValueError(
+                f"loading_strategy must be one of {', '.join(self._STRATEGIES)}"
+            )
+        if schedule is not None and schedule.lower() not in self._SCHEDULES:
+            raise ValueError(f"schedule must be one of {', '.join(self._SCHEDULES)}")
+        name = job_name or re.sub(
+            r"[^A-Za-z0-9_-]", "_", f"{self._name}_{self._SERVICE}_sync"
+        )
+        body = {
+            "featureGroupName": feature_group_name,
+            "path": attachments_path,
+            "query": query or "",
+            "labels": list(labels or []),
+            "loadingStrategy": strategy,
+            "initialValue": util._convert_event_time_to_timestamp(initial_value),
+            "environmentName": environment,
+        }
+        self._storage_connector_api._put_mail_sync_job(
+            self._featurestore_id, self._name, self._SERVICE, name, body
+        )
+        job = job_api.JobApi().get(name)
+        if start:
+            job.run(await_termination=False)
+        if schedule is not None:
+            job.schedule(cron_expression=self._SCHEDULES[schedule.lower()])
+        return job
+
+    def _list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        return [
+            MailSyncJobConfig.from_response_json(job)
+            for job in self._storage_connector_api._get_mail_sync_jobs(
+                self._featurestore_id, self._name, self._SERVICE
+            )
+            or []
+        ]
+
+    def _get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        return MailSyncJobConfig.from_response_json(
+            self._storage_connector_api._get_mail_sync_job(
+                self._featurestore_id, self._name, self._SERVICE, job_name
+            )
+        )
+
+    def _delete_sync_job(self, job_name: str) -> None:
+        self._storage_connector_api._delete_mail_sync_job(
+            self._featurestore_id, self._name, self._SERVICE, job_name
+        )
+
+
+@public
+class GmailConnector(_MailSyncMixin, StorageConnector):
+    """A Gmail mailbox, read with credentials that stay in Hopsworks.
+
+    The data source holds either an OAuth client with a refresh token granted by the mailbox owner, or a Google Workspace service account with domain-wide delegation that impersonates the mailbox.
+    Both need the `https://www.googleapis.com/auth/gmail.readonly` scope.
+    The credentials are write-only: reading the data source back returns `credentials_set` instead, and code that needs to call Gmail asks for a short-lived token with [`get_access_token`][hsfs.storage_connector.GmailConnector.get_access_token].
+
+    Copy the mailbox into a Delta feature group with [`sync`][hsfs.storage_connector.GmailConnector.sync], which creates a job that runs on demand, hourly or daily.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        gmail = GmailConnector(
+            id=None,
+            name="support_inbox",
+            featurestore_id=fs.id,
+            mailbox="support@example.com",
+            auth_type="OAUTH",
+            client_id="...apps.googleusercontent.com",
+            client_secret="...",
+            refresh_token="...",
+        )
+        gmail.save()
+        job = gmail.sync(schedule="hourly")
+        emails = fs.get_feature_group("support_examples", version=1)
+        ```
+    """
+
+    type = StorageConnector.GMAIL
+    _SERVICE = "gmail"
+    OAUTH = "OAUTH"
+    SERVICE_ACCOUNT = "SERVICE_ACCOUNT"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        mailbox: str | None = None,
+        auth_type: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        key_path: str | None = None,
+        credentials_set: bool | None = None,
+        service_account_email: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._mailbox = mailbox
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._key_path = key_path
+        self._credentials_set = credentials_set
+        self._service_account_email = service_account_email
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox."""
+        return self._mailbox
+
+    @mailbox.setter
+    def mailbox(self, mailbox: str) -> None:
+        self._mailbox = mailbox
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`OAUTH` or `SERVICE_ACCOUNT`."""
+        return self._auth_type
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """OAuth client id; `None` for a service account."""
+        return self._client_id
+
+    @public
+    @property
+    def credentials_set(self) -> bool | None:
+        """Whether credentials are stored; the credentials themselves are never returned."""
+        return self._credentials_set
+
+    @public
+    @property
+    def service_account_email(self) -> str | None:
+        """The service account that impersonates the mailbox; `None` for OAuth."""
+        return self._service_account_email
+
+    @public
+    def set_credentials(
+        self,
+        auth_type: str,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        key_path: str | None = None,
+    ) -> None:
+        """Replace the credentials sent by the next [`save`][hsfs.storage_connector.StorageConnector.save] or [`update`][hsfs.storage_connector.StorageConnector.update].
+
+        Parameters:
+            auth_type: `OAUTH` or `SERVICE_ACCOUNT`.
+            client_id: OAuth client id.
+            client_secret: OAuth client secret.
+            refresh_token: OAuth refresh token granted with the `gmail.readonly` scope.
+            key_path: HopsFS path of a service account's JSON key; Hopsworks stores the key's contents, so the file can be deleted afterwards.
+        """
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._key_path = key_path
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update({"mailbox": self._mailbox, "authType": self._auth_type})
+        for key, value in (
+            ("clientId", self._client_id),
+            ("clientSecret", self._client_secret),
+            ("refreshToken", self._refresh_token),
+            ("keyPath", self._key_path),
+        ):
+            if value:
+                payload[key] = value
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    def __repr__(self) -> str:
+        return (
+            f"GmailConnector(name={self._name!r}, mailbox={self._mailbox!r}, "
+            f"auth_type={self._auth_type!r}, credentials_set={self._credentials_set!r})"
+        )
+
+    @public
+    def get_access_token(self) -> MailAccessToken:
+        """Get a short-lived, read-only Gmail access token for the mailbox.
+
+        Use it to call the [Gmail API](https://developers.google.com/gmail/api/reference/rest) from your own code without holding the data source's credentials.
+        Ask for a new token when the previous one is about to expire.
+
+        Example:
+            ```python
+            import requests
+
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            token = gmail.get_access_token()
+            labels = requests.get(
+                f"https://gmail.googleapis.com/gmail/v1/users/{token.mailbox}/labels",
+                headers={"Authorization": f"Bearer {token.token}"},
+            ).json()
+            ```
+
+        Returns:
+            The token, its expiry and the mailbox it reads.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Google refuses the stored credentials, for example because the refresh token was revoked.
+        """
+        return self._access_token()
+
+    @public
+    def get_labels(self) -> dict[str, str]:
+        """Get the labels of the mailbox that a sync can select, by id.
+
+        System labels, such as `INBOX`, `SENT`, `STARRED` and `CATEGORY_PERSONAL`, come first, then the labels the mailbox's owner created.
+        Spam, trash and drafts are left out, since a sync never copies them.
+
+        Example:
+            ```python
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            print(gmail.get_labels())  # {'INBOX': 'INBOX', 'SENT': 'SENT', ..., 'Label_12': 'receipts'}
+            gmail.sync(labels=["INBOX"], schedule="hourly")
+            ```
+
+        Returns:
+            The label names, keyed by the ids that [`sync`][hsfs.storage_connector.GmailConnector.sync] takes.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Google refuses the stored credentials or Gmail cannot be reached.
+        """
+        return {
+            label["id"]: label["name"]
+            for label in self._storage_connector_api._get_gmail_labels(
+                self._featurestore_id, self._name
+            )
+            or []
+        }
+
+    @public
+    def sync(
+        self,
+        feature_group_name: str | None = None,
+        attachments_path: str | None = None,
+        query: str | None = None,
+        labels: list[str] | None = None,
+        loading_strategy: Literal[
+            "INCREMENTAL_TIMESTAMP", "FULL_LOAD"
+        ] = "INCREMENTAL_TIMESTAMP",
+        initial_value: str | int | datetime | date | None = None,
+        schedule: Literal["hourly", "daily"] | None = None,
+        job_name: str | None = None,
+        environment: str | None = None,
+        start: bool = True,
+    ) -> Job:
+        """Copy the mailbox into a Delta feature group with a job that runs now, hourly or daily.
+
+        The job upserts one row per email into the feature group, version 1, keyed by `message_id`, with `internal_date`, Gmail's `internalDate`, as its event time.
+        The table is partitioned by `day` (`YYYY-MM-DD`) of `internal_date` in UTC.
+        An hourly job adds about one Parquet file to the current day per run, and the first run after a day ends compacts that day's files into files of up to 192 MiB.
+        Its columns are `message_id`, `thread_id`, `history_id`, `internal_date`, `day`, `hour`, `date_header`, `from_address`, `to_addresses`, `cc_addresses`, `bcc_addresses`, `subject`, `labels`, `snippet`, `size_estimate`, `body_text` and `attachments`.
+        Attachments are written as files under `<attachments_path>/day=YYYY-MM-DD/<message_id>/<filename>`, and `attachments` lists their full `/Projects/...` paths.
+        Spam, trash and drafts are not copied.
+
+        `INCREMENTAL_TIMESTAMP` upserts the messages Gmail received since the previous run; its first run copies everything from `initial_value` on, upserting every 5000 messages as it goes.
+        A scheduled run that starts while the previous one is still copying does nothing.
+        `FULL_LOAD` overwrites the feature group on every run.
+        The copy is an archive: an incremental run does not remove messages deleted from Gmail, nor follow label changes.
+
+        Calling `sync` again with the same `job_name` updates the job.
+
+        Example:
+            ```python
+            gmail = fs.get_data_source("support_inbox").storage_connector
+            job = gmail.sync(query="-category:promotions", initial_value="2026-01-01", schedule="hourly")
+            emails = fs.get_feature_group("support_examples", version=1).read()
+            ```
+
+        Parameters:
+            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `dowling_jim_gmails` for `dowling.jim@gmail.com`.
+            attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/gmail/<feature group name>`.
+            query: Gmail search query selecting the messages, written as in the Gmail search box.
+            labels: Gmail label ids selecting the messages to copy, such as `["INBOX", "SENT"]`; a message carrying any of them is copied, and without labels every message is. [`get_labels`][hsfs.storage_connector.GmailConnector.get_labels] lists the mailbox's labels.
+            loading_strategy: `INCREMENTAL_TIMESTAMP` or `FULL_LOAD`.
+            initial_value: Earliest receive time to copy, as a date or datetime, a date string, or epoch milliseconds.
+            schedule: `hourly`, at the top of every hour, or `daily`, at 00:00 UTC; `None` leaves the job's schedule as it is.
+            job_name: Name of the job; defaults to `<data source name>_gmail_sync`.
+            environment: Python environment for a new job; defaults to `python-feature-pipeline`, and an update without it keeps the job's environment.
+            start: Whether to start a run now, without waiting for it.
+
+        Returns:
+            The job, which can be run, scheduled and monitored like any other.
+
+        Raises:
+            ValueError: If `loading_strategy` or `schedule` is not one of the values above.
+            hopsworks.client.exceptions.RestAPIError: If the backend refuses the job, for example because another sync job already writes to the feature group or the attachments path.
+        """
+        return self._sync(
+            feature_group_name,
+            attachments_path,
+            query,
+            labels,
+            loading_strategy,
+            initial_value,
+            schedule,
+            job_name,
+            environment,
+            start,
+        )
+
+    @public
+    def list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        """List the sync jobs of this data source.
+
+        Returns:
+            One configuration per sync job.
+        """
+        return self._list_sync_jobs()
+
+    @public
+    def get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        """Get the configuration of one sync job of this data source.
+
+        Parameters:
+            job_name: Name of the sync job.
+
+        Returns:
+            The job's configuration.
+        """
+        return self._get_sync_job(job_name)
+
+    @public
+    def delete_sync_job(self, job_name: str) -> None:
+        """Delete a sync job of this data source, with its schedule; the copied emails stay.
+
+        Parameters:
+            job_name: Name of the sync job.
+        """
+        self._delete_sync_job(job_name)
+
+
+@public
+class OutlookConnector(_MailSyncMixin, StorageConnector):
+    """An Outlook mailbox, on Outlook.com or Microsoft 365, read through Microsoft Graph with credentials that stay in Hopsworks.
+
+    The data source holds an app registration in Microsoft Entra ID with either:
+
+    - `OAUTH`: a refresh token granted by the mailbox's owner with the delegated `Mail.Read` and `offline_access` permissions, for the owner's own mailbox, personal or work;
+    - `CLIENT_CREDENTIALS`: a client secret with the application permission `Mail.Read`, granted by a tenant admin, for any mailbox of the tenant the admin allows.
+
+    The credentials are write-only: reading the data source back returns `credentials_set` instead, and code that needs to call Graph asks for a short-lived token with [`get_access_token`][hsfs.storage_connector.OutlookConnector.get_access_token].
+    Microsoft replaces a refresh token each time it is used, and Hopsworks stores the new one, so a data source that syncs at least every 90 days keeps working.
+
+    Copy the mailbox into a Delta feature group with [`sync`][hsfs.storage_connector.OutlookConnector.sync], which creates a job that runs on demand, hourly or daily.
+
+    Example:
+        ```python
+        fs = project.get_feature_store()
+        outlook = OutlookConnector(
+            id=None,
+            name="support_outlook",
+            featurestore_id=fs.id,
+            mailbox="support@contoso.com",
+            auth_type="CLIENT_CREDENTIALS",
+            tenant_id="contoso.onmicrosoft.com",
+            client_id="00000000-0000-0000-0000-000000000000",
+            client_secret="...",
+        )
+        outlook.save()
+        job = outlook.sync(schedule="hourly")
+        emails = fs.get_feature_group("support_contosos", version=1)
+        ```
+    """
+
+    type = StorageConnector.OUTLOOK
+    _SERVICE = "outlook"
+    OAUTH = "OAUTH"
+    CLIENT_CREDENTIALS = "CLIENT_CREDENTIALS"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        mailbox: str | None = None,
+        auth_type: str | None = None,
+        tenant_id: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        credentials_set: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._mailbox = mailbox
+        self._auth_type = auth_type
+        self._tenant_id = tenant_id
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+        self._credentials_set = credentials_set
+
+    @public
+    @property
+    def mailbox(self) -> str | None:
+        """Email address of the mailbox."""
+        return self._mailbox
+
+    @mailbox.setter
+    def mailbox(self, mailbox: str) -> None:
+        self._mailbox = mailbox
+
+    @public
+    @property
+    def auth_type(self) -> str | None:
+        """`OAUTH` or `CLIENT_CREDENTIALS`."""
+        return self._auth_type
+
+    @public
+    @property
+    def tenant_id(self) -> str | None:
+        """Microsoft Entra tenant: its id or domain, or `common`, `consumers` or `organizations` for a delegated token."""
+        return self._tenant_id
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """Application (client) id of the app registration."""
+        return self._client_id
+
+    @public
+    @property
+    def credentials_set(self) -> bool | None:
+        """Whether credentials are stored; the credentials themselves are never returned."""
+        return self._credentials_set
+
+    @public
+    def set_credentials(
+        self,
+        auth_type: str,
+        client_id: str,
+        tenant_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+    ) -> None:
+        """Replace the credentials sent by the next [`save`][hsfs.storage_connector.StorageConnector.save] or [`update`][hsfs.storage_connector.StorageConnector.update].
+
+        Parameters:
+            auth_type: `OAUTH` or `CLIENT_CREDENTIALS`.
+            client_id: Application (client) id.
+            tenant_id: Tenant id or domain; defaults to `common` for `OAUTH`, and `CLIENT_CREDENTIALS` needs the mailbox's tenant.
+            client_secret: Client secret; required for `CLIENT_CREDENTIALS`, and for `OAUTH` unless the app is a public client.
+            refresh_token: For `OAUTH`, a refresh token granted with `Mail.Read offline_access`.
+        """
+        self._auth_type = auth_type
+        self._client_id = client_id
+        self._tenant_id = tenant_id
+        self._client_secret = client_secret
+        self._refresh_token = refresh_token
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update({"mailbox": self._mailbox, "authType": self._auth_type})
+        for key, value in (
+            ("tenantId", self._tenant_id),
+            ("clientId", self._client_id),
+            ("clientSecret", self._client_secret),
+            ("refreshToken", self._refresh_token),
+        ):
+            if value:
+                payload[key] = value
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    def __repr__(self) -> str:
+        return (
+            f"OutlookConnector(name={self._name!r}, mailbox={self._mailbox!r}, "
+            f"auth_type={self._auth_type!r}, credentials_set={self._credentials_set!r})"
+        )
+
+    @public
+    def get_access_token(self) -> MailAccessToken:
+        """Get a short-lived, read-only Microsoft Graph access token for the mailbox.
+
+        Use it to call [Microsoft Graph](https://learn.microsoft.com/graph/api/resources/mail-api-overview) from your own code without holding the data source's credentials.
+        Ask for a new token when the previous one is about to expire.
+
+        Example:
+            ```python
+            import requests
+
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            token = outlook.get_access_token()
+            inbox = requests.get(
+                f"https://graph.microsoft.com/v1.0/{token.user_path}/mailFolders/inbox",
+                headers={"Authorization": f"Bearer {token.token}"},
+            ).json()
+            ```
+
+        Returns:
+            The token, its expiry, the mailbox it reads and the Graph path of that mailbox.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Microsoft refuses the stored credentials, for example because the refresh token expired or was revoked.
+        """
+        return self._access_token()
+
+    @public
+    def get_folders(self) -> dict[str, str]:
+        """Get the mail folders of the mailbox that a sync can select, by id.
+
+        Example:
+            ```python
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            folders = outlook.get_folders()  # {'AAMk...': 'Inbox', 'AAMl...': 'Inbox/Projects', ...}
+            inbox = [i for i, path in folders.items() if path == "Inbox"]
+            outlook.sync(folders=inbox, schedule="hourly")
+            ```
+
+        Returns:
+            The folder paths, such as `Inbox/Projects`, keyed by the ids that [`sync`][hsfs.storage_connector.OutlookConnector.sync] takes.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If Microsoft refuses the stored credentials or Graph cannot be reached.
+        """
+        return {
+            folder["id"]: folder.get("path") or folder["name"]
+            for folder in self._storage_connector_api._get_outlook_folders(
+                self._featurestore_id, self._name
+            )
+            or []
+        }
+
+    @public
+    def sync(
+        self,
+        feature_group_name: str | None = None,
+        attachments_path: str | None = None,
+        folders: list[str] | None = None,
+        loading_strategy: Literal[
+            "INCREMENTAL_TIMESTAMP", "FULL_LOAD"
+        ] = "INCREMENTAL_TIMESTAMP",
+        initial_value: str | int | datetime | date | None = None,
+        schedule: Literal["hourly", "daily"] | None = None,
+        job_name: str | None = None,
+        environment: str | None = None,
+        start: bool = True,
+    ) -> Job:
+        """Copy the mailbox into a Delta feature group with a job that runs now, hourly or daily.
+
+        The job upserts one row per email into the feature group, version 1, keyed by `message_id`, the message's immutable Graph id, with `internal_date`, its `receivedDateTime`, as the event time.
+        The feature group has the columns of a Gmail data source's, so the same queries search both.
+        `labels` holds the path of the message's folder, such as `Inbox/Projects`, then its categories; `thread_id` is the conversation id and `snippet` the body preview.
+        The table is partitioned by `day` (`YYYY-MM-DD`) of `internal_date` in UTC.
+        An hourly job adds about one Parquet file to the current day per run, and the first run after a day ends compacts that day's files into files of up to 192 MiB.
+        Attachments are written as files under `<attachments_path>/day=YYYY-MM-DD/<message_id>/<filename>`, and `attachments` lists their full `/Projects/...` paths.
+        Drafts are never copied, and without `folders` neither are Deleted Items, Junk Email and Outbox.
+
+        `INCREMENTAL_TIMESTAMP` upserts the messages received since the previous run; its first run copies everything from `initial_value` on, upserting every 5000 messages as it goes.
+        A scheduled run that starts while the previous one is still copying does nothing.
+        `FULL_LOAD` overwrites the feature group on every run.
+        The copy is an archive: an incremental run does not remove messages deleted from Outlook, nor follow moves between folders.
+
+        Calling `sync` again with the same `job_name` updates the job.
+
+        Example:
+            ```python
+            outlook = fs.get_data_source("support_outlook").storage_connector
+            job = outlook.sync(initial_value="2026-01-01", schedule="hourly")
+            emails = fs.get_feature_group("support_contosos", version=1).read()
+            ```
+
+        Parameters:
+            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `jim_outlooks` for `jim@outlook.com`.
+            attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/outlook/<feature group name>`.
+            folders: Folder ids selecting the messages to copy; a message in any of them is copied. [`get_folders`][hsfs.storage_connector.OutlookConnector.get_folders] lists the mailbox's folders. A chosen folder's subfolders are not included unless chosen too.
+            loading_strategy: `INCREMENTAL_TIMESTAMP` or `FULL_LOAD`.
+            initial_value: Earliest receive time to copy, as a date or datetime, a date string, or epoch milliseconds.
+            schedule: `hourly`, at the top of every hour, or `daily`, at 00:00 UTC; `None` leaves the job's schedule as it is.
+            job_name: Name of the job; defaults to `<data source name>_outlook_sync`.
+            environment: Python environment for a new job; defaults to `python-feature-pipeline`, and an update without it keeps the job's environment.
+            start: Whether to start a run now, without waiting for it.
+
+        Returns:
+            The job, which can be run, scheduled and monitored like any other.
+
+        Raises:
+            ValueError: If `loading_strategy` or `schedule` is not one of the values above.
+            hopsworks.client.exceptions.RestAPIError: If the backend refuses the job, for example because another sync job already writes to the feature group or the attachments path.
+        """
+        return self._sync(
+            feature_group_name,
+            attachments_path,
+            None,
+            folders,
+            loading_strategy,
+            initial_value,
+            schedule,
+            job_name,
+            environment,
+            start,
+        )
+
+    @public
+    def list_sync_jobs(self) -> list[MailSyncJobConfig]:
+        """List the sync jobs of this data source.
+
+        Returns:
+            One configuration per sync job.
+        """
+        return self._list_sync_jobs()
+
+    @public
+    def get_sync_job(self, job_name: str) -> MailSyncJobConfig:
+        """Get the configuration of one sync job of this data source.
+
+        Parameters:
+            job_name: Name of the sync job.
+
+        Returns:
+            The job's configuration.
+        """
+        return self._get_sync_job(job_name)
+
+    @public
+    def delete_sync_job(self, job_name: str) -> None:
+        """Delete a sync job of this data source, with its schedule; the copied emails stay.
+
+        Parameters:
+            job_name: Name of the sync job.
+        """
+        self._delete_sync_job(job_name)
