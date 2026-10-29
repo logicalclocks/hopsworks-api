@@ -161,7 +161,7 @@ def dataset_download(
     type=click.Choice(["READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"]),
     default="READ_ONLY",
     show_default=True,
-    help="Permission for the target project. Feature-store datasets must be READ_ONLY.",
+    help="Permission for the target project.",
 )
 @click.pass_context
 def dataset_share(
