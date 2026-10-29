@@ -45,6 +45,31 @@ class TestModelPath:
 
         assert m.model_path == "/Projects/backing1/Models/m"
 
+    @pytest.mark.parametrize(
+        "framework",
+        [
+            MODEL.FRAMEWORK_PYTHON,
+            MODEL.FRAMEWORK_SKLEARN,
+            MODEL.FRAMEWORK_TENSORFLOW,
+            MODEL.FRAMEWORK_TORCH,
+            MODEL.FRAMEWORK_LLM,
+        ],
+    )
+    def test_a_framework_model_keeps_the_server_path(self, framework):
+        m = model.Model.from_response_json(
+            {
+                "id": "m_1",
+                "name": "m",
+                "version": 1,
+                "framework": framework,
+                "projectName": "Display",
+                "modelPath": "/Projects/backing1/Models/m",
+            }
+        )
+
+        assert m.model_path == "/Projects/backing1/Models/m"
+        assert m.version_path == "/Projects/backing1/Models/m/1"
+
     def test_falls_back_to_the_project_name(self):
         m = model.Model(id=1, name="m", project_name="Display")
 

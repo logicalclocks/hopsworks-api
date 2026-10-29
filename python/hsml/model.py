@@ -1042,7 +1042,7 @@ class Model:
     def version_path(self):
         """Path of the model including version folder.
 
-        Resolves to `/Projects/{project_name}/Models/{name}/{version}`.
+        Resolves to `/Projects/{backing_name}/Models/{name}/{version}`.
         """
         return f"{self.model_path}/{str(self.version)}"
 
@@ -1051,7 +1051,7 @@ class Model:
     def model_files_path(self):
         """Path of the model files including version and files folder.
 
-        Resolves to `/Projects/{project_name}/Models/{name}/{version}/Files`.
+        Resolves to `/Projects/{backing_name}/Models/{name}/{version}/Files`.
         """
         return f"{self.version_path}/{MODEL_REGISTRY.MODEL_FILES_DIR_NAME}"
 
