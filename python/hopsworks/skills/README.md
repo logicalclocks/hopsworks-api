@@ -36,6 +36,7 @@ into bucket folders:
 
 ## agents/ — served agents, their evaluation, and scheduled agent tasks
 - [hops-agent-deployment](agents/hops-agent-deployment/SKILL.md) — served, chat-ready interactive agent (`AgentApp`); talk to it from Python.
+- [hops-agent-chat](agents/hops-agent-chat/SKILL.md) — the agent's chat app, customizing it, or the chat embedded in an app of your own.
 - [hops-agent-evals](agents/hops-agent-evals/SKILL.md) — suites, LLM judges, traces and feedback, failure analysis into regression tests.
 - [hops-agent-task](agents/hops-agent-task/SKILL.md) — scheduled coding-agent task (claude-code / codex job).
 

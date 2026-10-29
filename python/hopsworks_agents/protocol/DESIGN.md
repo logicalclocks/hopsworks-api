@@ -39,7 +39,7 @@ Not a wrapper that owns a hidden app, not a `serve(fn)` function. Consequences:
 
 - Runs anywhere a FastAPI app runs — `uvicorn module:agent_app`, the existing KServe/Knative deployment path — with no special launcher.
 - Authors add custom routes, middleware, and dependencies the normal FastAPI way; the SDK's routes coexist.
-- The four protocol routes (`/.well-known/hopsworks-agent.json`, `/v1/chat`, `/v1/chat/stream`, `/health`) and CORS are registered in `__init__`; CORS defaults on because the in-browser chat panel calls the agent cross-origin through the ingress and authors invariably forget it.
+- The protocol routes (`/.well-known/hopsworks-agent.json`, `/v1/run` for AG-UI runs, `/v1/chat`, `/health`) and CORS are registered in `__init__`; CORS defaults on because the in-browser chat panel calls the agent cross-origin through the ingress and authors invariably forget it.
 
 ### 2. Framework and protocol are separate axes
 
@@ -52,13 +52,13 @@ The SDK is precisely the thing that decouples them: any framework in, one wire p
 
 ### 3. Two handler styles, one collapses into the other
 
-`@app.chat` (returns a `ChatResponse`/str) and `@app.stream` (async generator of text deltas, optional final `ChatResponse` for citations/usage/media). Registering `@stream` flips the manifest's `streaming` capability automatically. Each endpoint degrades gracefully to the other handler: `/v1/chat` collects a stream into one response; `/v1/chat/stream` emits a single `message.completed` when only `@chat` exists. Authors implement whichever fits; both endpoints always work.
+`@app.chat` (returns a `ChatResponse`/str) and `@app.stream` (async generator of text deltas, optional final `ChatResponse` for citations/usage/media). Registering `@stream` flips the manifest's `streaming` capability automatically. Each endpoint degrades gracefully to the other handler: `/v1/chat` collects a stream into one response; `/v1/run` sends a `@chat` handler's answer as one AG-UI text message. Authors implement whichever fits; both endpoints always work.
 
 ### 3a. Optional handler context
 
 Handlers may declare a second parameter (`def chat(request, ctx)`); the SDK inspects the signature and injects a `HandlerContext` only when present, so the one-arg form keeps working. The context bundles per-turn conveniences (`conversation_id`, `history`/`summary`/`state()`/`system_context()` from memory, `memory`, `logger`, `deployment_id`, `framework`, `subject`, correlation ids) and `emit_event`. This adds ergonomics without a new wire protocol — the context is a server-side object, not part of the contract.
 
-`ctx.emit_event(name, status, message, data, event_id)` surfaces intermediate progress (retrieval, tool calls, code runs). While streaming it is interleaved as a `tool_event` SSE frame via a queue the streaming route drains alongside the handler's own yields (the handler runs as a task so `await ctx.emit_event(...)` and `yield delta` compose); otherwise it buffers into the response metadata. `event_id` ties a `running` event to its `done`/`failed` so the client renders one updating chip. Gated by `AgentApp(tool_events=True)`.
+`ctx.emit_event(name, status, message, data, event_id)` surfaces intermediate progress (retrieval, tool calls, code runs). On `/v1/run` it goes out as an AG-UI step event via a queue the run route drains alongside the handler's own yields (the handler runs as a task so `await ctx.emit_event(...)` and `yield delta` compose); otherwise it buffers into the response metadata. `event_id` ties a `running` event to its `done`/`failed` so the client renders one updating chip. Gated by `AgentApp(tool_events=True)`.
 
 **Automatic emission (zero agent code).** When `tool_events` is on *and* tracing is active, the SDK installs a span processor (`autoevents.py`) on the tracer provider that watches for OpenInference `TOOL`/`RETRIEVER` spans and emits `running`/`done`/`failed` tool events keyed by span id — so tool calls appear in the panel automatically, the same way they appear in framework tracing, because it's the same instrumentation. The processor finds the active turn through a `contextvars.ContextVar[HandlerContext]` set around handler execution, and `_emit_sync` chooses a direct `put_nowait` (on the loop thread) vs. `loop.call_soon_threadsafe` (off-thread) so a tool running in a worker thread still enqueues safely. Correlation across threads depends on the framework copying context into its executors — **LangChain/LangGraph do** (`langchain_core.runnables.config.run_in_executor` copies the context); frameworks that don't propagate contextvars won't auto-emit, and fall back to manual events or the trace view. Framework-specific spans currently come from OpenInference instrumentors for LangChain/LangGraph, LlamaIndex, OpenAI Agents, and Claude Agent SDK. Best-effort throughout: any failure logs and never disturbs the span or the chat.
 
@@ -117,7 +117,7 @@ Optional dependencies (OTel SDK, instrumentation packages, SQLAlchemy) are impor
 
 ## Versioning & packaging
 
-- Package version tracks capability additions; protocol version (`protocol_version` in the manifest, currently `1.1`) tracks the wire contract and evolves additively — clients accept any `1.x` and ignore unknown fields.
+- The wire protocol is AG-UI (`protocol: "ag-ui"`, `protocol_version` the AG-UI version); `hopsworks_version` in the manifest (currently `2.0`) tracks the Hopsworks extensions carried under `hopsworks` keys, which evolve additively — clients ignore unknown fields.
 - Optional extras keep the base install thin: `[tracing]`, `[langgraph]`, `[llamaindex]`, `[openai-agents]`, `[claude-agents]`, `[memory-sql]`, `[memory-search]`. Base install is FastAPI + Pydantic only.
 - Distributed as a git dependency today (`hopsworks-agent-protocol @ git+...`); the intended path is an internal PyPI publish or vendoring into the agent base image so `from hopsworks_agents.protocol import AgentApp` works out of the box in every deployment.
 
@@ -133,7 +133,6 @@ Optional dependencies (OTel SDK, instrumentation packages, SQLAlchemy) are impor
 
 - **Publish** to internal PyPI or bake into the agent base image so `from hopsworks_agents.protocol import AgentApp` works without a git dependency.
 - **File upload/download** (`POST /v1/files`, `GET /v1/files/{id}`) — the upgrade path from inline base64 for large generated artifacts (reports, PDFs, audio). Needs a storage abstraction (HopsFS/dataset path or object store) and a manifest capability. Deferred as the largest of the reviewed suggestions.
-- **Panel-side tool-event rendering** — the SDK already emits `tool_event` frames; the chat panel needs to render retrieval/tool/code progress rows.
 - **Agent graph** (`graph=` + `GET /v1/graph`, `capabilities.graph`) — normalises a LangGraph/LlamaIndex/dict graph to `{nodes, edges}` for the panel's Graph tab (static topology). Live node/path highlighting is a phase 2 on the tool-event stream.
 - **Framework recipe cookbook** — LangGraph checkpointer + `conversation_id`, LlamaIndex chat engine, plain-Anthropic streaming — so authors copy the right integration for their framework.
 - **Richer trace correlation** — a typed `trace_id`/`span_id` field on `ChatResponse` rather than only `metadata`, once the evaluation join is designed.
