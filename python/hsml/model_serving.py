@@ -181,13 +181,13 @@ class ModelServing:
         Parameters:
             model: Filter by model served in the deployments
             status: Filter by status of the deployments
-            kind: Keep only deployments of this kind, or of any of these kinds; see [`DEPLOYMENT_KIND`][hsml.constants.DEPLOYMENT_KIND].
+            kind: Keep only deployments of this kind, or of any of these kinds; see `hsml.constants.DEPLOYMENT_KIND`.
 
         Returns:
             A list of deployments.
 
         Raises:
-            ValueError: If a kind is not one of [`DEPLOYMENT_KIND`][hsml.constants.DEPLOYMENT_KIND].
+            ValueError: If a kind is not one of `hsml.constants.DEPLOYMENT_KIND`.
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployments from model serving.
         """
         model_name = model._get_default_serving_name() if model is not None else None
