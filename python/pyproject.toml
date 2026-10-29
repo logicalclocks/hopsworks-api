@@ -135,6 +135,9 @@ polars = [
     "polars>=0.20.31,<=1.40.1",
     "pyarrow>=17.0,<26",
 ]
+openai = [
+    "openai>=1.0,<4",
+]
 mcp = [
     "fastmcp>=2.10.5,<=2.13.3",
     "filelock",

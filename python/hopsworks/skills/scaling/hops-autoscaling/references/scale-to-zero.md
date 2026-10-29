@@ -13,7 +13,7 @@ A fresh deployment gets a grace period before it may rest: the larger of the idl
 
 - `hops deployment status <name>` and `deployment.get_state().status` say `Idle` at zero and `Running` once a replica is up; `available_predictor_instances` is 0 at rest.
 - The first request after an idle period takes the cold start: image already on the node, container start, model load, readiness. A Python predictor with a small model wakes in 10-30 s; an LLM reloads its weights into the GPU on every wake and takes as long as its first start, so set `cold_start_timeout_seconds` above that and expect the first completion to be slow. A request held longer than the timeout fails.
-- Requests must reach the deployment through its endpoint (the gateway): `deployment.predict()`, the inference URL, the OpenAI-compatible URL for vLLM. Traffic sent straight to the predictor Service from inside the cluster never passes the interceptor, counts for nothing, and the deployment scales to zero underneath it.
+- Requests must reach the deployment through its endpoint (the gateway): `deployment.predict()`, the inference URL, the OpenAI-compatible URL for vLLM (`deployment.get_openai_url()`; the project endpoint `ms.get_openai_url()` does not serve deployments that scale to zero, so use the deployment's own URL for them). Traffic sent straight to the predictor Service from inside the cluster never passes the interceptor, counts for nothing, and the deployment scales to zero underneath it.
 
 ## Choosing the timeouts
 

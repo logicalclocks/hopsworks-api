@@ -23,13 +23,14 @@ import zipfile
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
-from hopsworks_common import tag, usage, util
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common import client, tag, usage, util
+from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.core import dataset_api as _dataset_api
 from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
+from hsml.core.openai_client import _build_openai_client
 from hsml.deployment import Deployment
 from hsml.predictor import Predictor
 from hsml.transformer import Transformer
@@ -52,6 +53,7 @@ _SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 if TYPE_CHECKING:
+    import openai
     from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_memory_config import DeploymentMemoryConfig
     from hsml.deployment_schema import DeploymentSchema
@@ -75,10 +77,12 @@ class ModelServing:
         self,
         project_name: str,
         project_id: int,
+        project_namespace: str | None = None,
         **kwargs,
     ):
         self._project_name = project_name
         self._project_id = project_id
+        self._project_namespace = project_namespace
 
         self._serving_api = serving_api.ServingApi()
 
@@ -914,10 +918,160 @@ class ModelServing:
         return Deployment(predictor=predictor, name=name)
 
     @public
+    def get_openai_url(self) -> str | None:
+        """Get the OpenAI-compatible URL that serves every vLLM deployment of the project.
+
+        Requests are routed to a deployment by the `model` field of the request body, which is the deployment name.
+        The URL stays the same when deployments are created, stopped or deleted.
+
+        Note: The endpoint answers 404 until it is available
+            The project endpoint answers 404 until a vLLM deployment of the project is running and the cluster has the project endpoint enabled.
+            The per-deployment URL from [`Deployment.get_openai_url`][hsml.deployment.Deployment.get_openai_url] keeps working in the meantime.
+
+        Returns:
+            The OpenAI-compatible URL, or `None` if the Istio client is not available.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the Kubernetes namespace of the project is unknown.
+
+        Example: Call the project endpoint with an HTTP client
+            ```python
+            ms = project.get_model_serving()
+            url = ms.get_openai_url()
+            # url = "https://host:port/v1/namespace/v1"
+            # Then use: url + "/chat/completions" with "model": "<deployment name>"
+            ```
+        """
+        istio_client = client.istio._get_instance()
+        if istio_client is None:
+            return None
+        path_parts = self._serving_api._get_istio_project_openai_path(
+            self._resolve_project_namespace()
+        )
+        return f"{istio_client._base_url}/{'/'.join(path_parts)}"
+
+    @public
+    def get_project_endpoint(self) -> dict[str, Any]:
+        """Get the state of the project endpoint.
+
+        Returns:
+            A dict with the keys `enabled` (the project switch), `available` (whether the cluster publishes the project endpoint) and `url` (the URL of the endpoint, or `None` if the Istio client is not available).
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Check the project endpoint
+            ```python
+            state = project.get_model_serving().get_project_endpoint()
+            if state["available"] and state["enabled"]:
+                print(state["url"])
+            ```
+        """
+        state = self._serving_api._get_project_endpoint()
+        return {
+            "enabled": state["enabled"],
+            "available": state["available"],
+            "url": self.get_openai_url(),
+        }
+
+    @public
+    def set_project_endpoint(self, enabled: bool) -> dict[str, Any]:
+        """Switch the project endpoint on or off for the whole project.
+
+        While it is off, the project endpoint answers 404 for every deployment of the project.
+        The per-deployment URLs keep working, and no deployment restarts.
+        Requires the data owner role in the project.
+
+        Parameters:
+            enabled: Whether the project endpoint serves the deployments of the project.
+
+        Returns:
+            The state of the project endpoint, as returned by [`get_project_endpoint`][hsml.model_serving.ModelServing.get_project_endpoint].
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Turn the project endpoint off
+            ```python
+            project.get_model_serving().set_project_endpoint(False)
+            ```
+        """
+        state = self._serving_api._set_project_endpoint(enabled)
+        return {
+            "enabled": state["enabled"],
+            "available": state["available"],
+            "url": self.get_openai_url(),
+        }
+
+    def _resolve_project_namespace(self) -> str:
+        """Return the project's Kubernetes namespace.
+
+        The project handle passes it at construction; a handle built from a bare connection fetches it once from the backend.
+        """
+        if not self._project_namespace:
+            self._project_namespace = (
+                client._get_connection()._get_project().project_namespace
+            )
+        if not self._project_namespace:
+            raise ModelServingException(
+                "The Kubernetes namespace of the project is unknown, so the project OpenAI endpoint cannot be built."
+            )
+        return self._project_namespace
+
+    @public
+    def get_openai_client(self, **kwargs: Any) -> openai.OpenAI:
+        """Get an OpenAI client that talks to every vLLM deployment of the project.
+
+        The client authenticates with the Hopsworks token of the current connection.
+        Pass the deployment name as `model` in each request to choose the deployment.
+        Requires the `openai` package, installed with `pip install "hopsworks[openai]"`.
+
+        Note: The endpoint answers 404 until it is available
+            The project endpoint answers 404 until a vLLM deployment of the project is running and the cluster has the project endpoint enabled.
+            The per-deployment client from [`Deployment.get_openai_client`][hsml.deployment.Deployment.get_openai_client] keeps working in the meantime.
+
+        Parameters:
+            **kwargs:
+                Passed to `openai.OpenAI`, for example `timeout`, `max_retries` or `http_client`.
+                `default_headers` are merged over the authorization header set by Hopsworks.
+                `base_url` and `api_key` are set by Hopsworks and cannot be passed.
+
+        Returns:
+            The configured OpenAI client.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If no endpoint URL is available, or the Kubernetes namespace of the project is unknown.
+            ValueError: If `base_url` or `api_key` is passed.
+            ModuleNotFoundError: If the `openai` package is not installed.
+
+        Example: Chat with a deployment through the project endpoint
+            ```python
+            ms = project.get_model_serving()
+            openai_client = ms.get_openai_client()
+            response = openai_client.chat.completions.create(
+                model="<deployment name>",
+                messages=[{"role": "user", "content": "Hello"}],
+            )
+            ```
+        """
+        url = self.get_openai_url()
+        if url is None:
+            raise ModelServingException(
+                "The project OpenAI endpoint is not available, because the Istio client is not set up. "
+                "This happens when KServe is not installed or the Istio ingress gateway has no load balancer address."
+            )
+        return _build_openai_client(url, **kwargs)
+
+    @public
     @property
     def project_name(self):
         """Name of the project in which Model Serving is located."""
         return self._project_name
+
+    @property
+    def project_namespace(self) -> str | None:
+        """Kubernetes namespace of the project, or `None` if it was not provided."""
+        return self._project_namespace
 
     @public
     @property

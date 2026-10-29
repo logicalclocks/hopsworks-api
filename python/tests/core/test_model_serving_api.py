@@ -173,3 +173,27 @@ class TestIstioInitIfAvailable:
 
         self.istio_init.assert_not_called()
         assert "External IP not configured" in capsys.readouterr().out
+
+
+class TestGet:
+    @pytest.fixture
+    def api(self, mocker):
+        mocker.patch("hsml.core.model_serving_api.dataset_api.DatasetApi")
+        mocker.patch("hsml.core.model_serving_api.serving_api.ServingApi")
+        mocker.patch(
+            "hsml.core.model_serving_api.client._get_instance",
+            return_value=mocker.Mock(_project_name="proj", _project_id=7),
+        )
+        return ModelServingApi()
+
+    def test_passes_the_project_namespace_through(self, api):
+        ms = api._get("pre-created-ns")
+
+        assert ms.project_name == "proj"
+        assert ms.project_id == 7
+        assert ms.project_namespace == "pre-created-ns"
+
+    def test_namespace_is_optional(self, api):
+        ms = api._get()
+
+        assert ms.project_namespace is None

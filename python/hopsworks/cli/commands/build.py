@@ -777,7 +777,9 @@ def _llm_env_vars(slug: str) -> dict:
         return record
     click.echo(
         f"The {slug} agent calls an OpenAI-compatible chat endpoint. The URL, model "
-        "and API key are saved as your account environment variables, visible only to you."
+        "and API key are saved as your account environment variables, visible only to you.\n"
+        "For a vLLM deployment of this project, use the project endpoint from "
+        "project.get_model_serving().get_openai_url(), a Hopsworks API key and the deployment name as the model."
     )
     url = click.prompt("LLM endpoint URL", default="https://api.openai.com/v1").strip()
     model = click.prompt("Model", default="gpt-4o-mini").strip()

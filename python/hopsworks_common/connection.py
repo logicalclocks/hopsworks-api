@@ -239,7 +239,7 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def _get_model_serving(self) -> ModelServing:
+    def _get_model_serving(self, project_namespace: str | None = None) -> ModelServing:
         """Get a reference to model serving to perform operations on. Model serving operates on top of a model registry, defaulting to the project's default model registry.
 
         Example:
@@ -255,7 +255,7 @@ class Connection:
             A model serving handle object to perform operations on.
         """
         self._load_serving_defaults()
-        return self._model_serving_api._get()
+        return self._model_serving_api._get(project_namespace)
 
     @usage._method_logger
     @_connected

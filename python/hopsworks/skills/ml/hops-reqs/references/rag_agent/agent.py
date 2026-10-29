@@ -17,7 +17,9 @@ the online `user_events` feature group, `retrieve` embeds the query with the
 registered sentence-transformers model and takes the k nearest chunks from the
 embedding feature group's vector index, and `answer` puts both into the context
 window of the LLM at LLM_URL (an OpenAI-compatible endpoint; model LLM_MODEL),
-with LLM_API_KEY. The three come from the user's account environment variables,
+with LLM_API_KEY. For a vLLM deployment in the same project, LLM_URL is
+project.get_model_serving().get_openai_url(), LLM_MODEL is the deployment name
+and LLM_API_KEY is a Hopsworks API key. The three come from the user's account environment variables,
 which Hopsworks sets in the deployment. Without them the answer says so and the
 retrieved context is still returned.
 
