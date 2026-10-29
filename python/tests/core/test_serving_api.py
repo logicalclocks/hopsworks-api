@@ -235,6 +235,18 @@ class TestServingApi:
         # Assert
         assert path == ["v1", project_namespace, "vllmdepl"]
 
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_istio_project_openai_path_addresses_the_namespace(
+        self, project_name, project_namespace
+    ):
+        # The project endpoint is addressed by namespace only; the project name
+        # is not an input of the path.
+        assert ServingApi()._get_istio_project_openai_path(project_namespace) == [
+            "v1",
+            project_namespace,
+            "v1",
+        ]
+
     @pytest.mark.parametrize("project_namespace", ["myproject", "pre-created-ns"])
     @pytest.mark.parametrize("base_only", [False, True])
     def test_istio_inference_path_ignores_the_project_name(
@@ -420,6 +432,31 @@ class TestServingApi:
         assert args[0] == "GET"
         assert args[1] == ["project", 1, "serving", "vllmImageTags"]
         assert response == _VLLM_IMAGE_TAGS_RESPONSE
+
+    def test_project_endpoint_switch_addresses_the_project_serving_path(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"enabled": False, "available": True})
+
+        assert api._get_project_endpoint() == {"enabled": False, "available": True}
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[:2] == ("GET", ["project", 1, "serving", "projectEndpoint"])
+
+        api._set_project_endpoint(False)
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[:2] == ("PUT", ["project", 1, "serving", "projectEndpoint"])
+        assert json.loads(kwargs["data"]) == {"enabled": False}
+
+    def test_deployment_project_endpoint_posts_to_the_serving_id(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, None)
+        depl = MagicMock()
+        depl.id = 5
+
+        api._set_deployment_project_endpoint(depl, True)
+
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[:2] == ("POST", ["project", 1, "serving", 5, "projectEndpoint"])
+        assert json.loads(kwargs["data"]) == {"enabled": True}
 
 
 class TestGrpcChannelLockIsPerDeployment:

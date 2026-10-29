@@ -106,6 +106,15 @@ polars_not_installed_message = (
     "You will need to restart your kernel if applicable."
 )
 
+HAS_OPENAI: bool = importlib.util.find_spec("openai") is not None
+openai_not_installed_message = (
+    "OpenAI package not found. "
+    "If you want to use the OpenAI client with Hopsworks you can install the corresponding extra via "
+    """'`pip install "hopsworks[openai]"`. '"""
+    "You can also install openai directly in your environment with `pip install openai`. "
+    "You will need to restart your kernel if applicable."
+)
+
 # SQL packages
 HAS_SQLALCHEMY: bool = importlib.util.find_spec("sqlalchemy") is not None
 HAS_AIOMYSQL: bool = importlib.util.find_spec("aiomysql") is not None

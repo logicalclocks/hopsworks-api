@@ -1997,6 +1997,38 @@ class TestDeployment:
         assert url == "https://example.com/v1/project/name/v1"
         mock_predictor_get_openai_url.assert_called_once()
 
+    # get openai client
+
+    def test_get_openai_client_uses_the_deployment_url(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(
+            p, "get_openai_url", return_value="https://example.com/v1/ns/depl/v1"
+        )
+        build = mocker.patch("hsml.deployment._build_openai_client")
+
+        # Act
+        result = d.get_openai_client(timeout=3)
+
+        # Assert
+        build.assert_called_once_with("https://example.com/v1/ns/depl/v1", timeout=3)
+        assert result is build.return_value
+
+    def test_get_openai_client_raises_when_there_is_no_url(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange: non-vLLM deployments have no OpenAI-compatible URL.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(p, "get_openai_url", return_value=None)
+        build = mocker.patch("hsml.deployment._build_openai_client")
+
+        # Act / Assert
+        with pytest.raises(ModelServingException, match="vLLM"):
+            d.get_openai_client()
+        build.assert_not_called()
+
     # get inference url
 
     def test_get_inference_url_delegates_to_predictor(self, mocker, backend_fixtures):
@@ -2343,3 +2375,50 @@ class TestDeploymentSchemaAndFeatureView:
         assert schema.output["kind"] == "feature_vectors"
         assert schema.inferred is True
         assert d.schema is schema
+
+
+class TestDeploymentProjectEndpoint:
+    def _deployment(self, mocker):
+        mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
+        p = predictor.Predictor(
+            id=7,
+            name="llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        return deployment.Deployment(predictor=p, name="llm")
+
+    def test_defaults_to_on_and_is_omitted_from_to_dict(self, mocker):
+        d = self._deployment(mocker)
+
+        assert d.project_endpoint is True
+        assert "projectEndpoint" not in d._predictor.to_dict()
+
+    def test_setter_is_serialized(self, mocker):
+        d = self._deployment(mocker)
+
+        d.project_endpoint = False
+
+        assert d.project_endpoint is False
+        assert d._predictor.to_dict()["projectEndpoint"] is False
+
+    def test_read_from_the_backend_json(self, mocker, backend_fixtures):
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployment_vllm_kserve_vllm_variant"][
+                "response"
+            ]
+        )
+        p_json["projectEndpoint"] = False
+
+        kwargs = predictor.Predictor.extract_fields_from_json(humps.decamelize(p_json))
+
+        assert kwargs["project_endpoint"] is False
+
+    def test_set_project_endpoint_posts_and_updates_the_local_value(self, mocker):
+        d = self._deployment(mocker)
+        post = mocker.patch.object(d._serving_api, "_set_deployment_project_endpoint")
+
+        d.set_project_endpoint(False)
+
+        post.assert_called_once_with(d, False)
+        assert d.project_endpoint is False
