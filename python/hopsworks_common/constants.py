@@ -247,6 +247,18 @@ class DEPLOYMENT:
     ACTION_STOP = "STOP"
 
 
+class DEPLOYMENT_KIND:
+    """What a deployment serves.
+
+    The backend infers it for clients that do not send it, and backends that predate it return none.
+    """
+
+    MODEL = "MODEL"
+    FEATURE_VIEW = "FEATURE_VIEW"
+    AGENT = "AGENT"
+    PYTHON = "PYTHON"
+
+
 class PREDICTOR:
     # model server
     MODEL_SERVER_PYTHON = "PYTHON"

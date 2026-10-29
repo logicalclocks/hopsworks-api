@@ -1134,6 +1134,16 @@ class Deployment:
 
     @public
     @property
+    def kind(self) -> str:
+        """What the deployment serves, see [`Predictor.kind`][hsml.predictor.Predictor.kind]."""
+        return self._predictor.kind
+
+    @kind.setter
+    def kind(self, kind: str):
+        self._predictor.kind = kind
+
+    @public
+    @property
     def has_feature_view(self) -> bool:
         """Whether this deployment serves a feature view without a model."""
         return self._predictor.has_feature_view

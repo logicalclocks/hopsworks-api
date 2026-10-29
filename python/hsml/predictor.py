@@ -25,6 +25,7 @@ import humps
 from hopsworks_apigen import public
 from hopsworks_common import client, tag, util
 from hopsworks_common.constants import (
+    DEPLOYMENT_KIND,
     INFERENCE_ENDPOINTS,
     MODEL,
     MODEL_SERVING,
@@ -113,6 +114,7 @@ class Predictor(DeployableComponent):
         schema: DeploymentSchema | dict | None = None,
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
+        kind: str | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -191,6 +193,7 @@ class Predictor(DeployableComponent):
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
         self._knative_mode = knative_mode
+        self._kind = kind
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -330,6 +333,7 @@ class Predictor(DeployableComponent):
         kwargs["model_name"] = model.name
         kwargs["model_path"] = model.model_path
         kwargs["model_version"] = model.version
+        kwargs.setdefault("kind", DEPLOYMENT_KIND.MODEL)
 
         _reject_reserved_env_vars(kwargs.get("env_vars"))
         default_predictor = kwargs.pop("default_predictor", None)
@@ -575,6 +579,7 @@ class Predictor(DeployableComponent):
         kwargs["knative_mode"] = util._extract_field_from_json(
             json_decamelized, "knative_mode"
         )
+        kwargs["kind"] = util._extract_field_from_json(json_decamelized, "kind")
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -601,6 +606,8 @@ class Predictor(DeployableComponent):
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
         }
+        if self._kind is not None:
+            predictor_dict = {**predictor_dict, "kind": self._kind}
         if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
             predictor_dict = {
                 **predictor_dict,
@@ -1097,7 +1104,7 @@ class Predictor(DeployableComponent):
 
         `True` selects Knative mode, which supports scale-to-zero and Knative-only autoscaling.
         `False` selects Standard mode, which requires at least one instance and autoscales on a CPU/memory metric between the minimum and maximum instances, or runs a fixed replica count when they are equal.
-        `None` leaves the mode for the backend to decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode.
+        `None` leaves the mode for the backend to decide: a new deployment runs in Standard mode, and Knative mode is the opt-in.
         Read the current mode from a saved deployment via this property.
         Setting it to `None` before a save call keeps the stored mode unchanged.
 
@@ -1109,6 +1116,27 @@ class Predictor(DeployableComponent):
     @knative_mode.setter
     def knative_mode(self, knative_mode: bool | None):
         self._knative_mode = knative_mode
+
+    @public
+    @property
+    def kind(self) -> str:
+        """What the deployment serves, one of [`DEPLOYMENT_KIND`][hsml.constants.DEPLOYMENT_KIND].
+
+        `MODEL` serves a registered model, LLMs included; `FEATURE_VIEW` serves a feature view without a model; `AGENT` serves an agent, the only kind with tracing, chat, memory and evaluation; `PYTHON` serves any other HTTP server.
+        A backend that predates the kind returns none, and it is then inferred the way the backend infers it: a model makes `MODEL`, a feature view `FEATURE_VIEW`, and anything else `AGENT`.
+        Only `AGENT` and `PYTHON` can be swapped, by setting this and saving while the deployment is stopped.
+        """
+        if self._kind is not None:
+            return self._kind
+        if self._model_name is not None:
+            return DEPLOYMENT_KIND.MODEL
+        if self.has_feature_view:
+            return DEPLOYMENT_KIND.FEATURE_VIEW
+        return DEPLOYMENT_KIND.AGENT
+
+    @kind.setter
+    def kind(self, kind: str):
+        self._kind = kind
 
     @public
     def get_endpoint_url(self) -> str | None:

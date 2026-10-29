@@ -2,7 +2,7 @@
 
 Drive every verb through the shared ``mock_project`` fixture so no test hits
 real Hopsworks. The fake ``ModelServing`` returns ``Deployment``-shaped mocks
-that mimic the ``has_model`` / ``model_name`` shape ``_is_agent`` relies on.
+that carry the ``kind`` ``_is_agent`` relies on.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ def _agent_mock(name: str = "my-agent", deployment_id: int = 7) -> mock.MagicMoc
     d = mock.MagicMock()
     d.id = deployment_id
     d.name = name
+    d.kind = "AGENT"
     d.has_model = False
     d.model_name = None
     d.serving_tool = "DEFAULT"
@@ -35,6 +36,7 @@ def _model_mock(name: str = "fraud") -> mock.MagicMock:
     d = mock.MagicMock()
     d.id = 99
     d.name = name
+    d.kind = "MODEL"
     d.has_model = True
     d.model_name = name
     return d
@@ -56,6 +58,30 @@ def test_agent_list_filters_out_model_deployments(mock_project):
     assert result.exit_code == 0, result.output
     assert "my-agent" in result.output
     assert "fraud" not in result.output
+
+
+def test_agent_list_asks_for_agents_only(mock_project):
+    ms = mock.MagicMock()
+    ms.get_deployments.return_value = []
+    mock_project.get_model_serving.return_value = ms
+
+    result = CliRunner().invoke(cli, ["agent", "list"])
+    assert result.exit_code == 0, result.output
+    ms.get_deployments.assert_called_once_with(kind="AGENT")
+
+
+def test_agent_info_rejects_modelless_deployment_of_another_kind(mock_project):
+    # Feature view and plain Python deployments have no model either.
+    for kind in ("FEATURE_VIEW", "PYTHON"):
+        server = _agent_mock("server")
+        server.kind = kind
+        ms = mock.MagicMock()
+        ms.get_deployment.return_value = server
+        mock_project.get_model_serving.return_value = ms
+
+        result = CliRunner().invoke(cli, ["agent", "info", "server"])
+        assert result.exit_code != 0
+        assert "not found" in result.output
 
 
 def test_agent_info_unknown_name_errors(mock_project):

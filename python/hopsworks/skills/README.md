@@ -41,7 +41,7 @@ into bucket folders:
 - [hops-agent-task](agents/hops-agent-task/SKILL.md) — scheduled coding-agent task (claude-code / codex job).
 
 ## dashboards/ — apps and BI
-- [hops-app](dashboards/hops-app/SKILL.md) — Python app deployments (Streamlit + custom apps).
+- [hops-app](dashboards/hops-app/SKILL.md) — Python app deployments (Streamlit, Gradio, Flask, Node.js and custom apps).
 - [hops-app-db](dashboards/hops-app-db/SKILL.md) — app / agent access to the project's online database (`db_access`) and, via Trino, the offline feature groups (Python, SQL, Node.js with `@hopsworks/app`).
 - [hops-superset](dashboards/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
 
