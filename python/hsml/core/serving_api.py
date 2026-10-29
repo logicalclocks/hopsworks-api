@@ -790,6 +790,17 @@ class ServingApi:
             deployment_instance.name + ":predict",
         ]
 
+    def _get_istio_project_openai_path(self, project_namespace: str) -> list[str]:
+        """Get the Istio path of the project-wide OpenAI-compatible endpoint.
+
+        Parameters:
+            project_namespace: Kubernetes namespace of the project.
+
+        Returns:
+            List of path segments.
+        """
+        return ["v1", project_namespace, "v1"]
+
     def _get_istio_inference_path(
         self, deployment_instance, base_only: bool = False
     ) -> list[str]:

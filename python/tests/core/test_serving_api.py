@@ -235,6 +235,18 @@ class TestServingApi:
         # Assert
         assert path == ["v1", project_namespace, "vllmdepl"]
 
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_istio_project_openai_path_addresses_the_namespace(
+        self, project_name, project_namespace
+    ):
+        # The project endpoint is addressed by namespace only; the project name
+        # is not an input of the path.
+        assert ServingApi()._get_istio_project_openai_path(project_namespace) == [
+            "v1",
+            project_namespace,
+            "v1",
+        ]
+
     @pytest.mark.parametrize("project_namespace", ["myproject", "pre-created-ns"])
     @pytest.mark.parametrize("base_only", [False, True])
     def test_istio_inference_path_ignores_the_project_name(

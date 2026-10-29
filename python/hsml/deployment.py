@@ -24,12 +24,14 @@ from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
 from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
+from hsml.core.openai_client import _build_openai_client
 from hsml.engine import serving_engine
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    import openai
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_logging_config import DeploymentLoggingConfig
@@ -1029,6 +1031,47 @@ class Deployment:
             ```
         """
         return self._predictor.get_openai_url()
+
+    @public
+    def get_openai_client(self, **kwargs: Any) -> openai.OpenAI:
+        """Get an OpenAI client that talks to this vLLM deployment only.
+
+        The client authenticates with the Hopsworks token of the current connection.
+        Pass the deployment name as `model` in each request.
+        Requires the `openai` package, installed with `pip install "hopsworks[openai]"`.
+
+        Parameters:
+            **kwargs:
+                Passed to `openai.OpenAI`, for example `timeout`, `max_retries` or `http_client`.
+                `default_headers` are merged over the authorization header set by Hopsworks.
+                `base_url` and `api_key` are set by Hopsworks and cannot be passed.
+
+        Returns:
+            The configured OpenAI client.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment is not a vLLM deployment, or no endpoint URL is available.
+            ValueError: If `base_url` or `api_key` is passed.
+            ModuleNotFoundError: If the `openai` package is not installed.
+
+        Example: Chat with this deployment
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            openai_client = deployment.get_openai_client()
+            response = openai_client.chat.completions.create(
+                model=deployment.name,
+                messages=[{"role": "user", "content": "Hello"}],
+            )
+            ```
+        """
+        url = self.get_openai_url()
+        if url is None:
+            raise ModelServingException(
+                f"Deployment '{self.name}' has no OpenAI-compatible URL. "
+                "Only vLLM deployments serve one, and it requires the Istio client, "
+                "which is not set up when KServe is not installed or the Istio ingress gateway has no load balancer address."
+            )
+        return _build_openai_client(url, **kwargs)
 
     @public
     def get_inference_url(self) -> str | None:

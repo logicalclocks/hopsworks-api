@@ -15,12 +15,14 @@
 #
 
 import os  # noqa: I001
+import sys
+import types
 import zipfile
 
 import build  # noqa: F401  # eagerly load so test patches resolve build.ProjectBuilder
 import build.env  # noqa: F401  # eagerly load so test patches resolve build.env.DefaultIsolatedEnv
 import pytest
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hsml import deployment_tracing_config as deployment_tracing_config, model_serving
 
 
@@ -828,3 +830,175 @@ class TestGetVllmImageTags:
         with pytest.raises(ValueError):
             ms.get_vllm_image_tags(variant="SGLANG")
         send.assert_not_called()
+
+
+class _StubOpenAI:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
+class _StubHttpxClient:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
+@pytest.fixture
+def stub_openai(mocker):
+    """Inject a stub `openai` module so the tests pass without the optional extra."""
+    module = types.ModuleType("openai")
+    module.OpenAI = _StubOpenAI
+    module.DefaultHttpxClient = _StubHttpxClient
+    mocker.patch.dict(sys.modules, {"openai": module})
+    mocker.patch("hopsworks_common.decorators.HAS_OPENAI", True)
+    return module
+
+
+@pytest.fixture
+def istio(mocker):
+    istio_client = mocker.MagicMock()
+    istio_client._base_url = "https://istio.example.com"
+    istio_client._auth._token = "key.secret"
+    istio_client._verify = True
+    mocker.patch(
+        "hopsworks_common.client.istio._get_instance", return_value=istio_client
+    )
+    return istio_client
+
+
+class TestOpenAI:
+    @pytest.mark.parametrize(
+        ("project_name", "project_namespace"),
+        [
+            ("myproject", "myproject"),
+            ("my_project", "my-project"),
+            ("model_serving_int_MhGJP", "loadtest-kserve-0-main-000"),
+        ],
+    )
+    def test_get_openai_url_uses_the_namespace(
+        self, istio, project_name, project_namespace
+    ):
+        ms = model_serving.ModelServing(
+            project_name, 1, project_namespace=project_namespace
+        )
+
+        assert (
+            ms.get_openai_url()
+            == f"https://istio.example.com/v1/{project_namespace}/v1"
+        )
+
+    def test_get_openai_url_is_none_without_istio(self, mocker):
+        mocker.patch("hopsworks_common.client.istio._get_instance", return_value=None)
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        assert ms.get_openai_url() is None
+
+    def test_get_openai_url_fetches_the_namespace_when_not_given(
+        self, mocker, istio, ms
+    ):
+        connection = mocker.patch("hsml.model_serving.client._get_connection")
+        connection.return_value._get_project.return_value.project_namespace = "lazy"
+
+        assert ms.get_openai_url() == "https://istio.example.com/v1/lazy/v1"
+        assert ms.get_openai_url() == "https://istio.example.com/v1/lazy/v1"
+        connection.return_value._get_project.assert_called_once()
+
+    def test_get_openai_url_raises_when_the_namespace_is_unknown(
+        self, mocker, istio, ms
+    ):
+        connection = mocker.patch("hsml.model_serving.client._get_connection")
+        connection.return_value._get_project.return_value.project_namespace = None
+
+        with pytest.raises(ModelServingException, match="namespace"):
+            ms.get_openai_url()
+
+    def test_project_namespace_property(self, ms):
+        assert ms.project_namespace is None
+        assert (
+            model_serving.ModelServing("p", 1, project_namespace="ns").project_namespace
+            == "ns"
+        )
+
+    def test_get_openai_client_builds_the_client(self, istio, stub_openai):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client()
+
+        assert client.kwargs == {
+            "base_url": "https://istio.example.com/v1/ns/v1",
+            "api_key": "key.secret",
+            "default_headers": {"Authorization": "ApiKey key.secret"},
+        }
+
+    def test_get_openai_client_merges_caller_headers(self, istio, stub_openai):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client(default_headers={"X-Trace": "1"})
+
+        assert client.kwargs["default_headers"] == {
+            "Authorization": "ApiKey key.secret",
+            "X-Trace": "1",
+        }
+
+    def test_get_openai_client_lets_the_caller_override_authorization(
+        self, istio, stub_openai
+    ):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client(default_headers={"Authorization": "Bearer other"})
+
+        assert client.kwargs["default_headers"] == {"Authorization": "Bearer other"}
+
+    def test_get_openai_client_passes_other_kwargs_through(self, istio, stub_openai):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        http_client = object()
+
+        client = ms.get_openai_client(
+            timeout=5.0, max_retries=0, http_client=http_client
+        )
+
+        assert client.kwargs["timeout"] == 5.0
+        assert client.kwargs["max_retries"] == 0
+        assert client.kwargs["http_client"] is http_client
+
+    @pytest.mark.parametrize("verify", [False, "/srv/hops/trust/ca.pem"])
+    def test_get_openai_client_checks_certificates_like_the_connection(
+        self, istio, stub_openai, verify
+    ):
+        istio._verify = verify
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client()
+
+        assert client.kwargs["http_client"].kwargs == {"verify": verify}
+
+    def test_get_openai_client_keeps_the_callers_transport(self, istio, stub_openai):
+        istio._verify = False
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        http_client = object()
+
+        client = ms.get_openai_client(http_client=http_client)
+
+        assert client.kwargs["http_client"] is http_client
+
+    @pytest.mark.parametrize("reserved", ["base_url", "api_key"])
+    def test_get_openai_client_rejects_reserved_kwargs(
+        self, istio, stub_openai, reserved
+    ):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        with pytest.raises(ValueError, match=reserved):
+            ms.get_openai_client(**{reserved: "x"})
+
+    def test_get_openai_client_raises_without_istio(self, mocker, stub_openai):
+        mocker.patch("hopsworks_common.client.istio._get_instance", return_value=None)
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        with pytest.raises(ModelServingException, match="Istio"):
+            ms.get_openai_client()
+
+    def test_get_openai_client_requires_the_openai_package(self, istio, mocker):
+        mocker.patch("hopsworks_common.decorators.HAS_OPENAI", False)
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        with pytest.raises(ModuleNotFoundError, match="hopsworks\\[openai\\]"):
+            ms.get_openai_client()

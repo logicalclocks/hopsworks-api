@@ -1154,7 +1154,7 @@ class Predictor(DeployableComponent):
 
         Examples:
             ```python
-            url = predictor.get_openai_compatible_url()
+            url = predictor.get_openai_url()
             # url = "https://host:port/v1/project/name/v1"
             # Then use: url + "/chat/completions"
             ```
