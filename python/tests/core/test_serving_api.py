@@ -433,6 +433,31 @@ class TestServingApi:
         assert args[1] == ["project", 1, "serving", "vllmImageTags"]
         assert response == _VLLM_IMAGE_TAGS_RESPONSE
 
+    def test_project_endpoint_switch_addresses_the_project_serving_path(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"enabled": False, "available": True})
+
+        assert api._get_project_endpoint() == {"enabled": False, "available": True}
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[:2] == ("GET", ["project", 1, "serving", "projectEndpoint"])
+
+        api._set_project_endpoint(False)
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[:2] == ("PUT", ["project", 1, "serving", "projectEndpoint"])
+        assert json.loads(kwargs["data"]) == {"enabled": False}
+
+    def test_deployment_project_endpoint_posts_to_the_serving_id(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, None)
+        depl = MagicMock()
+        depl.id = 5
+
+        api._set_deployment_project_endpoint(depl, True)
+
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[:2] == ("POST", ["project", 1, "serving", 5, "projectEndpoint"])
+        assert json.loads(kwargs["data"]) == {"enabled": True}
+
 
 class TestGrpcChannelLockIsPerDeployment:
     def test_a_slow_first_channel_does_not_hold_up_another_deployment(self, mocker):

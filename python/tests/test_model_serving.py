@@ -1002,3 +1002,33 @@ class TestOpenAI:
 
         with pytest.raises(ModuleNotFoundError, match="hopsworks\\[openai\\]"):
             ms.get_openai_client()
+
+
+class TestProjectEndpoint:
+    def test_get_project_endpoint_adds_the_url(self, mocker, istio):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        mocker.patch.object(
+            ms._serving_api,
+            "_get_project_endpoint",
+            return_value={"enabled": True, "available": False},
+        )
+
+        assert ms.get_project_endpoint() == {
+            "enabled": True,
+            "available": False,
+            "url": "https://istio.example.com/v1/ns/v1",
+        }
+
+    def test_set_project_endpoint_puts_the_switch(self, mocker, istio):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        put = mocker.patch.object(
+            ms._serving_api,
+            "_set_project_endpoint",
+            return_value={"enabled": False, "available": True},
+        )
+
+        state = ms.set_project_endpoint(False)
+
+        put.assert_called_once_with(False)
+        assert state["enabled"] is False
+        assert state["available"] is True

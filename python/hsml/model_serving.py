@@ -950,6 +950,59 @@ class ModelServing:
         )
         return f"{istio_client._base_url}/{'/'.join(path_parts)}"
 
+    @public
+    def get_project_endpoint(self) -> dict[str, Any]:
+        """Get the state of the project endpoint.
+
+        Returns:
+            A dict with the keys `enabled` (the project switch), `available` (whether the cluster publishes the project endpoint) and `url` (the URL of the endpoint, or `None` if the Istio client is not available).
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Check the project endpoint
+            ```python
+            state = project.get_model_serving().get_project_endpoint()
+            if state["available"] and state["enabled"]:
+                print(state["url"])
+            ```
+        """
+        state = self._serving_api._get_project_endpoint()
+        return {
+            "enabled": state["enabled"],
+            "available": state["available"],
+            "url": self.get_openai_url(),
+        }
+
+    @public
+    def set_project_endpoint(self, enabled: bool) -> dict[str, Any]:
+        """Switch the project endpoint on or off for the whole project.
+
+        While it is off, the project endpoint answers 404 for every deployment of the project.
+        The per-deployment URLs keep working, and no deployment restarts.
+        Requires the data owner role in the project.
+
+        Parameters:
+            enabled: Whether the project endpoint serves the deployments of the project.
+
+        Returns:
+            The state of the project endpoint, as returned by [`get_project_endpoint`][hsml.model_serving.ModelServing.get_project_endpoint].
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Turn the project endpoint off
+            ```python
+            project.get_model_serving().set_project_endpoint(False)
+            ```
+        """
+        state = self._serving_api._set_project_endpoint(enabled)
+        return {
+            "enabled": state["enabled"],
+            "available": state["available"],
+            "url": self.get_openai_url(),
+        }
+
     def _resolve_project_namespace(self) -> str:
         """Return the project's Kubernetes namespace.
 

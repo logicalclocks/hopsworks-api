@@ -1459,6 +1459,42 @@ class Deployment:
 
     @public
     @property
+    def project_endpoint(self) -> bool:
+        """Whether the deployment is served by the project endpoint when the endpoint is available.
+
+        See [`Predictor.project_endpoint`][hsml.predictor.Predictor.project_endpoint].
+        Setting it only changes the local object; use [`set_project_endpoint`][hsml.deployment.Deployment.set_project_endpoint] to change an existing deployment.
+        """
+        return self._predictor.project_endpoint
+
+    @project_endpoint.setter
+    def project_endpoint(self, project_endpoint: bool):
+        self._predictor.project_endpoint = project_endpoint
+
+    @public
+    def set_project_endpoint(self, enabled: bool):
+        """Switch an existing deployment on or off the project endpoint.
+
+        The change does not restart the deployment.
+        Requires the data owner role in the project.
+
+        Parameters:
+            enabled: Whether the project endpoint serves this deployment.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Take a deployment off the project endpoint
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            deployment.set_project_endpoint(False)
+            ```
+        """
+        self._serving_api._set_deployment_project_endpoint(self, enabled)
+        self._predictor.project_endpoint = enabled
+
+    @public
+    @property
     def environment(self):
         """Name of the inference environment the predictor runs in.
 

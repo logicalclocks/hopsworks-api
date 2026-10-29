@@ -253,6 +253,54 @@ class ServingApi:
         path_params = ["project", _client._project_id, "serving", "vllmImageTags"]
         return _client._send_request("GET", path_params)
 
+    def _get_project_endpoint(self) -> dict[str, Any]:
+        """Get the project endpoint switch and whether the cluster publishes the endpoint.
+
+        Returns:
+            A dict with the keys `enabled` and `available`.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "projectEndpoint"]
+        return _client._send_request("GET", path_params)
+
+    def _set_project_endpoint(self, enabled: bool) -> dict[str, Any]:
+        """Switch the project endpoint on or off for the whole project.
+
+        Parameters:
+            enabled: Whether the project endpoint serves the project's deployments.
+
+        Returns:
+            A dict with the keys `enabled` and `available`.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "projectEndpoint"]
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "PUT", path_params, headers=headers, data=json.dumps({"enabled": enabled})
+        )
+
+    def _set_deployment_project_endpoint(
+        self, deployment_instance: deployment.Deployment, enabled: bool
+    ):
+        """Switch one deployment on or off the project endpoint.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+            enabled: Whether the project endpoint serves the deployment.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "projectEndpoint",
+        ]
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "POST", path_params, headers=headers, data=json.dumps({"enabled": enabled})
+        )
+
     def _get_schema(
         self,
         deployment_id: int,

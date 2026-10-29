@@ -113,6 +113,7 @@ class Predictor(DeployableComponent):
         schema: DeploymentSchema | dict | None = None,
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
+        project_endpoint: bool | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -191,6 +192,7 @@ class Predictor(DeployableComponent):
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
         self._knative_mode = knative_mode
+        self._project_endpoint = project_endpoint
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -575,6 +577,9 @@ class Predictor(DeployableComponent):
         kwargs["knative_mode"] = util._extract_field_from_json(
             json_decamelized, "knative_mode"
         )
+        kwargs["project_endpoint"] = util._extract_field_from_json(
+            json_decamelized, "project_endpoint"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -671,6 +676,11 @@ class Predictor(DeployableComponent):
             predictor_dict = {**predictor_dict, **self._scaling_configuration.to_dict()}
         if self._knative_mode is not None:
             predictor_dict = {**predictor_dict, "knativeMode": self._knative_mode}
+        if self._project_endpoint is not None:
+            predictor_dict = {
+                **predictor_dict,
+                "projectEndpoint": self._project_endpoint,
+            }
         tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             predictor_dict = {**predictor_dict, "tags": tags_dict}
@@ -1109,6 +1119,21 @@ class Predictor(DeployableComponent):
     @knative_mode.setter
     def knative_mode(self, knative_mode: bool | None):
         self._knative_mode = knative_mode
+
+    @public
+    @property
+    def project_endpoint(self) -> bool:
+        """Whether the deployment is served by the project endpoint when the endpoint is available.
+
+        The project endpoint is the OpenAI-compatible URL shared by the vLLM deployments of a project.
+        A deployment is on by default and while the backend does not report the field.
+        Setting it before a save call sends the value with the deployment.
+        """
+        return True if self._project_endpoint is None else self._project_endpoint
+
+    @project_endpoint.setter
+    def project_endpoint(self, project_endpoint: bool):
+        self._project_endpoint = project_endpoint
 
     @public
     def get_endpoint_url(self) -> str | None:
