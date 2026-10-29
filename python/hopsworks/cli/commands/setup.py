@@ -485,6 +485,7 @@ def _finalize_setup(
     cfg.api_key = api_key
     cfg.api_key_name = server_key_name
     cfg.project = project
+    cfg.project_id = None
     config.save(cfg)
 
     output.success("✓ Connected to %s as %s", host, project or "(no project)")

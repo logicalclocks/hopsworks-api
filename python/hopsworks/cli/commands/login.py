@@ -78,6 +78,7 @@ def login_cmd(
         cfg.host = host
         cfg.api_key = api_key
         cfg.project = project_name
+        cfg.project_id = getattr(project_obj, "id", None)
         config.save(cfg)
         output.info("Saved credentials to %s", config.CONFIG_PATH)
 

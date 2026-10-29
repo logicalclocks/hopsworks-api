@@ -206,3 +206,22 @@ def test_env_applies_in_internal_mode(tmp_home, monkeypatch):
     cfg = config.load()
     assert cfg.internal is True
     assert cfg.hostname_verification is True
+
+
+def test_saved_project_id_is_kept_for_the_saved_project(tmp_home):
+    config.save(config.HopsConfig(host="h", api_key="k", project="demo", project_id=7))
+
+    assert config.load().project_id == 7
+    assert config.load(flag_project="demo").project_id == 7
+
+
+def test_another_project_name_drops_the_saved_project_id(tmp_home, monkeypatch):
+    config.save(config.HopsConfig(host="h", api_key="k", project="demo", project_id=7))
+
+    assert config.load(flag_project="other").project_id is None
+
+    monkeypatch.setenv("HOPSWORKS_PROJECT", "other")
+    assert config.load().project_id is None
+
+    monkeypatch.setenv("HOPSWORKS_PROJECT_ID", "9")
+    assert config.load().project_id == 9

@@ -76,6 +76,7 @@ def get_project(ctx: click.Context) -> Project:
             host=cfg.host or "",
             api_key_value=cfg.api_key,
             project=cfg.project,
+            project_id=cfg.project_id,
             internal=cfg.internal,
             hostname_verification=cfg.hostname_verification,
         )

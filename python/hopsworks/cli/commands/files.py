@@ -148,13 +148,22 @@ def dataset_download(
     output.success("✓ Downloaded to %s", path)
 
 
+def _target_project(target: str) -> Any:
+    """A numeric ``--target`` is a project id, the way to pick one of several projects that share a name."""
+    if not target.isdigit():
+        return target
+    from hopsworks_common.core import project_api  # noqa: PLC0415
+
+    return project_api.ProjectApi()._get_project_by_id(int(target))
+
+
 @files_group.command("share")
 @click.argument("path")
 @click.option(
     "--target",
     "target_project",
     required=True,
-    help="Project to share the dataset with.",
+    help="Project name or id to share the dataset with.",
 )
 @click.option(
     "--permission",
@@ -181,7 +190,7 @@ def dataset_share(
     project = session.get_project(ctx)
     try:
         project.get_dataset_api().share(
-            path, target_project=target_project, permission=permission
+            path, target_project=_target_project(target_project), permission=permission
         )
     except PermissionError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -198,7 +207,7 @@ def dataset_share(
     "--target",
     "target_project",
     required=True,
-    help="Project to revoke the share from.",
+    help="Project name or id to revoke the share from.",
 )
 @click.pass_context
 def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
@@ -213,7 +222,9 @@ def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
     """
     project = session.get_project(ctx)
     try:
-        project.get_dataset_api().unshare(path, target_project=target_project)
+        project.get_dataset_api().unshare(
+            path, target_project=_target_project(target_project)
+        )
     except PermissionError as exc:
         raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
