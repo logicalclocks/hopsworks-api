@@ -15,6 +15,7 @@
 #
 
 import copy
+import datetime
 import os
 
 import humps
@@ -474,6 +475,114 @@ class TestDeployment:
         d.rollback(mocker.Mock(version=3), await_update=5)
 
         mock_rollback.assert_called_once_with(d, 3, 5)
+
+    # set_tracing
+
+    def test_set_tracing_puts_the_change_and_keeps_the_stored_config(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        # The dummy predictor stubs the JSON-to-object helper the tracing setter uses.
+        mocker.stopall()
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._set_tracing",
+            return_value={"enabled": True, "active": False, "samplingPercentage": 50},
+        )
+
+        d.set_tracing(active=False, sampling_percentage=50)
+
+        send.assert_called_once_with(d, False, 50, None)
+        assert d.tracing.enabled is True
+        assert d.tracing.active is False
+        assert d.tracing.sampling_percentage == 50
+
+    def test_set_tracing_refuses_a_percentage_out_of_range(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._set_tracing")
+
+        with pytest.raises(ValueError):
+            d.set_tracing(sampling_percentage=101)
+        send.assert_not_called()
+
+    def test_set_tracing_sends_the_days_and_reads_the_period(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.stopall()
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._set_tracing",
+            return_value={
+                "enabled": True,
+                "active": True,
+                "durationDays": 30,
+                "activeUntil": 1793145600000,
+            },
+        )
+
+        d.set_tracing(active=True, duration_days=30)
+
+        send.assert_called_once_with(d, True, None, 30)
+        assert d.tracing.duration_days == 30
+        assert d.tracing.active_until == datetime.datetime(
+            2026, 10, 28, 0, 0, tzinfo=datetime.timezone.utc
+        )
+        assert d.tracing.expired_at is None
+
+    def test_set_tracing_refuses_days_below_one(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._set_tracing")
+
+        with pytest.raises(ValueError):
+            d.set_tracing(duration_days=0)
+        send.assert_not_called()
+
+    # delete_traces
+
+    def test_delete_traces_repeats_batches_until_none_are_left(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._delete_traces",
+            side_effect=[500, 500, 7, 0],
+        )
+
+        deleted = d.delete_traces(
+            until_datetime=datetime.datetime(2026, 10, 28), batch_size=500
+        )
+
+        assert deleted == 1007
+        assert send.call_count == 4
+        send.assert_called_with(d, 1793145600000, 500)
+
+    def test_delete_traces_deletes_all_without_a_date(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._delete_traces", return_value=0
+        )
+
+        assert d.delete_traces() == 0
+        send.assert_called_once_with(d, None, 1000)
+
+    @pytest.mark.parametrize("batch_size", [0, 10001])
+    def test_delete_traces_refuses_a_batch_size_out_of_range(
+        self, mocker, backend_fixtures, batch_size
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._delete_traces")
+
+        with pytest.raises(ValueError):
+            d.delete_traces(batch_size=batch_size)
+        send.assert_not_called()
 
     # start
 

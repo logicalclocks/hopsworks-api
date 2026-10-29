@@ -188,5 +188,5 @@ fs.get_transformation_function(name="double", version=1)
 ## Next steps
 - [hops-fv](../hops-fv/SKILL.md) — attach model-dependent transforms; the rename propagates to training/serving names.
 - [hops-fg](../hops-fg/SKILL.md) — attach on-demand transforms at the feature group.
-- [hops-online-inference](../hops-online-inference/SKILL.md) — request_parameters at serving; the scalar-path footgun bites here.
+- [hops-online-inference](../hops-online-inference/SKILL.md) — request_parameters at serving; the scalar-path footgun bites here; "Where the time goes" times each transformation in a deployment (`model.deploy(tracing={"enabled": True})`, then `deployment.set_tracing(...)` while it runs).
 - [hops-train](../hops-train/SKILL.md) — training data reflects the transformed (renamed) columns.

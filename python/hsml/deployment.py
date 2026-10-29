@@ -24,17 +24,18 @@ from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
 from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
+from hsml.deployment_tracing_config import DeploymentTracingConfig
 from hsml.engine import serving_engine
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from datetime import date, datetime
 
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
-    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.deployment_version import DeploymentVersion
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -191,6 +192,86 @@ class Deployment:
         if not isinstance(version, int):
             version = version.version
         self._serving_engine._rollback(self, version, await_update)
+
+    @public
+    @usage._method_logger
+    def set_tracing(
+        self,
+        active: bool | None = None,
+        sampling_percentage: int | None = None,
+        duration_days: int | None = None,
+    ) -> None:
+        """Switch tracing on or off, or change the share of requests it traces or how long it stays on, without restarting the deployment.
+
+        Works on a model or feature view deployment created with tracing enabled, for example `model.deploy(tracing={"enabled": True})`.
+        Turned off, the deployment records no transformation metrics and no traces, and runs no timing code.
+        The running instances apply the change within about a minute; new instances start with it.
+
+        Tracing stays on for `duration_days`, 7 by default, from when it is switched on; Hopsworks then switches it off and records the time in `tracing.expired_at`.
+        Switching it on again, or changing `duration_days` while it is on, starts a new period from now.
+        A longer period stores more traces in the online feature store, so make sure it has the space.
+
+        ```python
+        deployment.set_tracing(active=False)
+        deployment.set_tracing(active=True, sampling_percentage=50)
+        deployment.set_tracing(active=True, duration_days=30)
+        ```
+
+        Parameters:
+            active: Whether to record traces and transformation metrics; `None` keeps the current value.
+            sampling_percentage: Percentage of requests to trace, from 0 to 100; `None` keeps the current value.
+            duration_days: Days tracing stays on, from 1; `None` keeps the current value.
+
+        Raises:
+            ValueError: If `sampling_percentage` is outside 0 to 100, or `duration_days` is below 1.
+            hopsworks.client.exceptions.RestAPIError: If the deployment was not created with tracing enabled, which a running deployment cannot gain: update it with tracing enabled, which restarts it.
+        """
+        DeploymentTracingConfig._validate_sampling_percentage(sampling_percentage)
+        DeploymentTracingConfig._validate_duration_days(duration_days)
+        self._predictor.tracing = DeploymentTracingConfig.from_response_json(
+            self._serving_api._set_tracing(
+                self, active, sampling_percentage, duration_days
+            )
+        )
+
+    @public
+    @usage._method_logger
+    def delete_traces(
+        self,
+        until_datetime: str | datetime | date | int | None = None,
+        batch_size: int = 1000,
+    ) -> int:
+        """Delete the deployment's traces: its spans, events and their attributes.
+
+        Each request deletes at most `batch_size` rows from each trace table in one transaction, since the online feature store caps the rows one transaction can hold; the method repeats it until no rows are left.
+        Traces older than the cluster's retention (`serving_tracing_retention_days`, 7 days by default) are already deleted every 5 minutes.
+
+        ```python
+        deployment.delete_traces()
+        deployment.delete_traces(until_datetime=datetime.now() - timedelta(days=1))
+        ```
+
+        Parameters:
+            until_datetime: Delete the traces created before this time, as a datetime, a date, a string such as `"2026-10-28 12:00:00"` or epoch milliseconds; a time without a timezone is taken as UTC.
+                `None` deletes all of them.
+            batch_size: Rows to delete per table per transaction, from 1 to 10000.
+
+        Returns:
+            The number of rows deleted.
+
+        Raises:
+            ValueError: If `batch_size` is outside 1 to 10000.
+            hopsworks.client.exceptions.RestAPIError: If the backend could not delete them; rows deleted before the failure stay deleted, and calling it again continues.
+        """
+        if not 1 <= batch_size <= 10000:
+            raise ValueError("batch_size must be from 1 to 10000.")
+        until_ms = util._convert_event_time_to_timestamp(until_datetime)
+        deleted = 0
+        while True:
+            batch = self._serving_api._delete_traces(self, until_ms, batch_size)
+            if batch == 0:
+                return deleted
+            deleted += batch
 
     @public
     @usage._method_logger

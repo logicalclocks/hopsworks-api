@@ -417,6 +417,57 @@ class ServingApi:
         deployment_instance.project_name = _client._project_name
         return deployment_instance
 
+    def _set_tracing(
+        self,
+        deployment_instance: deployment.Deployment,
+        active: bool | None,
+        sampling_percentage: int | None,
+        duration_days: int | None = None,
+    ) -> dict[str, Any]:
+        """Switch a running deployment's tracing without redeploying it, returning the stored tracing config."""
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "tracing",
+        ]
+        body = {}
+        if active is not None:
+            body["active"] = active
+        if sampling_percentage is not None:
+            body["samplingPercentage"] = sampling_percentage
+        if duration_days is not None:
+            body["durationDays"] = duration_days
+        return _client._send_request(
+            "PUT",
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps(body),
+        )
+
+    def _delete_traces(
+        self,
+        deployment_instance: deployment.Deployment,
+        until_ms: int | None,
+        batch_size: int,
+    ) -> int:
+        """Delete one batch of the deployment's trace rows from each trace table, returning the rows deleted."""
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "otel",
+            "servings",
+            deployment_instance.id,
+            "traces",
+        ]
+        query_params = {"batchSize": batch_size}
+        if until_ms is not None:
+            query_params["until"] = until_ms
+        return _client._send_request("DELETE", path_params, query_params)["deleted"]
+
     def _post(self, deployment_instance: deployment.Deployment, action: str):
         """Perform an action on the deployment.
 
