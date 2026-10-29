@@ -2007,15 +2007,37 @@ class TestAgents:
         assert session.sent[0][:2] == ("GET", "/serving/7")
 
 
-def sse(*frames):
-    """Lines of a server-sent event stream, one (event, data) per frame."""
+def sse(*events):
+    """Lines of an AG-UI run's server-sent event stream, one event per frame."""
     lines = []
-    for event, data in frames:
-        lines += [f"event: {event}", f"data: {json.dumps(data)}", ""]
+    for event in events:
+        lines += [f"data: {json.dumps(event)}", ""]
     return lines
 
 
-MANIFEST = Reply({"endpoints": {"chat": "/v1/chat", "stream": "/v1/chat/stream"}})
+def started(thread="conv-1", trace="abc"):
+    return {
+        "type": "RUN_STARTED",
+        "threadId": thread,
+        "runId": "r1",
+        "metadata": {"hopsworks": {"trace_id": trace}},
+    }
+
+
+def text(delta, message="m1"):
+    return {"type": "TEXT_MESSAGE_CONTENT", "messageId": message, "delta": delta}
+
+
+def finished(thread="conv-1", **hopsworks):
+    return {
+        "type": "RUN_FINISHED",
+        "threadId": thread,
+        "runId": "r1",
+        "result": {"hopsworks": hopsworks},
+    }
+
+
+MANIFEST = Reply({"endpoints": {"chat": "/v1/chat", "run": "/v1/run"}})
 
 
 class TestChatStream:
@@ -2024,30 +2046,49 @@ class TestChatStream:
             MANIFEST,
             Reply(
                 lines=sse(
-                    ("tool_event", {"id": "t1", "name": "lookup", "status": "running"}),
-                    ("message.delta", {"delta": {"text": "Order 42 "}}),
-                    ("tool_event", {"id": "t1", "name": "lookup", "status": "done"}),
-                    ("message.delta", {"delta": {"text": "shipped."}}),
-                    (
-                        "message.completed",
-                        {
-                            "conversation_id": "conv-1",
-                            "message": {
-                                "content": [
-                                    {"type": "text", "text": "Order 42 shipped."}
-                                ]
-                            },
-                            "metadata": {"trace_id": "abc"},
-                        },
-                    ),
+                    started(),
+                    {
+                        "type": "TOOL_CALL_START",
+                        "toolCallId": "t1",
+                        "toolCallName": "lookup",
+                    },
+                    {
+                        "type": "TOOL_CALL_ARGS",
+                        "toolCallId": "t1",
+                        "delta": '{"order": 42}',
+                    },
+                    {"type": "TOOL_CALL_END", "toolCallId": "t1"},
+                    {
+                        "type": "TOOL_CALL_RESULT",
+                        "messageId": "x",
+                        "toolCallId": "t1",
+                        "content": "shipped",
+                    },
+                    {
+                        "type": "TEXT_MESSAGE_START",
+                        "messageId": "m1",
+                        "role": "assistant",
+                    },
+                    text("Order 42 "),
+                    text("shipped."),
+                    {"type": "TEXT_MESSAGE_END", "messageId": "m1"},
+                    {
+                        **finished(subject="alice", subject_source="client"),
+                        "usage": [{"inputTokens": 5, "outputTokens": 3}],
+                    },
                 )
             ),
         )
         stream = agent7.chat_stream("Where is order 42?", subject="alice")
         assert isinstance(stream, ChatStream)
         method, url, _, body = session.sent[1]
-        assert (method, url) == ("POST", "https://gw/v1/g1/support/v1/chat/stream")
-        assert body["subject"] == "alice" and session.streamed is True
+        assert (method, url) == ("POST", "https://gw/v1/g1/support/v1/run")
+        assert session.streamed is True
+        # an AG-UI RunAgentInput, Hopsworks' own fields under forwardedProps
+        assert body["messages"][0]["role"] == "user"
+        assert body["messages"][0]["content"] == "Where is order 42?"
+        assert body["forwardedProps"] == {"hopsworks": {"subject": "alice"}}
+        assert body["threadId"] == "" and body["runId"].startswith("run_")
 
         assert list(stream) == ["Order 42 ", "shipped."]
         assert stream.text == "Order 42 shipped."
@@ -2055,25 +2096,61 @@ class TestChatStream:
             ("lookup", "running"),
             ("lookup", "done"),
         ]
-        assert stream.reply.conversation_id == "conv-1"
-        assert (
-            stream.reply.trace_id == "abc" and stream.reply.text == "Order 42 shipped."
+        assert stream.tool_events[1].data == {
+            "args": '{"order": 42}',
+            "result": "shipped",
+        }
+        reply = stream.reply
+        assert reply.conversation_id == "conv-1"
+        assert reply.trace_id == "abc" and reply.text == "Order 42 shipped."
+        assert reply.metadata["subject"] == "alice"
+        assert reply.usage == {"input_tokens": 5, "output_tokens": 3}
+        assert reply.status == "completed"
+
+    def test_a_final_text_that_rewrites_the_draft_replaces_it(self):
+        _, agent7, _ = agent(
+            MANIFEST,
+            Reply(
+                lines=sse(
+                    started(),
+                    {
+                        "type": "TEXT_MESSAGE_START",
+                        "messageId": "m1",
+                        "role": "assistant",
+                    },
+                    text("draft answer"),
+                    {"type": "TEXT_MESSAGE_END", "messageId": "m1"},
+                    finished(text="corrected answer"),
+                )
+            ),
         )
+        stream = agent7.chat_stream("q")
+        assert list(stream) == ["draft answer"]
+        assert stream.text == stream.reply.text == "corrected answer"
+
+    def test_a_conversation_is_continued_by_its_thread(self):
+        _, agent7, session = agent(MANIFEST, Reply(lines=sse(started(), finished())))
+        reply = agent7.chat_stream(
+            "again", conversation_id="conv-1", context={"k": 1}
+        ).reply
+        assert reply.conversation_id == "conv-1"
+        body = session.sent[1][3]
+        assert body["threadId"] == "conv-1"
+        assert body["forwardedProps"] == {"hopsworks": {"context": {"k": 1}}}
 
     def test_events_give_every_frame_in_order(self):
         _, agent7, _ = agent(
             MANIFEST,
             Reply(
                 lines=sse(
-                    ("message.delta", {"delta": {"text": "a"}}),
-                    (
-                        "tool_event",
-                        {"name": "search", "status": "done", "data": {"n": 2}},
-                    ),
-                    (
-                        "message.completed",
-                        {"conversation_id": "c", "message": {"content": []}},
-                    ),
+                    started(thread="c"),
+                    text("a"),
+                    {
+                        "type": "STEP_FINISHED",
+                        "stepName": "search",
+                        "metadata": {"hopsworks": {"status": "done", "data": {"n": 2}}},
+                    },
+                    finished(thread="c"),
                 )
             ),
         )
@@ -2083,73 +2160,60 @@ class TestChatStream:
         assert frames[1].tool.name == "search" and frames[1].tool.data == {"n": 2}
         assert frames[2].reply.conversation_id == "c"
 
-    def test_a_stream_that_stops_without_completing_is_a_failed_reply(self):
-        # A dropped connection or a killed pod ends the stream after a few
-        # deltas. The text that arrived is kept -- it is the agent's own words
-        # -- but calling the turn completed hands an evaluator a truncated
-        # answer to grade, and the conversation id the next turn would
-        # continue from is not there to be had.
+    def test_media_rides_in_custom_events(self):
+        image = {"type": "image", "media_type": "image/png", "data": "aW1n"}
         _, agent7, _ = agent(
             MANIFEST,
             Reply(
                 lines=sse(
-                    ("message.delta", {"delta": {"text": "hel"}}),
-                    ("message.delta", {"delta": {"text": "lo"}}),
+                    started(),
+                    text("here"),
+                    {"type": "CUSTOM", "name": "hopsworks.media", "value": image},
+                    finished(),
                 )
             ),
+        )
+        assert agent7.chat_stream("x").reply.parts == [
+            {"type": "text", "text": "here"},
+            image,
+        ]
+
+    def test_a_stream_that_stops_without_completing_is_a_failed_reply(self):
+        # A dropped connection or a killed pod ends the stream after a few
+        # deltas. The text that arrived is kept -- it is the agent's own words
+        # -- but calling the turn completed hands an evaluator a truncated
+        # answer to grade.
+        _, agent7, _ = agent(
+            MANIFEST,
+            Reply(lines=sse(started(), text("hel"), text("lo"))),
         )
         stream = agent7.chat_stream("x")
         assert stream.reply.text == "hello"
         assert stream.reply.status == "failed"
         assert stream.reply.metadata["incomplete_stream"] is True
-        assert stream.reply.conversation_id == "" and stream.reply.trace_id is None
         assert list(stream) == []  # read once
 
-    def test_a_json_answer_to_the_stream_endpoint_is_read_as_the_reply(self):
-        # An agent with nothing to stream may answer the stream endpoint with a
-        # plain JSON ChatResponse; the contract allows it and the browser
-        # client handles it. Read as server-sent events those lines carry no
-        # event: or data: field, so every one was skipped and the caller got an
-        # empty failed reply with the answer, the conversation id and the trace
-        # id all dropped.
-        _, agent7, _ = agent(
-            MANIFEST,
-            Reply(
-                {
-                    "id": "response_ok",
-                    "conversation_id": "conv_ok",
-                    "status": "completed",
-                    "message": {
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": "hello"}],
-                    },
-                    "metadata": {"trace_id": "abc"},
-                },
-                headers={"content-type": "application/json"},
-            ),
-        )
-        reply = agent7.chat_stream("hi").reply
-        assert reply.text == "hello"
-        assert reply.conversation_id == "conv_ok"
-        assert reply.status == "completed"
-        assert reply.trace_id == "abc"
-
-    def test_an_error_frame_raises_with_the_agents_message(self):
+    def test_a_run_error_raises_with_the_agents_message_and_status(self):
         _, agent7, _ = agent(
             MANIFEST,
             Reply(
                 lines=sse(
-                    ("message.delta", {"delta": {"text": "so far"}}),
-                    (
-                        "error",
-                        {"code": "tool_failed", "message": "the database is down"},
-                    ),
+                    started(),
+                    text("so far"),
+                    {
+                        "type": "RUN_ERROR",
+                        "message": "the database is down",
+                        "code": "tool_failed",
+                        "metadata": {"hopsworks": {"status": 503, "retryable": True}},
+                    },
                 )
             ),
         )
         stream = agent7.chat_stream("x")
-        with pytest.raises(AgentServingError, match="the database is down"):
+        with pytest.raises(AgentServingError, match="the database is down") as err:
             list(stream)
+        assert err.value.status == 503
+        assert err.value.code == "tool_failed" and err.value.retryable is True
         assert stream.text == "so far"
 
     def test_multi_line_data_comments_and_crlf_are_parsed(self):
@@ -2158,25 +2222,23 @@ class TestChatStream:
             Reply(
                 lines=[
                     ": keep-alive\r",
-                    "event: message.delta\r",
-                    'data: {"delta":\r',
-                    'data: {"text": "ok"}}\r',
+                    'data: {"type": "TEXT_MESSAGE_CONTENT",\r',
+                    'data: "messageId": "m", "delta": "ok"}\r',
                     "\r",
-                    b"event: message.completed",
-                    b'data: {"conversation_id": "c", "message": {"content": []}}',
+                    b'data: {"type": "RUN_FINISHED", "threadId": "c", "runId": "r"}',
                 ]
             ),
         )
         stream = agent7.chat_stream("x")
         assert list(stream) == ["ok"] and stream.reply.conversation_id == "c"
 
-    def test_the_stream_route_falls_back_to_the_default_without_a_manifest(self):
+    def test_the_run_route_falls_back_to_the_default_without_a_manifest(self):
         _, agent7, session = agent(
             Reply({"errorMsg": "Not Found"}, status=404),
-            Reply(lines=sse(("message.delta", {"delta": {"text": "hi"}}))),
+            Reply(lines=sse(started(), text("hi"), finished())),
         )
         assert list(agent7.chat_stream("x")) == ["hi"]
-        assert session.sent[1][1] == "https://gw/v1/g1/support/v1/chat/stream"
+        assert session.sent[1][1] == "https://gw/v1/g1/support/v1/run"
 
     def test_a_completed_reply_carries_the_agents_tool_events(self):
         _, agent7, _ = agent(
@@ -2587,3 +2649,140 @@ class TestATraceReadStraightAfterTheReply:
         _, agent7, session = agent(Reply(self.HALF))
         agent7.trace("t")
         assert len(session.sent) == 1
+
+
+class TestAPausedTurn:
+    """An agent that pauses to ask a person, and the answer that resumes it."""
+
+    def test_a_streamed_run_that_pauses_says_what_it_asked(self):
+        question = {
+            "id": "refund-42",
+            "reason": "confirmation",
+            "message": "Refund?",
+            "responseSchema": {"type": "object"},
+        }
+        _, agent7, _ = agent(
+            MANIFEST,
+            Reply(
+                lines=sse(
+                    started(),
+                    {
+                        "type": "RUN_FINISHED",
+                        "threadId": "conv-1",
+                        "runId": "r1",
+                        "outcome": {"type": "interrupt", "interrupts": [question]},
+                    },
+                )
+            ),
+        )
+        reply = agent7.chat_stream("refund order 42").reply
+        assert reply.interrupted and reply.status == "interrupted"
+        assert reply.interrupts == [
+            {
+                "id": "refund-42",
+                "reason": "confirmation",
+                "message": "Refund?",
+                "response_schema": {"type": "object"},
+            }
+        ]
+
+    def test_resume_answers_by_id_without_resending_the_message(self):
+        _, agent7, session = agent(MANIFEST, Reply(lines=sse(started(), finished())))
+        reply = agent7.chat_stream(
+            None, conversation_id="conv-1", resume={"refund-42": {"approved": True}}
+        ).reply
+        assert reply.status == "completed"
+        body = session.sent[1][3]
+        assert body["threadId"] == "conv-1" and body["messages"] == []
+        assert body["resume"] == [
+            {
+                "interruptId": "refund-42",
+                "status": "resolved",
+                "payload": {"approved": True},
+            }
+        ]
+
+    def test_the_json_route_takes_the_same_answers(self):
+        _, agent7, session = agent(
+            MANIFEST,
+            Reply({"conversation_id": "conv-1", "message": {"content": []}}),
+        )
+        agent7.chat(
+            None,
+            conversation_id="conv-1",
+            resume=[{"interrupt_id": "refund-42", "status": "cancelled"}],
+        )
+        body = session.sent[1][3]
+        assert "message" not in body
+        assert body["resume"] == [{"interrupt_id": "refund-42", "status": "cancelled"}]
+
+
+class TestChatApp:
+    """The agent's chat app: created, read and deleted through the deployment, returned as the platform's App."""
+
+    @pytest.fixture(autouse=True)
+    def apps(self, monkeypatch):
+        from hopsworks_common.core import app_api
+
+        found = {}
+
+        class FakeAppApi:
+            def get_app(self, name):
+                found["name"] = name
+                return f"App({name})"
+
+        monkeypatch.setattr(app_api, "AppApi", FakeAppApi)
+        return found
+
+    def test_creating_one_asks_the_deployment_and_returns_the_app(self, apps):
+        _, support, session = agent(Reply({"name": "support_chat", "id": 3}))
+        assert support.create_chat_app() == "App(support_chat)"
+        assert session.sent == [("POST", "/serving/7/chatapp", None, {})]
+
+    def test_a_name_can_be_chosen(self):
+        _, support, session = agent(Reply({"name": "helpdesk"}))
+        support.create_chat_app("helpdesk")
+        assert session.sent[0][3] == {"name": "helpdesk"}
+
+    def test_an_agent_without_one_has_none(self):
+        _, support, _ = agent(Reply({"message": "no chat app"}, status=404))
+        assert support.chat_app() is None
+
+    def test_reading_it_returns_the_app(self):
+        _, support, session = agent(Reply({"name": "support_chat"}))
+        assert support.chat_app() == "App(support_chat)"
+        assert session.sent == [("GET", "/serving/7/chatapp", None, None)]
+
+    def test_customizing_it_asks_the_deployment_and_returns_the_app(self):
+        _, support, session = agent(
+            Reply(
+                {
+                    "name": "support_chat",
+                    "customDir": "Resources/chat-apps/support_chat",
+                }
+            )
+        )
+        assert support.customize_chat_app() == "App(support_chat)"
+        assert session.sent == [("POST", "/serving/7/chatapp/customize", None, {})]
+
+    def test_deleting_it(self):
+        _, support, session = agent(Reply(status=204))
+        support.delete_chat_app()
+        assert session.sent == [("DELETE", "/serving/7/chatapp", None, None)]
+
+
+class TestWhereFeedbackWasGiven:
+    def test_a_verdict_from_the_chat_app_says_so(self):
+        from hopsworks_agents.eval.sdk.models import Feedback
+
+        given = Feedback.from_api(
+            {"feedbackId": "f", "reviewer": "user:meb10000", "source": "chat-app"}
+        )
+        assert given.given_via == "chat-app"
+        # who gave it is a separate question
+        assert given.source != "chat-app"
+
+    def test_a_verdict_that_does_not_say_has_none(self):
+        from hopsworks_agents.eval.sdk.models import Feedback
+
+        assert Feedback.from_api({"feedbackId": "f"}).given_via is None

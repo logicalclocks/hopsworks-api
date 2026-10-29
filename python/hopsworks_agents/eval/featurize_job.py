@@ -25,6 +25,7 @@ from typing import Any
 from hopsworks_apigen import public
 
 from .features import _select_ready_traces, _trace_features
+from .online_tables import _write_online
 
 
 log = logging.getLogger(__name__)
@@ -194,10 +195,13 @@ def _featurize(
 
         # Online only, so no offline materialization job per run. The trace
         # features are read from the online store like the rest of the agent
-        # tables; a feature view for training over the offline copy would need
-        # this write to materialize, and is the one reason to change it back.
-        feature_store.get_feature_group(FEATURES_FG, 1).insert(
-            pd.DataFrame(rows), storage="online"
+        # tables. Over SQL rather than through the feature group's Kafka topic,
+        # which only a data owner may produce to: whoever runs this job writes
+        # with their own database user, which Hopsworks grants this table.
+        _write_online(
+            feature_store,
+            feature_store.get_feature_group(FEATURES_FG, 1),
+            pd.DataFrame(rows),
         )
     return len(rows)
 

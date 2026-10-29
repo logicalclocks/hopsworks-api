@@ -42,6 +42,8 @@ from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
 
+from .pending import _ManagedPendingBase, _PendingQuestions, _ProcessPending
+
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +121,10 @@ MESSAGES_FG = "agent_memory_messages"
 CONVERSATIONS_FG = "agent_memory_conversations"
 FACTS_FG = "agent_memory_facts"
 SCHEMA_FG = "agent_memory_schema"
+#: Not a feature group: what a paused conversation waits on, and the request
+#: its resume replays. Operational state, deleted once the questions are
+#: answered, and never read by anyone but the agent. See ``pending.py``.
+PENDING_TABLE = "agent_memory_pending"
 
 ITEMS_TABLE = f"{MESSAGES_FG}_{FEATURE_GROUP_VERSION}"
 CONVERSATIONS_TABLE = CONVERSATIONS_FG
@@ -472,6 +478,14 @@ class ChatMemory(ABC):
         self.begin_turn(conversation_id, turn_id, role, content)
         self.end_turn(conversation_id, turn_id)
 
+    def _pending_questions(self) -> _PendingQuestions | None:
+        """Where this store keeps paused conversations, or None to leave them to the process.
+
+        A store shared between replicas keeps them itself, so that the replica
+        a resume reaches knows what the conversation waits on.
+        """
+        return None
+
     @public
     def healthcheck(self) -> bool:
         """Whether the store is currently usable.
@@ -637,7 +651,14 @@ class InMemoryAgentMemory(ChatMemory):
         # on close and are dropped on abandon, so history never shows a
         # question whose answer never arrived
         self._open: dict[str, list[Turn]] = {}
+        # who each conversation is with and when it last moved, for listing
+        self._subjects: dict[str, str] = {}
+        self._active_at: dict[str, str] = {}
         self._lock = threading.Lock()
+        self._pending = _ProcessPending()
+
+    def _pending_questions(self) -> _PendingQuestions | None:
+        return self._pending
 
     def get(self, conversation_id: str) -> list[Turn]:
         with self._lock:
@@ -655,6 +676,8 @@ class InMemoryAgentMemory(ChatMemory):
     ) -> None:
         with self._lock:
             self._open[turn_id] = [{"role": role, "content": content}]
+            if subject:
+                self._subjects[conversation_id] = subject
 
     def record_item(
         self,
@@ -688,10 +711,35 @@ class InMemoryAgentMemory(ChatMemory):
             turns.extend(buffered)
             if len(turns) > self._max:
                 del turns[: len(turns) - self._max]
+            self._active_at[conversation_id] = datetime.now(timezone.utc).isoformat()
+
+    def list_conversations(
+        self, *, subject: str | None = None, limit: int = 50
+    ) -> list[dict]:
+        with self._lock:
+            listed = [
+                {
+                    "conversation_id": conversation_id,
+                    "message_count": len(turns),
+                    "last_active_at": self._active_at.get(conversation_id),
+                    "subject": self._subjects.get(conversation_id),
+                }
+                for conversation_id, turns in self._conversations.items()
+                if subject is None or self._subjects.get(conversation_id) == subject
+            ]
+        listed.sort(key=lambda c: c["last_active_at"] or "", reverse=True)
+        return listed[:limit]
+
+    def conversation_subject(self, conversation_id: str) -> str | None:
+        with self._lock:
+            return self._subjects.get(conversation_id)
 
     def clear(self, conversation_id: str) -> None:
         with self._lock:
             self._conversations.pop(conversation_id, None)
+            self._subjects.pop(conversation_id, None)
+            self._active_at.pop(conversation_id, None)
+        self._pending._clear(conversation_id)
 
 
 class ManagedMemoryService(ChatMemory):
@@ -819,6 +867,7 @@ class ManagedMemoryService(ChatMemory):
         self._meta = None
         self._sessions = None
         self._state = None
+        self._pending_table = None
         # a failed connect blocks retries until this monotonic deadline, with
         # exponential backoff — never permanently (see _ensure_engine)
         self._init_failed_until = 0.0
@@ -1044,6 +1093,7 @@ class ManagedMemoryService(ChatMemory):
                     UniqueConstraint,
                     create_engine,
                 )
+                from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
                 url = self._url or deployment_mysql_url()
                 deployment = self._resolve_deployment_id()
@@ -1142,6 +1192,29 @@ class ManagedMemoryService(ChatMemory):
                         Column("created_at", DateTime, nullable=False),
                         Column("last_active_at", DateTime, nullable=False),
                     )
+                # What paused conversations wait on, shared by the replicas.
+                # MEDIUMTEXT on MySQL: the paused request carries inline
+                # images and files, and TEXT stops at 64 KB. Hopsworks creates
+                # this table itself, as an agent's database user may not.
+                pending = Table(
+                    _companion(PENDING_TABLE, suffix),
+                    metadata,
+                    Column("deployment_id", String(64), primary_key=True),
+                    Column("conversation_id", String(255), primary_key=True),
+                    Column(
+                        "request",
+                        Text().with_variant(MEDIUMTEXT(), "mysql"),
+                        nullable=False,
+                    ),
+                    # bumped by every write and claim: a claim names the
+                    # version it read, so two replicas cannot both take it
+                    Column("version", Integer, nullable=False),
+                    # set while a resume replays the turn; see pending.py
+                    Column("claimed_at", DateTime, nullable=True),
+                    Column("expires_at", DateTime, nullable=False),
+                    Column("created_at", DateTime, nullable=False),
+                    Column("updated_at", DateTime, nullable=False),
+                )
                 state = None
                 if self._long_term:
                     # long-term memory only
@@ -1210,6 +1283,7 @@ class ManagedMemoryService(ChatMemory):
                 self._meta = meta
                 self._sessions = sessions
                 self._state = state
+                self._pending_table = self._usable_pending_table(engine, pending)
                 log.info(
                     "ManagedMemoryService ready (table=%s, schema_version=%d)",
                     table_name,
@@ -1370,6 +1444,32 @@ class ManagedMemoryService(ChatMemory):
                 self._cache[conversation_id] = (key, list(turns))
         return turns
 
+    def _usable_pending_table(self, engine, pending):
+        """The pending table when it is there to write, else None.
+
+        Created above when this store creates its tables, and by Hopsworks
+        otherwise; a platform that predates it leaves paused conversations to
+        the process rather than failing every pause.
+        """
+        from sqlalchemy import inspect as sqlalchemy_inspect
+
+        try:
+            if sqlalchemy_inspect(engine).has_table(pending.name):
+                return pending
+        except Exception:  # noqa: BLE001
+            log.exception("Could not look for %s", pending.name)
+        log.warning(
+            "%s is missing: paused conversations are kept in this process, and "
+            "a resume another replica receives is refused",
+            pending.name,
+        )
+        return None
+
+    def _pending_questions(self) -> _PendingQuestions | None:
+        if not self._ensure_engine() or self._pending_table is None:
+            return None
+        return _ManagedPending(self)
+
     def clear(self, conversation_id: str) -> None:
         """Drop a conversation: its messages **and** its session row.
 
@@ -1410,6 +1510,16 @@ class ManagedMemoryService(ChatMemory):
                                 self._sessions.c.conversation_id == conversation_id
                             ),
                             self._sessions,
+                        )
+                    )
+                if self._pending_table is not None:
+                    # it holds the paused request, the message among it
+                    conn.execute(
+                        self._mine(
+                            self._pending_table.delete().where(
+                                self._pending_table.c.conversation_id == conversation_id
+                            ),
+                            self._pending_table,
                         )
                     )
         except Exception as err:  # noqa: BLE001
@@ -2029,15 +2139,32 @@ class ManagedMemoryService(ChatMemory):
                         .limit(limit)
                     ).fetchall()
                 ]
-            if not ids:
-                return 0
-            with self._engine.begin() as conn:
-                conn.execute(self._mine(t.delete().where(t.c.id.in_(ids)), t))
+            if ids:
+                with self._engine.begin() as conn:
+                    conn.execute(self._mine(t.delete().where(t.c.id.in_(ids)), t))
         except Exception:  # noqa: BLE001
             log.exception("Pruning expired memory rows failed")
             return 0
-        log.info("Pruned %d expired memory row(s)", len(ids))
-        return len(ids)
+        if ids:
+            log.info("Pruned %d expired memory row(s)", len(ids))
+        return len(ids) + self._prune_pending(now)
+
+    def _prune_pending(self, now) -> int:
+        """Forget paused conversations whose questions can no longer be answered."""
+        p = self._pending_table
+        if p is None:
+            return 0
+        try:
+            with self._engine.begin() as conn:
+                removed = conn.execute(
+                    self._mine(p.delete().where(p.c.expires_at < now), p)
+                ).rowcount
+        except Exception:  # noqa: BLE001
+            log.exception("Pruning expired pending questions failed")
+            return 0
+        if removed:
+            log.info("Pruned %d expired pending question record(s)", removed)
+        return removed or 0
 
     @public
     def transcript(
@@ -2803,3 +2930,12 @@ class ManagedMemoryService(ChatMemory):
                 return True
             log.info("Concurrent fold won; retrying with fresh state")
         return False
+
+
+class _ManagedPending(_ManagedPendingBase):
+    """Paused conversations in the managed store's pending table, scoped to its deployment."""
+
+    def __init__(self, service: ManagedMemoryService):
+        super().__init__(
+            service._engine, service._pending_table, service._mine, service._deployment
+        )

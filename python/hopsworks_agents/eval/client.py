@@ -22,10 +22,16 @@ from .runner import _AGENT_REPORTED_FAILURE, AgentResponse
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    import requests
+
     from .evaluators import Trace
 
 
 log = logging.getLogger(__name__)
+
+
+# How many times one turn of a trial may pause before the run gives up on it.
+_MAX_RESUMES = 5
 
 
 class HopsworksAgentClient:
@@ -168,8 +174,8 @@ class HopsworksAgentClient:
                 text="", latency_ms=(time.monotonic() - started) * 1000, error=str(err)
             )
 
-        latency_ms = (time.monotonic() - started) * 1000
         if response.status_code >= 400:
+            latency_ms = (time.monotonic() - started) * 1000
             return AgentResponse(
                 text="",
                 latency_ms=latency_ms,
@@ -178,12 +184,67 @@ class HopsworksAgentClient:
             )
 
         body = response.json()
+        asked: list[dict] = []
+        for _ in range(_MAX_RESUMES):
+            if body.get("status") != "interrupted":
+                break
+            # A trial has nobody to ask, so the run answers for them: what the
+            # task's context says to answer, by question id, and a refusal to
+            # answer for the rest. A question left open would be a trial that
+            # never ends; a cancelled one is a turn the agent has to finish
+            # without the answer, which is itself worth grading.
+            questions = body.get("interrupts") or []
+            asked.extend(questions)
+            try:
+                response = self._resume(
+                    questions,
+                    (context or {}).get("interrupt_answers") or {},
+                    conversation_id=body.get("conversation_id") or conversation_id,
+                    traceparent=traceparent,
+                    baggage=baggage,
+                    timeout_s=timeout_s,
+                )
+            except Exception as err:  # noqa: BLE001 — classified by the runner
+                return AgentResponse(
+                    text="",
+                    latency_ms=(time.monotonic() - started) * 1000,
+                    error=str(err),
+                    interrupts=asked,
+                )
+            # A resumed turn that fails is the agent failing, as the first
+            # request's would be: its status goes to the runner, which grades a
+            # 5xx as the agent breaking rather than setting it aside as an
+            # infrastructure error.
+            if response.status_code >= 400:
+                return AgentResponse(
+                    text="",
+                    latency_ms=(time.monotonic() - started) * 1000,
+                    error=(
+                        "the agent paused to ask a person, and the answer got "
+                        f"{response.status_code}: {response.text[:200]}"
+                    ),
+                    status_code=response.status_code,
+                    interrupts=asked,
+                )
+            body = response.json()
+        latency_ms = (time.monotonic() - started) * 1000
         text = "".join(
             part.get("text", "")
             for part in (body.get("message") or {}).get("content", [])
             if part.get("type") == "text"
         )
         metadata = body.get("metadata") or {}
+        if body.get("status") == "interrupted":
+            return AgentResponse(
+                text=text,
+                latency_ms=latency_ms,
+                error=f"the agent kept asking: {_MAX_RESUMES} questions in one turn",
+                status_code=response.status_code,
+                interrupts=asked,
+                # each pause answered 200: the limit is the agent's doing, and a
+                # trial it never finishes is a failed one, not one to set aside
+                agent_at_fault=True,
+            )
         return AgentResponse(
             text=text,
             # The SDK reports the trace id it actually used. The runner already
@@ -194,6 +255,39 @@ class HopsworksAgentClient:
             latency_ms=latency_ms,
             error=("" if body.get("status") != "failed" else _AGENT_REPORTED_FAILURE),
             status_code=response.status_code,
+            interrupts=asked,
+        )
+
+    def _resume(
+        self,
+        questions: list[dict],
+        answers: dict,
+        *,
+        conversation_id: str | None,
+        traceparent: str,
+        baggage: str,
+        timeout_s: float,
+    ) -> requests.Response:
+        """Answer a paused turn on the trial's behalf; the agent's response, whatever its status."""
+        resume = []
+        for question in questions:
+            interrupt_id = question.get("id")
+            if interrupt_id in answers:
+                resume.append(
+                    {
+                        "interrupt_id": interrupt_id,
+                        "status": "resolved",
+                        "payload": answers[interrupt_id],
+                    }
+                )
+            else:
+                resume.append({"interrupt_id": interrupt_id, "status": "cancelled"})
+        return self._session.post(
+            f"{self._base_url()}{self._chat_path}",
+            json={"conversation_id": conversation_id, "resume": resume},
+            # the same trace: the pause and the answer are one trial
+            headers={"traceparent": traceparent, "baggage": baggage},
+            timeout=timeout_s,
         )
 
     # ── the trace ───────────────────────────────────────────────────────────
