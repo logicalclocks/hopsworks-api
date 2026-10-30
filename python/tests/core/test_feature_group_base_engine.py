@@ -232,3 +232,14 @@ class TestFeatureGroupBaseEngine:
             )
 
         assert "d7 (expected type: 'decimal(7,0)'" in str(exc.value)
+
+    def test_verify_schema_compatibility_timestamp_ntz(self):
+        # Spark derives timestamp_ntz for a TimestampNTZType column
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=99
+        )
+
+        fg_base_engine._verify_schema_compatibility(
+            [feature.Feature(name="ts", type="timestamp")],
+            [feature.Feature(name="ts", type="timestamp_ntz")],
+        )
