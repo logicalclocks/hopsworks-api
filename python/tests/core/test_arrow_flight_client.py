@@ -373,6 +373,7 @@ class TestArrowFlightClient:
         query = MagicMock(hqs_payload='{"password": "sentinel-password"}')
         caplog.set_level(logging.DEBUG)
         client._client._project_name = "test_project"
+        client._client._project_backing_name = "test_backing_name"
         feature_view = MagicMock(version=1)
         feature_view.name = "test_fv"
 
