@@ -278,6 +278,7 @@ class TestModel:
             default_predictor=None,
             feature_logging=None,
             knative_mode=None,
+            tracing=None,
             triton_image_tag=None,
         )
         mock_predictor.deploy.assert_called_once()

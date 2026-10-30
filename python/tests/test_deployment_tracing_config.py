@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from datetime import datetime, timezone
+
 import pytest
 from hsml.deployment_tracing_config import DeploymentTracingConfig
 
@@ -55,3 +57,67 @@ class TestDeploymentTracingConfig:
     def test_rejects_invalid_storage(self):
         with pytest.raises(ValueError, match="Possible values"):
             DeploymentTracingConfig(otel_tracing_storage="invalid")
+
+    def test_round_trip_with_sampling_percentage(self):
+        config = DeploymentTracingConfig(enabled=True, sampling_percentage=25)
+
+        assert config.to_dict()["samplingPercentage"] == 25
+        restored = DeploymentTracingConfig.from_response_json(config.to_dict())
+
+        assert restored.sampling_percentage == 25
+
+    @pytest.mark.parametrize("percentage", [-1, 101])
+    def test_rejects_sampling_percentage_out_of_range(self, percentage):
+        with pytest.raises(ValueError, match="between 0 and 100"):
+            DeploymentTracingConfig(sampling_percentage=percentage)
+
+    def test_reads_a_stored_sampling_percentage_out_of_range(self):
+        # Agent deployments stored any integer before the range check.
+        config = DeploymentTracingConfig.from_response_json(
+            {"enabled": True, "samplingPercentage": 150, "active": False}
+        )
+
+        assert config.sampling_percentage == 150
+        assert "active: False" in repr(config)
+
+    def test_a_pause_is_read_and_sent_back(self):
+        config = DeploymentTracingConfig.from_response_json(
+            {
+                "enabled": True,
+                "samplingPercentage": 10,
+                "pausedReason": "DISK_NEARLY_FULL",
+            }
+        )
+
+        assert config.paused_reason == "DISK_NEARLY_FULL"
+        assert config.to_dict()["pausedReason"] == "DISK_NEARLY_FULL"
+        assert "pausedReason" not in DeploymentTracingConfig(enabled=True).to_dict()
+
+    def test_the_period_is_read_and_sent_back(self):
+        config = DeploymentTracingConfig.from_response_json(
+            {
+                "enabled": True,
+                "active": False,
+                "durationDays": 7,
+                "activeUntil": 1793145600000,
+                "expiredAt": 1793145600000,
+            }
+        )
+
+        assert config.duration_days == 7
+        assert config.expired_at == datetime(2026, 10, 28, tzinfo=timezone.utc)
+        assert config.to_dict()["activeUntil"] == 1793145600000
+        assert config.to_dict()["expiredAt"] == 1793145600000
+
+    def test_duration_days_from_a_dict(self):
+        config = DeploymentTracingConfig.from_json(
+            {"enabled": True, "duration_days": 30}
+        )
+
+        assert config.to_dict()["durationDays"] == 30
+        assert "activeUntil" not in config.to_dict()
+
+    @pytest.mark.parametrize("days", [0, -1])
+    def test_rejects_duration_days_below_one(self, days):
+        with pytest.raises(ValueError):
+            DeploymentTracingConfig(duration_days=days)

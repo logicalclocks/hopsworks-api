@@ -499,6 +499,7 @@ class TransformationFunctionEngine:
         request_parameters: dict[str, Any] | None = None,
         expected_features: set[str] | None = None,
         n_processes: int | None = None,
+        observer: Any = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Apply the transformation functions in the DAG to the passed data.
 
@@ -519,6 +520,7 @@ class TransformationFunctionEngine:
             n_processes: Number of worker processes for applying transformation functions in parallel.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine.
+            observer: A serving phase from `transformation_telemetry` that times each function of a dict or list of dicts; `None` runs them untimed.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
@@ -578,6 +580,7 @@ class TransformationFunctionEngine:
                 n_processes,
                 expected_features,
                 transformation_context,
+                observer,
             )
 
     @staticmethod
@@ -628,6 +631,7 @@ class TransformationFunctionEngine:
         n_processes: int | None,
         expected_features: set[str] | None,
         transformation_context: dict[str, Any] | None = None,
+        observer: Any = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Apply the transformations to a single dict or a list of dicts.
 
@@ -672,9 +676,9 @@ class TransformationFunctionEngine:
         if n_processes > 1:
             TransformationFunctionEngine._ensure_pool(n_processes)
             pool = TransformationFunctionEngine.__process_pool
-            TransformationFunctionEngine._schedule_dag(
-                execution_graph,
-                submit=lambda tf: pool.submit(
+
+            def submit(tf):
+                return pool.submit(
                     TransformationFunctionEngine._execute_udf,
                     udf=tf.hopsworks_udf,
                     data=task_inputs(tf),
@@ -682,10 +686,20 @@ class TransformationFunctionEngine:
                     engine_type=engine_type,
                     # A forked worker inherits whatever context the pool was forked under, and its initializer clears that, so the request's context travels with each task instead.
                     transformation_context=transformation_context,
-                ),
-                collect=merge,
-            )
-        else:
+                )
+
+            if observer is None:
+                TransformationFunctionEngine._schedule_dag(
+                    execution_graph, submit=submit, collect=merge
+                )
+            else:
+                TransformationFunctionEngine._schedule_dag(
+                    execution_graph,
+                    *TransformationFunctionEngine._timed_callbacks(
+                        observer, submit, merge
+                    ),
+                )
+        elif observer is None:
             for tf in execution_graph.nodes:
                 merge(
                     tf,
@@ -696,6 +710,21 @@ class TransformationFunctionEngine:
                         engine_type=engine_type,
                     ),
                 )
+        else:
+            for tf in execution_graph.nodes:
+                started = observer._start()
+                try:
+                    result = TransformationFunctionEngine._execute_udf(
+                        udf=tf.hopsworks_udf,
+                        data=task_inputs(tf),
+                        online=online,
+                        engine_type=engine_type,
+                    )
+                except BaseException as error:
+                    observer._finish(tf, started, error)
+                    raise
+                observer._finish(tf, started)
+                merge(tf, result)
 
         cleaned = [
             {k: v for k, v in row.items() if k not in dropped_features} for row in rows
@@ -894,15 +923,42 @@ class TransformationFunctionEngine:
         return transformed_data
 
     @staticmethod
+    def _timed_callbacks(observer, submit, merge):
+        """Wrap `_schedule_dag`'s callbacks so each pooled function is timed by `observer`.
+
+        Kept out of `_apply_to_dict_list`, whose closures would otherwise capture these names on every call, timed or not.
+        """
+        started = {}
+
+        def timed_submit(tf):
+            # Timed from the scheduler, so a pooled function's duration includes shipping its inputs and result between processes.
+            started[id(tf)] = observer._start()
+            return submit(tf)
+
+        def collect(tf, result):
+            observer._finish(tf, started.pop(id(tf)))
+            merge(tf, result)
+
+        def fail(tf, error):
+            observer._finish(tf, started.pop(id(tf)), error)
+
+        return timed_submit, collect, fail
+
+    @staticmethod
     def _schedule_dag(
         execution_graph: TransformationExecutionDAG,
         submit: Callable[[transformation_function.TransformationFunction], Any],
         collect: Callable[[transformation_function.TransformationFunction, Any], None],
+        fail: Callable[
+            [transformation_function.TransformationFunction, BaseException], None
+        ]
+        | None = None,
     ) -> None:
         """Drive a streaming DAG schedule over the process pool.
 
         ``submit(tf)`` submits one transformation's work and returns its future;
-        ``collect(tf, result)`` consumes that future's result. A transformation is
+        ``collect(tf, result)`` consumes that future's result, and ``fail(tf, error)``,
+        when given, is told which transformation raised. A transformation is
         submitted as soon as its predecessors complete (``wait(FIRST_COMPLETED)``),
         so independent branches run concurrently and a dependent starts the moment
         it unblocks. On any worker failure the pending futures are cancelled,
@@ -919,7 +975,13 @@ class TransformationFunctionEngine:
                 done, _ = wait(future_to_tf.keys(), return_when=FIRST_COMPLETED)
                 for future in done:
                     tf_id = future_to_tf.pop(future)
-                    collect(id_to_tf[tf_id], future.result())
+                    try:
+                        result = future.result()
+                    except BaseException as error:
+                        if fail is not None:
+                            fail(id_to_tf[tf_id], error)
+                        raise
+                    collect(id_to_tf[tf_id], result)
                     sorter.done(tf_id)
         except (Exception, BrokenProcessPool):
             for f in future_to_tf:
