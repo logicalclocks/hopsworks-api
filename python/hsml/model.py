@@ -28,10 +28,10 @@ from hopsworks_apigen import public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
+from hsml import predictor as predictor_mod
 from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 from hsml.model_schema import ModelSchema
-from hsml.predictor import Predictor
 from hsml.schema import Schema
 
 
@@ -491,7 +491,7 @@ class Model:
         if name is None:
             name = self._get_default_serving_name()
 
-        predictor = Predictor.for_model(
+        predictor = predictor_mod.Predictor.for_model(
             self,
             name=name,
             description=description,
