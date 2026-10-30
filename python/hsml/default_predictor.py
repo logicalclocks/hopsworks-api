@@ -1297,7 +1297,7 @@ class DefaultPredict:
         model = self.hopsworks_model
         return {
             "model_name": getattr(model, "name", None),
-            "model_version": "None" if model is None else str(model.version),
+            "model_version": None if model is None else str(model.version),
             "td_version": self.training_dataset_version,
             "deployment_name": os.environ.get("DEPLOYMENT_NAME", self.deployment.name),
             "deployment_version": _int_or_none(os.environ.get("DEPLOYMENT_VERSION")),
