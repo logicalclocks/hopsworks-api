@@ -175,6 +175,64 @@ class StorageConnectorApi:
         ]
         return _client._send_request("GET", path_params)
 
+    def _gmail_path(self, feature_store_id: int, name: str, *rest: str) -> list:
+        _client = client._get_instance()
+        return [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_store_id,
+            "storageconnectors",
+            name,
+            "gmail",
+            *rest,
+        ]
+
+    def _get_gmail_access_token(
+        self, feature_store_id: int, name: str
+    ) -> dict[str, Any]:
+        return client._get_instance()._send_request(
+            "POST", self._gmail_path(feature_store_id, name, "token")
+        )
+
+    def _get_gmail_labels(
+        self, feature_store_id: int, name: str
+    ) -> list[dict[str, Any]]:
+        return client._get_instance()._send_request(
+            "GET", self._gmail_path(feature_store_id, name, "labels")
+        )
+
+    def _put_gmail_sync_job(
+        self, feature_store_id: int, name: str, job_name: str, sync_job: dict[str, Any]
+    ) -> dict[str, Any]:
+        return client._get_instance()._send_request(
+            "PUT",
+            self._gmail_path(feature_store_id, name, "sync", job_name),
+            headers={"content-type": "application/json"},
+            data=json.dumps(sync_job),
+        )
+
+    def _get_gmail_sync_jobs(
+        self, feature_store_id: int, name: str
+    ) -> list[dict[str, Any]]:
+        return client._get_instance()._send_request(
+            "GET", self._gmail_path(feature_store_id, name, "sync")
+        )
+
+    def _get_gmail_sync_job(
+        self, feature_store_id: int, name: str, job_name: str
+    ) -> dict[str, Any]:
+        return client._get_instance()._send_request(
+            "GET", self._gmail_path(feature_store_id, name, "sync", job_name)
+        )
+
+    def _delete_gmail_sync_job(
+        self, feature_store_id: int, name: str, job_name: str
+    ) -> None:
+        client._get_instance()._send_request(
+            "DELETE", self._gmail_path(feature_store_id, name, "sync", job_name)
+        )
+
     def _get_online_connector(
         self, feature_store_id: int
     ) -> storage_connector.OnlineStorageConnector:

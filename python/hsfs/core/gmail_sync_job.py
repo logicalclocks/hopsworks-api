@@ -1,0 +1,1271 @@
+#
+#   Copyright 2026 Hopsworks AB
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+"""Sync job of Gmail data sources.
+
+Runs as a PYTHON job that the backend creates for a Gmail data source, with `--config` naming the job's JSON configuration.
+It upserts the mailbox's messages into a Delta feature group partitioned by the `day` of their Gmail receive time in UTC.
+New messages are inserted without rewriting the partition's other files, so an hourly job adds about one Parquet file to the current day every hour.
+Once a day has ended, the next run compacts that day's files into files of up to 192 MiB.
+Attachments are written as files under the job's attachments directory, `<path>/day=YYYY-MM-DD/<message_id>/<filename>`, and the feature group's `attachments` column holds their full paths.
+It writes through the HopsFS mount of the job's pod and reads Gmail with short-lived access tokens that the backend mints for the data source, so it never holds the data source's credentials.
+
+`FULL_LOAD` upserts every selected message and then removes the rows and attachments of the messages it did not see, so a run that fails part way leaves the previous rows readable.
+`INCREMENTAL_TIMESTAMP` upserts the messages received after the cursor recorded by the previous run.
+Upserts are keyed by message id and the cursor moves only after a batch is committed, so a retry, or a run that overlaps the previous one, never duplicates a message.
+
+This module also runs outside a job, for tests, so the client library is imported inside `_main` only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import collections
+import email
+import email.policy
+import email.utils
+import html
+import json
+import logging
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import time
+import unicodedata
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+    from typing import Self
+
+
+_logger = logging.getLogger(__name__)
+
+GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/"
+STATE_DIR = "_gmail_sync_state"
+STATE_SCHEMA_VERSION = 3
+LEASE_SUFFIX = ".__lease__"
+STRATEGIES = ("FULL_LOAD", "INCREMENTAL_TIMESTAMP")
+# Messages received in the last minute are left to the next run: Gmail can still be indexing them.
+RUN_HORIZON_MS = 60_000
+# A token is renewed this long before it expires, so no request goes out with one about to lapse.
+TOKEN_RENEWAL_MS = 5 * 60_000
+# Gmail rate-limits per user; a few parallel fetches stay well under it and the client backs off when it does not.
+FETCH_WORKERS = 4
+# Messages fetched per batch; bounds how many raw messages, attachments included, are in memory at once.
+# A raw message can be 35 MB as base64, and parsing it takes several copies.
+FETCH_BATCH = 8
+# Messages per feature group upsert, and so per cursor checkpoint.
+UPSERT_BATCH = 5000
+# Bytes of rows, as JSON, per upsert: a delta-rs merge holds about ten times its batch, so 5000 large emails ran a 2 GiB job out of memory.
+UPSERT_BATCH_BYTES = 16 * 1024 * 1024
+# A run reads its range in windows this long, oldest first, so a backfill upserts as it goes.
+WINDOW_MS = 7 * 24 * 3600_000
+# Rate-limit retries are logged at most this often.
+THROTTLE_LOG_INTERVAL_S = 60.0
+# Longest wait honoured from a Retry-After header.
+MAX_RETRY_AFTER_S = 300.0
+# Attempts at a request that fails on the network or with a server error; rate limits are retried without limit.
+MAX_ATTEMPTS = 8
+# Longest wait between two retries of a throttled request.
+MAX_RATE_LIMIT_BACKOFF_S = 64.0
+# A lease whose holder cannot be checked is taken over after this long; no sync runs for a day.
+UNVERIFIABLE_LEASE_MS = 24 * 3600_000
+# UTF-8 bytes; HopsFS names hold 255, and a write first goes to the name plus a 37-byte temporary suffix.
+MAX_FILENAME_LENGTH = 200
+
+# The feature group's columns, in order, with their feature types.
+# `from`, `to` and `date` are SQL keywords, hence the suffixed names.
+COLUMNS = (
+    ("message_id", "string"),
+    ("thread_id", "string"),
+    ("history_id", "string"),
+    ("internal_date", "timestamp"),
+    ("day", "string"),
+    ("hour", "string"),
+    ("date_header", "string"),
+    ("from_address", "string"),
+    ("to_addresses", "array<string>"),
+    ("cc_addresses", "array<string>"),
+    ("bcc_addresses", "array<string>"),
+    ("subject", "string"),
+    ("labels", "array<string>"),
+    ("snippet", "string"),
+    ("size_estimate", "bigint"),
+    ("body_text", "string"),
+    ("attachments", "array<string>"),
+)
+PRIMARY_KEY = ["message_id"]
+PARTITION_KEY = ["day"]
+# Compacted files aim for 100 to 250 MB; delta-rs packs a day's files into files of at most this size.
+COMPACTION_TARGET_BYTES = 192 * 1024 * 1024
+EVENT_TIME = "internal_date"
+
+
+class _GmailSyncError(Exception):
+    """A sync run that cannot continue; its message is shown in the job log."""
+
+
+class _LeaseHeld(_GmailSyncError):
+    """Another execution is syncing the same attachments directory."""
+
+
+# region Gmail client
+
+
+class _GmailClient:
+    """Read-only Gmail REST client that renews its token and backs off on rate limits.
+
+    `token_provider` returns `(access_token, expires_at_ms)`.
+    """
+
+    def __init__(
+        self,
+        mailbox: str,
+        token_provider: Callable[[], tuple[str, int | None]],
+        session: Any = None,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.time,
+    ):
+        if session is None:
+            import requests
+
+            session = requests.Session()
+        self._mailbox = mailbox
+        self._token_provider = token_provider
+        self._session = session
+        self._sleep = sleep
+        self._clock = clock
+        self._token: str | None = None
+        self._expires_at_ms: int | None = None
+        self._throttled = 0
+        self._throttle_logged_at: float | None = None
+        # Shared by the fetch workers: one throttled request pauses them all, rather than each spending quota to learn the same.
+        self._paused_until = 0.0
+
+    def _access_token(self, renew: bool = False) -> str:
+        now_ms = int(self._clock() * 1000)
+        if (
+            renew
+            or self._token is None
+            or (
+                self._expires_at_ms is not None
+                and self._expires_at_ms - now_ms < TOKEN_RENEWAL_MS
+            )
+        ):
+            self._token, self._expires_at_ms = self._token_provider()
+        return self._token
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> dict | None:
+        """GET a Gmail resource, or None when Gmail answers 404.
+
+        A rate-limited request is retried until Gmail serves it, so a throttled sync slows down instead of failing.
+        """
+        url = GMAIL_API + self._mailbox + path
+        renewed = False
+        attempt = throttled = -1
+        while True:
+            attempt += 1
+            pause = self._paused_until - self._clock()
+            if pause > 0:
+                self._sleep(pause)
+            try:
+                response = self._session.get(
+                    url,
+                    params=params,
+                    headers={"Authorization": "Bearer " + self._access_token()},
+                    timeout=(10, 60),
+                )
+            except OSError as e:
+                if attempt >= MAX_ATTEMPTS - 1:
+                    raise _GmailSyncError(
+                        f"Gmail unreachable: {type(e).__name__}"
+                    ) from e
+                self._backoff(attempt, None)
+                continue
+            status = response.status_code
+            if status == 200:
+                return response.json()
+            if status == 404:
+                return None
+            if status == 401 and not renewed:
+                self._access_token(renew=True)
+                renewed = True
+                continue
+            if _is_rate_limit(status, response):
+                throttled += 1
+                self._log_throttle(status, response)
+                self._pause(throttled, _retry_after(response))
+                continue
+            if status >= 500 and attempt < MAX_ATTEMPTS - 1:
+                self._backoff(attempt, _retry_after(response))
+                continue
+            raise _GmailSyncError(
+                f"Gmail returned HTTP {status}: {_error_reason(response)}"
+            )
+
+    def _log_throttle(self, status: int, response: Any) -> None:
+        # Unlocked across fetch workers: a lost count or an extra line is harmless.
+        self._throttled += 1
+        now = self._clock()
+        if (
+            self._throttle_logged_at is None
+            or now - self._throttle_logged_at >= THROTTLE_LOG_INTERVAL_S
+        ):
+            _logger.info(
+                "Gmail is throttling the sync (HTTP %d %s); %d retries so far",
+                status,
+                _error_reason(response),
+                self._throttled,
+            )
+            self._throttle_logged_at = now
+
+    def _delay(self, attempt: int, retry_after: float | None) -> float:
+        if retry_after is not None:
+            return min(retry_after, MAX_RETRY_AFTER_S)
+        return min(MAX_RATE_LIMIT_BACKOFF_S, 2**attempt) + random.uniform(0, 1)
+
+    def _backoff(self, attempt: int, retry_after: float | None) -> None:
+        self._sleep(self._delay(attempt, retry_after))
+
+    def _pause(self, attempt: int, retry_after: float | None) -> None:
+        """Hold every request back for the backoff; `_get` waits it out before its next attempt."""
+        resume = self._clock() + self._delay(attempt, retry_after)
+        self._paused_until = max(self._paused_until, resume)
+
+    def _list_message_ids(self, query: str, label_ids: list[str]) -> Iterator[str]:
+        """Ids of the messages matching `query` and every label in `label_ids`, newest first."""
+        page_token = None
+        while True:
+            params: dict[str, Any] = {
+                "q": query,
+                "maxResults": 500,
+                "includeSpamTrash": "false",
+            }
+            if label_ids:
+                params["labelIds"] = label_ids
+            if page_token:
+                params["pageToken"] = page_token
+            page = self._get("/messages", params) or {}
+            for message in page.get("messages", []):
+                yield message["id"]
+            page_token = page.get("nextPageToken")
+            if not page_token:
+                return
+
+    def _get_raw_message(self, message_id: str) -> dict | None:
+        """The message in `raw` format, or None when it was deleted after it was listed."""
+        return self._get(f"/messages/{message_id}", {"format": "raw"})
+
+
+def _is_rate_limit(status: int, response: Any) -> bool:
+    if status == 429:
+        return True
+    # Gmail reports per-user and per-project rate limits as 403 with these reasons.
+    return status == 403 and _error_reason(response) in (
+        "rateLimitExceeded",
+        "userRateLimitExceeded",
+    )
+
+
+def _error_reason(response: Any) -> str:
+    try:
+        error = response.json().get("error", {})
+        errors = error.get("errors") or [{}]
+        return errors[0].get("reason") or error.get("status") or str(error.get("code"))
+    except (ValueError, AttributeError):
+        return "unknown"
+
+
+def _retry_after(response: Any) -> float | None:
+    value = (getattr(response, "headers", None) or {}).get("Retry-After")
+    try:
+        return float(value) if value is not None else None
+    except ValueError:
+        return None
+
+
+# endregion
+
+# region Message parsing
+
+
+def _parse_message(
+    message: dict, attachments_root: Path | None, attachments_prefix: str
+) -> dict:
+    """One feature group row from a Gmail message in `raw` format.
+
+    Each attachment is written under `attachments_root/day=.../<message_id>/`, and the row lists it as `attachments_prefix` plus the same relative path.
+    With `attachments_root` None, attachments are listed but not written.
+    `internal_date` stays epoch milliseconds here; the writer converts it.
+    """
+    raw = base64.urlsafe_b64decode(message["raw"] + "=" * (-len(message["raw"]) % 4))
+    parsed = email.message_from_bytes(raw, policy=email.policy.default)
+    internal = int(message["internalDate"])
+    day = _day_of(internal)
+    relative_dir = f"day={day}/{_safe_name(message['id'])}"
+    attachments = []
+    taken: set[str] = set()
+    for part in parsed.iter_attachments():
+        name = _unique(_safe_name(part.get_filename() or "attachment"), taken)
+        if attachments_root is not None:
+            _atomic_write(attachments_root / relative_dir / name, _payload(part))
+        attachments.append(f"{attachments_prefix}/{relative_dir}/{name}")
+    return {
+        "message_id": message["id"],
+        "thread_id": message.get("threadId"),
+        "history_id": message.get("historyId"),
+        "internal_date": internal,
+        "day": day,
+        "hour": _hour_of(internal),
+        "date_header": _header(parsed, "Date"),
+        "from_address": _header(parsed, "From"),
+        "to_addresses": _addresses(parsed, "To"),
+        "cc_addresses": _addresses(parsed, "Cc"),
+        "bcc_addresses": _addresses(parsed, "Bcc"),
+        "subject": _header(parsed, "Subject"),
+        "labels": list(message.get("labelIds") or []),
+        "snippet": html.unescape(message.get("snippet") or ""),
+        "size_estimate": message.get("sizeEstimate"),
+        "body_text": _body_text(parsed),
+        "attachments": attachments,
+    }
+
+
+def _header(parsed: email.message.Message, name: str) -> str | None:
+    try:
+        value = parsed.get(name)
+    except (ValueError, IndexError):
+        # A header malformed beyond what the default policy can parse.
+        return None
+    return None if value is None else str(value)
+
+
+def _addresses(parsed: email.message.Message, name: str) -> list[str]:
+    try:
+        values = [str(v) for v in parsed.get_all(name, [])]
+    except (ValueError, IndexError):
+        return []
+    return [
+        _format_address(*pair) for pair in email.utils.getaddresses(values) if pair[1]
+    ]
+
+
+_NAME_SPECIALS = re.compile(r'[][\\()<>@,:;".]')
+
+
+def _format_address(name: str, address: str) -> str:
+    # email.utils.formataddr refuses a non-ASCII address and encodes a non-ASCII name as =?utf-8?...?=, which no search matches.
+    if not name:
+        return address
+    if _NAME_SPECIALS.search(name):
+        name = '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return f"{name} <{address}>"
+
+
+_TAG = re.compile(r"<[^>]+>")
+_SCRIPT = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
+_BLANK_LINES = re.compile(r"\n\s*\n\s*\n+")
+_UNSAFE_NAME = re.compile(r"[\x00-\x1f\x7f/\\:*?\"<>|]+")
+# HopsFS keeps inode names in a latin1 column (hops.hdfs_inodes.name), and its mount answers EIO for any other character.
+_NOT_LATIN1 = re.compile(r"[^\x00-\xff]+")
+
+
+def _body_text(parsed: email.message.EmailMessage) -> str:
+    part = parsed.get_body(preferencelist=("plain", "html"))
+    if part is None:
+        return ""
+    text = _decoded(part)
+    if part.get_content_subtype() == "html":
+        text = _SCRIPT.sub("", text)
+        text = re.sub(r"<br\s*/?>|</p>|</div>", "\n", text, flags=re.IGNORECASE)
+        text = html.unescape(_TAG.sub("", text))
+        text = _BLANK_LINES.sub("\n\n", text)
+    return text.strip()
+
+
+def _decoded(part: email.message.EmailMessage) -> str:
+    try:
+        return part.get_content()
+    except (LookupError, UnicodeDecodeError, AssertionError):
+        # An unknown or wrong charset; keep what decodes.
+        payload = part.get_payload(decode=True) or b""
+        return payload.decode("utf-8", errors="replace")
+
+
+def _payload(part: email.message.EmailMessage) -> bytes:
+    payload = part.get_payload(decode=True)
+    if payload is None:
+        # A message/rfc822 attachment: keep the attached message as it was sent.
+        payload = part.as_bytes()
+    return payload
+
+
+def _safe_name(name: str) -> str:
+    """A file name that stays inside its directory and that HopsFS can store, whatever the sender called the attachment."""
+    # Mail clients on macOS send decomposed accents (o + U+0308); composed, most of them are latin1.
+    name = unicodedata.normalize("NFC", name)
+    name = _UNSAFE_NAME.sub("_", _NOT_LATIN1.sub("_", name)).strip(" .")
+    if not name:
+        name = "attachment"
+    if len(name.encode()) > MAX_FILENAME_LENGTH:
+        stem, dot, ext = name.rpartition(".")
+        if dot and len(ext) < 16:
+            name = (
+                _utf8_prefix(stem, MAX_FILENAME_LENGTH - len(ext.encode()) - 1)
+                + "."
+                + ext
+            )
+        else:
+            name = _utf8_prefix(name, MAX_FILENAME_LENGTH)
+    return name
+
+
+def _utf8_prefix(text: str, max_bytes: int) -> str:
+    return text.encode()[:max_bytes].decode(errors="ignore")
+
+
+def _unique(name: str, taken: set[str]) -> str:
+    """`name`, or `name-2`, `name-3`... before its extension when an earlier attachment took it."""
+    candidate, n = name, 1
+    stem, dot, ext = name.rpartition(".")
+    while candidate in taken:
+        n += 1
+        candidate = f"{stem}-{n}.{ext}" if dot and stem else f"{name}-{n}"
+    taken.add(candidate)
+    return candidate
+
+
+# endregion
+
+# region Files
+
+
+def _day_of(epoch_ms: int) -> str:
+    """The `day` partition value of a Gmail receive time: its UTC date."""
+    return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+
+
+def _hour_of(epoch_ms: int) -> str:
+    """The `hour` partition value of a Gmail receive time: its UTC hour, `00` to `23`."""
+    return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc).strftime("%H")
+
+
+def _iso_utc(epoch_ms: int) -> str:
+    return (
+        datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _atomic_write(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + f".{uuid.uuid4().hex}.tmp")
+    tmp.write_bytes(content)
+    _replace(tmp, path)
+
+
+def _replace(source: Path, target: Path) -> None:
+    try:
+        os.replace(source, target)
+    except OSError:
+        # A FUSE mount that cannot rename over an existing file: remove it first.
+        # Only a retry of the same run reaches this, and it rewrites the same content.
+        if target.exists():
+            target.unlink()
+        os.replace(source, target)
+
+
+# endregion
+
+# region Feature group
+
+
+class _FeatureGroupWriter:
+    """Upserts rows into the mailbox's feature group, and removes rows from it.
+
+    With `isolated`, each upsert runs in a child process that writes `rows` from a scratch file.
+    A delta-rs merge keeps about 100 MB per call that the process never returns, so a backfill of dozens of upserts in one process outgrows its memory; a child returns it all when it exits.
+    """
+
+    def __init__(
+        self, feature_group, isolated: bool = False, scratch: Path | None = None
+    ):
+        self._fg = feature_group
+        self._isolated = isolated
+        self._scratch = scratch
+
+    def _upsert(self, rows: list[dict]) -> None:
+        self._write(rows, remove=False)
+
+    def _remove(self, keys: list[dict]) -> None:
+        """Remove the rows of `keys`, each the `message_id`, `internal_date` and `day` of a row, as `_keys` returns them."""
+        self._write(keys, remove=True)
+
+    def _keys(self) -> list[dict]:
+        """The key columns of every row of the feature group; none before its first upsert."""
+        from deltalake.exceptions import TableNotFoundError
+
+        try:
+            table = self._delta_table()
+        except TableNotFoundError:
+            return []
+        columns = ["message_id", EVENT_TIME, "day"]
+        return [
+            {
+                "message_id": key["message_id"],
+                EVENT_TIME: int(key[EVENT_TIME].timestamp() * 1000),
+                "day": key["day"],
+            }
+            for key in table.to_pyarrow_dataset().to_table(columns=columns).to_pylist()
+        ]
+
+    def _write(self, rows: list[dict], remove: bool) -> None:
+        if not self._isolated:
+            _write_rows(self._fg, rows, remove)
+            return
+        scratch = self._scratch or Path(os.environ.get("TMPDIR", "/tmp"))
+        scratch.mkdir(parents=True, exist_ok=True)
+        rows_path = scratch / f"gmail_upsert_{uuid.uuid4().hex}.jsonl"
+        try:
+            with open(rows_path, "w", encoding="utf-8") as f:
+                for row in rows:
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            # Not multiprocessing: its children re-import the job's launcher, which would start another sync.
+            code = (
+                "from hsfs.core import gmail_sync_job as g; "
+                f"g._write_from_file({self._fg.name!r}, {self._fg.version!r}, {str(rows_path)!r}, {remove!r})"
+            )
+            returncode = subprocess.run([sys.executable, "-c", code]).returncode
+        finally:
+            rows_path.unlink(missing_ok=True)
+        if returncode != 0:
+            killed = (
+                " (killed, most likely for running out of memory)"
+                if returncode in (-9, 137)
+                else ""
+            )
+            raise _GmailSyncError(
+                f"{'Removing' if remove else 'Upserting'} {len(rows)} messages failed with exit code {returncode}{killed}; the next run resumes from the last upsert"
+            )
+
+    def _compact(self, days: list[str]) -> None:
+        """Rewrite each day's files into as few files of up to COMPACTION_TARGET_BYTES as fit.
+
+        One Delta optimize commit for all the days: readers see them before or after it, never in between.
+        A day already in one file is left as it is.
+        """
+        self._delta_table().optimize.compact(
+            partition_filters=[("day", "in", days)],
+            target_size=COMPACTION_TARGET_BYTES,
+            max_concurrent_tasks=1,
+        )
+
+    def _delta_table(self):
+        from deltalake import DeltaTable
+        from hsfs.core import delta_engine
+
+        engine = delta_engine.DeltaEngine(
+            self._fg.feature_store_id, self._fg.feature_store_name, self._fg, None, None
+        )
+        return DeltaTable(
+            engine._get_delta_rs_location(),
+            storage_options=engine._get_delta_rs_storage_options(),
+        )
+
+
+def _frame(rows: list[dict]):
+    """The rows as a DataFrame typed like the feature group."""
+    import pandas as pd
+    import pyarrow as pa
+
+    frame = pd.DataFrame(rows, columns=[name for name, _ in COLUMNS])
+    # Typed explicitly: inferred, a batch without any Bcc becomes list<null>, which the feature group refuses.
+    arrow_types = {"string": pa.string(), "array<string>": pa.list_(pa.string())}
+    for name, offline_type in COLUMNS:
+        if offline_type in arrow_types:
+            frame[name] = frame[name].astype(pd.ArrowDtype(arrow_types[offline_type]))
+    frame["internal_date"] = pd.to_datetime(frame["internal_date"], unit="ms", utc=True)
+    frame["size_estimate"] = frame["size_estimate"].astype("Int64")
+    return frame
+
+
+def _key_frame(keys: list[dict]):
+    """The key columns a row removal matches on, typed like the feature group."""
+    import pandas as pd
+
+    frame = pd.DataFrame(keys, columns=["message_id", EVENT_TIME, "day"])
+    frame[EVENT_TIME] = pd.to_datetime(frame[EVENT_TIME], unit="ms", utc=True)
+    return frame
+
+
+def _write_rows(fg, rows: list[dict], remove: bool) -> None:
+    if remove:
+        fg.remove_rows(_key_frame(rows), storage="offline")
+    else:
+        fg.insert(_frame(rows), wait=True)
+
+
+def _write_from_file(name: str, version: int, rows_path: str, remove: bool) -> None:
+    """Upsert or remove the rows of a JSON lines file in a feature group of the job's project; the child process of an isolated write."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+    import hopsworks
+
+    with open(rows_path, encoding="utf-8") as f:
+        rows = [json.loads(line) for line in f]
+    fg = hopsworks.login().get_feature_store().get_feature_group(name, version=version)
+    _write_rows(fg, rows, remove)
+
+
+def _feature_group(fs, name: str, mailbox: str):
+    """The mailbox's Delta feature group, created with its schema on the first run."""
+    from hsfs.feature import Feature
+
+    fg = fs.get_or_create_feature_group(
+        name=name,
+        version=1,
+        description=f"Emails of {mailbox}, copied by its Gmail sync job",
+        primary_key=PRIMARY_KEY,
+        partition_key=PARTITION_KEY,
+        event_time=EVENT_TIME,
+        time_travel_format="DELTA",
+        online_enabled=False,
+        statistics_config=False,
+    )
+    if fg.id is None:
+        fg.save(features=[Feature(n, type=t) for n, t in COLUMNS])
+    return fg
+
+
+# endregion
+
+# region State
+
+
+@dataclass
+class _SyncState:
+    """What a run leaves behind for the next one: the configuration it ran with and its cursor."""
+
+    mailbox: str
+    connector_id: int
+    feature_group: str
+    query: str
+    labels: list[str]
+    cursor_ms: int | None = None
+    cursor_ids: list[str] = field(default_factory=list)
+    # Days written to since they were last compacted; each is compacted once it has ended.
+    uncompacted_days: list[str] = field(default_factory=list)
+    schema_version: int = STATE_SCHEMA_VERSION
+
+    def _identity(self) -> tuple:
+        return (
+            self.mailbox,
+            self.connector_id,
+            self.feature_group,
+            self.query,
+            tuple(sorted(self.labels)),
+            self.schema_version,
+        )
+
+
+def _read_state(directory: Path) -> tuple[_SyncState | None, int]:
+    """The newest readable state and its sequence number; (None, 0) when there is none.
+
+    Raises:
+        _GmailSyncError: When state versions exist but none can be read.
+            Starting over would copy the whole mailbox again.
+    """
+    state_dir = directory / STATE_DIR
+    if not state_dir.is_dir():
+        return None, 0
+    versions = sorted(
+        (int(p.stem), p)
+        for p in state_dir.iterdir()
+        if p.suffix == ".json" and p.stem.isdigit()
+    )
+    for seq, path in reversed(versions):
+        try:
+            return _SyncState(**json.loads(path.read_text())), seq
+        except (ValueError, TypeError):
+            _logger.warning("Skipping unreadable sync state %s", path.name)
+    if versions:
+        raise _GmailSyncError(
+            f"The sync state in {state_dir} cannot be read; run a full load to rebuild it"
+        )
+    return None, 0
+
+
+def _latest_seq(directory: Path) -> int:
+    """The sequence number of the newest state version, readable or not; 0 when there is none."""
+    state_dir = directory / STATE_DIR
+    if not state_dir.is_dir():
+        return 0
+    return max(
+        (
+            int(p.stem)
+            for p in state_dir.iterdir()
+            if p.suffix == ".json" and p.stem.isdigit()
+        ),
+        default=0,
+    )
+
+
+def _write_state(directory: Path, state: _SyncState, seq: int) -> None:
+    """Record `state` as version `seq`; earlier versions are pruned only after it is in place."""
+    state_dir = directory / STATE_DIR
+    _atomic_write(state_dir / f"{seq}.json", json.dumps(state.__dict__).encode())
+    for path in state_dir.iterdir():
+        if path.suffix == ".json" and path.stem.isdigit() and int(path.stem) < seq - 1:
+            path.unlink(missing_ok=True)
+
+
+# endregion
+
+# region Run
+
+
+@dataclass
+class _SyncConfig:
+    """The job configuration the backend writes next to the job's program."""
+
+    job_name: str
+    connector_id: int
+    connector_name: str
+    feature_group_name: str
+    path: str
+    query: str = ""
+    labels: list[str] = field(default_factory=list)
+    loading_strategy: str = "INCREMENTAL_TIMESTAMP"
+    initial_value: int | None = None
+
+    @classmethod
+    def from_json(cls, config: dict) -> _SyncConfig:
+        if config.get("schemaVersion") != 2:
+            raise _GmailSyncError(
+                f"Unsupported sync configuration version {config.get('schemaVersion')}; save the sync job again"
+            )
+        sync_config = cls(
+            job_name=config["jobName"],
+            connector_id=int(config["connectorId"]),
+            connector_name=config["connectorName"],
+            feature_group_name=config["featureGroupName"],
+            path=config["path"].strip("/"),
+            query=config.get("query") or "",
+            labels=list(config.get("labels") or []),
+            loading_strategy=config.get("loadingStrategy") or "INCREMENTAL_TIMESTAMP",
+            initial_value=config.get("initialValue"),
+        )
+        if sync_config.loading_strategy not in STRATEGIES:
+            raise _GmailSyncError(
+                f"Unknown loading strategy {sync_config.loading_strategy}"
+            )
+        return sync_config
+
+
+def _gmail_query(user_query: str, lower_ms: int | None, upper_ms: int) -> str:
+    """The Gmail search for a run: the user's query, without drafts, widened by a second on each side.
+
+    Gmail's `after:` and `before:` take whole seconds, so the run filters the exact bounds itself.
+    """
+    parts = []
+    if user_query.strip():
+        parts.append(f"({user_query.strip()})")
+    parts.append("-in:drafts")
+    if lower_ms is not None:
+        parts.append(f"after:{lower_ms // 1000 - 1}")
+    parts.append(f"before:{upper_ms // 1000 + 1}")
+    return " ".join(parts)
+
+
+class _Lease:
+    """Exclusive use of an attachments directory by one execution, recoverable after that execution dies.
+
+    `is_running(holder)` reports whether the holder recorded in an existing lease still runs, or None when it cannot tell.
+    """
+
+    def __init__(
+        self,
+        target: Path,
+        holder: str,
+        is_running: Callable[[str], bool | None],
+        clock: Callable[[], float] = time.time,
+    ):
+        self._path = target.with_name(target.name + LEASE_SUFFIX)
+        self._holder = holder
+        self._is_running = is_running
+        self._clock = clock
+
+    def __enter__(self) -> Self:
+        for _ in range(2):
+            try:
+                fd = os.open(self._path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                if self._take_over_stale():
+                    continue
+                raise _LeaseHeld(
+                    f"Another sync of this mailbox is running; remove {self._path} only if it is not"
+                ) from None
+            with os.fdopen(fd, "w") as f:
+                json.dump(
+                    {"holder": self._holder, "since": int(self._clock() * 1000)}, f
+                )
+            return self
+        raise _GmailSyncError(f"Could not take the lease {self._path}")
+
+    def _take_over_stale(self) -> bool:
+        try:
+            lease = json.loads(self._path.read_text())
+        except (OSError, ValueError):
+            lease = {}
+        holder = lease.get("holder")
+        running = self._is_running(holder) if holder else None
+        age_ms = int(self._clock() * 1000) - int(lease.get("since") or 0)
+        if running or (running is None and age_ms < UNVERIFIABLE_LEASE_MS):
+            return False
+        _logger.info("Taking over the lease of %s, which no longer runs", holder)
+        self._path.unlink(missing_ok=True)
+        return True
+
+    def __exit__(self, *exc: object) -> None:
+        self._path.unlink(missing_ok=True)
+
+
+@dataclass
+class _RunResult:
+    copied: int
+    days: list[str]
+    skipped_deleted: int
+    skipped_unreadable: int
+    cursor_ms: int | None
+
+
+class _SyncRun:
+    """One execution of a sync job.
+
+    `client` is a `_GmailClient` for the data source's mailbox, `writer` upserts into its feature group, and the attachments directory is `fs_root / config.path`, listed in rows as `project_root / config.path`.
+    """
+
+    def __init__(
+        self,
+        config: _SyncConfig,
+        mailbox: str,
+        client: _GmailClient,
+        writer: _FeatureGroupWriter,
+        fs_root: Path,
+        project_root: str,
+        execution_id: str,
+        is_running: Callable[[str], bool | None],
+        clock: Callable[[], float] = time.time,
+        scratch: Path | None = None,
+    ):
+        self._config = config
+        self._mailbox = mailbox
+        self._client = client
+        self._writer = writer
+        self._target = fs_root / config.path
+        self._dataset = fs_root / config.path.split("/", 1)[0]
+        self._prefix = f"{project_root.rstrip('/')}/{config.path}"
+        self._execution_id = execution_id
+        self._is_running = is_running
+        self._clock = clock
+        self._scratch = scratch
+
+    def _run(self) -> _RunResult:
+        # A missing dataset means the HopsFS mount is absent or the path is wrong; directories below it are ours.
+        if not self._dataset.is_dir():
+            raise _GmailSyncError(f"The dataset {self._dataset.name} does not exist")
+        self._target.parent.mkdir(parents=True, exist_ok=True)
+        with _Lease(self._target, self._execution_id, self._is_running, self._clock):
+            if self._config.loading_strategy == "FULL_LOAD":
+                return self._full_load()
+            return self._incremental()
+
+    def _expected_state(self) -> _SyncState:
+        return _SyncState(
+            mailbox=self._mailbox,
+            connector_id=self._config.connector_id,
+            feature_group=self._config.feature_group_name,
+            query=self._config.query,
+            labels=sorted(self._config.labels),
+        )
+
+    def _incremental(self) -> _RunResult:
+        expected = self._expected_state()
+        state, seq = _read_state(self._target)
+        if state is not None and state.schema_version != STATE_SCHEMA_VERSION:
+            raise _GmailSyncError(
+                f"The feature group {self._config.feature_group_name} was filled by an earlier version of the sync, "
+                "whose cursor this one cannot resume from. Run a full load to rebuild it."
+            )
+        if state is not None and state._identity() != expected._identity():
+            raise _GmailSyncError(
+                f"The feature group {self._config.feature_group_name} was filled for a different mailbox, "
+                "query or labels. Run a full load to rebuild it, or sync into a new feature group."
+            )
+        if state is None:
+            state = expected
+        lower = (
+            state.cursor_ms
+            if state.cursor_ms is not None
+            else self._config.initial_value
+        )
+        result = _RunResult(0, [], 0, 0, state.cursor_ms)
+        for batch, through_ms, last_ids in self._windows(
+            lower, set(state.cursor_ids), result
+        ):
+            if batch:
+                self._writer._upsert(batch)
+            _advance(state, batch, through_ms, last_ids)
+            seq += 1
+            _write_state(self._target, state, seq)
+            self._log_progress(result, state)
+        self._compact_ended_days(state, seq)
+        result.cursor_ms = state.cursor_ms
+        return result
+
+    def _full_load(self) -> _RunResult:
+        """Upsert every selected message, then remove the rows and attachments of the messages this run did not see.
+
+        Readers keep the previous rows until the run removes them at its end, and a run that fails part way leaves them in place; the next full load starts over.
+        """
+        state = self._expected_state()
+        result = _RunResult(0, [], 0, 0, None)
+        seen: set[str] = set()
+        for batch, through_ms, last_ids in self._windows(
+            self._config.initial_value, set(), result
+        ):
+            if batch:
+                self._writer._upsert(batch)
+                seen.update(row["message_id"] for row in batch)
+            _advance(state, batch, through_ms, last_ids)
+            self._log_progress(result, state)
+        self._remove_unseen(seen)
+        seq = _latest_seq(self._target) + 1
+        _write_state(self._target, state, seq)
+        self._compact_ended_days(state, seq)
+        result.cursor_ms = state.cursor_ms
+        return result
+
+    def _remove_unseen(self, seen: set[str]) -> None:
+        """Remove the rows, then the attachment directories, of the messages not in `seen`.
+
+        Rows go first: a run that dies in between leaves files no row lists, never a row listing missing files.
+        """
+        stale = [key for key in self._writer._keys() if key["message_id"] not in seen]
+        if stale:
+            self._writer._remove(stale)
+            _logger.info("Removed %d messages the full load did not see", len(stale))
+        kept = {_safe_name(message_id) for message_id in seen}
+        for day_dir in self._target.glob("day=*"):
+            for message_dir in day_dir.iterdir():
+                if message_dir.name not in kept:
+                    shutil.rmtree(message_dir)
+            if not any(day_dir.iterdir()):
+                day_dir.rmdir()
+
+    def _windows(
+        self,
+        lower_ms: int | None,
+        skip_ids: set[str],
+        result: _RunResult,
+    ) -> Iterator[tuple[list[dict], int | None, set[str]]]:
+        """Upsert batches of the messages that reached Gmail from `lower_ms` up to the run horizon, each with the point the cursor can move to after it and the ids listed in the last window read.
+
+        Gmail's `after:` and `before:` search on when a message reached Gmail, which can be days away from its `internalDate`, the sender's `Date`; every message a window lists is copied, whatever its `internalDate`.
+        The range is read in `WINDOW_MS` windows, and the cursor moves only at the end of a fully read window.
+        A batch is cut once it holds `UPSERT_BATCH` messages or `UPSERT_BATCH_BYTES`, at the end of a window when it can be, so it exceeds either by one message at most.
+        A batch cut inside a window carries None as its cursor point, and a retry upserts its messages again.
+        Without a lower bound the first window is open below and the windows start from the oldest message Gmail lists.
+        The run ends with a batch, possibly empty, so a run that finds nothing still moves the cursor.
+        """
+        upper_ms = int(self._clock() * 1000) - RUN_HORIZON_MS
+        start = lower_ms if lower_ms is not None else self._oldest(upper_ms)
+        edges = (
+            list(range(start + WINDOW_MS, upper_ms, WINDOW_MS))
+            if start is not None
+            else []
+        )
+        pending: list[dict] = []
+        pending_bytes = 0
+        cut = False
+        window_lower = lower_ms
+        windows = [*edges, upper_ms]
+        for i, window_upper in enumerate(windows):
+            listed = self._list_ids(
+                _gmail_query(self._config.query, window_lower, window_upper)
+            )
+            ids = [message_id for message_id in listed if message_id not in skip_ids]
+            if ids:
+                _logger.info(
+                    "Gmail listed %d candidate messages up to %s",
+                    len(ids),
+                    _iso_utc(window_upper),
+                )
+            for row in self._fetch(ids, self._target, result):
+                if len(pending) >= UPSERT_BATCH or pending_bytes >= UPSERT_BATCH_BYTES:
+                    result.copied += len(pending)
+                    yield pending, None, set()
+                    pending, pending_bytes, cut = [], 0, True
+                pending.append(row)
+                pending_bytes += _row_bytes(row)
+                if row["day"] not in result.days:
+                    result.days.append(row["day"])
+            # The queries of neighbouring windows overlap by a second or two.
+            skip_ids = set(listed)
+            window_lower = window_upper
+            if (
+                cut
+                or len(pending) >= UPSERT_BATCH
+                or pending_bytes >= UPSERT_BATCH_BYTES
+                or i == len(windows) - 1
+            ):
+                result.copied += len(pending)
+                yield pending, window_upper, skip_ids
+                pending, pending_bytes, cut = [], 0, False
+        result.days.sort()
+
+    def _label_sets(self) -> list[list[str]]:
+        # Gmail's labelIds selects the messages carrying every label given, so each label is listed on its own.
+        return [[label] for label in self._config.labels] or [[]]
+
+    def _list_ids(self, query: str) -> list[str]:
+        """Ids of the messages matching `query` that carry any of the configured labels, or of all of them without labels."""
+        return list(
+            dict.fromkeys(
+                message_id
+                for labels in self._label_sets()
+                for message_id in self._client._list_message_ids(query, labels)
+            )
+        )
+
+    def _oldest(self, upper_ms: int) -> int | None:
+        """Where the windows of a run without a lower bound start: the `internalDate` of the last message each label lists, or None for no messages.
+
+        Gmail lists newest first, so this is about the oldest message; the first window is open below, so a message before it is still copied.
+        """
+        query = _gmail_query(self._config.query, None, upper_ms)
+        oldest = None
+        for labels in self._label_sets():
+            last = collections.deque(
+                self._client._list_message_ids(query, labels), maxlen=1
+            )
+            message = self._client._get_raw_message(last[0]) if last else None
+            if message is not None:
+                received = int(message["internalDate"])
+                oldest = received if oldest is None else min(oldest, received)
+        return oldest
+
+    def _log_progress(self, result: _RunResult, state: _SyncState) -> None:
+        _logger.info(
+            "Upserted %d messages so far, through %s",
+            result.copied,
+            "the start" if state.cursor_ms is None else _iso_utc(state.cursor_ms),
+        )
+
+    def _compact_ended_days(self, state: _SyncState, seq: int) -> None:
+        """Compact every written day that has ended in UTC, in one commit, and checkpoint them done.
+
+        An hourly job leaves a file per run in the current day; the first run after midnight compacts the day before.
+        A day still under way is left alone, so its files are rewritten once, not every hour.
+        A backfill ends with thousands of ended days, which one commit compacts in seconds and a commit per day in hours.
+        """
+        today = _day_of(int(self._clock() * 1000))
+        ended = sorted(day for day in set(state.uncompacted_days) if day < today)
+        if not ended:
+            return
+        self._writer._compact(ended)
+        state.uncompacted_days = [d for d in state.uncompacted_days if d >= today]
+        _write_state(self._target, state, seq + 1)
+        _logger.info("Compacted %d days, %s to %s", len(ended), ended[0], ended[-1])
+
+    def _fetch(
+        self, ids: list[str], attachments_root: Path, result: _RunResult
+    ) -> Iterator[dict]:
+        """The rows of the messages `ids`, grouped by day, counting into `result` the messages deleted since listing and those that could not be parsed.
+
+        Every message is fetched before the first row is yielded, so a failed fetch upserts nothing.
+        Attachments are written under `attachments_root` as messages arrive, and rows are spilled to scratch files per day and read back one at a time, so memory holds one message per worker.
+        A message that cannot be parsed is logged with its id and left out, so one unusual message does not stop every later run; a filesystem error still fails the run.
+        """
+        scratch = (
+            Path(self._scratch)
+            if self._scratch
+            else Path(os.environ.get("TMPDIR", "/tmp"))
+        )
+        spill_dir = scratch / f"gmail_sync_{uuid.uuid4().hex}"
+        spill_dir.mkdir(parents=True)
+        try:
+            with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+                for start in range(0, len(ids), FETCH_BATCH):
+                    batch = ids[start : start + FETCH_BATCH]
+                    for message in pool.map(self._client._get_raw_message, batch):
+                        if message is None:
+                            result.skipped_deleted += 1
+                            continue
+                        try:
+                            row = _parse_message(
+                                message, attachments_root, self._prefix
+                            )
+                        except OSError:
+                            # The attachments directory failing is not the message's fault; the next run resumes here.
+                            raise
+                        except Exception:
+                            _logger.exception(
+                                "Leaving out message %s, which could not be parsed",
+                                message["id"],
+                            )
+                            result.skipped_unreadable += 1
+                            continue
+                        with open(
+                            spill_dir / f"{row['day']}.jsonl", "a", encoding="utf-8"
+                        ) as f:
+                            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            for spill in sorted(spill_dir.iterdir()):
+                with open(spill, encoding="utf-8") as f:
+                    for line in f:
+                        yield json.loads(line)
+        finally:
+            shutil.rmtree(spill_dir, ignore_errors=True)
+
+
+def _row_bytes(row: dict) -> int:
+    return len(json.dumps(row, ensure_ascii=False).encode())
+
+
+def _advance(
+    state: _SyncState, batch: list[dict], through_ms: int | None, last_ids: set[str]
+) -> None:
+    """Note the days `batch` wrote and, with `through_ms`, move the cursor past a fully read window, keeping the ids it listed so the next query's overlap skips them."""
+    state.uncompacted_days = sorted(
+        set(state.uncompacted_days) | {r["day"] for r in batch}
+    )
+    if through_ms is not None:
+        state.cursor_ms, state.cursor_ids = through_ms, sorted(last_ids)
+
+
+# endregion
+
+# region Job entry point
+
+
+def _project_relative(path: str) -> str:
+    return re.sub(r"^(hdfs://[^/]*)?/Projects/[^/]+/", "", path).strip("/")
+
+
+def _token_provider(connector) -> Callable[[], tuple[str, int | None]]:
+    def provide() -> tuple[str, int | None]:
+        token = connector.get_access_token()
+        return token.token, token.expires_at
+
+    return provide
+
+
+def _execution_liveness(project, job_name: str) -> Callable[[str], bool | None]:
+    def is_running(holder: str) -> bool | None:
+        if not holder.isdigit():
+            return None
+        try:
+            job = project.get_job_api().get_job(job_name)
+            for execution in job.get_executions():
+                if str(execution.id) == holder:
+                    return execution.success is None
+            return False
+        except Exception:
+            # Unknown, not stale: the lease then falls back to its age.
+            return None
+
+    return is_running
+
+
+def _main(argv: list[str] | None = None) -> None:
+    """Run the sync job named by `--config`; the scheduler's `-start_time` argument is ignored."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+    parser = argparse.ArgumentParser(
+        description="Copy a Gmail mailbox into a feature group"
+    )
+    parser.add_argument("--config", required=True)
+    args, _ = parser.parse_known_args(argv)
+
+    fs_root = Path(os.environ.get("HOPSFS_MOUNT", "/hopsfs"))
+    if not fs_root.is_dir():
+        raise _GmailSyncError(
+            f"The HopsFS mount {fs_root} is missing; Gmail sync jobs need mount_hopsfs_in_python_job enabled"
+        )
+    config = _SyncConfig.from_json(
+        json.loads((fs_root / _project_relative(args.config)).read_text())
+    )
+
+    import hopsworks
+
+    project = hopsworks.login()
+    fs = project.get_feature_store()
+    connector = fs.get_data_source(config.connector_name).storage_connector
+    if connector.id != config.connector_id or connector.type != "GMAIL":
+        raise _GmailSyncError(
+            f"Data source {config.connector_name} is no longer the one this job was created for; "
+            "recreate the sync job"
+        )
+    writer = _FeatureGroupWriter(
+        _feature_group(fs, config.feature_group_name, connector.mailbox),
+        isolated=True,
+    )
+    execution_id = (
+        os.environ.get("HOPSWORKS_JOB_EXECUTION_ID") or f"local-{uuid.uuid4().hex}"
+    )
+    try:
+        result = _SyncRun(
+            config,
+            connector.mailbox,
+            _GmailClient(connector.mailbox, _token_provider(connector)),
+            writer,
+            fs_root,
+            f"/Projects/{project.name}",
+            execution_id,
+            _execution_liveness(project, config.job_name),
+        )._run()
+    except _LeaseHeld as e:
+        # A scheduled run that fires during a long backfill has nothing to do; it is not a failure.
+        _logger.info("%s; this run does nothing", e)
+        return
+    _logger.info(
+        "Upserted %d messages into %s across %d days (%d deleted while listed, %d left out as unparseable); cursor %s",
+        result.copied,
+        config.feature_group_name,
+        len(result.days),
+        result.skipped_deleted,
+        result.skipped_unreadable,
+        _iso_utc(result.cursor_ms) if result.cursor_ms is not None else "none",
+    )
+
+
+if __name__ == "__main__":
+    _main()
+
+# endregion
