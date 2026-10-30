@@ -148,6 +148,8 @@ class OnlineStoreSqlClient:
         self._connection_options = None
 
         self._async_task_thread = None
+        # Keyed by event loop: a pool belongs to the loop that created it.
+        self._loop_connection_pools = weakref.WeakKeyDictionary()
 
     def _close(self) -> None:
         """Release the online store connection pool held by this client.
@@ -383,9 +385,6 @@ class OnlineStoreSqlClient:
             else None
         )
 
-        if not hasattr(self, "_loop_connection_pools"):
-            # Keyed by event loop: a pool belongs to the loop that created it.
-            self._loop_connection_pools = weakref.WeakKeyDictionary()
         if not self._async_task_thread:
             # Create the async event thread if it is not already running and start it.
             statements = len(self._prepared_statements[self.SINGLE_VECTOR_KEY])

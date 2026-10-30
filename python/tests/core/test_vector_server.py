@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import asyncio
 from copy import deepcopy
 from datetime import datetime
 from types import SimpleNamespace
@@ -496,6 +497,13 @@ class TestNativeAsyncLookup:
         assert asyncio.run(server._get_feature_vector_async()) == {"a": 1}
         sql._get_single_feature_vector.assert_not_called()
 
+    def test_the_return_type_defaults_to_a_list_as_in_the_blocking_call(self):
+        import inspect
+
+        signature = inspect.signature(VectorServer._feature_vector_steps)
+
+        assert signature.parameters["return_type"].default == "list"
+
     def test_the_options_come_from_the_body_not_the_call(self, mocker):
         # The body already has allow_missing and logging_data bound, so the drivers take
         # them from the yield. Recovering them from the call instead cost an
@@ -910,3 +918,234 @@ class TestDefaultCallsUseTheProjection:
         server = self._server(mocker, handlers={"elsewhere": lambda v: v})
 
         assert self._ask(server) == (0, 1)
+
+
+class _FakePool:
+    """Stands in for the aiomysql pool, counting how many are open."""
+
+    open_pools: list = []
+
+    def __init__(self):
+        self.closed = False
+        _FakePool.open_pools.append(self)
+
+    def close(self):
+        self.closed = True
+        _FakePool.open_pools.remove(self)
+
+    async def wait_closed(self):
+        pass
+
+
+class TestSqlClientLifecycle:
+    """A server holds at most one online store pool, and a collected server holds none.
+
+    The client, its task thread and the close path are real; only the pool, the prepared statements and the connector lookup are faked.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fake_online_store(self, mocker):
+        from hsfs.core import online_store_sql_engine
+
+        async def fake_pool(client, default_min_size):
+            return _FakePool()
+
+        def fake_statements(client, *args, **kwargs):
+            client._prepared_statements = {
+                online_store_sql_engine.OnlineStoreSqlClient.SINGLE_VECTOR_KEY: [None]
+            }
+
+        sql_client_class = online_store_sql_engine.OnlineStoreSqlClient
+        mocker.patch.object(sql_client_class, "_get_connection_pool", fake_pool)
+        mocker.patch.object(
+            sql_client_class, "_init_prepared_statements", fake_statements
+        )
+        mocker.patch.object(
+            online_store_sql_engine.storage_connector_api.StorageConnectorApi,
+            "_get_online_connector",
+        )
+        mocker.patch.object(
+            VectorServer, "serving_keys", new_callable=PropertyMock, return_value=set()
+        )
+        _FakePool.open_pools.clear()
+        yield
+        _FakePool.open_pools.clear()
+
+    def _server(self):
+        return VectorServer(feature_store_id=1, features=[])
+
+    def _setup(self, server, mocker):
+        server._setup_sql_client(
+            entity=mocker.MagicMock(), external=False, inference_helper_columns=False
+        )
+        assert server.sql_client._async_task_thread._ready.wait(5)
+
+    def _init_serving(self, server, mocker, init_sql_client):
+        entity = mocker.MagicMock()
+        entity.get_parent_feature_groups.return_value.accessible = [
+            SimpleNamespace(id=1, online_enabled=True)
+        ]
+        mocker.patch.object(server, "_init_transformation")
+        mocker.patch.object(server, "_set_return_feature_value_handlers")
+        mocker.patch.object(server, "_setup_rest_client_and_engine")
+        server._init_serving(
+            entity,
+            training_dataset_version=1,
+            external=False,
+            init_sql_client=init_sql_client,
+            init_rest_client=not init_sql_client,
+        )
+        if init_sql_client:
+            assert server.sql_client._async_task_thread._ready.wait(5)
+
+    def test_reinitialising_keeps_one_pool(self, mocker):
+        server = self._server()
+
+        for _ in range(6):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert len(_FakePool.open_pools) == 1
+        server._close()
+        assert _FakePool.open_pools == []
+
+    def test_a_reinit_failing_before_the_sql_setup_closes_the_old_pool(self, mocker):
+        server = self._server()
+        self._init_serving(server, mocker, init_sql_client=True)
+        mocker.patch.object(
+            server, "_set_default_client", side_effect=RuntimeError("bad options")
+        )
+
+        with pytest.raises(RuntimeError):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert _FakePool.open_pools == []
+        assert server.sql_client is None
+        assert not server._serving_initialized
+
+    def test_reinitialising_without_the_sql_client_closes_it(self, mocker):
+        server = self._server()
+        self._init_serving(server, mocker, init_sql_client=True)
+
+        self._init_serving(server, mocker, init_sql_client=False)
+
+        assert _FakePool.open_pools == []
+        assert server.sql_client is None
+        assert server._serving_initialized
+
+    def test_a_failed_setup_leaves_no_pool_open(self, mocker):
+        from hsfs.core import online_store_sql_engine
+
+        sql_client_class = online_store_sql_engine.OnlineStoreSqlClient
+        start = sql_client_class._init_async_mysql_connection
+
+        def start_then_fail(client, options=None):
+            start(client, options=options)
+            assert client._async_task_thread._ready.wait(5)
+            raise RuntimeError("setup failed after the pool opened")
+
+        server = self._server()
+        self._init_serving(server, mocker, init_sql_client=True)
+        mocker.patch.object(
+            sql_client_class, "_init_async_mysql_connection", start_then_fail
+        )
+
+        with pytest.raises(RuntimeError):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert _FakePool.open_pools == []
+        assert server.sql_client is None
+        assert not server._serving_initialized
+
+    def test_reinitialising_after_an_awaited_lookup_closes_the_loop_pool(self, mocker):
+        server = self._server()
+
+        async def main():
+            self._init_serving(server, mocker, init_sql_client=True)
+            await server.sql_client._loop_connection_pool()
+            assert len(_FakePool.open_pools) == 2
+
+            self._init_serving(server, mocker, init_sql_client=True)
+            # The old loop pool closes in a task on this loop.
+            await asyncio.sleep(0.1)
+            assert len(_FakePool.open_pools) == 1
+
+        asyncio.run(main())
+        server._close()
+        assert _FakePool.open_pools == []
+
+    def test_a_setup_failing_before_the_connection_keeps_its_error(self, mocker):
+        from hsfs.core import online_store_sql_engine
+
+        mocker.patch.object(
+            online_store_sql_engine.OnlineStoreSqlClient,
+            "_init_prepared_statements",
+            side_effect=RuntimeError("no prepared statements"),
+        )
+        server = self._server()
+
+        with pytest.raises(RuntimeError, match="no prepared statements"):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert server.sql_client is None
+
+    def test_a_collected_server_closes_its_pool(self, mocker):
+        import gc
+        import time
+
+        server = self._server()
+        self._setup(server, mocker)
+        thread = server.sql_client._async_task_thread
+
+        del server
+        gc.collect()
+
+        thread.join(timeout=5)
+        deadline = time.monotonic() + 5
+        while _FakePool.open_pools and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert _FakePool.open_pools == []
+        assert not thread.is_alive()
+
+    def test_a_dropped_feature_view_closes_its_pool(self, mocker):
+        """Nothing outside the feature view keeps its server alive once it is dropped."""
+        import gc
+        import time
+
+        from hsfs import feature_group, feature_view
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = feature_group.FeatureGroup(
+            name="fg", version=1, featurestore_id=99, primary_key=[], partition_key=[]
+        )
+        fv = feature_view.FeatureView(
+            name="fv", query=fg.select_all(), featurestore_id=99, labels=[]
+        )
+        self._setup(fv._vector_server, mocker)
+        thread = fv._vector_server.sql_client._async_task_thread
+
+        del fv
+        gc.collect()
+
+        thread.join(timeout=5)
+        deadline = time.monotonic() + 5
+        while _FakePool.open_pools and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert _FakePool.open_pools == []
+
+    def test_an_explicitly_closed_server_is_not_closed_again_when_collected(
+        self, mocker
+    ):
+        import gc
+
+        from hsfs.core import online_store_sql_engine
+
+        server = self._server()
+        self._setup(server, mocker)
+        server._close()
+        close = mocker.spy(online_store_sql_engine.OnlineStoreSqlClient, "_close")
+
+        del server
+        gc.collect()
+
+        close.assert_not_called()
