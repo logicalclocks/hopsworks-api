@@ -129,17 +129,27 @@ class FakeWriter:
         self.calls = []
         self.compacted = []
         self.compactions = 0
+        self.removed = []
 
     def _compact(self, days):
         self.compacted.extend(days)
         self.compactions += 1
 
-    def _upsert(self, rows, overwrite):
-        self.calls.append((len(rows), overwrite))
-        if overwrite:
-            self.table = {}
+    def _upsert(self, rows):
+        self.calls.append(len(rows))
         for row in rows:
             self.table[row["message_id"]] = row
+
+    def _keys(self):
+        return [
+            {k: row[k] for k in ("message_id", "internal_date", "day")}
+            for row in self.table.values()
+        ]
+
+    def _remove(self, keys):
+        self.removed.append(len(keys))
+        for key in keys:
+            del self.table[key["message_id"]]
 
 
 def _config(strategy="INCREMENTAL_TIMESTAMP", **kwargs):
@@ -302,7 +312,7 @@ class TestIncremental:
             == 0
         )
         assert sorted(writer.table) == ["a", "b", "c"]
-        assert all(not overwrite for _, overwrite in writer.calls)
+        assert writer.removed == []
 
     def test_rows_carry_day_and_hour_partitions(self, tmp_path):
         client = FakeGmail([_message("a", DAY2), _message("b", DAY2 + HOUR)])
@@ -352,12 +362,12 @@ class TestIncremental:
         writer = FakeWriter()
         _run(tmp_path, client, _config(), writer)
         client.add(_message("late", DAY1, received_ms=cursor + 300))
-        upserted_before = sum(n for n, _ in writer.calls)
+        upserted_before = sum(writer.calls)
         second = _run(
             tmp_path, client, _config(), writer, execution_id="8", now_ms=LATER
         )
         assert second.copied == 1
-        assert sum(n for n, _ in writer.calls) == upserted_before + 1
+        assert sum(writer.calls) == upserted_before + 1
         assert sorted(writer.table) == ["before", "late"]
 
     def test_a_message_is_copied_whenever_gmail_received_it(self, tmp_path):
@@ -449,7 +459,7 @@ class TestIncremental:
         writer = FakeWriter()
         result = _run(tmp_path, client, _config(), writer)
         assert result.copied == 5
-        assert writer.calls == [(2, False), (2, False), (1, False)]
+        assert writer.calls == [2, 2, 1]
         assert list(writer.table) == ["5", "4", "3", "2", "1"]
         state, _ = g._read_state(tmp_path / "Resources" / "mail")
         assert state.cursor_ms == NOW_MS - g.RUN_HORIZON_MS
@@ -469,7 +479,46 @@ class TestIncremental:
         result = _run(tmp_path, client, _config(), writer)
         assert result.copied == 5
         # Each window adds about 20 kB, so a batch is cut after every second window.
-        assert writer.calls == [(2, False), (2, False), (1, False)]
+        assert writer.calls == [2, 2, 1]
+
+    def test_a_busy_window_is_upserted_in_bounded_batches(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(g, "UPSERT_BATCH", 2)
+        client = FakeGmail([_message(str(i), DAY1 - i) for i in range(5)])
+        writer = FakeWriter()
+        cursors = []
+        real_write_state = g._write_state
+
+        def record(directory, state, seq):
+            cursors.append(state.cursor_ms)
+            real_write_state(directory, state, seq)
+
+        monkeypatch.setattr(g, "_write_state", record)
+        result = _run(tmp_path, client, _config(initialValue=DAY1 - HOUR), writer)
+        assert result.copied == 5
+        assert writer.calls == [2, 2, 1]
+        # The cursor moves only once the window has been read to its end.
+        assert cursors[:3] == [None, None, NOW_MS - g.RUN_HORIZON_MS]
+
+    def test_a_crash_inside_a_busy_window_is_repaired_by_the_retry(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(g, "UPSERT_BATCH", 2)
+        client = FakeGmail([_message(str(i), DAY1 - i) for i in range(5)])
+        writer = FakeWriter()
+        real_upsert = writer._upsert
+
+        def crash_on_second_upsert(rows):
+            if len(writer.calls) == 1:
+                raise OSError("pod killed")
+            real_upsert(rows)
+
+        writer._upsert = crash_on_second_upsert
+        config = _config(initialValue=DAY1 - HOUR)
+        with pytest.raises(OSError):
+            _run(tmp_path, client, config, writer)
+        writer._upsert = real_upsert
+        assert _run(tmp_path, client, config, writer, execution_id="8").copied == 5
+        assert sorted(writer.table) == ["0", "1", "2", "3", "4"]
 
     def test_without_a_start_date_the_oldest_message_is_copied(self, tmp_path):
         years_ago = NOW_MS - 2 * 365 * 24 * HOUR
@@ -578,8 +627,8 @@ class TestIncremental:
         names = sorted(
             p.name for p in (tmp_path / "Resources" / "mail" / g.STATE_DIR).iterdir()
         )
-        # One upsert checkpoint per weekly window, then one for the compaction.
-        assert names == ["4.json", "5.json"]
+        # A checkpoint per upsert, one more for the cut inside the first window, whose second of overlap also lists the next message, then one for the compaction.
+        assert names == ["5.json", "6.json"]
 
 
 class TestCompaction:
@@ -644,9 +693,7 @@ class TestCompaction:
 
 
 class TestFullLoad:
-    def test_a_full_load_overwrites_the_feature_group_and_the_attachments(
-        self, tmp_path
-    ):
+    def test_a_full_load_removes_the_messages_it_did_not_see(self, tmp_path):
         client = FakeGmail(
             [_message("a", DAY1, attachments=[("x.bin", b"1")]), _message("b", DAY2)]
         )
@@ -655,17 +702,53 @@ class TestFullLoad:
         del client.messages["a"]
         _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer, execution_id="8")
         assert sorted(writer.table) == ["b"]
-        assert writer.calls[-1][1] is True
+        assert writer.removed == [1]
         assert not (tmp_path / "Resources" / "mail" / "day=2026-10-20").exists()
         assert sorted(p.name for p in (tmp_path / "Resources").iterdir()) == ["mail"]
 
-    def test_only_the_first_batch_overwrites(self, tmp_path, monkeypatch):
+    def test_a_full_load_upserts_in_batches_without_emptying_the_feature_group(
+        self, tmp_path, monkeypatch
+    ):
         monkeypatch.setattr(g, "UPSERT_BATCH", 2)
         client = FakeGmail([_message(str(i), DAY1 - i * g.WINDOW_MS) for i in range(5)])
         writer = FakeWriter()
         _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
-        assert writer.calls == [(2, True), (2, False), (1, False)]
-        assert len(writer.table) == 5
+        assert writer.calls == [2, 2, 1]
+        assert len(writer.table) == 5 and writer.removed == []
+
+    def test_a_full_load_that_fails_after_its_first_batch_keeps_the_previous_rows(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(g, "UPSERT_BATCH", 2)
+        messages = [
+            _message(str(i), DAY1 - i * g.WINDOW_MS, attachments=[("x.bin", b"1")])
+            for i in range(5)
+        ]
+        client = FakeGmail(messages)
+        writer = FakeWriter()
+        config = _config(strategy="FULL_LOAD")
+        _run(tmp_path, client, config, writer)
+        before = dict(writer.table)
+        client.fail_ids.add("0")
+        with pytest.raises(g._GmailSyncError):
+            _run(tmp_path, client, config, writer, execution_id="8")
+        assert writer.calls[-1] == 2
+        assert writer.table == before
+        for row in writer.table.values():
+            for path in row["attachments"]:
+                assert (tmp_path / path.removeprefix(PROJECT_ROOT + "/")).exists()
+
+    def test_an_empty_full_load_clears_the_rows_and_their_attachments(self, tmp_path):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        writer = FakeWriter()
+        _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
+        assert (tmp_path / "Resources" / "mail" / "day=2026-10-20" / "a").is_dir()
+        config = _config(strategy="FULL_LOAD", query="from:nobody@example.com")
+        client.messages.clear()
+        result = _run(tmp_path, client, config, writer, execution_id="8")
+        assert result.copied == 0
+        assert writer.table == {}
+        assert not list((tmp_path / "Resources" / "mail").glob("day=*"))
 
     def test_incremental_after_a_full_load_continues_from_its_cursor(self, tmp_path):
         client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()
@@ -679,20 +762,14 @@ class TestFullLoad:
         )
         assert sorted(writer.table) == ["a", "b"]
 
-    def test_a_publication_interrupted_between_renames_is_restored(self, tmp_path):
-        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+    def test_a_full_load_replaces_the_cursor_of_other_labels(self, tmp_path):
+        client = FakeGmail([_message("a", DAY1), _message("b", DAY2, labels=["SENT"])])
         writer = FakeWriter()
-        _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
-        mail = tmp_path / "Resources" / "mail"
-        previous = tmp_path / "Resources" / "mail.__previous__" / "7"
-        previous.parent.mkdir()
-        mail.rename(previous)
-        (tmp_path / "Resources" / "mail.__staging__" / "7").mkdir(parents=True)
-        client.add(_message("b", NOW_MS + HOUR))
-        _run(tmp_path, client, _config(), writer, execution_id="8", now_ms=LATER)
-        assert sorted(writer.table) == ["a", "b"]
-        assert (mail / "day=2026-10-20" / "a" / "x.bin").exists()
-        assert sorted(p.name for p in (tmp_path / "Resources").iterdir()) == ["mail"]
+        _run(tmp_path, client, _config(), writer)
+        sent = {"labels": ["SENT"]}
+        _run(tmp_path, client, _config(strategy="FULL_LOAD", **sent), writer, "8")
+        assert sorted(writer.table) == ["b"]
+        assert _run(tmp_path, client, _config(**sent), writer, "9").copied == 0
 
 
 class TestLease:
@@ -741,10 +818,14 @@ class _FakeFeatureGroup:
     def __init__(self, id=None):
         self.id = id
         self.inserts = []
+        self.removals = []
         self.saved = None
 
-    def insert(self, frame, overwrite, wait):
-        self.inserts.append((frame, overwrite, wait))
+    def insert(self, frame, wait):
+        self.inserts.append((frame, wait))
+
+    def remove_rows(self, frame, storage):
+        self.removals.append((frame, storage))
 
     def save(self, features):
         self.saved = features
@@ -754,14 +835,25 @@ class TestFeatureGroup:
     def test_the_writer_sends_typed_columns(self):
         fg = _FakeFeatureGroup(1)
         row = g._parse_message(_message("a", DAY1), None, PROJECT_ROOT)
-        g._FeatureGroupWriter(fg)._upsert([row], overwrite=True)
-        frame, overwrite, wait = fg.inserts[0]
+        g._FeatureGroupWriter(fg)._upsert([row])
+        frame, wait = fg.inserts[0]
         assert list(frame.columns) == [name for name, _ in g.COLUMNS]
         assert str(frame["internal_date"].dtype).endswith(", UTC]")
         assert frame["internal_date"][0].year == 2026
         assert str(frame["size_estimate"].dtype) == "Int64"
         assert frame["to_addresses"][0] == ["alice@example.com"]
-        assert (overwrite, wait) == (True, True)
+        assert wait is True
+
+    def test_removals_match_on_the_merge_keys(self):
+        fg = _FakeFeatureGroup(1)
+        row = g._parse_message(_message("a", DAY1), None, PROJECT_ROOT)
+        key = {k: row[k] for k in ("message_id", "internal_date", "day")}
+        g._FeatureGroupWriter(fg)._remove([key])
+        frame, storage = fg.removals[0]
+        assert list(frame.columns) == ["message_id", "internal_date", "day"]
+        assert str(frame["internal_date"].dtype).endswith(", UTC]")
+        assert frame["internal_date"][0].timestamp() * 1000 == DAY1
+        assert storage == "offline"
 
     def test_a_batch_without_any_cc_or_bcc_keeps_the_feature_group_types(self):
         from hsfs.engine import python
@@ -771,7 +863,7 @@ class TestFeatureGroup:
         assert all(r["bcc_addresses"] == [] for r in rows)
         for row in rows:
             row["date_header"] = None
-        g._FeatureGroupWriter(fg)._upsert(rows, overwrite=False)
+        g._FeatureGroupWriter(fg)._upsert(rows)
         features = python.Engine._parse_schema_feature_group(
             None, fg.inserts[0][0], "DELTA"
         )
@@ -783,26 +875,24 @@ class TestFeatureGroup:
         rows = [g._parse_message(_message(i, DAY1), None, PROJECT_ROOT) for i in "ab"]
         sent = {}
 
-        def upsert_from_file(name, version, path, overwrite):
+        def write_from_file(name, version, path, remove):
             # The child reads the rows the parent wrote, before the parent removes them.
             with open(path) as f:
                 ids = [json.loads(line)["message_id"] for line in f]
-            sent.update(name=name, version=version, overwrite=overwrite, ids=ids)
+            sent.update(name=name, version=version, remove=remove, ids=ids)
 
         def child(argv):
             exec(argv[2], {})
             return mocker.MagicMock(returncode=0)
 
-        mocker.patch.object(g, "_upsert_from_file", side_effect=upsert_from_file)
+        mocker.patch.object(g, "_write_from_file", side_effect=write_from_file)
         run = mocker.patch.object(g.subprocess, "run", side_effect=child)
-        g._FeatureGroupWriter(fg, isolated=True, scratch=tmp_path)._upsert(
-            rows, overwrite=True
-        )
+        g._FeatureGroupWriter(fg, isolated=True, scratch=tmp_path)._upsert(rows)
         assert run.call_args.args[0][0] == g.sys.executable
         assert sent == {
             "name": "alice_examples",
             "version": 1,
-            "overwrite": True,
+            "remove": False,
             "ids": ["a", "b"],
         }
         assert fg.inserts == [] and list(tmp_path.iterdir()) == []
@@ -815,9 +905,7 @@ class TestFeatureGroup:
         )
         row = g._parse_message(_message("a", DAY1), None, PROJECT_ROOT)
         with pytest.raises(g._GmailSyncError, match="running out of memory"):
-            g._FeatureGroupWriter(fg, isolated=True, scratch=tmp_path)._upsert(
-                [row], overwrite=False
-            )
+            g._FeatureGroupWriter(fg, isolated=True, scratch=tmp_path)._upsert([row])
 
     def test_the_child_upserts_the_rows_of_its_file(self, tmp_path, mocker):
         import hopsworks
@@ -829,9 +917,9 @@ class TestFeatureGroup:
         rows_path = tmp_path / "rows.jsonl"
         row = g._parse_message(_message("a", DAY1), None, PROJECT_ROOT)
         rows_path.write_text(json.dumps(row) + "\n")
-        g._upsert_from_file("alice_examples", 1, str(rows_path), False)
-        frame, overwrite, wait = fg.inserts[0]
-        assert list(frame["message_id"]) == ["a"] and (overwrite, wait) == (False, True)
+        g._write_from_file("alice_examples", 1, str(rows_path), False)
+        frame, wait = fg.inserts[0]
+        assert list(frame["message_id"]) == ["a"] and wait is True
         project.get_feature_store.return_value.get_feature_group.assert_called_once_with(
             "alice_examples", version=1
         )

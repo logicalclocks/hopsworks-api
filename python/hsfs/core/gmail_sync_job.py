@@ -22,7 +22,7 @@ Once a day has ended, the next run compacts that day's files into files of up to
 Attachments are written as files under the job's attachments directory, `<path>/day=YYYY-MM-DD/<message_id>/<filename>`, and the feature group's `attachments` column holds their full paths.
 It writes through the HopsFS mount of the job's pod and reads Gmail with short-lived access tokens that the backend mints for the data source, so it never holds the data source's credentials.
 
-`FULL_LOAD` overwrites the feature group and rebuilds the attachments directory in a staging directory that it then swaps in.
+`FULL_LOAD` upserts every selected message and then removes the rows and attachments of the messages it did not see, so a run that fails part way leaves the previous rows readable.
 `INCREMENTAL_TIMESTAMP` upserts the messages received after the cursor recorded by the previous run.
 Upserts are keyed by message id and the cursor moves only after a batch is committed, so a retry, or a run that overlaps the previous one, never duplicates a message.
 
@@ -66,8 +66,6 @@ _logger = logging.getLogger(__name__)
 GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/"
 STATE_DIR = "_gmail_sync_state"
 STATE_SCHEMA_VERSION = 3
-STAGING_SUFFIX = ".__staging__"
-PREVIOUS_SUFFIX = ".__previous__"
 LEASE_SUFFIX = ".__lease__"
 STRATEGIES = ("FULL_LOAD", "INCREMENTAL_TIMESTAMP")
 # Messages received in the last minute are left to the next run: Gmail can still be indexing them.
@@ -507,7 +505,7 @@ def _replace(source: Path, target: Path) -> None:
 
 
 class _FeatureGroupWriter:
-    """Upserts rows into the mailbox's feature group; `overwrite` replaces its contents first.
+    """Upserts rows into the mailbox's feature group, and removes rows from it.
 
     With `isolated`, each upsert runs in a child process that writes `rows` from a scratch file.
     A delta-rs merge keeps about 100 MB per call that the process never returns, so a backfill of dozens of upserts in one process outgrows its memory; a child returns it all when it exits.
@@ -520,9 +518,34 @@ class _FeatureGroupWriter:
         self._isolated = isolated
         self._scratch = scratch
 
-    def _upsert(self, rows: list[dict], overwrite: bool) -> None:
+    def _upsert(self, rows: list[dict]) -> None:
+        self._write(rows, remove=False)
+
+    def _remove(self, keys: list[dict]) -> None:
+        """Remove the rows of `keys`, each the `message_id`, `internal_date` and `day` of a row, as `_keys` returns them."""
+        self._write(keys, remove=True)
+
+    def _keys(self) -> list[dict]:
+        """The key columns of every row of the feature group; none before its first upsert."""
+        from deltalake.exceptions import TableNotFoundError
+
+        try:
+            table = self._delta_table()
+        except TableNotFoundError:
+            return []
+        columns = ["message_id", EVENT_TIME, "day"]
+        return [
+            {
+                "message_id": key["message_id"],
+                EVENT_TIME: int(key[EVENT_TIME].timestamp() * 1000),
+                "day": key["day"],
+            }
+            for key in table.to_pyarrow_dataset().to_table(columns=columns).to_pylist()
+        ]
+
+    def _write(self, rows: list[dict], remove: bool) -> None:
         if not self._isolated:
-            self._fg.insert(_frame(rows), overwrite=overwrite, wait=True)
+            _write_rows(self._fg, rows, remove)
             return
         scratch = self._scratch or Path(os.environ.get("TMPDIR", "/tmp"))
         scratch.mkdir(parents=True, exist_ok=True)
@@ -534,7 +557,7 @@ class _FeatureGroupWriter:
             # Not multiprocessing: its children re-import the job's launcher, which would start another sync.
             code = (
                 "from hsfs.core import gmail_sync_job as g; "
-                f"g._upsert_from_file({self._fg.name!r}, {self._fg.version!r}, {str(rows_path)!r}, {overwrite!r})"
+                f"g._write_from_file({self._fg.name!r}, {self._fg.version!r}, {str(rows_path)!r}, {remove!r})"
             )
             returncode = subprocess.run([sys.executable, "-c", code]).returncode
         finally:
@@ -546,7 +569,7 @@ class _FeatureGroupWriter:
                 else ""
             )
             raise _GmailSyncError(
-                f"Upserting {len(rows)} messages failed with exit code {returncode}{killed}; the next run resumes from the last upsert"
+                f"{'Removing' if remove else 'Upserting'} {len(rows)} messages failed with exit code {returncode}{killed}; the next run resumes from the last upsert"
             )
 
     def _compact(self, days: list[str]) -> None:
@@ -555,20 +578,22 @@ class _FeatureGroupWriter:
         One Delta optimize commit for all the days: readers see them before or after it, never in between.
         A day already in one file is left as it is.
         """
+        self._delta_table().optimize.compact(
+            partition_filters=[("day", "in", days)],
+            target_size=COMPACTION_TARGET_BYTES,
+            max_concurrent_tasks=1,
+        )
+
+    def _delta_table(self):
         from deltalake import DeltaTable
         from hsfs.core import delta_engine
 
         engine = delta_engine.DeltaEngine(
             self._fg.feature_store_id, self._fg.feature_store_name, self._fg, None, None
         )
-        table = DeltaTable(
+        return DeltaTable(
             engine._get_delta_rs_location(),
             storage_options=engine._get_delta_rs_storage_options(),
-        )
-        table.optimize.compact(
-            partition_filters=[("day", "in", days)],
-            target_size=COMPACTION_TARGET_BYTES,
-            max_concurrent_tasks=1,
         )
 
 
@@ -588,8 +613,24 @@ def _frame(rows: list[dict]):
     return frame
 
 
-def _upsert_from_file(name: str, version: int, rows_path: str, overwrite: bool) -> None:
-    """Upsert the rows of a JSON lines file into a feature group of the job's project; the child process of an isolated upsert."""
+def _key_frame(keys: list[dict]):
+    """The key columns a row removal matches on, typed like the feature group."""
+    import pandas as pd
+
+    frame = pd.DataFrame(keys, columns=["message_id", EVENT_TIME, "day"])
+    frame[EVENT_TIME] = pd.to_datetime(frame[EVENT_TIME], unit="ms", utc=True)
+    return frame
+
+
+def _write_rows(fg, rows: list[dict], remove: bool) -> None:
+    if remove:
+        fg.remove_rows(_key_frame(rows), storage="offline")
+    else:
+        fg.insert(_frame(rows), wait=True)
+
+
+def _write_from_file(name: str, version: int, rows_path: str, remove: bool) -> None:
+    """Upsert or remove the rows of a JSON lines file in a feature group of the job's project; the child process of an isolated write."""
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
@@ -598,7 +639,7 @@ def _upsert_from_file(name: str, version: int, rows_path: str, overwrite: bool) 
     with open(rows_path, encoding="utf-8") as f:
         rows = [json.loads(line) for line in f]
     fg = hopsworks.login().get_feature_store().get_feature_group(name, version=version)
-    fg.insert(_frame(rows), overwrite=overwrite, wait=True)
+    _write_rows(fg, rows, remove)
 
 
 def _feature_group(fs, name: str, mailbox: str):
@@ -677,6 +718,21 @@ def _read_state(directory: Path) -> tuple[_SyncState | None, int]:
             f"The sync state in {state_dir} cannot be read; run a full load to rebuild it"
         )
     return None, 0
+
+
+def _latest_seq(directory: Path) -> int:
+    """The sequence number of the newest state version, readable or not; 0 when there is none."""
+    state_dir = directory / STATE_DIR
+    if not state_dir.is_dir():
+        return 0
+    return max(
+        (
+            int(p.stem)
+            for p in state_dir.iterdir()
+            if p.suffix == ".json" and p.stem.isdigit()
+        ),
+        default=0,
+    )
 
 
 def _write_state(directory: Path, state: _SyncState, seq: int) -> None:
@@ -845,7 +901,6 @@ class _SyncRun:
             raise _GmailSyncError(f"The dataset {self._dataset.name} does not exist")
         self._target.parent.mkdir(parents=True, exist_ok=True)
         with _Lease(self._target, self._execution_id, self._is_running, self._clock):
-            self._recover_publication()
             if self._config.loading_strategy == "FULL_LOAD":
                 return self._full_load()
             return self._incremental()
@@ -881,10 +936,10 @@ class _SyncRun:
         )
         result = _RunResult(0, [], 0, 0, state.cursor_ms)
         for batch, through_ms, last_ids in self._windows(
-            lower, set(state.cursor_ids), self._target, result
+            lower, set(state.cursor_ids), result
         ):
             if batch:
-                self._writer._upsert(batch, overwrite=False)
+                self._writer._upsert(batch)
             _advance(state, batch, through_ms, last_ids)
             seq += 1
             _write_state(self._target, state, seq)
@@ -894,40 +949,57 @@ class _SyncRun:
         return result
 
     def _full_load(self) -> _RunResult:
+        """Upsert every selected message, then remove the rows and attachments of the messages this run did not see.
+
+        Readers keep the previous rows until the run removes them at its end, and a run that fails part way leaves them in place; the next full load starts over.
+        """
         state = self._expected_state()
-        staging = self._staging_root() / self._execution_id
-        if staging.exists():
-            shutil.rmtree(staging)
-        staging.mkdir(parents=True)
         result = _RunResult(0, [], 0, 0, None)
-        batches = self._windows(self._config.initial_value, set(), staging, result)
-        overwrite = True
-        for batch, through_ms, last_ids in batches:
+        seen: set[str] = set()
+        for batch, through_ms, last_ids in self._windows(
+            self._config.initial_value, set(), result
+        ):
             if batch:
-                self._writer._upsert(batch, overwrite=overwrite)
-                overwrite = False
+                self._writer._upsert(batch)
+                seen.update(row["message_id"] for row in batch)
             _advance(state, batch, through_ms, last_ids)
             self._log_progress(result, state)
-        if not result.copied:
-            _logger.info("No messages matched; the feature group is left as it was")
-        _write_state(staging, state, 1)
-        self._publish(staging)
-        self._compact_ended_days(state, 1)
+        self._remove_unseen(seen)
+        seq = _latest_seq(self._target) + 1
+        _write_state(self._target, state, seq)
+        self._compact_ended_days(state, seq)
         result.cursor_ms = state.cursor_ms
         return result
+
+    def _remove_unseen(self, seen: set[str]) -> None:
+        """Remove the rows, then the attachment directories, of the messages not in `seen`.
+
+        Rows go first: a run that dies in between leaves files no row lists, never a row listing missing files.
+        """
+        stale = [key for key in self._writer._keys() if key["message_id"] not in seen]
+        if stale:
+            self._writer._remove(stale)
+            _logger.info("Removed %d messages the full load did not see", len(stale))
+        kept = {_safe_name(message_id) for message_id in seen}
+        for day_dir in self._target.glob("day=*"):
+            for message_dir in day_dir.iterdir():
+                if message_dir.name not in kept:
+                    shutil.rmtree(message_dir)
+            if not any(day_dir.iterdir()):
+                day_dir.rmdir()
 
     def _windows(
         self,
         lower_ms: int | None,
         skip_ids: set[str],
-        attachments_root: Path,
         result: _RunResult,
-    ) -> Iterator[tuple[list[dict], int, set[str]]]:
+    ) -> Iterator[tuple[list[dict], int | None, set[str]]]:
         """Upsert batches of the messages that reached Gmail from `lower_ms` up to the run horizon, each with the point the cursor can move to after it and the ids listed in the last window read.
 
         Gmail's `after:` and `before:` search on when a message reached Gmail, which can be days away from its `internalDate`, the sender's `Date`; every message a window lists is copied, whatever its `internalDate`.
-        The range is read in `WINDOW_MS` windows and a batch is only cut after a fully read window, so its cursor point is safe.
-        A batch is cut once it holds `UPSERT_BATCH` messages or `UPSERT_BATCH_BYTES`, so it can exceed either by one window.
+        The range is read in `WINDOW_MS` windows, and the cursor moves only at the end of a fully read window.
+        A batch is cut once it holds `UPSERT_BATCH` messages or `UPSERT_BATCH_BYTES`, at the end of a window when it can be, so it exceeds either by one message at most.
+        A batch cut inside a window carries None as its cursor point, and a retry upserts its messages again.
         Without a lower bound the first window is open below and the windows start from the oldest message Gmail lists.
         The run ends with a batch, possibly empty, so a run that finds nothing still moves the cursor.
         """
@@ -940,30 +1012,41 @@ class _SyncRun:
         )
         pending: list[dict] = []
         pending_bytes = 0
+        cut = False
         window_lower = lower_ms
         windows = [*edges, upper_ms]
         for i, window_upper in enumerate(windows):
-            rows, listed, deleted, unreadable = self._fetch(
-                window_lower, window_upper, skip_ids, attachments_root
+            listed = self._list_ids(
+                _gmail_query(self._config.query, window_lower, window_upper)
             )
-            result.skipped_deleted += deleted
-            result.skipped_unreadable += unreadable
-            for day in sorted(rows):
-                pending.extend(rows[day])
-                pending_bytes += sum(_row_bytes(row) for row in rows[day])
-                if day not in result.days:
-                    result.days.append(day)
+            ids = [message_id for message_id in listed if message_id not in skip_ids]
+            if ids:
+                _logger.info(
+                    "Gmail listed %d candidate messages up to %s",
+                    len(ids),
+                    _iso_utc(window_upper),
+                )
+            for row in self._fetch(ids, self._target, result):
+                if len(pending) >= UPSERT_BATCH or pending_bytes >= UPSERT_BATCH_BYTES:
+                    result.copied += len(pending)
+                    yield pending, None, set()
+                    pending, pending_bytes, cut = [], 0, True
+                pending.append(row)
+                pending_bytes += _row_bytes(row)
+                if row["day"] not in result.days:
+                    result.days.append(row["day"])
             # The queries of neighbouring windows overlap by a second or two.
-            skip_ids = listed
+            skip_ids = set(listed)
             window_lower = window_upper
             if (
-                len(pending) >= UPSERT_BATCH
+                cut
+                or len(pending) >= UPSERT_BATCH
                 or pending_bytes >= UPSERT_BATCH_BYTES
                 or i == len(windows) - 1
             ):
                 result.copied += len(pending)
-                yield pending, window_upper, listed
-                pending, pending_bytes = [], 0
+                yield pending, window_upper, skip_ids
+                pending, pending_bytes, cut = [], 0, False
         result.days.sort()
 
     def _label_sets(self) -> list[list[str]]:
@@ -1001,7 +1084,7 @@ class _SyncRun:
         _logger.info(
             "Upserted %d messages so far, through %s",
             result.copied,
-            _iso_utc(state.cursor_ms),
+            "the start" if state.cursor_ms is None else _iso_utc(state.cursor_ms),
         )
 
     def _compact_ended_days(self, state: _SyncState, seq: int) -> None:
@@ -1020,59 +1103,15 @@ class _SyncRun:
         _write_state(self._target, state, seq + 1)
         _logger.info("Compacted %d days, %s to %s", len(ended), ended[0], ended[-1])
 
-    def _staging_root(self) -> Path:
-        return self._target.with_name(self._target.name + STAGING_SUFFIX)
-
-    def _previous_root(self) -> Path:
-        return self._target.with_name(self._target.name + PREVIOUS_SUFFIX)
-
-    def _publish(self, staging: Path) -> None:
-        """Swap the new attachments directory in; the old one is kept until the swap is done."""
-        previous = self._previous_root() / self._execution_id
-        if self._target.exists():
-            previous.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(self._target, previous)
-        os.replace(staging, self._target)
-        shutil.rmtree(self._previous_root(), ignore_errors=True)
-        shutil.rmtree(self._staging_root(), ignore_errors=True)
-
-    def _recover_publication(self) -> None:
-        """Undo what an execution that died during a full load left behind."""
-        previous_root = self._previous_root()
-        if not self._target.exists() and previous_root.is_dir():
-            generations = sorted(
-                previous_root.iterdir(), key=lambda p: p.stat().st_mtime
-            )
-            if generations:
-                _logger.info(
-                    "Restoring %s, interrupted while a full load replaced it",
-                    self._config.path,
-                )
-                os.replace(generations[-1], self._target)
-        shutil.rmtree(previous_root, ignore_errors=True)
-        shutil.rmtree(self._staging_root(), ignore_errors=True)
-
     def _fetch(
-        self,
-        lower_ms: int | None,
-        upper_ms: int,
-        skip_ids: set[str],
-        attachments_root: Path,
-    ) -> tuple[dict[str, list[dict]], set[str], int, int]:
-        """The messages Gmail lists as received in (lower_ms, upper_ms], give or take a second, except `skip_ids`, grouped by day and sorted, with the ids listed and the counts of messages deleted since listing and of messages that could not be parsed.
+        self, ids: list[str], attachments_root: Path, result: _RunResult
+    ) -> Iterator[dict]:
+        """The rows of the messages `ids`, grouped by day, counting into `result` the messages deleted since listing and those that could not be parsed.
 
-        Attachments are written under `attachments_root` as messages arrive, and rows are spilled to scratch files per day, so memory holds one message per worker.
+        Every message is fetched before the first row is yielded, so a failed fetch upserts nothing.
+        Attachments are written under `attachments_root` as messages arrive, and rows are spilled to scratch files per day and read back one at a time, so memory holds one message per worker.
         A message that cannot be parsed is logged with its id and left out, so one unusual message does not stop every later run; a filesystem error still fails the run.
         """
-        query = _gmail_query(self._config.query, lower_ms, upper_ms)
-        listed = self._list_ids(query)
-        ids = [i for i in listed if i not in skip_ids]
-        if ids:
-            _logger.info(
-                "Gmail listed %d candidate messages up to %s",
-                len(ids),
-                _iso_utc(upper_ms),
-            )
         scratch = (
             Path(self._scratch)
             if self._scratch
@@ -1080,14 +1119,13 @@ class _SyncRun:
         )
         spill_dir = scratch / f"gmail_sync_{uuid.uuid4().hex}"
         spill_dir.mkdir(parents=True)
-        deleted = unreadable = 0
         try:
             with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
                 for start in range(0, len(ids), FETCH_BATCH):
                     batch = ids[start : start + FETCH_BATCH]
                     for message in pool.map(self._client._get_raw_message, batch):
                         if message is None:
-                            deleted += 1
+                            result.skipped_deleted += 1
                             continue
                         try:
                             row = _parse_message(
@@ -1101,19 +1139,16 @@ class _SyncRun:
                                 "Leaving out message %s, which could not be parsed",
                                 message["id"],
                             )
-                            unreadable += 1
+                            result.skipped_unreadable += 1
                             continue
                         with open(
                             spill_dir / f"{row['day']}.jsonl", "a", encoding="utf-8"
                         ) as f:
                             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-            rows: dict[str, list[dict]] = {}
-            for spill in spill_dir.iterdir():
+            for spill in sorted(spill_dir.iterdir()):
                 with open(spill, encoding="utf-8") as f:
-                    day_rows = [json.loads(line) for line in f]
-                day_rows.sort(key=lambda r: (r["internal_date"], r["message_id"]))
-                rows[spill.stem] = day_rows
-            return rows, set(listed), deleted, unreadable
+                    for line in f:
+                        yield json.loads(line)
         finally:
             shutil.rmtree(spill_dir, ignore_errors=True)
 
@@ -1123,13 +1158,14 @@ def _row_bytes(row: dict) -> int:
 
 
 def _advance(
-    state: _SyncState, batch: list[dict], through_ms: int, last_ids: set[str]
+    state: _SyncState, batch: list[dict], through_ms: int | None, last_ids: set[str]
 ) -> None:
-    """Move the cursor past a fully read window, keeping the ids it listed so the next query's overlap skips them, and note the days `batch` wrote."""
+    """Note the days `batch` wrote and, with `through_ms`, move the cursor past a fully read window, keeping the ids it listed so the next query's overlap skips them."""
     state.uncompacted_days = sorted(
         set(state.uncompacted_days) | {r["day"] for r in batch}
     )
-    state.cursor_ms, state.cursor_ids = through_ms, sorted(last_ids)
+    if through_ms is not None:
+        state.cursor_ms, state.cursor_ids = through_ms, sorted(last_ids)
 
 
 # endregion
