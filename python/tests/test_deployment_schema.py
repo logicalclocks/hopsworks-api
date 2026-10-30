@@ -580,6 +580,7 @@ def _fv(**overrides):
         feature("helper", "string", helper=True),
     ]
     defaults = {
+        "id": 3,
         "name": "fv",
         "version": 2,
         "features": features,
