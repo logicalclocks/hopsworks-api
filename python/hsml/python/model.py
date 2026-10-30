@@ -66,6 +66,7 @@ class Model(Model):
             training_dataset_version=training_dataset_version,
             missing_mandatory_tags=missing_mandatory_tags,
             tags=tags,
+            **kwargs,
         )
 
     def update_from_response_json(self, json_dict):

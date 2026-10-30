@@ -237,9 +237,9 @@ def ensure_dashboard(api, existing: int | None, chart_ids: list[int]) -> int:
     return dashboard_id
 
 
-def build(api, project_name: str) -> int:
+def build(api, backing_name: str) -> int:
     """Create or update the datasets, charts and dashboard; return the dashboard id."""
-    schema = f"{project_name.lower()}_featurestore"
+    schema = f"{backing_name.lower()}_featurestore"
     database_id = find_trino_db_id(api)
     datasets = {fg["name"]: ensure_dataset(api, database_id, schema, fg) for fg in FEATURE_GROUPS}
     existing = find_dashboard(api)
@@ -250,7 +250,7 @@ def build(api, project_name: str) -> int:
     return ensure_dashboard(api, existing, chart_ids)
 
 
-def delete(api, project_name: str) -> dict[str, list]:
+def delete(api, backing_name: str) -> dict[str, list]:
     """Remove this program's dashboard and charts, and its datasets no other chart uses."""
     removed: dict[str, list] = {"dashboards": [], "charts": [], "datasets": []}
     dashboard_id = find_dashboard(api)
@@ -261,7 +261,7 @@ def delete(api, project_name: str) -> dict[str, list]:
     for chart_id in charts:
         api.delete_chart(chart_id)
         removed["charts"].append(chart_id)
-    schema = f"{project_name.lower()}_featurestore"
+    schema = f"{backing_name.lower()}_featurestore"
     ours = {dataset_name(fg) for fg in FEATURE_GROUPS}
     in_use = {c.get("datasource_id") for c in list_all(api, "chart")}
     for ds in list_all(api, "dataset"):
@@ -293,9 +293,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps([{"id": d["id"], "title": d.get("dashboard_title")} for d in dashboards]))
         return 0
     if args.delete:
-        print(json.dumps(delete(api, project.name)))
+        print(json.dumps(delete(api, getattr(project, "backing_name", project.name))))
         return 0
-    dashboard_id = build(api, project.name)
+    dashboard_id = build(api, getattr(project, "backing_name", project.name))
     host = urlparse(project.get_url())
     print(
         f"{host.scheme}://{host.netloc}/hopsworks-api/superset/superset/dashboard/{dashboard_id}/"

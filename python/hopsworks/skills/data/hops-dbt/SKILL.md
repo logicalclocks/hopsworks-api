@@ -69,7 +69,7 @@ os.environ.update({
     "DBT_TRINO_PORT": str(trino.get_port()),
     "DBT_TRINO_USER": user,
     "DBT_TRINO_PASSWORD": password,
-    "DBT_TRINO_SCHEMA": f"{project.name}_featurestore",
+    "DBT_TRINO_SCHEMA": f"{getattr(project, 'backing_name', project.name)}_featurestore",
     # _get_ca_chain_path is private on purpose: dbt needs the cert as a FILE
     # PATH for profiles.yml, and connect()/create_engine() are the only
     # public paths, which resolve it internally instead of handing it over.
@@ -215,7 +215,7 @@ def compiled_sql(target_dir: Path) -> str:
 def run_and_upsert(project, fs, target_dir: Path) -> int:
     conn = project.get_trino_api().connect(
         catalog="delta",                              # the FG's format: delta | hudi | iceberg
-        schema=f"{project.name.lower()}_featurestore",
+        schema=f"{getattr(project, 'backing_name', project.name).lower()}_featurestore",
     )
     try:
         cur = conn.cursor()

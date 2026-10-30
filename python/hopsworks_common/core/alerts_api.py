@@ -561,7 +561,7 @@ class AlertsApi:
             status = status.replace("feature_validation_", "validation_")
 
         _client = client._get_instance()
-        receiver = self._fix_receiver_name(receiver, _client._project_name)
+        receiver = self._fix_receiver_name(receiver, _client._project_backing_name)
         path_params = ["project", _client._project_id, "service", "alerts"]
         alert_data = {
             "status": status.upper(),
@@ -642,7 +642,7 @@ class AlertsApi:
         if severity not in _SEVERITY:
             raise ValueError(f"Severity must be one of the following: {_SEVERITY}.")
         _client = client._get_instance()
-        receiver = self._fix_receiver_name(receiver, _client._project_name)
+        receiver = self._fix_receiver_name(receiver, _client._project_backing_name)
         path_params = [
             "project",
             _client._project_id,
@@ -716,7 +716,7 @@ class AlertsApi:
         if severity not in _SEVERITY:
             raise ValueError(f"Severity must be one of the following: {_SEVERITY}.")
         _client = client._get_instance()
-        receiver = self._fix_receiver_name(receiver, _client._project_name)
+        receiver = self._fix_receiver_name(receiver, _client._project_backing_name)
         path_params = [
             "project",
             _client._project_id,
@@ -785,7 +785,7 @@ class AlertsApi:
             status = status.replace("job_", "")
 
         _client = client._get_instance()
-        receiver = self._fix_receiver_name(receiver, _client._project_name)
+        receiver = self._fix_receiver_name(receiver, _client._project_backing_name)
         path_params = [
             "project",
             _client._project_id,
@@ -867,7 +867,7 @@ class AlertsApi:
         """
         _client = client._get_instance()
 
-        name = self._fix_receiver_name(name, _client._project_name)
+        name = self._fix_receiver_name(name, _client._project_backing_name)
         path_params = ["project", _client._project_id, "alerts", "receivers", name]
         headers = {"content-type": "application/json"}
         return alert_receiver.AlertReceiver.from_response_json(
@@ -1145,14 +1145,16 @@ class AlertsApi:
         if receiver_name is None:
             raise ValueError("Receiver name cannot be None.")
 
-        receiver_name = self._fix_receiver_name(receiver_name, _client._project_name)
+        receiver_name = self._fix_receiver_name(
+            receiver_name, _client._project_backing_name
+        )
         # Check if the receiver exists
         receiver = self.get_alert_receiver(receiver_name)
         if receiver is None:
             raise ValueError(f"Receiver {receiver_name} does not exist.")
 
         # Only create a route if the receiver is a project receiver
-        if receiver_name.startswith(f"{_client._project_name}__"):
+        if receiver_name.startswith(f"{_client._project_backing_name}__"):
             path_params = ["project", _client._project_id, "alerts", "routes"]
             headers = {"content-type": "application/json"}
             match = [
@@ -1193,7 +1195,7 @@ class AlertsApi:
 
         Parameters:
             name: The name of the receiver.
-            project_name: The name of the project.
+            project_name: The backing name of the project.
 
         Returns:
             The fixed receiver name.

@@ -18,6 +18,25 @@ from hopsworks_common.project import Project
 
 
 class TestProject:
+    def test_backing_name_from_the_dto(self):
+        project = Project(project_name="My Project", backing_name="my_project_ab12")
+
+        assert project.name == "My Project"
+        assert project.backing_name == "my_project_ab12"
+
+    def test_backing_name_falls_back_to_the_name(self):
+        project = Project(project_name="my_project")
+
+        assert project.backing_name == "my_project"
+
+    def test_home_path_uses_the_backing_name(self, mocker):
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
+        mock_client.return_value._username = "alice"
+
+        project = Project(project_name="My Project", backing_name="my_project_ab12")
+
+        assert project.home_path == "/Projects/my_project_ab12/Users/alice"
+
     def test_home_path_external_client(self, mocker):
         mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._username = "alice"

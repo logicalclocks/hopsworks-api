@@ -75,10 +75,12 @@ class ModelServing:
         self,
         project_name: str,
         project_id: int,
+        project_backing_name: str | None = None,
         **kwargs,
     ):
         self._project_name = project_name
         self._project_id = project_id
+        self._project_backing_name = project_backing_name or project_name
 
         self._serving_api = serving_api.ServingApi()
 
@@ -785,7 +787,7 @@ class ModelServing:
                     ds_api, env, entry_abs, agent_dir
                 )
             # The serving backend expects the script path under /Projects/<proj>/...
-            script_file = util._convert_to_abs(script_file, self._project_name)
+            script_file = util._convert_to_abs(script_file, self._project_backing_name)
 
         if requirements_abs is not None:
             req_remote = ds_api.upload(requirements_abs, agent_dir, overwrite=True)
@@ -923,7 +925,7 @@ class ModelServing:
     @property
     def project_path(self):
         """Path of the project the registry is connected to."""
-        return f"/Projects/{self._project_name}"
+        return f"/Projects/{self._project_backing_name}"
 
     @public
     @property

@@ -828,3 +828,17 @@ class TestGetVllmImageTags:
         with pytest.raises(ValueError):
             ms.get_vllm_image_tags(variant="SGLANG")
         send.assert_not_called()
+
+
+def test_project_path_uses_the_backing_name():
+    ms = model_serving.ModelServing(
+        project_name="Display", project_id=99, project_backing_name="backing1"
+    )
+
+    assert ms.project_path == "/Projects/backing1"
+
+
+def test_project_path_without_backing_name_uses_the_project_name():
+    ms = model_serving.ModelServing(project_name="proj", project_id=99)
+
+    assert ms.project_path == "/Projects/proj"

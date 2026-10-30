@@ -471,7 +471,7 @@ class App:
         if not token:
             return None
         _client = client._get_instance()
-        project = urllib.parse.quote(_client._project_name, safe="")
+        project = urllib.parse.quote(_client._project_backing_name, safe="")
         name = urllib.parse.quote(self._name, safe="")
         return (
             _client._base_url.rstrip("/")

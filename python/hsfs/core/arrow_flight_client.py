@@ -680,6 +680,7 @@ class ArrowFlightClient:
     ):
         training_dataset = {}
         training_dataset["project_name"] = self._client._project_name
+        training_dataset["project_backing_name"] = self._client._project_backing_name
         training_dataset["fv_name"] = feature_view_obj.name
         training_dataset["fv_version"] = feature_view_obj.version
         training_dataset["tds_version"] = training_dataset_obj.version

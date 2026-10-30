@@ -65,7 +65,8 @@ def _connection():
 
     project = hopsworks.login()
     return project.get_trino_api().connect(
-        catalog=PREDICTIONS["catalog"], schema=f"{project.name.lower()}_featurestore"
+        catalog=PREDICTIONS["catalog"],
+        schema=f"{getattr(project, 'backing_name', project.name).lower()}_featurestore",
     )
 
 

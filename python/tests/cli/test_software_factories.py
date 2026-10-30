@@ -1533,6 +1533,7 @@ def test_trino_env_writes_the_connection_to_a_private_file(tmp_path):
 
             class _Project:
                 name = "Demo"
+                backing_name = "Demo"
                 def get_trino_api(self):
                     return _Trino()
 

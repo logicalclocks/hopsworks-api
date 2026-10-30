@@ -444,20 +444,22 @@ class TestApp:
     def test_public_url_built_from_client_and_token(self, mocker):
         mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._base_url = "https://myhost:443"
-        mock_client.return_value._project_name = "proj"
+        mock_client.return_value._project_name = "Shown"
+        mock_client.return_value._project_backing_name = "1a2b3c4d5e6f"
 
         app = App(name="my app", public_access=True, public_token="tok en/+")
 
-        # base_url + project + app + token, with project/app/token URL-encoded.
+        # base_url + backing name + app + token, with app/token URL-encoded.
         assert app.public_url == (
-            "https://myhost:443/hopsworks-api/pythonapp/proj/my%20app"
+            "https://myhost:443/hopsworks-api/pythonapp/1a2b3c4d5e6f/my%20app"
             "/__public?t=tok%20en%2F%2B"
         )
 
     def test_make_public_sets_state_and_returns_url(self, mocker):
         mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._base_url = "https://myhost:443"
-        mock_client.return_value._project_name = "proj"
+        mock_client.return_value._project_name = "Shown"
+        mock_client.return_value._project_backing_name = "proj"
         mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
         mock_api.return_value._set_public.return_value = {"publicToken": "tok"}
 

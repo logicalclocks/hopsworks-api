@@ -79,7 +79,7 @@ def _resolve_serving_file(
     if path is None:
         return path
 
-    project_name = client._get_instance()._project_name
+    project_name = client._get_instance()._project_backing_name
 
     # 1. Absolute local — may be a FUSE mount.
     if os.path.isabs(path) and os.path.exists(path):

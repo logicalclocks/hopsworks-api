@@ -39,6 +39,7 @@ class TestTrinoApi:
         """Create a mock project."""
         project = Mock()
         project.name = "test_project"
+        project.backing_name = "test_project"
         return project
 
     @pytest.fixture
@@ -104,7 +105,10 @@ class TestTrinoApi:
         mocker.patch("hopsworks_common.core.trino_api.project_api.ProjectApi")
         mocker.patch(
             "hopsworks_common.core.trino_api.client._get_instance",
-            return_value=Mock(_project_name=mock_project.name),
+            return_value=Mock(
+                _project_name=mock_project.name,
+                _project_backing_name=mock_project.backing_name,
+            ),
         )
 
         # Act

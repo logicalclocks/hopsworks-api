@@ -35,7 +35,8 @@ class TestAlertsEngine:
                 ]
             }
         )
-        client_mock._project_name = "project1"
+        client_mock._project_name = "Project 1"
+        client_mock._project_backing_name = "project1"
         mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
 
         # Act
@@ -56,7 +57,8 @@ class TestAlertsEngine:
                 ]["response"]
             }
         )
-        client_mock._project_name = "project1"
+        client_mock._project_name = "Project 1"
+        client_mock._project_backing_name = "project1"
         mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
 
         # Act & Assert
@@ -81,7 +83,8 @@ class TestAlertsEngine:
                 ]
             }
         )
-        client_mock._project_name = "project1"
+        client_mock._project_name = "Project 1"
+        client_mock._project_backing_name = "project1"
         mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
 
         # Act
@@ -113,7 +116,8 @@ class TestAlertsEngine:
                 ]
             }
         )
-        client_mock._project_name = "project1"
+        client_mock._project_name = "Project 1"
+        client_mock._project_backing_name = "project1"
         mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
 
         # Act & Assert

@@ -128,5 +128,5 @@ class LocalEngine:
     def _prepend_project_path(self, remote_path: str):
         if not remote_path.startswith("/Projects/"):
             _client = client._get_instance()
-            remote_path = f"/Projects/{_client._project_name}/{remote_path}"
+            remote_path = f"/Projects/{_client._project_backing_name}/{remote_path}"
         return remote_path

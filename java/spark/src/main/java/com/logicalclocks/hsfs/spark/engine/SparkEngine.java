@@ -1210,12 +1210,12 @@ public class SparkEngine extends EngineBase {
       queryName = queryPrefix + featureGroup.getOnlineTopicName() + "_" + LocalDateTime.now().format(
           DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
     }
-    return "/Projects/" + HopsworksClient.getInstance().getProject().getProjectName()
+    return "/Projects/" + HopsworksClient.getInstance().getProject().getBackingName()
         + "/Resources/" + queryName + "-checkpoint";
   }
 
   private String checkpointDirPath(String queryName) throws FeatureStoreException {
-    return "/Projects/" + HopsworksClient.getInstance().getProject().getProjectName()
+    return "/Projects/" + HopsworksClient.getInstance().getProject().getBackingName()
         + "/Resources/" + queryName + "-checkpoint";
   }
 

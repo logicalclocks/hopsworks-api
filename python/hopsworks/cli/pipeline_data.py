@@ -384,7 +384,7 @@ def collect(project: Any, doc: dict, hours: int = 24) -> list[dict]:
     pipelines = [p for p in pipelines if p.get("writes")]
     if not pipelines:
         return []
-    project_name = getattr(project, "name", "")
+    project_name = getattr(project, "backing_name", "")
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     try:
         conn = project.get_trino_api().connect(
