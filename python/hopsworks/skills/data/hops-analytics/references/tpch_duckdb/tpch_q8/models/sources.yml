@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: tpch
+    description: The TPC-H tables `CALL dbgen(sf = 1)` writes into the DuckDB file.
+    schema: main
+    tables:
+      - name: orders
+      - name: customer
+      - name: region
+      - name: nation
+      - name: supplier
+      - name: lineitem
+      - name: part
