@@ -510,6 +510,12 @@ class Predictor(DeployableComponent):
         kwargs["script_file"] = util._extract_field_from_json(
             json_decamelized, "predictor"
         )
+        # The backend stores no flag for it: a deployment runs the default predictor when
+        # its script is the stub the library uploads.
+        kwargs["default_predictor"] = bool(kwargs["script_file"]) and (
+            kwargs["script_file"].rsplit("/", 1)[-1]
+            == MODEL_SERVING.DEFAULT_PREDICTOR_SCRIPT
+        )
         kwargs["config_file"] = util._extract_field_from_json(
             json_decamelized, "config_file"
         )
