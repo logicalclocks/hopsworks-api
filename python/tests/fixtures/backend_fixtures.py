@@ -38,6 +38,7 @@ FIXTURES = [
     "feature_monitoring_config",
     "feature_monitoring_result",
     "feature_store",
+    "feature_store_activity",
     "feature_view",
     "filter",
     "fs_query",
