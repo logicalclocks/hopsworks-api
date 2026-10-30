@@ -162,6 +162,18 @@ def test_the_interview_runs_on_haiku_and_records_every_answer_as_it_goes():
     assert "!`hops fg list" in text and "!`hops datasource list" in text
 
 
+def test_the_interview_leaves_requirements_pending_and_marks_no_cadence():
+    text = (TEMPLATES / "hops-ml.md").read_text(encoding="utf-8")
+    # /hops-build completes the specification and writes met (hops-reqs build-reqs.md).
+    assert "requirements.status=met" not in text
+    finish = " ".join(text.split("## Finish")[1].split())
+    assert "`requirements.status` at `pending`" in finish
+    # A schedule holds cluster resources: the user picks it (/hops Rules).
+    batch = " ".join(text.split("### Batch")[1].split("- **Data.**")[0].split())
+    assert "recommended" not in batch.lower().replace('"(recommended)"', "")
+    assert 'none marked "(Recommended)"' in batch
+
+
 def test_the_first_question_offers_a_description_or_an_example_system():
     text = (TEMPLATES / "hops-ml.md").read_text(encoding="utf-8")
     assert "**Start a new ML system (Recommended)**" in text
