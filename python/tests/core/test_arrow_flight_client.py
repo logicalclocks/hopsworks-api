@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import logging
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -340,6 +341,47 @@ class TestArrowFlightClient:
         flight_client_mock.assert_called_once()
         args, kwargs = flight_client_mock.call_args
         assert kwargs.get("override_hostname") == "flyingduck.service.hopsworks.ai"
+
+    def test_flight_descriptor_and_info_are_not_logged(self, mocker, caplog):
+        # Arrange
+        import pyarrow.flight
+
+        client = arrow_flight_client._get_instance()
+        info = MagicMock(endpoints=[MagicMock()])
+        info.__str__.return_value = "sentinel-session-token"
+        mocker.patch.object(client, "_connection")
+        client._connection.get_flight_info.return_value = info
+        descriptor = pyarrow.flight.FlightDescriptor.for_command(
+            b'{"password": "sentinel-password"}'
+        )
+        caplog.set_level(logging.DEBUG)
+
+        # Act
+        client._get_dataset(descriptor, headers=[])
+
+        # Assert
+        assert "flight info" in caplog.text
+        assert "sentinel-password" not in caplog.text
+        assert "sentinel-session-token" not in caplog.text
+
+    def test_training_dataset_query_is_not_logged(self, mocker, caplog):
+        # Arrange
+        client = arrow_flight_client._get_instance()
+        mocker.patch.object(client, "_connection")
+        mocker.patch.object(client, "_certificates_headers", return_value=[])
+        client._connection.do_action.return_value = [MagicMock()]
+        query = MagicMock(hqs_payload='{"password": "sentinel-password"}')
+        caplog.set_level(logging.DEBUG)
+        client._client._project_name = "test_project"
+        feature_view = MagicMock(version=1)
+        feature_view.name = "test_fv"
+
+        # Act
+        client._create_training_dataset(feature_view, MagicMock(version=2), query, None)
+
+        # Assert
+        assert "Creating training dataset" in caplog.text
+        assert "sentinel-password" not in caplog.text
 
 
 class TestDataSourceError:
