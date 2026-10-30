@@ -492,7 +492,45 @@ class TestResources:
         assert r.limits.memory == json["predictor_resources"]["limits"]["memory"]
         assert r.limits.gpus == json["predictor_resources"]["limits"]["gpus"]
 
+    def test_from_response_json_predictor_resources_disk_round_trip(self):
+        json = {
+            "requestedInstances": 1,
+            "predictorResources": {
+                "requests": {"cores": 1, "memory": 1024, "gpus": 0},
+                "limits": {"cores": 2, "memory": 2048, "gpus": 0, "diskGb": 40},
+            },
+        }
+
+        # Act
+        r = resources.PredictorResources.from_response_json(json)
+
+        # Assert
+        assert r.limits.disk == 40
+        assert r.requests.disk is None
+        sent = r.to_dict()["predictorResources"]
+        assert sent["limits"]["diskGb"] == 40
+        assert "diskGb" not in sent["requests"]
+
     # TransformerResources
+
+    def test_from_response_json_transformer_resources_disk_round_trip(self):
+        json = {
+            "requestedInstances": 1,
+            "transformerResources": {
+                "requests": {"cores": 1, "memory": 1024, "gpus": 0},
+                "limits": {"cores": 2, "memory": 2048, "gpus": 0, "diskGb": 5},
+            },
+        }
+
+        # Act
+        r = resources.TransformerResources.from_response_json(json)
+
+        # Assert
+        assert r.limits.disk == 5
+        assert r.requests.disk is None
+        sent = r.to_dict()["transformerResources"]
+        assert sent["limits"]["diskGb"] == 5
+        assert "diskGb" not in sent["requests"]
 
     def test_from_response_json_transformer_resources(self, backend_fixtures):
         json = backend_fixtures["resources"][
