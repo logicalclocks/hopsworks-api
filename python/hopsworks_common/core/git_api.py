@@ -87,7 +87,7 @@ class GitApi:
         _client = client._get_instance()
 
         # Support absolute and relative path to dataset
-        path = util._convert_to_abs(path, _client._project_name)
+        path = util._convert_to_abs(path, _client._project_backing_name)
 
         if provider is None:
             provider = self._git_provider_api._get_default_configured_provider()
@@ -238,7 +238,7 @@ class GitApi:
         )
 
         if path is not None:
-            path = util._convert_to_abs(path, _client._project_name)
+            path = util._convert_to_abs(path, _client._project_backing_name)
 
         filtered_repos = []
         for repository in repos:

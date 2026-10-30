@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from hopsworks_common import client
+from hopsworks_common import client, project
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import project_api
 
@@ -29,12 +29,14 @@ from hopsworks_common.core import project_api
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from hopsworks_common.project import Project
 
-def _resolve_target_project_id(target_project: str | int) -> int:
+
+def _resolve_target_project_id(target_project: str | int | Project) -> int:
     """Translate a project name to its int id, or pass an int id through.
 
     Parameters:
-        target_project: Project name or numeric id.
+        target_project: Project name, numeric id or Project object.
 
     Returns:
         The numeric project id.
@@ -48,13 +50,17 @@ def _resolve_target_project_id(target_project: str | int) -> int:
         raise ValueError("target_project must be a non-empty project name or id")
     if isinstance(target_project, int):
         return target_project
+    if isinstance(target_project, project.Project):
+        return target_project.id
     proj = project_api.ProjectApi()._get_project(target_project)
     return proj.id
 
 
-def _denied_msg(action: str, source_project: str, target_project: str | int) -> str:
+def _denied_msg(
+    action: str, source_project: str, target_project: str | int | Project
+) -> str:
     return (
-        f"{action} from '{source_project}' to '{target_project}' requires the "
+        f"{action} from '{source_project}' to '{getattr(target_project, 'name', target_project)}' requires the "
         f"Data Owner role in the source project '{source_project}'. Ask a data "
         f"owner of '{source_project}' to run this, or be granted that role."
     )
@@ -69,11 +75,11 @@ class ShareApi:
     project, since a project has exactly one.
     """
 
-    def _share_feature_store(self, target_project: str | int) -> None:
+    def _share_feature_store(self, target_project: str | int | Project) -> None:
         """Share the entire feature store with another project.
 
         Parameters:
-            target_project: Project name (preferred) or numeric id.
+            target_project: Project name, numeric id or Project object. Use the id or the object when several projects share a name.
 
         Raises:
             PermissionError: If the caller lacks Data Owner in the source project.
@@ -101,11 +107,11 @@ class ShareApi:
                 ) from e
             raise
 
-    def _unshare_feature_store(self, target_project: str | int) -> None:
+    def _unshare_feature_store(self, target_project: str | int | Project) -> None:
         """Revoke a feature-store-level share with another project.
 
         Parameters:
-            target_project: Project name or numeric id whose share is being revoked.
+            target_project: Project name, numeric id or Project object whose share is being revoked.
         """
         target_id = _resolve_target_project_id(target_project)
         _client = client._get_instance()
@@ -133,14 +139,14 @@ class ShareApi:
     def _share_feature_group(
         self,
         feature_group_id: int,
-        target_project: str | int,
+        target_project: str | int | Project,
         features: Iterable[str] | None = None,
     ) -> None:
         """Share a single feature group with another project.
 
         Parameters:
             feature_group_id: Numeric feature-group id.
-            target_project: Project name (preferred) or numeric id.
+            target_project: Project name, numeric id or Project object. Use the id or the object when several projects share a name.
             features: Optional whitelist of feature names. When provided,
                 only those columns are visible to the target project.
                 When ``None`` (default), the full feature group is shared.
@@ -255,13 +261,13 @@ class ShareApi:
         return resp.get("items") or []
 
     def _unshare_feature_group(
-        self, feature_group_id: int, target_project: str | int
+        self, feature_group_id: int, target_project: str | int | Project
     ) -> None:
         """Revoke a feature-group-level share with another project.
 
         Parameters:
             feature_group_id: Numeric feature-group id.
-            target_project: Project name or numeric id whose share is being revoked.
+            target_project: Project name, numeric id or Project object whose share is being revoked.
         """
         target_id = _resolve_target_project_id(target_project)
         _client = client._get_instance()

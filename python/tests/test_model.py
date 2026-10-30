@@ -27,6 +27,55 @@ from hsml.core import explicit_provenance
 from hsml.engine import model_engine
 
 
+class TestModelPath:
+    def test_server_model_path_wins(self):
+        m = model.Model(
+            id=1,
+            name="m",
+            project_name="Display",
+            model_path="/Projects/backing1/Models/m",
+        )
+        m._models_path = "/Projects/other/Models"
+
+        assert m.model_path == "/Projects/backing1/Models/m"
+
+    def test_models_path_is_used_without_a_server_path(self):
+        m = model.Model(id=1, name="m", project_name="Display")
+        m._models_path = "/Projects/backing1/Models"
+
+        assert m.model_path == "/Projects/backing1/Models/m"
+
+    @pytest.mark.parametrize(
+        "framework",
+        [
+            MODEL.FRAMEWORK_PYTHON,
+            MODEL.FRAMEWORK_SKLEARN,
+            MODEL.FRAMEWORK_TENSORFLOW,
+            MODEL.FRAMEWORK_TORCH,
+            MODEL.FRAMEWORK_LLM,
+        ],
+    )
+    def test_a_framework_model_keeps_the_server_path(self, framework):
+        m = model.Model.from_response_json(
+            {
+                "id": "m_1",
+                "name": "m",
+                "version": 1,
+                "framework": framework,
+                "projectName": "Display",
+                "modelPath": "/Projects/backing1/Models/m",
+            }
+        )
+
+        assert m.model_path == "/Projects/backing1/Models/m"
+        assert m.version_path == "/Projects/backing1/Models/m/1"
+
+    def test_falls_back_to_the_project_name(self):
+        m = model.Model(id=1, name="m", project_name="Display")
+
+        assert m.model_path == "/Projects/Display/Models/m"
+
+
 class TestModel:
     # from response json
 
@@ -372,6 +421,14 @@ class TestModel:
         assert not [w for w in caught if "Missing mandatory tags" in str(w.message)]
 
     # to_dict tags
+
+    def test_to_dict_names_the_registry_by_id(self, backend_fixtures):
+        # Two live projects may share a display name, so the body carries the registry's project id.
+        m_json = dict(backend_fixtures["model"]["get_python"]["response"]["items"][0])
+        m_json["modelRegistryId"] = 119
+        m = model.Model.from_response_json(m_json)
+
+        assert m.to_dict()["modelRegistryId"] == 119
 
     def test_to_dict_omits_tags_when_absent(self, mocker, backend_fixtures):
         # Arrange

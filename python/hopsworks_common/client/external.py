@@ -101,17 +101,26 @@ class Client(base.Client):
             # This should only happen due to the way of work of and in hopsworks.login:
             # It first initalizes a client, and then uses it to figure out which project to use.
             self._project_name = None
+            self._project_backing_name = None
             return
 
         self._provide_project(project)
 
-    def _provide_project(self, project, project_id=None):
+    def _provide_project(self, project, project_id=None, backing_name=None):
+        if project_id is None:
+            # A project name starts with a letter, so an all-digit name is a project id.
+            if str(project).isdigit():
+                project_info = self._send_request("GET", ["project", int(project)])
+                project = project_info["projectName"]
+            else:
+                project_info = self._get_project_info(project)
+            project_id = project_info["projectId"]
+            backing_name = project_info.get("backingName")
         self._project_name = project
         _logger.debug("Project name: %s", self._project_name)
-
-        if project_id is None:
-            project_id = self._get_project_info(project)["projectId"]
         self._project_id = str(project_id)
+        # Older backends return no backingName; there the backing name is the project name.
+        self._project_backing_name = backing_name or project
         _logger.debug("Setting Project ID: %s", self._project_id)
 
         self._username = self._get_username()
@@ -215,12 +224,19 @@ class Client(base.Client):
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
         return res
 
+    def _cert_project_dir(self) -> str:
+        # Display names can repeat across projects; the backing name cannot.
+        return self._project_backing_name or self._project_name
+
     def _get_certs_folder(self):
         # Custom cert_folder: use directly
         # Default folder: use hierarchical structure for multi-user support
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
             return os.path.join(
-                self._cert_folder_base, self._host, self._project_name, self._username
+                self._cert_folder_base,
+                self._host,
+                self._cert_project_dir(),
+                self._username,
             )
         return self._cert_folder_base
 
@@ -363,7 +379,7 @@ class Client(base.Client):
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
             # Hierarchical structure for multi-user support
             host_dir = os.path.join(self._cert_folder_base, self._host)
-            project_dir = os.path.join(host_dir, self._project_name)
+            project_dir = os.path.join(host_dir, self._cert_project_dir())
 
             # Shared directories with sticky bit
             for directory in (host_dir, project_dir):

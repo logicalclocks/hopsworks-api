@@ -35,6 +35,7 @@ from tqdm.auto import tqdm
 
 if TYPE_CHECKING:
     import pandas as pd
+    from hopsworks_common.project import Project
     from hsfs.feature_group import FeatureGroup
 
 
@@ -45,6 +46,21 @@ class Chunk:
         self.number = number
         self.status = status
         self.retries = 0
+
+
+def _target_project_params(target_project: str | int | Project) -> dict:
+    """Query params naming the target project. An id is sent as `target_project_id`; a Project object sends its name too."""
+    # Imported here: hopsworks_common.project imports this module.
+    from hopsworks_common.project import Project  # noqa: PLC0415
+
+    if isinstance(target_project, Project):
+        return {
+            "target_project": target_project.name,
+            "target_project_id": target_project.id,
+        }
+    if isinstance(target_project, int):
+        return {"target_project_id": target_project}
+    return {"target_project": target_project}
 
 
 @public(
@@ -587,12 +603,23 @@ class DatasetApi:
         """
         return self.remove(remote_path)
 
+    @staticmethod
+    def _refuse_feature_store(path: str, action: str) -> None:
+        # The backend shares a feature store only through its own share endpoint (110001 here), and
+        # a dataset unshare finds no share to remove; say which call does it instead.
+        if path.strip("/").split("/")[0].endswith("_featurestore.db"):
+            raise ValueError(
+                f"'{path}' is a feature store: {action} it with "
+                f"project.get_feature_store().{action}(target_project), "
+                f"or one feature group with fg.{action}(target_project)."
+            )
+
     @public
     @usage._method_logger
     def share(
         self,
         path: str,
-        target_project: str,
+        target_project: str | int | Project,
         permission: Literal[
             "READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"
         ] = "READ_ONLY",
@@ -601,7 +628,7 @@ class DatasetApi:
 
         The caller must have the ``Data owner`` role in the active project; the
         backend rejects the share otherwise.
-        Feature-store datasets can only be shared as ``READ_ONLY``.
+        A feature store is shared with ``project.get_feature_store().share()`` instead.
 
         ```python
         import hopsworks
@@ -615,7 +642,7 @@ class DatasetApi:
 
         Parameters:
             path: Dataset path in the active project (e.g. ``Resources/my_dir``).
-            target_project: Name of the project to share with.
+            target_project: Name or id of the project to share with, or the Project object. Pass the id or the object when several projects share a name.
             permission: One of ``READ_ONLY`` (default), ``EDITABLE``,
                 ``EDITABLE_BY_OWNERS``. The target project's data owners
                 still have to accept the share before its members see it.
@@ -624,23 +651,23 @@ class DatasetApi:
             PermissionError: If the caller lacks the Data Owner role in the
                 source project (HTTP 403 from the backend).
             hopsworks.client.exceptions.RestAPIError: If the dataset doesn't
-                exist, the target project doesn't exist, or a feature-store
-                dataset is shared with a permission other than ``READ_ONLY``.
-            ValueError: If ``permission`` is not one of the allowed values
-                or ``target_project`` is empty.
+                exist or the target project doesn't exist.
+            ValueError: If ``permission`` is not one of the allowed values,
+                ``target_project`` is empty, or ``path`` is a feature store.
         """
         if permission not in ("READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"):
             raise ValueError(
                 f"permission must be one of READ_ONLY, EDITABLE, "
                 f"EDITABLE_BY_OWNERS; got {permission!r}"
             )
-        if not target_project:
-            raise ValueError("target_project must be a non-empty project name")
+        if not target_project and target_project != 0:
+            raise ValueError("target_project must be a non-empty project name or id")
+        self._refuse_feature_store(path, "share")
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "SHARE",
-            "target_project": target_project,
+            **_target_project_params(target_project),
             "permission": permission,
         }
         try:
@@ -648,7 +675,7 @@ class DatasetApi:
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
                 raise PermissionError(
-                    f"Sharing dataset '{path}' with project '{target_project}' "
+                    f"Sharing dataset '{path}' with project '{getattr(target_project, 'name', target_project)}' "
                     f"requires the Data Owner role in the source project "
                     f"'{_client._project_name}'. Ask a data owner of "
                     f"'{_client._project_name}' to run this, or be granted that role."
@@ -657,7 +684,7 @@ class DatasetApi:
 
     @public
     @usage._method_logger
-    def unshare(self, path: str, target_project: str) -> None:
+    def unshare(self, path: str, target_project: str | int | Project) -> None:
         """Revoke a previously-granted dataset share with another project.
 
         Like :meth:`share`, requires Data Owner role in the active (source) project.
@@ -674,7 +701,7 @@ class DatasetApi:
 
         Parameters:
             path: Dataset path in the active project.
-            target_project: Name of the project to revoke the share from.
+            target_project: Name or id of the project to revoke the share from, or the Project object. Pass the id or the object when several projects share a name.
 
         Raises:
             PermissionError: If the caller lacks the Data Owner role in the
@@ -682,22 +709,24 @@ class DatasetApi:
             hopsworks.client.exceptions.RestAPIError: If the dataset isn't
                 shared with that project, the target project doesn't exist,
                 or the backend otherwise rejects the request.
-            ValueError: If ``target_project`` is empty.
+            ValueError: If ``target_project`` is empty or ``path`` is a feature
+                store (unshare it with ``project.get_feature_store().unshare()``).
         """
-        if not target_project:
-            raise ValueError("target_project must be a non-empty project name")
+        if not target_project and target_project != 0:
+            raise ValueError("target_project must be a non-empty project name or id")
+        self._refuse_feature_store(path, "unshare")
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "UNSHARE",
-            "target_project": target_project,
+            **_target_project_params(target_project),
         }
         try:
             _client._send_request("DELETE", path_params, query_params=query_params)
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
                 raise PermissionError(
-                    f"Unsharing dataset '{path}' from project '{target_project}' "
+                    f"Unsharing dataset '{path}' from project '{getattr(target_project, 'name', target_project)}' "
                     f"requires the Data Owner role in the source project "
                     f"'{_client._project_name}'. Ask a data owner of "
                     f"'{_client._project_name}' to run this, or be granted that role."
@@ -917,7 +946,9 @@ class DatasetApi:
         files = []
         for item in items:
             files.append(
-                util._convert_to_project_rel_path(item.path, _client._project_name)
+                util._convert_to_project_rel_path(
+                    item.path, _client._project_backing_name
+                )
             )
         return files
 

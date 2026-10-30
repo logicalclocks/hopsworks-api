@@ -770,7 +770,7 @@ class Predictor(DeployableComponent):
         # "/Projects/{project_name}/Deployments/{name}/{version}"
         return "{}/{}/{}/{}/{}".format(
             "/Projects",
-            self._project_name,
+            client._get_instance()._project_backing_name,
             MODEL_SERVING.DEPLOYMENTS_DATASET,
             str(self._name),
             str(self._version),

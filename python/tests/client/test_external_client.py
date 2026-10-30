@@ -48,6 +48,7 @@ class TestExternalClient:
         client._base_url = "https://test.hopsworks.ai:443"
         client._cert_folder_base = cert_folder_base
         client._project_name = "test_project"
+        client._project_backing_name = "test_project"
         client._project_id = "123"
         client._username = "testuser"
         client._connected = True
@@ -733,6 +734,7 @@ class TestExternalClient:
         client._base_url = "https://test.hopsworks.ai:443"
         client._cert_folder_base = cert_folder_base
         client._project_name = "test_project"
+        client._project_backing_name = "test_project"
         client._project_id = "123"
         client._username = username
         client._connected = True

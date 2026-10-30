@@ -51,10 +51,15 @@ class ModelRegistry:
         project_id,
         model_registry_id,
         shared_registry_project_name=None,
+        project_backing_name=None,
+        models_path=None,
         **kwargs,
     ):
         self._project_name = project_name
         self._project_id = project_id
+        self._project_backing_name = project_backing_name or project_name
+        # Older backends return no modelsPath for a shared registry.
+        self._models_path = models_path
 
         self._shared_registry_project_name = shared_registry_project_name
         self._model_registry_id = model_registry_id
@@ -178,7 +183,7 @@ class ModelRegistry:
     @property
     def project_path(self):
         """Path of the project the registry is connected to."""
-        return f"/Projects/{self._project_name}"
+        return f"/Projects/{self._project_backing_name}"
 
     @public
     @property

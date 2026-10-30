@@ -76,10 +76,16 @@ def get_project(ctx: click.Context) -> Project:
             host=cfg.host or "",
             api_key_value=cfg.api_key,
             project=cfg.project,
+            project_id=cfg.project_id,
             internal=cfg.internal,
             hostname_verification=cfg.hostname_verification,
         )
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+        if cfg.project_id and "Could not find project with id" in str(exc):
+            raise click.ClickException(
+                f"Login failed: the saved project id {cfg.project_id} is not found "
+                f"(deleted, or no longer a member). Run `hops project use <name>`."
+            ) from exc
         raise click.ClickException(f"Login failed: {exc}") from exc
     obj["project"] = project
     return project

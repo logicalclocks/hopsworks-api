@@ -22,7 +22,12 @@ def project_list(ctx: click.Context) -> None:
         ctx: Click context carrying the resolved ``HopsConfig``.
     """
     cfg = _require_auth(ctx)
-    auth.login(host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project)
+    auth.login(
+        host=cfg.host or "",
+        api_key_value=cfg.api_key,
+        project=cfg.project,
+        project_id=cfg.project_id,
+    )
     from hopsworks_common.core import project_api  # noqa: PLC0415
 
     # One request: the team list already carries each project's id and name,
@@ -33,7 +38,15 @@ def project_list(ctx: click.Context) -> None:
         teams, key=lambda t: t.get("project", {}).get("name", "").lower()
     ):
         project = team.get("project", {})
-        active = "*" if project.get("name") == cfg.project else ""
+        active = (
+            "*"
+            if (
+                project.get("id") == cfg.project_id
+                if cfg.project_id
+                else project.get("name") == cfg.project
+            )
+            else ""
+        )
         rows.append(
             [
                 project.get("id", "?"),
@@ -51,14 +64,21 @@ def project_list(ctx: click.Context) -> None:
 def project_use(ctx: click.Context, name: str) -> None:
     """Switch the default project to ``name`` and cache its identifiers.
 
+    A project name starts with a letter, so a numeric ``name`` is a project id.
+    Use it when several projects share a name.
+
     Args:
         ctx: Click context carrying the resolved ``HopsConfig``.
-        name: Project name to activate.
+        name: Project name or id to activate.
     """
     cfg = _require_auth(ctx)
+    by_id = name.isdigit()
     try:
         project = auth.login(
-            host=cfg.host or "", api_key_value=cfg.api_key, project=name
+            host=cfg.host or "",
+            api_key_value=cfg.api_key,
+            project=None if by_id else name,
+            project_id=int(name) if by_id else None,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
@@ -86,7 +106,9 @@ def _feature_store_id(project: Any) -> int | None:
     )
 
     _client = client._get_instance()
-    store = util._append_feature_store_suffix(getattr(project, "name", "") or "")
+    store = util._append_feature_store_suffix(
+        getattr(project, "backing_name", "") or ""
+    )
     try:
         raw = _client._send_request(
             "GET", ["project", _client._project_id, "featurestores", store]
@@ -106,7 +128,10 @@ def project_info(ctx: click.Context) -> None:
     """
     cfg = _require_auth(ctx)
     project = auth.login(
-        host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project
+        host=cfg.host or "",
+        api_key_value=cfg.api_key,
+        project=cfg.project,
+        project_id=cfg.project_id,
     )
     rows = [
         ["Host", cfg.host or "?"],

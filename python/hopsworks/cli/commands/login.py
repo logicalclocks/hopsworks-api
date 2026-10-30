@@ -68,6 +68,7 @@ def login_cmd(
             api_key_value=api_key,
             project=project,
             hostname_verification=cfg.hostname_verification,
+            project_id=cfg.project_id,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Login failed: {exc}") from exc
@@ -78,6 +79,7 @@ def login_cmd(
         cfg.host = host
         cfg.api_key = api_key
         cfg.project = project_name
+        cfg.project_id = getattr(project_obj, "id", None)
         config.save(cfg)
         output.info("Saved credentials to %s", config.CONFIG_PATH)
 

@@ -57,6 +57,7 @@ from hsfs.transformation_function import TransformationFunction
 
 if TYPE_CHECKING:
     from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
+    from hopsworks_common.project import Project
 
     if HAS_NUMPY:
         import numpy as np
@@ -567,7 +568,7 @@ class FeatureStore:
 
     @public
     @usage._method_logger
-    def share(self, target_project: str | int) -> None:
+    def share(self, target_project: str | int | Project) -> None:
         """Share this entire feature store with another project.
 
         After the share, members of ``target_project`` can read every
@@ -584,7 +585,7 @@ class FeatureStore:
             ```
 
         Parameters:
-            target_project: Project name (preferred) or numeric id.
+            target_project: Project name, numeric id or Project object. Use the id or the object when several projects share a name.
 
         Raises:
             PermissionError: If the caller lacks Data Owner in the source
@@ -626,13 +627,13 @@ class FeatureStore:
 
     @public
     @usage._method_logger
-    def unshare(self, target_project: str | int) -> None:
+    def unshare(self, target_project: str | int | Project) -> None:
         """Revoke a previously-granted feature-store-level share.
 
         Requires the **Data Owner** role in the source project.
 
         Parameters:
-            target_project: Project name or numeric id.
+            target_project: Project name, numeric id or Project object.
 
         Raises:
             PermissionError: If the caller lacks Data Owner in the source

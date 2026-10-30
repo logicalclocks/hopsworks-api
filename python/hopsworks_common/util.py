@@ -591,16 +591,15 @@ def _convert_to_project_rel_path(path, current_proj_name):
 
 @also_available_as("hopsworks.util._validate_job_conf")
 def _validate_job_conf(config, project_name):
-    # User is required to set the appPath programmatically after getting the
-    # configuration. Docker, ingestion and agent jobs carry no script: an agent
-    # task's instructions are its `prompt`.
-    if (
-        config["type"]
-        not in (
-            "dockerJobConfiguration",
-            "ingestionJobConfiguration",
-            "agentJobConfiguration",
+    if config["type"] == "dockerJobConfiguration":
+        raise JobException(
+            "DOCKER jobs are not supported; use a PYTHON job with a custom environment"
         )
+    # User is required to set the appPath programmatically after getting the
+    # configuration. Ingestion and agent jobs carry no script: an agent task's
+    # instructions are its `prompt`.
+    if (
+        config["type"] not in ("ingestionJobConfiguration", "agentJobConfiguration")
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")

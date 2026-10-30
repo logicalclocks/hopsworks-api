@@ -126,7 +126,7 @@ class SecretsApi:
 
     @public
     def create_secret(
-        self, name: str, value: str, project: str | None = None
+        self, name: str, value: str, project: str | int | None = None
     ) -> secret.Secret:
         """Create a new secret.
 
@@ -143,7 +143,7 @@ class SecretsApi:
         Parameters:
             name: Name of the secret.
             value: The secret value.
-            project: Name of the project to share the secret with.
+            project: Name or id of the project to share the secret with. Use the id when several projects share a name.
 
         Returns:
             The Secret object.
@@ -158,8 +158,11 @@ class SecretsApi:
         if project is None:
             secret_config["visibility"] = "PRIVATE"
         else:
-            scope_project = self._project_api._get_project(project)
-            secret_config["scope"] = scope_project.id
+            secret_config["scope"] = (
+                project
+                if isinstance(project, int)
+                else self._project_api._get_project(project).id
+            )
             secret_config["visibility"] = "PROJECT"
 
         path_params = [
@@ -179,7 +182,7 @@ class SecretsApi:
 
     @public
     def create_secret_from_file(
-        self, name: str, local_path: str, project: str | None = None
+        self, name: str, local_path: str, project: str | int | None = None
     ) -> secret.Secret:
         """Create a new secret from the contents of a local file.
 
@@ -202,7 +205,7 @@ class SecretsApi:
         Parameters:
             name: Name of the secret.
             local_path: Path to the file whose contents become the secret value.
-            project: Name of the project to share the secret with.
+            project: Name or id of the project to share the secret with. Use the id when several projects share a name.
 
         Returns:
             The Secret object.

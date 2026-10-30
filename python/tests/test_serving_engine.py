@@ -657,7 +657,7 @@ class TestSchemaPublishing:
         eng._engine._dataset_api.exists.return_value = True
         mocker.patch(
             "hopsworks_common.client._get_instance",
-            return_value=mocker.Mock(_project_name="p"),
+            return_value=mocker.Mock(_project_name="p", _project_backing_name="p"),
         )
         deployment = mocker.Mock()
         deployment.name = "dep"
@@ -715,7 +715,7 @@ class TestSchemaPublishing:
         eng = self._engine(mocker)
         mocker.patch(
             "hopsworks_common.client._get_instance",
-            return_value=mocker.Mock(_project_name="p"),
+            return_value=mocker.Mock(_project_name="p", _project_backing_name="p"),
         )
         # a backend without the endpoint answers a bare 404 without an error code
         response = mocker.Mock(status_code=404)

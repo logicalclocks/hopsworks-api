@@ -43,7 +43,11 @@ class ModelServingApi:
                 f"No Models dataset exists in project {_client._project_name}, Please enable the Serving service or create the dataset manually."
             )
 
-        return ModelServing(_client._project_name, _client._project_id)
+        return ModelServing(
+            _client._project_name,
+            _client._project_id,
+            project_backing_name=_client._project_backing_name,
+        )
 
     def _load_default_configuration(self):
         """Load default configuration and set istio client for model serving."""

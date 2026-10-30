@@ -391,6 +391,7 @@ def setup_cmd(
 
     api_key = completed.get("apiKey")
     project = completed.get("workspaceUsername")
+    project_id = completed.get("workspaceProjectId")
     # Older Hopsworks releases do not return ``apiKeyName`` from
     # ``/token-flow/wait`` and ignore the ``key_name`` we sent on ``/create``;
     # in that case the server names the key ``cli-<timestamp>`` regardless of
@@ -402,7 +403,9 @@ def setup_cmd(
     if not api_key:
         raise _failed(host, "the server did not return an API key")
 
-    _finalize_setup(host, api_key, project, server_key_name, cfg, no_scaffold)
+    _finalize_setup(
+        host, api_key, project, server_key_name, cfg, no_scaffold, project_id
+    )
     return None
 
 
@@ -466,6 +469,7 @@ def _finalize_setup(
     server_key_name: str | None,
     cfg: config.HopsConfig,
     no_scaffold: bool = False,
+    project_id: int | None = None,
 ) -> None:
     """Verify the freshly-minted API key, then persist it to ``~/.hops.toml``.
 
@@ -485,6 +489,8 @@ def _finalize_setup(
     cfg.api_key = api_key
     cfg.api_key_name = server_key_name
     cfg.project = project
+    # Display names repeat across owners; a server that returns the id pins the project.
+    cfg.project_id = project_id
     config.save(cfg)
 
     output.success("✓ Connected to %s as %s", host, project or "(no project)")

@@ -1702,7 +1702,7 @@ def _upload_wallet(ctx: click.Context, sc: Any, local_zip: str) -> tuple[str, st
         raise click.ClickException(f"Wallet upload failed: {exc}") from exc
     relative = f"{target_dir}/{file_name}"
     output.info("Uploaded wallet to %s", relative)
-    return f"/Projects/{project.name}/{relative}", relative
+    return f"/Projects/{project.backing_name}/{relative}", relative
 
 
 def _discard_wallet(ctx: click.Context, relative: str | None) -> None:

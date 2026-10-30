@@ -166,6 +166,7 @@ def test_setup_runs_token_flow_when_forced(tmp_home):
     wait_response = {
         "apiKey": "NEW.KEY",
         "workspaceUsername": "demo",
+        "workspaceProjectId": 42,
         "apiKeyName": "jim-laptop",
         "timeout": False,
     }
@@ -229,6 +230,7 @@ def test_setup_runs_token_flow_when_forced(tmp_home):
     assert saved.api_key == "NEW.KEY"
     assert saved.api_key_name == "jim-laptop"
     assert saved.project == "demo"
+    assert saved.project_id == 42
 
 
 def _flow_post(create=None, wait=None):

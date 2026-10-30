@@ -121,8 +121,10 @@ class TrinoApi:
         if project is None:
             _client = client._get_instance()
             self.project_name = _client._project_name
+            self.project_backing_name = _client._project_backing_name
         else:
             self.project_name = project.name
+            self.project_backing_name = project.backing_name
 
     def _get_ca_chain_path(self, verify: bool | str) -> bool | str:
         """Get the SSL certificate or pass through a custom verify value.
@@ -225,7 +227,7 @@ class TrinoApi:
             raise TrinoException(
                 "Client could not determine username for the current project user."
             )
-        user = f"{self.project_name}__{username}"
+        user = f"{self.project_backing_name}__{username}"
         password = self._get_password(user)
         return user, password
 

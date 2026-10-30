@@ -335,6 +335,7 @@ def test_status_reports_freshness_rejects_and_layout(tmp_path, monkeypatch):
     conn = SimpleNamespace(cursor=Cursor, close=lambda: None)
     project = SimpleNamespace(
         name="Demo",
+        backing_name="Demo",
         get_trino_api=lambda: SimpleNamespace(connect=lambda **kw: conn),
         get_job_api=lambda: SimpleNamespace(get_job=lambda name: None),
     )
@@ -689,6 +690,7 @@ def test_status_reads_every_job_and_each_tables_cadence_target(tmp_path, monkeyp
     monkeypatch.setenv("HOPSFS_MOUNT", str(tmp_path))
     project = SimpleNamespace(
         name="Demo",
+        backing_name="Demo",
         get_trino_api=lambda: (_ for _ in ()).throw(RuntimeError("no trino")),
         get_job_api=lambda: SimpleNamespace(get_job=lambda name: None),
     )

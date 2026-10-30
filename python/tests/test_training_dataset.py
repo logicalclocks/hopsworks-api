@@ -278,3 +278,15 @@ class TestTrainingDataset:
         # remain serialisable for subsequent requests.
         payload = td.to_dict()
         assert payload["lookback"]["defaultLookback"]["lookbackKey"] == "PARTITION_KEY"
+
+    def test_rewrite_location_root_folder_on_distinct_backing_name(self, mocker):
+        # The project's root is its backing name; the backend names the folder after the display name.
+        c = mocker.patch("hopsworks_common.client._get_instance").return_value
+        c._project_name = "demo"
+        c._project_backing_name = "5cad0i9r254v"
+        root = "hopsfs://nn:8020/Projects/5cad0i9r254v/demo_Training_Datasets"
+        td_json = {"location": root, "name": "td", "version": 2}
+
+        training_dataset.TrainingDataset._rewrite_location(td_json)
+
+        assert td_json["location"] == f"{root}/td_2"

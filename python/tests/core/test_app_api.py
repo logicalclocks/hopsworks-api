@@ -34,6 +34,7 @@ class TestAppApiCreate:
         client_mock = Mock()
         client_mock._project_id = 119
         client_mock._project_name = "demo"
+        client_mock._project_backing_name = "demo"
         client_mock._send_request.return_value = {}
         mocker.patch(
             "hopsworks_common.core.app_api.client._get_instance",
@@ -454,6 +455,7 @@ class TestAppApiCreateKinds:
         client_mock = Mock()
         client_mock._project_id = 119
         client_mock._project_name = "demo"
+        client_mock._project_backing_name = "demo"
         client_mock._send_request.return_value = {}
         mocker.patch(
             "hopsworks_common.core.app_api.client._get_instance",

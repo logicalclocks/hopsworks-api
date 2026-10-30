@@ -590,7 +590,7 @@ class ServingEngine:
                 # legacy artifact version path under Models dataset
                 legacy_from_hdfs_path = "{}/{}/{}/{}/{}/{}/{}".format(
                     "/Projects",
-                    deployment_instance.project_name,
+                    client._get_instance()._project_backing_name,
                     MODEL_REGISTRY.MODELS_DATASET,
                     deployment_instance.model_name,
                     str(deployment_instance.model_version),
@@ -967,7 +967,7 @@ class ServingEngine:
                     return None
                 if error_code:
                     raise
-        project_name = client._get_instance()._project_name
+        project_name = client._get_instance()._project_backing_name
         path = f"/Projects/{project_name}/{self._schema_dir(predictor.name)}/{schema_id}.json"
         response = self._dataset_api.read_content(path)
         if response is None:
@@ -983,7 +983,7 @@ class ServingEngine:
         schema_dir = self._schema_dir(deployment_name)
         if self._engine._dataset_api.exists(schema_dir):
             self._engine._dataset_api.remove(
-                f"/Projects/{client._get_instance()._project_name}/{schema_dir}"
+                f"/Projects/{client._get_instance()._project_backing_name}/{schema_dir}"
             )
 
     def _upload_local_serving_files(self, deployment_instance):

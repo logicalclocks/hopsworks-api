@@ -111,7 +111,7 @@ class DatasetTools:
         """Get the dataset for a specific project.
 
         Parameters:
-            project_name: The name of the project to get the dataset for.
+            project_name: The name or id of the project to get the dataset for.
             offset: The offset for pagination.
             limit: The limit for pagination.
             ctx: The MCP context, provided automatically.
@@ -210,7 +210,7 @@ class DatasetTools:
         """List files in a specific path of a project.
 
         Parameters:
-            project_name: The name of the project to list files for.
+            project_name: The name or id of the project to list files for.
             path: The path to list files in.
             offset: The offset for pagination.
             limit: The limit for pagination.
@@ -278,7 +278,7 @@ class DatasetTools:
         """Create a directory in a specific project.
 
         Parameters:
-            project_name: The name of the project to create the directory in.
+            project_name: The name or id of the project to create the directory in.
             path: The path to create the directory in.
             ctx: The MCP context, provided automatically.
 

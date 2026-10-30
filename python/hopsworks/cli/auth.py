@@ -64,6 +64,7 @@ def login(
     engine: str | None = None,
     internal: bool = False,
     hostname_verification: bool = False,
+    project_id: int | None = None,
 ) -> Project:
     """Call ``hopsworks.login()`` with a stable argument shape.
 
@@ -92,6 +93,8 @@ def login(
         hostname_verification: Whether to verify Hopsworks' TLS certificate;
             False skips verification (the SDK default). Passed straight through
             to ``hopsworks.login(hostname_verification=...)``.
+        project_id: Id of the project to attach to; takes precedence over ``project``,
+            since several projects may share a name.
 
     Returns:
         The authenticated SDK ``Project`` object.
@@ -123,7 +126,9 @@ def login(
     }
     if api_key_value:
         kwargs["api_key_value"] = api_key_value
-    if project:
+    if project_id:
+        kwargs["project_id"] = project_id
+    elif project:
         kwargs["project"] = project
     if engine:
         kwargs["engine"] = engine
@@ -177,6 +182,7 @@ def verify(
     api_key_value: str,
     project: str | None = None,
     hostname_verification: bool = False,
+    project_id: int | None = None,
 ) -> Project:
     """Run a minimal login to confirm ``api_key_value`` works against ``host``.
 
@@ -188,6 +194,7 @@ def verify(
         api_key_value: API key to validate.
         project: Optional project to attach to.
         hostname_verification: Whether to verify Hopsworks' TLS certificate.
+        project_id: Optional id of the project to attach to; takes precedence over ``project``.
 
     Returns:
         The authenticated SDK ``Project`` object.
@@ -197,4 +204,5 @@ def verify(
         api_key_value=api_key_value,
         project=project,
         hostname_verification=hostname_verification,
+        project_id=project_id,
     )

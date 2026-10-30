@@ -736,9 +736,8 @@ class StorageConnector(ABC):
                         "explicit `database` to get_tables()."
                     )
                 database = self.database
-            elif self.type == StorageConnector.HOPSWORKS:
-                database = self._default_feature_store()
             elif self.type in [
+                StorageConnector.HOPSWORKS,
                 StorageConnector.S3,
                 StorageConnector.GCS,
                 StorageConnector.GOOGLE_SHEETS,
@@ -5033,16 +5032,6 @@ class HopsworksConnector(StorageConnector):
         """Refetch the connector when it is the basic-info copy a data source or feature group carries."""
         if not self._host:
             self._refetch()
-
-    def _default_feature_store(self) -> str:
-        """Name of the remote project's own feature store, browsed when no database is given."""
-        self._ensure_full()
-        if not self._project:
-            raise ValueError(
-                "Database name is required for Hopsworks connectors without a project. "
-                "Pass the remote feature store name as the `database` argument to get_tables()."
-            )
-        return f"{self._project.lower()}_featurestore"
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()

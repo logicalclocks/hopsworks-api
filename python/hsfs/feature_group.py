@@ -100,6 +100,8 @@ from hsfs.validation_report import ValidationReport
 
 
 if TYPE_CHECKING:
+    from hopsworks_common.project import Project
+
     if HAS_CONFLUENT_KAFKA:
         import confluent_kafka
     if HAS_NUMPY:
@@ -1362,7 +1364,7 @@ class FeatureGroupBase:
     @public
     def share(
         self,
-        target_project: str | int,
+        target_project: str | int | Project,
         features: list[str] | None = None,
     ) -> None:
         """Share this feature group with another project.
@@ -1388,7 +1390,7 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            target_project: Project name (preferred) or numeric id.
+            target_project: Project name, numeric id or Project object. Use the id or the object when several projects share a name.
             features: Optional whitelist of feature names. ``None`` shares
                 the whole feature group.
 
@@ -1426,13 +1428,13 @@ class FeatureGroupBase:
         return share_api.ShareApi()._list_feature_group_shares(self._id)
 
     @public
-    def unshare(self, target_project: str | int) -> None:
+    def unshare(self, target_project: str | int | Project) -> None:
         """Revoke a previously-granted feature-group share.
 
         Requires the **Data Owner** role in the source project.
 
         Parameters:
-            target_project: Project name or numeric id.
+            target_project: Project name, numeric id or Project object.
 
         Raises:
             PermissionError: If the caller lacks Data Owner in the source

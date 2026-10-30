@@ -67,7 +67,7 @@ class ProjectTools:
         """Use a specific project.
 
         Parameters:
-            name: The name of the project to use.
+            name: The name or id of the project to use.
             ctx: The MCP context, provided automatically.
 
         Returns:
@@ -83,7 +83,8 @@ class ProjectTools:
         project = hopsworks.login(
             host=conn.host,
             port=conn.port,
-            project=name,
+            project=None if name.isdigit() else name,
+            project_id=int(name) if name.isdigit() else None,
             api_key_value=conn.api_key_value,
             engine=conn._engine,
         )
@@ -194,7 +195,7 @@ class ProjectTools:
         """Get project details.
 
         Parameters:
-            name: The name of the project.
+            name: The name or id of the project.
             ctx: The MCP context, provided automatically.
 
         Returns:

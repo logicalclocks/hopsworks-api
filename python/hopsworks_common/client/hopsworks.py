@@ -39,6 +39,7 @@ class Client(base.Client):
     DOMAIN_CA_TRUSTSTORE_PEM = "DOMAIN_CA_TRUSTSTORE_PEM"
     PROJECT_ID = "HOPSWORKS_PROJECT_ID"
     PROJECT_NAME = "HOPSWORKS_PROJECT_NAME"
+    PROJECT_BACKING_NAME = "HOPSWORKS_PROJECT_BACKING_NAME"
     HADOOP_USER_NAME = "HADOOP_USER_NAME"
     MATERIAL_DIRECTORY = "MATERIAL_DIRECTORY"
     HDFS_USER = "HDFS_USER"
@@ -65,6 +66,7 @@ class Client(base.Client):
 
         self._project_id = os.environ[self.PROJECT_ID]
         self._project_name = self._project_name()
+        self._project_backing_name = self._backing_name()
         try:
             self._auth = auth.BearerAuth(self._read_jwt())
         except FileNotFoundError:
@@ -140,6 +142,17 @@ class Client(base.Client):
         # project users have username project__user:
         hops_user_split = hops_user.split("__")
         return hops_user_split[0]
+
+    def _backing_name(self):
+        try:
+            return os.environ[self.PROJECT_BACKING_NAME]
+        except KeyError:
+            pass
+        # Older backends set no backing name; the project user is <backing>__<user> on every backend.
+        try:
+            return self._project_user().split("__")[0]
+        except KeyError:
+            return self._project_name
 
     def _project_user(self):
         try:

@@ -26,6 +26,7 @@ def project_name(mocker):
     name = "myproject"
     fake_client = mocker.Mock()
     fake_client._project_name = name
+    fake_client._project_backing_name = name
     mocker.patch(
         "hsml.utils.local_paths.client._get_instance",
         return_value=fake_client,

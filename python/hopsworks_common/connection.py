@@ -219,7 +219,7 @@ class Connection:
             A feature store handle object to perform operations on.
         """
         if not name:
-            name = client._get_instance()._project_name
+            name = client._get_instance()._project_backing_name
         return self._feature_store_api._get(util._append_feature_store_suffix(name))
 
     @usage._method_logger
@@ -306,16 +306,23 @@ class Connection:
 
     @usage._method_logger
     @_connected
-    def _get_project(self, name: str | None = None) -> Project:
+    def _get_project(
+        self, name: str | None = None, project_id: int | None = None
+    ) -> Project:
         """Get an existing project.
 
         Parameters:
-            name: The name of the project.
+            name: The name of the project. A project name starts with a letter, so an all-digit `name` is a project id.
+            project_id: The id of the project. Takes precedence over `name`.
 
         Returns:
             A project handle object to perform operations on.
         """
         _client = client._get_instance()
+        if project_id is None and name and name.isdigit():
+            project_id = int(name)
+        if project_id is not None:
+            return self._project_api._get_project_by_id(project_id)
         if not name and not _client._project_name:
             raise ValueError(
                 "No project name provided. Please provide a project name or"
@@ -324,7 +331,11 @@ class Connection:
         if not _client._project_name:
             self._provide_project(name)
         elif not name:
-            name = client._get_instance()._project_name
+            # The connected project is known by id; its display name may be shared.
+            connected_id = getattr(_client, "_project_id", None)
+            if connected_id:
+                return self._project_api._get_project_by_id(connected_id)
+            name = _client._project_name
 
         return self._project_api._get_project(name)
 

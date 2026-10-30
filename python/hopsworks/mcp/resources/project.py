@@ -99,7 +99,7 @@ class ProjectResources:
         """Get project details.
 
         Parameters:
-            name: The name of the project.
+            name: The name or id of the project.
             ctx: The MCP context, provided automatically.
 
         Returns:

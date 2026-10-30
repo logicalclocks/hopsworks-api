@@ -57,8 +57,10 @@ def code_location(path: Path, project: str | None = None) -> str:
         except ValueError:
             relative = None
         if relative is not None:
+            # The mount is the pod's own project folder, named by its backing name.
             name = (
-                project
+                os.environ.get("HOPSWORKS_PROJECT_BACKING_NAME")
+                or project
                 or os.environ.get("PROJECT_NAME")
                 or os.environ.get("HOPSWORKS_PROJECT")
             )

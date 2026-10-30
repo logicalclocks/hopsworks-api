@@ -148,20 +148,28 @@ def dataset_download(
     output.success("✓ Downloaded to %s", path)
 
 
+def _target_project(target: str) -> str | int:
+    """A numeric ``--target`` is a project id, the way to pick one of several projects that share a name.
+
+    It is sent as is: the target need not be a project the caller is a member of.
+    """
+    return int(target) if target.isdigit() else target
+
+
 @files_group.command("share")
 @click.argument("path")
 @click.option(
     "--target",
     "target_project",
     required=True,
-    help="Project to share the dataset with.",
+    help="Project name or id to share the dataset with.",
 )
 @click.option(
     "--permission",
     type=click.Choice(["READ_ONLY", "EDITABLE", "EDITABLE_BY_OWNERS"]),
     default="READ_ONLY",
     show_default=True,
-    help="Permission for the target project. Feature-store datasets must be READ_ONLY.",
+    help="Permission for the target project.",
 )
 @click.pass_context
 def dataset_share(
@@ -181,7 +189,7 @@ def dataset_share(
     project = session.get_project(ctx)
     try:
         project.get_dataset_api().share(
-            path, target_project=target_project, permission=permission
+            path, target_project=_target_project(target_project), permission=permission
         )
     except PermissionError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -198,7 +206,7 @@ def dataset_share(
     "--target",
     "target_project",
     required=True,
-    help="Project to revoke the share from.",
+    help="Project name or id to revoke the share from.",
 )
 @click.pass_context
 def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
@@ -213,7 +221,9 @@ def dataset_unshare(ctx: click.Context, path: str, target_project: str) -> None:
     """
     project = session.get_project(ctx)
     try:
-        project.get_dataset_api().unshare(path, target_project=target_project)
+        project.get_dataset_api().unshare(
+            path, target_project=_target_project(target_project)
+        )
     except PermissionError as exc:
         raise click.ClickException(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

@@ -166,7 +166,7 @@ import hopsworks
 project = hopsworks.login()
 api = project.get_superset_api()
 
-project_name = project.name.lower()                # e.g. "af"
+project_name = getattr(project, "backing_name", project.name).lower()  # e.g. "af"
 fg_name, fg_version = "customers", 1
 
 trino_db_id = find_trino_db_id(api)                # or a cached int
@@ -334,7 +334,7 @@ import hopsworks
 
 # Columns below (state, age, …) are illustrative — swap for real ones from
 # `hops fg features <FG_NAME> --version <FG_VERSION>`.
-PROJECT_NAME = "<your_project>"        # don't hardcode; set to project.name after login
+PROJECT_NAME = "<your_project>"        # don't hardcode; set to getattr(project, "backing_name", project.name) after login
 FG_NAME, FG_VERSION = "customers", 1
 
 COUNT_METRIC = {

@@ -72,7 +72,7 @@ class JobTools:
         """Get the jobs for a specific project.
 
         Parameters:
-            project_name: The name of the project to retrieve jobs from.
+            project_name: The name or id of the project to retrieve jobs from.
             ctx: The MCP context, provided automatically.
 
         Returns:

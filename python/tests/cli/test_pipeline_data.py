@@ -71,6 +71,7 @@ class _Trino:
 def _project(trino):
     return SimpleNamespace(
         name="shop",
+        backing_name="shop",
         get_trino_api=lambda: SimpleNamespace(connect=lambda **kw: trino),
     )
 
@@ -204,7 +205,9 @@ def test_nothing_written_by_a_scheduled_pipeline_is_a_problem(tmp_path, monkeypa
         }
     }
     [pipeline] = pipeline_data.collect(
-        SimpleNamespace(name="shop", get_trino_api=lambda: None), doc, hours=24
+        SimpleNamespace(name="shop", backing_name="shop", get_trino_api=lambda: None),
+        doc,
+        hours=24,
     )
     assert pipeline["flow_problems"] == ["1,000 rows came in but none were written"]
     assert (
@@ -234,7 +237,9 @@ def test_a_pipeline_problem_degrades_the_system_and_shows_on_the_page(
             }
         ],
     )
-    project = SimpleNamespace(name="shop", get_model_serving=lambda: None)
+    project = SimpleNamespace(
+        name="shop", backing_name="shop", get_model_serving=lambda: None
+    )
     facts = health.collect(project, {"system": {"name": "Orders"}}, "orders")
     assert facts["overall"] == "degraded"
     assert facts["counts"]["pipeline_problems"] == 1
