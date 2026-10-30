@@ -104,7 +104,6 @@ def _with_table_timestamps(dataset, table_schema=None):
     as UTC wall clock, whatever spark.sql.session.timeZone the job set.
     Timestamps nested in struct or array columns are left as they are.
     """
-    from pyspark.sql.functions import col, expr
     from pyspark.sql.types import TimestampNTZType, TimestampType
 
     table_types = (
@@ -112,41 +111,43 @@ def _with_table_timestamps(dataset, table_schema=None):
         if table_schema is not None
         else None
     )
-    columns = []
-    converted = False
+    conversions = {}
     for field in dataset.schema.fields:
         quoted = "`" + field.name.replace("`", "``") + "`"
         if table_types is None:
-            target = (
-                TimestampNTZType()
-                if isinstance(field.dataType, TimestampType)
-                else field.dataType
-            )
+            to_ntz = isinstance(field.dataType, TimestampType)
+            to_ltz = False
         else:
-            target = table_types.get(field.name.lower(), field.dataType)
-        if isinstance(field.dataType, TimestampType) and isinstance(
-            target, TimestampNTZType
-        ):
-            columns.append(
-                expr(
-                    f"timestampadd(MICROSECOND, unix_micros({quoted}), "
-                    "TIMESTAMP_NTZ '1970-01-01 00:00:00')"
-                ).alias(field.name)
+            target = table_types.get(field.name.lower())
+            to_ntz = isinstance(field.dataType, TimestampType) and isinstance(
+                target, TimestampNTZType
             )
-            converted = True
-        elif isinstance(field.dataType, TimestampNTZType) and isinstance(
-            target, TimestampType
-        ):
-            columns.append(
-                expr(
-                    "timestamp_micros(timestampdiff(MICROSECOND, "
-                    f"TIMESTAMP_NTZ '1970-01-01 00:00:00', {quoted}))"
-                ).alias(field.name)
+            to_ltz = isinstance(field.dataType, TimestampNTZType) and isinstance(
+                target, TimestampType
             )
-            converted = True
-        else:
-            columns.append(col(quoted))
-    return dataset.select(*columns) if converted else dataset
+        if to_ntz:
+            conversions[field.name] = (
+                f"timestampadd(MICROSECOND, unix_micros({quoted}), "
+                "TIMESTAMP_NTZ '1970-01-01 00:00:00')"
+            )
+        elif to_ltz:
+            conversions[field.name] = (
+                "timestamp_micros(timestampdiff(MICROSECOND, "
+                f"TIMESTAMP_NTZ '1970-01-01 00:00:00', {quoted}))"
+            )
+    if not conversions:
+        return dataset
+
+    from pyspark.sql.functions import col, expr
+
+    return dataset.select(
+        *(
+            expr(conversions[f.name]).alias(f.name)
+            if f.name in conversions
+            else col("`" + f.name.replace("`", "``") + "`")
+            for f in dataset.schema.fields
+        )
+    )
 
 
 def _delta_table_for_path(spark_session, path: str):

@@ -243,17 +243,15 @@ class FeatureGroupBaseEngine:
         }
         for feature_fg in feature_group_features:
             name = util._autofix_feature_name(feature_fg.name)
-            fg_type = _normalize_hive_type(feature_fg.type.lower().replace(" ", ""))
+            fg_type = feature_fg.type.lower().replace(" ", "")
             # check if feature exists dataframe
             if name in feature_df_dict:
-                df_type = _normalize_hive_type(
-                    feature_df_dict[name].lower().replace(" ", "")
-                )
+                df_type = feature_df_dict[name].lower().replace(" ", "")
                 # remove match from lookup table
                 del feature_df_dict[name]
 
                 # check if types match
-                if fg_type != df_type:
+                if _normalize_hive_type(fg_type) != _normalize_hive_type(df_type):
                     # don't check structs for exact match
                     if fg_type.startswith("struct") and df_type.startswith("struct"):
                         continue
