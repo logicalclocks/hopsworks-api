@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-"""What a login fetches, kept on disk so the next process with the same host, key and project fetches nothing.
+"""What a login fetches, kept on disk so the next process with the same host, key and project id fetches nothing.
 
 On only when `HOPS_SESSION_CACHE=1`, which the Hopsable sandbox sets: a sandbox is one user's machine.
 Never set it on a host other users share: the files hold that user's certificates.
@@ -44,6 +44,7 @@ _CERTS_GRACE_S = 2 * TTL_S
 
 # One session per process: the client binds it at login. Plain data, nothing that holds a resource.
 _key: str | None = None
+_project_id: str | None = None
 _data: dict[str, Any] = {}
 _used = False
 # What the host answers the same to every user, such as its versions, before any project is chosen.
@@ -63,22 +64,31 @@ def directory() -> Path:
     return Path(os.environ.get(DIR_ENV_VAR) or Path.home() / ".hops" / "session")
 
 
-def bind(host: str, port: Any, api_key: str, project: str | None) -> None:
-    """Load the session for this host, key and project, or start an empty one."""
-    global _key, _data, _used
+def bind(host: str, port: Any, api_key: str, project_id: Any) -> None:
+    """Load the session for this host, key and project id, or start an empty one.
+
+    The id, never the name: projects of one owner can share a display name.
+    """
+    global _key, _project_id, _data, _used
     _used = False
     _data = {}
-    if not enabled() or not project:
+    if not enabled() or not project_id:
         _key = None
         return
-    material = f"{host}:{port}\n{api_key}\n{project}".encode()
+    project_id = str(project_id)
+    _project_id = project_id
+    material = f"{host}:{port}\n{api_key}\n{project_id}".encode()
     _key = hashlib.sha256(material).hexdigest()
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return
     now = time.time()
-    if data.get("v") == 1 and now < data.get("expires_at", 0):
+    if (
+        data.get("v") == 1
+        and data.get("project_id") == project_id
+        and now < data.get("expires_at", 0)
+    ):
         _data = data
 
 
@@ -130,6 +140,7 @@ def put(name: str, value: Any, expires_at: float | None = None) -> None:
         return
     if "expires_at" not in _data:
         _data["v"] = 1
+        _data["project_id"] = _project_id
         _data["expires_at"] = time.time() + TTL_S
     if expires_at is not None:
         _data["expires_at"] = min(_data["expires_at"], expires_at)

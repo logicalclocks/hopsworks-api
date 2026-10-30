@@ -112,10 +112,9 @@ class Client(base.Client):
     def _provide_project(self, project, project_id=None):
         self._project_name = project
         _logger.debug("Project name: %s", self._project_name)
-        self._bind_session(project)
-
         if project_id is None:
             project_id = self._get_project_info(project)["projectId"]
+        self._bind_session(project_id)
         self._project_id = str(project_id)
         _logger.debug("Setting Project ID: %s", self._project_id)
 
@@ -238,10 +237,12 @@ class Client(base.Client):
             )
         return res
 
-    def _bind_session(self, project):
-        if self._session_material is not None and project != self._session_project:
-            self._session_project = project
-            session_cache.bind(*self._session_material, project)
+    def _bind_session(self, project_id):
+        """Bind the session cache to the project id; a name can be shared by several projects."""
+        project_id = str(project_id)
+        if self._session_material is not None and project_id != self._session_project:
+            self._session_project = project_id
+            session_cache.bind(*self._session_material, project_id)
 
     def _use_certs_folder(self, folder):
         """Point this client at certificates an earlier process of the session wrote."""
@@ -493,13 +494,7 @@ class Client(base.Client):
             JSON response with project info
         """
         _logger.debug("Getting project info for project: %s", project_name)
-        info = session_cache.get(f"project_info:{project_name}")
-        if info is None:
-            info = self._send_request(
-                "GET", ["project", "getProjectInfo", project_name]
-            )
-            session_cache.put(f"project_info:{project_name}", info)
-        return info
+        return self._send_request("GET", ["project", "getProjectInfo", project_name])
 
     def _get_username(self) -> str:
         """Get the username of the logged in user.

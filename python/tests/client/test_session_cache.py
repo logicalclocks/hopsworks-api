@@ -14,14 +14,16 @@
 #   limitations under the License.
 #
 
+import json
 import os
 import stat
 import subprocess
 import sys
 from unittest import mock
 
+import hopsworks_common.client as hopsworks_client
 import pytest
-from hopsworks_common.client import base, session_cache
+from hopsworks_common.client import base, external, session_cache
 
 
 @pytest.fixture
@@ -62,6 +64,61 @@ def test_another_key_or_project_is_another_session(cache_dir):
     assert session_cache.get("username") is None
     session_cache.bind("h", 443, "k", "q")
     assert session_cache.get("username") is None
+
+
+def test_projects_with_one_name_and_two_ids_are_two_sessions(cache_dir):
+    session_cache.bind("h", 443, "k", 101)
+    session_cache.put("username", "first")
+    session_cache.bind("h", 443, "k", 102)
+    assert session_cache.get("username") is None
+    session_cache.put("username", "second")
+    assert len([f for f in cache_dir.iterdir() if f.suffix == ".json"]) == 2
+
+    session_cache.bind("h", 443, "k", "101")
+    assert session_cache.get("username") == "first"
+    session_cache.bind("h", 443, "k", 102)
+    assert session_cache.get("username") == "second"
+
+
+def test_an_entry_of_another_project_id_is_never_reused(cache_dir):
+    session_cache.bind("h", 443, "k", 101)
+    session_cache.put("username", "first")
+    (session,) = [f for f in cache_dir.iterdir() if f.suffix == ".json"]
+    # The file a project id maps to holds another project's session.
+    data = json.loads(session.read_text())
+    data["project_id"] = "102"
+    session.write_text(json.dumps(data))
+    session_cache.bind("h", 443, "k", 101)
+    assert session_cache.get("username") is None
+
+
+def test_a_client_binds_its_session_on_the_project_id(cache_dir):
+    def client_for(project_id):
+        c = external.Client.__new__(external.Client)
+        c._session_material = ("h", 443, "k")
+        c._session_project = None
+        c._engine = "none"
+        c._get_project_info = mock.MagicMock(
+            return_value={"projectId": project_id, "projectName": "shared"}
+        )
+        c._get_username = mock.MagicMock(return_value=f"user{project_id}")
+        return c
+
+    with mock.patch.object(
+        hopsworks_client, "_get_connection", lambda: mock.MagicMock()
+    ):
+        client_for(101)._provide_project("shared")
+        second = client_for(102)
+        second._provide_project("shared")
+        assert not session_cache.used()
+        assert second._username == "user102"
+        assert len([f for f in cache_dir.iterdir() if f.suffix == ".json"]) == 2
+
+        again = client_for(101)
+        again._provide_project("shared")
+        assert session_cache.used()
+        assert again._username == "user101"
+        again._get_username.assert_not_called()
 
 
 def test_a_session_ends_at_its_ttl_or_its_certificate(cache_dir, monkeypatch):
