@@ -918,9 +918,16 @@ def _create_own(
         _resume(ctx, definition, target, launch)
         return target
     target.mkdir(parents=True, exist_ok=True)
+    # A blueprint knows its phases' minutes better than the factory: its fixed
+    # answers carry them as phase_minutes, which are estimates, not requirements.
+    answers = dict(answers)
+    phase_minutes = answers.pop("phase_minutes", None) or {}
     phases = [
         {k: p[k] for k in ("key", "label", "minutes") if k in p} for p in spec["phases"]
     ]
+    for phase in phases:
+        if phase["key"] in phase_minutes:
+            phase["minutes"] = phase_minutes[phase["key"]]
     doc: dict = {
         "schema_version": 1,
         "factory": {

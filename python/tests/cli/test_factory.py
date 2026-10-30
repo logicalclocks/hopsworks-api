@@ -572,6 +572,35 @@ def test_create_writes_the_system_and_its_build_command(
     assert launched == ["/hops-factory-churn-review q3-review"]
 
 
+def test_a_blueprints_phase_minutes_replace_the_factorys_estimates(
+    tmp_path, monkeypatch, logged_in
+):
+    _recording(monkeypatch, tmp_path)
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "name": "q3-review",
+                "question": "why",
+                "cadence": "daily",
+                "compare": {"weeks": 9},
+                # As a preset's fixed answers send them.
+                "phase_minutes": {"build": 3},
+            }
+        )
+    )
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "churn-review", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "q3-review" / "system.yaml").read_text())
+    assert doc["factory"]["phases"] == [
+        {"key": "build", "label": "Build", "minutes": 3},
+        {"key": "verify", "label": "Verify"},
+    ]
+    assert "phase_minutes" not in doc["requirements"]
+
+
 def test_the_finetune_factory_writes_its_lora_requirements(
     tmp_path, monkeypatch, logged_in
 ):
