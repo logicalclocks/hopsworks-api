@@ -1020,6 +1020,13 @@ class TestValidateJobConf:
         with pytest.raises(JobException):
             util._validate_job_conf({"type": "pythonJobConfiguration"}, "proj")
 
+    def test_docker_job_configuration_is_refused(self):
+        # The backend cannot run DOCKER jobs (HWORKS-3423), so none is created.
+        with pytest.raises(JobException, match="DOCKER jobs are not supported"):
+            util._validate_job_conf(
+                {"type": "dockerJobConfiguration", "imagePath": "img"}, "proj"
+            )
+
 
 class TestVerifyAttributeKeyNames:
     class _FeatureGroupStub:
