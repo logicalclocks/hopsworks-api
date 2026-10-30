@@ -11,6 +11,8 @@ ambiguity ends the run with one line saying what is missing.
 
 Load **hops-app** (`.claude/skills/hops-app/` in the repository, else `~/.claude/skills/hops-app/`):
 its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skeleton/`.
+Project files the app's build needs (a CSV, an image in `Resources/`): read them as
+the **hops** skill's *Project files* rule (in a Hopsable sandbox, `$HOPS_TEMPLATES/SKILL.md`) says.
 
 ## Actions
 

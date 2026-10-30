@@ -236,6 +236,15 @@ hops files share Resources/my_dir --target other_project [--permission READ_ONLY
 hops files unshare Resources/my_dir --target other_project
 ```
 
+## Project files
+
+A Hopsable sandbox can mount the project. `cat /run/hopsfs/status.json` says whether it is up:
+with `"state": "mounted"` and `"mountpoint": "/Projects/$HOPSWORKS_PROJECT"`, read and write the
+project's files under that path with plain file tools (`ls`, `cat`, `cp`, pandas). Any other
+state, no such file, or another mountpoint: use `hops files`. A `/Projects` directory alone is not
+a mount. Sharing is always `hops files share` / `unshare`. A small file written through the mount
+costs about as much as an upload, so a git work tree stays off it.
+
 ## Context and LLM Integration
 
 ```bash
