@@ -1054,8 +1054,11 @@ class Deployment:
         dataset without being asked: the container copies its log to
         ``Logs/Serving/<deployment_name>/`` when it exits, is restarted, or is
         stopped, so a pod removed by scale-to-zero still leaves its output
-        behind. Files are named
-        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log``, one per instance run.
+        behind. A run archives its standard output and standard error as two files,
+        ``<UTC yyyyMMdd-HHmmss>.<run id>_<pod>_<component>.stdout.log`` and
+        ``.stderr.log``, leaving out a stream it wrote nothing to.
+        Archives written before Hopsworks 5.3 are one interleaved
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log`` per run.
 
         Example: Downloading the most recent archives
             ```python
