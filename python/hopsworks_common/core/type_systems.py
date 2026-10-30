@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import datetime
 import decimal
+import re
 from functools import lru_cache
 from typing import TYPE_CHECKING, Literal, NewType
 
@@ -90,6 +91,27 @@ if HAS_PYARROW:
 else:
     PYARROW_HOPSWORKS_DTYPE_MAPPING = {}
 
+# A type in type position: the whole type, or after ":", "<" or "," in a nested
+# type. A struct field named like a type is followed by ":", so it is left alone.
+_DECIMAL_NO_SCALE = re.compile(r"(?<![^:<,])decimal\((\d+)\)")
+_DECIMAL_BARE = re.compile(r"(?<![^:<,])decimal(?![\w(:])")
+_TIMESTAMP_NTZ = re.compile(r"(?<![^:<,])timestamp_ntz(?![\w(:])")
+
+
+def _normalize_hive_type(hive_type: str, timestamp_ntz_as_timestamp=True) -> str:
+    """Spell a Hive type one way: decimal(p) is decimal(p,0), decimal is decimal(10,0).
+
+    With *timestamp_ntz_as_timestamp*, timestamp_ntz is timestamp too: Spark derives
+    timestamp_ntz for a TimestampNTZType column.
+    Expects a lower case type without inner spaces, as Spark and Hive render them.
+    """
+    hive_type = _DECIMAL_NO_SCALE.sub(r"decimal(\1,0)", hive_type)
+    hive_type = _DECIMAL_BARE.sub("decimal(10,0)", hive_type)
+    if timestamp_ntz_as_timestamp:
+        hive_type = _TIMESTAMP_NTZ.sub("timestamp", hive_type)
+    return hive_type
+
+
 if HAS_PYARROW:
 
     def _convert_offline_type_to_pyarrow_type(offline_type: str) -> pa.DataType:
@@ -104,7 +126,7 @@ if HAS_PYARROW:
         Returns:
             The corresponding PyArrow type.
         """
-        offline_type = offline_type.strip().lower()
+        offline_type = _normalize_hive_type(offline_type.strip().lower())
 
         # Handle array types: array<type>
         if offline_type.startswith("array<") and offline_type.endswith(">"):

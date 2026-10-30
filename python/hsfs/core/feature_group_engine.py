@@ -300,7 +300,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         else:
             # else, just verify that feature group schema matches user-provided dataframe
             self._verify_schema_compatibility(
-                self._columns_for_user_schema(feature_group), dataframe_features
+                self._columns_for_user_schema(feature_group),
+                dataframe_features,
+                timestamp_ntz_converts=feature_group.time_travel_format == "DELTA",
             )
 
         # ge validation on python and non stream feature groups on spark
@@ -1001,7 +1003,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
             self._verify_schema_compatibility(
-                self._columns_for_user_schema(feature_group), dataframe_features
+                self._columns_for_user_schema(feature_group),
+                dataframe_features,
+                timestamp_ntz_converts=feature_group.time_travel_format == "DELTA",
             )
 
         # set primary, foreign and partition key columns
