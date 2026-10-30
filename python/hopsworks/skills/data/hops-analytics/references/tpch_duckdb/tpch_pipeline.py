@@ -8,10 +8,15 @@ dbt-duckdb and dbt_run_graph:
 
 1. `INSTALL tpch; LOAD tpch; CALL dbgen(sf = 1);` writes the TPC-H tables into a
    DuckDB file in the job's scratch directory (about 250 MB at scale factor 1).
-2. `dbt build` runs the dbt project in tpch_q8/: one model per node of the DAG,
+2. The eight TPC-H tables are written to offline Delta feature groups,
+   tpch_<table>, in chunks of CHUNK_ROWS rows appended one after the other, so
+   memory holds one chunk at a time. A table already holding every row dbgen
+   wrote is left as it is, and one holding fewer (a run that failed while
+   writing it) is written again, so a second run writes nothing twice.
+3. `dbt build` runs the dbt project in tpch_q8/: one model per node of the DAG,
    from each table's selected columns to Brazil's share of the American market
    per year, and the project's data tests.
-3. The two output models are written to offline Delta feature groups:
+4. The two output models are written to offline Delta feature groups:
    tpch_brazil_market_share (one row per year) and tpch_america_volume_by_nation
    (one row per year and supplier nation, which the dashboard charts).
 
@@ -44,6 +49,18 @@ OUTPUTS = {
         ["o_year", "supplier_nation"],
     ),
 }
+# TPC-H table -> (primary key, event time): written as tpch_<table>, offline Delta, version 1.
+SOURCES = {
+    "region": (["r_regionkey"], None),
+    "nation": (["n_nationkey"], None),
+    "customer": (["c_custkey"], None),
+    "supplier": (["s_suppkey"], None),
+    "part": (["p_partkey"], None),
+    "partsupp": (["ps_partkey", "ps_suppkey"], None),
+    "orders": (["o_orderkey"], "o_orderdate"),
+    "lineitem": (["l_orderkey", "l_linenumber"], "l_shipdate"),
+}
+CHUNK_ROWS = 250_000
 DESCRIPTIONS = {
     "tpch_brazil_market_share": "Brazilian suppliers' share of the American market for a part type, "
     "per year (TPC-H Q8)",
@@ -147,11 +164,79 @@ def write_graph(target_dir: Path, nodes: list[dict]) -> None:
     )
 
 
-def write_feature_groups(frames: dict, system: str) -> dict[str, int]:
-    """Write each output model to its offline Delta feature group; rows written per group."""
-    import hopsworks
+def rows_in(fg) -> int:
+    """The rows a feature group's Delta commits inserted, less those they deleted."""
+    return sum(
+        int(commit.get("rowsInserted") or 0) - int(commit.get("rowsDeleted") or 0)
+        for commit in fg.commit_details().values()
+    )
 
-    fs = hopsworks.login().get_feature_store()
+
+def source_query(con, table: str) -> str:
+    """Every column of a TPC-H table, its DECIMAL prices as DOUBLE, which pandas holds as floats."""
+    columns = [
+        f"CAST({name} AS DOUBLE) AS {name}" if kind.startswith("DECIMAL") else name
+        for name, kind, *_ in con.execute(f"DESCRIBE {table}").fetchall()
+    ]
+    return f"SELECT {', '.join(columns)} FROM {table}"
+
+
+def write_sources(
+    fs,
+    path: Path,
+    counts: dict[str, int],
+    sf: float,
+    system: str,
+    memory_limit: str,
+    threads: int,
+) -> dict[str, int]:
+    """Write each TPC-H table to its feature group in appended chunks; rows written per group."""
+    import duckdb
+    import polars as pl
+
+    written = {}
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        # Without a limit DuckDB takes 80% of the node's memory, not the job's.
+        configure(con, memory_limit, threads, path.parent)
+        for table, (primary_key, event_time) in SOURCES.items():
+            name = f"tpch_{table}"
+            fg = fs.get_feature_group(name, version=1)
+            if fg is not None:
+                if rows_in(fg) == counts[table]:
+                    written[name] = 0
+                    continue
+                fg.delete()
+            fg = fs.create_feature_group(
+                name=name,
+                version=1,
+                primary_key=primary_key,
+                event_time=event_time,
+                online_enabled=False,
+                time_travel_format="DELTA",
+                statistics_config=False,
+                description=f"{system}: the TPC-H {table} table at scale factor {sf:g}, as DuckDB's dbgen wrote it",
+            )
+            rows = 0
+            reader = con.execute(source_query(con, table)).to_arrow_reader(CHUNK_ROWS)
+            for batch in reader:
+                # Appends: the first chunk creates the Delta table, and nothing is merged.
+                # Polars shares the batch's Arrow memory, where pandas would copy it.
+                fg.insert(
+                    pl.from_arrow(batch),
+                    operation="insert",
+                    write_options={"wait_for_job": True},
+                )
+                rows += batch.num_rows
+            written[name] = rows
+            print(f"{name}: {rows:,} rows; peak memory: {peak_memory()}", flush=True)
+    finally:
+        con.close()
+    return written
+
+
+def write_feature_groups(fs, frames: dict, system: str) -> dict[str, int]:
+    """Write each output model to its offline Delta feature group; rows written per group."""
     written = {}
     for model, frame in frames.items():
         name, primary_key = OUTPUTS[model]
@@ -221,6 +306,11 @@ def main(argv: list[str] | None = None) -> int:
     target_dir = run_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
     generation = node("tpch_dbgen", f"DuckDB dbgen(sf = {args.sf:g})", [])
+    sources = node(
+        "tpch_tables",
+        "feature groups tpch_<table> v1",
+        ["external.hopsworks.tpch_dbgen"],
+    )
     writes = [
         node(name, f"feature group {name} v1", [f"model.{DBT_PROJECT_NAME}.{model}"])
         for model, (name, _) in OUTPUTS.items()
@@ -237,6 +327,31 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"dbgen(sf = {args.sf:g}): {counts}")
 
+        fs = None
+        if not args.no_write:
+            import hopsworks
+
+            fs = hopsworks.login().get_feature_store()
+            started = time.monotonic()
+            try:
+                tables = write_sources(
+                    fs,
+                    path,
+                    counts,
+                    args.sf,
+                    args.system,
+                    args.memory_limit,
+                    args.threads,
+                )
+            except Exception as exc:
+                sources.update(status="error", detail={"message": str(exc)})
+                raise
+            sources.update(
+                status="success",
+                execution_time=round(time.monotonic() - started, 1),
+                detail={"rows_affected": tables},
+            )
+
         if not dbt_build(path, target_dir, args.memory_limit, args.threads, args.vars):
             print("dbt build failed: see the execution graph", file=sys.stderr)
             return 1
@@ -248,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
 
         started = time.monotonic()
         try:
-            written = write_feature_groups(frames, args.system)
+            written = write_feature_groups(fs, frames, args.system)
         except Exception as exc:
             for write in writes:
                 write.update(status="error", detail={"message": str(exc)})
@@ -262,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"written: {written}")
         return 0
     finally:
-        write_graph(target_dir, [generation, *writes])
+        write_graph(target_dir, [generation, sources, *writes])
         shutil.rmtree(scratch, ignore_errors=True)
         print(f"peak memory: {peak_memory()}")
 

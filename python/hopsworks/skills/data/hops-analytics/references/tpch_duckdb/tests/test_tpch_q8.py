@@ -79,3 +79,23 @@ def test_every_output_has_its_primary_key_and_event_time(built):
         frame = outputs[model]
         assert not frame.duplicated(primary_key).any(), model
         assert frame["year_start"].notna().all(), model
+
+
+def test_the_source_tables_are_every_tpch_table_with_unique_keys(built):
+    import duckdb
+    import pyarrow as pa
+
+    path, counts, _ = built
+    assert set(pipeline.SOURCES) == set(counts)
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        for table, (primary_key, event_time) in pipeline.SOURCES.items():
+            frame = con.execute(pipeline.source_query(con, table)).fetch_arrow_table()
+            assert frame.num_rows == counts[table], table
+            assert not any(pa.types.is_decimal(f.type) for f in frame.schema), table
+            keys = frame.select(primary_key).to_pandas()
+            assert not keys.duplicated().any(), table
+            if event_time:
+                assert frame.column(event_time).null_count == 0, table
+    finally:
+        con.close()
