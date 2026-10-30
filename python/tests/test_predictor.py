@@ -2024,6 +2024,9 @@ class TestPredictorDefaultPredictor:
             {"name": "label", "type": "int"}
         ]
         assert "passed_features" not in captured
+        assert captured["feature_view_id"] == 3
+        assert captured["feature_view_name"] == "fv"
+        assert captured["feature_view_version"] == 2
 
     @pytest.mark.parametrize(
         "kwargs, framework, feature_view, kserve",
@@ -2285,8 +2288,17 @@ class TestPredictorDefaultPredictor:
             and p.feature_view_name == "fv"
             and p.feature_view_version == 2
         )
-        assert p.env_vars["SERVING_TRAINING_DATASET_VERSION"] == "5"
-        assert p.env_vars["SERVING_SCRIPT_KIND"] == "predictor"
+        assert p._training_dataset_version == 5
+        assert p._script_kind == "PREDICTOR"
+        assert p.env_vars is None or "SERVING_FEATURE_VIEW_NAME" not in p.env_vars
+        body = p.to_dict()
+        assert body["featureViewId"] == fv.id
+        assert body["trainingDatasetVersion"] == 5
+        assert body["scriptKind"] == "PREDICTOR"
+        assert not any(
+            e.startswith(("SERVING_FEATURE_VIEW", "SERVING_SCRIPT_KIND"))
+            for e in body.get("predictorEnvVars", [])
+        )
         assert p.schema.output["kind"] == "feature_vectors"
         assert [f.name for f in p.schema.passed_features] == ["amount"]
         assert p.model_name is None and "modelName" not in p.to_dict()

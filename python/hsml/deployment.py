@@ -501,7 +501,7 @@ class Deployment:
     def get_feature_view(self, init: bool = False) -> Any:
         """Retrieve the feature view this deployment serves, or `None`.
 
-        A feature view deployment names its view in the deployment env vars; a
+        A feature view deployment links its view, which is resolved through the feature store the view belongs to, shared ones included; a
         model deployment resolves it through the model's provenance.
 
         Parameters:
@@ -526,7 +526,10 @@ class Deployment:
                     "Resolving the feature view of a deployment needs a project "
                     "connection; use hopsworks.login() first."
                 )
-            feature_store = hopsworks._connected_project.get_feature_store()
+            # A deployment without the link (a backend that predates it) names its view in the env vars, which only the project's own store can resolve.
+            feature_store = hopsworks._connected_project.get_feature_store(
+                self._predictor._feature_store_name
+            )
             feature_view = feature_store.get_feature_view(
                 self.feature_view_name, self.feature_view_version
             )
@@ -1164,6 +1167,8 @@ class Deployment:
     @property
     def training_dataset_version(self) -> int | None:
         """Training dataset version whose statistics the deployment's transformations use."""
+        if self._predictor._training_dataset_version is not None:
+            return self._predictor._training_dataset_version
         version = (self._predictor.env_vars or {}).get(
             MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR
         )

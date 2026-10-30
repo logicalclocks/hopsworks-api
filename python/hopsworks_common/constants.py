@@ -195,10 +195,9 @@ class MODEL_SERVING:
     FEATURE_VIEW_VERSION_ENV_VAR = "SERVING_FEATURE_VIEW_VERSION"
     TRAINING_DATASET_VERSION_ENV_VAR = "SERVING_TRAINING_DATASET_VERSION"
     MAX_BATCH_ROWS_ENV_VAR = "SERVING_MAX_BATCH_ROWS"
-    # Tells the backend that a model-less deployment's script is a Predict
-    # class to run under the KServe wrapper, not a server to start with python.
+    # Old SDKs send the script kind as this env var; it stays reserved so the
+    # backend's field is the only way to set it.
     SCRIPT_KIND_ENV_VAR = "SERVING_SCRIPT_KIND"
-    SCRIPT_KIND_PREDICTOR = "predictor"
     # which component of the revision validates requests against the schema
     SCHEMA_ENFORCER_ENV_VAR = "SERVING_SCHEMA_ENFORCER"
     SCHEMA_ENFORCER_PREDICTOR = "predictor"
@@ -257,6 +256,16 @@ class DEPLOYMENT_KIND:
     FEATURE_VIEW = "FEATURE_VIEW"
     AGENT = "AGENT"
     PYTHON = "PYTHON"
+
+
+class SCRIPT_KIND:
+    """How the backend runs the script of a model-less deployment.
+
+    `PREDICTOR` is a Predict class run under the KServe wrapper, `SERVER` a server started with python.
+    """
+
+    PREDICTOR = "PREDICTOR"
+    SERVER = "SERVER"
 
 
 class PREDICTOR:

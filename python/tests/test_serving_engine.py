@@ -41,6 +41,18 @@ class _FakePredictor:
         self.default_predictor = default_predictor
         self._schema = schema
         self.env_vars = env_vars
+        self._feature_view_id = None
+        self._feature_view_name = None
+        self._feature_view_version = None
+        self._training_dataset_version = None
+
+    @property
+    def feature_view_name(self):
+        return self._feature_view_name
+
+    @property
+    def feature_view_version(self):
+        return self._feature_view_version
 
     @property
     def schema(self):
@@ -576,21 +588,29 @@ class TestSchemaPublishing:
             feature_view={"name": "features", "version": 2},
             training_dataset_version=3,
         )
-        predictor = _FakePredictor(
-            schema=schema,
-            env_vars={"SERVING_FEATURE_VIEW_NAME": "old_view", "OTHER": "kept"},
-        )
+        predictor = _FakePredictor(schema=schema, env_vars={"OTHER": "kept"})
         deployment = _FakeDeployment(predictor, name="dep")
+        feature_store = mocker.Mock()
+        feature_store.get_feature_view.return_value = mocker.Mock(id=11)
+        mocker.patch(
+            "hopsworks._connected_project",
+            mocker.Mock(get_feature_store=lambda: feature_store),
+            create=True,
+        )
         eng._publish_schema(deployment)
+        feature_store.get_feature_view.assert_called_once_with("features", 2)
         assert predictor.env_vars["SERVING_SCHEMA_ID"] == schema.schema_id
-        assert predictor.env_vars["SERVING_FEATURE_VIEW_NAME"] == "features"
-        assert predictor.env_vars["SERVING_FEATURE_VIEW_VERSION"] == "2"
-        assert predictor.env_vars["SERVING_TRAINING_DATASET_VERSION"] == "3"
+        assert predictor._feature_view_id == 11
+        assert predictor._training_dataset_version == 3
+        assert "SERVING_FEATURE_VIEW_NAME" not in predictor.env_vars
+        assert "SERVING_TRAINING_DATASET_VERSION" not in predictor.env_vars
+        # a link that already matches by name and version is kept without a lookup
+        eng._publish_schema(deployment)
+        feature_store.get_feature_view.assert_called_once()
         predictor._schema = DeploymentSchema(passed_features=["k"])
         eng._publish_schema(deployment)
-        assert "SERVING_FEATURE_VIEW_NAME" not in predictor.env_vars
-        assert "SERVING_FEATURE_VIEW_VERSION" not in predictor.env_vars
-        assert "SERVING_TRAINING_DATASET_VERSION" not in predictor.env_vars
+        assert predictor._feature_view_id is None
+        assert predictor._training_dataset_version is None
         assert predictor.env_vars["OTHER"] == "kept"
 
     def test_publish_propagates_an_unloaded_schema_to_a_new_transformer(self, mocker):

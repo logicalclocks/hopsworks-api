@@ -31,6 +31,7 @@ from hopsworks_common.constants import (
     MODEL_SERVING,
     PREDICTOR,
     SCALING_CONFIG,
+    SCRIPT_KIND,
     Default,
 )
 from hsml import deployment
@@ -115,6 +116,13 @@ class Predictor(DeployableComponent):
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
         kind: str | None = None,
+        feature_view_id: int | None = None,
+        feature_view_name: str | None = None,
+        feature_view_version: int | None = None,
+        feature_store_id: int | None = None,
+        feature_store_name: str | None = None,
+        training_dataset_version: int | None = None,
+        script_kind: str | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -194,6 +202,13 @@ class Predictor(DeployableComponent):
         self._vllm_image_tag = vllm_image_tag
         self._knative_mode = knative_mode
         self._kind = kind
+        self._feature_view_id = feature_view_id
+        self._feature_view_name = feature_view_name
+        self._feature_view_version = feature_view_version
+        self._feature_store_id = feature_store_id
+        self._feature_store_name = feature_store_name
+        self._training_dataset_version = training_dataset_version
+        self._script_kind = script_kind
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -352,6 +367,20 @@ class Predictor(DeployableComponent):
         kwargs["schema"] = _resolve_model_schema(
             model, feature_view, use_default, schema, passed_features
         )
+        schema_view = getattr(kwargs["schema"], "feature_view", None) or {}
+        if (
+            feature_view is not None
+            and getattr(feature_view, "id", None) is not None
+            and (schema_view.get("name"), schema_view.get("version"))
+            == (feature_view.name, feature_view.version)
+        ):
+            # the schema only names its view; the object in hand knows its id and store
+            kwargs["feature_view_id"] = feature_view.id
+            kwargs["feature_view_name"] = feature_view.name
+            kwargs["feature_view_version"] = feature_view.version
+            kwargs["feature_store_name"] = getattr(
+                feature_view, "feature_store_name", None
+            )
         if not use_default and passed_features:
             raise ValueError(
                 "passed_features only applies to the default predictor. Pass "
@@ -429,25 +458,18 @@ class Predictor(DeployableComponent):
         if script_file is not None:
             _check_feature_view_script(script_file)
 
-        env_vars = dict(kwargs.pop("env_vars", None) or {})
-        env_vars[MODEL_SERVING.SCRIPT_KIND_ENV_VAR] = (
-            MODEL_SERVING.SCRIPT_KIND_PREDICTOR
-        )
-        env_vars[MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR] = feature_view.name
-        env_vars[MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR] = str(feature_view.version)
-        kwargs["env_vars"] = env_vars
         _mark_feature_logging(kwargs, feature_view)
-        env_vars = kwargs.pop("env_vars")
-        if training_dataset_version is not None:
-            env_vars[MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR] = str(
-                training_dataset_version
-            )
         return FeatureViewEndpoint(
             name=name,
             script_file=script_file,
             schema=given or inferred,
             default_predictor=True,
-            env_vars=env_vars,
+            feature_view_id=feature_view.id,
+            feature_view_name=feature_view.name,
+            feature_view_version=feature_view.version,
+            feature_store_name=getattr(feature_view, "feature_store_name", None),
+            training_dataset_version=training_dataset_version,
+            script_kind=SCRIPT_KIND.PREDICTOR,
             **kwargs,
         )
 
@@ -580,6 +602,16 @@ class Predictor(DeployableComponent):
             json_decamelized, "knative_mode"
         )
         kwargs["kind"] = util._extract_field_from_json(json_decamelized, "kind")
+        for field in (
+            "feature_view_id",
+            "feature_view_name",
+            "feature_view_version",
+            "feature_store_id",
+            "feature_store_name",
+            "training_dataset_version",
+            "script_kind",
+        ):
+            kwargs[field] = util._extract_field_from_json(json_decamelized, field)
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -608,6 +640,18 @@ class Predictor(DeployableComponent):
         }
         if self._kind is not None:
             predictor_dict = {**predictor_dict, "kind": self._kind}
+        if self._feature_view_id is not None:
+            predictor_dict = {
+                **predictor_dict,
+                "featureViewId": self._feature_view_id,
+            }
+        if self._training_dataset_version is not None:
+            predictor_dict = {
+                **predictor_dict,
+                "trainingDatasetVersion": self._training_dataset_version,
+            }
+        if self._script_kind is not None:
+            predictor_dict = {**predictor_dict, "scriptKind": self._script_kind}
         if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
             predictor_dict = {
                 **predictor_dict,
@@ -1012,12 +1056,16 @@ class Predictor(DeployableComponent):
     @property
     def feature_view_name(self) -> str | None:
         """Feature view served by a feature view deployment, else `None`."""
+        if self._feature_view_name is not None:
+            return self._feature_view_name
         return (self._env_vars or {}).get(MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR)
 
     @public
     @property
     def feature_view_version(self) -> int | None:
         """Feature view version served by a feature view deployment, else `None`."""
+        if self._feature_view_version is not None:
+            return self._feature_view_version
         version = (self._env_vars or {}).get(MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR)
         return int(version) if version is not None else None
 
@@ -1025,7 +1073,7 @@ class Predictor(DeployableComponent):
     @property
     def has_feature_view(self) -> bool:
         """Whether this is a feature view deployment."""
-        return self.feature_view_name is not None
+        return self._feature_view_id is not None or self.feature_view_name is not None
 
     @public
     @property
@@ -1518,7 +1566,7 @@ def _resolve_model_schema(model, feature_view, use_default, schema, passed_featu
 def _check_feature_view_script(script_file: str) -> None:
     """Require the KServe wrapper hand-over in a feature view deployment's script.
 
-    Backends that honour `SERVING_SCRIPT_KIND=predictor` start the wrapper
+    Backends that honour the `PREDICTOR` script kind start the wrapper
     themselves and never run the script's `__main__` block; older backends
     start `python <script>`, so the footer is what makes the script serve.
     """

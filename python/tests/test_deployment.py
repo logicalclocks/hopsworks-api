@@ -2246,6 +2246,31 @@ class TestDeploymentSchemaAndFeatureView:
         assert d.schema_id == "abc"
         assert d.get_model() is None
 
+    def test_feature_view_identity_from_link(self, mocker):
+        d = self._deployment(mocker)
+        d._predictor._feature_view_id = 9
+        d._predictor._feature_view_name = "fv"
+        d._predictor._feature_view_version = 2
+        d._predictor._feature_store_name = "shared_featurestore"
+        d._predictor._training_dataset_version = 7
+        feature_store = mocker.Mock()
+        get_feature_store = mocker.Mock(return_value=feature_store)
+        mocker.patch(
+            "hopsworks._connected_project",
+            mocker.Mock(get_feature_store=get_feature_store),
+            create=True,
+        )
+
+        assert d.has_feature_view
+        assert (
+            d.feature_view_name,
+            d.feature_view_version,
+            d.training_dataset_version,
+        ) == ("fv", 2, 7)
+        assert d.get_feature_view() is feature_store.get_feature_view.return_value
+        get_feature_store.assert_called_once_with("shared_featurestore")
+        feature_store.get_feature_view.assert_called_once_with("fv", 2)
+
     def test_schema_read_lazily_by_id_and_cached(self, mocker):
         from hsml.deployment_schema import DeploymentSchema
 
