@@ -181,6 +181,32 @@ public class TestFeatureGroup {
   }
 
   @Test
+  public void testDeleteContentTakesTheRecreatedFeatureGroupId() throws FeatureStoreException, IOException {
+    // Arrange: Hopsworks clears a feature group by deleting it and creating it again
+    FeatureStore featureStore = Mockito.mock(FeatureStore.class);
+    when(featureStore.getId()).thenReturn(67);
+    StreamFeatureGroup featureGroup = new StreamFeatureGroup(featureStore, "fgName", 1, "description",
+        Collections.singletonList("featureA"), null, null,
+        true, TimeTravelFormat.HUDI, new ArrayList<>(), null, "onlineTopicName", null, null, "eventTime", null,
+        null, null);
+    featureGroup.setId(15);
+    StreamFeatureGroup recreated = new StreamFeatureGroup();
+    recreated.setId(16);
+
+    HopsworksClient hopsworksClient = Mockito.mock(HopsworksClient.class);
+    Mockito.when(hopsworksClient.getProject()).thenReturn(new Project(1));
+    Mockito.when(hopsworksClient.handleRequest(Mockito.any(), Mockito.eq(StreamFeatureGroup.class)))
+        .thenReturn(recreated);
+    HopsworksClient.setInstance(hopsworksClient);
+
+    // Act
+    new FeatureGroupApi().deleteContent(featureGroup);
+
+    // Assert
+    Assertions.assertEquals(16, featureGroup.getId());
+  }
+
+  @Test
   @SuppressWarnings("deprecation")
   public void testCommitDeleteRecordDelegatesToRemoveRowsOfflineOnly() throws Exception {
     // The deprecated commitDeleteRecord overloads must delegate to removeRows and delete from
