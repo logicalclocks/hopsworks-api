@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import io
 import os
 import stat
 import threading
@@ -69,6 +70,8 @@ class TestBaseClient:
         mocker.patch("requests.sessions.Session.prepare_request")
         unauthorized_response = requests.Response()
         unauthorized_response.status_code = 401
+        unauthorized_response.raw = io.BytesIO()
+        unauthorized_response._content = b""
         mocker.patch(
             "requests.sessions.Session.send", return_value=unauthorized_response
         )
@@ -100,6 +103,8 @@ class TestBaseClient:
         # setup unauthorized response
         unauthorized_response = requests.Response()
         unauthorized_response.status_code = 401
+        unauthorized_response.raw = io.BytesIO()
+        unauthorized_response._content = b""
 
         # setup ok response
         ok_response = requests.Response()

@@ -53,6 +53,7 @@ from hsml.scaling_config import (
     PredictorScalingConfig,
 )
 from hsml.transformer import Transformer
+from hsml.utils.predict_init import check_predict_init
 
 
 _logger = logging.getLogger(__name__)
@@ -271,6 +272,8 @@ class Predictor(DeployableComponent):
             raise ValueError(
                 "Predictor scripts are required in deployments for custom Python models."
             )
+        if script_file is not None:
+            check_predict_init(script_file)
 
     @classmethod
     def _infer_model_server(cls, model_framework):

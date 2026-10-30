@@ -8,6 +8,9 @@ it for raw REST calls (connector create/delete).
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from unittest import mock
 
 from click.testing import CliRunner
@@ -59,7 +62,12 @@ def test_deployment_logs_defaults_to_kubernetes_source(mock_project):
     result = CliRunner().invoke(cli, ["deployment", "logs", "fraud", "--tail", "5"])
     assert result.exit_code == 0, result.output
     deployment.read_logs.assert_called_with(
-        component="predictor", tail=5, source="kubernetes", since=None, until=None
+        component="predictor",
+        tail=5,
+        source="kubernetes",
+        since=None,
+        until=None,
+        previous=False,
     )
     assert "line1" in result.output
 
@@ -150,6 +158,37 @@ def test_deployment_create_sets_the_cores_and_memory_it_is_given(mock_project):
     result = CliRunner().invoke(cli, ["deployment", "create", "fraud"])
     assert result.exit_code == 0, result.output
     assert model.deploy.call_args.kwargs["resources"] is None
+
+
+def test_deployment_create_refuses_an_unsupported_predict_init_before_upload(tmp_path):
+    # A fresh interpreter, as `hops` runs: nothing of hsml is imported before the check. No host is
+    # configured, so a request would fail differently.
+    script = tmp_path / "bad.py"
+    script.write_text("class Predict:\n    def __init__(self, config):\n        pass\n")
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("HOPSWORKS_", "REST_ENDPOINT", "PROJECT_NAME"))
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from hopsworks.cli.main import main; main()",
+            "deployment",
+            "create",
+            "fraud",
+            "--script",
+            str(script),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**env, "HOME": str(tmp_path)},
+    )
+
+    assert result.returncode != 0
+    assert f"{script}:2: Predict.__init__ takes config" in result.stderr + result.stdout
 
 
 def test_deployment_create_deploys_the_latest_version_whatever_the_order(mock_project):

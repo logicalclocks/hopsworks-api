@@ -15,9 +15,11 @@
 #
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import threading
+import time
 from typing import Any
 
 import requests
@@ -45,6 +47,53 @@ _logger = logging.getLogger(__name__)
 # Guards the lazy creation of the gRPC channel of a deployment object that has no lock of its own.
 # Concurrent first callers would otherwise each build one and keep only the last, leaking the rest for the lifetime of the object.
 _GRPC_CHANNEL_LOCK = threading.Lock()
+
+
+# The longest a read with a deadline waits for the connection or for one piece of the answer, so
+# the deadline is checked at least this often.
+_DEADLINE_STEP_SECONDS = 5.0
+
+
+def _get_json_by(_client, path_params: list, query_params: dict, deadline: float):
+    """GET a JSON answer by `deadline` (`time.monotonic()`), or raise `TimeoutError`.
+
+    A Requests timeout bounds each socket wait, not the whole answer: a server sending a byte every
+    few seconds would hold it forever. So the body is read one socket read at a time, each bounded
+    by the step, and the deadline is checked before and after each of them: an answer completed past
+    it is dropped too.
+    """
+
+    def step() -> float:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("the deadline passed")
+        return min(_DEADLINE_STEP_SECONDS, left)
+
+    t = step()
+    response = _client._send_request(
+        "GET",
+        path_params,
+        query_params=query_params,
+        stream=True,
+        timeout=(t, t),
+        deadline=deadline,
+    )
+    with contextlib.closing(response):
+        # urllib3 1.x has no read1; there a 1-byte read is one socket read too.
+        read1 = getattr(response.raw, "read1", None)
+        body = bytearray()
+        while True:
+            step()
+            piece = (
+                read1(64 * 1024, decode_content=True)
+                if read1
+                else response.raw.read(1, decode_content=True)
+            )
+            step()
+            if not piece:
+                break
+            body += piece
+    return json.loads(body) if body else None
 
 
 class ServingApi:
@@ -781,6 +830,8 @@ class ServingApi:
         until: str | None = None,
         pod: str | None = None,
         timestamps: bool = False,
+        previous: bool = False,
+        deadline: float | None = None,
     ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 
@@ -804,6 +855,10 @@ class ServingApi:
             pod: Restrict to a single instance / container name.
             timestamps: Prefix each line with the kubelet timestamp, which
                 is what a caller needs to build a resume cursor.
+            previous: Read the previous, terminated container instead of
+                the running one, for a crashed or restarted predictor.
+            deadline: A ``time.monotonic()`` value the whole read ends by, whatever the server does; past it
+                the read raises ``TimeoutError``. ``None`` waits indefinitely.
 
         Returns:
             Deployment logs.
@@ -831,8 +886,16 @@ class ServingApi:
             query_params["pod"] = pod
         if timestamps:
             query_params["timestamps"] = "true"
+        if previous:
+            query_params["previous"] = "true"
+        if deadline is None:
+            answer = _client._send_request(
+                "GET", path_params, query_params=query_params
+            )
+        else:
+            answer = _get_json_by(_client, path_params, query_params, deadline)
         return deployable_component_logs.DeployableComponentLogs.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
+            answer
         )
 
     def _get_hopsworks_inference_path(
