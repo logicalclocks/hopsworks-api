@@ -100,7 +100,8 @@ hops fg create-external <name> --connector <ds> --path sales/ --data-format parq
 hops fg create-external <name> --connector <ds> --database <db> --table <collection> --primary-key <cols>
 ```
 
-- Outside Spark, give the schema with `--features "id:bigint,city:string,..."`.
+- `--features "id:bigint,city:string,..."` is optional; without it the schema is read from the source.
+- To look at a source table, mount a LIMIT query with `--no-statistics` and `hops fg preview` it (or `hops datasource preview <ds> --table T`). Never read a data source with a database driver and a credential copied from a secret; report a failed read. A query is written against the source's schema (`schema.table`), not the `--database` name. `hops datasource infer-metadata` is optional (needs the cluster's platform intelligence key) and comes after the look.
 - `--online` enables the online store; rows then go in with `hops fg insert`, offline data stays in the source.
 - `hops fg list` shows every type in its TYPE column (`managed`, `stream`, `external`, `spine`); `--type external` lists only external groups.
 - `hops fg info <name>` shows the connector, query or path, and the access state.
@@ -222,16 +223,16 @@ hops datasource list
 hops datasource info <name>
 hops datasource databases <name>
 hops datasource tables <name> --database X
-hops datasource preview <name>
+hops datasource preview <name> --table T [--database X]
 hops datasource delete <name> --yes
 ```
 
 ### Create
 
 ```bash
-hops datasource create jdbc <name> --url "jdbc:..." --user u --password p
-hops datasource create s3 <name> --bucket b --access-key ... --secret-key ... [--region eu-west-1]
-hops datasource create snowflake <name> --url ... --user u --password p \
+hops datasource create jdbc <name> --url "jdbc:..." --user u --password - < pw.txt   # secret from stdin, never on the command line
+hops datasource create s3 <name> --bucket b --access-key ... --secret-key - [--region eu-west-1]
+hops datasource create snowflake <name> --url ... --user u --password - \
   --database D --schema S --warehouse W [--role R]
 hops datasource create bigquery <name> --project-id gcp-proj --dataset D --key-path /Resources/key.json
 ```

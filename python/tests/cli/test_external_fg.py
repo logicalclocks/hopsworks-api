@@ -7,6 +7,7 @@ import json
 from unittest import mock
 
 from click.testing import CliRunner
+from hopsworks.cli.commands.datasource import _preview_rows
 from hopsworks.cli.main import cli
 from hsfs.core.data_source import DataSource
 from hsfs.feature_group import ExternalFeatureGroup, SpineGroup
@@ -166,3 +167,38 @@ def test_create_external_fails_when_nothing_was_saved(mock_project):
     )
     assert result.exit_code == 1
     assert "Could not create external FG: bad schema" in result.output
+
+
+def test_create_external_features_help_does_not_claim_it_is_required():
+    result = CliRunner().invoke(cli, ["fg", "create-external", "--help"])
+    flat = " ".join(result.output.split())
+    assert "Optional" in flat and "required outside Spark" not in flat
+
+
+def test_datasource_preview_help_names_schema_table():
+    result = CliRunner().invoke(cli, ["datasource", "preview", "--help"])
+    assert "schema.table" in " ".join(result.output.split())
+
+
+def test_preview_rows_flattens_the_rows_the_backend_nests():
+    nested = {
+        "preview": [
+            {
+                "values": [
+                    {"value0": "id", "value1": "387"},
+                    {"value0": "city", "value1": "Paris"},
+                ]
+            },
+            "not a row",
+        ]
+    }
+    assert _preview_rows(nested) == [{"id": "387", "city": "Paris"}]
+    assert _preview_rows(None) == []
+
+
+def test_preview_rows_keeps_a_null_cell():
+    # The backend leaves value1 out of a null cell (seen on Shopify products: image, published_at).
+    nested = {
+        "preview": [{"values": [{"value0": "id", "value1": "1"}, {"value0": "image"}]}]
+    }
+    assert _preview_rows(nested) == [{"id": "1", "image": None}]
