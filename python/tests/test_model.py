@@ -369,6 +369,27 @@ class TestModel:
         with pytest.warns(UserWarning, match="Missing mandatory tags"):
             mr.get_model("my_model", version=1)
 
+    def test_get_model_without_version_returns_version_1_and_says_so(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        from hsml import model_registry, util
+
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        m = model.Model.from_response_json(m_json)
+        m._missing_mandatory_tags = []
+        mock_get = mocker.patch("hsml.core.model_api.ModelApi._get", return_value=m)
+        mr = model_registry.ModelRegistry(
+            project_name="p", project_id=1, model_registry_id=1
+        )
+
+        # Act / Assert
+        with pytest.warns(
+            util.VersionWarning, match=r"newer versions exist.*get_models\(name\)"
+        ):
+            mr.get_model("my_model")
+        assert mock_get.call_args.args[:2] == ("my_model", 1)
+
     def test_get_model_no_warning_when_tags_present(self, mocker, backend_fixtures):
         # Arrange
         import warnings
