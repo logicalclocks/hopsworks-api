@@ -171,7 +171,7 @@ Deleting a bronze layer deletes its jobs and the bronze tables it wrote, which n
 ## Blueprints of the data pipeline factory
 
 The `analytics-pipeline` factory's blueprints build one pipeline from a directory of these references, named in `requirements.reference_code`, as its `README.md` says.
-The TPC-H blueprint, [references/tpch_duckdb/](references/tpch_duckdb/README.md), generates TPC-H at scale factor 1 in DuckDB, runs TPC-H Q8 (Brazil's share of the American market per year) as a DAG of dbt models in DuckDB in the `dbt-pipeline` environment, writes `tpch_brazil_market_share` and `tpch_america_volume_by_nation` to offline Delta feature groups in a 768 MB, 1-core job, and builds their Superset dashboard with `tpch_dashboard.py`.
+The TPC-H blueprint, [references/tpch_duckdb/](references/tpch_duckdb/README.md), generates TPC-H at scale factor 1 in DuckDB, runs TPC-H Q8 (Brazil's share of the American market per year) as a DAG of dbt models in DuckDB in the `dbt-pipeline` environment, writes `tpch_brazil_market_share` and `tpch_america_volume_by_nation` to offline Delta feature groups in a 1024 MB, 1-core job, and builds their Superset dashboard with `tpch_dashboard.py`.
 
 ## Building a silver layer
 

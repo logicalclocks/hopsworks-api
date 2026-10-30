@@ -46,7 +46,7 @@ The stock `dbt-pipeline` environment ships DuckDB, dbt-core, dbt-duckdb and
 
 ```python
 job = hopsworks.login().get_job_api().get_job("<slug>-pipeline")
-job.config["resourceConfig"]["memory"] = 768
+job.config["resourceConfig"]["memory"] = 1024
 job.config["resourceConfig"]["cores"] = 1
 job.save()
 ```
@@ -81,8 +81,9 @@ dbgen dominates: its generation buffers sit outside DuckDB's memory limit, and t
 runner peaks at about 620 MB resident while it runs (part of that is file-backed
 pages the kernel can reclaim, which is why 512 MB still passes). `dbt build`
 runs afterwards, in its own process, and peaks at about 545 MB. The job prints
-both peaks at the end of every run. Give it 768 MB: above both peaks and half as
-much again as the lowest memory that passed, so a run never fails on it. A larger
+both peaks at the end of every run. Give it 1024 MB: above both peaks with room
+for the client and page cache, and twice the lowest memory that passed, so a run
+never fails on it. A larger
 `--memory-limit`, more threads (2 cores) or a larger scale factor need more.
 
 ## Dashboard
