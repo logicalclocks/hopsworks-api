@@ -98,16 +98,18 @@ _DECIMAL_BARE = re.compile(r"(?<![^:<,])decimal(?![\w(:])")
 _TIMESTAMP_NTZ = re.compile(r"(?<![^:<,])timestamp_ntz(?![\w(:])")
 
 
-def _normalize_hive_type(hive_type: str) -> str:
+def _normalize_hive_type(hive_type: str, timestamp_ntz_as_timestamp=True) -> str:
     """Spell a Hive type one way: decimal(p) is decimal(p,0), decimal is decimal(10,0).
 
-    timestamp_ntz is timestamp: Spark derives timestamp_ntz for a TimestampNTZType
-    column, and the Delta write converts it to the table's flavour.
-    Expects a lower case type without spaces.
+    With *timestamp_ntz_as_timestamp*, timestamp_ntz is timestamp too: Spark derives
+    timestamp_ntz for a TimestampNTZType column.
+    Expects a lower case type without inner spaces, as Spark and Hive render them.
     """
     hive_type = _DECIMAL_NO_SCALE.sub(r"decimal(\1,0)", hive_type)
     hive_type = _DECIMAL_BARE.sub("decimal(10,0)", hive_type)
-    return _TIMESTAMP_NTZ.sub("timestamp", hive_type)
+    if timestamp_ntz_as_timestamp:
+        hive_type = _TIMESTAMP_NTZ.sub("timestamp", hive_type)
+    return hive_type
 
 
 if HAS_PYARROW:

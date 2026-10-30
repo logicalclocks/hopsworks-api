@@ -242,4 +242,13 @@ class TestFeatureGroupBaseEngine:
         fg_base_engine._verify_schema_compatibility(
             [feature.Feature(name="ts", type="timestamp")],
             [feature.Feature(name="ts", type="timestamp_ntz")],
+            timestamp_ntz_converts=True,
         )
+        # only the Delta write converts; other formats refuse it as before
+        with pytest.raises(FeatureStoreException) as exc:
+            fg_base_engine._verify_schema_compatibility(
+                [feature.Feature(name="ts", type="timestamp")],
+                [feature.Feature(name="ts", type="timestamp_ntz")],
+            )
+
+        assert "ts (expected type: 'timestamp'" in str(exc.value)
