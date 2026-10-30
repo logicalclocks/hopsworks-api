@@ -2,7 +2,7 @@
 
 The `tpch-duckdb` blueprint of the `analytics-pipeline` factory: one Python job
 that generates TPC-H at scale factor 1 in DuckDB, writes the eight TPC-H tables to
-offline Delta feature groups, runs TPC-H Q8 (national market share) as a DAG of dbt
+offline Delta feature groups when the user wants them, runs TPC-H Q8 (national market share) as a DAG of dbt
 models in DuckDB, and writes the result to offline Delta feature groups, with a
 separate program that builds its Superset dashboard.
 
@@ -41,9 +41,15 @@ P=hdfs:///Projects/<project>/<system dir>/tpch_duckdb
 hops job deploy <slug>-pipeline $P/tpch_pipeline.py --env dbt-pipeline --args "--system <slug>"
 ```
 
+The requirements chat asked whether to save the TPC-H tables in Hopsworks, and
+`requirements.chat_notes` holds the answer. When the user declined, add
+`--no-tpch-tables` to the job's arguments (`--args "--system <slug> --no-tpch-tables"`):
+the job then writes only the query's two outputs, takes about a minute, and needs
+1024 MB instead of 1536 MB. Record the choice in `features.pipelines[].writes`.
+
 The stock `dbt-pipeline` environment ships DuckDB, dbt-core, dbt-duckdb and
 `dbt_run_graph`; nothing is installed. Then give the job 1 core and its memory
-(below), and run it:
+(below: 1536 MB with the TPC-H tables, 1024 MB without), and run it:
 
 ```python
 job = hopsworks.login().get_job_api().get_job("<slug>-pipeline")
@@ -56,9 +62,11 @@ job.save()
 hops job run <slug>-pipeline --wait
 ```
 
-The first run takes about 3 minutes, a later one about a minute. dbgen writes the
-eight tables (6,001,215 line items) into a DuckDB file in the job's scratch
-directory, and each is written to the offline Delta feature group `tpch_<table>`
+With the TPC-H tables the first run takes about 5 minutes more than without
+(writing 8.7 million rows, 6,001,215 of them line items), and a later run, which
+finds them written, about a minute. dbgen writes the eight tables into a DuckDB
+file in the job's scratch directory, and each is written to the offline Delta
+feature group `tpch_<table>`
 (`tpch_region`, `tpch_nation`, `tpch_customer`, `tpch_supplier`, `tpch_part`,
 `tpch_partsupp`, `tpch_orders`, `tpch_lineitem`), every column as dbgen wrote it
 except the DECIMAL prices, which are DOUBLE. Each is keyed by its TPC-H primary
@@ -86,9 +94,10 @@ as a Hopsworks job with 1 core:
 
 | Job memory | Result |
 | --- | --- |
-| 1536 MB | succeeds, the runner peaking at 922 to 933 MB resident |
-| 1024 MB | OOMKilled writing `tpch_lineitem` once; succeeded once at the limit |
-| 448, 384 MB | OOMKilled during dbgen (before the TPC-H tables were written) |
+| 1536 MB | succeeds with the TPC-H tables, the runner peaking at 922 to 933 MB resident |
+| 1024 MB | with the TPC-H tables: OOMKilled writing `tpch_lineitem` once, succeeded once at the limit |
+| 2048 to 512 MB | succeeds without the TPC-H tables (`--no-tpch-tables`), in about a minute |
+| 448, 384 MB | OOMKilled during dbgen |
 
 The first peak is dbgen, about 620 MB resident: its generation buffers sit outside
 DuckDB's memory limit. Writing the TPC-H tables adds the Hopsworks client and the
@@ -96,7 +105,8 @@ Delta writer's buffers on top of it, for a peak of about 930 MB at `tpch_lineite
 chunks of 100,000 rows instead of 250,000 lowered it by 10 MB and took 2.5 times as
 long. `dbt build` runs afterwards in its own process and peaks at about 550 MB.
 The job prints the peaks after each table and at the end of every run. Give it
-1536 MB, 600 MB above the peak, so a run never fails on it. A larger
+1536 MB with the TPC-H tables, 600 MB above their peak, and 1024 MB without them,
+400 MB above dbgen's, so a run never fails on it. A larger
 `--memory-limit`, more threads (2 cores) or a larger scale factor need more.
 
 ## Dashboard

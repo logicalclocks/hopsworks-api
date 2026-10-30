@@ -8,8 +8,8 @@ dbt-duckdb and dbt_run_graph:
 
 1. `INSTALL tpch; LOAD tpch; CALL dbgen(sf = 1);` writes the TPC-H tables into a
    DuckDB file in the job's scratch directory (about 250 MB at scale factor 1).
-2. The eight TPC-H tables are written to offline Delta feature groups,
-   tpch_<table>, in chunks of CHUNK_ROWS rows appended one after the other, so
+2. Unless `--no-tpch-tables`, the eight TPC-H tables are written to offline Delta
+   feature groups, tpch_<table>, in chunks of CHUNK_ROWS rows appended one after the other, so
    memory holds one chunk at a time. A table already holding every row dbgen
    wrote is left as it is, and one holding fewer (a run that failed while
    writing it) is written again, so a second run writes nothing twice.
@@ -294,6 +294,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--system", default="tpch-duckdb", help="the system's slug")
     parser.add_argument(
+        "--no-tpch-tables",
+        action="store_true",
+        help="leave out the TPC-H tables' feature groups: about 5 minutes less, and 1024 MB is enough",
+    )
+    parser.add_argument(
         "--no-write",
         action="store_true",
         help="build and test the models, write no feature group",
@@ -332,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
             import hopsworks
 
             fs = hopsworks.login().get_feature_store()
+        if fs is not None and not args.no_tpch_tables:
             started = time.monotonic()
             try:
                 tables = write_sources(
@@ -377,7 +383,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"written: {written}")
         return 0
     finally:
-        write_graph(target_dir, [generation, sources, *writes])
+        steps = [generation, *([] if args.no_tpch_tables else [sources]), *writes]
+        write_graph(target_dir, steps)
         shutil.rmtree(scratch, ignore_errors=True)
         print(f"peak memory: {peak_memory()}")
 
