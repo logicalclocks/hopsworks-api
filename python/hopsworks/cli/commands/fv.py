@@ -519,6 +519,81 @@ def fv_read(
     output.print_table(columns, rows)
 
 
+@fv_group.command("preview")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature view version; defaults to latest.")
+@click.option(
+    "--limit", "n", type=int, default=10, show_default=True, help="Rows, at most 100."
+)
+@click.option(
+    "--td-version",
+    type=int,
+    help="Bound the rows to this training dataset's event time range.",
+)
+@click.pass_context
+def fv_preview(
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    n: int,
+    td_version: int | None,
+) -> None:
+    """Show the first rows of a feature view.
+
+    Rows carry the view's keys and event time. They come from the Query
+    Service untransformed: transformation functions do not run.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Feature view version.
+        n: Number of rows.
+        td_version: Training dataset version whose range bounds the rows.
+    """
+    from hopsworks.cli.commands.fg import _truncate_cell
+    from hopsworks_common.core import rest
+
+    fs = session.get_feature_store(ctx)
+    fv = _get_fv(ctx, name, version)
+    params: dict[str, Any] = {"limit": n}
+    if td_version is not None:
+        params["td_version"] = td_version
+    try:
+        payload = rest._send_request(
+            "GET",
+            rest._project_path(
+                "featurestores",
+                fs.id,
+                "featureview",
+                fv.name,
+                "version",
+                fv.version,
+                "preview",
+            ),
+            query_params=params,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not preview feature view '{name}': {exc}"
+        ) from exc
+    rows = [
+        {cell["columnName"]: cell.get("columnValue") for cell in item["row"]}
+        for item in (payload or {}).get("items") or []
+    ]
+
+    if output.JSON_MODE:
+        output.print_json(rows)
+        return
+    if not rows:
+        output.info("No rows.")
+        return
+    columns = list(rows[0])
+    output.print_table(
+        columns, [[_truncate_cell(row.get(c, "")) for c in columns] for row in rows]
+    )
+
+
 @fv_group.command("delete")
 @click.argument("name")
 @click.option(
