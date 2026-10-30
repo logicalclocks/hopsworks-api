@@ -265,7 +265,12 @@ pretrained detector, and the model is embedded in the app, so `infer` measures t
 latency instead of deploying. Hops Run with Kumo
 Tabular (the `run-example`) is built by `hops-reqs/references/kumo-run.md` from `kumo_run/`: `data`
 and `features` are `skipped`, `train` registers NVIDIA's pretrained in-context classifier, and
-`infer` deploys it and measures the game's decisions. Any other task outside classification, regression and forecasting,
+`infer` deploys it and measures the game's decisions. Gardening machine leasing (the
+`leasing-example`) is built by `hops-reqs/references/leasing.md` from `leasing/`: its `data` runs
+that generator, `features` is `skipped` because every feature is a model-dependent transformation
+attached to the feature view, `train` creates the feature view, trains XGBoost and registers Kumo
+Tabular (medium), and both models run in the app, so `infer` measures the app's decisions instead
+of deploying. Any other task outside classification, regression and forecasting,
 or another agent system, is captured in full and the command stops after `reqs` saying v1 builds
 none of it. Print the requirements back and ask to proceed; write `requirements.status: met` and
 `system.status: building` on yes.

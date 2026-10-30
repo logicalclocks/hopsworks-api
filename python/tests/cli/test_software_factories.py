@@ -180,6 +180,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
         "gis-example": "GIS military infrastructure finder: outlines aircraft, ships and harbours on a map of Sweden with a pretrained YOLO model (real-time)",
         "helpdesk-example": "Help desk agent: answers support questions from your documents and the customer's recent events (agentic)",
         "run-example": "Hops Run with Kumo Tabular: a racing game flown by NVIDIA's pretrained in-context classifier, served as a deployment (real-time)",
+        "leasing-example": "Gardening machine leasing: XGBoost and NVIDIA Kumo Tabular decide from a feature view's custom transformations, retrained on simulated outcomes (real-time)",
     }
     for slug in labels:
         assert f"`{slug}`" in text
@@ -220,6 +221,7 @@ def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
         "helpdesk-example",
         "gis-example",
         "run-example",
+        "leasing-example",
     ],
 )
 def test_every_example_creates_a_valid_system(tmp_path, example):
