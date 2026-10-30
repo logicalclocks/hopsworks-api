@@ -86,3 +86,11 @@ class TestDeploymentVersion:
         assert version.predictor_environment == "py-a"
         assert version.transformer_environment == "py-b"
         assert version.to_dict()["predictorEnvironment"] == {"name": "py-a"}
+
+    def test_triton_image_tag_is_exposed(self):
+        version = DeploymentVersion.from_response_json(
+            {"version": 1, "modelServer": "TRITON", "tritonImageTag": "26.09-py3"}
+        )
+
+        assert version.triton_image_tag == "26.09-py3"
+        assert version.to_dict()["tritonImageTag"] == "26.09-py3"
