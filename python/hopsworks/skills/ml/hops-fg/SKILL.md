@@ -455,6 +455,28 @@ fg.remove_rows(rows_to_delete)
 
 ---
 
+## Deleting Whole Partitions from a Feature Group
+
+`fg.delete_partitions({column: [values]})` drops whole partitions from the offline table. Only partition columns can be named, so no data file is read or rewritten; on a large table this is the cheap way to remove or reload a few days, where `remove_rows` and `insert(..., overwrite=True)` read or delete everything.
+
+```python
+import datetime
+
+# Reload two days: drop them, then append the fresh rows.
+fg.delete_partitions({"snapshot_date": ["2026-09-02", datetime.date(2026, 9, 3)]})
+fg.insert(reloaded_df, operation="insert")
+```
+
+- **Selection:** values of one column are ORed, columns are ANDed, so `{"region": ["eu", "us"], "day": [1, 2]}` is all four combinations. An omitted partition column is unrestricted; `None` selects the null partition.
+- **Formats:** DELTA (Spark or Python), ICEBERG (classic Spark, or Python inside the cluster when the FG is on HopsFS; identity partitions only, not `day(...)`/`bucket(...)` transforms), HUDI (classic Spark only).
+- **Types:** string, integer, boolean and date partition columns. Values must already have the column's type (`1.9` for an int column is an error, not partition `1`); dates as `datetime.date` or `"YYYY-MM-DD"`.
+- **Offline only:** the online store keeps the rows; use `remove_rows(df, storage="online")` for those.
+- **Two commits:** readers between the delete and the insert see the partitions missing, and a failed insert leaves them deleted. Time travel to before the delete still returns the old rows until vacuum / snapshot expiry / the Hudi cleaner removes the files.
+- **Stream FGs:** run the materialization job before deleting, or rows of those partitions not yet materialized are written back afterwards.
+- Returns the commit, or `None` when no existing partition matched. `rows_deleted` is `None` where the delete does not report the count (always on HUDI, and on DELTA with the Python engine).
+
+---
+
 ## Deleting a Feature Group
 
 **Confirm before deleting.** `fg.delete()` (CLI `hops fg delete <name> --version N --yes`) drops the feature group and all its data irreversibly; confirm the exact name and version with the user first.
