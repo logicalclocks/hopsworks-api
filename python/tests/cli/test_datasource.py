@@ -1444,3 +1444,40 @@ def test_sharepoint_reset_script():
 
 
 # endregion
+
+
+def test_object_store_source_sets_path_and_upper_format():
+    from hsfs.core import data_source
+
+    source = data_source.DataSource()
+    ds._object_store_source(source, "sales/2024.parquet", "parquet")
+    sent = source.to_dict()
+    assert sent["path"] == "sales/2024.parquet"
+    assert sent["format"] == "PARQUET"
+
+
+@pytest.mark.parametrize(("path", "data_format"), [("sales/", None), (None, "parquet")])
+def test_object_store_source_needs_path_and_format_together(path, data_format):
+    import click
+    from hsfs.core import data_source
+
+    with pytest.raises(click.UsageError):
+        ds._object_store_source(data_source.DataSource(), path, data_format)
+
+
+def test_preview_refuses_path_with_table():
+    result = CliRunner().invoke(
+        cli,
+        ["datasource", "preview", "s", "--path", "a/", "--table", "t"],
+    )
+    assert result.exit_code == 2
+    assert "not both" in result.output
+
+
+def test_infer_metadata_refuses_format_with_table():
+    result = CliRunner().invoke(
+        cli,
+        ["datasource", "infer-metadata", "s", "t", "--data-format", "parquet"],
+    )
+    assert result.exit_code == 2
+    assert "--data-format needs --path" in result.output

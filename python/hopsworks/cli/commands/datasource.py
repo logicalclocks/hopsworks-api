@@ -1938,36 +1938,108 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
     output.print_table(["TABLE", "DATABASE"], rows)
 
 
+_DATA_FORMATS = ["parquet", "delta", "hudi", "iceberg", "orc", "avro", "csv"]
+
+
+def _object_store_options(command: Callable[..., Any]) -> Callable[..., Any]:
+    """Add ``--path`` and ``--data-format``, spelled as in `hops fg create-external`."""
+    command = click.option(
+        "--data-format",
+        "data_format",
+        type=click.Choice(_DATA_FORMATS, case_sensitive=False),
+        help="Required with --path, e.g. `parquet`.",
+    )(command)
+    return click.option(
+        "--path",
+        "path",
+        help=(
+            "Object-storage sources (S3, ADLS, GCS): path relative to the source's "
+            "own path, e.g. `sales/2024.parquet` or a prefix `sales/`."
+        ),
+    )(command)
+
+
+def _object_store_source(ds: Any, path: str | None, data_format: str | None) -> None:
+    """Point a data source at an object-store path; the backend reads it by path and format."""
+    if data_format and not path:
+        raise click.UsageError("--data-format needs --path.")
+    if path and not data_format:
+        raise click.UsageError("--data-format is required when --path is set.")
+    if path:
+        ds.path = path
+        ds.format = data_format.upper()
+
+
 @datasource_group.command("preview")
 @click.argument("name")
+@click.option("--database", help="Database the table lives in (table sources).")
+@click.option("--table", help="Table to read (table sources).")
+@_object_store_options
 @click.pass_context
-def connector_preview(ctx: click.Context, name: str) -> None:
+def connector_preview(
+    ctx: click.Context,
+    name: str,
+    database: str | None,
+    table: str | None,
+    path: str | None,
+    data_format: str | None,
+) -> None:
     """Fetch a small data preview through a connector.
+
+    Table sources (JDBC, Snowflake, Redshift, BigQuery) read a table. Object-store
+    sources (S3, ADLS, GCS) read a --path with its --data-format.
 
     Args:
         ctx: Click context.
         name: Connector name.
+        database: Database name.
+        table: Table name.
+        path: Object-store path.
+        data_format: File format of the path.
     """
+    if path and table:
+        raise click.UsageError("Pass either --path or --table, not both.")
     fs = session.get_feature_store(ctx)
     try:
         ds = fs.get_data_source(name)
+        if database is not None:
+            ds.database = database
+        if table is not None:
+            ds.table = table
+        _object_store_source(ds, path, data_format)
         data = ds.get_data()
+    except click.UsageError:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Preview failed: {exc}") from exc
-    if output.JSON_MODE:
-        to_dict = getattr(data, "to_dict", None)
-        output.print_json(to_dict() if callable(to_dict) else str(data))
-        return
-    click.echo(str(data))
+    if data is None:
+        raise click.ClickException(
+            f"Preview failed: Hopsworks returned no data for {name}."
+        )
+    if data.schema_fetch_failed:
+        raise click.ClickException(
+            f"Preview failed: {data.schema_fetch_logs or 'no schema'}"
+        )
+    # Each row is {"values": [{"value0": column, "value1": cell}, ...]} in column order.
+    output.print_table(
+        [f.column_name for f in data.features],
+        [[c.get("value1") for c in row.get("values", [])] for row in data.preview],
+    )
 
 
 @datasource_group.command("infer-metadata")
 @click.argument("name")
-@click.argument("table")
+@click.argument("table", required=False)
 @click.option("--database", help="Database the table lives in (connector-dependent).")
+@_object_store_options
 @click.pass_context
 def connector_infer_metadata(
-    ctx: click.Context, name: str, table: str, database: str | None
+    ctx: click.Context,
+    name: str,
+    table: str | None,
+    database: str | None,
+    path: str | None,
+    data_format: str | None,
 ) -> None:
     """Use platform intelligence to infer feature metadata for a table.
 
@@ -1980,24 +2052,37 @@ def connector_infer_metadata(
     Args:
         ctx: Click context.
         name: Connector name.
-        table: Table name to infer metadata for.
+        table: Table name to infer metadata for (table sources).
         database: Database that contains the table.
+        path: Object-store path (S3, ADLS, GCS sources).
+        data_format: File format of the path.
     """
     from hopsworks_common.client.exceptions import PlatformIntelligenceException
 
+    if bool(table) == bool(path):
+        raise click.UsageError("Pass either a TABLE or --path with --data-format.")
+    if data_format and not path:
+        raise click.UsageError("--data-format needs --path.")
     fs = session.get_feature_store(ctx)
-    try:
-        ds = fs.get_data_source(name)
-        tables = ds.get_tables(database=database) or []
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not list tables: {exc}") from exc
+    if path:
+        try:
+            match = fs.get_data_source(name)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Connector '{name}' not found: {exc}") from exc
+        _object_store_source(match, path, data_format)
+    else:
+        try:
+            ds = fs.get_data_source(name)
+            tables = ds.get_tables(database=database) or []
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Could not list tables: {exc}") from exc
 
-    match = next((t for t in tables if getattr(t, "table", None) == table), None)
-    if match is None:
-        raise click.ClickException(
-            f"Table '{table}' not found in connector '{name}'"
-            + (f" / database '{database}'" if database else "")
-        )
+        match = next((t for t in tables if getattr(t, "table", None) == table), None)
+        if match is None:
+            raise click.ClickException(
+                f"Table '{table}' not found in connector '{name}'"
+                + (f" / database '{database}'" if database else "")
+            )
 
     try:
         inferred = match.infer_metadata()
