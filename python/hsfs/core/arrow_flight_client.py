@@ -230,6 +230,7 @@ class ArrowFlightClient:
         )
 
         self._enabled_on_cluster: bool = False
+        self._disabled_reason: str | None = None
         self._host_url: str | None = None
         self._connection: pyarrow.flight.FlightClient | None = None
         if disabled_for_session:
@@ -322,20 +323,21 @@ class ArrowFlightClient:
         self, message: str | None = None, on_purpose: bool = False
     ) -> None:
         self._disabled_for_session = True
+        self._disabled_reason = message
         if on_purpose:
             warnings.warn(
                 "Hopsworks Query Service will be disabled for this session.",
                 stacklevel=1,
             )
-        if self._enabled_on_cluster:
+        elif not self._enabled_on_cluster:
             warnings.warn(
-                "Hospworks Query Service is disabled on cluster. Contact your administrator to enable it.",
+                "Hopsworks Query Service is disabled on cluster. Contact your administrator to enable it.",
                 stacklevel=1,
             )
         else:
             warnings.warn(
-                f"Client initialisation failed: {message}. Hopsworks Query Service will be disabled for this session."
-                "If you believe this is a transient error, you can call `(hopsworks.)hsfs.reset_offline_query_service_client()`"
+                f"Client initialisation failed: {message}. Hopsworks Query Service will be disabled for this session. "
+                "If you believe this is a transient error, you can call `fs._reset_hopsworks_feature_query_service_client()` on the feature store"
                 " to re-enable it.",
                 stacklevel=1,
             )
@@ -740,6 +742,11 @@ class ArrowFlightClient:
     def disabled_for_session(self) -> bool:
         """Whether the client is disabled for the current session."""
         return self._disabled_for_session
+
+    @property
+    def disabled_reason(self) -> str | None:
+        """Why the client failed to initialise, when it did; `None` otherwise."""
+        return self._disabled_reason
 
     @property
     def enabled_on_cluster(self) -> bool:

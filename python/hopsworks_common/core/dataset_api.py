@@ -30,7 +30,6 @@ from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode, users_api, variable_api
-from tqdm.auto import tqdm
 
 
 if TYPE_CHECKING:
@@ -148,6 +147,8 @@ class DatasetApi:
         ):
             pbar = None
             try:
+                from tqdm.auto import tqdm
+
                 pbar = tqdm(
                     total=file_size,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
@@ -316,6 +317,8 @@ class DatasetApi:
         with open(local_path, "rb") as f:
             pbar = None
             try:
+                from tqdm.auto import tqdm
+
                 pbar = tqdm(
                     total=file_size,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
