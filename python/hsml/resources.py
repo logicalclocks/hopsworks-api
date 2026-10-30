@@ -35,7 +35,7 @@ class Resources:
         disk: Local disk (GB) the component's container may use, unlimited when not set.
             Only valid on limits; the same amount is also requested.
             The model files are downloaded to the predictor's local disk, so a predictor's disk must fit them.
-            On a cluster that gives LLM deployments a volume for their model files, an LLM predictor takes no disk.
+            On a cluster that gives vLLM deployments a volume for their model files, a vLLM predictor takes no disk.
     """
 
     def __init__(
@@ -123,7 +123,7 @@ class Resources:
 
         Only valid on limits.
         The model files are downloaded to the predictor's local disk, so a predictor's disk must fit them.
-        On a cluster that gives LLM deployments a volume for their model files, an LLM predictor takes no disk.
+        On a cluster that gives vLLM deployments a volume for their model files, a vLLM predictor takes no disk.
         """
         return self._disk
 
