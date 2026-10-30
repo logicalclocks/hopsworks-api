@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import asyncio
 from copy import deepcopy
 from datetime import datetime
 from types import SimpleNamespace
@@ -1054,6 +1055,38 @@ class TestSqlClientLifecycle:
         assert _FakePool.open_pools == []
         assert server.sql_client is None
         assert not server._serving_initialized
+
+    def test_reinitialising_after_an_awaited_lookup_closes_the_loop_pool(self, mocker):
+        server = self._server()
+
+        async def main():
+            self._init_serving(server, mocker, init_sql_client=True)
+            await server.sql_client._loop_connection_pool()
+            assert len(_FakePool.open_pools) == 2
+
+            self._init_serving(server, mocker, init_sql_client=True)
+            # The old loop pool closes in a task on this loop.
+            await asyncio.sleep(0.1)
+            assert len(_FakePool.open_pools) == 1
+
+        asyncio.run(main())
+        server._close()
+        assert _FakePool.open_pools == []
+
+    def test_a_setup_failing_before_the_connection_keeps_its_error(self, mocker):
+        from hsfs.core import online_store_sql_engine
+
+        mocker.patch.object(
+            online_store_sql_engine.OnlineStoreSqlClient,
+            "_init_prepared_statements",
+            side_effect=RuntimeError("no prepared statements"),
+        )
+        server = self._server()
+
+        with pytest.raises(RuntimeError, match="no prepared statements"):
+            self._init_serving(server, mocker, init_sql_client=True)
+
+        assert server.sql_client is None
 
     def test_a_collected_server_closes_its_pool(self, mocker):
         import gc
