@@ -886,20 +886,13 @@ class ModelEngine:
 
     def _read_json(self, model_instance, resource):
         hdfs_resource_path = self._build_resource_path(model_instance, resource)
-        if self._dataset_api.path_exists(hdfs_resource_path):
-            try:
-                tmp_dir = tempfile.TemporaryDirectory()
-                local_resource_path = os.path.join(tmp_dir.name, resource)
-                self._engine._download(
-                    hdfs_resource_path,
-                    local_resource_path,
-                )
-                with open(local_resource_path, "rb") as f:
-                    return json.loads(f.read())
-            finally:
-                if tmp_dir is not None and os.path.exists(tmp_dir.name):
-                    tmp_dir.cleanup()
-        return None
+        if not self._dataset_api.path_exists(hdfs_resource_path):
+            return None
+        # Over REST, not the local engine's download: that creates a HopsFS client, and in a
+        # serving pod its Go runtime then stays in the predictor process with heap bursts of
+        # hundreds of MB that OOM-kill it at the default memory limit.
+        response = self._dataset_api.read_content(hdfs_resource_path)
+        return json.loads(response.content)
 
     def _delete(self, model_instance):
         self._engine._delete(model_instance)

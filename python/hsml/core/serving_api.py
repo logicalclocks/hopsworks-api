@@ -38,6 +38,7 @@ from hsml.client.istio.utils.infer_type import (
     InferRequest,
 )
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hsml.constants import PREDICTOR
 
 
 _logger = logging.getLogger(__name__)
@@ -253,6 +254,16 @@ class ServingApi:
         path_params = ["project", _client._project_id, "serving", "vllmImageTags"]
         return _client._send_request("GET", path_params)
 
+    def _get_triton_image_tags(self) -> dict[str, Any]:
+        """Get the Triton Inference Server image tags the cluster advertises.
+
+        Returns:
+            The advertised tags and the default tag; no tags and no default when Triton is not enabled on the cluster.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "tritonImageTags"]
+        return _client._send_request("GET", path_params)
+
     def _get_schema(
         self,
         deployment_id: int,
@@ -416,6 +427,57 @@ class ServingApi:
         deployment_instance.model_registry_id = _client._project_id
         deployment_instance.project_name = _client._project_name
         return deployment_instance
+
+    def _set_tracing(
+        self,
+        deployment_instance: deployment.Deployment,
+        active: bool | None,
+        sampling_percentage: int | None,
+        duration_days: int | None = None,
+    ) -> dict[str, Any]:
+        """Switch a running deployment's tracing without redeploying it, returning the stored tracing config."""
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "tracing",
+        ]
+        body = {}
+        if active is not None:
+            body["active"] = active
+        if sampling_percentage is not None:
+            body["samplingPercentage"] = sampling_percentage
+        if duration_days is not None:
+            body["durationDays"] = duration_days
+        return _client._send_request(
+            "PUT",
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps(body),
+        )
+
+    def _delete_traces(
+        self,
+        deployment_instance: deployment.Deployment,
+        until_ms: int | None,
+        batch_size: int,
+    ) -> int:
+        """Delete one batch of the deployment's trace rows from each trace table, returning the rows deleted."""
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "otel",
+            "servings",
+            deployment_instance.id,
+            "traces",
+        ]
+        query_params = {"batchSize": batch_size}
+        if until_ms is not None:
+            query_params["until"] = until_ms
+        return _client._send_request("DELETE", path_params, query_params)["deleted"]
 
     def _post(self, deployment_instance: deployment.Deployment, action: str):
         """Perform an action on the deployment.
@@ -630,8 +692,13 @@ class ServingApi:
         return True
 
     def _get_istio_model_metadata_path(self, deployment_instance) -> list[str]:
+        protocol = (
+            "v2"
+            if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON
+            else "v1"
+        )
         return self._get_istio_inference_path(deployment_instance, base_only=True) + [
-            "v1",
+            protocol,
             "models",
             deployment_instance.name,
         ]
@@ -782,6 +849,14 @@ class ServingApi:
         Returns:
             List of path segments.
         """
+        if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON:
+            return [
+                "project",
+                project_id,
+                "inference",
+                "serving",
+                deployment_instance.name + ":infer",
+            ]
         return [
             "project",
             project_id,
@@ -809,4 +884,6 @@ class ServingApi:
         ]
         if base_only:
             return base_path
+        if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON:
+            return base_path + ["v2", "models", deployment_instance.name, "infer"]
         return base_path + ["v1", "models", deployment_instance.name + ":predict"]

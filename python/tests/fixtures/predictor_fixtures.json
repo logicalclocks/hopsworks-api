@@ -623,6 +623,38 @@
       }
     }
   },
+  "get_deployment_triton_kserve": {
+    "response": {
+      "id": 12,
+      "name": "mytriton",
+      "description": "triton deployment",
+      "version": 1,
+      "created": "",
+      "creator": "",
+      "model_path": "triton_model_path",
+      "model_name": "tritonmodel",
+      "model_version": 1,
+      "model_framework": "TRITON",
+      "model_server": "TRITON",
+      "serving_tool": "KSERVE",
+      "api_protocol": "REST",
+      "tritonImageTag": "26.09-py3",
+      "knativeMode": false,
+      "requested_instances": 1,
+      "predictor_resources": {
+        "requested_instances": 1,
+        "requests": { "cores": 1.0, "memory": 2048, "gpus": 0 },
+        "limits": { "cores": 2.0, "memory": 4096, "gpus": 0 }
+      },
+      "project_namespace": "test",
+      "predictor_scaling_config": {
+        "scale_metric": "CPU",
+        "target": 80,
+        "min_instances": 1,
+        "max_instances": 1
+      }
+    }
+  },
   "get_deployment_predictor_state": {
     "response": {
       "available_instances": 1,

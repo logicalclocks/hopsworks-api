@@ -159,6 +159,33 @@
       ]
     }
   },
+  "get_triton": {
+    "response": {
+      "count": 1,
+      "items": [
+        {
+          "id": "6",
+          "name": "tritonmodel",
+          "version": 0,
+          "created": "created",
+          "creator": "creator",
+          "environment": "environment.yml",
+          "description": "description",
+          "project_name": "myproject",
+          "metrics": { "acc": 0.7 },
+          "program": "program",
+          "user_full_name": "Full Name",
+          "model_schema": "model_schema.json",
+          "input_example": "input_example.json",
+          "model_registry_id": 1,
+          "tags": [],
+          "framework": "TRITON",
+          "missing_mandatory_tags": [{ "name": "owner" }],
+          "href": "test_href"
+        }
+      ]
+    }
+  },
   "get_list": {
     "response": {
       "count": 2,
