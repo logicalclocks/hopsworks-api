@@ -106,20 +106,22 @@ class TestFeatureGroupLookbackConstruction:
             assert lb.key == EVENT_TIME
 
     def test_inverted_range_rejected(self):
-        with pytest.raises(ValueError, match="must be strictly earlier than"):
+        with pytest.raises(ValueError, match="must not be later than"):
             FeatureGroupLookback(
                 key=PARTITION_KEY,
                 start=date(2026, 5, 17),
                 end=date(2026, 5, 10),
             )
 
-    def test_equal_bounds_rejected(self):
-        with pytest.raises(ValueError, match="must be strictly earlier than"):
-            FeatureGroupLookback(
-                key=PARTITION_KEY,
-                start=date(2026, 5, 10),
-                end=date(2026, 5, 10),
-            )
+    def test_equal_bounds_accepted(self):
+        # Bounds are inclusive, so start == end is a valid window: a single
+        # partition day for PARTITION_KEY, a single instant for EVENT_TIME.
+        lb = FeatureGroupLookback(
+            key=PARTITION_KEY,
+            start=date(2026, 5, 10),
+            end=date(2026, 5, 10),
+        )
+        assert lb.start == lb.end == date(2026, 5, 10)
 
 
 # ---------- FeatureGroupLookback serializers ----------------------------------------------
