@@ -27,7 +27,7 @@ Already known, no need to look again:
 
 | First word | Do |
 | --- | --- |
-| none | Ask "What do you want to do?": **Explore data**, **Build or resume an ML system**, **A dashboard**, **An app**. Then continue with that choice below. |
+| none | Ask "What do you want to do?": **Explore data**, **Build or resume an ML system**, **A dashboard**, **An app**; with a system listed above, **Resume <slug>** first and recommended, which runs `/hops-build <slug>`. Then continue with that choice below. |
 | `explore` | Explore (below). |
 | `dashboard` | Dashboard (below), with the rest as the instruction. |
 | `app` | App (below), with the rest as the instruction. |
@@ -48,7 +48,8 @@ system over it).
 
 ## Status
 
-With a system listed above, run `python <slug>/status.py` and print its output verbatim. Without
+With a system listed above, run `python <slug>/status.py` and `hops factory system plan <slug>`
+and print their output verbatim: the plan says what the project already has and what is next. Without
 one, list apps (`hops app list`) and, in a terminal, dashboards (`hops superset dashboard list`);
 from an external client list the programs under `./dashboards/` instead, since Superset is
 reachable only inside the cluster.
