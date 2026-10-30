@@ -86,7 +86,9 @@ class TestPredictor:
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
             "hopsworks_common.client._get_instance",
-            return_value=mocker.Mock(_project_name="my_display", _project_backing_name="my_backing"),
+            return_value=mocker.Mock(
+                _project_name="my_display", _project_backing_name="my_backing"
+            ),
         )
         p = predictor.Predictor(
             name="my_model",
