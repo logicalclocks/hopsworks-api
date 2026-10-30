@@ -1043,6 +1043,10 @@ class DefaultPredict:
             )
         except Exception as err:  # noqa: BLE001 - user transformations may raise anything
             raise self._transformation_failed(err) from err
+        # Without model-dependent transformations transform() returns its input,
+        # and a frame holding itself in attrs recurses when pandas copies attrs.
+        if transformed is untransformed:
+            return untransformed
         transformed.attrs["untransformed"] = untransformed
         return transformed
 
