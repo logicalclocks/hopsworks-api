@@ -7271,7 +7271,7 @@ class GmailConnector(StorageConnector):
 
         `INCREMENTAL_TIMESTAMP` upserts the messages received since the previous run; its first run copies everything from `initial_value` on, upserting every 5000 messages as it goes.
         A scheduled run that starts while the previous one is still copying does nothing.
-        `FULL_LOAD` overwrites the feature group on every run.
+        `FULL_LOAD` copies every selected message on every run, then removes the rows and attachments of the messages it did not copy.
         The copy is an archive: an incremental run does not remove messages deleted from Gmail, nor follow label changes.
 
         Calling `sync` again with the same `job_name` updates the job.

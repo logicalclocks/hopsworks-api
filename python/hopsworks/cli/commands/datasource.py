@@ -1984,7 +1984,7 @@ def connector_databases(ctx: click.Context, name: str) -> None:
     type=click.Choice(["INCREMENTAL_TIMESTAMP", "FULL_LOAD"], case_sensitive=False),
     default="INCREMENTAL_TIMESTAMP",
     show_default=True,
-    help="INCREMENTAL_TIMESTAMP adds new messages; FULL_LOAD overwrites the feature group.",
+    help="INCREMENTAL_TIMESTAMP adds new messages; FULL_LOAD copies them all again and removes the rest.",
 )
 @click.option("--start-date", help="Earliest receive time to copy, e.g. 2026-01-01.")
 @click.option(
