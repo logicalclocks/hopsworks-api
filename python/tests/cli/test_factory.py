@@ -718,6 +718,58 @@ def test_the_rag_factory_writes_its_directories_and_retrieval(
     assert registered == [("policy-search", "policy-search", "ml-rag")]
 
 
+def test_the_custom_factory_records_the_new_factory_and_its_checks(
+    tmp_path, monkeypatch, logged_in
+):
+    resources = (
+        Path(__file__).resolve().parents[4]
+        / "hopsworks-ee/hopsworks-common/src/main/resources/factories"
+    )
+    if not resources.is_dir():
+        pytest.skip("hopsworks-ee is not beside this checkout")
+    registered, launched = _recording(monkeypatch, tmp_path)
+    text = (resources / "custom-factory.yaml").read_text()
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(text, version=1)
+    )
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "slug": "churn-models",
+                "description": "predict which customers churn next month",
+                "new_factory": {"title": "Churn models", "purpose": ["ml"]},
+            }
+        )
+    )
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "custom-factory", "--answers", str(answers)]
+    )
+    assert done.exit_code == 0, done.output
+    doc = yaml.safe_load((tmp_path / "churn-models" / "system.yaml").read_text())
+    requirements = doc["requirements"]
+    assert requirements["system_type"] == "factory"
+    assert requirements["new_factory"]["purpose"] == ["ml"]
+    assert [p["key"] for p in doc["factory"]["phases"]] == [
+        "reqs",
+        "design",
+        "write",
+        "publish",
+        "verify",
+    ]
+    command = (
+        tmp_path
+        / "churn-models"
+        / ".claude"
+        / "commands"
+        / "hops-factory-custom-factory.md"
+    ).read_text()
+    assert "**hops-factory**" in command
+    assert "hops factory validate factory.yaml" in command
+    assert launched == ["/hops-factory-custom-factory churn-models"]
+    assert registered == [("churn-models", "churn-models", "custom-factory")]
+
+
 @pytest.mark.parametrize(
     ("value", "ok"),
     [

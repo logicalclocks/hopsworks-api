@@ -1,12 +1,13 @@
 """``hops factory``: the software factories of this project, and the systems they build.
 
-Eleven are built in, as YAML definitions the cluster ships: ``ml-batch``,
+Twelve are built in, as YAML definitions the cluster ships: ``ml-batch``,
 ``ml-realtime``, ``ml-streaming`` and ``ml-agent`` build ML systems, ``ml-finetune``
 fine-tunes a foundation model with LoRA, ``ml-rag`` indexes documents and answers
 questions over them, ``analytics-bronze``,
 ``analytics-silver`` and ``analytics-gold`` build analytics layers,
-``analytics-pipeline`` builds a data pipeline and ``analytics-ingestion`` the
-ingestion of data sources into feature groups, each from its written instructions. A
+``analytics-pipeline`` builds a data pipeline, ``analytics-ingestion`` the
+ingestion of data sources into feature groups, and ``custom-factory`` a project
+factory of your own, each from its written instructions. A
 project's own factories are YAML definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
 import, clone and delete. ``hops factory run <name>`` builds a system with a
 factory, and ``hops factory system ...`` lists, reports on and deletes the
