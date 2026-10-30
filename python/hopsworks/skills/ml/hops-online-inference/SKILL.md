@@ -280,6 +280,10 @@ predictor_resources = PredictorResources(
 )
 ```
 
+To cap a component's local disk, pass `disk` (GB) to its `limits`, e.g. `Resources(cores=2, memory=4096, gpus=0, disk=50)`; without it the disk is unlimited.
+It is only valid on `limits`, and the same amount is also requested.
+The model files are downloaded to the predictor's local disk, so the predictor's disk must fit them.
+
 ### Scaling
 
 The scaling configuration (`min_instances`, `max_instances`, `scale_metric`, `target`, and the KEDA or Knative settings) is the same object for model and agent deployments; the modes, every metric with its unit and default, scale to zero when idle and how to verify that a deployment scales are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md). The short version:

@@ -111,6 +111,50 @@ class TestResources:
         assert r.cores == json["cores"]
         assert r.memory == json["memory"]
         assert r.gpus == json["gpus"]
+        assert r.disk is None
+
+    def test_from_response_json_disk(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["resources"]["get_cores_memory_gpus_and_disk"][
+            "response"
+        ]
+
+        # Act
+        r = resources.Resources.from_response_json(json)
+
+        # Assert
+        assert r.cores == json["cores"]
+        assert r.memory == json["memory"]
+        assert r.gpus == json["gpus"]
+        assert r.disk == json["diskGb"]
+
+    def test_from_json_user_dict_disk(self):
+        # Act
+        r = resources.Resources.from_json({"cores": 1, "memory": 2, "disk": 20})
+
+        # Assert
+        assert r.disk == 20
+
+    def test_to_dict_without_disk(self):
+        # Act
+        d = resources.Resources(1, 1024, 0).to_dict()
+
+        # Assert
+        assert d == {"cores": 1, "memory": 1024, "gpus": 0}
+
+    def test_to_dict_with_disk(self):
+        # Act
+        d = resources.Resources(1, 1024, 0, disk=20).to_dict()
+
+        # Assert
+        assert d == {"cores": 1, "memory": 1024, "gpus": 0, "diskGb": 20}
+
+    def test_repr_disk(self):
+        # Act
+        r = repr(resources.Resources(1, 1024, 0, disk=20))
+
+        # Assert
+        assert r == "Resources(cores: 1, memory: 1024, gpus: 0, disk: 20)"
 
     # ComponentResources
 
@@ -374,6 +418,41 @@ class TestResources:
         assert mock_resource.cores == 1
         assert mock_resource.memory == 11
         assert mock_resource.gpus == 12
+
+    # - disk
+
+    def test_constructor_component_resources_default_no_disk(self):
+        # Act
+        pr = resources.PredictorResources(num_instances=1)
+
+        # Assert
+        assert pr.requests.disk is None
+        assert pr.limits.disk is None
+        payload = pr.to_dict()["predictorResources"]
+        assert "diskGb" not in payload["requests"]
+        assert "diskGb" not in payload["limits"]
+
+    def test_constructor_component_resources_disk_limit(self):
+        # Act
+        pr = resources.PredictorResources(
+            num_instances=1,
+            requests=resources.Resources(1, 1024, 0),
+            limits={"cores": 2, "memory": 2048, "gpus": 0, "disk": 20},
+        )
+
+        # Assert
+        assert pr.requests.disk is None
+        assert pr.limits.disk == 20
+        payload = pr.to_dict()["predictorResources"]
+        assert "diskGb" not in payload["requests"]
+        assert payload["limits"]["diskGb"] == 20
+
+    def test_constructor_component_resources_disk_request_refused(self):
+        # Act and Assert
+        with pytest.raises(ValueError, match="only be set on resource limits"):
+            resources.TransformerResources(
+                num_instances=1, requests=resources.Resources(1, 1024, 0, disk=20)
+            )
 
     # PredictorResources
 

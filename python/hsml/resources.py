@@ -32,6 +32,9 @@ class Resources:
         cores: Number of CPUs.
         memory: Memory (MB) resources.
         gpus: Number of GPUs.
+        disk: Local disk (GB) the component's container may use, unlimited when not set.
+            Only valid on limits; the same amount is also requested.
+            The model files are downloaded to the predictor's local disk, so a predictor's disk must fit them.
     """
 
     def __init__(
@@ -39,11 +42,13 @@ class Resources:
         cores: int,
         memory: int,
         gpus: int,
+        disk: int | None = None,
         **kwargs,
     ):
         self._cores = cores
         self._memory = memory
         self._gpus = gpus
+        self._disk = disk
 
     @public
     def describe(self):
@@ -65,13 +70,20 @@ class Resources:
         kwargs["cores"] = util._extract_field_from_json(json_decamelized, "cores")
         kwargs["memory"] = util._extract_field_from_json(json_decamelized, "memory")
         kwargs["gpus"] = util._extract_field_from_json(json_decamelized, "gpus")
+        # The backend sends diskGb, while a dict passed by the user names it after the constructor argument.
+        kwargs["disk"] = util._extract_field_from_json(
+            json_decamelized, ["disk_gb", "disk"]
+        )
         return kwargs
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        return {"cores": self._cores, "memory": self._memory, "gpus": self._gpus}
+        resources = {"cores": self._cores, "memory": self._memory, "gpus": self._gpus}
+        if self._disk is not None:
+            resources["diskGb"] = self._disk
+        return resources
 
     @public
     @property
@@ -103,8 +115,22 @@ class Resources:
     def gpus(self, gpus: int):
         self._gpus = gpus
 
+    @public
+    @property
+    def disk(self):
+        """Local disk (GB) to be allocated per instance, unlimited when not set.
+
+        Only valid on limits.
+        The model files are downloaded to the predictor's local disk, so a predictor's disk must fit them.
+        """
+        return self._disk
+
+    @disk.setter
+    def disk(self, disk: int | None):
+        self._disk = disk
+
     def __repr__(self):
-        return f"Resources(cores: {self._cores!r}, memory: {self._memory!r}, gpus: {self._gpus!r})"
+        return f"Resources(cores: {self._cores!r}, memory: {self._memory!r}, gpus: {self._gpus!r}, disk: {self._disk!r})"
 
 
 @public
@@ -133,6 +159,10 @@ class ComponentResources(ABC):
             RESOURCES.MIN_MEMORY,
             RESOURCES.GPUS,
         )
+        if self._requests.disk is not None:
+            raise ValueError(
+                "Disk can only be set on resource limits, the same amount is also requested. Set `limits=Resources(..., disk=...)` instead."
+            )
         self._limits = util._get_obj_from_json(limits, Resources) or Resources(
             RESOURCES.MAX_CORES, RESOURCES.MAX_MEMORY, RESOURCES.GPUS
         )
