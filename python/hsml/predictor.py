@@ -25,11 +25,13 @@ import humps
 from hopsworks_apigen import public
 from hopsworks_common import client, tag, util
 from hopsworks_common.constants import (
+    DEPLOYMENT_KIND,
     INFERENCE_ENDPOINTS,
     MODEL,
     MODEL_SERVING,
     PREDICTOR,
     SCALING_CONFIG,
+    SCRIPT_KIND,
     Default,
 )
 from hsml import deployment
@@ -113,6 +115,14 @@ class Predictor(DeployableComponent):
         schema: DeploymentSchema | dict | None = None,
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
+        kind: str | None = None,
+        feature_view_id: int | None = None,
+        feature_view_name: str | None = None,
+        feature_view_version: int | None = None,
+        feature_store_id: int | None = None,
+        feature_store_name: str | None = None,
+        training_dataset_version: int | None = None,
+        script_kind: str | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -191,6 +201,14 @@ class Predictor(DeployableComponent):
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
         self._knative_mode = knative_mode
+        self._kind = kind
+        self._feature_view_id = feature_view_id
+        self._feature_view_name = feature_view_name
+        self._feature_view_version = feature_view_version
+        self._feature_store_id = feature_store_id
+        self._feature_store_name = feature_store_name
+        self._training_dataset_version = training_dataset_version
+        self._script_kind = script_kind
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -330,6 +348,7 @@ class Predictor(DeployableComponent):
         kwargs["model_name"] = model.name
         kwargs["model_path"] = model.model_path
         kwargs["model_version"] = model.version
+        kwargs.setdefault("kind", DEPLOYMENT_KIND.MODEL)
 
         _reject_reserved_env_vars(kwargs.get("env_vars"))
         default_predictor = kwargs.pop("default_predictor", None)
@@ -348,6 +367,20 @@ class Predictor(DeployableComponent):
         kwargs["schema"] = _resolve_model_schema(
             model, feature_view, use_default, schema, passed_features
         )
+        schema_view = getattr(kwargs["schema"], "feature_view", None) or {}
+        if (
+            feature_view is not None
+            and getattr(feature_view, "id", None) is not None
+            and (schema_view.get("name"), schema_view.get("version"))
+            == (feature_view.name, feature_view.version)
+        ):
+            # the schema only names its view; the object in hand knows its id and store
+            kwargs["feature_view_id"] = feature_view.id
+            kwargs["feature_view_name"] = feature_view.name
+            kwargs["feature_view_version"] = feature_view.version
+            kwargs["feature_store_name"] = getattr(
+                feature_view, "feature_store_name", None
+            )
         if not use_default and passed_features:
             raise ValueError(
                 "passed_features only applies to the default predictor. Pass "
@@ -425,25 +458,18 @@ class Predictor(DeployableComponent):
         if script_file is not None:
             _check_feature_view_script(script_file)
 
-        env_vars = dict(kwargs.pop("env_vars", None) or {})
-        env_vars[MODEL_SERVING.SCRIPT_KIND_ENV_VAR] = (
-            MODEL_SERVING.SCRIPT_KIND_PREDICTOR
-        )
-        env_vars[MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR] = feature_view.name
-        env_vars[MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR] = str(feature_view.version)
-        kwargs["env_vars"] = env_vars
         _mark_feature_logging(kwargs, feature_view)
-        env_vars = kwargs.pop("env_vars")
-        if training_dataset_version is not None:
-            env_vars[MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR] = str(
-                training_dataset_version
-            )
         return FeatureViewEndpoint(
             name=name,
             script_file=script_file,
             schema=given or inferred,
             default_predictor=True,
-            env_vars=env_vars,
+            feature_view_id=feature_view.id,
+            feature_view_name=feature_view.name,
+            feature_view_version=feature_view.version,
+            feature_store_name=getattr(feature_view, "feature_store_name", None),
+            training_dataset_version=training_dataset_version,
+            script_kind=SCRIPT_KIND.PREDICTOR,
             **kwargs,
         )
 
@@ -575,6 +601,17 @@ class Predictor(DeployableComponent):
         kwargs["knative_mode"] = util._extract_field_from_json(
             json_decamelized, "knative_mode"
         )
+        kwargs["kind"] = util._extract_field_from_json(json_decamelized, "kind")
+        for field in (
+            "feature_view_id",
+            "feature_view_name",
+            "feature_view_version",
+            "feature_store_id",
+            "feature_store_name",
+            "training_dataset_version",
+            "script_kind",
+        ):
+            kwargs[field] = util._extract_field_from_json(json_decamelized, field)
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -601,6 +638,20 @@ class Predictor(DeployableComponent):
             "apiProtocol": self._api_protocol,
             "projectNamespace": self._project_namespace,
         }
+        if self._kind is not None:
+            predictor_dict = {**predictor_dict, "kind": self._kind}
+        if self._feature_view_id is not None:
+            predictor_dict = {
+                **predictor_dict,
+                "featureViewId": self._feature_view_id,
+            }
+        if self._training_dataset_version is not None:
+            predictor_dict = {
+                **predictor_dict,
+                "trainingDatasetVersion": self._training_dataset_version,
+            }
+        if self._script_kind is not None:
+            predictor_dict = {**predictor_dict, "scriptKind": self._script_kind}
         if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
             predictor_dict = {
                 **predictor_dict,
@@ -1005,12 +1056,16 @@ class Predictor(DeployableComponent):
     @property
     def feature_view_name(self) -> str | None:
         """Feature view served by a feature view deployment, else `None`."""
+        if self._feature_view_name is not None:
+            return self._feature_view_name
         return (self._env_vars or {}).get(MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR)
 
     @public
     @property
     def feature_view_version(self) -> int | None:
         """Feature view version served by a feature view deployment, else `None`."""
+        if self._feature_view_version is not None:
+            return self._feature_view_version
         version = (self._env_vars or {}).get(MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR)
         return int(version) if version is not None else None
 
@@ -1018,7 +1073,7 @@ class Predictor(DeployableComponent):
     @property
     def has_feature_view(self) -> bool:
         """Whether this is a feature view deployment."""
-        return self.feature_view_name is not None
+        return self._feature_view_id is not None or self.feature_view_name is not None
 
     @public
     @property
@@ -1097,7 +1152,7 @@ class Predictor(DeployableComponent):
 
         `True` selects Knative mode, which supports scale-to-zero and Knative-only autoscaling.
         `False` selects Standard mode, which requires at least one instance and autoscales on a CPU/memory metric between the minimum and maximum instances, or runs a fixed replica count when they are equal.
-        `None` leaves the mode for the backend to decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode.
+        `None` leaves the mode for the backend to decide: a new deployment runs in Standard mode, and Knative mode is the opt-in.
         Read the current mode from a saved deployment via this property.
         Setting it to `None` before a save call keeps the stored mode unchanged.
 
@@ -1109,6 +1164,27 @@ class Predictor(DeployableComponent):
     @knative_mode.setter
     def knative_mode(self, knative_mode: bool | None):
         self._knative_mode = knative_mode
+
+    @public
+    @property
+    def kind(self) -> str:
+        """What the deployment serves, one of `hsml.constants.DEPLOYMENT_KIND`.
+
+        `MODEL` serves a registered model, LLMs included; `FEATURE_VIEW` serves a feature view without a model; `AGENT` serves an agent, the only kind with tracing, chat, memory and evaluation; `PYTHON` serves any other HTTP server.
+        A backend that predates the kind returns none, and it is then inferred the way the backend infers it: a model makes `MODEL`, a feature view `FEATURE_VIEW`, and anything else `AGENT`.
+        Only `AGENT` and `PYTHON` can be swapped, by setting this and saving while the deployment is stopped.
+        """
+        if self._kind is not None:
+            return self._kind
+        if self._model_name is not None:
+            return DEPLOYMENT_KIND.MODEL
+        if self.has_feature_view:
+            return DEPLOYMENT_KIND.FEATURE_VIEW
+        return DEPLOYMENT_KIND.AGENT
+
+    @kind.setter
+    def kind(self, kind: str):
+        self._kind = kind
 
     @public
     def get_endpoint_url(self) -> str | None:
@@ -1490,7 +1566,7 @@ def _resolve_model_schema(model, feature_view, use_default, schema, passed_featu
 def _check_feature_view_script(script_file: str) -> None:
     """Require the KServe wrapper hand-over in a feature view deployment's script.
 
-    Backends that honour `SERVING_SCRIPT_KIND=predictor` start the wrapper
+    Backends that honour the `PREDICTOR` script kind start the wrapper
     themselves and never run the script's `__main__` block; older backends
     start `python <script>`, so the footer is what makes the script serve.
     """

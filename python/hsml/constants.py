@@ -18,6 +18,7 @@ from hopsworks_common.constants import (
     DEFAULT,
     DEPLOYABLE_COMPONENT,
     DEPLOYMENT,
+    DEPLOYMENT_KIND,
     ENV_VARS,
     GIT,
     HOSTS,
@@ -36,6 +37,7 @@ from hopsworks_common.constants import (
     PREDICTOR,
     PREDICTOR_STATE,
     RESOURCES,
+    SCRIPT_KIND,
     SSL_CONFIG,
     Default,
 )
@@ -45,6 +47,7 @@ __all__ = [
     "DEFAULT",
     "DEPLOYABLE_COMPONENT",
     "DEPLOYMENT",
+    "DEPLOYMENT_KIND",
     "ENV_VARS",
     "GIT",
     "HOSTS",
@@ -63,6 +66,7 @@ __all__ = [
     "PREDICTOR",
     "PREDICTOR_STATE",
     "RESOURCES",
+    "SCRIPT_KIND",
     "SSL_CONFIG",
     "Default",
 ]

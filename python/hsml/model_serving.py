@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING, Any
 from hopsworks_apigen import public
 from hopsworks_common import tag, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.constants import DEPLOYMENT_KIND, PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.constants import PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.core import dataset_api as _dataset_api
 from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
@@ -145,7 +145,10 @@ class ModelServing:
     @public
     @usage._method_logger
     def get_deployments(
-        self, model: Model = None, status: str = None
+        self,
+        model: Model = None,
+        status: str = None,
+        kind: str | list[str] | None = None,
     ) -> list[Deployment]:
         """Get all deployments from model serving.
 
@@ -168,21 +171,39 @@ class ModelServing:
                 print(deployment.get_state())
             ```
 
+        Example: Agents only
+            ```python
+            from hsml.constants import DEPLOYMENT_KIND
+
+            agents = ms.get_deployments(kind=DEPLOYMENT_KIND.AGENT)
+            ```
+
         Parameters:
             model: Filter by model served in the deployments
             status: Filter by status of the deployments
+            kind: Keep only deployments of this kind, or of any of these kinds; see `hsml.constants.DEPLOYMENT_KIND`.
 
         Returns:
             A list of deployments.
 
         Raises:
+            ValueError: If a kind is not one of `hsml.constants.DEPLOYMENT_KIND`.
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployments from model serving.
         """
         model_name = model._get_default_serving_name() if model is not None else None
         if status is not None:
             self._validate_deployment_status(status)
+        kinds = None
+        if kind is not None:
+            kinds = [kind] if isinstance(kind, str) else list(kind)
+            valid = list(util._get_members(DEPLOYMENT_KIND))
+            unknown = [k for k in kinds if k not in valid]
+            if unknown:
+                raise ValueError(
+                    f"Unknown deployment kind {unknown}, expected one of {valid}"
+                )
 
-        return self._serving_api._get_all(model_name, status)
+        return self._serving_api._get_all(model_name, status, kinds)
 
     def _validate_deployment_status(self, status):
         statuses = list(util._get_members(PREDICTOR_STATE, prefix="STATUS"))
@@ -555,7 +576,7 @@ class ModelServing:
             # get Hopsworks Model Registry handle
             ms = project.get_model_serving()
 
-            my_endpoint = ms.create_entrypoint(name="feature_server", entrypoint_file="feature_server.py")
+            my_endpoint = ms.create_endpoint(name="feature_server", script_file="feature_server.py")
 
             my_deployment = my_endpoint.deploy()
             ```
@@ -808,6 +829,7 @@ class ModelServing:
             git_branch=git_branch if git_backed else None,
             git_auto_redeploy=git_auto_redeploy if git_backed else False,
             knative_mode=knative_mode,
+            kind=DEPLOYMENT_KIND.AGENT,
         )
 
         existing = self.get_deployment(name)

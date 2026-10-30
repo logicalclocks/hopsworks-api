@@ -900,24 +900,48 @@ class ServingEngine:
             if transformer is not None
             else MODEL_SERVING.SCHEMA_ENFORCER_PREDICTOR
         )
+        if schema is not None:
+            self._link_feature_view(predictor, schema)
         for component in [predictor] + ([transformer] if transformer else []):
             env_vars = dict(component.env_vars or {})
             env_vars[MODEL_SERVING.DEPLOYMENT_SCHEMA_ID_ENV_VAR] = schema_id
-            if schema is not None:
-                view = schema.feature_view or {}
-                identity = {
-                    MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR: view.get("name"),
-                    MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR: view.get("version"),
-                    MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR: schema.training_dataset_version,
-                }
-                for name, value in identity.items():
-                    if value is None:
-                        env_vars.pop(name, None)
-                    else:
-                        env_vars[name] = str(value)
             # each pod validates, or defers, according to its own revision
             env_vars[MODEL_SERVING.SCHEMA_ENFORCER_ENV_VAR] = enforcer
             component.env_vars = env_vars
+
+    @staticmethod
+    def _link_feature_view(predictor, schema) -> None:
+        """Point the predictor's feature view link at the schema's view, or clear it.
+
+        The schema names its view without an id, so a link that already matches by name and version is kept, which preserves a view from a shared feature store; otherwise the id is looked up in the project's own feature store.
+        Predictors built from a feature view object carry its id and store from the start.
+        """
+        view = schema.feature_view or {}
+        name, version = view.get("name"), view.get("version")
+        if name is None or version is None:
+            predictor._feature_view_id = None
+            predictor._training_dataset_version = None
+            return
+        if predictor._feature_view_id is None or (
+            predictor.feature_view_name,
+            predictor.feature_view_version,
+        ) != (name, version):
+            import hopsworks
+
+            if not hopsworks._connected_project:
+                raise ModelServingException(
+                    "Linking the feature view of a deployment needs a project "
+                    "connection; use hopsworks.login() first."
+                )
+            feature_view = (
+                hopsworks._connected_project.get_feature_store().get_feature_view(
+                    name, version
+                )
+            )
+            predictor._feature_view_id = feature_view.id
+        predictor._feature_view_name = name
+        predictor._feature_view_version = version
+        predictor._training_dataset_version = schema.training_dataset_version
 
     def _write_schema_documents(self, deployment_name: str, schema) -> None:
         schema_dir = self._schema_dir(deployment_name)

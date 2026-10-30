@@ -28,8 +28,8 @@ from hsml import (
     transformer,
     util,
 )
+from hsml.constants import DEPLOYMENT_KIND, MODEL, PREDICTOR
 from hsml.constants import INFERENCE_ENDPOINTS as IE
-from hsml.constants import MODEL, PREDICTOR
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -709,6 +709,7 @@ class TestPredictor:
             model_path,
             default_predictor=None,
             schema=None,
+            kind=None,
         ):
             pass
 
@@ -736,6 +737,7 @@ class TestPredictor:
             model_path=mock_model.model_path,
             default_predictor=False,
             schema=None,
+            kind="MODEL",
         )
 
     # extract fields from json
@@ -1852,6 +1854,96 @@ class TestPredictor:
 
     # auxiliary methods
 
+    # kind
+
+    def test_for_server_sends_python_kind(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act
+        p = predictor.Predictor.for_server(name="srv", script_file="server.py")
+
+        # Assert
+        assert p.kind == DEPLOYMENT_KIND.PYTHON
+        assert p.to_dict()["kind"] == DEPLOYMENT_KIND.PYTHON
+
+    def test_for_server_takes_agent_kind(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act
+        p = predictor.Predictor.for_server(
+            name="agent", script_file="agent.py", kind=DEPLOYMENT_KIND.AGENT
+        )
+
+        # Assert
+        assert p.to_dict()["kind"] == DEPLOYMENT_KIND.AGENT
+
+    def test_feature_view_endpoint_sends_feature_view_kind(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.python.feature_view_endpoint import FeatureViewEndpoint
+
+        # Act
+        p = FeatureViewEndpoint(name="fv1")
+
+        # Assert
+        assert p.to_dict()["kind"] == DEPLOYMENT_KIND.FEATURE_VIEW
+
+    def test_kind_omitted_from_payload_when_unset(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(name="srv", model_server=PREDICTOR.MODEL_SERVER_PYTHON)
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "kind" not in d
+
+    def test_kind_inferred_when_backend_returns_none(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act
+        model = predictor.Predictor(
+            name="m",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="m",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        feature_view = predictor.Predictor(
+            name="fv",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="p.py",
+            env_vars={"SERVING_FEATURE_VIEW_NAME": "txfv"},
+        )
+        server = predictor.Predictor(
+            name="srv", model_server=PREDICTOR.MODEL_SERVER_PYTHON, script_file="p.py"
+        )
+
+        # Assert
+        assert model.kind == DEPLOYMENT_KIND.MODEL
+        assert feature_view.kind == DEPLOYMENT_KIND.FEATURE_VIEW
+        assert server.kind == DEPLOYMENT_KIND.AGENT
+
+    def test_extract_fields_from_json_reads_kind(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        p_json["kind"] = DEPLOYMENT_KIND.PYTHON
+
+        # Act
+        kwargs = predictor.Predictor.extract_fields_from_json(p_json)
+
+        # Assert
+        assert kwargs["kind"] == DEPLOYMENT_KIND.PYTHON
+
     def _mock_serving_variables(
         self,
         mocker,
@@ -1932,6 +2024,9 @@ class TestPredictorDefaultPredictor:
             {"name": "label", "type": "int"}
         ]
         assert "passed_features" not in captured
+        assert captured["feature_view_id"] == 3
+        assert captured["feature_view_name"] == "fv"
+        assert captured["feature_view_version"] == 2
 
     @pytest.mark.parametrize(
         "kwargs, framework, feature_view, kserve",
@@ -2193,8 +2288,17 @@ class TestPredictorDefaultPredictor:
             and p.feature_view_name == "fv"
             and p.feature_view_version == 2
         )
-        assert p.env_vars["SERVING_TRAINING_DATASET_VERSION"] == "5"
-        assert p.env_vars["SERVING_SCRIPT_KIND"] == "predictor"
+        assert p._training_dataset_version == 5
+        assert p._script_kind == "PREDICTOR"
+        assert p.env_vars is None or "SERVING_FEATURE_VIEW_NAME" not in p.env_vars
+        body = p.to_dict()
+        assert body["featureViewId"] == fv.id
+        assert body["trainingDatasetVersion"] == 5
+        assert body["scriptKind"] == "PREDICTOR"
+        assert not any(
+            e.startswith(("SERVING_FEATURE_VIEW", "SERVING_SCRIPT_KIND"))
+            for e in body.get("predictorEnvVars", [])
+        )
         assert p.schema.output["kind"] == "feature_vectors"
         assert [f.name for f in p.schema.passed_features] == ["amount"]
         assert p.model_name is None and "modelName" not in p.to_dict()

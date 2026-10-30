@@ -100,13 +100,14 @@ class ServingApi:
         return deployment_instance
 
     def _get_all(
-        self, model_name: str = None, status: str = None
+        self, model_name: str = None, status: str = None, kinds: list[str] = None
     ) -> list[deployment.Deployment]:
         """Get the metadata of all deployments.
 
         Parameters:
             model_name: filter deployments by model name
             status: filter deployments by status
+            kinds: filter deployments by kind
 
         Returns:
             List of deployment metadata objects.
@@ -117,12 +118,17 @@ class ServingApi:
             "model": model_name,
             "status": status.capitalize() if status is not None else None,
         }
+        if kinds:
+            query_params["kind"] = kinds
         deployments_json = _client._send_request(
             "GET", path_params, query_params=query_params
         )
         deployment_instances = deployment.Deployment.from_response_json(
             deployments_json
         )
+        if kinds:
+            # A backend that predates the kind ignores the filter; Deployment.kind infers it then.
+            deployment_instances = [d for d in deployment_instances if d.kind in kinds]
         for deployment_instance in deployment_instances:
             deployment_instance.model_registry_id = _client._project_id
             deployment_instance.project_name = _client._project_name

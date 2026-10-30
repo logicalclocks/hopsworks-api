@@ -7,7 +7,7 @@ a Python environment from the ``python-agent-pipeline`` base image, and
 creates or updates a regular Hopsworks deployment.
 The remaining verbs (``info``, ``start``, ``stop``, ``query``, ``logs``,
 ``delete``) mirror ``hops deployment`` but resolve names through an
-agent-only lookup that excludes model-backed deployments.
+agent-only lookup that keeps deployments of kind AGENT.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks_common.constants import DEPLOYMENT_KIND
 
 
 @click.group("agent")
@@ -36,7 +37,7 @@ def agent_list(ctx: click.Context) -> None:
     """
     ms = _get_model_serving(ctx)
     try:
-        deployments = ms.get_deployments()
+        deployments = ms.get_deployments(kind=DEPLOYMENT_KIND.AGENT)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list agents: {exc}") from exc
 
@@ -445,12 +446,14 @@ def _get_agent(ctx: click.Context, name: str) -> Any:
 
 
 def _is_agent(d: Any) -> bool:
-    """Identify server-only (agent) deployments with no attached model.
+    """Identify agent deployments by their kind.
 
-    Prefer the SDK-provided ``has_model`` attribute when available because it
-    accounts for the full deployment model attachment state.
-    Fall back to the legacy ``model_name`` heuristic for non-SDK objects.
+    Feature view and plain Python deployments have no model either, so the
+    missing model is only the fallback for objects without a ``kind``.
     """
+    kind = getattr(d, "kind", None)
+    if isinstance(kind, str):
+        return kind == DEPLOYMENT_KIND.AGENT
     has_model = getattr(d, "has_model", None)
     if has_model is not None:
         return not bool(has_model)

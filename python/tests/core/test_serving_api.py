@@ -504,6 +504,45 @@ def _versionable_deployment(mocker, deployment_id=5):
     return deployment
 
 
+class TestKindFilter:
+    @staticmethod
+    def _deployments(mocker, kinds):
+        deployments = [mocker.MagicMock(kind=kind) for kind in kinds]
+        mocker.patch(
+            "hsml.core.serving_api.deployment.Deployment.from_response_json",
+            return_value=deployments,
+        )
+        return deployments
+
+    def test_sends_the_kinds_and_keeps_only_those(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, [])
+        model, agent, python = self._deployments(mocker, ["MODEL", "AGENT", "PYTHON"])
+
+        result = api._get_all(kinds=["AGENT", "PYTHON"])
+
+        _, kwargs = hopsworks_client._send_request.call_args
+        assert kwargs["query_params"]["kind"] == ["AGENT", "PYTHON"]
+        assert result == [agent, python]
+
+    def test_filters_on_the_client_when_the_backend_ignores_kind(self, mocker):
+        # An older backend returns every deployment and no kind; Deployment.kind infers it.
+        api = ServingApi()
+        _patch_client(mocker, [])
+        model, agent = self._deployments(mocker, ["MODEL", "AGENT"])
+
+        assert api._get_all(kinds=["MODEL"]) == [model]
+
+    def test_no_kind_sends_no_filter(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, [])
+        deployments = self._deployments(mocker, ["MODEL", "AGENT"])
+
+        assert api._get_all() == deployments
+        _, kwargs = hopsworks_client._send_request.call_args
+        assert "kind" not in kwargs["query_params"]
+
+
 class TestVersioning:
     @staticmethod
     def _error(mocker, status, body=None):

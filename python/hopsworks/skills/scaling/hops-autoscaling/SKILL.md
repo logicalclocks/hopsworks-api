@@ -69,7 +69,7 @@ llm_scaling = PredictorScalingConfig(
 
 # An agent: the same object, through deploy_agent.
 ms = project.get_model_serving()
-agent = ms.deploy_agent(name="support", script_file=..., scaling_configuration=scaling)
+agent = ms.deploy_agent("support.py", name="support", scaling_configuration=scaling)
 
 # Raise the minimum of a running deployment (the idle flag follows the minimum).
 d = ms.get_deployment("fraud")
