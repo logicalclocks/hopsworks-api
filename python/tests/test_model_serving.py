@@ -112,6 +112,18 @@ class TestTracingForwarding:
         # Assert
         assert mock_for_model.call_args.kwargs["knative_mode"] is False
 
+    def test_create_predictor_forwards_triton_image_tag(self, ms, mocker):
+        # Arrange
+        model = mocker.Mock()
+        model._get_default_serving_name.return_value = "my_model"
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
+
+        # Act
+        ms.create_predictor(model, triton_image_tag="26.09-py3")
+
+        # Assert
+        assert mock_for_model.call_args.kwargs["triton_image_tag"] == "26.09-py3"
+
     def test_create_endpoint_forwards_knative_mode(self, ms, mocker):
         # Arrange
         mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
@@ -828,3 +840,24 @@ class TestGetVllmImageTags:
         with pytest.raises(ValueError):
             ms.get_vllm_image_tags(variant="SGLANG")
         send.assert_not_called()
+
+
+class TestGetTritonImageTags:
+    """The helper users call to find a valid triton_image_tag, and to tell whether Triton is enabled."""
+
+    def _stub(self, ms, mocker, response):
+        return mocker.patch.object(
+            ms._serving_api, "_get_triton_image_tags", return_value=response
+        )
+
+    def test_returns_the_advertised_tags(self, ms, mocker):
+        self._stub(
+            ms,
+            mocker,
+            {"tags": ["26.09-py3", "26.08-py3"], "defaultTag": "26.09-py3"},
+        )
+        assert ms.get_triton_image_tags() == ["26.09-py3", "26.08-py3"]
+
+    def test_not_enabled_returns_empty(self, ms, mocker):
+        self._stub(ms, mocker, {"tags": [], "defaultTag": None})
+        assert ms.get_triton_image_tags() == []

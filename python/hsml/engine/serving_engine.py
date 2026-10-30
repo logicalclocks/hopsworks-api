@@ -26,6 +26,7 @@ import time
 import uuid
 import warnings
 
+import numpy as np
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.client.istio.utils.infer_type import InferInput
@@ -825,7 +826,7 @@ class ServingEngine:
         # backend, these fields hold backend-managed references (e.g. a bare
         # basename), which are left untouched; only newly-assigned local
         # paths are re-uploaded.
-        # Both refusals come before anything is written to HopsFS.
+        # Every refusal comes before anything is written to HopsFS.
         if new_version:
             if deployment_instance.id is None:
                 raise ModelServingException(
@@ -836,6 +837,15 @@ class ServingEngine:
                 raise ModelServingException(
                     "Deployment versioning requires a newer Hopsworks release; nothing was saved."
                 )
+        if (
+            deployment_instance.id is None
+            and deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON
+            and not self._serving_api._get_triton_image_tags().get("tags")
+        ):
+            raise ModelServingException(
+                "Triton Inference Server is not enabled on this cluster, so Triton models cannot be deployed; nothing was saved. "
+                "Ask a cluster administrator to enable it."
+            )
         self._upload_local_serving_files(deployment_instance)
         self._upload_default_predictor_stub(deployment_instance)
         self._publish_schema(deployment_instance)
@@ -1571,6 +1581,7 @@ class ServingEngine:
         data: dict | list[InferInput],
         inputs: dict | list[dict],
         validate: bool = True,
+        outputs: list[str | dict] | None = None,
     ):
         # validate user-provided payload
         if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
@@ -1581,6 +1592,14 @@ class ServingEngine:
         if data is not None and inputs is not None:
             raise ModelServingException(
                 "Inference data and inputs parameters cannot be provided together."
+            )
+        rest_v2 = (
+            deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON
+            and deployment_instance.api_protocol == IE.API_PROTOCOL_REST
+        )
+        if outputs is not None and not rest_v2:
+            raise ModelServingException(
+                "Requested outputs are only supported for Triton deployments using the REST protocol."
             )
         if deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC or validate:
             # A REST request that skips validation never reads the schema, so it must not depend on the schema artifact being readable.
@@ -1600,7 +1619,10 @@ class ServingEngine:
                 )
             )
         )
-        if as_tensors:
+        if rest_v2:
+            # A v2 body carries tensors, not the rows a deployment schema describes.
+            payload = self._build_v2_inference_payload(data, inputs, outputs)
+        elif as_tensors:
             if inputs is not None:
                 payload = self._parse_inference_inputs(IE.API_PROTOCOL_REST, inputs)
             else:
@@ -1788,6 +1810,70 @@ class ServingEngine:
             return data
         # parse inputs
         return self._parse_inference_inputs(api_protocol, inputs)
+
+    def _build_v2_inference_payload(
+        self,
+        data: dict | None,
+        inputs: dict | list[dict] | None,
+        outputs: list[str | dict] | None,
+    ) -> dict:
+        """Build the Open Inference Protocol v2 body of a REST request to a Triton deployment.
+
+        `data` is a complete v2 body and is sent as given.
+        `inputs` are v2 tensors, each a dictionary with `name`, `shape`, `datatype` and `data`, and optionally `parameters`; a tensor's numpy array is sent as a nested list.
+        `outputs` names the output tensors to return, each by name or as a dictionary with `name` and optionally `parameters`; without it Triton returns every output.
+        """
+        if outputs is not None and not (
+            isinstance(outputs, list)
+            and all(
+                isinstance(o, str) or (isinstance(o, dict) and "name" in o)
+                for o in outputs
+            )
+        ):
+            raise ModelServingException(
+                "Requested outputs must be a list of output names or of dictionaries with a 'name' key."
+            )
+        if data is not None:
+            if outputs is not None:
+                raise ModelServingException(
+                    "Requested outputs cannot be combined with the data parameter. Put them in data['outputs'] instead."
+                )
+            if not (
+                isinstance(data, dict)
+                and isinstance(data.get("inputs"), list)
+                and len(data["inputs"]) > 0
+            ):
+                raise ModelServingException(
+                    "Inference data for Triton deployments must be an Open Inference Protocol v2 request: a dictionary with a non-empty 'inputs' list of tensors."
+                )
+            return data
+
+        required_keys = ("name", "shape", "datatype", "data")
+        tensors = [inputs] if isinstance(inputs, dict) else inputs
+        if not (
+            isinstance(tensors, list)
+            and len(tensors) > 0
+            and all(
+                isinstance(t, dict) and all(k in t for k in required_keys)
+                for t in tensors
+            )
+        ):
+            raise ModelServingException(
+                f"Inference inputs for Triton deployments must be one or more tensors, each a dictionary with the keys [{', '.join(required_keys)}] and optionally 'parameters'."
+            )
+        payload = {
+            "inputs": [
+                {**t, "data": t["data"].tolist()}
+                if isinstance(t["data"], np.ndarray)
+                else t
+                for t in tensors
+            ]
+        }
+        if outputs is not None:
+            payload["outputs"] = [
+                {"name": o} if isinstance(o, str) else o for o in outputs
+            ]
+        return payload
 
     def _encode_tensors(self, deployment_instance, payload: dict) -> list[InferInput]:
         """The rows of a REST payload as one v2 tensor per schema field."""

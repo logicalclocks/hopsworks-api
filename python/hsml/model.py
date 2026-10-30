@@ -392,6 +392,7 @@ class Model:
         feature_logging: DeploymentLoggingConfig | dict | None = None,
         knative_mode: bool | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
+        triton_image_tag: str | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -481,6 +482,12 @@ class Model:
             tracing: Tracing configuration; see [`DeploymentTracingConfig`][hsml.deployment_tracing_config.DeploymentTracingConfig].
                 Off by default for model deployments, and then the deployment carries no tracing or timing code.
                 With `{"enabled": True}` the predictor exports, for every request, the count and duration of each on-demand and model-dependent transformation of the feature view as Prometheus metrics, and traces a sample of the requests (10% unless `sampling_percentage` sets it): the feature lookup, the transformations of the first row, the model prediction and the feature log write, shown under Transformations on the deployment's page.
+            triton_image_tag: Triton Inference Server image tag for Triton deployments.
+                If set, it must be one of the tags `ModelServing.get_triton_image_tags` returns.
+                On a new deployment, `None` selects the default tag of the cluster.
+                On an update, `None` means "unchanged": the deployment keeps its current tag, so moving it to the cluster default takes naming that tag explicitly.
+                A deployment also keeps its tag after an admin stops advertising it.
+                Ignored for non-Triton model servers.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -515,6 +522,7 @@ class Model:
             feature_logging=feature_logging,
             knative_mode=knative_mode,
             tracing=tracing,
+            triton_image_tag=triton_image_tag,
         )
 
         return predictor.deploy()

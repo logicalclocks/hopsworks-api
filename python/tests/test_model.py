@@ -83,6 +83,7 @@ class TestModel:
             ("get_tensorflow", MODEL.FRAMEWORK_TENSORFLOW),
             ("get_torch", MODEL.FRAMEWORK_TORCH),
             ("get_llm", MODEL.FRAMEWORK_LLM),
+            ("get_triton", MODEL.FRAMEWORK_TRITON),
         ],
     )
     def test_from_response_json_framework_subclass(
@@ -278,6 +279,25 @@ class TestModel:
             feature_logging=None,
             knative_mode=None,
             tracing=None,
+            triton_image_tag=None,
+        )
+        mock_predictor.deploy.assert_called_once()
+
+    def test_deploy_forwards_triton_image_tag(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_triton"]["response"]["items"][0]
+        mock_predictor = mocker.Mock()
+        mock_predictor_for_model = mocker.patch(
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
+        )
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        m.deploy(name="test", triton_image_tag="26.09-py3")
+
+        # Assert
+        assert mock_predictor_for_model.call_args.kwargs["triton_image_tag"] == (
+            "26.09-py3"
         )
         mock_predictor.deploy.assert_called_once()
 
