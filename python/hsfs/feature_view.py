@@ -6780,6 +6780,25 @@ class FeatureView:
         return self.__fully_qualified_primary_keys
 
     @property
+    def _serving_key_log_names(self) -> dict[str, str]:
+        """Map the batch-query column of each required serving key to the name it is logged under."""
+        selected = {feature.name for feature in self.features}
+        names = {}
+        for key in self.serving_keys:
+            if not key.required:
+                continue
+            names[
+                util._generate_fully_qualified_feature_name(
+                    key._feature_group, key.feature_name
+                )
+            ] = key.feature_name
+            # An unselected key of a prefixed join comes back prefixed rather than
+            # fully qualified unless its name is ambiguous (HWORKS-3411).
+            if key.prefix and key.prefix + key.feature_name not in selected:
+                names[key.prefix + key.feature_name] = key.feature_name
+        return names
+
+    @property
     def _fully_qualified_event_time(self) -> list[str]:
         """Get fully qualified names for applicable event time from the feature view."""
         if not self.__fully_qualified_event_time:
