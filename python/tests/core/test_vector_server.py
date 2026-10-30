@@ -910,3 +910,61 @@ class TestDefaultCallsUseTheProjection:
         server = self._server(mocker, handlers={"elsewhere": lambda v: v})
 
         assert self._ask(server) == (0, 1)
+
+
+class TestServingNeedsOnlineFeatureGroups:
+    def _server(self, mocker, label_group_has_feature):
+        from hsfs import feature_group as fg_mod
+        from hsfs import training_dataset_feature as tdf_mod
+        from hsfs.core import vector_server
+
+        features_fg = fg_mod.FeatureGroup(
+            name="features", version=1, featurestore_id=99, primary_key=[], id=11
+        )
+        features_fg.online_enabled = True
+        labels_fg = fg_mod.FeatureGroup(
+            name="labels", version=1, featurestore_id=99, primary_key=[], id=12
+        )
+        labels_fg.online_enabled = False
+
+        def feature(name, fg, label=False):
+            feat = tdf_mod.TrainingDatasetFeature(name=name, type="bigint", label=label)
+            feat._feature_group = fg
+            return feat
+
+        features = [feature("id", features_fg), feature("target", labels_fg, True)]
+        if label_group_has_feature:
+            features.append(feature("amount", labels_fg))
+        server = vector_server.VectorServer(feature_store_id=1, features=features)
+        entity = mocker.MagicMock()
+        entity.get_parent_feature_groups.return_value.accessible = [
+            features_fg,
+            labels_fg,
+        ]
+        for method in (
+            "_set_default_client",
+            "_init_transformation",
+            "_set_return_feature_value_handlers",
+        ):
+            mocker.patch.object(server, method)
+        setup_sql_client = mocker.patch.object(server, "_setup_sql_client")
+        server._init_sql_client = True
+        return server, entity, setup_sql_client
+
+    def test_a_label_only_group_does_not_need_to_be_online(self, mocker):
+        server, entity, setup_sql_client = self._server(mocker, False)
+
+        server._init_serving(entity, training_dataset_version=1, external=True)
+
+        setup_sql_client.assert_called_once()
+        assert server._serving_initialized
+
+    def test_a_group_serving_features_must_be_online(self, mocker):
+        from hopsworks_common.client import exceptions
+
+        server, entity, _ = self._server(mocker, True)
+
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="labels version : 1"
+        ):
+            server._init_serving(entity, training_dataset_version=1, external=True)
