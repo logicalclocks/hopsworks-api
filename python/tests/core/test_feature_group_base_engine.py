@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature, feature_group
 from hsfs.core import feature_group_base_engine
 
@@ -199,3 +201,34 @@ class TestFeatureGroupBaseEngine:
         assert f in result
         assert f1 in result
         assert f2 in result
+
+    def test_verify_schema_compatibility_decimal_without_scale(self):
+        # Spark derives decimal(7,0) for a feature declared decimal(7)
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=99
+        )
+        declared = [
+            feature.Feature(name="d7", type="decimal(7)"),
+            feature.Feature(name="d", type="decimal"),
+            feature.Feature(name="d72", type="decimal(7,2)"),
+        ]
+        derived = [
+            feature.Feature(name="d7", type="decimal(7,0)"),
+            feature.Feature(name="d", type="decimal(10,0)"),
+            feature.Feature(name="d72", type="decimal(7,2)"),
+        ]
+
+        fg_base_engine._verify_schema_compatibility(declared, derived)
+
+    def test_verify_schema_compatibility_decimal_precision_differs(self):
+        fg_base_engine = feature_group_base_engine.FeatureGroupBaseEngine(
+            feature_store_id=99
+        )
+
+        with pytest.raises(FeatureStoreException) as exc:
+            fg_base_engine._verify_schema_compatibility(
+                [feature.Feature(name="d7", type="decimal(7)")],
+                [feature.Feature(name="d7", type="decimal(8,0)")],
+            )
+
+        assert "d7 (expected type: 'decimal(7,0)'" in str(exc.value)

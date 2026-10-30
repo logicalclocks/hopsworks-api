@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import datetime
 import decimal
+import re
 from functools import lru_cache
 from typing import TYPE_CHECKING, Literal, NewType
 
@@ -90,6 +91,22 @@ if HAS_PYARROW:
 else:
     PYARROW_HOPSWORKS_DTYPE_MAPPING = {}
 
+# A decimal in type position: the whole type, or after ":", "<" or "," in a nested
+# type. A struct field named decimal is followed by ":", so it is left alone.
+_DECIMAL_NO_SCALE = re.compile(r"(?<![^:<,])decimal\((\d+)\)")
+_DECIMAL_BARE = re.compile(r"(?<![^:<,])decimal(?![\w(:])")
+
+
+def _normalize_decimal(hive_type: str) -> str:
+    """Spell Hive decimals in full: decimal(p) is decimal(p,0), decimal is decimal(10,0).
+
+    Expects a lower case type without spaces.
+    """
+    return _DECIMAL_BARE.sub(
+        "decimal(10,0)", _DECIMAL_NO_SCALE.sub(r"decimal(\1,0)", hive_type)
+    )
+
+
 if HAS_PYARROW:
 
     def _convert_offline_type_to_pyarrow_type(offline_type: str) -> pa.DataType:
@@ -104,7 +121,7 @@ if HAS_PYARROW:
         Returns:
             The corresponding PyArrow type.
         """
-        offline_type = offline_type.strip().lower()
+        offline_type = _normalize_decimal(offline_type.strip().lower())
 
         # Handle array types: array<type>
         if offline_type.startswith("array<") and offline_type.endswith(">"):

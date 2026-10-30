@@ -2985,3 +2985,85 @@ def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
         ("fg/chunk/a", 1),
         ("fg/chunk/b", 1),
     ]
+
+
+class TestWithTableTimestamps:
+    """Spark timestamps take the Delta table's flavour, whatever the session zone."""
+
+    INSTANT_MICROS = 1782907200123456  # 2026-07-01 12:00:00.123456 UTC
+
+    @pytest.fixture
+    def spark(self):
+        session = util.get_or_create_local_spark_session()
+        previous = session.conf.get("spark.sql.session.timeZone")
+        yield session
+        session.conf.set("spark.sql.session.timeZone", previous)
+
+    def _source(self, spark):
+        from pyspark.sql.functions import expr
+
+        return spark.range(1).select(
+            expr("1L").alias("id"),
+            expr(f"timestamp_micros({self.INSTANT_MICROS})").alias("ts"),
+            expr("TIMESTAMP_NTZ '2026-07-01 12:00:00.123456'").alias("ts_ntz"),
+            expr("'a'").alias("s"),
+        )
+
+    @pytest.mark.parametrize("zone", ["UTC", "Europe/Stockholm"])
+    def test_existing_table(self, spark, zone):
+        from hsfs.core.delta_engine import _with_table_timestamps
+        from pyspark.sql.types import (
+            LongType,
+            StringType,
+            StructField,
+            StructType,
+            TimestampNTZType,
+            TimestampType,
+        )
+
+        spark.conf.set("spark.sql.session.timeZone", zone)
+        table = StructType(
+            [
+                StructField("ID", LongType()),
+                StructField("ts", TimestampNTZType()),
+                StructField("ts_ntz", TimestampType()),
+                StructField("s", StringType()),
+            ]
+        )
+
+        result = _with_table_timestamps(self._source(spark), table)
+
+        assert result.columns == ["id", "ts", "ts_ntz", "s"]
+        assert isinstance(result.schema["ts"].dataType, TimestampNTZType)
+        assert isinstance(result.schema["ts_ntz"].dataType, TimestampType)
+        row = result.selectExpr(
+            "cast(ts as string) as ts",
+            "unix_micros(ts_ntz) as ts_ntz",
+            "id",
+            "s",
+        ).first()
+        assert row.ts == "2026-07-01 12:00:00.123456"
+        assert row.ts_ntz == self.INSTANT_MICROS
+        assert (row.id, row.s) == (1, "a")
+
+    @pytest.mark.parametrize("zone", ["UTC", "Europe/Stockholm"])
+    def test_new_table_gets_timestamp_ntz(self, spark, zone):
+        from hsfs.core.delta_engine import _with_table_timestamps
+        from pyspark.sql.types import TimestampNTZType
+
+        spark.conf.set("spark.sql.session.timeZone", zone)
+
+        result = _with_table_timestamps(self._source(spark))
+
+        assert isinstance(result.schema["ts"].dataType, TimestampNTZType)
+        assert isinstance(result.schema["ts_ntz"].dataType, TimestampNTZType)
+        row = result.selectExpr("cast(ts as string) as ts").first()
+        assert row.ts == "2026-07-01 12:00:00.123456"
+
+    def test_matching_flavours_leave_the_dataframe_as_is(self, spark):
+        from hsfs.core.delta_engine import _with_table_timestamps
+
+        source = self._source(spark).drop("ts")
+
+        assert _with_table_timestamps(source) is source
+        assert _with_table_timestamps(source, source.schema) is source

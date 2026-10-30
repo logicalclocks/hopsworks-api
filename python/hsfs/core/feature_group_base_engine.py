@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.type_systems import _normalize_decimal
 from hsfs import util
 from hsfs.core import (
     feature_group_api,
@@ -242,10 +243,12 @@ class FeatureGroupBaseEngine:
         }
         for feature_fg in feature_group_features:
             name = util._autofix_feature_name(feature_fg.name)
-            fg_type = feature_fg.type.lower().replace(" ", "")
+            fg_type = _normalize_decimal(feature_fg.type.lower().replace(" ", ""))
             # check if feature exists dataframe
             if name in feature_df_dict:
-                df_type = feature_df_dict[name].lower().replace(" ", "")
+                df_type = _normalize_decimal(
+                    feature_df_dict[name].lower().replace(" ", "")
+                )
                 # remove match from lookup table
                 del feature_df_dict[name]
 

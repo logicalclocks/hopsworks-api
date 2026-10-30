@@ -17,6 +17,7 @@ import datetime
 import decimal
 
 import pytest
+from hopsworks_common.core.type_systems import _normalize_decimal
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import type_systems
 from hsfs.core.constants import HAS_PANDAS, HAS_POLARS, HAS_PYARROW
@@ -1075,3 +1076,33 @@ class TestMapTypes:
 
         with pytest.raises(FeatureStoreException):
             _convert_offline_type_to_pyarrow_type("map<string>")
+
+
+class TestNormalizeDecimal:
+    @pytest.mark.parametrize(
+        "hive_type, expected",
+        [
+            ("decimal", "decimal(10,0)"),
+            ("decimal(7)", "decimal(7,0)"),
+            ("decimal(7,2)", "decimal(7,2)"),
+            ("array<decimal(5)>", "array<decimal(5,0)>"),
+            ("map<string,decimal(3)>", "map<string,decimal(3,0)>"),
+            ("map<decimal,int>", "map<decimal(10,0),int>"),
+            (
+                "struct<decimal:int,x:decimal,y:decimal(4)>",
+                "struct<decimal:int,x:decimal(10,0),y:decimal(4,0)>",
+            ),
+            ("bigint", "bigint"),
+        ],
+    )
+    def test_normalize_decimal(self, hive_type, expected):
+        assert _normalize_decimal(hive_type) == expected
+
+    @pytest.mark.skipif(not HAS_PYARROW, reason="PyArrow is not installed")
+    def test_decimal_without_scale_keeps_its_precision(self):
+        assert type_systems._convert_offline_type_to_pyarrow_type(
+            "decimal(7)"
+        ) == pa.decimal128(7, 0)
+        assert type_systems._convert_offline_type_to_pyarrow_type(
+            "array<decimal(7)>"
+        ) == pa.list_(pa.decimal128(7, 0))
