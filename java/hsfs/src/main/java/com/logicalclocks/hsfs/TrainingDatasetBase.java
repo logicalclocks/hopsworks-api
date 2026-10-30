@@ -86,6 +86,11 @@ public class TrainingDatasetBase {
   @Setter
   protected Long seed;
 
+  // How random splits assign rows: "hash", or null for a training dataset created before split methods.
+  @Getter
+  @Setter
+  protected String splitMethod;
+
   @Getter
   @Setter
   protected List<Split> splits;

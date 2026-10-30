@@ -57,6 +57,7 @@ public class TrainingDatasetEngine {
                               Map<String, String> userWriteOptions, List<String> labels)
       throws FeatureStoreException, IOException {
 
+    FeatureViewEngine.assignSeed(trainingDataset);
     // Make the rest call to create the training dataset metadata
     TrainingDataset apiTD = (TrainingDataset) trainingDatasetApi.createTrainingDataset(trainingDataset);
 
@@ -75,7 +76,10 @@ public class TrainingDatasetEngine {
     Map<String, String> writeOptions =
         SparkEngine.getInstance().getWriteOptions(userWriteOptions, trainingDataset.getDataFormat());
 
-    SparkEngine.getInstance().write(trainingDataset, query, Maps.newHashMap(), writeOptions, SaveMode.Overwrite);
+    for (Dataset<Row> split : SparkEngine.getInstance()
+        .write(trainingDataset, query, Maps.newHashMap(), writeOptions, SaveMode.Overwrite)) {
+      split.unpersist();
+    }
 
     return trainingDataset;
   }

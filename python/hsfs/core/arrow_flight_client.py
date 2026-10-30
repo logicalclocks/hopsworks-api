@@ -38,7 +38,7 @@ import pyarrow.flight
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hsfs import feature_group
+from hsfs import feature_group, training_dataset_split
 from hsfs.core.variable_api import VariableApi
 from hsfs.storage_connector import StorageConnector
 from pyarrow.flight import FlightServerError
@@ -55,6 +55,47 @@ if HAS_POLARS:
     import polars as pl
 
 _logger = logging.getLogger(__name__)
+
+
+def _holds_integers(data_type) -> bool:
+    if pyarrow.types.is_integer(data_type):
+        return True
+    if (
+        pyarrow.types.is_list(data_type)
+        or pyarrow.types.is_large_list(data_type)
+        or pyarrow.types.is_fixed_size_list(data_type)
+    ):
+        return _holds_integers(data_type.value_type)
+    if pyarrow.types.is_map(data_type):
+        return _holds_integers(data_type.key_type) or _holds_integers(
+            data_type.item_type
+        )
+    if pyarrow.types.is_struct(data_type):
+        return any(_holds_integers(field.type) for field in data_type)
+    return False
+
+
+def _to_pandas_with_exact_integers(table: pyarrow.Table):
+    """The plain pandas conversion, with the exact values of the integers it rounds.
+
+    The plain conversion turns an integer holding a null into float64, also inside lists and
+    structs, which rounds values above 2^53. Those columns are kept exactly in `frame.attrs`
+    for the split hash; the frame itself is what a plain read returns.
+    """
+    frame = table.to_pandas()
+    rounded = [
+        field.name
+        for field, column in zip(table.schema, table.columns, strict=True)
+        if _holds_integers(field.type)
+        and (column.null_count or not pyarrow.types.is_integer(field.type))
+    ]
+    if rounded:
+        exact = table.select(rounded).to_pandas(integer_object_nulls=True)
+        frame.attrs[training_dataset_split.EXACT_COLUMNS_ATTR] = {
+            name: exact[name].tolist() for name in rounded
+        }
+    return frame
+
 
 _arrow_flight_instance = None
 
@@ -540,7 +581,12 @@ class ArrowFlightClient:
         retry_on_exception=_should_retry,
     )
     def _get_dataset(
-        self, descriptor, timeout=None, headers=None, dataframe_type="pandas"
+        self,
+        descriptor,
+        timeout=None,
+        headers=None,
+        dataframe_type="pandas",
+        exact_integers=False,
     ):
         if timeout is None:
             timeout = self.timeout
@@ -558,6 +604,8 @@ class ArrowFlightClient:
             if not HAS_POLARS:
                 raise ModuleNotFoundError(polars_not_installed_message)
             return pl.from_arrow(reader.read_all())
+        if exact_integers:
+            return _to_pandas_with_exact_integers(reader.read_all())
         return reader.read_pandas()
 
     @_handle_afs_exception(user_message=READ_ERROR)
@@ -622,6 +670,9 @@ class ArrowFlightClient:
                 else None
             ),
             dataframe_type=dataframe_type,
+            exact_integers=bool(
+                arrow_flight_config and arrow_flight_config.get("exact_integers")
+            ),
         )
 
     def _stream_query(

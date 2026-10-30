@@ -51,6 +51,14 @@ public class TrainingDatasetFeature {
   @Setter
   private TransformationFunction transformationFunction;
 
+  @Getter
+  @Setter
+  private Boolean inferenceHelperColumn = false;
+
+  @Getter
+  @Setter
+  private Boolean trainingHelperColumn = false;
+
   @Builder
   public TrainingDatasetFeature(String name, String type) {
     setName(name);
