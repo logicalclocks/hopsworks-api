@@ -5,7 +5,10 @@ Streaming) against its spending baseline (from dbt): the window's amounts,
 velocity and distance divided by the baseline's say how unusual the hour is
 for the card. A tumbling window fills up over its hour, so its counts and sums
 are taken per hour of the window elapsed so far: a card scored late in the hour
-is comparable with the cards the model trained on early in it. The model is
+is comparable with the cards the model trained on early in it. The windows are
+clock hours, so the first one after the stream starts holds only the minutes
+since then: training records when the stream started, and a window is taken
+from then on, in training and in serving alike. The model is
 unsupervised, so it needs no labels at serving time; risk is the anomaly score
 rescaled to 0-1 on the training data's 5th and 99.9th percentiles.
 """
@@ -76,10 +79,13 @@ RATIOS = {
 FEATURE_COLUMNS = WINDOW_FEATURES + BASELINE_FEATURES + tuple(RATIOS)
 
 
-def elapsed_hours(frame: pd.DataFrame, now: datetime | None = None) -> np.ndarray:
+def elapsed_hours(
+    frame: pd.DataFrame, now: datetime | None = None, since: str | None = None
+) -> np.ndarray:
     """The hours of each row's window passed at `now` (UTC), at least MIN_ELAPSED_SECONDS.
 
     A window that has closed counts in full; a row without window times counts as a full hour.
+    A window counts from `since`, when the stream started, if it opened before then.
     """
     now = pd.Timestamp(now or datetime.now(UTC)).tz_convert(None)
     seconds = pd.to_numeric(frame["window_seconds"], errors="coerce").fillna(3600)
@@ -87,25 +93,32 @@ def elapsed_hours(frame: pd.DataFrame, now: datetime | None = None) -> np.ndarra
     # The online store returns timestamps as datetimes, a feature vector may as epoch milliseconds.
     unit = "ms" if pd.api.types.is_numeric_dtype(end) else None
     end = pd.to_datetime(end, errors="coerce", utc=True, unit=unit).dt.tz_convert(None)
-    passed = (now - (end - pd.to_timedelta(seconds, unit="s"))).dt.total_seconds()
+    start = end - pd.to_timedelta(seconds, unit="s")
+    if since is not None:
+        start = start.clip(lower=pd.to_datetime(since, utc=True).tz_convert(None))
+    passed = (now - start).dt.total_seconds()
     passed = passed.fillna(seconds).clip(lower=MIN_ELAPSED_SECONDS)
     return np.minimum(passed, seconds).to_numpy() / 3600
 
 
 def prepare_features(
-    frame: pd.DataFrame, medians: dict[str, float] | None = None, now: datetime | None = None
+    frame: pd.DataFrame,
+    medians: dict[str, float] | None = None,
+    now: datetime | None = None,
+    since: str | None = None,
 ):
     """The model's input from window and baseline columns, and the medians that filled its gaps.
 
     `frame` carries window_end and window_seconds beside the features; without
     them the counts are taken as a full hour's. Pass the medians training
-    returned to fill a served row the same way.
+    returned to fill a served row the same way, and `since`, when the stream
+    started, as elapsed_hours takes it.
     """
     features = frame.reindex(columns=WINDOW_FEATURES + BASELINE_FEATURES).apply(
         pd.to_numeric, errors="coerce"
     )
     if set(WINDOW_TIME) <= set(frame.columns):
-        hours = elapsed_hours(frame, now)
+        hours = elapsed_hours(frame, now, since)
         for name in PER_HOUR:
             features[name] = features[name] / hours
     for name, (numerator, denominator) in RATIOS.items():
@@ -116,13 +129,23 @@ def prepare_features(
     return features.fillna(pd.Series(medians)).fillna(0.0).astype(float), medians
 
 
-def train(frame: pd.DataFrame, contamination: float = 0.02, random_state: int = 42) -> dict:
-    """The model artifact, trained on cards' window and baseline rows."""
+def train(
+    frame: pd.DataFrame,
+    contamination: float = 0.02,
+    random_state: int = 42,
+    stream_started: str | None = None,
+) -> dict:
+    """The model artifact, trained on cards' window and baseline rows.
+
+    `stream_started` (ISO 8601, UTC) is when the authorisations started to
+    arrive; the artifact keeps it so that serving takes the first window as
+    training did.
+    """
     if not 0 < contamination <= 0.5:
         raise ValueError("contamination must be in (0, 0.5]")
     if len(frame) < 50:
         raise ValueError("at least 50 cards are needed to train")
-    features, medians = prepare_features(frame)
+    features, medians = prepare_features(frame, since=stream_started)
     model = IsolationForest(
         n_estimators=200, contamination=contamination, random_state=random_state, n_jobs=-1
     ).fit(features)
@@ -136,6 +159,7 @@ def train(frame: pd.DataFrame, contamination: float = 0.02, random_state: int = 
         "calibration_high": high if high > low else low + 1.0,
         "contamination": contamination,
         "training_rows": len(features),
+        "stream_started": stream_started,
         "trained_at": datetime.now(UTC).isoformat(),
     }
 
@@ -144,7 +168,7 @@ def score(artifact: dict, frame: pd.DataFrame, now: datetime | None = None):
     """(risk in 0-1, the model's anomaly flag, raw anomaly score) per row of `frame`."""
     if artifact.get("feature_names") != list(FEATURE_COLUMNS):
         raise ValueError("the model was trained on other features than this code computes")
-    features, _ = prepare_features(frame, artifact["medians"], now)
+    features, _ = prepare_features(frame, artifact["medians"], now, artifact.get("stream_started"))
     model = artifact["model"]
     anomaly = -model.decision_function(features)
     scale = artifact["calibration_high"] - artifact["calibration_low"]

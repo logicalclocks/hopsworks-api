@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: brazil_volume_by_year
+    description: Brazilian suppliers' share of the American market for the part type, per year (TPC-H Q8).
+    columns:
+      - name: o_year
+        data_tests: [not_null, unique]
+      - name: year_start
+        data_tests: [not_null]
+      - name: mkt_share
+        data_tests: [not_null]
+  - name: america_volume_by_nation_year
+    description: The volume each supplier nation sold to American customers, per year.
+    columns:
+      - name: o_year
+        data_tests: [not_null]
+      - name: supplier_nation
+        data_tests: [not_null]

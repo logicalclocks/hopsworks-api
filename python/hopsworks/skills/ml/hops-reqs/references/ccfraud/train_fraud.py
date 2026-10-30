@@ -49,7 +49,7 @@ CATEGORICAL = ["category", "country", "bank_country"]
 PREDICTOR = Path(__file__).resolve().parent / "predictor.py"
 
 
-def _feature_view(fs):
+def _feature_view(fs, system: str):
     merchants = fs.get_feature_group("merchant_details", version=1)
     accounts = fs.get_feature_group("account_details", version=1)
     banks = fs.get_feature_group("bank_details", version=1)
@@ -74,7 +74,7 @@ def _feature_view(fs):
     return fs.get_or_create_feature_view(
         name=FEATURE_VIEW,
         version=1,
-        description="Features of a credit card transaction for predicting whether it is fraud",
+        description=f"{system}: features of a credit card transaction for predicting whether it is fraud",
         query=query,
         labels=["is_fraud"],
         inference_helper_columns=["prev_card_present", "prev_ip_address", "prev_ts"],
@@ -120,6 +120,9 @@ def _pipeline(numeric: list[str], scale_pos_weight: float) -> Pipeline:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # Every asset's description starts with the system's slug, which is how deleting the
+    # system with its assets tells its own from another's.
+    parser.add_argument("--system", default="fraud-example", help="the system's slug")
     parser.add_argument(
         "--test-days",
         type=int,
@@ -130,7 +133,7 @@ def main() -> None:
 
     project = hopsworks.login()
     fs = project.get_feature_store()
-    fv = _feature_view(fs)
+    fv = _feature_view(fs, args.system)
     test_start = (datetime.now(timezone.utc) - timedelta(days=args.test_days)).strftime(
         "%Y-%m-%d %H:%M"
     )
@@ -172,7 +175,7 @@ def main() -> None:
         metrics=metrics,
         feature_view=fv,
         description=(
-            "Credit card fraud: an sklearn Pipeline of imputation, ordinal encoding and XGBoost, "
+            f"{args.system}: credit card fraud, an sklearn Pipeline of imputation, ordinal encoding and XGBoost, "
             f"trained on {len(X_train):,} transactions with {positives} fraud"
         ),
     )

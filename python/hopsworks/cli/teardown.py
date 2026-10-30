@@ -38,6 +38,10 @@ if TYPE_CHECKING:
 _CREATED_FG = {"writes", "mounted_as", "ingested"}
 _NAMED_VERSION = re.compile(r"^(\S+) v(\d+)\b")
 _MENTION = re.compile(r"\b([A-Za-z_][\w]*) v(\d+)\b")
+# `<feature view or group>_<version>_run_fm_<config>`, the job of a feature monitoring configuration.
+_MONITORING_JOB = re.compile(r"^(\w+)_(\d+)_run_fm_(\w+)$")
+# The backend's job that materializes a feature view's logging group.
+_LOGGING_JOB = re.compile(r"^(\w+)_(\d+)_log_\d+_offline_fg_materialization$")
 
 
 @dataclass(frozen=True)
@@ -122,9 +126,11 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
             found.append(asset)
 
     training = doc.get("training") or {}
-    fv = training.get("feature_view") or {}
-    if isinstance(fv, dict) and fv.get("name"):
-        add(Asset("feature view", str(fv["name"])))
+    # One view, or a list of them for a system with several models (a recommender).
+    views = [training.get("feature_view")] + list(training.get("feature_views") or [])
+    for fv in views:
+        if isinstance(fv, dict) and fv.get("name"):
+            add(Asset("feature view", str(fv["name"])))
     app = doc.get("app") or {}
     if app.get("name") and app.get("wanted") is not False:
         add(Asset("app", str(app["name"])))
@@ -153,6 +159,8 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
         model = node.get("model")
         if isinstance(model, dict) and isinstance(model.get("name"), str):
             add(Asset("model", model["name"]))
+        if path == ("training", "models") and isinstance(node.get("name"), str):
+            add(Asset("model", node["name"]))
         # A RAG system's embedding model, registered from Hugging Face.
         embedder = node.get("embedding_model")
         if isinstance(embedder, dict) and isinstance(embedder.get("name"), str):
@@ -399,7 +407,55 @@ class Deleter:
     def _job(self, asset: Asset) -> str:
         if asset.name.endswith("-*"):
             return self._jobs_named(asset.name[:-1])
+        monitoring = _MONITORING_JOB.match(asset.name)
+        if monitoring:
+            return self._monitoring_config(asset, *monitoring.groups())
+        logging = _LOGGING_JOB.match(asset.name)
+        if logging and asset.owned_by:
+            return self._logging_job(asset, *logging.groups())
         return self._each(asset, [self.project.get_job_api().get_job(asset.name)])
+
+    def _logging_job(self, asset: Asset, view: str, version: str) -> str:
+        # A job has no description; its feature view's says whose it is, and a job
+        # left behind by a deleted view is nobody's.
+        try:
+            owner = self.fs.get_feature_view(view, int(version))
+        except Exception as exc:
+            if not _missing(exc):
+                raise
+            owner = None
+        mine = owner is None or _names(asset.owned_by).search(owner.description or "")
+        if not mine:
+            return f"kept {asset}: not created by {asset.owned_by}"
+        return self._each(
+            replace(asset, owned_by=None),
+            [self.project.get_job_api().get_job(asset.name)],
+        )
+
+    def _monitoring_config(
+        self, asset: Asset, entity: str, version: str, config: str
+    ) -> str:
+        # The backend refuses to delete a feature monitoring job; deleting its configuration
+        # deletes the job too.
+        for getter in (self.fs.get_feature_view, self.fs.get_feature_group):
+            try:
+                owner = getter(entity, int(version))
+            except Exception as exc:
+                if _missing(exc):
+                    continue
+                raise
+            # A feature view lookup of a feature group's name returns None.
+            if owner is None:
+                continue
+            try:
+                found = owner.get_feature_monitoring_configs(name=config)
+            except Exception as exc:
+                if _missing(exc):
+                    continue
+                raise
+            if found is not None:
+                return self._each(asset, [found])
+        return "gone"
 
     def _jobs_named(self, prefix: str) -> str:
         jobs = [

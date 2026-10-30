@@ -1,0 +1,12 @@
+# The runner sets every value: the DuckDB file dbgen wrote, and the memory DuckDB may use.
+tpch_q8:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('TPCH_DUCKDB_PATH') }}"
+      threads: "{{ env_var('TPCH_DUCKDB_THREADS', '1') | int }}"
+      settings:
+        memory_limit: "{{ env_var('TPCH_DUCKDB_MEMORY_LIMIT', '300MB') }}"
+        temp_directory: "{{ env_var('TPCH_DUCKDB_TEMP_DIRECTORY') }}"
+        preserve_insertion_order: false

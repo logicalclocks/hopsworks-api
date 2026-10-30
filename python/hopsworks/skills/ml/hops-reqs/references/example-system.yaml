@@ -68,7 +68,7 @@ requirements:
     training: {run: scheduled, cadence: "0 0 3 1 * ?", promote: when the test metric holds on the new split}
     inference: {run: scheduled, cadence: "0 0 4 1 * ?"}
     ordering: cadence
-    alerts: {receiver: ml-oncall, on: [job_failed, freshness_missed, retrain_rejected]}
+    alerts: {receiver: ml-oncall, events: [job_failed, freshness_missed, retrain_rejected]}
   consumers: ui
   monitoring: {feature_logging: true, watch: drift in monthly_charges against the training data; a failed or late job}
   open_questions: []

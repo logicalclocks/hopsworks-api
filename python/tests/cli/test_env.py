@@ -106,3 +106,44 @@ def test_env_install_unknown_environment(mock_project):
 
     assert result.exit_code != 0
     assert "No environment named 'nope'" in result.output
+
+
+def test_env_libraries_diff_shows_only_what_differs_here(mock_project, monkeypatch):
+    import json
+    from importlib import metadata
+    from unittest import mock
+
+    from hopsworks_common import client
+
+    rest = mock.MagicMock(_project_id=119)
+    rest._send_request.return_value = {
+        "items": [
+            {"library": "scikit-learn", "version": "1.8.0"},
+            {"library": "xgboost", "version": "3.2.0"},
+            {"library": "catboost", "version": "1.2.8"},
+        ]
+    }
+    monkeypatch.setattr(client, "_get_instance", lambda: rest)
+
+    def dist(name, version):
+        return mock.MagicMock(metadata={"Name": name}, version=version)
+
+    monkeypatch.setattr(
+        metadata,
+        "distributions",
+        lambda: [dist("scikit_learn", "1.8.0"), dist("xgboost", "3.1.0")],
+    )
+
+    result = CliRunner().invoke(
+        cli, ["--json", "env", "libraries", "pandas-training-pipeline", "--diff"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == [
+        {"library": "catboost", "version": "1.2.8", "local": None},
+        {"library": "xgboost", "version": "3.2.0", "local": "3.1.0"},
+    ]
+    assert rest._send_request.call_args.args[1][-2:] == [
+        "pandas-training-pipeline",
+        "libraries",
+    ]

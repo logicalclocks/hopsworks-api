@@ -1,10 +1,13 @@
 """``hops factory``: the software factories of this project, and the systems they build.
 
-Nine are built in, as YAML definitions the cluster ships: ``ml-batch``,
-``ml-realtime``, ``ml-streaming`` and ``ml-agent`` build ML systems, ``analytics-bronze``,
+Twelve are built in, as YAML definitions the cluster ships: ``ml-batch``,
+``ml-realtime``, ``ml-streaming`` and ``ml-agent`` build ML systems, ``ml-finetune``
+fine-tunes a foundation model with LoRA, ``ml-rag`` indexes documents and answers
+questions over them, ``analytics-bronze``,
 ``analytics-silver`` and ``analytics-gold`` build analytics layers,
-``analytics-pipeline`` builds a data pipeline and ``analytics-ingestion`` the
-ingestion of data sources into feature groups, each from its written instructions. A
+``analytics-pipeline`` builds a data pipeline, ``analytics-ingestion`` the
+ingestion of data sources into feature groups, and ``custom-factory`` a project
+factory of your own, each from its written instructions. A
 project's own factories are YAML definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
 import, clone and delete. ``hops factory run <name>`` builds a system with a
 factory, and ``hops factory system ...`` lists, reports on and deletes the
@@ -579,6 +582,7 @@ def _prompt(field: dict, default: Any, label: str) -> Any:
         "multichoice": f" ({', '.join(options)}; comma-separated)",
         "feature_group": " (name or name:version)",
         "feature_groups": " (name or name:version, comma-separated)",
+        "directories": " (in the project, such as Resources/docs; comma-separated)",
         "datetime": " (UTC, such as 2025-01-01 or 2025-01-01T06:00Z)",
     }.get(kind, "")
     raw = click.prompt(
@@ -598,6 +602,8 @@ def _prompt(field: dict, default: Any, label: str) -> Any:
         return _feature_group(raw) if raw else None
     if kind == "feature_groups":
         return [_feature_group(v.strip()) for v in raw.split(",") if v.strip()]
+    if kind == "directories":
+        return [v.strip().rstrip("/") for v in raw.split(",") if v.strip()]
     return raw
 
 
@@ -605,7 +611,7 @@ def _shown(kind: str, default: Any) -> str:
     """A default as the prompt shows it and takes it back."""
     if default is None:
         return ""
-    if kind == "multichoice" and isinstance(default, list):
+    if kind in ("multichoice", "directories") and isinstance(default, list):
         return ",".join(map(str, default))
     if kind in ("feature_group", "feature_groups"):
         groups = default if isinstance(default, list) else [default]
@@ -913,9 +919,16 @@ def _create_own(
         _resume(ctx, definition, target, launch)
         return target
     target.mkdir(parents=True, exist_ok=True)
+    # A blueprint knows its phases' minutes better than the factory: its fixed
+    # answers carry them as phase_minutes, which are estimates, not requirements.
+    answers = dict(answers)
+    phase_minutes = answers.pop("phase_minutes", None) or {}
     phases = [
         {k: p[k] for k in ("key", "label", "minutes") if k in p} for p in spec["phases"]
     ]
+    for phase in phases:
+        if phase["key"] in phase_minutes:
+            phase["minutes"] = phase_minutes[phase["key"]]
     doc: dict = {
         "schema_version": 1,
         "factory": {

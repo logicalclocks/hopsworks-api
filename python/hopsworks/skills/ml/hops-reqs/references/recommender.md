@@ -17,7 +17,9 @@ by phase like any real-time system, from the reference implementation in
 | `app` | the JavaScript storefront | `recommender/app/` |
 
 The names are fixed: the four feature groups, the three feature views and the
-two models are the ones the deployment and the app read. Copy each file into
+two models are the ones the deployment and the app read. Each job takes `--system <slug>`
+and starts every description it writes with it, which is how a delete of the system with
+its assets tells them from another system's. Copy each file into
 the system (`src/<slug_pkg>/`, and `app/` for the storefront), set `DEPLOYMENT`
 in `app/app.py` to the deployment's name, and change nothing else: the code is
 tested as it is.
@@ -44,28 +46,42 @@ once the job has run.
 
 ## The environments
 
+`hm_features.py` needs only polars, numpy and the Hopsworks client, which
+`python-feature-pipeline` ships, so the features job runs there and starts at once.
+The two training jobs and the deployment need the CPU build of torch and CatBoost:
+right after submitting the features job, clone their environments in one background
+chain, one after the other, which finishes while that job runs.
+
 ```bash
-hops env clone <slug>-jobs-env --from python-feature-pipeline          # the feature and training jobs
-hops env install <slug>-jobs-env -f requirements.txt
-hops env clone <slug>-inference-env --from minimal-inference-pipeline  # the deployment
-hops env install <slug>-inference-env -f requirements.txt
+hops job deploy <slug>-features src/<slug_pkg>/hm_features.py --env python-feature-pipeline \
+  --args "--system <slug> --customers 5000 --synthetic 30" --run
+( export HOPSWORKS_CERT_FOLDER=$(mktemp -d) \
+  && hops env clone <slug>-jobs-env --from python-feature-pipeline \
+  && hops env install <slug>-jobs-env -f requirements.txt \
+  && hops env clone <slug>-inference-env --from minimal-inference-pipeline \
+  && hops env install <slug>-inference-env -f requirements.txt ) > <log dir>/envs.log 2>&1 &
 ```
 
 `requirements.txt` is `recommender/requirements.txt`, copied into the system:
 the CPU build of torch and CatBoost, on bases that already ship pandas, polars
 and the Hopsworks client. Nothing trains or serves on a GPU, so the torch
 bases, whose CUDA wheels are gigabytes, are not used. Clone one environment at
-a time: two `hops` commands logging in at once from the same client race on its
-certificate directory.
+a time, and give the background chain its own `HOPSWORKS_CERT_FOLDER`: every `hops`
+login rewrites the client's certificate files, so two at once in the same folder can
+read a half-written one.
 The app runs in `python-agent-pipeline`, which ships FastAPI.
 
 ## The jobs, in order
 
+The ranker reads only the feature groups, never the query tower, so the two
+training jobs run at the same time once the features job and `<slug>-jobs-env` are done:
+
 ```bash
-hops job deploy <slug>-features src/<slug_pkg>/hm_features.py --env <slug>-jobs-env \
-  --args "--customers 5000 --synthetic 30" --run --wait
-hops job deploy <slug>-train-retrieval src/<slug_pkg>/train_retrieval.py --env <slug>-jobs-env --run --wait
-hops job deploy <slug>-train-ranker src/<slug_pkg>/train_ranker.py --env <slug>-jobs-env --run --wait
+hops job deploy <slug>-train-retrieval src/<slug_pkg>/train_retrieval.py --env <slug>-jobs-env \
+  --args "--system <slug>" --run
+hops job deploy <slug>-train-ranker src/<slug_pkg>/train_ranker.py --env <slug>-jobs-env \
+  --args "--system <slug>" --run --wait
+hops job history <slug>-train-retrieval      # wait for both before recording train
 ```
 
 `train_retrieval.py` creates the feature views, trains the two towers with an
@@ -74,7 +90,10 @@ plus the customer vocabulary, and the item tower with its vocabularies and the
 catalogue's mean embedding, for the session) with `recall_at_100` on the real
 purchases of the test split, and writes
 the item tower's embedding of every trained article to `candidate_embeddings`,
-whose vector index retrieval searches. `train_ranker.py` trains CatBoost on each
+whose vector index retrieval searches. Record the models in `training.models`, the
+query tower's entry with `writes: {feature_group: candidate_embeddings, version: 1}`, and
+the views in `training.feature_views`, so a delete of the system with its assets finds
+them all. `train_ranker.py` trains CatBoost on each
 customer's latest fifth of purchases against ten negatives per purchase drawn by
 popularity, with the customer's taste as features: the share of their earlier
 purchases with the article's colour, index group, garment group, product type
@@ -124,7 +143,10 @@ gives five to twelve shoes in twelve, mostly five to seven.
 changed `predictor.py`, `hops deployment delete <name> --yes` and create it again. `measured` gets the p99 of 50 requests over random customers against
 `requirements.sla.realtime`: about 250 ms at p50 and 410 ms at p99 on the
 example's data, most of it the two feature group reads by customer (purchases
-and the session), each of which has the backend build its query.
+and the session), each of which has the backend build its query. Since a request
+mostly waits, `predict` is async and runs `recommend` on `RECS_WORKERS` (8) threads per
+replica: on 2 replicas of 2 cores the benchmark measured 31 qps at p99 318 ms, where the
+same replicas serving one request at a time completed 9 qps at p99 1.5 s. Keep it async.
 
 ## app: the storefront
 

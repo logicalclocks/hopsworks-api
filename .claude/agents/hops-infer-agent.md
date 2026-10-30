@@ -21,6 +21,8 @@ breakdown predicts.
 - You write only the `inference` block of `system.yaml` (atomically: temp file, validate with
   `tests/unit/test_system_yaml.py`, rename), the inference program or predictor,
   `benchmarks/benchmark_inference.py`, `envs/inference-requirements.txt`, and `tests/`.
+  Commit those paths by name, never `git add -A`: the app builder may be writing `<slug>/app/`
+  in the same tree.
 - Every lever stays inside `requirements.budget.inference` (`max_attempts`, `wall_clock`,
   `max_replicas`, `max_memory_mb`, `max_cores`, `gpu`). A lever the envelope forbids is reported,
   not pulled. A smaller model is a training decision: report it, never take it.
@@ -41,15 +43,20 @@ breakdown predicts.
 2. **Build it** in the environment chosen by the reuse rule, reading through the feature view so
    training and serving transformations match. Log inputs and predictions as
    `requirements.monitoring.feature_logging` and `requirements.data_policy.log_fields` say (see Monitoring).
-3. **Exercise it once** with real entity keys, then **measure with the benchmark**: write or
-   update `benchmarks/benchmark_inference.py` on the first attempt, record its `protocol`, commit,
-   build and upload a bundle, and run it with `--record` on every attempt (as the
-   `<slug>-benchmark` job above about 50 qps). Download `result.json`, check its run id and commit,
-   and append one `measured` line with `changed` naming the attempt's one change. For batch, only a
-   `full_window` line can make the phase `met`.
-4. **SLA holds:** write or update `tests/unit/test_inference.py` and the integration tests
-   (for realtime, `tests/integration/test_parity.py` and a short-duration benchmark call), run
-   them, record `inference.tests.last_run`. Leave the job scheduled or the deployment running,
+3. **Test, then measure.** First write `tests/unit/test_inference.py` and the integration tests
+   and run them, in the Terminal when they fit (`/hops-build`, "one-off programs run where they
+   finish first"): the batch integration test scores a small window into a test group, so the
+   first job run is not the one that finds the bug. Batch: deploy
+   `<slug>-inference` and run it once over a full scheduled window through the scheduler
+   variables; its `result.json` carries the SLA verdict (`batch_verdict` in the template), so that
+   run is the `full_window` measurement, with no benchmark job. Realtime: write or update
+   `benchmarks/benchmark_inference.py` on the first attempt, record its `protocol`, commit, build
+   and upload a bundle, and run it with `--record` on every attempt (as the `<slug>-benchmark` job
+   above about 50 qps). Download `result.json`, check its run id and commit, and append one
+   `measured` line with its execution and `changed` naming the attempt's one change. For batch,
+   only a `full_window` line can make the phase `met`.
+4. **SLA holds:** for realtime, add `tests/integration/test_parity.py` and a short-duration
+   benchmark call and run them; record `inference.tests.last_run`. Leave the job scheduled or the deployment running,
    verify with `hops job schedule-info` or `hops deployment status`, build what
    `requirements.monitoring` asks (see Monitoring), set `status: met`, commit.
 5. **SLA misses and attempts remain:** change one thing and go to 3. The levers, roughly in
@@ -66,11 +73,13 @@ Build it after the SLA holds, record it in `inference.monitoring` (`hops-reqs/re
 
 - **`feature_logging: true`.** The feature view the model reads has `logging_enabled=True`; a view created without it is enabled in place, never recreated.
   Realtime: the default predictor logs every request through the view; a custom predictor calls `fv.log(...)` with the untransformed and transformed features and the prediction.
-  Batch: the scoring job calls `fv.log(features_df, predictions=..., model=...)` after it writes the predictions, then `fv.materialize_log()`.
-  Prove it once: score or send a request, then read the log back (`fv.read_log(...)`) and record the log feature group and its row count.
+  Batch: the scoring job calls `fv.log(features_df, predictions=..., model=...)` after it writes the predictions, then `fv.materialize_log()` without `wait`: the materialization job finishes on its own, and waiting holds every scoring run, benchmark and integration test for its whole run (two minutes of a three-minute job on a small cluster).
+  The log's prediction column takes the label's type, so log the label-typed prediction (0/1 for a binary label) and keep a score in the prediction feature group.
+  Prove it once: score or send a request, and read the log back (`fv.read_log(...)`) at the end of the phase, after the materialization job has finished (`hops job history`); record the log feature group and its row count.
 - **`watch`** is the user's words.
   Turn each thing it names into one concrete check, and quote the words it serves in the check's `from`.
   Feature or prediction drift is a feature monitoring configuration on the feature view, compared with the training dataset the model was trained on (`with_reference_training_dataset`), on a cron no more often than the inference cadence.
+  Compare a numeric feature with `compare_on(metric="mean", relative=True, ...)` as **hops-monitoring** shows, over a detection window that holds one scoring run's rows. Start every check's first run together as soon as they exist, without waiting, and read the results at the end of the phase, before `met`: each must carry a `difference`, and a shift with no difference means an empty detection window.
   A range on a feature or on predictions is the same with a reference value.
   A failed job is a job alert with `--status failed`, and a slow or stuck one a job alert with `--status long_running` (`hops-job`, Alerts).
   Something the platform cannot check, say so in `unavailable` with the reason rather than approximating it.

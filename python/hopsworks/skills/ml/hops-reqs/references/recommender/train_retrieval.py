@@ -231,6 +231,13 @@ def save_query_model(query_tower, vocabs: dict, directory: Path) -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Train the two-tower retrieval model.")
     parser.add_argument("--epochs", type=int, default=20)
+    # Every asset's description starts with the system's slug, which is how deleting the
+    # system with its assets tells its own from another's.
+    parser.add_argument("--system", default="recs-example", help="the system's slug")
+    # A scheduled run appends -start_time <fire instant> (and may append -end_time);
+    # they are accepted and ignored.
+    parser.add_argument("-start_time", dest="_fired_at", help=argparse.SUPPRESS)
+    parser.add_argument("-end_time", dest="_fired_end", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     import hopsworks
@@ -245,15 +252,24 @@ def main(argv: list[str] | None = None) -> int:
     retrieval = fs.get_or_create_feature_view(
         name="retrieval",
         version=1,
+        description=f"{args.system}: purchases joined with customer age and article groups",
         query=transactions.select(
             ["customer_id", "article_id", "t_dat", "month_sin", "month_cos", "synthetic"]
         )
         .join(customers.select(["age"]), on="customer_id")
         .join(articles.select(["garment_group_name", "index_group_name"]), on="article_id"),
     )
-    fs.get_or_create_feature_view(name="customers", version=1, query=customers.select_all())
     fs.get_or_create_feature_view(
-        name="articles", version=1, query=articles.select(SERVED_ARTICLE_FEATURES)
+        name="customers",
+        version=1,
+        description=f"{args.system}: customer attributes read by the deployment",
+        query=customers.select_all(),
+    )
+    fs.get_or_create_feature_view(
+        name="articles",
+        version=1,
+        description=f"{args.system}: article attributes and image read by the deployment",
+        query=articles.select(SERVED_ARTICLE_FEATURES),
     )
 
     x_train, _, x_test, _, _, _ = retrieval.train_validation_test_split(
@@ -284,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
         model = project.get_model_registry().torch.create_model(
             name="query_model",
             metrics={"recall_at_100": recall},
-            description="Two-tower query tower: customer id, age and month to a 16-d embedding",
+            description=f"{args.system}: two-tower query tower: customer id, age and month to a 16-d embedding",
             feature_view=retrieval,
         )
         model.save(str(directory))
@@ -305,7 +321,7 @@ def main(argv: list[str] | None = None) -> int:
         primary_key=["article_id"],
         online_enabled=True,
         embedding_index=index,
-        description="Two-tower item embeddings of every article, searched by the deployment",
+        description=f"{args.system}: two-tower item embeddings of every article, searched by the deployment",
         statistics_config=False,
     )
     fg.insert(candidates.to_pandas(), write_options={"wait_for_job": True})
@@ -313,6 +329,7 @@ def main(argv: list[str] | None = None) -> int:
     fs.get_or_create_feature_view(
         name="session_embeddings",
         version=1,
+        description=f"{args.system}: centered article embeddings for the session",
         query=fg.select(["article_id", "session_embedding"]),
     )
     print(f"candidate_embeddings: {candidates.height} articles")
