@@ -41,7 +41,7 @@ class JobConfiguration:
 
     def __init__(
         self,
-        driver_memory=2048,
+        driver_memory=4096,
         driver_cores=1,
         executor_memory=4096,
         executor_cores=1,

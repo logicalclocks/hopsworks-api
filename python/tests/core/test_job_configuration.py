@@ -28,7 +28,7 @@ class TestJobConfiguration:
 
         # Assert
         expected_dict = {
-            "spark.driver.memory": 2048,
+            "spark.driver.memory": 4096,
             "spark.driver.cores": 1,
             "spark.executor.memory": 4096,
             "spark.executor.cores": 1,
@@ -44,7 +44,7 @@ class TestJobConfiguration:
     def test_to_dict_non_defaults(self):
         # Arrange
         job_config = job_configuration.JobConfiguration(
-            driver_memory=4096,
+            driver_memory=8192,
             driver_cores=2,
             executor_memory=8192,
             executor_cores=2,
@@ -60,7 +60,7 @@ class TestJobConfiguration:
 
         # Assert
         expected_dict = {
-            "spark.driver.memory": 4096,
+            "spark.driver.memory": 8192,
             "spark.driver.cores": 2,
             "spark.executor.memory": 8192,
             "spark.executor.cores": 2,
