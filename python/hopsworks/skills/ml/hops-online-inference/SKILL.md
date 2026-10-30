@@ -195,8 +195,9 @@ deployment.set_tracing(active=True, sampling_percentage=50)
 The same over REST: `PUT /hopsworks-api/api/project/{project_id}/serving/{deployment_id}/tracing` with `{"active": false}` or `{"active": true, "samplingPercentage": 50}`; omitted fields keep their values.
 It answers 400 (`240062`) for a deployment created without tracing, and the deployment page has the same switch on its Transformations section.
 
-Traces are stored in the online feature store's disk tablespace, which feature groups share, so they are bounded: at most 60 traces per minute per predictor pod whatever the sampling, deleted after 7 days, and paused on every model and feature view deployment while less than 20% of the tablespace is free (`deployment.tracing.paused_reason == "DISK_NEARLY_FULL"`; it resumes once an administrator adds space).
-The cluster administrator sets the three limits (`serving_tracing_max_traces_per_minute`, `serving_tracing_retention_days`, `serving_tracing_pause_free_percent`).
+Traces are kept only in the online store, in the project's `serving_traces` feature group, and expire after its time to live (36 hours by default; change it with `fg.enable_ttl(ttl=...)` on that feature group); nothing is materialized offline.
+They are bounded: at most 60 traces per minute per predictor pod whatever the sampling, and paused on every model and feature view deployment while less than 20% of the online store's disk tablespace is free (`deployment.tracing.paused_reason == "DISK_NEARLY_FULL"`; it resumes once an administrator adds space).
+The cluster administrator sets the limits (`serving_tracing_online_ttl_hours`, `serving_tracing_max_traces_per_minute`, `serving_tracing_pause_free_percent`).
 
 While tracing is on, every request is counted on the predictor's Prometheus endpoint:
 

@@ -464,7 +464,7 @@ class ServingApi:
         until_ms: int | None,
         batch_size: int,
     ) -> int:
-        """Delete one batch of the deployment's trace rows from each trace table, returning the rows deleted."""
+        """Delete one batch of the deployment's trace rows, returning the rows deleted."""
         _client = client._get_instance()
         path_params = [
             "project",
