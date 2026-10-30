@@ -200,7 +200,10 @@ fg = fs.create_feature_group(
 fg.save()
 
 fg.sink_job.run()   # runs the ingestion job server-side (see hops-job to monitor)
+fg = fs.get_feature_group("events", version=1)
 ```
+
+A full load (the default loading strategy) deletes and recreates the feature group under a new id when the run starts, so a `fg` object held across `run()` answers 404. Fetch it again by name and version after the run, before `read()`, `insert` or a feature view.
 
 The custom transform is a Python file uploaded to HopsFS and executed inside the ingestion environment, where `dlt` is installed. Write it as a script and point at it with `transform_script_path`; do not import `dlt` in your interactive session.
 
@@ -262,6 +265,7 @@ fs.get_or_create_feature_group(
 # 3. create the job with all its targets, then run it
 job.save()   # ONE atomic create with both feature groups as targets
 job.run()    # runs the multi-table job server-side (see hops-job to monitor)
+accounts = fs.get_feature_group("accounts", version=1)   # full-load targets come back under new ids
 ```
 
 A feature group's own `sink_job_conf` supplies that target's overrides; only the fields it changes from the defaults are applied, so a feature group with a bare config (or none) inherits the job-level defaults. Each target's column mappings are generated automatically from its feature group's schema — where the SDK sanitized a source column name (e.g. `"Total Amount"` -> `total_amount`), the mapping back to the original source column is added for you, just like a single-table sink job. For REST sources, the endpoint from the feature group's data source is carried onto its target automatically. Attach a schedule with `schedule_config=` on `new_ingestion_job` to run the whole set on a cadence.
@@ -364,6 +368,7 @@ fg = fs.create_feature_group(
 fg.save()
 
 fg.sink_job.run()   # copies the sheet into the managed feature group
+fg = fs.get_feature_group("budget_actuals", version=1)   # a full load recreates it under a new id
 ```
 
 **Multiple sheet tabs → multiple feature groups**
