@@ -417,6 +417,8 @@ class _Spec:
     opts: tuple[_Opt, ...]
     check: Callable[[dict[str, Any]], str | None] | None = None
     epilog: str = ""
+    # The backend's connection check refuses some types (ConnectionChecker: HOPSFS).
+    testable: bool = True
 
 
 def _given(values: dict[str, Any], flag: str) -> bool:
@@ -688,10 +690,12 @@ _SPECS: dict[str, _Spec] = {
             _Opt(
                 "--dataset",
                 "datasetName",
-                "Dataset the connector reads and writes.",
+                "Dataset name as `hops files list` shows it (Resources, "
+                "<project>_featurestore.db), not a path. Create checks that it exists.",
                 required=True,
             ),
         ),
+        testable=False,
     ),
     "redshift": _Spec(
         "featurestoreRedshiftConnectorDTO",
@@ -1483,7 +1487,7 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
         ctx: click.Context,
         connector_name: str,
         description: str,
-        test: bool,
+        test: bool = False,
         **values: Any,
     ) -> None:
         problem = spec.check(values) if spec.check else None
@@ -1525,11 +1529,12 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     run.__doc__ = spec.summary
     cmd = click.pass_context(run)
     cmd = click.option("--description", default="", help="Free-form description.")(cmd)
-    cmd = click.option(
-        "--test",
-        is_flag=True,
-        help="Only test the connection; create nothing. Exits 1 when it fails.",
-    )(cmd)
+    if spec.testable:
+        cmd = click.option(
+            "--test",
+            is_flag=True,
+            help="Only test the connection; create nothing. Exits 1 when it fails.",
+        )(cmd)
     for opt in reversed(spec.opts):
         cmd = _option(opt, name)(cmd)
     cmd = click.argument("connector_name", metavar="NAME")(cmd)
