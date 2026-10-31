@@ -45,8 +45,8 @@ The `duckdb` command in the terminal has the `delta` extension pre-installed.
 | `etag`, `ctag` | SharePoint versions of the item: `etag` changes on any edit, `ctag` only when the content changes |
 | `metadata_json` | the library's column values for the file, as a JSON object string; see [Library columns](#library-columns) |
 | `metadata_truncated` | JSON array of the columns cut or left out of `metadata_json` for size, or null |
-| `metadata_state` | `complete`, or `missing` when the last run could not read the file's columns; then `metadata_json` holds the last values read, or null |
-| `metadata_hash` | changes whenever any of the metadata columns does |
+| `metadata_state` | `complete`: read by the last run that read the library; `stale`: the last run could not read the library, values are older; `missing`: the file was not read or is gone from SharePoint, values (if any) are older; null: indexed before library columns were read |
+| `metadata_hash` | SHA-256 of `list_item_id`, `content_type`, `etag`, `ctag`, `metadata_json` and the column-selection rules' version |
 
 There is one current row per file, so no version deduplication is needed.
 A file deleted in SharePoint loses its row once the sync deletes its copy (mirror deletions); a copy-only sync keeps both.
@@ -72,12 +72,14 @@ GROUP BY key ORDER BY files DESC, key;"
 The library's column definitions are in `columns.json` in the sync's audit directory, `/hopsfs/DataSources/<data source>/audit/<dataset>/columns.json` in a terminal.
 List their names with `duckdb -c "SELECT c.name, c.displayName FROM (SELECT unnest(columns) AS c FROM read_json('<path>'))"`; read the file itself for a column's type, which is the key such as `text`, `choice`, `number` or `dateTime` in its definition.
 
-Read a value with `metadata_json->>'$.<Name>'` (text) and cast it for comparisons; a multi-value column is a JSON array:
+Read a value with `metadata_json->>'$.<Name>'` (text) and cast it for comparisons; a multi-value column is a JSON array.
+Add `metadata_state = 'complete'` whenever the values must be current, and say so when an answer relies on `stale` or `missing` rows:
 
 ```bash
 duckdb -c "SELECT file_name, metadata_json->>'\$.DocumentStatus' AS status, web_url
 FROM delta_scan('/hopsfs/featurestore/acme_featurestore.db/sharepoint_finance_1')
-WHERE metadata_json->>'\$.Department' = 'Finance'
+WHERE metadata_state = 'complete'
+  AND metadata_json->>'\$.Department' = 'Finance'
   AND TRY_CAST(metadata_json->>'\$.Revision' AS INTEGER) >= 2
   AND list_contains(CAST(metadata_json->'\$.Tags' AS VARCHAR[]), 'Contract')
 ORDER BY modified_at DESC LIMIT 20;"
@@ -139,7 +141,7 @@ GROUP BY content_hash HAVING count(*) > 1 ORDER BY copies DESC LIMIT 20;"
 - `ILIKE '%term%'` scans the selected columns of every file in the table; there is no inverted index.
   Narrow by `file_type`, path prefix or dates first on large libraries.
 - The index is as of the sync's last run that updated it: it lags SharePoint by at least one sync interval, and longer when runs fail or stop at their time budget, the sync is paused, or it has no schedule.
-- A library column changed in SharePoint shows in `metadata_json` after the next run; rows with `metadata_state = 'missing'` may hold older values.
+- A library column changed in SharePoint shows in `metadata_json` after the next run; rows whose `metadata_state` is not `complete` may hold older values.
 - Project members can read the index and the files, whatever their own SharePoint permissions; do not treat what you can read as what the user may see in SharePoint.
 
 ## Next Steps
