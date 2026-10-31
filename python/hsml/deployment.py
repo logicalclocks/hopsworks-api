@@ -254,6 +254,7 @@ class Deployment:
 
         Parameters:
             until_datetime: Delete the traces started before this time (for an agent, written before it), as a datetime, a date, a string such as `"2026-10-28 12:00:00"` or epoch milliseconds; a time without a timezone is taken as UTC.
+                A model or feature view deployment's trace is deleted whole, with the spans it recorded after this time.
                 `None` deletes all of them.
             batch_size: Rows to delete per transaction (for an agent, per table), from 1 to 10000.
 
