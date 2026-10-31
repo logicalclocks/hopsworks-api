@@ -24,9 +24,6 @@ from hsfs.core.constants import HAS_NUMPY
 from requests import Response
 
 
-if HAS_NUMPY:
-    import numpy as np
-
 _logger = logging.getLogger(__name__)
 
 if HAS_NUMPY:
@@ -35,6 +32,8 @@ if HAS_NUMPY:
 
     class NpDatetimeEncoder(json.JSONEncoder):
         def default(self, obj):
+            import numpy as np
+
             dtypes = (np.datetime64, np.complexfloating)
             if isinstance(obj, (datetime, date)):
                 return util.dateconvert_event_time_to_timestamp(obj)

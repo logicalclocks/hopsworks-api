@@ -17,10 +17,8 @@
 from __future__ import annotations
 
 import struct
+from typing import TYPE_CHECKING
 
-import numpy
-import numpy as np
-import pandas as pd
 from hopsworks_common.client.istio.grpc.errors import InvalidInput
 from hopsworks_common.client.istio.grpc.proto.grpc_predict_v2_pb2 import (
     InferTensorContents,
@@ -28,6 +26,12 @@ from hopsworks_common.client.istio.grpc.proto.grpc_predict_v2_pb2 import (
     ModelInferResponse,
 )
 from hopsworks_common.client.istio.utils.numpy_codec import from_np_dtype, to_np_dtype
+
+
+if TYPE_CHECKING:
+    import numpy
+    import numpy as np
+    import pandas as pd
 
 
 GRPC_CONTENT_DATATYPE_MAPPINGS = {
@@ -72,6 +76,8 @@ def serialize_byte_tensor(input_tensor: np.ndarray) -> np.ndarray:
         InferenceServerException:
             If unable to serialize the given tensor.
     """
+    import numpy as np
+
     if input_tensor.size == 0:
         return np.empty([0], dtype=np.object_)
 
@@ -231,6 +237,8 @@ class InferInput:
         self._shape = shape
 
     def as_numpy(self) -> np.ndarray:
+        import numpy as np
+
         dtype = to_np_dtype(self.datatype)
         if dtype is None:
             raise InvalidInput("invalid datatype in the input")
@@ -256,6 +264,8 @@ class InferInput:
             InferenceServerException:
                 If failed to set data for the tensor.
         """
+        import numpy as np
+
         if not isinstance(input_tensor, np.ndarray):
             raise_error("input_tensor must be a numpy array")
 
@@ -401,6 +411,8 @@ class InferRequest:
         Returns:
             A dictionary representing the REST InferenceRequest message.
         """
+        import numpy
+
         infer_inputs = []
         for infer_input in self.inputs:
             infer_input_dict = {
@@ -422,6 +434,8 @@ class InferRequest:
         Returns:
             A ModelInferRequest object representing the gRPC ModelInferRequest message.
         """
+        import numpy
+
         infer_inputs = []
         raw_input_contents = []
         for infer_input in self.inputs:
@@ -462,6 +476,8 @@ class InferRequest:
         Returns:
             A pandas DataFrame representing the tensor inputs.
         """
+        import pandas as pd
+
         dfs = []
         for input in self.inputs:
             input_data = input.data
@@ -569,6 +585,8 @@ class InferOutput:
         Returns:
             The tensor data in numpy array format.
         """
+        import numpy as np
+
         dtype = to_np_dtype(self.datatype)
         if dtype is None:
             raise InvalidInput("invalid datatype in the input")
@@ -592,6 +610,8 @@ class InferOutput:
         Raises:
             InferenceServerException: If failed to set data for the tensor.
         """
+        import numpy as np
+
         if not isinstance(input_tensor, np.ndarray):
             raise_error("input_tensor must be a numpy array")
 
@@ -737,6 +757,8 @@ class InferResponse:
         Returns:
             A dictionary representing the REST InferenceResponse message.
         """
+        import numpy
+
         infer_outputs = []
         for infer_output in self.outputs:
             infer_output_dict = {
@@ -760,6 +782,8 @@ class InferResponse:
         Returns:
             A ModelInferResponse object representing the gRPC ModelInferResponse message.
         """
+        import numpy
+
         infer_outputs = []
         raw_output_contents = []
         for infer_output in self.outputs:

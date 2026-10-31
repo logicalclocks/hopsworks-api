@@ -15,12 +15,13 @@
 # This implementation has been borrowed from kserve/kserve repository
 # https://github.com/kserve/kserve/blob/release-0.11/python/kserve/kserve/utils/numpy_codec.py
 
-import numpy as np
 from hopsworks_apigen import also_available_as
 
 
 @also_available_as("hsml.client.istio.utils.numpy_codec.to_np_dtype")
 def to_np_dtype(dtype):
+    import numpy as np
+
     dtype_map = {
         "BOOL": bool,
         "INT8": np.int8,
@@ -41,6 +42,8 @@ def to_np_dtype(dtype):
 
 @also_available_as("hsml.client.istio.utils.numpy_codec.from_np_dtype")
 def from_np_dtype(np_dtype):
+    import numpy as np
+
     if np_dtype is bool:
         return "BOOL"
     if np_dtype == np.int8:

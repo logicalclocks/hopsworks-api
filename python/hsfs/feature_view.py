@@ -28,7 +28,6 @@ from typing import (
 )
 
 import humps
-import pandas as pd
 from hopsworks_apigen import public
 from hopsworks_common import client, tracing
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -75,6 +74,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import date, datetime
 
+    import numpy as np
+    import pandas as pd
+    import polars as pl
     from hopsworks_common.alert import Alert, FeatureViewAlert
     from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
     from hopsworks_common.job import Job
@@ -87,44 +89,39 @@ if TYPE_CHECKING:
     from hsml.model import Model
 
 
-if HAS_NUMPY:
-    import numpy as np
-
-
 _logger = logging.getLogger(__name__)
 
-# TODO: Rework TrainingDatasetDataFrameTypes
-TrainingDatasetDataFrameTypes = (
-    pd.DataFrame
-    | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
-    | TypeVar("pyspark.RDD")  # noqa: F821
-    | np.ndarray
-    | list[list[Any]]
-)
+if TYPE_CHECKING:
+    # TODO: Rework TrainingDatasetDataFrameTypes
+    TrainingDatasetDataFrameTypes = (
+        pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
+        | TypeVar("pyspark.RDD")  # noqa: F821
+        | np.ndarray
+        | list[list[Any]]
+        | pl.DataFrame
+    )
 
-# The frame a caller anchors a read on. Accepts a Spark DataFrame only under the Spark engine,
-# which is the only engine with a session to evaluate one.
-SpineDataFrameTypes = (
-    pd.DataFrame | list[dict[str, Any]] | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
-)
+    # The frame a caller anchors a read on. Accepts a Spark DataFrame only under the Spark engine,
+    # which is the only engine with a session to evaluate one.
+    SpineDataFrameTypes = (
+        pd.DataFrame
+        | list[dict[str, Any]]
+        | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
+        | pl.DataFrame
+    )
 
-if HAS_POLARS:
-    import polars as pl
-
-    TrainingDatasetDataFrameTypes = TrainingDatasetDataFrameTypes | pl.DataFrame
-    SpineDataFrameTypes = SpineDataFrameTypes | pl.DataFrame
-
-# The frames the deprecated `spine` argument accepts. Named for that argument rather than
-# for the concept, so it cannot be mistaken for `SpineDataFrameTypes` above, which is what
-# `spine_df` takes.
-DeprecatedSpineTypes = (
-    pd.DataFrame
-    | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
-    | TypeVar("pyspark.RDD")  # noqa: F821
-    | np.ndarray
-    | list[list[Any]]
-    | TypeVar("SpineGroup")  # noqa: F821
-)
+    # The frames the deprecated `spine` argument accepts. Named for that argument rather than
+    # for the concept, so it cannot be mistaken for `SpineDataFrameTypes` above, which is what
+    # `spine_df` takes.
+    DeprecatedSpineTypes = (
+        pd.DataFrame
+        | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
+        | TypeVar("pyspark.RDD")  # noqa: F821
+        | np.ndarray
+        | list[list[Any]]
+        | TypeVar("SpineGroup")  # noqa: F821
+    )
 
 
 _logger = logging.getLogger(__name__)
@@ -6955,6 +6952,14 @@ class FeatureView:
         Used to detect the pre-4.6 positional call style `log(features, predictions)`, whose second
         positional argument binds to `untransformed_features` in the current signature.
         """
+        import pandas as pd
+
+        if HAS_NUMPY:
+            import numpy as np
+
+        if HAS_POLARS:
+            import polars as pl
+
         label_names = self._label_column_names
         if not label_names:
             return False

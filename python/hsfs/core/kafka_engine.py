@@ -38,12 +38,6 @@ from hsfs.core import online_ingestion, online_ingestion_api, storage_connector_
 from tqdm import tqdm
 
 
-if HAS_NUMPY:
-    import numpy as np
-
-if HAS_PANDAS:
-    import pandas as pd
-
 if HAS_CONFLUENT_KAFKA:
     from confluent_kafka import (
         Consumer,
@@ -464,6 +458,12 @@ def _get_encoder_func(writer_schema: str) -> callable:
 
 
 def _encode_row(complex_feature_writers, writer, row):
+    if HAS_NUMPY:
+        import numpy as np
+
+    if HAS_PANDAS:
+        import pandas as pd
+
     # transform special data types
     # here we might need to handle also timestamps and other complex types
     # possible optimizaiton: make it based on type so we don't need to loop over

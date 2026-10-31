@@ -17,7 +17,6 @@
 import contextlib
 import importlib
 
-import pandas
 from hsml.utils.schema.column import Column
 
 
@@ -29,6 +28,7 @@ class ColumnarSchema:
     """Metadata object representing a columnar schema for a model."""
 
     def __init__(self, columnar_obj=None):
+        import pandas
         from hsfs.training_dataset import (
             TrainingDataset,  # import performed here to prevent circular dependencies when importing ModelSchema
         )

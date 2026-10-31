@@ -19,10 +19,9 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 
 if TYPE_CHECKING:
+    import numpy as np
     from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 
@@ -275,6 +274,8 @@ class DistributionEngine:
         reference_fds: FeatureDescriptiveStatistics,
         bin_count: int,
     ) -> list[float] | None:
+        import numpy as np
+
         percentiles = reference_fds.percentiles
         if percentiles is None:
             logger.warning(
@@ -324,6 +325,8 @@ class DistributionEngine:
         reference_fds: FeatureDescriptiveStatistics,
         bin_count: int,
     ) -> list[float]:
+        import numpy as np
+
         # Try to read edges from the Deequ equi-width histogram first.
         histogram = None
         if reference_fds.extended_statistics:
@@ -417,6 +420,8 @@ class DistributionEngine:
         category_edges: list[str],
         epsilon: float,
     ) -> np.ndarray:
+        import numpy as np
+
         histogram = extended_stats.get("histogram", []) if extended_stats else []
         freq_map = {entry["value"]: entry["count"] for entry in histogram}
 
@@ -435,6 +440,8 @@ class DistributionEngine:
         For each resolved bin [edges[i], edges[i+1]], sum the counts of any
         Deequ histogram bin whose midpoint falls within the range.
         """
+        import numpy as np
+
         n_bins = len(bin_edges) - 1
         counts = np.zeros(n_bins, dtype=np.float64)
 

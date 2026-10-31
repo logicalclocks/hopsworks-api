@@ -15,7 +15,6 @@
 #
 
 from hopsworks_common.core.type_systems import (
-    PYARROW_HOPSWORKS_DTYPE_MAPPING,
     _cast_column_to_offline_type,
     _cast_column_to_online_type,
     _cast_pandas_column_to_offline_type,
@@ -31,7 +30,6 @@ from hopsworks_common.core.type_systems import (
 
 
 __all__ = [
-    "PYARROW_HOPSWORKS_DTYPE_MAPPING",
     "_cast_column_to_offline_type",
     "_cast_column_to_online_type",
     "_cast_pandas_column_to_offline_type",
@@ -44,3 +42,11 @@ __all__ = [
     "_infer_spark_type",
     "_translate_legacy_spark_type",
 ]
+
+
+def __getattr__(name: str):
+    if name == "PYARROW_HOPSWORKS_DTYPE_MAPPING":
+        from hopsworks_common.core import type_systems
+
+        return type_systems.PYARROW_HOPSWORKS_DTYPE_MAPPING
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

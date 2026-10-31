@@ -56,10 +56,8 @@ from hsfs.core.feature_logging import (
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
-if HAS_NUMPY:
-    import numpy as np
-
 if TYPE_CHECKING:
+    import numpy as np
     import pandas as pd
     import polars as pl
     from hsfs.constructor.join import Join
@@ -2140,6 +2138,9 @@ class FeatureViewEngine:
         from the provided dataframes and create dataframes/list of dictionaries with the correct schema if the data is provided as a list.
         It also check if the hopsworks logging metadata is present and uses it to fill in any missing logging data.
         """
+        if HAS_NUMPY:
+            import numpy as np
+
         # Check if logging metadata is provided in the logging data object.
         # If provided, use the metadata to fill in any missing logging data.
         # User provided logging data takes precedence over the metadata.
