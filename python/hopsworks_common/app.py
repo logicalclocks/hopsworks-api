@@ -30,7 +30,7 @@ from hopsworks_common.core import app_api
 
 _logger = logging.getLogger(__name__)
 
-SERVING_POLL_INTERVAL = 3.0
+SERVING_POLL_INTERVAL = 0.5
 SERVING_TIMEOUT = 600.0
 
 # Terminal failure states reported by the backend (mirrors JobState.getFinalStates()).
@@ -485,13 +485,12 @@ class App:
         _logger.info("Stopping app: %s", self._name)
         self._app_api._stop(self._name, self._execution_id)
         # Poll until the state is final
-        elapsed = 0.0
-        while elapsed < 30.0:
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
             self._refresh()
             if self._state in ("KILLED", "STOPPED", "FAILED", "FINISHED"):
                 return self
             time.sleep(SERVING_POLL_INTERVAL)
-            elapsed += SERVING_POLL_INTERVAL
         _logger.warning("Timed out waiting for app to stop.")
         return self._refresh()
 
@@ -585,8 +584,9 @@ class App:
         Raises:
             hopsworks.client.exceptions.JobExecutionException: If the app reaches an error state or the serving timeout is exceeded.
         """
-        elapsed = 0.0
-        while elapsed < SERVING_TIMEOUT:
+        deadline = time.monotonic() + SERVING_TIMEOUT
+        logged = None
+        while time.monotonic() < deadline:
             self._refresh()
             if self._serving:
                 if self.app_url:
@@ -596,9 +596,10 @@ class App:
                 raise JobExecutionException(
                     f"App failed to start. State: {self._state}"
                 )
-            _logger.info("Waiting for app to start. Current state: %s", self._state)
+            if self._state != logged:
+                _logger.info("Waiting for app to start. Current state: %s", self._state)
+                logged = self._state
             time.sleep(SERVING_POLL_INTERVAL)
-            elapsed += SERVING_POLL_INTERVAL
 
         raise JobExecutionException(
             f"Timed out waiting for app to reach Serving state after {SERVING_TIMEOUT}s. "

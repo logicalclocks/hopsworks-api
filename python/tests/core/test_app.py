@@ -381,9 +381,8 @@ class TestApp:
 
     def test_wait_for_serving_timeout(self, mocker):
         mocker.patch("hopsworks_common.client._get_instance")
-        mocker.patch("hopsworks_common.app.time.sleep")
-        mocker.patch("hopsworks_common.app.SERVING_TIMEOUT", 6.0)
-        mocker.patch("hopsworks_common.app.SERVING_POLL_INTERVAL", 3.0)
+        mocker.patch("hopsworks_common.app.SERVING_TIMEOUT", 0.05)
+        mocker.patch("hopsworks_common.app.SERVING_POLL_INTERVAL", 0.01)
         mock_api = mocker.patch("hopsworks_common.core.app_api.AppApi")
 
         not_serving = App(name="my_app", state="RUNNING", serving=False)
