@@ -46,21 +46,27 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     import great_expectations
+    import numpy as np
+    import pandas as pd
+    import polars as pl
+    import pyarrow as pa
     from hsfs.constructor.filter import Filter, Logic
     from hsfs.training_dataset import TrainingDataset
 
-import boto3
 import hsfs
-import pandas as pd
-import pyarrow as pa
-from botocore.response import StreamingBody
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
-from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
+from hopsworks_common.core.constants import (
+    HAS_POLARS,
+    lazy_module,
+    polars_not_installed_message,
+    pyarrow_not_installed_message,
+)
 from hopsworks_common.core.type_systems import (
     _convert_offline_type_to_pyarrow_type,
     _create_extended_type,
+    _pyarrow_hopsworks_dtype_mapping,
 )
 from hopsworks_common.decorators import _uses_great_expectations, _uses_polars
 from hopsworks_common.util import _generate_fully_qualified_feature_name
@@ -99,30 +105,23 @@ from hsfs.core.constants import (
     HAS_SQLALCHEMY,
 )
 from hsfs.core.feature_logging import FeatureLogging, LoggingMetaData
-from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 from hsfs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
-if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
+if not HAS_PYARROW:
+    raise ModuleNotFoundError(pyarrow_not_installed_message)
 
-if HAS_NUMPY:
-    import numpy as np
+if HAS_GREAT_EXPECTATIONS:
+    great_expectations = lazy_module("great_expectations")
 
 if HAS_AIOMYSQL and HAS_SQLALCHEMY:
     from hsfs.core import util_sql
 
-if HAS_SQLALCHEMY:
-    from sqlalchemy import sql
-
 if HAS_PANDAS:
     from hsfs.core.type_systems import _convert_pandas_dtype_to_offline_type
-
-if HAS_POLARS:
-    import polars as pl
 
 _logger = logging.getLogger(__name__)
 
@@ -135,6 +134,8 @@ def _request_parameters_json(row: pd.Series) -> dict:
     the same stored string, so the conversion is done here rather than left to the
     installed pandas.
     """
+    import pandas as pd
+
     return {
         name: None if value is pd.NA or value is pd.NaT else value
         for name, value in row.to_dict().items()
@@ -331,6 +332,15 @@ class Engine:
                 dataframe_type,
             )
         else:
+            from hsfs.core import arrow_flight_client
+
+            query_service = arrow_flight_client._get_instance()
+            if query_service.enabled_on_cluster and query_service.disabled_reason:
+                raise FeatureStoreException(
+                    "Hopsworks Query Service client failed to initialise for this session: "
+                    f"{query_service.disabled_reason}. Call `fs._reset_hopsworks_feature_query_service_client()` on the feature store "
+                    "to retry."
+                )
             raise ValueError(
                 "Reading data with Hive is not supported when using hopsworks client version >= 4.0"
             )
@@ -366,6 +376,11 @@ class Engine:
         and a decimal's precision and scale follow whichever values arrived, so
         putting the batches back together fails.
         """
+        import pyarrow as pa
+
+        if HAS_SQLALCHEMY:
+            from sqlalchemy import sql
+
         if not online:
             if not isinstance(sql_query, FsQuery):
                 raise ValueError(
@@ -438,6 +453,8 @@ class Engine:
         Passing the query's features, as `read_batches` does, describes the
         column before any row is read and this cannot arise.
         """
+        import pyarrow as pa
+
         if array.type == field.type:
             return array
         try:
@@ -453,6 +470,8 @@ class Engine:
     @staticmethod
     def _online_array(values: list[Any], declared: pa.DataType | None) -> pa.Array:
         """One column of an online batch, built against its declared type."""
+        import pyarrow as pa
+
         if declared is not None and pa.types.is_boolean(declared):
             # The online store keeps a boolean as TINYINT, so it arrives as 0 or 1.
             return pa.array(values).cast(pa.bool_())
@@ -475,6 +494,8 @@ class Engine:
         A name two features share with different types is left out too, since
         the column it names cannot be told apart.
         """
+        import pyarrow as pa
+
         declared = {}
         ambiguous = set()
         for feat in schema or []:
@@ -506,6 +527,14 @@ class Engine:
         read_options: dict[str, Any] | None,
         schema: list[feature.Feature] | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
+        if HAS_SQLALCHEMY:
+            from sqlalchemy import sql
+
         self._validate_dataframe_type(dataframe_type)
         if self._mysql_online_fs_engine is None:
             self._mysql_online_fs_engine = util_sql._create_mysql_engine(
@@ -537,6 +566,11 @@ class Engine:
         location: str | None,
         dataframe_type: Literal["polars", "pandas", "default"],
     ) -> pd.DataFrame | pl.DataFrame:
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         if not data_format:
             raise FeatureStoreException("data_format is not specified")
 
@@ -576,6 +610,9 @@ class Engine:
         )
 
     def _read_pandas(self, data_format: str, obj: Any) -> pd.DataFrame:
+        import pandas as pd
+        from botocore.response import StreamingBody
+
         if data_format.lower() == "csv":
             return pd.read_csv(obj)
         if data_format.lower() == "tsv":
@@ -592,6 +629,11 @@ class Engine:
     def _read_polars(
         self, data_format: Literal["csv", "tsv", "parquet"], obj: Any
     ) -> pl.DataFrame:
+        from botocore.response import StreamingBody
+
+        if HAS_POLARS:
+            import polars as pl
+
         if not HAS_POLARS:
             raise ModuleNotFoundError(polars_not_installed_message)
         if data_format.lower() == "csv":
@@ -691,6 +733,8 @@ class Engine:
         data_format: str,
         dataframe_type: str = "default",
     ) -> list[pd.DataFrame | pl.DataFrame]:
+        import boto3
+
         # get key prefix
         path_parts = location.replace("s3://", "").split("/")
         location_bucket = path_parts.pop(0)  # pop first element -> bucket
@@ -783,6 +827,11 @@ class Engine:
         dataframe_type: str = "default",
         filter: Filter | Logic = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[list[Any]]:
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         dataframe_type = dataframe_type.lower()
         self._validate_dataframe_type(dataframe_type)
 
@@ -885,6 +934,11 @@ class Engine:
         kll: bool = False,
         histogram_bins: int | None = None,
     ) -> str:
+        import pyarrow as pa
+
+        if HAS_POLARS:
+            import polars as pl
+
         # TODO: add statistics for correlations, histograms and exact_uniqueness
         _logger.info("Computing insert statistics")
         if HAS_POLARS and (
@@ -901,7 +955,7 @@ class Engine:
                 or pa.types.is_list(field.type)
                 or pa.types.is_large_list(field.type)
                 or pa.types.is_struct(field.type)
-            ) and PYARROW_HOPSWORKS_DTYPE_MAPPING.get(field.type, None) in [
+            ) and _pyarrow_hopsworks_dtype_mapping().get(field.type, None) in [
                 "timestamp",
                 "date",
             ]:
@@ -985,21 +1039,21 @@ class Engine:
                 or pa.types.is_fixed_size_list(arrow_type)
                 or pa.types.is_struct(arrow_type)
                 or pa.types.is_map(arrow_type)
-                or PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None)
+                or _pyarrow_hopsworks_dtype_mapping().get(arrow_type, None)
                 in ["timestamp", "date", "binary", "string"]
             ):
                 dataType = "String"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) in [
+            elif _pyarrow_hopsworks_dtype_mapping().get(arrow_type, None) in [
                 "float",
                 "double",
             ]:
                 dataType = "Fractional"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) in [
+            elif _pyarrow_hopsworks_dtype_mapping().get(arrow_type, None) in [
                 "int",
                 "bigint",
             ]:
                 dataType = "Integral"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) == "boolean":
+            elif _pyarrow_hopsworks_dtype_mapping().get(arrow_type, None) == "boolean":
                 dataType = "Boolean"
             else:
                 print(
@@ -1024,6 +1078,8 @@ class Engine:
     def _convert_pandas_statistics(
         self, stat: dict[str, Any], dataType: str
     ) -> dict[str, Any]:
+        import pandas as pd
+
         # For now transformation only need 25th, 50th, 75th percentiles
         # TODO: calculate properly all percentiles
         _logger.debug(
@@ -1074,6 +1130,9 @@ class Engine:
         expectation_suite: great_expectations.core.ExpectationSuite,
         ge_validate_kwargs: dict[Any, Any] | None = None,
     ) -> great_expectations.core.ExpectationSuiteValidationResult:
+        if HAS_POLARS:
+            import polars as pl
+
         # This conversion might cause a bottleneck in performance when using polars with greater expectations.
         # This patch is done becuase currently great_expecatations does not support polars, would need to be made proper when support added.
         if HAS_POLARS and (
@@ -1109,6 +1168,11 @@ class Engine:
     def _convert_to_default_dataframe(
         self, dataframe: pd.DataFrame | pl.DataFrame | pl.dataframe.frame.DataFrame
     ) -> pd.DataFrame | None:
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         if isinstance(dataframe, pd.DataFrame) or (
             HAS_POLARS
             and (isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame)))
@@ -1178,6 +1242,12 @@ class Engine:
         time_travel_format: str | None = None,
         features: list[feature.Feature] | None = None,
     ) -> list[feature.Feature]:
+        import pandas as pd
+        import pyarrow as pa
+
+        if HAS_POLARS:
+            import polars as pl
+
         feature_type_map = {}
         if features:
             for _feature in features:
@@ -1227,6 +1297,11 @@ class Engine:
             ImportError: if pyarrow is not installed
             TypeError: if the dataframe is not supported type
         """
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         try:
             import pyarrow as pa
         except ImportError as e:
@@ -1252,6 +1327,11 @@ class Engine:
         For non-TTL feature groups, only the last occurrence per primary key is
         marked True; earlier duplicates are marked False.
         """
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         event_time = feature_group.event_time
         pk_cols = feature_group.primary_key
 
@@ -1532,6 +1612,9 @@ class Engine:
         Returns:
             A new dataframe with the specified columns removed.
         """
+        if HAS_POLARS:
+            import polars as pl
+
         drop_cols = [drop_cols] if isinstance(drop_cols, str) else drop_cols
         drop_cols = [col for col in drop_cols if col in df.columns]
         if HAS_POLARS and (
@@ -1640,6 +1723,9 @@ class Engine:
         df: pd.DataFrame | pl.DataFrame,
         training_dataset_obj: TrainingDataset,
     ) -> dict[str, pd.DataFrame | pl.DataFrame]:
+        if HAS_POLARS:
+            import polars as pl
+
         split_column = f"_SPLIT_INDEX_{uuid.uuid1()}"
         result_dfs = {}
         splits = training_dataset_obj.splits
@@ -1809,6 +1895,9 @@ class Engine:
         Returns:
             DataFrame of required type.
         """
+        if HAS_POLARS:
+            import polars as pl
+
         if dataframe_type.lower() in ["default", "pandas"]:
             return dataframe
         if dataframe_type.lower() == "polars":
@@ -1895,6 +1984,11 @@ class Engine:
     def _shallow_copy_dataframe(
         self, dataframe: pd.DataFrame | pl.DataFrame
     ) -> pd.DataFrame | pl.DataFrame:
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         if HAS_POLARS and (
             isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
@@ -1916,6 +2010,11 @@ class Engine:
         Returns:
             The concatenated dataframe.
         """
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         if HAS_POLARS and isinstance(dataframes[0], pl.DataFrame):
             return pl.concat(dataframes, how="horizontal")
         return pd.concat(dataframes, axis=1)
@@ -1981,6 +2080,11 @@ class Engine:
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         udf = hopsworks_udf._get_udf(online=online, engine_type=engine_type)
 
         transformed_data = (
@@ -2053,6 +2157,11 @@ class Engine:
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         # Cast to pandas if polars dataframe to avoid errors when applying the pandas UDF.
         if HAS_POLARS and (
             isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
@@ -2101,6 +2210,8 @@ class Engine:
     def _iter_dataframe_rows(
         dataframe: pd.DataFrame | pl.DataFrame,
     ) -> Iterator[dict[str, Any]]:
+        import pandas as pd
+
         if isinstance(dataframe, pd.DataFrame):
             # itertuples returns Python NamedTuple; convert to dict to serialize via Avro
             for row in dataframe.itertuples(index=False):
@@ -2467,6 +2578,14 @@ class Engine:
         Returns:
             A pandas dataframe with the feature log that contains the expected features.
         """
+        import pandas as pd
+
+        if HAS_NUMPY:
+            import numpy as np
+
+        if HAS_POLARS:
+            import polars as pl
+
         if feature_log is None and cols:
             return pd.DataFrame(columns=cols)
         if not (
@@ -2504,6 +2623,9 @@ class Engine:
             feature_log: List of features/labels provided for logging.
             cols: List of expected features in the logging dataframe.
         """
+        if HAS_NUMPY:
+            import numpy as np
+
         if isinstance(feature_log[0], list) or (
             HAS_NUMPY and isinstance(feature_log[0], np.ndarray)
         ):
@@ -2524,6 +2646,8 @@ class Engine:
         model_name: str | None = None,
         model_version: int | None = None,
     ):
+        import pandas as pd
+
         batch = True
         if size is None:
             size = 1
@@ -2686,6 +2810,8 @@ class Engine:
         Returns:
             A tuple of (dataframe, additional_feature_names, missing_feature_names).
         """
+        import pandas as pd
+
         if logging_data is not None:
             try:
                 logging_df = Engine._convert_feature_log_to_df(
@@ -2995,6 +3121,11 @@ class Engine:
         Returns:
             A list of dictionaries with all the logging components
         """
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         _, label_columns, _ = predictions
         # Name each label column takes in the logging feature group (predicted_<label>, or the bare
         # label name for legacy pre-FSTORE-1871 feature groups).
@@ -3243,6 +3374,11 @@ class Engine:
         Returns:
             `True` if the dataframe is supported, `False` otherwise.
         """
+        import pandas as pd
+
+        if HAS_POLARS:
+            import polars as pl
+
         if (HAS_POLARS and isinstance(dataframe, pl.DataFrame)) or (
             HAS_PANDAS and isinstance(dataframe, pd.DataFrame)
         ):

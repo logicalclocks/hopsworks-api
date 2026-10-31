@@ -18,13 +18,13 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, TypeVar
 
-import numpy
 from hopsworks_apigen import public
 from hsml.utils.schema.columnar_schema import ColumnarSchema
 from hsml.utils.schema.tensor_schema import TensorSchema
 
 
 if TYPE_CHECKING:
+    import numpy
     import pandas
 
 
@@ -47,6 +47,8 @@ class Schema:
         | None = None,
         **kwargs,
     ):
+        import numpy
+
         # A tensor schema is either ndarray of a list containing name, type and shape dicts
         if isinstance(object, numpy.ndarray) or (
             isinstance(object, list) and all("shape" in entry for entry in object)

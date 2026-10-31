@@ -42,6 +42,7 @@ from hopsworks_common.core.constants import (
     HAS_NUMPY,
     HAS_POLARS,
     HAS_PYICEBERG,
+    lazy_module,
 )
 from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 from hsfs import (
@@ -116,7 +117,7 @@ if TYPE_CHECKING:
 
 
 if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
+    great_expectations = lazy_module("great_expectations")
 
 _logger = logging.getLogger(__name__)
 
@@ -3137,10 +3138,21 @@ class FeatureGroupBase:
             | None
         ),
     ) -> None:
-        if isinstance(expectation_suite, hsfs.expectation_suite.ExpectationSuite):
+        # The Great Expectations check comes last: it loads the package, which every
+        # feature group read from the backend would otherwise pay for.
+        if expectation_suite is None:
+            self._expectation_suite = None
+        elif isinstance(expectation_suite, hsfs.expectation_suite.ExpectationSuite):
             tmp_expectation_suite = expectation_suite.to_json_dict(decamelize=True)
             tmp_expectation_suite["feature_group_id"] = self._id
             tmp_expectation_suite["feature_store_id"] = self._feature_store_id
+            self._expectation_suite = hsfs.expectation_suite.ExpectationSuite(
+                **tmp_expectation_suite
+            )
+        elif isinstance(expectation_suite, dict):
+            tmp_expectation_suite = expectation_suite.copy()
+            tmp_expectation_suite["feature_store_id"] = self._feature_store_id
+            tmp_expectation_suite["feature_group_id"] = self._id
             self._expectation_suite = hsfs.expectation_suite.ExpectationSuite(
                 **tmp_expectation_suite
             )
@@ -3153,15 +3165,6 @@ class FeatureGroupBase:
                 feature_store_id=self._feature_store_id,
                 feature_group_id=self._id,
             )
-        elif isinstance(expectation_suite, dict):
-            tmp_expectation_suite = expectation_suite.copy()
-            tmp_expectation_suite["feature_store_id"] = self._feature_store_id
-            tmp_expectation_suite["feature_group_id"] = self._id
-            self._expectation_suite = hsfs.expectation_suite.ExpectationSuite(
-                **tmp_expectation_suite
-            )
-        elif expectation_suite is None:
-            self._expectation_suite = None
         else:
             raise TypeError(
                 f"The argument `expectation_suite` has to be `None` of type `ExpectationSuite` or `dict`, but is of type: `{type(expectation_suite)}`"

@@ -23,17 +23,12 @@ from hopsworks_common.core import variable_api
 from hsfs.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 
 
-if HAS_SQLALCHEMY:
-    from sqlalchemy import create_engine
-    from sqlalchemy.engine.url import make_url
-
-if HAS_AIOMYSQL:
-    from aiomysql.sa import create_engine as async_create_engine
-
-
 def _create_mysql_engine(
     online_conn: Any, external: bool, options: dict[str, Any] | None = None
 ) -> Any:
+    if HAS_SQLALCHEMY:
+        from sqlalchemy import create_engine
+
     online_options = online_conn.spark_options()
     # Here we are replacing the first part of the string returned by Hopsworks,
     # jdbc:mysql:// with the sqlalchemy one + username and password
@@ -81,6 +76,12 @@ async def _create_async_engine(
     options: dict[str, Any] | None = None,
     hostname: str | None = None,
 ) -> Any:
+    if HAS_AIOMYSQL:
+        from aiomysql.sa import create_engine as async_create_engine
+
+    if HAS_SQLALCHEMY:
+        from sqlalchemy.engine.url import make_url
+
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError as er:

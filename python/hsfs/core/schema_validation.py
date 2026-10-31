@@ -1,7 +1,6 @@
 import logging
 import re
 
-import pandas as pd
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.spark_connect_utils import _is_spark_dataframe
 
@@ -19,6 +18,8 @@ class DataFrameValidator:
         Parameters:
             df: The DataFrame to validate.
         """
+        import pandas as pd
+
         if isinstance(df, pd.DataFrame):
             return PandasValidator()
 
@@ -156,6 +157,8 @@ class DataFrameValidator:
 class PandasValidator(DataFrameValidator):
     @staticmethod
     def _get_string_columns(df):
+        import pandas as pd
+
         if pd.__version__.startswith("2."):
             # For pandas 2+, use is_string_dtype api
             return [

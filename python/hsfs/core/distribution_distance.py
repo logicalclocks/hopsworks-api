@@ -23,7 +23,11 @@ numpy handles naturally.
 
 from __future__ import annotations
 
-import numpy as np
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 _SUPPORTED_METRICS = {
@@ -59,6 +63,8 @@ def _compute(
         ValueError: If metric is not recognised or bin_centres is missing for WASSERSTEIN.
         ImportError: If scipy is not installed and WASSERSTEIN is requested.
     """
+    import numpy as np
+
     metric_upper = metric.upper()
     if metric_upper not in _SUPPORTED_METRICS:
         raise ValueError(
@@ -114,12 +120,16 @@ def _compute(
 
 def _psi(det: np.ndarray, ref: np.ndarray) -> float:
     """Population Stability Index: sum((det - ref) * log(det / ref))."""
+    import numpy as np
+
     log_ratio = np.log(det / ref)
     return float(np.sum((det - ref) * log_ratio))
 
 
 def _kl(det: np.ndarray, ref: np.ndarray) -> float:
     """KL divergence KL(det || ref): sum(det * log(det / ref))."""
+    import numpy as np
+
     return float(np.sum(det * np.log(det / ref)))
 
 
@@ -129,6 +139,8 @@ def _js(det: np.ndarray, ref: np.ndarray) -> float:
     M = 0.5 * (det + ref).
     JS is symmetric and bounded in [0, log(2)].
     """
+    import numpy as np
+
     midpoint = 0.5 * (det + ref)
     kl_det_m = np.sum(det * np.log(det / midpoint))
     kl_ref_m = np.sum(ref * np.log(ref / midpoint))
@@ -140,6 +152,8 @@ def _hellinger(det: np.ndarray, ref: np.ndarray) -> float:
 
     Bounded in [0, 1].
     """
+    import numpy as np
+
     diff_sqrt = np.sqrt(det) - np.sqrt(ref)
     return float(np.sqrt(0.5 * np.sum(diff_sqrt**2)))
 
@@ -154,6 +168,8 @@ def _wasserstein(
     Requires scipy. If not installed, raises ImportError with an install hint.
     bin_centres must be provided — they serve as the support points for both distributions.
     """
+    import numpy as np
+
     if bin_centres is None:
         raise ValueError(
             "bin_centres is required for WASSERSTEIN distance. "
@@ -185,6 +201,8 @@ def _ks(det: np.ndarray, ref: np.ndarray) -> float:
     Pure NumPy — no scipy required. Operates on the binned probability vectors
     (CDFs derived from them) rather than raw samples.
     """
+    import numpy as np
+
     cdf_det = np.cumsum(det)
     cdf_ref = np.cumsum(ref)
     return float(np.max(np.abs(cdf_det - cdf_ref)))

@@ -40,13 +40,11 @@ if TYPE_CHECKING:
     from hsfs import feature_view, storage_connector, training_dataset
     from hsfs.constructor.serving_prepared_statement import ServingPreparedStatement
     from hsfs.serving_key import ServingKey
+    from sqlalchemy import sql
 
 
 if HAS_AIOMYSQL:
     pass
-
-if HAS_SQLALCHEMY:
-    from sqlalchemy import bindparam, exc, sql, text
 
 if HAS_AIOMYSQL and HAS_SQLALCHEMY:
     from hsfs.core import util_sql
@@ -341,6 +339,9 @@ class OnlineStoreSqlClient:
         prepared_statements: list[ServingPreparedStatement],
         batch: bool,
     ) -> dict[int, sql.text]:
+        if HAS_SQLALCHEMY:
+            from sqlalchemy import bindparam, sql
+
         prepared_statements_dict = {}
         for prepared_statement in prepared_statements:
             if prepared_statement.feature_group_id in self._skip_fg_ids:
@@ -906,6 +907,9 @@ class OnlineStoreSqlClient:
                     future.result(timeout=_POOL_CLOSE_SECONDS)
 
     def _refresh_mysql_connection(self):
+        if HAS_SQLALCHEMY:
+            from sqlalchemy import exc
+
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Refreshing MySQL connection.")
         try:
@@ -920,6 +924,9 @@ class OnlineStoreSqlClient:
             self._set_mysql_connection()
 
     def _make_preview_statement(self, statement, n):
+        if HAS_SQLALCHEMY:
+            from sqlalchemy import text
+
         return text(statement.text[: statement.text.find(" WHERE ")] + f" LIMIT {n}")
 
     def _set_mysql_connection(self, options=None):

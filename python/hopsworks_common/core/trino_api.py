@@ -34,25 +34,35 @@ from hopsworks_common.core.variable_api import VariableApi
 from hopsworks_common.decorators import _uses_trino
 
 
-if HAS_TRINO:
-    from trino.auth import BasicAuthentication
-    from trino.constants import (
-        DEFAULT_CATALOG,
-        DEFAULT_MAX_ATTEMPTS,
-        DEFAULT_REQUEST_TIMEOUT,
-        DEFAULT_SCHEMA,
-    )
-    from trino.dbapi import connect as _trino_connect
-    from trino.sqlalchemy import URL
-    from trino.transaction import IsolationLevel
+_TRINO_CONSTANTS = (
+    "DEFAULT_CATALOG",
+    "DEFAULT_SCHEMA",
+    "DEFAULT_MAX_ATTEMPTS",
+    "DEFAULT_REQUEST_TIMEOUT",
+)
 
-    AUTOCOMMIT = IsolationLevel.AUTOCOMMIT
-else:
-    DEFAULT_CATALOG = None
-    DEFAULT_SCHEMA = None
-    DEFAULT_MAX_ATTEMPTS = None
-    DEFAULT_REQUEST_TIMEOUT = None
-    AUTOCOMMIT = None
+
+def _trino_connect(*args: Any, **kwargs: Any) -> Connection:
+    from trino.dbapi import connect
+
+    return connect(*args, **kwargs)
+
+
+def __getattr__(name: str) -> Any:
+    # trino and sqlalchemy cost ~50 ms to import, paid by every `import hopsworks`: they load on first use.
+    if name in _TRINO_CONSTANTS:
+        if not HAS_TRINO:
+            return None
+        from trino import constants
+
+        return getattr(constants, name)
+    if name == "AUTOCOMMIT":
+        if not HAS_TRINO:
+            return None
+        from trino.transaction import IsolationLevel
+
+        return IsolationLevel.AUTOCOMMIT
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 if TYPE_CHECKING:
@@ -266,8 +276,8 @@ class TrinoApi:
     def connect(
         self,
         source: str = DEFAULT_SOURCE,
-        catalog: str = DEFAULT_CATALOG,
-        schema: str = DEFAULT_SCHEMA,
+        catalog: str | None = None,
+        schema: str | None = None,
         verify: bool | str = True,
         **kwargs: Any,
     ) -> Connection:
@@ -280,8 +290,8 @@ class TrinoApi:
 
         Parameters:
             source: Source identifier for Trino queries.
-            catalog: Trino catalog to connect to.
-            schema: Database schema within the catalog.
+            catalog: Trino catalog to connect to; defaults to the Trino client's default catalog.
+            schema: Database schema within the catalog; defaults to the Trino client's default schema.
             verify: Whether to verify SSL certificates.
                     Set verify="/path/to/cert.crt" if you want to verify the ssl cert.
 
@@ -308,6 +318,9 @@ class TrinoApi:
                 print(row)
             ```
         """
+        from trino import constants
+        from trino.auth import BasicAuthentication
+
         host = self.get_host()
         port = self.get_port()
 
@@ -318,8 +331,8 @@ class TrinoApi:
             host=host,
             port=port,
             user=user,
-            catalog=catalog,
-            schema=schema,
+            catalog=constants.DEFAULT_CATALOG if catalog is None else catalog,
+            schema=constants.DEFAULT_SCHEMA if schema is None else schema,
             source=source,
             auth=basic_auth,
             http_scheme=HTTPS,
@@ -333,8 +346,8 @@ class TrinoApi:
     def create_engine(
         self,
         source: str = DEFAULT_SQLALCHEMY_SOURCE,
-        catalog: str = DEFAULT_CATALOG,
-        schema: str = DEFAULT_SCHEMA,
+        catalog: str | None = None,
+        schema: str | None = None,
         verify: bool | str = True,
         **kwargs: Any,
     ) -> Engine:
@@ -348,8 +361,8 @@ class TrinoApi:
 
         Parameters:
             source: Source identifier for Trino queries.
-            catalog: Trino catalog to connect to.
-            schema: Database schema within the catalog.
+            catalog: Trino catalog to connect to; defaults to the Trino client's default catalog.
+            schema: Database schema within the catalog; defaults to the Trino client's default schema.
             verify: Whether to verify SSL certificates.
                     Set verify="/path/to/cert.crt" if you want to verify the ssl cert.
 
@@ -377,6 +390,9 @@ class TrinoApi:
             ```
         """
         from sqlalchemy import create_engine
+        from trino import constants
+        from trino.auth import BasicAuthentication
+        from trino.sqlalchemy import URL
 
         host = self.get_host()
         port = self.get_port()
@@ -388,8 +404,8 @@ class TrinoApi:
             host=host,
             port=port,
             user=user,
-            catalog=catalog,
-            schema=schema,
+            catalog=constants.DEFAULT_CATALOG if catalog is None else catalog,
+            schema=constants.DEFAULT_SCHEMA if schema is None else schema,
         )
         connect_args = {
             "auth": basic_auth,
