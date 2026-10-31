@@ -33,7 +33,7 @@ class TestBaseClient:
     @changes_environ
     def test_valid_token_no_retires(self, mocker):
         # Arrange
-        os.environ[Client.REST_ENDPOINT] = "True"
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
         client = self._init_test_client()
 
         path_params = [
@@ -59,7 +59,7 @@ class TestBaseClient:
     @changes_environ
     def test_invalid_token_retires(self, mocker):
         # Arrange
-        os.environ[Client.REST_ENDPOINT] = "True"
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
         client = self._init_test_client()
 
         path_params = [
@@ -89,7 +89,7 @@ class TestBaseClient:
     @changes_environ
     def test_invalid_token_retires_backoff_break(self, mocker):
         # Arrange
-        os.environ[Client.REST_ENDPOINT] = "True"
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
         client = self._init_test_client()
 
         path_params = [
@@ -205,7 +205,7 @@ class TestBaseClient:
 
     @changes_environ
     def test_rate_limited_then_unauthorized_refreshes_token(self, mocker):
-        os.environ[Client.REST_ENDPOINT] = "True"
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
         client = self._init_test_client()
         unauthorized = requests.Response()
         unauthorized.status_code = 401
@@ -228,7 +228,7 @@ class TestBaseClient:
         assert spy_retry_token_expired.call_count == 1
 
     def test_token_refresh_after_a_rate_limit_stops_at_the_deadline(self, mocker):
-        os.environ[Client.REST_ENDPOINT] = "True"
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
         client = self._init_test_client()
         unauthorized = requests.Response()
         unauthorized.status_code = 401
