@@ -12,6 +12,7 @@ from unittest import mock
 
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 # --- deployment ------------------------------------------------------------
@@ -300,6 +301,47 @@ def test_files_mkdir_creates_missing_parents_top_down(mock_project):
         mock.call("Resources/app"),
         mock.call("Resources/app/static"),
     ]
+
+
+def _rest_api_error():
+    response = mock.MagicMock(status_code=400)
+    response.json.return_value = {"errorCode": 110047, "usrMsg": "already exists"}
+    return RestAPIError("url", response)
+
+
+def test_files_mkdir_goes_on_past_a_level_another_caller_made(mock_project):
+    # Two deployments created at once both find Resources/deployments missing;
+    # the later create answers 400, and the directory is there.
+    made = {"Resources"}
+    api = mock.MagicMock()
+    api.exists.side_effect = lambda path: path in made
+
+    def mkdir(path):
+        if path == "Resources/deployments":
+            made.add(path)
+            raise _rest_api_error()
+        made.add(path)
+
+    api.mkdir.side_effect = mkdir
+    mock_project.get_dataset_api.return_value = api
+    result = CliRunner().invoke(
+        cli, ["files", "mkdir", "Resources/deployments/fraud"]
+    )
+    assert result.exit_code == 0, result.output
+    assert api.mkdir.call_args_list == [
+        mock.call("Resources/deployments"),
+        mock.call("Resources/deployments/fraud"),
+    ]
+
+
+def test_files_mkdir_raises_a_refused_create_that_leaves_no_directory(mock_project):
+    api = mock.MagicMock()
+    api.exists.side_effect = lambda path: path == "Resources"
+    api.mkdir.side_effect = _rest_api_error()
+    mock_project.get_dataset_api.return_value = api
+    result = CliRunner().invoke(cli, ["files", "mkdir", "Resources/app/static"])
+    assert result.exit_code != 0
+    api.mkdir.assert_called_once_with("Resources/app")
 
 
 def test_files_mkdir_on_an_existing_directory_succeeds(mock_project):
