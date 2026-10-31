@@ -45,8 +45,8 @@ The `duckdb` command in the terminal has the `delta` extension pre-installed.
 | `etag`, `ctag` | SharePoint versions of the item: `etag` changes on any edit, `ctag` only when the content changes |
 | `metadata_json` | the library's column values for the file, as a JSON object string; see [Library columns](#library-columns) |
 | `metadata_truncated` | JSON array of the columns cut or left out of `metadata_json` for size, or null |
-| `metadata_state` | `complete`: read by the last run that read the library; `stale`: the last run could not read the library, values are older; `missing`: the file was not read or is gone from SharePoint, values (if any) are older; null: indexed before library columns were read |
-| `metadata_hash` | SHA-256 of `list_item_id`, `content_type`, `etag`, `ctag`, `metadata_json` and the column-selection rules' version |
+| `metadata_state` | `complete`: the last run that read the library read these values; `stale`: values are older, because that read failed or the file's copy failed; `missing`: the file was not read or is gone from SharePoint, values (if any) are older; null: indexed before library columns were read |
+| `metadata_hash` | SHA-256 of `list_item_id`, `content_type`, `etag`, `ctag`, `metadata_json`, `metadata_truncated` and the column-selection rules' version |
 
 There is one current row per file, so no version deduplication is needed.
 A file deleted in SharePoint loses its row once the sync deletes its copy (mirror deletions); a copy-only sync keeps both.
@@ -55,7 +55,8 @@ For content questions, find candidate files here, then open the few relevant one
 
 ## Library columns
 
-`metadata_json` holds every visible column of the document library, custom ones included, keyed by the column's internal name, with values exactly as Microsoft Graph returns them.
+`metadata_json` holds every visible column of the document library, custom ones included, keyed by the column's internal name, with values as Microsoft Graph returns them, within size limits: a text over 32 KiB is cut, any other value over 32 KiB is left out, and the largest values are left out until the whole is under 256 KiB.
+`metadata_truncated` names the columns cut or left out, so an absent key or a short value in a row it names is not a SharePoint fact.
 A person or lookup column appears as `<Name>LookupId` with the numeric id, not a name; the display names of author and editor are in `created_by` and `modified_by`.
 Columns that repeat a row column (name, path, size, created and modified times) are left out.
 
@@ -83,6 +84,16 @@ WHERE metadata_state = 'complete'
   AND TRY_CAST(metadata_json->>'\$.Revision' AS INTEGER) >= 2
   AND list_contains(CAST(metadata_json->'\$.Tags' AS VARCHAR[]), 'Contract')
 ORDER BY modified_at DESC LIMIT 20;"
+```
+
+`metadata_state = 'complete'` says the values are current, not that they are whole.
+Before calling a filtered result exhaustive, or saying a file lacks a value, count the rows whose `metadata_truncated` names a column the query uses; when any do, say that those files may match but their value was cut or left out, and list them if asked:
+
+```bash
+duckdb -c "SELECT file_name, metadata_truncated, web_url
+FROM delta_scan('/hopsfs/featurestore/acme_featurestore.db/sharepoint_finance_1')
+WHERE metadata_state = 'complete'
+  AND list_has_any(CAST(CAST(metadata_truncated AS JSON) AS VARCHAR[]), ['Department', 'Revision', 'Tags']);"
 ```
 
 ## Search workflow
