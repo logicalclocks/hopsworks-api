@@ -560,6 +560,8 @@ _DEPLOY_PACKAGE = "package.json"
 _DEPLOY_LOCKFILE = "package-lock.json"
 _DEPLOY_PORT = 8080
 _POLL_SECONDS = 3.0
+# A Hopsable sandbox's HopsFS mount: one copy through it replaces a REST call per file.
+_MOUNT_STATUS = "/run/hopsfs/status.json"
 
 
 @app_group.command("deploy")
@@ -671,16 +673,29 @@ def app_deploy(
             f"Could not read {remote_dir}/{_what(node)}: {exc}"
         ) from exc
 
+    mountpoint = _project_mount(project)
     try:
-        for relative in sorted({os.path.dirname(f) for f in files}):
-            makedirs(dataset_api, f"{remote_dir}/{relative}".rstrip("/"))
-        for relative in files:
-            parent = f"{remote_dir}/{os.path.dirname(relative)}".rstrip("/")
-            dataset_api.upload(
-                local_path=os.path.join(local_dir, relative),
-                upload_path=parent,
-                overwrite=True,
-            )
+        if mountpoint:
+            import shutil
+
+            from hopsworks_common.client.base import _drain_mount
+
+            for relative in files:
+                target = os.path.join(mountpoint, remote_dir, relative)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copyfile(os.path.join(local_dir, relative), target)
+            # Create or redeploy must read every file on HopsFS, not still staged in the mount.
+            _drain_mount()
+        else:
+            for relative in sorted({os.path.dirname(f) for f in files}):
+                makedirs(dataset_api, f"{remote_dir}/{relative}".rstrip("/"))
+            for relative in files:
+                parent = f"{remote_dir}/{os.path.dirname(relative)}".rstrip("/")
+                dataset_api.upload(
+                    local_path=os.path.join(local_dir, relative),
+                    upload_path=parent,
+                    overwrite=True,
+                )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Could not upload app '{name}' to {remote_dir}: {exc}"
@@ -879,6 +894,25 @@ def _install_package(env: Any, package: str, lockfile: str) -> None:
             ) from exc
         output.warn("Put back %s in %s after the failed install.", back, env.name)
         raise
+
+
+def _project_mount(project: Any) -> str | None:
+    """The project's own mountpoint when the sandbox's HopsFS mount serves it, else None."""
+    import json
+
+    try:
+        with open(_MOUNT_STATUS, encoding="utf-8") as f:
+            status = json.load(f)
+    except (OSError, ValueError):
+        return None
+    mountpoint = f"/Projects/{project.backing_name}"
+    if (
+        isinstance(status, dict)
+        and status.get("state") == "mounted"
+        and status.get("mountpoint") == mountpoint
+    ):
+        return mountpoint
+    return None
 
 
 def _deploy_files(local_dir: str, node: bool = False) -> list[str]:
