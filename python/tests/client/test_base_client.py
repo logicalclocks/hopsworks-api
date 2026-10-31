@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import io
+import json
 import os
 import stat
 import threading
@@ -31,7 +33,7 @@ class TestBaseClient:
     @changes_environ
     def test_valid_token_no_retires(self, mocker):
         # Arrange
-        os.environ[Client.REST_ENDPOINT] = "True"
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
         client = self._init_test_client()
 
         path_params = [
@@ -57,7 +59,7 @@ class TestBaseClient:
     @changes_environ
     def test_invalid_token_retires(self, mocker):
         # Arrange
-        os.environ[Client.REST_ENDPOINT] = "True"
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
         client = self._init_test_client()
 
         path_params = [
@@ -87,7 +89,7 @@ class TestBaseClient:
     @changes_environ
     def test_invalid_token_retires_backoff_break(self, mocker):
         # Arrange
-        os.environ[Client.REST_ENDPOINT] = "True"
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
         client = self._init_test_client()
 
         path_params = [
@@ -120,6 +122,178 @@ class TestBaseClient:
 
         # Assert
         assert spy_retry_token_expired.call_count == 5
+
+    def _rate_limited_response(self, mocker, retry_after="2", error_code=120015):
+        response = requests.Response()
+        response.status_code = 429
+        response.headers["Retry-After"] = retry_after
+        response._content = json.dumps({"errorCode": error_code}).encode()
+        response.raw = mocker.Mock()
+        mocker.spy(response, "close")
+        return response
+
+    def _ok_response(self):
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b""
+        return response
+
+    def _mock_clock(self, mocker, monotonic=1000.0):
+        sleep = mocker.patch("hopsworks_common.client.base.time.sleep")
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", return_value=monotonic
+        )
+        return sleep
+
+    def test_rate_limited_request_waits_and_retries(self, mocker):
+        client = self._init_test_client()
+        refused = self._rate_limited_response(mocker, retry_after="3")
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[refused, self._ok_response()],
+        )
+        sleep = self._mock_clock(mocker)
+
+        client._send_request("GET", ["variables", "versions"])
+
+        assert send.call_count == 2
+        sleep.assert_called_once_with(3)
+        refused.close.assert_called_once()
+
+    def test_other_too_many_requests_is_not_retried(self, mocker):
+        client = self._init_test_client()
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send",
+            return_value=self._rate_limited_response(mocker, error_code=270999),
+        )
+        sleep = self._mock_clock(mocker)
+
+        with pytest.raises(RestAPIError) as error:
+            client._send_request("GET", ["variables", "versions"])
+
+        assert (
+            error.value.response.status_code
+            == RestAPIError.STATUS_CODE_TOO_MANY_REQUESTS
+        )
+        assert send.call_count == 1
+        sleep.assert_not_called()
+
+    def test_rate_limited_wait_beyond_budget_raises(self, mocker):
+        client = self._init_test_client()
+        first = self._rate_limited_response(mocker, retry_after="30")
+        second = self._rate_limited_response(mocker, retry_after="30")
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send", side_effect=[first, second]
+        )
+        sleep = mocker.patch("hopsworks_common.client.base.time.sleep")
+        # Deadline at 1060; the first 30 s wait ends at 1030, and at 1031 only 29 s remain for the second.
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic",
+            side_effect=[1000.0, 1000.0, 1030.0, 1031.0],
+        )
+
+        with pytest.raises(RestAPIError) as error:
+            client._send_request("GET", ["variables", "versions"])
+
+        assert error.value.response is second
+        assert send.call_count == 2
+        sleep.assert_called_once_with(30)
+        second.close.assert_not_called()
+
+    @changes_environ
+    def test_rate_limited_then_unauthorized_refreshes_token(self, mocker):
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
+        client = self._init_test_client()
+        unauthorized = requests.Response()
+        unauthorized.status_code = 401
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[
+                self._rate_limited_response(mocker),
+                unauthorized,
+                self._ok_response(),
+            ],
+        )
+        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
+        spy_retry_token_expired = mocker.spy(client, "_retry_token_expired")
+        self._mock_clock(mocker)
+
+        client._send_request("GET", ["variables", "versions"])
+
+        assert send.call_count == 3
+        assert spy_retry_token_expired.call_count == 1
+
+    def test_token_refresh_after_a_rate_limit_stops_at_the_deadline(self, mocker):
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
+        client = self._init_test_client()
+        unauthorized = requests.Response()
+        unauthorized.status_code = 401
+        mocker.patch("requests.sessions.Session.prepare_request")
+        mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[self._rate_limited_response(mocker)] + [unauthorized] * 20,
+        )
+        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
+        clock = [1000.0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: clock[0]
+        )
+        mocker.patch(
+            "hopsworks_common.client.base.time.sleep",
+            side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        )
+
+        with pytest.raises(RestAPIError):
+            client._send_request("GET", ["variables", "versions"])
+
+        assert clock[0] - 1000.0 <= Client.RATE_LIMITED_RETRY_BUDGET_SECONDS
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"data": io.BytesIO(b"payload")},
+            {"data": (chunk for chunk in [b"payload"])},
+            {"data": {"field": iter(["a", "b"])}},
+            {"query_params": {"expand": iter(["commands"])}},
+            {"files": {"file": ("name", io.BytesIO(b"payload"))}},
+        ],
+    )
+    def test_non_replayable_body_is_not_retried(self, mocker, kwargs):
+        client = self._init_test_client()
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send",
+            return_value=self._rate_limited_response(mocker),
+        )
+        sleep = self._mock_clock(mocker)
+
+        with pytest.raises(RestAPIError):
+            client._send_request("POST", ["variables", "versions"], **kwargs)
+
+        assert send.call_count == 1
+        sleep.assert_not_called()
+
+    def test_in_memory_upload_is_retried(self, mocker):
+        client = self._init_test_client()
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[self._rate_limited_response(mocker), self._ok_response()],
+        )
+        self._mock_clock(mocker)
+
+        client._send_request(
+            "POST",
+            ["variables", "versions"],
+            data={"flowChunkNumber": 1},
+            files={"file": ("name", b"payload")},
+        )
+
+        assert send.call_count == 2
 
     def _init_test_client(self):
         client = Client()
