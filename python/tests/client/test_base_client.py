@@ -232,6 +232,7 @@ class TestBaseClient:
         [
             {"data": io.BytesIO(b"payload")},
             {"data": (chunk for chunk in [b"payload"])},
+            {"data": {"field": iter(["a", "b"])}},
             {"files": {"file": ("name", io.BytesIO(b"payload"))}},
         ],
     )

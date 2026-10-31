@@ -196,7 +196,7 @@ class Client:
             wait = self._rate_limited_wait(response) if replayable else None
             if wait is None or wait > deadline - time.monotonic():
                 break
-            _logger.info(f"Rate limited by Hopsworks, retrying in {wait} s: {url}")
+            _logger.info("Rate limited by Hopsworks, retrying in %s s: %s", wait, url)
             response.close()
             time.sleep(wait)
 
@@ -213,7 +213,16 @@ class Client:
     @staticmethod
     def _is_replayable(data, files) -> bool:
         """Whether the request body can be sent again, which a stream or generator already read cannot."""
-        if not (data is None or isinstance(data, (str, bytes, dict))):
+        if isinstance(data, dict):
+            # requests reads each value once; an iterator value would be empty on the retry.
+            for value in data.values():
+                items = value if isinstance(value, (list, tuple)) else [value]
+                if not all(
+                    item is None or isinstance(item, (str, bytes, int, float))
+                    for item in items
+                ):
+                    return False
+        elif not (data is None or isinstance(data, (str, bytes))):
             return False
         if files is None:
             return True
