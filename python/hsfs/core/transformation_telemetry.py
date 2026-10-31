@@ -211,7 +211,15 @@ class _Telemetry:
 class _Phase:
     """One on-demand or model-dependent phase of one feature vector: times itself and the functions the DAG executor reports."""
 
-    __slots__ = ("_telemetry", "_kind", "_graph", "_traced", "_span", "_start_ns")
+    __slots__ = (
+        "_telemetry",
+        "_kind",
+        "_graph",
+        "_traced",
+        "_span",
+        "_start_ns",
+        "_wall_offset_ns",
+    )
 
     def __init__(self, telemetry: _Telemetry, kind: str, graph, traced: bool):
         self._telemetry = telemetry
@@ -231,6 +239,9 @@ class _Phase:
                 },
             )
             self._span.__enter__()
+            # One wall clock reading per phase keeps function spans in the monotonic clock's order;
+            # a time.time_ns() per span drifts from it by tens of microseconds on Windows.
+            self._wall_offset_ns = time.time_ns() - time.perf_counter_ns()
         self._start_ns = time.perf_counter_ns()
         return self
 
@@ -261,12 +272,10 @@ class _Phase:
         if error is not None:
             series.errors += 1
         if self._traced:
-            # The wall clock is read only for a traced call, and its start derived from the monotonic duration.
-            end_wall_ns = time.time_ns()
             tracing._record_span(
                 tf.hopsworks_udf.function_name,
-                end_wall_ns - (end_ns - start_ns),
-                end_wall_ns,
+                start_ns + self._wall_offset_ns,
+                end_ns + self._wall_offset_ns,
                 entry[3],
                 error,
             )

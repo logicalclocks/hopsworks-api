@@ -241,10 +241,11 @@ class Deployment:
         until_datetime: str | datetime | date | int | None = None,
         batch_size: int = 1000,
     ) -> int:
-        """Delete the deployment's traces: its spans, events and their attributes.
+        """Delete the deployment's traces before they expire.
 
-        Each request deletes at most `batch_size` rows from each trace table in one transaction, since the online feature store caps the rows one transaction can hold; the method repeats it until no rows are left.
-        Traces older than the cluster's retention (`serving_tracing_retention_days`, 7 days by default) are already deleted every 5 minutes.
+        A model or feature view deployment's traces are kept online for the time to live of the project's `serving_traces` feature group (`serving_tracing_online_ttl_hours`, 36 hours by default) and then expire on their own.
+        Each request deletes at most `batch_size` of their rows in one transaction, since the online feature store caps the rows one transaction can hold; the method repeats it until no rows are left.
+        An agent's traces are in the agent trace tables, and each request deletes at most `batch_size` rows from each of them.
 
         ```python
         deployment.delete_traces()
@@ -252,9 +253,10 @@ class Deployment:
         ```
 
         Parameters:
-            until_datetime: Delete the traces created before this time, as a datetime, a date, a string such as `"2026-10-28 12:00:00"` or epoch milliseconds; a time without a timezone is taken as UTC.
+            until_datetime: Delete the traces started before this time (for an agent, written before it), as a datetime, a date, a string such as `"2026-10-28 12:00:00"` or epoch milliseconds; a time without a timezone is taken as UTC.
+                A model or feature view deployment's trace is deleted whole, with the spans it recorded after this time.
                 `None` deletes all of them.
-            batch_size: Rows to delete per table per transaction, from 1 to 10000.
+            batch_size: Rows to delete per transaction (for an agent, per table), from 1 to 10000.
 
         Returns:
             The number of rows deleted.
