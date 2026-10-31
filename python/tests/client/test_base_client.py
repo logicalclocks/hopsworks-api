@@ -189,10 +189,10 @@ class TestBaseClient:
             "requests.sessions.Session.send", side_effect=[first, second]
         )
         sleep = mocker.patch("hopsworks_common.client.base.time.sleep")
-        # Deadline at 1060; 31 s after the first wait only 29 s remain for the second 30 s wait.
+        # Deadline at 1060; the first 30 s wait ends at 1030, and at 1031 only 29 s remain for the second.
         mocker.patch(
             "hopsworks_common.client.base.time.monotonic",
-            side_effect=[1000.0, 1000.0, 1031.0],
+            side_effect=[1000.0, 1000.0, 1030.0, 1031.0],
         )
 
         with pytest.raises(RestAPIError) as error:
@@ -227,12 +227,38 @@ class TestBaseClient:
         assert send.call_count == 3
         assert spy_retry_token_expired.call_count == 1
 
+    def test_token_refresh_after_a_rate_limit_stops_at_the_deadline(self, mocker):
+        os.environ[Client.REST_ENDPOINT] = "True"
+        client = self._init_test_client()
+        unauthorized = requests.Response()
+        unauthorized.status_code = 401
+        mocker.patch("requests.sessions.Session.prepare_request")
+        mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[self._rate_limited_response(mocker)] + [unauthorized] * 20,
+        )
+        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
+        clock = [1000.0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: clock[0]
+        )
+        mocker.patch(
+            "hopsworks_common.client.base.time.sleep",
+            side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        )
+
+        with pytest.raises(RestAPIError):
+            client._send_request("GET", ["variables", "versions"])
+
+        assert clock[0] - 1000.0 <= Client.RATE_LIMITED_RETRY_BUDGET_SECONDS
+
     @pytest.mark.parametrize(
         "kwargs",
         [
             {"data": io.BytesIO(b"payload")},
             {"data": (chunk for chunk in [b"payload"])},
             {"data": {"field": iter(["a", "b"])}},
+            {"query_params": {"expand": iter(["commands"])}},
             {"files": {"file": ("name", io.BytesIO(b"payload"))}},
         ],
     )

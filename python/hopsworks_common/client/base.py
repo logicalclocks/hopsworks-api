@@ -179,8 +179,11 @@ class Client:
 
         _logger.debug(f"url:{url} hostname_verification:{self._verify}")
 
-        replayable = self._is_replayable(data, files)
+        replayable = self._is_replayable(data, files) and self._is_replayable(
+            query_params, None
+        )
         deadline = time.monotonic() + self.RATE_LIMITED_RETRY_BUDGET_SECONDS
+        rate_limited = False
         while True:
             prepped = self._session.prepare_request(request)
             response = self._session.send(
@@ -189,8 +192,16 @@ class Client:
 
             if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
                 # refresh token and retry request - only on hopsworks
-                response = self._retry_token_expired(
-                    request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1, timeout
+                response = (
+                    self._retry_token_expired(
+                        request,
+                        stream,
+                        self.TOKEN_EXPIRED_RETRY_INTERVAL,
+                        1,
+                        timeout,
+                        deadline if rate_limited else None,
+                    )
+                    or response
                 )
 
             wait = self._rate_limited_wait(response) if replayable else None
@@ -199,6 +210,9 @@ class Client:
             _logger.info("Rate limited by Hopsworks, retrying in %s s: %s", wait, url)
             response.close()
             time.sleep(wait)
+            if time.monotonic() > deadline:
+                break
+            rate_limited = True
 
         if response.status_code // 100 != 2:
             raise exceptions.RestAPIError(url, response)
@@ -251,11 +265,16 @@ class Client:
             return None
         return wait
 
-    def _retry_token_expired(self, request, stream, wait, retries, timeout=None):
+    def _retry_token_expired(
+        self, request, stream, wait, retries, timeout=None, deadline=None
+    ):
         """Refresh the JWT token and retry the request. Only on Hopsworks.
 
         As the token might take a while to get refreshed. Keep trying.
+        A request already retried after a 429 passes the rate-limit deadline, which this stops at.
         """
+        if deadline is not None and time.monotonic() + wait > deadline:
+            return None
         # Sleep the waited time before re-issuing the request
         time.sleep(wait)
 
@@ -269,8 +288,11 @@ class Client:
 
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
             # Try again.
-            return self._retry_token_expired(
-                request, stream, wait * 2, retries + 1, timeout
+            return (
+                self._retry_token_expired(
+                    request, stream, wait * 2, retries + 1, timeout, deadline
+                )
+                or response
             )
         # If the number of retries have expired, the _send_request method
         # will throw an exception to the user as part of the status_code validation.
