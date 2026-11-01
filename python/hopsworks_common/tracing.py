@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 
 _TRACER_NAME = "hopsworks"
@@ -46,6 +46,14 @@ _enabled = False
 _row_budget: contextvars.ContextVar[tuple[int, dict] | None] = contextvars.ContextVar(
     "hopsworks_trace_row_budget", default=None
 )
+
+# Nanoseconds the current request has spent in transformations so far, in a one-element list the request adds to.
+_request_transformations_ns: contextvars.ContextVar[list[int] | None] = (
+    contextvars.ContextVar("hopsworks_request_transformations_ns", default=None)
+)
+
+# Called with a request's total transformation time when a request that ran transformations ends.
+_request_observers: list[Callable[[int], None]] = []
 
 
 def _enable(active: bool = True) -> None:
@@ -76,12 +84,25 @@ def _recording() -> bool:
 
 @contextlib.contextmanager
 def _request_scope(traced_rows: int) -> Iterator[None]:
-    """Bound the transformation spans of one request to its first `traced_rows` rows; the model server opens this around each request."""
+    """Bound the transformation spans of one request to its first `traced_rows` rows, and total its transformation time; the model server opens this around each request, sampled or not."""
     token = _row_budget.set((traced_rows, {}))
+    elapsed = [0]
+    elapsed_token = _request_transformations_ns.set(elapsed)
     try:
         yield
     finally:
+        _request_transformations_ns.reset(elapsed_token)
         _row_budget.reset(token)
+        if elapsed[0]:
+            for observer in _request_observers:
+                observer(elapsed[0])
+
+
+def _add_transformations_ns(duration_ns: int) -> None:
+    """Add transformation time to the current request's total; outside a request scope it is not counted."""
+    elapsed = _request_transformations_ns.get()
+    if elapsed is not None:
+        elapsed[0] += duration_ns
 
 
 def _take_row(key: Any = None) -> bool:
