@@ -390,7 +390,7 @@
 | python/hsfs/core/transformation\_execution\_dag.py                               |      179 |       25 |     86% |78, 200, 209-220, 262, 327-328, 346-360 |
 | python/hsfs/core/transformation\_function\_api.py                                |       26 |       16 |     38% |42-51, 80-95, 108-118 |
 | python/hsfs/core/transformation\_function\_engine.py                             |      557 |       86 |     85% |221-222, 230-240, 264, 295-299, 321, 326-339, 373-375, 396, 410, 848, 890-891, 900, 905-910, 917-923, 988, 990, 1045-1065, 1078-1094, 1174-1184, 1239, 1344-1350, 1357, 1363-1364, 1420-1429, 1543, 1662-1667, 1719, 1804-1809, 1842 |
-| python/hsfs/core/transformation\_telemetry.py                                    |      174 |       10 |     94% |207, 258, 293-294, 297-299, 367-368, 376-377 |
+| python/hsfs/core/transformation\_telemetry.py                                    |      174 |       10 |     94% |207, 269, 302-303, 306-308, 376-377, 385-386 |
 | python/hsfs/core/type\_systems.py                                                |        2 |        0 |    100% |           |
 | python/hsfs/core/util\_sql.py                                                    |       38 |       21 |     45% |37-74, 91-106 |
 | python/hsfs/core/validation\_report\_api.py                                      |       34 |       21 |     38% |44-65, 75-87, 95-113, 123-140 |
