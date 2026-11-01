@@ -1,4 +1,4 @@
-"""Generate the shared prediction-time fixtures from the SDK, the authority at run time."""
+"""Generate the prediction-time fixtures from the SDK."""
 
 import json
 from datetime import date
