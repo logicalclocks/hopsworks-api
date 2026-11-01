@@ -30,7 +30,7 @@ from typing import (
 )
 
 import pandas as pd
-from hopsworks_common import client
+from hopsworks_common import client, tracing
 from hopsworks_common.core.constants import (
     HAS_AVRO,
     HAS_FAST_AVRO,
@@ -45,6 +45,7 @@ from hsfs.client import exceptions, online_store_rest_client
 from hsfs.core import (
     online_store_rest_client_engine,
     online_store_sql_engine,
+    transformation_telemetry,
 )
 from hsfs.core import (
     transformation_execution_dag as tf_exec_dag_mod,
@@ -154,6 +155,7 @@ async def _bounded(awaitable, timeout: float | None):
 class VectorServer:
     DEFAULT_REST_CLIENT = "rest"
     DEFAULT_SQL_CLIENT = "sql"
+    _telemetry: transformation_telemetry._Telemetry | None = None
     # Compatibility with 3.7
     DEFAULT_CLIENT_KEY = "default_online_store_client"
     REST_CLIENT_CONFIG_OPTIONS_KEY = "config_online_store_rest_client"
@@ -308,7 +310,7 @@ class VectorServer:
             external = client._is_external()
         # `init_prepared_statement` should be the last because other initialisations
         # has to be done successfully before it is able to fetch feature vectors.
-        self._init_transformation(entity)
+        self._init_transformation(entity, timed=True)
         self._set_return_feature_value_handlers(features=entity.features)
 
         if self._init_rest_client and self.__all_feature_groups_online:
@@ -339,6 +341,7 @@ class VectorServer:
     def _init_transformation(
         self,
         entity: feature_view.FeatureView,
+        timed: bool = False,
     ):
         # attach transformation functions
         model_dependent_transformations = tf_engine_mod.TransformationFunctionEngine._get_ready_to_use_transformation_fns(
@@ -382,6 +385,20 @@ class VectorServer:
             tf_exec_dag_mod.TransformationExecutionDAG(
                 self._model_dependent_transformation_functions
             )
+        )
+        # Built only for serving, where the model server set tracing up: a batch scoring server of the same feature view version would replace its series.
+        # The hot paths also skip it while tracing is switched off.
+        self._telemetry = (
+            transformation_telemetry._Telemetry(
+                self._feature_view_name,
+                self._feature_view_version,
+                {
+                    transformation_telemetry.KIND_ON_DEMAND: self._on_demand_transformation_functions_execution_graph,
+                    transformation_telemetry.KIND_MODEL_DEPENDENT: self._model_dependent_transformation_functions_execution_graph,
+                },
+            )
+            if timed and tracing._is_available()
+            else None
         )
 
     def _requires_inference_helpers_for_transformations(self) -> bool:
@@ -1420,14 +1437,33 @@ class VectorServer:
         # sequential; with n_processes > 1 independent transformations in the
         # DAG run concurrently in the shared worker pool for each row.
         for feature_vector in feature_vectors:
-            transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
-                execution_graph=self._model_dependent_transformation_functions_execution_graph,
-                data=feature_vector,
-                online=True,
-                transformation_context=transformation_context,
-                n_processes=n_processes,
-                expected_features=set(self.transformed_feature_vector_col_name),
-            )
+            if self._telemetry is None or not tracing._enabled:
+                transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                    execution_graph=self._model_dependent_transformation_functions_execution_graph,
+                    data=feature_vector,
+                    online=True,
+                    transformation_context=transformation_context,
+                    n_processes=n_processes,
+                    expected_features=set(self.transformed_feature_vector_col_name),
+                )
+            else:
+                with (
+                    self._transformation_row(
+                        self._model_dependent_transformation_functions_execution_graph
+                    ) as traced,
+                    self._transformation_phase(
+                        transformation_telemetry.KIND_MODEL_DEPENDENT, traced
+                    ) as observer,
+                ):
+                    transformed_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                        execution_graph=self._model_dependent_transformation_functions_execution_graph,
+                        data=feature_vector,
+                        online=True,
+                        transformation_context=transformation_context,
+                        n_processes=n_processes,
+                        expected_features=set(self.transformed_feature_vector_col_name),
+                        observer=observer,
+                    )
             transformed_feature_vectors.append(
                 [
                     transformed_feature_vector.get(fname, None)
@@ -1508,15 +1544,35 @@ class VectorServer:
         for feature_vector, request_parameter in zip(
             feature_vectors, request_parameters, strict=False
         ):
-            on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
-                execution_graph=self._on_demand_transformation_functions_execution_graph,
-                data=feature_vector,
-                online=True,
-                transformation_context=transformation_context,
-                request_parameters=request_parameter,
-                expected_features=set(self._on_demand_feature_vector_col_name),
-                n_processes=n_processes,
-            )
+            if self._telemetry is None or not tracing._enabled:
+                on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                    execution_graph=self._on_demand_transformation_functions_execution_graph,
+                    data=feature_vector,
+                    online=True,
+                    transformation_context=transformation_context,
+                    request_parameters=request_parameter,
+                    expected_features=set(self._on_demand_feature_vector_col_name),
+                    n_processes=n_processes,
+                )
+            else:
+                with (
+                    self._transformation_row(
+                        self._on_demand_transformation_functions_execution_graph
+                    ) as traced,
+                    self._transformation_phase(
+                        transformation_telemetry.KIND_ON_DEMAND, traced
+                    ) as observer,
+                ):
+                    on_demand_feature_vector = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                        execution_graph=self._on_demand_transformation_functions_execution_graph,
+                        data=feature_vector,
+                        online=True,
+                        transformation_context=transformation_context,
+                        request_parameters=request_parameter,
+                        expected_features=set(self._on_demand_feature_vector_col_name),
+                        n_processes=n_processes,
+                        observer=observer,
+                    )
             on_demand_feature_vectors.append(
                 [
                     on_demand_feature_vector.get(fname, None)
@@ -1893,6 +1949,16 @@ class VectorServer:
             logging_meta_data: Metadata object for logging, if logging is enabled.
             n_processes: Number of processes for parallel transformation execution.
         """
+        if self._telemetry is not None and tracing._enabled:
+            return self._apply_transformation_traced(
+                row_dict,
+                request_parameter,
+                transformation_context,
+                transform,
+                on_demand_features,
+                logging_meta_data,
+                n_processes,
+            )
         feature_dict = row_dict
         encoded_feature_dict = None
 
@@ -1930,6 +1996,113 @@ class VectorServer:
                 expected_features=set(self.transformed_feature_vector_col_name),
                 n_processes=n_processes,
             )
+            if logging_meta_data:
+                logging_meta_data.transformed_features.append(
+                    [
+                        encoded_feature_dict.get(fname, None)
+                        for fname in self.transformed_feature_vector_col_name
+                    ]
+                )
+
+        return feature_dict, encoded_feature_dict
+
+    def _apply_transformation_traced(
+        self,
+        row_dict,
+        request_parameter,
+        transformation_context,
+        transform,
+        on_demand_features,
+        logging_meta_data,
+        n_processes,
+    ):
+        """[`_apply_transformation`][] with each phase and function timed, for a vector server with telemetry; the plain path stays free of it."""
+        with self._transformation_row(
+            self._on_demand_transformation_functions_execution_graph
+            if transform or on_demand_features or logging_meta_data
+            else None,
+            self._model_dependent_transformation_functions_execution_graph
+            if transform or logging_meta_data
+            else None,
+        ) as traced:
+            return self._apply_transformation_phases(
+                row_dict,
+                request_parameter,
+                transformation_context,
+                transform,
+                on_demand_features,
+                logging_meta_data,
+                n_processes,
+                traced,
+            )
+
+    def _transformation_row(self, *execution_graphs):
+        return self._telemetry._row(*execution_graphs)
+
+    def _transformation_phase(self, kind: str, traced: bool):
+        execution_graph = (
+            self._on_demand_transformation_functions_execution_graph
+            if kind == transformation_telemetry.KIND_ON_DEMAND
+            else self._model_dependent_transformation_functions_execution_graph
+        )
+        return self._telemetry._phase(kind, execution_graph, traced)
+
+    def _apply_transformation_phases(
+        self,
+        row_dict,
+        request_parameter,
+        transformation_context,
+        transform,
+        on_demand_features,
+        logging_meta_data,
+        n_processes,
+        traced,
+    ):
+        feature_dict = row_dict
+        encoded_feature_dict = None
+
+        if transform or on_demand_features or logging_meta_data:
+            # Check for any missing request parameters
+            self._check_missing_request_parameters(
+                features=row_dict, request_parameters=request_parameter
+            )
+
+            # Apply on-demand transformations
+            with self._transformation_phase(
+                transformation_telemetry.KIND_ON_DEMAND, traced
+            ) as observer:
+                feature_dict = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                    data=feature_dict,
+                    online=True,
+                    transformation_context=transformation_context,
+                    request_parameters=request_parameter,
+                    execution_graph=self._on_demand_transformation_functions_execution_graph,
+                    expected_features=set(self._on_demand_feature_vector_col_name),
+                    n_processes=n_processes,
+                    observer=observer,
+                )
+            if logging_meta_data:
+                logging_meta_data.untransformed_features.append(
+                    [
+                        feature_dict.get(fname, None)
+                        for fname in self._on_demand_feature_vector_col_name
+                    ]
+                )
+
+        if transform or logging_meta_data:
+            # Apply model dependent transformations
+            with self._transformation_phase(
+                transformation_telemetry.KIND_MODEL_DEPENDENT, traced
+            ) as observer:
+                encoded_feature_dict = tf_engine_mod.TransformationFunctionEngine._apply_transformation_functions(
+                    execution_graph=self._model_dependent_transformation_functions_execution_graph,
+                    data=feature_dict,
+                    online=True,
+                    transformation_context=transformation_context,
+                    expected_features=set(self.transformed_feature_vector_col_name),
+                    n_processes=n_processes,
+                    observer=observer,
+                )
             if logging_meta_data:
                 logging_meta_data.transformed_features.append(
                     [

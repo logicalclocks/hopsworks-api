@@ -135,6 +135,7 @@ _FRAMEWORK_ATTRS = {
     "pytorch": "torch",
     "python": "python",
     "llm": "llm",
+    "triton": "triton",
 }
 
 
@@ -187,7 +188,7 @@ def model_register(
         ctx: Click context.
         name: Model name.
         path: Local path to the model artifact (file or directory).
-        framework: ML framework category (``sklearn``/``tensorflow``/``torch``/``python``/``llm``).
+        framework: ML framework category (``sklearn``/``tensorflow``/``torch``/``python``/``llm``/``triton``).
         metrics_spec: Metrics as ``key=value`` pairs.
         description: Description string.
         feature_view: Feature view the model was trained on.

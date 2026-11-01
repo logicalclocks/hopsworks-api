@@ -244,6 +244,27 @@ class ModelServing:
         return []
 
     @public
+    def get_triton_image_tags(self) -> list[str]:
+        """Get the Triton Inference Server image tags a cluster administrator advertises.
+
+        Use this to pick a valid `triton_image_tag` when creating a Triton deployment.
+        Triton is opt-in per cluster and runs an image the administrator supplies, so an empty list means Triton is not enabled and creating a Triton deployment fails.
+        A deployment keeps the tag it was created with even if that tag stops being advertised, so this list can be missing the tag an existing deployment uses.
+
+        Example:
+            ```python
+            # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
+
+            # list the Triton image tags this cluster advertises
+            image_tags = ms.get_triton_image_tags()
+            ```
+
+        Returns:
+            Advertised image tags. Empty if Triton is not enabled on this cluster.
+        """
+        return self._serving_api._get_triton_image_tags().get("tags") or []
+
+    @public
     @usage._method_logger
     def create_predictor(
         self,
@@ -271,6 +292,7 @@ class ModelServing:
         passed_features: list[str] | None = None,
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
+        triton_image_tag: str | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -341,6 +363,12 @@ class ModelServing:
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            triton_image_tag: Triton Inference Server image tag for Triton deployments.
+                If set, it must be one of the tags `ModelServing.get_triton_image_tags` returns.
+                On a new deployment, `None` selects the default tag of the cluster.
+                On an update, `None` means "unchanged": the deployment keeps its current tag, so moving it to the cluster default takes naming that tag explicitly.
+                A deployment also keeps its tag after an admin stops advertising it.
+                Ignored for non-Triton model servers.
 
         Returns:
             The predictor metadata object.
@@ -371,6 +399,7 @@ class ModelServing:
             passed_features=passed_features,
             default_predictor=default_predictor,
             knative_mode=knative_mode,
+            triton_image_tag=triton_image_tag,
         )
 
     @public
