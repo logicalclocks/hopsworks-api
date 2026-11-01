@@ -4195,8 +4195,81 @@ class TestStorageConnectorList:
             )
 
 
+class TestCRMAndAnalyticsConnector:
+    @pytest.mark.parametrize(
+        "source,expected",
+        [
+            (storage_connector.CRMSource.HUBSPOT, "HUBSPOT"),
+            (storage_connector.CRMSource.FACEBOOK_ADS, "FACEBOOK_ADS"),
+            (storage_connector.CRMSource.SALESFORCE, "SALESFORCE"),
+            (storage_connector.CRMSource.PIPEDRIVE, "PIPEDRIVE"),
+            (storage_connector.CRMSource.FRESHDESK, "FRESHDESK"),
+            (storage_connector.CRMSource.GOOGLE_ADS, "GOOGLE_ADS"),
+            (storage_connector.CRMSource.GOOGLE_ANALYTICS, "GOOGLE_ANALYTICS"),
+            (storage_connector.CRMSource.SHOPIFY, "SHOPIFY"),
+        ],
+    )
+    @pytest.mark.parametrize("input_form", ["enum", "lowercase", "uppercase"])
+    def test_crm_type_uses_backend_subtype_id(self, source, expected, input_form):
+        crm_type = {
+            "enum": source,
+            "lowercase": source.value,
+            "uppercase": expected,
+        }[input_form]
+        sc = storage_connector.CRMAndAnalyticsConnector(
+            id=None, name="crm", featurestore_id=67, crm_type=crm_type
+        )
+
+        payload = sc.to_dict()
+
+        assert payload["type"] == "featurestoreCRMConnectorDTO"
+        assert payload["storageConnectorType"] == "CRM"
+        assert payload["crmType"] == expected
+        assert sc.crm_type == crm_type
+        assert source.value == expected.lower()
+
+    @pytest.mark.parametrize(
+        "crm_type,expected",
+        [
+            (storage_connector.CRMSource.HUBSPOT, "HUBSPOT"),
+            (storage_connector.CRMSource.SHOPIFY, "SHOPIFY"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "operation,http_method", [("save", "POST"), ("update", "PUT")]
+    )
+    def test_persist_sends_backend_subtype_id(
+        self, mocker, crm_type, expected, operation, http_method
+    ):
+        client = mocker.patch("hsfs.core.storage_connector_api.client._get_instance")
+        client.return_value._send_request.return_value = {
+            "type": "featurestoreCRMConnectorDTO",
+            "storageConnectorType": "CRM",
+            "id": 11,
+            "name": "crm",
+            "featurestoreId": 67,
+            "crmType": expected,
+        }
+        sc = storage_connector.CRMAndAnalyticsConnector(
+            id=None if operation == "save" else 11,
+            name="crm",
+            featurestore_id=67,
+            crm_type=crm_type,
+        )
+
+        saved = getattr(sc, operation)()
+
+        request = client.return_value._send_request
+        request.assert_called_once()
+        assert request.call_args.args[0] == http_method
+        assert json.loads(request.call_args.kwargs["data"])["crmType"] == expected
+        assert saved.crm_type == expected
+        assert saved.to_dict()["crmType"] == expected
+
+
 class TestCRMShopifyConnector:
-    def test_shopify_client_credentials_round_trip(self):
+    @pytest.mark.parametrize("crm_type", ["shopify", "SHOPIFY"])
+    def test_shopify_client_credentials_round_trip(self, crm_type):
         sc = storage_connector.StorageConnector.from_response_json(
             {
                 "type": "featurestoreCRMConnectorDTO",
@@ -4204,7 +4277,7 @@ class TestCRMShopifyConnector:
                 "id": 11,
                 "name": "shop",
                 "featurestoreId": 67,
-                "crmType": "shopify",
+                "crmType": crm_type,
                 "shopUrl": "https://s.myshopify.com",
                 "clientId": "id",
                 "clientSecret": "secret",
@@ -4217,6 +4290,7 @@ class TestCRMShopifyConnector:
             "secret",
         )
         payload = sc.to_dict()
+        assert payload["crmType"] == "SHOPIFY"
         assert (payload["shopUrl"], payload["clientId"], payload["clientSecret"]) == (
             "https://s.myshopify.com",
             "id",
