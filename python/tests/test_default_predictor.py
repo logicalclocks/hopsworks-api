@@ -1500,7 +1500,15 @@ class TestAsyncPredict:
             asyncio.run(predictor.predict([{"cc_num": 1}]))
 
         assert span_exporter.get_finished_spans() == ()
-        assert set(observed[0]) == {"feature_lookup", "model_predict", "feature_log"}
+        assert {stage for stage, _ in observed[0]} == {
+            "feature_lookup",
+            "model_predict",
+            "feature_log",
+        }
+        assert ("feature_lookup", "fv:1") in observed[0]
+        assert ("feature_log", "fv:1") in observed[0]
+        # FakeDeployment serves no model, so the predict stage is named by the deployment.
+        assert ("model_predict", predictor.deployment.name) in observed[0]
         assert all(duration > 0 for duration in observed[0].values())
 
     def test_an_untraced_request_opens_no_spans(self, mocker):

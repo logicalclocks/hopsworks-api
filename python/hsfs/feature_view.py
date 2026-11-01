@@ -15,6 +15,8 @@
 #
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
 import os
@@ -132,6 +134,37 @@ _logger = logging.getLogger(__name__)
 
 @public
 @typechecked
+def _timed_stage(kind: str):
+    """Time a feature view method as stage `kind` of the current request, named by this feature view, while tracing is on.
+
+    Only a call inside a request is timed: the default predictor's log worker calls `log` after the response, on its own thread.
+    Inside the default predictor's stage of the same kind the method is not timed again.
+    """
+
+    def decorate(method):
+        if inspect.iscoroutinefunction(method):
+
+            @functools.wraps(method)
+            async def timed_async(self, *args, **kwargs):
+                if not tracing._enabled or tracing._request_stages_ns.get() is None:
+                    return await method(self, *args, **kwargs)
+                with tracing._stage(kind, f"{self.name}:{self.version}"):
+                    return await method(self, *args, **kwargs)
+
+            return timed_async
+
+        @functools.wraps(method)
+        def timed(self, *args, **kwargs):
+            if not tracing._enabled or tracing._request_stages_ns.get() is None:
+                return method(self, *args, **kwargs)
+            with tracing._stage(kind, f"{self.name}:{self.version}"):
+                return method(self, *args, **kwargs)
+
+        return timed
+
+    return decorate
+
+
 class FeatureView:
     """Metadata class for Hopsworks feature views.
 
@@ -855,6 +888,7 @@ class FeatureView:
             )
 
     @public
+    @_timed_stage("feature_lookup")
     def get_feature_vector(
         self,
         serving_keys: dict[str, Any] | None = None,
@@ -1049,6 +1083,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     async def get_feature_vector_async(self, **kwargs: Any) -> Any:
         """Awaitable [`get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector].
 
@@ -1090,6 +1125,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     async def get_feature_vectors_async(self, **kwargs: Any) -> Any:
         """Awaitable [`get_feature_vectors`][hsfs.feature_view.FeatureView.get_feature_vectors].
 
@@ -1125,6 +1161,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     def get_feature_vectors(
         self,
         serving_keys: list[dict[str, Any]] | None = None,
@@ -5593,6 +5630,7 @@ class FeatureView:
             self._feature_logger = None
 
     @public
+    @_timed_stage("feature_log")
     def log(
         self,
         logging_data: pd.DataFrame

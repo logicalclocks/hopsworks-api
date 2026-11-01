@@ -50,13 +50,18 @@ _row_budget: contextvars.ContextVar[tuple[int, dict] | None] = contextvars.Conte
     "hopsworks_trace_row_budget", default=None
 )
 
-# Nanoseconds the current request has spent in each stage so far, such as feature_lookup, which the request adds to.
-_request_stages_ns: contextvars.ContextVar[dict[str, int] | None] = (
+# Nanoseconds the current request has spent so far in each stage, keyed by the stage and the feature view or model it ran for.
+_request_stages_ns: contextvars.ContextVar[dict[tuple[str, str], int] | None] = (
     contextvars.ContextVar("hopsworks_request_stages_ns", default=None)
 )
 
-# Called with a request's time per stage when a request that ran any stage ends.
-_request_observers: list[Callable[[dict[str, int]], None]] = []
+# The stage being timed in the current context, so a stage inside another of the same kind is not counted twice.
+_active_stage: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "hopsworks_active_stage", default=None
+)
+
+# Called with a request's time per stage and name when a request that ran any stage ends.
+_request_observers: list[Callable[[dict[tuple[str, str], int]], None]] = []
 
 
 def _enable(active: bool = True) -> None:
@@ -92,7 +97,7 @@ def _recording() -> bool:
 def _request_scope(traced_rows: int) -> Iterator[None]:
     """Bound the transformation spans of one request to its first `traced_rows` rows, and total its time per stage; the model server opens this around each request, sampled or not."""
     token = _row_budget.set((traced_rows, {}))
-    stages: dict[str, int] = {}
+    stages: dict[tuple[str, str], int] = {}
     stages_token = _request_stages_ns.set(stages)
     try:
         yield
@@ -104,37 +109,45 @@ def _request_scope(traced_rows: int) -> Iterator[None]:
                 observer(stages)
 
 
-def _add_stage_ns(stage: str, duration_ns: int) -> None:
-    """Add time to one stage of the current request; outside a request scope it is not counted."""
+def _add_stage_ns(stage: str, name: str, duration_ns: int) -> None:
+    """Add time to one stage of the current request for the feature view or model `name`; outside a request scope it is not counted."""
     stages = _request_stages_ns.get()
     if stages is not None:
-        stages[stage] = stages.get(stage, 0) + duration_ns
+        key = (stage, name)
+        stages[key] = stages.get(key, 0) + duration_ns
 
 
 class _Stage:
     """Times one stage of a request into its stage totals, under a span of the same name when the request is sampled."""
 
-    __slots__ = ("_name", "_span", "_start_ns")
+    __slots__ = ("_kind", "_name", "_span", "_start_ns", "_token")
 
-    def __init__(self, name: str, attributes: dict[str, Any] | None):
+    def __init__(self, kind: str, name: str, attributes: dict[str, Any] | None):
+        self._kind = kind
         self._name = name
-        self._span = _child_span(name, attributes)
+        self._span = _child_span(kind, attributes)
 
     def __enter__(self) -> Self:
+        self._token = _active_stage.set(self._kind)
         self._span.__enter__()
         self._start_ns = time.perf_counter_ns()
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        _add_stage_ns(self._name, time.perf_counter_ns() - self._start_ns)
+        _add_stage_ns(self._kind, self._name, time.perf_counter_ns() - self._start_ns)
+        _active_stage.reset(self._token)
         return self._span.__exit__(exc_type, exc, tb)
 
 
-def _stage(name: str, attributes: dict[str, Any] | None = None):
-    """A context manager timing one stage of the current request, such as `feature_lookup`; a no-op while telemetry is off."""
-    if not _enabled:
+def _stage(kind: str, name: str = "", attributes: dict[str, Any] | None = None):
+    """A context manager timing one stage of the current request, such as `feature_lookup` of feature view `name`.
+
+    A no-op while telemetry is off, and inside a stage of the same kind, such as a feature view lookup the default predictor's lookup makes.
+    `name` is a feature view or model as `<name>:<version>`.
+    """
+    if not _enabled or _active_stage.get() == kind:
         return _NO_SPAN
-    return _Stage(name, attributes)
+    return _Stage(kind, name, attributes)
 
 
 def _take_row(key: Any = None) -> bool:

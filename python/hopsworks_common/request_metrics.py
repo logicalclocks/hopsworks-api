@@ -15,8 +15,8 @@
 #
 """Time per stage of the requests a model deployment with tracing enabled serves.
 
-The model server opens [`hopsworks_common.tracing._request_scope`][] around every request, sampled or not, and the predictor times its stages into it with [`hopsworks_common.tracing._stage`][]: `feature_lookup`, which includes `transformations`, then `model_predict` and `feature_log`, the time to queue the log write.
-When a request ends, its time in each stage it ran goes into a histogram labelled by stage, so its quantiles over any interval and across replicas come from `histogram_quantile`, and into minimum and maximum gauges over the current and the last complete window of `_WINDOW_SECONDS`.
+The model server opens [`hopsworks_common.tracing._request_scope`][] around every request, sampled or not, and the stages time themselves into it with [`hopsworks_common.tracing._stage`][]: `feature_lookup` of a feature view, which includes its `transformations`, `model_predict` of a model and `feature_log` of a feature view, the time to queue or write the log.
+When a request ends, its time in each stage it ran goes into a histogram labelled by stage and by the feature view or model, `<name>:<version>`, so its quantiles over any interval and across replicas come from `histogram_quantile`, and into minimum and maximum gauges over the current and the last complete window of `_WINDOW_SECONDS`.
 """
 
 from __future__ import annotations
@@ -118,21 +118,29 @@ class _Series:
         )
 
 
-_stages = {stage: _Series() for stage in STAGES}
-# Requests per bucket of _BUCKETS_SECONDS for each stage, not cumulative; the last counts those above the largest bound.
-_buckets = {stage: [0] * (len(_BUCKETS_SECONDS) + 1) for stage in STAGES}
+# Keyed by (stage, name); declared when a predictor or a feature view starts serving, so each series is exported from the first scrape.
+_stages: dict[tuple[str, str], _Series] = {}
+# Requests per bucket of _BUCKETS_SECONDS for each key, not cumulative; the last counts those above the largest bound.
+_buckets: dict[tuple[str, str], list[int]] = {}
 _register_lock = threading.Lock()
 _registered = False
 
 
-def _observe(stages_ns: dict[str, int]) -> None:
+def _declare(stage: str, name: str) -> None:
+    """Export the stage of feature view or model `name` at zero until a request runs it, so increase() counts the first one."""
+    key = (stage, name)
+    if key not in _stages:
+        _buckets[key] = [0] * (len(_BUCKETS_SECONDS) + 1)
+        _stages[key] = _Series()
+
+
+def _observe(stages_ns: dict[tuple[str, str], int]) -> None:
     now_ns = time.perf_counter_ns()
-    for stage, duration_ns in stages_ns.items():
-        series = _stages.get(stage)
-        if series is None:
-            continue
-        series._observe(duration_ns, now_ns)
-        _buckets[stage][bisect.bisect_left(_BUCKETS_SECONDS, duration_ns / 1e9)] += 1
+    for key, duration_ns in stages_ns.items():
+        if key not in _stages:
+            _declare(*key)
+        _stages[key]._observe(duration_ns, now_ns)
+        _buckets[key][bisect.bisect_left(_BUCKETS_SECONDS, duration_ns / 1e9)] += 1
 
 
 def _register() -> None:
@@ -164,32 +172,31 @@ class _Collector:
         now_ns = time.perf_counter_ns()
         histogram = HistogramMetricFamily(
             "hopsworks_prediction_stage_seconds",
-            "Time one request spent in a stage: feature_lookup (including transformations), transformations, model_predict or feature_log",
-            labels=["stage"],
+            "Time one request spent in a stage of a feature view or model: feature_lookup (including transformations), transformations, model_predict or feature_log",
+            labels=["stage", "name"],
         )
         window_min = GaugeMetricFamily(
             "hopsworks_prediction_stage_window_min_seconds",
             f"Fastest request's stage in the current and the last complete {_WINDOW_SECONDS} s window",
-            labels=["stage"],
+            labels=["stage", "name"],
         )
         window_max = GaugeMetricFamily(
             "hopsworks_prediction_stage_window_max_seconds",
             f"Slowest request's stage in the current and the last complete {_WINDOW_SECONDS} s window",
-            labels=["stage"],
+            labels=["stage", "name"],
         )
-        for stage in STAGES:
-            # Every stage from the first scrape, at zero, so increase() counts a new pod's first requests.
+        for key in list(_stages):
             cumulative = 0
             buckets = []
             for bound, count in zip(
-                [*_BUCKETS_SECONDS, float("inf")], list(_buckets[stage]), strict=True
+                [*_BUCKETS_SECONDS, float("inf")], list(_buckets[key]), strict=True
             ):
                 cumulative += count
                 buckets.append((floatToGoString(bound), cumulative))
-            series = _stages[stage]
-            histogram.add_metric([stage], buckets, series.total_ns / 1e9)
+            series = _stages[key]
+            histogram.add_metric(list(key), buckets, series.total_ns / 1e9)
             calls, minimum, maximum = series._recent(now_ns)
             if calls:
-                window_min.add_metric([stage], minimum / 1e9)
-                window_max.add_metric([stage], maximum / 1e9)
+                window_min.add_metric(list(key), minimum / 1e9)
+                window_max.add_metric(list(key), maximum / 1e9)
         yield from (histogram, window_min, window_max)

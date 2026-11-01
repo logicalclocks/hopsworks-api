@@ -21,7 +21,7 @@ With telemetry on, every on-demand and model-dependent transformation, and each 
 - the cumulative call count and duration, exported as Prometheus counters, so an average over any interval and across replicas is `rate(seconds) / rate(calls)`;
 - the minimum and maximum duration over the last complete window of `_WINDOW_SECONDS`, exported as gauges.
 
-Each phase also adds its time to the `transformations` stage of the request, which [`hopsworks_common.request_metrics`][] exports.
+Each phase also adds its time to the request's `transformations` stage of this feature view, which [`hopsworks_common.request_metrics`][] exports.
 
 Spans are opened only for sampled requests, and only for the first row of each.
 Each feature view's transformation DAG is exported as one gauge series per edge.
@@ -77,6 +77,10 @@ class _Telemetry:
     ):
         self.feature_view = feature_view_name
         self.feature_view_version = str(feature_view_version)
+        # How the request stages name this feature view.
+        self.stage_name = f"{feature_view_name}:{feature_view_version}"
+        request_metrics._declare("feature_lookup", self.stage_name)
+        request_metrics._declare("transformations", self.stage_name)
         self.phases = {kind: _Series() for kind in execution_graphs}
         # Keyed by id(tf): the DAG holds the transformation functions for the life of the vector server.
         self.functions: dict[int, tuple[str, Any, _Series, dict[str, Any]]] = {}
@@ -189,7 +193,9 @@ class _Phase:
     def __exit__(self, exc_type, exc, tb):
         end_ns = time.perf_counter_ns()
         self._telemetry.phases[self._kind]._observe(end_ns - self._start_ns, end_ns)
-        tracing._add_stage_ns("transformations", end_ns - self._start_ns)
+        tracing._add_stage_ns(
+            "transformations", self._telemetry.stage_name, end_ns - self._start_ns
+        )
         if self._span is not None:
             return self._span.__exit__(exc_type, exc, tb)
         return False

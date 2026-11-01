@@ -87,19 +87,8 @@ def telemetry_on(mocker, span_exporter):
 
 
 def _fresh_request_metrics(mocker):
-    mocker.patch.object(
-        request_metrics,
-        "_stages",
-        {stage: request_metrics._Series() for stage in request_metrics.STAGES},
-    )
-    mocker.patch.object(
-        request_metrics,
-        "_buckets",
-        {
-            stage: [0] * (len(request_metrics._BUCKETS_SECONDS) + 1)
-            for stage in request_metrics.STAGES
-        },
-    )
+    mocker.patch.object(request_metrics, "_stages", {})
+    mocker.patch.object(request_metrics, "_buckets", {})
     mocker.patch.object(tracing, "_request_observers", [request_metrics._observe])
 
 
@@ -319,7 +308,10 @@ class TestEnabled:
             for kind in ("on_demand", "model_dependent")
         )
         stages = _stage_metrics()
-        transformations = {"stage": "transformations"}
+        transformations = {
+            "stage": "transformations",
+            "name": f"{FEATURE_VIEW}:{VERSION}",
+        }
         assert (
             stages.get_sample_value(
                 "hopsworks_prediction_stage_seconds_count", transformations
@@ -347,7 +339,8 @@ class TestEnabled:
         assert _sample(_metrics(), "hopsworks_transformations_calls_total") == 1
         assert (
             _stage_metrics().get_sample_value(
-                "hopsworks_prediction_stage_seconds_count", {"stage": "transformations"}
+                "hopsworks_prediction_stage_seconds_count",
+                {"stage": "transformations", "name": f"{FEATURE_VIEW}:{VERSION}"},
             )
             == 0
         )
