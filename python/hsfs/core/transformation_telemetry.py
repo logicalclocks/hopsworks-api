@@ -21,7 +21,7 @@ With telemetry on, every on-demand and model-dependent transformation, and each 
 - the cumulative call count and duration, exported as Prometheus counters, so an average over any interval and across replicas is `rate(seconds) / rate(calls)`;
 - the minimum and maximum duration over the last complete window of `_WINDOW_SECONDS`, exported as gauges.
 
-Each request the model server scopes with [`hopsworks_common.tracing._request_scope`][] also adds its total transformation time, all rows and both phases, to a histogram and to the same window gauges, so its quantiles over any interval and across replicas come from `histogram_quantile`.
+Each phase also adds its time to the `transformations` stage of the request, which [`hopsworks_common.request_metrics`][] exports.
 
 Spans are opened only for sampled requests, and only for the first row of each.
 Each feature view's transformation DAG is exported as one gauge series per edge.
@@ -29,14 +29,13 @@ Each feature view's transformation DAG is exported as one gauge series per edge.
 
 from __future__ import annotations
 
-import bisect
 import contextlib
 import logging
 import threading
 import time
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common import tracing
+from hopsworks_common import request_metrics, tracing
 
 
 if TYPE_CHECKING:
@@ -54,92 +53,12 @@ KIND_MODEL_DEPENDENT = "model_dependent"
 ROW_SPAN_NAME = "transformations"
 SPAN_KIND_ATTRIBUTE = "hopsworks.span.kind"
 
-_WINDOW_SECONDS = 60
-_WINDOW_NS = _WINDOW_SECONDS * 1_000_000_000
-
-# Ten bounds a decade from 10 us to 10 s, so a quantile interpolated within a bucket is off by at most 26%.
-_REQUEST_BUCKETS_SECONDS = [float(f"{10 ** (k / 10):.3g}") for k in range(-50, 11)]
+_WINDOW_SECONDS = request_metrics._WINDOW_SECONDS
+_WINDOW_NS = request_metrics._WINDOW_NS
+_Series = request_metrics._Series
 
 _PHASE_LABELS = ["feature_view", "feature_view_version", "kind"]
 _FUNCTION_LABELS = [*_PHASE_LABELS, "transformation", "outputs"]
-
-
-class _Series:
-    """Running count and duration of one transformation or phase, plus its extremes over fixed windows.
-
-    Updates are not locked: under concurrent requests a window can miss an extreme, and a rotation racing an update can drop one call from a window.
-    """
-
-    __slots__ = (
-        "calls",
-        "errors",
-        "total_ns",
-        "_window_end_ns",
-        "_window_calls",
-        "_window_min_ns",
-        "_window_max_ns",
-        "_last_calls",
-        "_last_min_ns",
-        "_last_max_ns",
-    )
-
-    def __init__(self):
-        self.calls = 0
-        self.errors = 0
-        self.total_ns = 0
-        self._window_end_ns = 0
-        self._window_calls = 0
-        self._window_min_ns = 0
-        self._window_max_ns = 0
-        self._last_calls = 0
-        self._last_min_ns = 0
-        self._last_max_ns = 0
-
-    def _observe(self, duration_ns: int, now_ns: int) -> None:
-        if now_ns >= self._window_end_ns:
-            self._rotate(now_ns)
-        self.calls += 1
-        self.total_ns += duration_ns
-        if self._window_calls == 0 or duration_ns < self._window_min_ns:
-            self._window_min_ns = duration_ns
-        if duration_ns > self._window_max_ns:
-            self._window_max_ns = duration_ns
-        self._window_calls += 1
-
-    def _rotate(self, now_ns: int) -> None:
-        # A window that ended more than a window ago saw no calls in the window after it, so it is not the last complete one.
-        fresh = now_ns < self._window_end_ns + _WINDOW_NS
-        self._last_calls = self._window_calls if fresh else 0
-        self._last_min_ns = self._window_min_ns
-        self._last_max_ns = self._window_max_ns
-        self._window_calls = 0
-        self._window_min_ns = 0
-        self._window_max_ns = 0
-        self._window_end_ns = now_ns + _WINDOW_NS
-
-    def _last_window(self, now_ns: int) -> tuple[int, int, int]:
-        """Calls, minimum and maximum of the last complete window as of `now_ns`, without rotating."""
-        if now_ns >= self._window_end_ns + _WINDOW_NS:
-            return 0, 0, 0
-        if now_ns >= self._window_end_ns:
-            return self._window_calls, self._window_min_ns, self._window_max_ns
-        return self._last_calls, self._last_min_ns, self._last_max_ns
-
-    def _recent(self, now_ns: int) -> tuple[int, int, int]:
-        """Calls, minimum and maximum of the last complete window and the current one together, as of `now_ns`."""
-        last_calls, last_min, last_max = self._last_window(now_ns)
-        if now_ns >= self._window_end_ns:
-            return last_calls, last_min, last_max
-        current_calls = self._window_calls
-        if not current_calls:
-            return last_calls, last_min, last_max
-        if not last_calls:
-            return current_calls, self._window_min_ns, self._window_max_ns
-        return (
-            last_calls + current_calls,
-            min(last_min, self._window_min_ns),
-            max(last_max, self._window_max_ns),
-        )
 
 
 def _node_id(tf: transformation_function.TransformationFunction) -> str:
@@ -270,7 +189,7 @@ class _Phase:
     def __exit__(self, exc_type, exc, tb):
         end_ns = time.perf_counter_ns()
         self._telemetry.phases[self._kind]._observe(end_ns - self._start_ns, end_ns)
-        tracing._add_transformations_ns(end_ns - self._start_ns)
+        tracing._add_stage_ns("transformations", end_ns - self._start_ns)
         if self._span is not None:
             return self._span.__exit__(exc_type, exc, tb)
         return False
@@ -311,18 +230,6 @@ _telemetries: dict[tuple[str, str], _Telemetry] = {}
 _collector_lock = threading.Lock()
 _collector_registered = False
 
-# Every scoped request's total transformation time, whatever feature views it used.
-_requests = _Series()
-# Requests per bucket of _REQUEST_BUCKETS_SECONDS, not cumulative; the last counts those above the largest bound.
-_request_buckets = [0] * (len(_REQUEST_BUCKETS_SECONDS) + 1)
-
-
-def _observe_request(duration_ns: int) -> None:
-    _requests._observe(duration_ns, time.perf_counter_ns())
-    _request_buckets[
-        bisect.bisect_left(_REQUEST_BUCKETS_SECONDS, duration_ns / 1e9)
-    ] += 1
-
 
 def _register(telemetry: _Telemetry) -> None:
     global _collector_registered
@@ -332,7 +239,6 @@ def _register(telemetry: _Telemetry) -> None:
         if _collector_registered:
             return
         _collector_registered = True
-        tracing._request_observers.append(_observe_request)
         try:
             from prometheus_client import REGISTRY
         except ImportError:
@@ -348,12 +254,7 @@ class _Collector:
     """Publishes every served feature view's transformation series when Prometheus scrapes the predictor."""
 
     def collect(self):
-        from prometheus_client.core import (
-            CounterMetricFamily,
-            GaugeMetricFamily,
-            HistogramMetricFamily,
-        )
-        from prometheus_client.utils import floatToGoString
+        from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
 
         now_ns = time.perf_counter_ns()
         phase_calls = CounterMetricFamily(
@@ -406,41 +307,6 @@ class _Collector:
             "An edge of a feature view's transformation DAG; a function fed only by features has one series with an empty depends_on",
             labels=[*_FUNCTION_LABELS, "depends_on"],
         )
-        # Exported from the first scrape, at zero, so increase() counts a new pod's first requests.
-        cumulative = 0
-        buckets = []
-        for bound, count in zip(
-            [*_REQUEST_BUCKETS_SECONDS, float("inf")],
-            list(_request_buckets),
-            strict=True,
-        ):
-            cumulative += count
-            buckets.append((floatToGoString(bound), cumulative))
-        request_metrics = [
-            HistogramMetricFamily(
-                "hopsworks_transformations_request_seconds",
-                "Time one request spent in transformations, all its feature vectors and both phases",
-                buckets=buckets,
-                sum_value=_requests.total_ns / 1e9,
-            )
-        ]
-        # Including the current window, so a request shows in the gauges at the next scrape.
-        calls, minimum, maximum = _requests._recent(now_ns)
-        if calls:
-            request_metrics.append(
-                GaugeMetricFamily(
-                    "hopsworks_transformations_request_window_min_seconds",
-                    f"Fastest request's transformations in the current and the last complete {_WINDOW_SECONDS} s window",
-                    value=minimum / 1e9,
-                )
-            )
-            request_metrics.append(
-                GaugeMetricFamily(
-                    "hopsworks_transformations_request_window_max_seconds",
-                    f"Slowest request's transformations in the current and the last complete {_WINDOW_SECONDS} s window",
-                    value=maximum / 1e9,
-                )
-            )
         for telemetry in list(_telemetries.values()):
             view = [telemetry.feature_view, telemetry.feature_view_version]
             for kind, series in telemetry.phases.items():
@@ -473,5 +339,4 @@ class _Collector:
             function_min,
             function_max,
             dag_edge,
-            *request_metrics,
         )

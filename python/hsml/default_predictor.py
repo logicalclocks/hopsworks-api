@@ -1154,7 +1154,7 @@ class DefaultPredict:
                 datetime.now(timezone.utc),
             )
             if tracing._enabled:
-                with tracing._child_span("feature_log", {"hopsworks.rows": len(rows)}):
+                with tracing._stage("feature_log", {"hopsworks.rows": len(rows)}):
                     self._log_worker._submit(entry)
             else:
                 self._log_worker._submit(entry)
@@ -1456,9 +1456,7 @@ class DefaultPredict:
         try:
             rows = self.prepare_rows(inputs)
             if tracing._enabled:
-                with tracing._child_span(
-                    "feature_lookup", {"hopsworks.rows": len(rows)}
-                ):
+                with tracing._stage("feature_lookup", {"hopsworks.rows": len(rows)}):
                     vectors = fetch(rows)
                     if inspect.isawaitable(vectors):
                         vectors = await vectors
@@ -1474,7 +1472,7 @@ class DefaultPredict:
                     f"{len(rows)} rows.",
                 )
             if tracing._enabled:
-                with tracing._child_span("model_predict"):
+                with tracing._stage("model_predict"):
                     output = self.model_predict(vectors)
             else:
                 output = self.model_predict(vectors)

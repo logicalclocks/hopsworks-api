@@ -25,11 +25,14 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import sys
+import time
 from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+
+    from typing_extensions import Self
 
 
 _TRACER_NAME = "hopsworks"
@@ -47,13 +50,13 @@ _row_budget: contextvars.ContextVar[tuple[int, dict] | None] = contextvars.Conte
     "hopsworks_trace_row_budget", default=None
 )
 
-# Nanoseconds the current request has spent in transformations so far, in a one-element list the request adds to.
-_request_transformations_ns: contextvars.ContextVar[list[int] | None] = (
-    contextvars.ContextVar("hopsworks_request_transformations_ns", default=None)
+# Nanoseconds the current request has spent in each stage so far, such as feature_lookup, which the request adds to.
+_request_stages_ns: contextvars.ContextVar[dict[str, int] | None] = (
+    contextvars.ContextVar("hopsworks_request_stages_ns", default=None)
 )
 
-# Called with a request's total transformation time when a request that ran transformations ends.
-_request_observers: list[Callable[[int], None]] = []
+# Called with a request's time per stage when a request that ran any stage ends.
+_request_observers: list[Callable[[dict[str, int]], None]] = []
 
 
 def _enable(active: bool = True) -> None:
@@ -61,6 +64,9 @@ def _enable(active: bool = True) -> None:
     global _available, _enabled
     _available = True
     _enabled = active
+    from hopsworks_common import request_metrics
+
+    request_metrics._register()
 
 
 def _set_active(active: bool) -> None:
@@ -84,25 +90,51 @@ def _recording() -> bool:
 
 @contextlib.contextmanager
 def _request_scope(traced_rows: int) -> Iterator[None]:
-    """Bound the transformation spans of one request to its first `traced_rows` rows, and total its transformation time; the model server opens this around each request, sampled or not."""
+    """Bound the transformation spans of one request to its first `traced_rows` rows, and total its time per stage; the model server opens this around each request, sampled or not."""
     token = _row_budget.set((traced_rows, {}))
-    elapsed = [0]
-    elapsed_token = _request_transformations_ns.set(elapsed)
+    stages: dict[str, int] = {}
+    stages_token = _request_stages_ns.set(stages)
     try:
         yield
     finally:
-        _request_transformations_ns.reset(elapsed_token)
+        _request_stages_ns.reset(stages_token)
         _row_budget.reset(token)
-        if elapsed[0]:
+        if stages:
             for observer in _request_observers:
-                observer(elapsed[0])
+                observer(stages)
 
 
-def _add_transformations_ns(duration_ns: int) -> None:
-    """Add transformation time to the current request's total; outside a request scope it is not counted."""
-    elapsed = _request_transformations_ns.get()
-    if elapsed is not None:
-        elapsed[0] += duration_ns
+def _add_stage_ns(stage: str, duration_ns: int) -> None:
+    """Add time to one stage of the current request; outside a request scope it is not counted."""
+    stages = _request_stages_ns.get()
+    if stages is not None:
+        stages[stage] = stages.get(stage, 0) + duration_ns
+
+
+class _Stage:
+    """Times one stage of a request into its stage totals, under a span of the same name when the request is sampled."""
+
+    __slots__ = ("_name", "_span", "_start_ns")
+
+    def __init__(self, name: str, attributes: dict[str, Any] | None):
+        self._name = name
+        self._span = _child_span(name, attributes)
+
+    def __enter__(self) -> Self:
+        self._span.__enter__()
+        self._start_ns = time.perf_counter_ns()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        _add_stage_ns(self._name, time.perf_counter_ns() - self._start_ns)
+        return self._span.__exit__(exc_type, exc, tb)
+
+
+def _stage(name: str, attributes: dict[str, Any] | None = None):
+    """A context manager timing one stage of the current request, such as `feature_lookup`; a no-op while telemetry is off."""
+    if not _enabled:
+        return _NO_SPAN
+    return _Stage(name, attributes)
 
 
 def _take_row(key: Any = None) -> bool:

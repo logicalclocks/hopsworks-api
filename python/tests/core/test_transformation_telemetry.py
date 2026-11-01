@@ -15,7 +15,7 @@
 #
 
 import pytest
-from hopsworks_common import tracing
+from hopsworks_common import request_metrics, tracing
 from hsfs import engine, transformation_function
 from hsfs.core import (
     transformation_execution_dag,
@@ -82,18 +82,31 @@ def telemetry_off(mocker):
 def telemetry_on(mocker, span_exporter):
     # span_exporter switches telemetry on; patching it again here would restore the switched-on value at teardown.
     mocker.patch.dict(transformation_telemetry._telemetries, clear=True)
-    mocker.patch.object(
-        transformation_telemetry, "_requests", transformation_telemetry._Series()
-    )
-    mocker.patch.object(
-        transformation_telemetry,
-        "_request_buckets",
-        [0] * (len(transformation_telemetry._REQUEST_BUCKETS_SECONDS) + 1),
-    )
-    mocker.patch.object(
-        tracing, "_request_observers", [transformation_telemetry._observe_request]
-    )
+    _fresh_request_metrics(mocker)
     return span_exporter
+
+
+def _fresh_request_metrics(mocker):
+    mocker.patch.object(
+        request_metrics,
+        "_stages",
+        {stage: request_metrics._Series() for stage in request_metrics.STAGES},
+    )
+    mocker.patch.object(
+        request_metrics,
+        "_buckets",
+        {
+            stage: [0] * (len(request_metrics._BUCKETS_SECONDS) + 1)
+            for stage in request_metrics.STAGES
+        },
+    )
+    mocker.patch.object(tracing, "_request_observers", [request_metrics._observe])
+
+
+def _stage_metrics():
+    registry = prometheus_client.CollectorRegistry()
+    registry.register(request_metrics._Collector())
+    return registry
 
 
 def _server(mocker, graphs):
@@ -290,7 +303,7 @@ class TestEnabled:
         assert _sample(metrics, "hopsworks_transformations_calls_total") == 1
         assert _sample(metrics, "hopsworks_transformations_seconds_total") > 0
 
-    def test_a_request_adds_both_phases_of_every_row_to_one_observation(
+    def test_a_request_adds_both_phases_of_every_row_to_its_transformations_stage(
         self, mocker, graphs, telemetry_on
     ):
         server = _server(mocker, graphs)
@@ -305,16 +318,21 @@ class TestEnabled:
             _sample(metrics, "hopsworks_transformations_seconds_total", kind=kind)
             for kind in ("on_demand", "model_dependent")
         )
+        stages = _stage_metrics()
+        transformations = {"stage": "transformations"}
         assert (
-            metrics.get_sample_value("hopsworks_transformations_request_seconds_count")
+            stages.get_sample_value(
+                "hopsworks_prediction_stage_seconds_count", transformations
+            )
             == 2
         )
-        assert metrics.get_sample_value(
-            "hopsworks_transformations_request_seconds_sum"
+        assert stages.get_sample_value(
+            "hopsworks_prediction_stage_seconds_sum", transformations
         ) == pytest.approx(phases)
         assert (
-            metrics.get_sample_value(
-                "hopsworks_transformations_request_seconds_bucket", {"le": "+Inf"}
+            stages.get_sample_value(
+                "hopsworks_prediction_stage_seconds_bucket",
+                {**transformations, "le": "+Inf"},
             )
             == 2
         )
@@ -326,10 +344,11 @@ class TestEnabled:
 
         _apply(server)
 
-        metrics = _metrics()
-        assert _sample(metrics, "hopsworks_transformations_calls_total") == 1
+        assert _sample(_metrics(), "hopsworks_transformations_calls_total") == 1
         assert (
-            metrics.get_sample_value("hopsworks_transformations_request_seconds_count")
+            _stage_metrics().get_sample_value(
+                "hopsworks_prediction_stage_seconds_count", {"stage": "transformations"}
+            )
             == 0
         )
 
@@ -406,25 +425,6 @@ class TestEnabled:
             assert traced is False
 
         assert [s.name for s in telemetry_on.get_finished_spans()] == ["predict"]
-
-
-class TestRequestBuckets:
-    def test_a_request_lands_in_the_first_bucket_at_or_above_it(self, mocker):
-        mocker.patch.object(
-            transformation_telemetry, "_requests", transformation_telemetry._Series()
-        )
-        buckets = [0] * (len(transformation_telemetry._REQUEST_BUCKETS_SECONDS) + 1)
-        mocker.patch.object(transformation_telemetry, "_request_buckets", buckets)
-
-        transformation_telemetry._observe_request(1_000_000)  # 1 ms, a bound
-        transformation_telemetry._observe_request(
-            20_000_000_000
-        )  # 20 s, above the last
-
-        bounds = transformation_telemetry._REQUEST_BUCKETS_SECONDS
-        assert buckets[bounds.index(0.001)] == 1
-        assert buckets[-1] == 1
-        assert bounds[0] == 1e-05 and bounds[-1] == 10.0
 
 
 class TestWindow:

@@ -1485,6 +1485,24 @@ class TestAsyncPredict:
         assert spans["feature_lookup"].attributes["hopsworks.rows"] == 1
         assert spans["model_predict"].parent.span_id == request
 
+    def test_an_unsampled_request_times_its_stages_without_spans(
+        self, span_exporter, mocker
+    ):
+        from hopsworks_common import tracing
+
+        observed = []
+        mocker.patch.object(tracing, "_request_observers", [observed.append])
+        predictor = self._predictor()
+        predictor.logging_enabled = True
+        mocker.patch.object(predictor, "_log_worker")
+
+        with tracing._request_scope(1):
+            asyncio.run(predictor.predict([{"cc_num": 1}]))
+
+        assert span_exporter.get_finished_spans() == ()
+        assert set(observed[0]) == {"feature_lookup", "model_predict", "feature_log"}
+        assert all(duration > 0 for duration in observed[0].values())
+
     def test_an_untraced_request_opens_no_spans(self, mocker):
         from hopsworks_common import tracing
 
