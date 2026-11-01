@@ -132,8 +132,6 @@ DeprecatedSpineTypes = (
 _logger = logging.getLogger(__name__)
 
 
-@public
-@typechecked
 def _timed_stage(kind: str):
     """Time a feature view method as stage `kind` of the current request, named by this feature view, while tracing is on.
 
@@ -165,6 +163,8 @@ def _timed_stage(kind: str):
     return decorate
 
 
+@public
+@typechecked
 class FeatureView:
     """Metadata class for Hopsworks feature views.
 
