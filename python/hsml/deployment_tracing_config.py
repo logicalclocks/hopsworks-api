@@ -35,7 +35,7 @@ class DeploymentTracingConfig:
             compute trace cost metrics.
         output_token_price_per_million_tokens: Optional output token price used to
             compute trace cost metrics.
-        sampling_percentage: Percentage of a model deployment's requests to trace, from 0 to 100.
+        sampling_percentage: Percentage of a model deployment's requests to trace, from 0 to 100, for example `0.01` for one in 10,000.
             `None` traces 10%; every request is still counted in the transformation metrics.
             Agent deployments ignore it.
         active: Whether a model deployment created with tracing records it right now.
@@ -58,7 +58,7 @@ class DeploymentTracingConfig:
         otel_tracing_storage: str | None = STORAGE_ONLINE,
         input_token_price_per_million_tokens: float | None = None,
         output_token_price_per_million_tokens: float | None = None,
-        sampling_percentage: int | None = None,
+        sampling_percentage: float | None = None,
         active: bool | None = None,
         duration_days: int | None = None,
     ):
@@ -100,7 +100,7 @@ class DeploymentTracingConfig:
         return otel_tracing_storage
 
     @classmethod
-    def _validate_sampling_percentage(cls, sampling_percentage: int | None):
+    def _validate_sampling_percentage(cls, sampling_percentage: float | None):
         if sampling_percentage is not None and not 0 <= sampling_percentage <= 100:
             raise ValueError(
                 f"sampling_percentage must be between 0 and 100, got {sampling_percentage}."
@@ -319,7 +319,7 @@ class DeploymentTracingConfig:
         return self._sampling_percentage
 
     @sampling_percentage.setter
-    def sampling_percentage(self, sampling_percentage: int | None):
+    def sampling_percentage(self, sampling_percentage: float | None):
         self._sampling_percentage = self._validate_sampling_percentage(
             sampling_percentage
         )

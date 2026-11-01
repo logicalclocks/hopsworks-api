@@ -198,7 +198,7 @@ class Deployment:
     def set_tracing(
         self,
         active: bool | None = None,
-        sampling_percentage: int | None = None,
+        sampling_percentage: float | None = None,
         duration_days: int | None = None,
     ) -> None:
         """Switch tracing on or off, or change the share of requests it traces or how long it stays on, without restarting the deployment.
@@ -219,7 +219,7 @@ class Deployment:
 
         Parameters:
             active: Whether to record traces and transformation metrics; `None` keeps the current value.
-            sampling_percentage: Percentage of requests to trace, from 0 to 100; `None` keeps the current value.
+            sampling_percentage: Percentage of requests to trace, from 0 to 100, for example `0.1` for one in 1,000; `None` keeps the current value.
             duration_days: Days tracing stays on, from 1; `None` keeps the current value.
 
         Raises:
