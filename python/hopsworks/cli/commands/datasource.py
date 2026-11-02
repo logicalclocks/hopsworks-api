@@ -2120,11 +2120,16 @@ def _google_syncs_path(fs: Any, group: str, name: str, *tail: Any) -> list[Any]:
 
 
 def _google_send(
-    method: str, path: list[Any], query: dict[str, Any] | None = None
+    method: str,
+    path: list[Any],
+    query: dict[str, Any] | None = None,
+    body: dict[str, Any] | None = None,
 ) -> Any:
     from hopsworks_common.core import rest
 
-    return _call(method.capitalize(), lambda: rest._send_request(method, path, query))
+    return _call(
+        method.capitalize(), lambda: rest._send_request(method, path, query, body)
+    )
 
 
 _GOOGLE_HEADERS = [
@@ -2205,7 +2210,15 @@ def _google_group(group: str) -> None:
                 "lastSuccess",
                 "lastError",
                 "filesTotal",
+                "filesSkipped",
                 "bytesTotal",
+                "folderIds",
+                "fileIds",
+                "includePatterns",
+                "excludePatterns",
+                "maxFileSizeMb",
+                "mirrorDeletions",
+                "paused",
                 "retryable",
             )
         ]
@@ -2235,6 +2248,9 @@ def _google_group(group: str) -> None:
 
     action("run", "Start a run of the sync now.", "✓ Sync %s: %s")
     action("retry", "Retry a sync whose create failed half way.", "✓ Sync %s: %s")
+
+    if group == "google-drive":
+        _google_drive_settings(sync, group)
 
     @sync.command("delete", help="Delete a sync, and its dataset unless --keep-files.")
     @click.argument("name")
@@ -2270,6 +2286,85 @@ def _google_group(group: str) -> None:
             output.print_json({"id": sync_id, "deleted": True})
             return
         output.success("✓ Deleted sync %s", sync_id)
+
+
+def _google_drive_settings(sync: click.Group, group: str) -> None:
+    # What a Drive sync reads (its files and folders) changes only through a new pick in Hopsable's Connect card, by
+    # the person who connected the source; these change how it runs.
+    def put(ctx: click.Context, name: str, sync_id: int, body: dict[str, Any]) -> None:
+        fs, _ = _google_source(ctx, group, name)
+        s = _google_send("PUT", _google_syncs_path(fs, group, name, sync_id), body=body)
+        if output.JSON_MODE:
+            output.print_json(s)
+            return
+        output.success("✓ Sync %s updated", sync_id)
+
+    @sync.command(
+        "schedule",
+        help="Set the sync's Quartz cron in UTC, seconds first ('0 0 * ? * *' is hourly), or 'none' to copy only on run.",
+    )
+    @click.argument("name")
+    @click.argument("sync_id", type=int)
+    @click.argument("cron")
+    @click.pass_context
+    def schedule(ctx: click.Context, name: str, sync_id: int, cron: str) -> None:
+        put(
+            ctx,
+            name,
+            sync_id,
+            {"cronExpression": None if cron.lower() == "none" else cron},
+        )
+
+    @sync.command("pause", help="Stop scheduled runs until resume.")
+    @click.argument("name")
+    @click.argument("sync_id", type=int)
+    @click.pass_context
+    def pause(ctx: click.Context, name: str, sync_id: int) -> None:
+        put(ctx, name, sync_id, {"paused": True})
+
+    @sync.command("resume", help="Start scheduled runs again.")
+    @click.argument("name")
+    @click.argument("sync_id", type=int)
+    @click.pass_context
+    def resume(ctx: click.Context, name: str, sync_id: int) -> None:
+        put(ctx, name, sync_id, {"paused": False})
+
+    @sync.command(
+        "filter",
+        help="Copy only files whose path under the dataset matches --include and not --exclude (globs, e.g. 'Reports/**/*.csv'), up to --max-size-mb.",
+    )
+    @click.argument("name")
+    @click.argument("sync_id", type=int)
+    @click.option("--include", "include", multiple=True, help="Glob to copy; repeat.")
+    @click.option("--exclude", "exclude", multiple=True, help="Glob to skip; repeat.")
+    @click.option("--max-size-mb", type=int, help="Skip files larger than this.")
+    @click.pass_context
+    def filter_(
+        ctx: click.Context,
+        name: str,
+        sync_id: int,
+        include: tuple[str, ...],
+        exclude: tuple[str, ...],
+        max_size_mb: int | None,
+    ) -> None:
+        body: dict[str, Any] = {
+            "includePatterns": list(include),
+            "excludePatterns": list(exclude),
+        }
+        if max_size_mb is not None:
+            body["maxFileSizeMb"] = max_size_mb
+        put(ctx, name, sync_id, body)
+
+    @sync.command(
+        "mirror",
+        help="With --on (the default for a new sync), a file removed in Drive is removed from the dataset at the next run.",
+    )
+    @click.argument("name")
+    @click.argument("sync_id", type=int)
+    @click.option("--on/--off", "on", required=True)
+    @click.pass_context
+    def mirror(ctx: click.Context, name: str, sync_id: int, on: bool) -> None:
+        put(ctx, name, sync_id, {"mirrorDeletions": on})
 
 
 for _group in _GOOGLE:

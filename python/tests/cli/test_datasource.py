@@ -1555,3 +1555,48 @@ def test_a_drive_sync_delete_keeps_files_when_asked():
     assert result.exit_code == 0, result.output
     assert send.call_args.args[0] == "DELETE"
     assert send.call_args.args[2] == {"keepFiles": "true", "force": "false"}
+
+
+def test_drive_sync_settings_put_only_the_fields_they_change():
+    cases = [
+        (["schedule", "src", "5", "0 0 * ? * *"], {"cronExpression": "0 0 * ? * *"}),
+        (["schedule", "src", "5", "none"], {"cronExpression": None}),
+        (["pause", "src", "5"], {"paused": True}),
+        (["resume", "src", "5"], {"paused": False}),
+        (["mirror", "src", "5", "--off"], {"mirrorDeletions": False}),
+        (
+            ["filter", "src", "5", "--include", "Reports/**", "--max-size-mb", "50"],
+            {
+                "includePatterns": ["Reports/**"],
+                "excludePatterns": [],
+                "maxFileSizeMb": 50,
+            },
+        ),
+    ]
+    for args, body in cases:
+        result, _, send = _with_source(
+            _source("GOOGLE_DRIVE"), ["google-drive", "sync", *args]
+        )
+        assert result.exit_code == 0, (args, result.output)
+        assert send.call_args.args[0] == "PUT"
+        assert send.call_args.args[1][-1] == 5
+        assert send.call_args.args[3] == body
+
+
+def test_no_cli_verb_sets_what_a_drive_sync_reads():
+    for args in (
+        ["google-drive", "sync", "create", "src"],
+        ["google-drive", "sync", "set-folder", "src", "5", "x"],
+        ["google-drive", "sync", "filter", "src", "5", "--folder", "x"],
+    ):
+        result, _, send = _with_source(_source("GOOGLE_DRIVE"), args)
+        assert result.exit_code != 0, args
+        send.assert_not_called()
+
+
+def test_google_analytics_syncs_have_no_drive_settings():
+    result, _, _ = _with_source(
+        _source("CRM", crmType="GOOGLE_ANALYTICS"),
+        ["google-analytics", "sync", "pause", "src", "5"],
+    )
+    assert result.exit_code != 0
