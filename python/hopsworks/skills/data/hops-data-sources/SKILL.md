@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs) or copies files from SharePoint into a dataset.
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs) or copies files from SharePoint into a dataset, or reads a Google Drive or Google Analytics source that Hopsworks loads into a dataset.
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -19,6 +19,8 @@ Never ask the user for a password, token or key in the conversation, in a messag
 `name` is in capitals, digits and underscores. `test` is a `hops datasource create ... --test` command, which checks the connection and creates nothing; `{{field}}` stands for a field's value. The chat saves the secret as the user's private account variable `name`, and replies with the settings and the secret's name, never its value. Then create the data source with the same command without `--test`. Outside the chat, ask the user to add the account variable in their account settings and tell you its name.
 
 Mounting and ingesting both build a feature pipeline's input side: an external feature group leaves data in the source (no copy, no copy-time MITs); a DLTHub ingest copies the source into a managed feature group. Mounting is the lower-cost path when the source already holds the data you want, since reuse beats rebuilding a pipeline.
+
+Google Drive and Google Analytics sources have no tables: [references/google-sources.md](references/google-sources.md).
 
 ## Contract
 - **Input:** a configured connector + a table from it.

@@ -4297,3 +4297,28 @@ class TestCRMShopifyConnector:
             "secret",
         )
         assert payload["privateAppPassword"] is None
+
+
+class TestGoogleDriveConnector:
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.GoogleDriveConnector)
+        assert sc.id == 1
+        assert sc.name == "test_google_drive"
+        assert sc._featurestore_id == 67
+        assert sc.to_dict()["storageConnectorType"] == "GOOGLE_DRIVE"
+        assert sc.to_dict()["type"] == "featurestoreGoogleDriveConnectorDTO"
+
+
+class TestGoogleAnalyticsConnector:
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_google_analytics"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.CRMAndAnalyticsConnector)
+        assert sc.crm_type == "GOOGLE_ANALYTICS"
+        assert sc.property_id == "266439889"

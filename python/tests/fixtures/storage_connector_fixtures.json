@@ -712,6 +712,38 @@
         },
         "headers": null
     },
+    "get_google_drive": {
+        "response": {
+            "type": "featurestoreGoogleDriveConnectorDTO",
+            "description": "hopsable:connect:3f2a",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_google_drive",
+            "storageConnectorType": "GOOGLE_DRIVE",
+            "pinned": false
+        },
+        "method": "GET",
+        "path_params": ["project", "119", "featurestores", 67, "storageconnectors", "test_google_drive"],
+        "query_params": {"temporaryCredentials": true},
+        "headers": null
+    },
+    "get_google_analytics": {
+        "response": {
+            "type": "featurestoreCRMConnectorDTO",
+            "description": "hopsable:connect:9c1b",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "test_google_analytics",
+            "storageConnectorType": "CRM",
+            "crmType": "GOOGLE_ANALYTICS",
+            "propertyId": "266439889",
+            "operationId": "hopsable-0a1b2c3d4e5f60718293a4b5"
+        },
+        "method": "GET",
+        "path_params": ["project", "119", "featurestores", 67, "storageconnectors", "test_google_analytics"],
+        "query_params": {"temporaryCredentials": true},
+        "headers": null
+    },
     "get_google_sheets": {
         "response": {
             "type": "featurestoreGoogleSheetsConnectorDTO",
