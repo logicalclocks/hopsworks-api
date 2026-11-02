@@ -11,6 +11,7 @@ no subprocess hop.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import random
 import sys
@@ -718,6 +719,146 @@ def fg_create_external(
         output.print_json(_fg_to_dict(fg))
 
 
+@fg_group.command("ingest")
+@click.argument("name")
+@click.option(
+    "--connector", "connector_name", required=True, help="Data source to copy from."
+)
+@click.option(
+    "--table",
+    "table",
+    required=True,
+    help="Table or resource to copy, as `hops datasource tables <connector>` lists it.",
+)
+@click.option(
+    "--database",
+    "database",
+    help="Database of the table, where the source has several.",
+)
+@click.option("--version", type=int, help="Feature group version.")
+@click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
+@click.option("--event-time", "event_time", help="Event-time column.")
+@click.option("--online", is_flag=True, help="Also load the online feature store.")
+@click.option("--description", default="", help="Free-form description.")
+@click.option(
+    "--wait/--no-wait",
+    default=True,
+    help="Wait for the first copy to end (default) or return once it started.",
+)
+@click.pass_context
+def fg_ingest(
+    ctx: click.Context,
+    name: str,
+    connector_name: str,
+    table: str,
+    database: str | None,
+    version: int | None,
+    primary_key: str | None,
+    event_time: str | None,
+    online: bool,
+    description: str,
+    wait: bool,
+) -> None:
+    r"""Copy a data source table into a new feature group.
+
+    Hopsworks makes the group, its schema read from the source, and an ingestion
+    job; this runs the job once. Run it again with `hops job run <job>`.
+
+    \f
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        connector_name: Data source to copy from.
+        table: Table or resource of the source.
+        database: Database of the table.
+        version: Version; auto-assigned when omitted.
+        primary_key: Comma-separated primary keys.
+        event_time: Event-time column.
+        online: Whether to enable the online store.
+        description: Free-form description.
+        wait: Whether to wait for the copy to end.
+    """
+    from hopsworks.cli import auth  # noqa: PLC0415 - SDK loaded on use
+    from hopsworks.cli.commands import (
+        datasource as ds_cmd,  # noqa: PLC0415 - it imports fg
+    )
+
+    fs = session.get_feature_store(ctx)
+    try:
+        data_source = fs.get_data_source(connector_name)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not find data source '{connector_name}': {exc}"
+        ) from exc
+    if database is not None:
+        data_source.database = database
+    # The listed table carries its schema (sales.orders); a bare name in several schemas is refused.
+    data_source = ds_cmd._resolve_table(data_source, table, database)
+    # The SDK prints banners on save and run; --json keeps stdout for the payload.
+    with auth.quiet() if output.JSON_MODE else contextlib.nullcontext():
+        fg = _ingest(
+            fs, name, version, description, online, primary_key, event_time, data_source
+        )
+        execution = _run_ingest(fg, wait)
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                **_fg_to_dict(fg),
+                "job": fg.sink_job.name,
+                "execution": _execution_dict(execution),
+            }
+        )
+
+
+def _ingest(
+    fs, name, version, description, online, primary_key, event_time, data_source
+):
+    """The sink feature group on ``data_source``, saved: its schema read from the source."""
+    try:
+        fg = fs.create_feature_group(
+            name=name,
+            version=version,
+            description=description,
+            online_enabled=online,
+            primary_key=_split_csv(primary_key) or None,
+            event_time=event_time,
+            data_source=data_source,
+            sink_enabled=True,
+        )
+        fg.save()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not create feature group: {exc}") from exc
+    output.success(
+        "✓ Created feature group %s v%s, ingestion job %s",
+        fg.name,
+        fg.version,
+        fg.sink_job.name,
+    )
+    return fg
+
+
+def _run_ingest(fg, wait: bool):
+    try:
+        execution = fg.sink_job.run(await_termination=wait)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Run of ingestion job {fg.sink_job.name} failed: {exc}"
+        ) from exc
+    output.success(
+        "✓ Started job %s (execution #%s, state=%s)",
+        fg.sink_job.name,
+        getattr(execution, "id", "?"),
+        getattr(execution, "state", "?"),
+    )
+    return execution
+
+
+def _execution_dict(execution):
+    from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
+
+    return job_cmd._execution_to_dict(execution)
+
+
 @fg_group.command("insert")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version; defaults to latest.")
@@ -1299,7 +1440,8 @@ def _truncate_cell(value: Any, width: int = 60) -> str:
             head = ", ".join(str(x)[:12] for x in seq[:3])
             tail = ", …" if len(seq) > 3 else ""
             return f"[len={len(seq)}] {head}{tail}"
-    text = str(value)
+    # A line break in a value (an address) would split the table row.
+    text = " ".join(str(value).splitlines())
     return text if len(text) <= width else text[: width - 1] + "…"
 
 

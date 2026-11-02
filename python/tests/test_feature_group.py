@@ -34,6 +34,7 @@ from hsfs import (
 )
 from hsfs.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
+from hsfs.core.data_source import DataSource
 from hsfs.engine import python, spark
 from hsfs.transformation_function import TransformationType
 
@@ -826,6 +827,37 @@ class TestFeatureGroup:
         mock_save_metadata.assert_called_once_with(
             fg, None, {"delta.enableChangeDataFeed": "true"}
         )
+
+    def test_save_sink_group_reads_its_schema_from_the_data_source(self, mocker):
+        # A CRM source has no catalog: without features, save() takes the schema get_data infers.
+        mock_save_metadata = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata",
+            return_value=None,
+        )
+        inferred = [feature.Feature(name="Id", type="string")]
+        mock_schema = mocker.patch(
+            "hsfs.core.external_feature_group_engine.schema_from_data_source",
+            return_value=inferred,
+        )
+        connector = mock.MagicMock()
+        connector.type = storage_connector.StorageConnector.CRM
+        fg = feature_group.FeatureGroup(
+            name="sf_accounts",
+            version=1,
+            featurestore_id=99,
+            time_travel_format="DELTA",
+            primary_key=["id"],
+            foreign_key=[],
+            partition_key=[],
+            data_source=DataSource(storage_connector=connector, table="account"),
+            sink_enabled=True,
+        )
+
+        fg.save()
+
+        mock_schema.assert_called_once_with(fg)
+        assert [f.name for f in fg.features] == ["id"]
+        mock_save_metadata.assert_called_once()
 
     def test_save_exception_empty_input(self):
         fg = feature_group.FeatureGroup(

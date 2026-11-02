@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import inspect
 import json
+import types
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
 from hopsworks.cli.commands.datasource import _preview_rows
 from hopsworks.cli.main import cli
@@ -220,3 +222,127 @@ def test_preview_rows_key_columns_by_their_feature_names():
     assert _preview_rows(nested) == [
         {"id": "001", "billingpostalcode": None, "account_name": "Edge"}
     ]
+
+
+def test_ingest_makes_a_sink_group_on_the_table_and_runs_its_job(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = DataSource(storage_connector=mock.MagicMock())
+    fg = fs.create_feature_group.return_value
+    fg.name, fg.version = "sf_accounts", 1
+    fg.sink_job.name = "my_salesforce_to_sf_accounts_1"
+    result = CliRunner().invoke(
+        cli,
+        [
+            "fg",
+            "ingest",
+            "sf_accounts",
+            "--connector",
+            "my_salesforce",
+            "--table",
+            "account",
+            "--primary-key",
+            "id",
+            "--no-wait",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    kwargs = fs.create_feature_group.call_args.kwargs
+    assert kwargs["sink_enabled"] is True
+    assert kwargs["data_source"].table == "account"
+    assert kwargs["primary_key"] == ["id"]
+    assert "features" not in kwargs
+    fg.save.assert_called_once_with()
+    fg.sink_job.run.assert_called_once()
+    assert "my_salesforce_to_sf_accounts_1" in result.output
+
+
+def test_a_cell_keeps_its_row_on_one_line():
+    from hopsworks.cli.commands.fg import _truncate_cell
+
+    assert _truncate_cell("312 Constitution Place\nAustin, TX 78767\nUSA") == (
+        "312 Constitution Place Austin, TX 78767 USA"
+    )
+
+
+def _listing(*schemas):
+    source = DataSource(storage_connector=mock.MagicMock())
+    source.get_tables = lambda database=None: [
+        DataSource(storage_connector=mock.MagicMock(), group=g, table="orders")
+        for g in schemas
+    ]
+    return source
+
+
+def test_ingest_keeps_the_schema_of_a_listed_table(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = _listing("sales", "archive")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "fg",
+            "ingest",
+            "orders",
+            "--connector",
+            "pg",
+            "--table",
+            "sales.orders",
+            "--no-wait",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    picked = fs.create_feature_group.call_args.kwargs["data_source"]
+    assert (picked.group, picked.table) == ("sales", "orders")
+
+
+def test_ingest_refuses_a_bare_name_listed_in_several_schemas(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = _listing("sales", "archive")
+    result = CliRunner().invoke(
+        cli, ["fg", "ingest", "orders", "--connector", "pg", "--table", "orders"]
+    )
+    assert result.exit_code != 0
+    assert "several schemas" in result.output
+    fs.create_feature_group.assert_not_called()
+
+
+@pytest.mark.parametrize("wait", ["--no-wait", "--wait"])
+def test_ingest_json_stdout_is_the_payload_only(mock_project, wait):
+    # save() and run() print banners; --json stdout must stay one JSON object.
+    execution = types.SimpleNamespace(
+        id=5, state="RUNNING", final_status=None, submission_time=None
+    )
+
+    def run(await_termination=False, **_):
+        print("Launching job: sf_accounts_1")
+        return execution
+
+    fg = types.SimpleNamespace(
+        id=3,
+        name="sf_accounts",
+        version=1,
+        sink_job=types.SimpleNamespace(name="my_salesforce_to_sf_accounts_1", run=run),
+        save=lambda: print(
+            "Feature Group created successfully, explore it at https://x"
+        ),
+    )
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = DataSource(storage_connector=mock.MagicMock())
+    fs.create_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "fg",
+            "ingest",
+            "sf_accounts",
+            "--connector",
+            "sf",
+            "--table",
+            "account",
+            wait,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["job"] == "my_salesforce_to_sf_accounts_1"
+    assert payload["execution"]["id"] == 5
