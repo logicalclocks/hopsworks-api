@@ -109,6 +109,7 @@ def connector_info(ctx: click.Context, name: str) -> None:
             [f"Sync {s.get('id')}", f"{s.get('datasetName')} ({s.get('state')})"]
             for s in syncs
         ]
+        rows.append(["Syncs", f"hops datasource {group} sync list {name}"])
     output.print_table(["FIELD", "VALUE"], rows)
 
 
@@ -1937,10 +1938,7 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
         raise click.ClickException(f"Could not list tables: {exc}") from exc
     group = _synced_group(getattr(ds, "storage_connector", ds))
     if group:
-        raise click.ClickException(
-            f"{name} is not read as tables: its syncs copy it into datasets "
-            f"(hops datasource {group} sync list {name}). Build from the files there."
-        )
+        raise click.ClickException(_synced_tables_message(fs, group, name))
     try:
         tables = ds.get_tables(database=database)
     except Exception as exc:  # noqa: BLE001
@@ -2070,6 +2068,26 @@ def _synced_group(sc: Any) -> str | None:
     ):
         return "google-analytics"
     return None
+
+
+def _synced_tables_message(fs: Any, group: str, name: str) -> str:
+    """What `tables` answers for a source read through syncs: where its files are."""
+    said = f"{name} is not read as tables: its syncs copy it into datasets"
+    if group not in _GOOGLE:
+        return f"{said} (hops datasource {group} sync list {name}). Build from the files there."
+    items = (_google_send("GET", _google_syncs_path(fs, group, name)) or {}).get(
+        "items"
+    ) or []
+    if not items:
+        return (
+            f"{name} has no sync yet, so nothing was copied. "
+            f"The {_GOOGLE[group][1]} files are picked in Hopsable's Connect card."
+        )
+    datasets = ", ".join(sorted({str(i.get("datasetName")) for i in items}))
+    return (
+        f"{said}: {datasets} (hops datasource {group} sync list {name}). "
+        "Build from the files there (skill hops-data-sources)."
+    )
 
 
 def _google_source(ctx: click.Context, group: str, name: str) -> tuple[Any, Any]:

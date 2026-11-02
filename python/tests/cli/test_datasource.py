@@ -1476,19 +1476,44 @@ def _with_source(sc, argv):
     return result, fs, send
 
 
+def test_tables_on_sharepoint_points_to_its_syncs():
+    result, fs, _ = _with_source(_source("SHAREPOINT"), ["tables", "src"])
+    assert result.exit_code == 1
+    assert "hops datasource sharepoint sync list src" in result.output
+    fs.return_value.get_data_source.return_value.get_tables.assert_not_called()
+
+
 @pytest.mark.parametrize(
-    ("sc", "group"),
+    ("sc", "label"),
     [
-        (lambda: _source("GOOGLE_DRIVE"), "google-drive"),
-        (lambda: _source("CRM", crmType="GOOGLE_ANALYTICS"), "google-analytics"),
-        (lambda: _source("SHAREPOINT"), "sharepoint"),
+        (lambda: _source("GOOGLE_DRIVE"), "Google Drive"),
+        (lambda: _source("CRM", crmType="GOOGLE_ANALYTICS"), "Google Analytics"),
     ],
 )
-def test_tables_on_a_synced_source_points_to_its_syncs(sc, group):
+def test_tables_on_a_google_source_without_a_sync_says_nothing_was_copied(sc, label):
     result, fs, _ = _with_source(sc(), ["tables", "src"])
     assert result.exit_code == 1
-    assert f"hops datasource {group} sync list src" in result.output
+    assert "src has no sync yet" in result.output
+    assert f"The {label} files are picked in Hopsable's Connect card." in result.output
     fs.return_value.get_data_source.return_value.get_tables.assert_not_called()
+
+
+def test_tables_on_a_google_source_names_its_dataset():
+    sc = _source("CRM", crmType="GOOGLE_ANALYTICS")
+    with (
+        mock.patch.object(ds.session, "get_feature_store") as fs,
+        mock.patch("hopsworks_common.core.rest._send_request") as send,
+        mock.patch(
+            "hopsworks_common.core.rest._project_path", side_effect=lambda *t: list(t)
+        ),
+    ):
+        fs.return_value.id = 67
+        fs.return_value.get_data_source.return_value.storage_connector = sc
+        send.return_value = {"items": [{"id": 5, "datasetName": "ga_src"}]}
+        result = CliRunner().invoke(cli, ["datasource", "tables", "src"])
+    assert result.exit_code == 1
+    assert "ga_src" in result.output
+    assert "hops datasource google-analytics sync list src" in result.output
 
 
 def test_a_sync_command_on_the_wrong_source_names_its_group():

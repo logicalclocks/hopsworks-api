@@ -446,7 +446,15 @@ hops datasource google-analytics sync retry <source> <id>    # finish a sync who
 hops datasource google-drive sync list <source>              # same commands for Drive
 ```
 
-Build the feature group from the dataset files with **hops-fg**: read the CSVs from `/Projects/<project>/<dataset>/` and insert them, or mount them with `hops fg create-external ... --data-format csv` over a HopsFS data source. Never run an ingestion job on these sources: Hopsworks refuses it. A FAILED run says why in `status`; "cannot read Google Analytics property" means the account that connected has no access, so the user connects again with one that has. New files or another property need a new connect in Hopsable; this CLI does not create syncs. `sync delete <source> <id> [--keep-files] --yes` removes a sync, and its dataset unless `--keep-files`.
+`hops datasource info <source>` names each sync's dataset. Read the files as an external feature group, which always sees the latest load: a HopsFS data source on that dataset, then the feature group on its folder (column names come out lower case).
+
+```bash
+hops datasource create hopsfs <source>_files --dataset <dataset>
+hops fg create-external <name> --connector <source>_files --path traffic --data-format csv \
+  --primary-key date,sessiondefaultchannelgroup,country
+```
+
+To look at one day, `hops files download <dataset>/traffic/date=<yyyy-mm-dd>.csv`: one file at a time, a folder download fails (error 110021). A Google Drive source with no sync has no files yet: the user picks them in Hopsable's Connect card, so ask for that instead of running a sync. Never run an ingestion job on these sources: Hopsworks refuses it. A FAILED run says why in `status`; "cannot read Google Analytics property" means the account that connected has no access, so the user connects again with one that has. New files or another property need a new connect in Hopsable; this CLI does not create syncs. `sync delete <source> <id> [--keep-files] --yes` removes a sync, and its dataset unless `--keep-files`.
 
 ## Copy or sync SharePoint folders into a dataset
 
