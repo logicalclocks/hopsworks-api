@@ -193,7 +193,7 @@ deployment.set_tracing(active=True, sampling_percentage=50)
 ```
 
 The same over REST: `PUT /hopsworks-api/api/project/{project_id}/serving/{deployment_id}/tracing` with `{"active": false}` or `{"active": true, "samplingPercentage": 50}`; omitted fields keep their values.
-It answers 400 (`240062`) for a deployment created without tracing, and the deployment page has the same switch, and a dropdown for the sampling, on its Prediction Latency Analytics section.
+It answers 400 (`240062`) for a deployment created without tracing, and the deployment page has the same switch, and a dropdown for the sampling, on its X-ray latencies section.
 `sampling_percentage` can be a fraction: `0.01` traces one request in 10,000.
 
 Traces are kept only in the online store, in the project's `serving_traces` feature group, and expire after its time to live (36 hours by default; change it with `fg.enable_ttl(ttl=...)` on that feature group); nothing is materialized offline.
@@ -214,7 +214,7 @@ The time per stage, over the last `1m`, `10m`, `1h`, `6h` or `24h`, is also one 
 
 The Grafana deployment dashboard ("View in Grafana" in the Metrics section of the deployment page) charts them under "Feature view transformations".
 
-A sample of the requests (10% unless `sampling_percentage` says otherwise) is also traced, and the deployment page shows them in its Prediction Latency Analytics section: `predict` > `feature_lookup` > `transformations` (first row only) > `on_demand_transformations` > one span per function in DAG order, then `model_dependent_transformations`, then `model_predict` and `feature_log`, with the background `feature_log_write` and `feature_view.log` in the same trace.
+A sample of the requests (10% unless `sampling_percentage` says otherwise) is also traced, and the deployment page shows them in its X-ray latencies section: `predict` > `feature_lookup` > `transformations` (first row only) > `on_demand_transformations` > one span per function in DAG order, then `model_dependent_transformations`, then `model_predict` and `feature_log`, with the background `feature_log_write` and `feature_view.log` in the same trace.
 Traces are written to the online store through a collector sidecar, so keep the sampling low on a busy deployment.
 
 ---
