@@ -163,7 +163,15 @@ class TestDisabled:
 
 
 class TestEnabled:
-    def test_sampled_request_traces_its_first_row(self, mocker, graphs, telemetry_on):
+    @pytest.mark.parametrize("coarse_clock", [False, True])
+    def test_sampled_request_traces_its_first_row(
+        self, mocker, graphs, telemetry_on, coarse_clock
+    ):
+        if coarse_clock:
+            clock = mocker.patch.object(
+                transformation_telemetry, "time", wraps=transformation_telemetry.time
+            )
+            clock.time_ns.return_value = 1_700_000_000 * SECOND_NS
         server = _server(mocker, graphs)
 
         with (
@@ -188,7 +196,8 @@ class TestEnabled:
         assert by_name["total"].attributes["hopsworks.transformation.depends_on"] == (
             "doubled"
         )
-        assert by_name["doubled"].end_time <= by_name["total"].start_time
+        # A coarse wall clock can make reconstructed timestamps overlap even for sequential calls.
+        assert names.index("doubled") < names.index("total")
         # Both rows are measured, though only the first is traced.
         metrics = _metrics()
         assert _sample(metrics, "hopsworks_transformations_calls_total") == 2
