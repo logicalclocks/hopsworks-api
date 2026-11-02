@@ -28,10 +28,16 @@ def _login(ctx: click.Context):
 
 
 _JSON = {"content-type": "application/json"}
+# Connect and read bounds of every call. A key test can take longer: Hopsworks asks the provider up to three
+# times, each bounded at 15 s (LlmProviderController.TIMEOUT).
+_TIMEOUT = (10, 30)
+_TEST_TIMEOUT = (10, 60)
 
 
 def _providers(rest) -> list[dict]:
-    return rest._send_request("GET", ["users", "llm", "providers"]) or []
+    return (
+        rest._send_request("GET", ["users", "llm", "providers"], timeout=_TIMEOUT) or []
+    )
 
 
 def _provider(rest, provider: str) -> dict:
@@ -94,6 +100,7 @@ def llm_set_key(ctx: click.Context, provider: str) -> None:
         ["users", "llm", "providers", p["id"], "test"],
         headers=_JSON,
         data=json.dumps({"apiKey": key}),
+        timeout=_TEST_TIMEOUT,
     )
     if not verdict.get("ok"):
         raise click.ClickException(
@@ -104,6 +111,7 @@ def llm_set_key(ctx: click.Context, provider: str) -> None:
         ["users", "llm", "providers", p["id"], "key"],
         headers=_JSON,
         data=json.dumps({"apiKey": key}),
+        timeout=_TIMEOUT,
     )
     if not _provider(rest, p["id"]).get("hasKey"):
         raise click.ClickException(
@@ -120,7 +128,11 @@ def llm_test(ctx: click.Context, provider: str) -> None:
     rest = _login(ctx)
     p = _provider(rest, provider)
     verdict = rest._send_request(
-        "POST", ["users", "llm", "providers", p["id"], "test"], headers=_JSON, data="{}"
+        "POST",
+        ["users", "llm", "providers", p["id"], "test"],
+        headers=_JSON,
+        data="{}",
+        timeout=_TEST_TIMEOUT,
     )
     if output.JSON_MODE:
         output.print_json(verdict)
@@ -147,7 +159,9 @@ def llm_remove_key(ctx: click.Context, provider: str, yes: bool) -> None:
         f"Delete your {p.get('label')} key? The terminal uses it too.", default=False
     ):
         return
-    rest._send_request("DELETE", ["users", "secrets", p["secretName"]])
+    rest._send_request(
+        "DELETE", ["users", "secrets", p["secretName"]], timeout=_TIMEOUT
+    )
     if _provider(rest, p["id"]).get("hasKey"):
         raise click.ClickException(f"Hopsworks still lists a {p.get('label')} key.")
     output.success("✓ %s key removed", p.get("label"))
