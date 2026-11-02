@@ -15,7 +15,7 @@ Manage collaboration and access control in Hopsworks: who is a member of a proje
 
 ## Your LLM provider keys
 
-Each user keeps one key per LLM provider (Anthropic, Kimi, DeepSeek and others) as a private Hopsworks secret, used by their Hopsworks terminal and by Hopsable. `hops llm list` shows which are saved; `hops llm set-key <provider> < key.txt` tests the key with the provider, then saves it (stdin only, never an argument); `hops llm test <provider>` tests the saved one; `hops llm remove-key <provider> --yes` deletes it, for the terminal too.
+Each user keeps one key per LLM provider (Anthropic, Kimi, DeepSeek and others) as a private Hopsworks secret, used by their Hopsworks terminal and by Hopsable. `hops llm list` shows which are saved; `hops llm set-key <provider> < key.txt` tests the key with the provider, then saves it (stdin only, never an argument); `hops llm test <provider>` tests the saved one; `hops llm remove-key <provider> --yes` deletes it, for the terminal too. A refused key, an unknown provider or a failed read-back exits 1 with the reason; nothing is saved on a refusal.
 
 ## Two separate role systems — don't confuse them
 
