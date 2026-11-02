@@ -58,6 +58,7 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
     "init": "hopsworks.cli.commands.init:init_cmd",
     "factory": "hopsworks.cli.commands.factory:factory_group",
     "update": "hopsworks.cli.commands.update:update_cmd",
+    "llm": "hopsworks.cli.commands.llm:llm_group",
 }
 
 

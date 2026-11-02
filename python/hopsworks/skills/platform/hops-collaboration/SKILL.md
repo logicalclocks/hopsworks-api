@@ -13,6 +13,10 @@ Manage collaboration and access control in Hopsworks: who is a member of a proje
 - **Pre-condition:** for project-role changes and sharing, the caller needs the `Data owner` role in the relevant project. For platform user administration, the caller's account needs the `HOPS_ADMIN` platform role.
 - **Costs:** a project's own cost needs the `Data owner` role in it; the cluster-wide namespace and department costs need `HOPS_ADMIN` and, with an API key, its `ADMIN` scope.
 
+## Your LLM provider keys
+
+Each user keeps one key per LLM provider (Anthropic, Kimi, DeepSeek and others) as a private Hopsworks secret, used by their Hopsworks terminal and by Hopsable. `hops llm list` shows which are saved; `hops llm set-key <provider> < key.txt` tests the key with the provider, then saves it (stdin only, never an argument); `hops llm test <provider>` tests the saved one; `hops llm remove-key <provider> --yes` deletes it, for the terminal too.
+
 ## Two separate role systems — don't confuse them
 
 - **Project role** (`ProjectTeam.teamRole`): per-project, one of `Data owner`, `Data scientist`, `Observer`, `Feature store restricted`. Governs what a member can do *inside one project*.
