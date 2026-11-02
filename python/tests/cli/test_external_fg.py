@@ -202,3 +202,21 @@ def test_preview_rows_keeps_a_null_cell():
         "preview": [{"values": [{"value0": "id", "value1": "1"}, {"value0": "image"}]}]
     }
     assert _preview_rows(nested) == [{"id": "1", "image": None}]
+
+
+def test_preview_rows_key_columns_by_their_feature_names():
+    # Salesforce answers its own column case; the features beside it are lower case.
+    nested = {
+        "preview": [
+            {
+                "values": [
+                    {"value0": "Id", "value1": "001"},
+                    {"value0": "BillingPostalCode"},
+                    {"value0": "Account Name", "value1": "Edge"},
+                ]
+            }
+        ]
+    }
+    assert _preview_rows(nested) == [
+        {"id": "001", "billingpostalcode": None, "account_name": "Edge"}
+    ]

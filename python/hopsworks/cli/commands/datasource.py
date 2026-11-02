@@ -26,6 +26,7 @@ from click.core import ParameterSource
 from hopsworks.cli import output, session
 from hopsworks.cli.commands import fg as fg_cmd
 from hopsworks.cli.commands import job as job_cmd
+from hopsworks_common import util
 
 
 if TYPE_CHECKING:
@@ -1949,12 +1950,17 @@ def _preview_rows(preview) -> list[dict]:
     """Flatten the backend's preview into one ``{column: value}`` dict per row.
 
     The backend nests the rows as ``{"preview": [{"values": [{"value0": column,
-    "value1": value}, ...]}, ...]}``; a null cell has no ``value1``.
+    "value1": value}, ...]}, ...]}``; a null cell has no ``value1``. A column is
+    keyed by its feature name (lower case, spaces as underscores), as the
+    features beside the preview are named: a CRM answers ``Id``, its feature is ``id``.
     """
     if isinstance(preview, dict):
         preview = preview.get("preview")
     return [
-        {cell["value0"]: cell.get("value1") for cell in row.get("values", [])}
+        {
+            util._autofix_feature_name(cell["value0"]): cell.get("value1")
+            for cell in row.get("values", [])
+        }
         for row in preview or []
         if isinstance(row, dict)
     ]
