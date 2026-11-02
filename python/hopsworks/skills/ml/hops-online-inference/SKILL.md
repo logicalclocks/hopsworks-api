@@ -175,7 +175,8 @@ Total latency is the sum of every step (feature lookup + ODTs + MDTs + `model.pr
 ### Where the time goes
 
 Tracing times the on-demand and model-dependent transformations of the feature view a model (or feature view) deployment serves.
-Create the deployment with tracing to be able to use it; this adds a collector sidecar to each predictor pod, so a deployment created without it has to be updated with tracing, which restarts it:
+Create the deployment with tracing to be able to use it; this adds a collector sidecar to each predictor pod, so a deployment created without it has to be updated with tracing, which restarts it.
+A traced deployment serves one worker per replica, so its per-process metrics count every request; size its replicas for that.
 
 ```python
 deployment = model.deploy(tracing={"enabled": True, "sampling_percentage": 10})
@@ -197,7 +198,7 @@ It answers 400 (`240062`) for a deployment created without tracing, and the depl
 `sampling_percentage` can be a fraction: `0.01` traces one request in 10,000.
 
 Traces are kept only in the online store, in the project's `serving_traces` feature group, and expire after its time to live (36 hours by default; change it with `fg.enable_ttl(ttl=...)` on that feature group); nothing is materialized offline.
-They are bounded: at most 60 traces per minute per predictor pod whatever the sampling, and paused on every model and feature view deployment while less than 20% of the online store's disk tablespace is free (`deployment.tracing.paused_reason == "DISK_NEARLY_FULL"`; it resumes once an administrator adds space).
+They are bounded: at most 60 traces per minute per predictor pod whatever the sampling, and paused on every model and feature view deployment while less than 20% of the online store's disk tablespace (`deployment.tracing.paused_reason == "DISK_NEARLY_FULL"`) or of its RonDB DataMemory (`"MEMORY_NEARLY_FULL"`) is free; it resumes once both have 10 points more free.
 The cluster administrator sets the limits (`serving_tracing_online_ttl_hours`, `serving_tracing_max_traces_per_minute`, `serving_tracing_pause_free_percent`).
 
 While tracing is on, every request is counted on the predictor's Prometheus endpoint:

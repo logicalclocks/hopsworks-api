@@ -41,7 +41,7 @@ class DeploymentTracingConfig:
         active: Whether a model deployment created with tracing records it right now.
             `None` means it does.
             Change it on a running deployment with [`Deployment.set_tracing`][hsml.deployment.Deployment.set_tracing], which needs no restart.
-        duration_days: Days a model deployment's tracing stays on each time it is switched on, from 1.
+        duration_days: Days a model deployment's tracing stays on each time it is switched on or the deployment starts, from 1.
             `None` keeps it on for 7 days.
             Hopsworks then switches it off and records when in `expired_at`.
             A longer period stores more traces in the online feature store.
@@ -237,7 +237,8 @@ class DeploymentTracingConfig:
         """Why Hopsworks paused tracing on a model or feature view deployment, overriding `active`, or `None`.
 
         `"DISK_NEARLY_FULL"`: the online feature store's disk tablespace is nearly full.
-        Tracing resumes by itself once an administrator adds space.
+        `"MEMORY_NEARLY_FULL"`: the online feature store's RonDB DataMemory is nearly full.
+        Tracing resumes by itself once both have room again.
         """
         return self._paused_reason
 

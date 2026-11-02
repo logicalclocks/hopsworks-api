@@ -140,6 +140,8 @@ def _timed_stage(kind: str):
     """
 
     def decorate(method):
+        # The class-level @typechecked finds no annotations on the wrapper, so the method is checked here.
+        method = typechecked(method)
         if inspect.iscoroutinefunction(method):
 
             @functools.wraps(method)
@@ -901,7 +903,7 @@ class FeatureView:
         transform: bool | None = True,
         on_demand_features: bool | None = True,
         request_parameters: dict[str, Any] | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         n_processes: int | None = None,
         timeout: float | None = None,
@@ -1174,7 +1176,7 @@ class FeatureView:
         transform: bool | None = True,
         on_demand_features: bool | None = True,
         request_parameters: list[dict[str, Any]] | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         n_processes: int | None = None,
         timeout: float | None = None,
@@ -1644,7 +1646,7 @@ class FeatureView:
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
         transformed: bool | None = True,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         extra_filter: filter.Filter | filter.Logic | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2161,7 +2163,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2430,7 +2432,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2758,7 +2760,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -3067,7 +3069,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
         spine_df: SpineDataFrameTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
     ) -> job.Job:
         """Recreate a training dataset.
 
@@ -3173,7 +3175,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3368,7 +3370,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3600,7 +3602,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3856,7 +3858,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
@@ -3949,7 +3951,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
@@ -4039,7 +4041,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,

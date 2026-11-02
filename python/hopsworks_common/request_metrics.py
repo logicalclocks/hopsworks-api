@@ -37,6 +37,8 @@ _WINDOW_NS = _WINDOW_SECONDS * 1_000_000_000
 STAGES = ("feature_lookup", "transformations", "model_predict", "feature_log")
 
 # Ten bounds a decade from 10 us to 10 s, so a quantile interpolated within a bucket is off by at most 26%.
+# That is 62 series per stage and name, about 250 per traced pod; five a decade would halve them at up to 58% off,
+# too coarse to tell a 2 ms p99 from a 3 ms one.
 _BUCKETS_SECONDS = [float(f"{10 ** (k / 10):.3g}") for k in range(-50, 11)]
 
 
