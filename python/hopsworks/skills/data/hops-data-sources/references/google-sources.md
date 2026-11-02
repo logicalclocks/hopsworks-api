@@ -13,7 +13,7 @@ hops datasource google-analytics sync retry <source> <id>    # finish a sync who
 hops datasource google-drive sync list <source>              # same commands for Drive, and:
 hops datasource google-drive sync schedule <source> <id> "0 0 2 ? * *"   # Quartz cron in UTC, seconds first; none = only on run
 hops datasource google-drive sync pause|resume <source> <id>
-hops datasource google-drive sync filter <source> <id> --include 'Reports/**/*.csv' [--exclude G] [--max-size-mb N]
+hops datasource google-drive sync filter <source> <id> --include 'Reports/**/*.csv' [--exclude G] [--max-size-mb N]   # N at least 1; default 1024
 hops datasource google-drive sync mirror <source> <id> --on|--off
 ```
 

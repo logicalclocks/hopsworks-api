@@ -1583,6 +1583,17 @@ def test_drive_sync_settings_put_only_the_fields_they_change():
         assert send.call_args.args[3] == body
 
 
+@pytest.mark.parametrize("size", ["0", "-1"])
+def test_a_drive_sync_size_limit_below_one_is_refused_before_any_request(size):
+    result, _, send = _with_source(
+        _source("GOOGLE_DRIVE"),
+        ["google-drive", "sync", "filter", "src", "5", "--max-size-mb", size],
+    )
+    assert result.exit_code == 2, result.output
+    assert "--max-size-mb" in result.output
+    send.assert_not_called()
+
+
 def test_no_cli_verb_sets_what_a_drive_sync_reads():
     for args in (
         ["google-drive", "sync", "create", "src"],
