@@ -2337,7 +2337,7 @@ def _google_drive_settings(sync: click.Group, group: str) -> None:
     @click.argument("sync_id", type=int)
     @click.option("--include", "include", multiple=True, help="Glob to copy; repeat.")
     @click.option("--exclude", "exclude", multiple=True, help="Glob to skip; repeat.")
-    @click.option("--max-size-mb", type=int, help="Skip files larger than this.")
+    @click.option("--max-size-mb", type=int, help="Skip files larger than this; 0 means no limit.")
     @click.pass_context
     def filter_(
         ctx: click.Context,
