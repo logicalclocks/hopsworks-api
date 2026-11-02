@@ -55,10 +55,72 @@ def connector_list(ctx: click.Context) -> None:
                 c.get("name", "?"),
                 c.get("storageConnectorType", c.get("connectorType", "?")),
                 _credentials_label(c),
+                _state(c)[0],
                 output.first_line(c.get("description"), empty=""),
             ]
         )
-    output.print_table(["ID", "NAME", "TYPE", "CREDENTIALS", "DESCRIPTION"], rows)
+    output.print_table(
+        ["ID", "NAME", "TYPE", "CREDENTIALS", "STATE", "DESCRIPTION"], rows
+    )
+
+
+def _state(connector: dict[str, Any]) -> tuple[str, str]:
+    """The source's state as its owner last told Hopsworks, and Hopsworks' message.
+
+    The trust link of an S3 or Redshift source, the service account impersonation of a
+    BigQuery source, the OAuth grant of a CRM or Google source. "-" for a type Hopsworks
+    keeps no state for.
+    """
+    link = connector.get("trustLink") or {}
+    for state, message in (
+        (link.get("state"), link.get("message")),
+        (connector.get("impersonateState"), connector.get("impersonateMessage")),
+        (connector.get("oauthState"), None),
+    ):
+        if state:
+            return str(state), message or ""
+    return "-", ""
+
+
+def _connector_path(fs: Any, name: str) -> list[Any]:
+    from hopsworks_common.core import rest
+
+    return rest._project_path(
+        "featurestores", getattr(fs, "id", None), "storageconnectors", name
+    )
+
+
+def _get_connector(fs: Any, name: str) -> dict[str, Any]:
+    from hopsworks_common.core import rest
+
+    try:
+        return rest._send_request("GET", _connector_path(fs, name))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Connector '{name}' not found: {exc}") from exc
+
+
+def _groups_on(fs: Any, connector_id: int) -> list[str]:
+    """The feature groups Hopsworks deletes with the source: every one made from it."""
+    from hopsworks_common.core import rest
+
+    try:
+        payload = rest._send_request(
+            "GET",
+            rest._project_path(
+                "featurestores", getattr(fs, "id", None), "featuregroups"
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not list the feature groups made from it: {exc}"
+        ) from exc
+    items = payload if isinstance(payload, list) else (payload or {}).get("items", [])
+    return [
+        f"{g.get('name')} v{g.get('version')}"
+        for g in items
+        if ((g.get("dataSource") or {}).get("storageConnector") or {}).get("id")
+        == connector_id
+    ]
 
 
 def _credentials_label(connector: dict[str, Any]) -> str:
@@ -94,12 +156,16 @@ def connector_info(ctx: click.Context, name: str) -> None:
         output.print_json(redact(payload))
         return
 
+    state, message = _state(_get_connector(fs, name))
     rows = [
         ["ID", getattr(sc, "id", "?")],
         ["Name", getattr(sc, "name", "?")],
         ["Type", type(sc).__name__],
         ["Description", output.first_line(getattr(sc, "description", ""))],
+        ["State", state],
     ]
+    if message:
+        rows.append(["Message", output.first_line(message)])
     group = _synced_group(sc)
     if group in _GOOGLE:
         syncs = (_google_send("GET", _google_syncs_path(fs, group, name)) or {}).get(
@@ -1872,7 +1938,9 @@ def credentials_delete(ctx: click.Context, name: str, yes: bool) -> None:
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
 @click.pass_context
 def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Delete a storage connector.
+    """Delete a storage connector and every feature group made from it.
+
+    The source read here is the one deleted: a same-name source made since is kept.
 
     Args:
         ctx: Click context.
@@ -1880,20 +1948,35 @@ def connector_delete(ctx: click.Context, name: str, yes: bool) -> None:
         yes: Skip confirmation when True.
     """
     fs = session.get_feature_store(ctx)
-    if not yes and not output.JSON_MODE:
-        click.confirm(f"Delete connector '{name}'?", abort=True)
+    connector_id = _get_connector(fs, name)["id"]
+    groups = _groups_on(fs, connector_id)
+    if output.JSON_MODE and not yes:
+        raise click.ClickException(
+            f"Deleting '{name}' also deletes the feature groups made from it"
+            f" ({', '.join(groups) or 'none now'}); pass --yes"
+        )
+    if not output.JSON_MODE:
+        if groups:
+            click.echo(
+                "Deleted with it, with their data and the jobs Hopsworks made for"
+                " them: " + ", ".join(groups)
+            )
+        if not yes:
+            click.confirm(f"Delete connector '{name}'?", abort=True)
 
     from hopsworks_common.core import rest
 
     try:
         rest._send_request(
             "DELETE",
-            rest._project_path(
-                "featurestores", getattr(fs, "id", None), "storageconnectors", name
-            ),
+            _connector_path(fs, name),
+            query_params={"expectedId": connector_id},
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
+    if output.JSON_MODE:
+        output.print_json({"id": connector_id, "name": name, "featureGroups": groups})
+        return
     output.success("✓ Deleted connector %s", name)
 
 

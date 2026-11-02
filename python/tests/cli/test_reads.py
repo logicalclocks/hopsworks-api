@@ -262,12 +262,18 @@ def test_datasource_list(mock_project):
             "name": "my_sf",
             "storageConnectorType": "SNOWFLAKE",
             "description": "",
-        }
+        },
+        {"id": 2, "name": "s3", "trustLink": {"state": "REFUSED"}},
+        {"id": 3, "name": "bq", "impersonateState": "GRANTED"},
+        {"id": 4, "name": "crm", "oauthState": "REVOKED"},
     ]
     with mock.patch.object(datasource_cmd, "_list_connectors", return_value=items):
-        result = CliRunner().invoke(cli, ["datasource", "list"])
+        result = CliRunner().invoke(cli, ["--json", "datasource", "list"])
     assert result.exit_code == 0, result.output
-    assert "my_sf" in result.output
+    import json
+
+    states = {row["NAME"]: row["STATE"] for row in json.loads(result.stdout)}
+    assert states == {"my_sf": "-", "s3": "REFUSED", "bq": "GRANTED", "crm": "REVOKED"}
 
 
 def test_datasource_info(mock_project):
@@ -277,9 +283,18 @@ def test_datasource_info(mock_project):
     ds = mock.MagicMock()
     ds.storage_connector = sc
     fs.get_data_source.return_value = ds
-    result = CliRunner().invoke(cli, ["datasource", "info", "my_sf"])
+    fake_client = mock.MagicMock()
+    fake_client._project_id = 119
+    fake_client._send_request.return_value = {
+        "id": 1,
+        "trustLink": {"state": "REFUSED", "message": "AWS refused the role"},
+    }
+    with mock.patch("hopsworks_common.client._get_instance", return_value=fake_client):
+        result = CliRunner().invoke(cli, ["datasource", "info", "my_sf"])
     assert result.exit_code == 0, result.output
     assert "my_sf" in result.output
+    assert "REFUSED" in result.output
+    assert "AWS refused the role" in result.output
 
 
 def test_datasource_infer_metadata(mock_project):

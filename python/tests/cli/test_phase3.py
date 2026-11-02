@@ -421,17 +421,54 @@ def test_datasource_create_carries_type_discriminator(mock_project):
     assert bq["parentProject"] == "bill"
 
 
-def test_datasource_delete_calls_rest(mock_project):
-    fs = mock_project.get_feature_store.return_value
-    fs.id = 67
+def _delete_client(answers):
     fake_client = mock.MagicMock()
     fake_client._project_id = 119
+    fake_client._send_request.side_effect = lambda method, path, **_: answers[
+        (method, path[-1])
+    ]
+    return fake_client
+
+
+_GROUPS = [
+    {"name": "made", "version": 1, "dataSource": {"storageConnector": {"id": 5}}},
+    {"name": "other", "version": 2, "dataSource": {"storageConnector": {"id": 6}}},
+    {"name": "cached", "version": 1},
+]
+
+
+def test_datasource_delete_names_its_groups_and_sends_the_id_it_read(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.id = 67
+    fake_client = _delete_client(
+        {
+            ("GET", "mydb"): {"id": 5, "name": "mydb"},
+            ("GET", "featuregroups"): _GROUPS,
+            ("DELETE", "mydb"): None,
+        }
+    )
     with mock.patch("hopsworks_common.client._get_instance", return_value=fake_client):
         result = CliRunner().invoke(cli, ["datasource", "delete", "mydb", "--yes"])
     assert result.exit_code == 0, result.output
+    assert "made v1" in result.output
+    assert "other" not in result.output
     call = fake_client._send_request.call_args
     assert call.args[0] == "DELETE"
     assert "mydb" in call.args[1]
+    assert call.kwargs["query_params"] == {"expectedId": 5}
+
+
+def test_datasource_delete_json_needs_yes_and_names_the_groups(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.id = 67
+    fake_client = _delete_client(
+        {("GET", "mydb"): {"id": 5}, ("GET", "featuregroups"): _GROUPS}
+    )
+    with mock.patch("hopsworks_common.client._get_instance", return_value=fake_client):
+        result = CliRunner().invoke(cli, ["--json", "datasource", "delete", "mydb"])
+    assert result.exit_code != 0
+    assert "made v1" in result.output
+    assert all(c.args[0] != "DELETE" for c in fake_client._send_request.call_args_list)
 
 
 def test_datasource_databases_delegates_to_sdk(mock_project):

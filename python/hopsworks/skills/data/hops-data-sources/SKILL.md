@@ -31,8 +31,8 @@ Google Drive and Google Analytics sources have no tables: [references/google-sou
 ## Smoke-test: what connectors exist
 
 ```bash
-hops datasource list                 # configured connectors
-hops datasource info <connector>     # detail for one
+hops datasource list                 # configured connectors; STATE is the owner's last answer
+hops datasource info <connector>     # detail for one, with its state and Hopsworks' message
 ```
 
 ## Infer metadata (platform intelligence)
@@ -142,7 +142,9 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 `--argument key=value` (and Kafka's or MongoDB's `--option`) carries plain connector settings only. Those values are stored and returned in clear text, so a key that looks like a credential (`sasl.jaas.config`, anything containing `password`, `secret`, `token`) is refused; there is no safe way to pass Kafka SASL credentials through the CLI until the backend keeps them in the secret store.
 
-**Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
+A source whose STATE is REFUSED (AWS no longer trusts Hopsworks) or REVOKED (the vendor grant is gone) cannot be read; tell the user before reading from it. `-` means Hopsworks keeps no state for that type.
+
+**Confirm before deleting.** `hops datasource delete` removes the source and every feature group made from it, with their data and the jobs Hopsworks made for them; it lists those groups first. Confirm the exact name and that list with the user. It deletes only the source it read, never a same-name one made since. In `--json` mode it needs `--yes`.
 
 ## Provided credentials (Oracle)
 
