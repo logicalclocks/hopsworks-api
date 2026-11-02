@@ -21,4 +21,6 @@ hops fg create-external <name> --connector <source>_files --path traffic --data-
   --primary-key date,sessiondefaultchannelgroup,country
 ```
 
+A row is one date, channel and country. For another grain (one row per date and country), sum `sessions`, `activeusers` and `conversions` over the external feature group in a feature pipeline that writes its own feature group, scheduled after the daily load.
+
 To look at one day, `hops files download <dataset>/traffic/date=<yyyy-mm-dd>.csv`: one file at a time, a folder download fails (error 110021). A Google Drive source with no sync has no files yet: the user picks them in Hopsable's Connect card, so ask for that instead of running a sync. Never run an ingestion job on these sources: Hopsworks refuses it. A FAILED run says why in `status`; "cannot read Google Analytics property" means the account that connected has no access, so the user connects again with one that has. New files or another property need a new connect in Hopsable; this CLI does not create syncs. `sync delete <source> <id> [--keep-files] --yes` removes a sync, and its dataset unless `--keep-files`.
