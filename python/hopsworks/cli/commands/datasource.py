@@ -100,6 +100,15 @@ def connector_info(ctx: click.Context, name: str) -> None:
         ["Type", type(sc).__name__],
         ["Description", output.first_line(getattr(sc, "description", ""))],
     ]
+    group = _synced_group(sc)
+    if group in _GOOGLE:
+        syncs = (_google_send("GET", _google_syncs_path(fs, group, name)) or {}).get(
+            "items"
+        ) or []
+        rows += [
+            [f"Sync {s.get('id')}", f"{s.get('datasetName')} ({s.get('state')})"]
+            for s in syncs
+        ]
     output.print_table(["FIELD", "VALUE"], rows)
 
 
@@ -1924,6 +1933,15 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
     fs = session.get_feature_store(ctx)
     try:
         ds = fs.get_data_source(name)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not list tables: {exc}") from exc
+    group = _synced_group(getattr(ds, "storage_connector", ds))
+    if group:
+        raise click.ClickException(
+            f"{name} is not read as tables: its syncs copy it into datasets "
+            f"(hops datasource {group} sync list {name}). Build from the files there."
+        )
+    try:
         tables = ds.get_tables(database=database)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not list tables: {exc}") from exc
@@ -2023,6 +2041,221 @@ def connector_infer_metadata(
         click.echo(f"Suggested event time: {inferred.suggested_event_time}")
     if inferred.suggested_description:
         click.echo(f"Suggested description: {inferred.suggested_description}")
+
+
+# region Google Drive and Google Analytics
+#
+# Hopsworks reads these two itself on the account's Google grant and copies them into
+# datasets through its syncs (.../storageconnectors/<name>/<segment>/syncs, the same REST
+# for both). Hopsable's connect card makes the source and its sync: Drive files come only
+# from Google's Picker and a GA sync is made at the link, so there is no create here.
+
+_GOOGLE = {
+    "google-drive": ("google_drive", "Google Drive"),
+    "google-analytics": ("google_analytics", "Google Analytics"),
+}
+
+
+def _synced_group(sc: Any) -> str | None:
+    """The command group of a source read through syncs, or None."""
+    kind = getattr(sc, "type", None)
+    if kind == "SHAREPOINT":
+        return "sharepoint"
+    if kind == "GOOGLE_DRIVE":
+        return "google-drive"
+    crm = getattr(sc, "crm_type", None)
+    if (
+        kind == "CRM"
+        and str(getattr(crm, "value", crm) or "").upper() == "GOOGLE_ANALYTICS"
+    ):
+        return "google-analytics"
+    return None
+
+
+def _google_source(ctx: click.Context, group: str, name: str) -> tuple[Any, Any]:
+    fs = session.get_feature_store(ctx)
+    try:
+        sc = fs.get_data_source(name).storage_connector
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
+    found = _synced_group(sc)
+    if found != group:
+        hint = f" Use: hops datasource {found} sync list {name}" if found else ""
+        raise click.ClickException(
+            f"Data source '{name}' is not a {_GOOGLE[group][1]} source.{hint}"
+        )
+    return fs, sc
+
+
+def _google_syncs_path(fs: Any, group: str, name: str, *tail: Any) -> list[Any]:
+    from hopsworks_common.core import rest
+
+    return rest._project_path(
+        "featurestores",
+        fs.id,
+        "storageconnectors",
+        name,
+        _GOOGLE[group][0],
+        "syncs",
+        *tail,
+    )
+
+
+def _google_send(
+    method: str, path: list[Any], query: dict[str, Any] | None = None
+) -> Any:
+    from hopsworks_common.core import rest
+
+    return _call(method.capitalize(), lambda: rest._send_request(method, path, query))
+
+
+_GOOGLE_HEADERS = [
+    "ID",
+    "DATASET",
+    "STATE",
+    "LAST RUN",
+    "LAST SUCCESS",
+    "FILES",
+    "BYTES",
+    "LAST ERROR",
+]
+
+
+def _google_rows(syncs: list[dict[str, Any]]) -> list[list[Any]]:
+    return [
+        [
+            s.get("id"),
+            s.get("datasetName"),
+            s.get("state"),
+            output.format_ts(s.get("lastRunFinished")),
+            output.format_ts(s.get("lastSuccess")),
+            s.get("filesTotal"),
+            s.get("bytesTotal"),
+            output.first_line(s.get("lastError") or "") or "-",
+        ]
+        for s in syncs
+    ]
+
+
+def _google_group(group: str) -> None:
+    label = _GOOGLE[group][1]
+
+    @datasource_group.group(
+        group,
+        help=f"Check and rerun the syncs Hopsworks runs for a {label} data source.",
+    )
+    def g() -> None:
+        pass
+
+    @g.group("sync", help=f"Syncs that copy a {label} source into a dataset.")
+    def sync() -> None:
+        pass
+
+    @sync.command("list", help=f"List the syncs of a {label} data source.")
+    @click.argument("name")
+    @click.pass_context
+    def sync_list(ctx: click.Context, name: str) -> None:
+        fs, _ = _google_source(ctx, group, name)
+        items = (_google_send("GET", _google_syncs_path(fs, group, name)) or {}).get(
+            "items"
+        ) or []
+        if output.JSON_MODE:
+            output.print_json(items)
+            return
+        output.print_table(_GOOGLE_HEADERS, _google_rows(items))
+
+    @sync.command("status", help="Show a sync's state, counters and last error.")
+    @click.argument("name")
+    @click.argument("sync_id", type=int)
+    @click.pass_context
+    def sync_status(ctx: click.Context, name: str, sync_id: int) -> None:
+        fs, _ = _google_source(ctx, group, name)
+        s = _google_send("GET", _google_syncs_path(fs, group, name, sync_id)) or {}
+        if output.JSON_MODE:
+            output.print_json(s)
+            return
+        rows = [
+            [k, "-" if s.get(k) is None else s.get(k)]
+            for k in (
+                "id",
+                "datasetName",
+                "state",
+                "cronExpression",
+                "nextRunAt",
+                "lastRunStarted",
+                "lastRunFinished",
+                "lastSuccess",
+                "lastError",
+                "filesTotal",
+                "bytesTotal",
+                "retryable",
+            )
+        ]
+        rows += [
+            [
+                f"report {r.get('name')}",
+                f"loaded up to {r.get('lastLoadedDate') or '-'}",
+            ]
+            for r in s.get("reports") or []
+        ]
+        output.print_table(["FIELD", "VALUE"], rows)
+
+    def action(command: str, help: str, done: str) -> None:
+        @sync.command(command, help=help)
+        @click.argument("name")
+        @click.argument("sync_id", type=int)
+        @click.pass_context
+        def act(ctx: click.Context, name: str, sync_id: int) -> None:
+            fs, _ = _google_source(ctx, group, name)
+            s = _google_send(
+                "POST", _google_syncs_path(fs, group, name, sync_id, command)
+            )
+            if output.JSON_MODE:
+                output.print_json(s)
+                return
+            output.success(done, sync_id, (s or {}).get("state", "unchanged"))
+
+    action("run", "Start a run of the sync now.", "✓ Sync %s: %s")
+    action("retry", "Retry a sync whose create failed half way.", "✓ Sync %s: %s")
+
+    @sync.command("delete", help="Delete a sync, and its dataset unless --keep-files.")
+    @click.argument("name")
+    @click.argument("sync_id", type=int)
+    @click.option("--keep-files", is_flag=True, help="Keep the dataset and its files.")
+    @click.option(
+        "--force", is_flag=True, help="Stop a run in progress instead of refusing."
+    )
+    @click.option("--yes", is_flag=True, help="Skip confirmation.")
+    @click.pass_context
+    def sync_delete(
+        ctx: click.Context,
+        name: str,
+        sync_id: int,
+        keep_files: bool,
+        force: bool,
+        yes: bool,
+    ) -> None:
+        fs, _ = _google_source(ctx, group, name)
+        path = _google_syncs_path(fs, group, name, sync_id)
+        if not yes and not output.JSON_MODE:
+            dataset = (_google_send("GET", path) or {}).get("datasetName")
+            what = "keeping" if keep_files else "and DELETE"
+            click.confirm(
+                f"Delete sync {sync_id} {what} dataset '{dataset}'?", abort=True
+            )
+        _google_send(
+            "DELETE",
+            path,
+            {"keepFiles": str(keep_files).lower(), "force": str(force).lower()},
+        )
+        if output.JSON_MODE:
+            output.print_json({"id": sync_id, "deleted": True})
+            return
+        output.success("✓ Deleted sync %s", sync_id)
+
+
+for _group in _GOOGLE:
+    _google_group(_group)
 
 
 # region SharePoint

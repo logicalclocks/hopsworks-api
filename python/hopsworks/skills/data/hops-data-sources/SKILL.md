@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs) or copies files from SharePoint into a dataset.
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs) or copies files from SharePoint into a dataset, or reads a Google Drive or Google Analytics source that Hopsworks loads into a dataset.
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -430,6 +430,23 @@ df = ext_fg.read()   # Python engine: via the remote Hopsworks Query Service
 
 The remote cluster must have its Hopsworks Query Service reachable from this one, through its `feature_query` load balancer.
 There is no SQL query and no Trino catalog for this data source type.
+
+## Google Drive and Google Analytics sources
+
+These two are connected only from Hopsable's Connect card: the user signs in at Google and picks the files or the GA4 property there. Hopsworks then reads them itself on the account's Google grant; no Google token reaches a job, a notebook or this CLI. Neither has tables: each sync copies the source into a project dataset.
+
+- Google Drive: the picked files, copied once into the sync's dataset.
+- Google Analytics: one CSV per day, `traffic/date=<yyyy-mm-dd>.csv` (date, sessionDefaultChannelGroup, country, sessions, activeUsers, conversions), at once and daily; each run rewrites the last 4 days, since Google revises them. Dates follow the property's time zone.
+
+```bash
+hops datasource google-analytics sync list <source>          # the dataset and the state of each sync
+hops datasource google-analytics sync status <source> <id>   # last run, last error, the reports and the date each is loaded up to
+hops datasource google-analytics sync run <source> <id>      # load now
+hops datasource google-analytics sync retry <source> <id>    # finish a sync whose create failed half way
+hops datasource google-drive sync list <source>              # same commands for Drive
+```
+
+Build the feature group from the dataset files with **hops-fg**: read the CSVs from `/Projects/<project>/<dataset>/` and insert them, or mount them with `hops fg create-external ... --data-format csv` over a HopsFS data source. Never run an ingestion job on these sources: Hopsworks refuses it. A FAILED run says why in `status`; "cannot read Google Analytics property" means the account that connected has no access, so the user connects again with one that has. New files or another property need a new connect in Hopsable; this CLI does not create syncs. `sync delete <source> <id> [--keep-files] --yes` removes a sync, and its dataset unless `--keep-files`.
 
 ## Copy or sync SharePoint folders into a dataset
 
