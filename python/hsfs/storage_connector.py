@@ -85,6 +85,7 @@ class StorageConnector(ABC):
     OPENSEARCH = "OPENSEARCH"
     CRM = "CRM"
     GOOGLE_SHEETS = "GOOGLE_SHEETS"
+    GOOGLE_DRIVE = "GOOGLE_DRIVE"
     REST = "REST"
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
@@ -123,6 +124,7 @@ class StorageConnector(ABC):
         SHAREPOINT: "featurestoreSharePointConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
+        GOOGLE_DRIVE: "featurestoreGoogleDriveConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
         REST: "featurestoreRESTConnectorDTO",
     }
@@ -6811,6 +6813,28 @@ class GlueConnector(StorageConnector):
 
 
 @public
+class GoogleDriveConnector(StorageConnector):
+    """A Google Drive data source linked to a Google sign-in.
+
+    Hopsworks copies the picked files into a project dataset itself and holds the Google token, so the connector carries no credential.
+    """
+
+    type = StorageConnector.GOOGLE_DRIVE
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        description: str | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+
 class GoogleSheetsConnector(StorageConnector):
     """A Google Sheets storage connector authenticated by a GCP service-account keyfile.
 
