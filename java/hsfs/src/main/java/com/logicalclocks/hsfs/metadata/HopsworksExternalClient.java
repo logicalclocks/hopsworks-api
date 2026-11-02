@@ -252,11 +252,13 @@ public class HopsworksExternalClient implements HopsworksHttpClient {
     LOGGER.info("Handling metadata request: " + request);
     AuthorizationHandler<T> authHandler = new AuthorizationHandler<>(responseHandler);
     request.setHeader(HttpHeaders.AUTHORIZATION, "ApiKey " + apiKey);
-    try {
-      return httpClient.execute(httpHost, request, authHandler);
-    } catch (InternalException e) {
-      // Internal exception, try one more time
-      return httpClient.execute(httpHost, request, authHandler);
-    }
+    return RateLimitRetry.DEFAULT.execute(request, () -> {
+      try {
+        return httpClient.execute(httpHost, request, authHandler);
+      } catch (InternalException e) {
+        // Internal exception, try one more time
+        return httpClient.execute(httpHost, request, authHandler);
+      }
+    });
   }
 }

@@ -192,17 +192,17 @@ class Client:
 
             if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
                 # refresh token and retry request - only on hopsworks
-                response = (
-                    self._retry_token_expired(
-                        request,
-                        stream,
-                        self.TOKEN_EXPIRED_RETRY_INTERVAL,
-                        1,
-                        timeout,
-                        deadline if rate_limited else None,
-                    )
-                    or response
+                refreshed = self._retry_token_expired(
+                    request,
+                    stream,
+                    self.TOKEN_EXPIRED_RETRY_INTERVAL,
+                    1,
+                    timeout,
+                    deadline if rate_limited else None,
                 )
+                # A requests.Response is falsy for any 4xx or 5xx, so `or` would drop a refreshed 429.
+                if refreshed is not None:
+                    response = refreshed
 
             wait = self._rate_limited_wait(response) if replayable else None
             if wait is None or wait > deadline - time.monotonic():
@@ -288,12 +288,10 @@ class Client:
 
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
             # Try again.
-            return (
-                self._retry_token_expired(
-                    request, stream, wait * 2, retries + 1, timeout, deadline
-                )
-                or response
+            refreshed = self._retry_token_expired(
+                request, stream, wait * 2, retries + 1, timeout, deadline
             )
+            return refreshed if refreshed is not None else response
         # If the number of retries have expired, the _send_request method
         # will throw an exception to the user as part of the status_code validation.
         return response

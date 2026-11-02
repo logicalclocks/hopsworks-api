@@ -252,6 +252,54 @@ class TestBaseClient:
 
         assert clock[0] - 1000.0 <= Client.RATE_LIMITED_RETRY_BUDGET_SECONDS
 
+    def _unauthorized_response(self):
+        response = requests.Response()
+        response.status_code = 401
+        return response
+
+    @changes_environ
+    @pytest.mark.parametrize("unauthorized_count", [1, 2])
+    def test_rate_limited_token_refresh_is_retried(self, mocker, unauthorized_count):
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
+        client = self._init_test_client()
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[
+                self._unauthorized_response() for _ in range(unauthorized_count)
+            ]
+            + [
+                self._rate_limited_response(mocker, retry_after="3"),
+                self._ok_response(),
+            ],
+        )
+        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
+        sleep = self._mock_clock(mocker)
+
+        client._send_request("GET", ["variables", "versions"])
+
+        assert send.call_count == unauthorized_count + 2
+        sleep.assert_any_call(3)
+
+    @changes_environ
+    def test_token_refresh_returns_the_refreshed_error(self, mocker):
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
+        client = self._init_test_client()
+        forbidden = requests.Response()
+        forbidden.status_code = 403
+        mocker.patch("requests.sessions.Session.prepare_request")
+        mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[self._unauthorized_response(), forbidden],
+        )
+        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
+        self._mock_clock(mocker)
+
+        with pytest.raises(RestAPIError) as error:
+            client._send_request("GET", ["variables", "versions"])
+
+        assert error.value.response is forbidden
+
     @pytest.mark.parametrize(
         "kwargs",
         [
