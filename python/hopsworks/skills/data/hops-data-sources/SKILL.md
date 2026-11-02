@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs) or copies files from SharePoint into a dataset.
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs) or copies files from SharePoint into a dataset, or reads a Google Drive or Google Analytics source that Hopsworks loads into a dataset.
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -20,6 +20,8 @@ Never ask the user for a password, token or key in the conversation, in a messag
 
 Mounting and ingesting both build a feature pipeline's input side: an external feature group leaves data in the source (no copy, no copy-time MITs); a DLTHub ingest copies the source into a managed feature group. Mounting is the lower-cost path when the source already holds the data you want, since reuse beats rebuilding a pipeline.
 
+Google Drive and Google Analytics sources have no tables: [references/google-sources.md](references/google-sources.md).
+
 ## Contract
 - **Input:** a configured connector + a table from it.
 - **Output:** an external feature group (mounted in place), or a managed feature group ingested via DLTHub.
@@ -29,8 +31,8 @@ Mounting and ingesting both build a feature pipeline's input side: an external f
 ## Smoke-test: what connectors exist
 
 ```bash
-hops datasource list                 # configured connectors
-hops datasource info <connector>     # detail for one
+hops datasource list                 # configured connectors; STATE is the owner's last answer
+hops datasource info <connector>     # detail for one, with its state and Hopsworks' message
 ```
 
 ## Infer metadata (platform intelligence)
@@ -140,7 +142,9 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 `--argument key=value` (and Kafka's or MongoDB's `--option`) carries plain connector settings only. Those values are stored and returned in clear text, so a key that looks like a credential (`sasl.jaas.config`, anything containing `password`, `secret`, `token`) is refused; there is no safe way to pass Kafka SASL credentials through the CLI until the backend keeps them in the secret store.
 
-**Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
+A source whose STATE is REFUSED (AWS no longer trusts Hopsworks) or REVOKED (the vendor grant is gone) cannot be read; tell the user before reading from it. `-` means Hopsworks keeps no state for that type.
+
+**Confirm before deleting.** `hops datasource delete` removes the source and every feature group made from it, with their data and the jobs Hopsworks made for them; it lists those groups first. Confirm the exact name and that list with the user. It deletes only the source it read, never a same-name one made since. In `--json` mode it needs `--yes`.
 
 ## Provided credentials (Oracle)
 

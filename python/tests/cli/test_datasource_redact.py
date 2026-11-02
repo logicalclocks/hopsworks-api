@@ -25,7 +25,7 @@ _OPTION_LISTS = {
     "headers",
     "parameters",
 }
-_NO_SECRET = (sc.GoogleSheetsConnector, sc.HopsFSConnector)
+_NO_SECRET = (sc.GoogleDriveConnector, sc.GoogleSheetsConnector, sc.HopsFSConnector)
 _CONNECTION_STRINGS = {"connection_string"}
 # The constructor slots that hold a secret, per connector class.
 _SECRETS = {

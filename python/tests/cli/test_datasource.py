@@ -1444,3 +1444,159 @@ def test_sharepoint_reset_script():
 
 
 # endregion
+
+
+def _source(storage_connector_type: str, **extra) -> object:
+    from hsfs import storage_connector
+
+    return storage_connector.StorageConnector.from_response_json(
+        {
+            "type": "x",
+            "id": 1,
+            "name": "src",
+            "featurestoreId": 67,
+            "storageConnectorType": storage_connector_type,
+            **extra,
+        }
+    )
+
+
+def _with_source(sc, argv):
+    with (
+        mock.patch.object(ds.session, "get_feature_store") as fs,
+        mock.patch("hopsworks_common.core.rest._send_request") as send,
+        mock.patch(
+            "hopsworks_common.core.rest._project_path", side_effect=lambda *t: list(t)
+        ),
+    ):
+        fs.return_value.id = 67
+        fs.return_value.get_data_source.return_value.storage_connector = sc
+        send.return_value = {"id": 5, "state": "RUNNING", "items": []}
+        result = CliRunner().invoke(cli, ["datasource", *argv])
+    return result, fs, send
+
+
+def test_tables_on_sharepoint_points_to_its_syncs():
+    result, fs, _ = _with_source(_source("SHAREPOINT"), ["tables", "src"])
+    assert result.exit_code == 1
+    assert "hops datasource sharepoint sync list src" in result.output
+    fs.return_value.get_data_source.return_value.get_tables.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("sc", "label"),
+    [
+        (lambda: _source("GOOGLE_DRIVE"), "Google Drive"),
+        (lambda: _source("CRM", crmType="GOOGLE_ANALYTICS"), "Google Analytics"),
+    ],
+)
+def test_tables_on_a_google_source_without_a_sync_says_nothing_was_copied(sc, label):
+    result, fs, _ = _with_source(sc(), ["tables", "src"])
+    assert result.exit_code == 1
+    assert "src has no sync yet" in result.output
+    assert f"The {label} files are picked in Hopsable's Connect card." in result.output
+    fs.return_value.get_data_source.return_value.get_tables.assert_not_called()
+
+
+def test_tables_on_a_google_source_names_its_dataset():
+    sc = _source("CRM", crmType="GOOGLE_ANALYTICS")
+    with (
+        mock.patch.object(ds.session, "get_feature_store") as fs,
+        mock.patch("hopsworks_common.core.rest._send_request") as send,
+        mock.patch(
+            "hopsworks_common.core.rest._project_path", side_effect=lambda *t: list(t)
+        ),
+    ):
+        fs.return_value.id = 67
+        fs.return_value.get_data_source.return_value.storage_connector = sc
+        send.return_value = {"items": [{"id": 5, "datasetName": "ga_src"}]}
+        result = CliRunner().invoke(cli, ["datasource", "tables", "src"])
+    assert result.exit_code == 1
+    assert "ga_src" in result.output
+    assert "hops datasource google-analytics sync list src" in result.output
+
+
+def test_a_sync_command_on_the_wrong_source_names_its_group():
+    result, _, send = _with_source(
+        _source("GOOGLE_DRIVE"), ["google-analytics", "sync", "list", "src"]
+    )
+    assert result.exit_code == 1
+    assert "not a Google Analytics source" in result.output
+    assert "hops datasource google-drive sync list src" in result.output
+    send.assert_not_called()
+
+
+def test_a_google_analytics_run_posts_to_its_sync():
+    result, _, send = _with_source(
+        _source("CRM", crmType="GOOGLE_ANALYTICS"),
+        ["google-analytics", "sync", "run", "src", "5"],
+    )
+    assert result.exit_code == 0, result.output
+    assert send.call_args.args[:2] == (
+        "POST",
+        [
+            "featurestores",
+            67,
+            "storageconnectors",
+            "src",
+            "google_analytics",
+            "syncs",
+            5,
+            "run",
+        ],
+    )
+
+
+def test_a_drive_sync_delete_keeps_files_when_asked():
+    result, _, send = _with_source(
+        _source("GOOGLE_DRIVE"),
+        ["google-drive", "sync", "delete", "src", "5", "--keep-files", "--yes"],
+    )
+    assert result.exit_code == 0, result.output
+    assert send.call_args.args[0] == "DELETE"
+    assert send.call_args.args[2] == {"keepFiles": "true", "force": "false"}
+
+
+def test_drive_sync_settings_put_only_the_fields_they_change():
+    cases = [
+        (["schedule", "src", "5", "0 0 * ? * *"], {"cronExpression": "0 0 * ? * *"}),
+        (["schedule", "src", "5", "none"], {"cronExpression": None}),
+        (["pause", "src", "5"], {"paused": True}),
+        (["resume", "src", "5"], {"paused": False}),
+        (["mirror", "src", "5", "--off"], {"mirrorDeletions": False}),
+        (
+            ["filter", "src", "5", "--include", "Reports/**", "--max-size-mb", "50"],
+            {
+                "includePatterns": ["Reports/**"],
+                "excludePatterns": [],
+                "maxFileSizeMb": 50,
+            },
+        ),
+    ]
+    for args, body in cases:
+        result, _, send = _with_source(
+            _source("GOOGLE_DRIVE"), ["google-drive", "sync", *args]
+        )
+        assert result.exit_code == 0, (args, result.output)
+        assert send.call_args.args[0] == "PUT"
+        assert send.call_args.args[1][-1] == 5
+        assert send.call_args.args[3] == body
+
+
+def test_no_cli_verb_sets_what_a_drive_sync_reads():
+    for args in (
+        ["google-drive", "sync", "create", "src"],
+        ["google-drive", "sync", "set-folder", "src", "5", "x"],
+        ["google-drive", "sync", "filter", "src", "5", "--folder", "x"],
+    ):
+        result, _, send = _with_source(_source("GOOGLE_DRIVE"), args)
+        assert result.exit_code != 0, args
+        send.assert_not_called()
+
+
+def test_google_analytics_syncs_have_no_drive_settings():
+    result, _, _ = _with_source(
+        _source("CRM", crmType="GOOGLE_ANALYTICS"),
+        ["google-analytics", "sync", "pause", "src", "5"],
+    )
+    assert result.exit_code != 0
