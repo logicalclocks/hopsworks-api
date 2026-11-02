@@ -147,7 +147,7 @@ def connector_info(ctx: click.Context, name: str) -> None:
     try:
         ds = fs.get_data_source(name)
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Connector '{name}' not found: {exc}") from exc
+        raise click.ClickException(f"Could not read data source '{name}': {exc}") from exc
 
     sc = getattr(ds, "storage_connector", ds)
     if output.JSON_MODE:
