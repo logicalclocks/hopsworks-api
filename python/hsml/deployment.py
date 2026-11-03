@@ -24,6 +24,7 @@ from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
 from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
+from hsml.core.openai_client import _build_openai_client
 from hsml.deployment_tracing_config import DeploymentTracingConfig
 from hsml.engine import serving_engine
 
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from datetime import date, datetime
 
+    import openai
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_logging_config import DeploymentLoggingConfig
@@ -1131,6 +1133,46 @@ class Deployment:
         return self._predictor.get_openai_url()
 
     @public
+    def get_openai_client(self, **kwargs: Any) -> openai.OpenAI:
+        """Get an OpenAI client that talks to this vLLM deployment only.
+
+        The client authenticates with the Hopsworks token of the current connection.
+        Pass the deployment name as `model` in each request.
+        Requires the `openai` package, installed with `pip install "hopsworks[openai]"`.
+        Keyword arguments are passed to `openai.OpenAI`, for example `timeout`, `max_retries` or `http_client`.
+        `default_headers` are merged over the authorization header set by Hopsworks.
+        `base_url` and `api_key` are set by Hopsworks and cannot be passed.
+        Without an `http_client`, certificates are verified as the main Hopsworks connection does.
+        With `hostname_verification=True`, the certificate of the inference endpoint must cover its host; otherwise pass an `http_client` with a matching CA, or one with `verify=False`.
+
+        Returns:
+            The configured OpenAI client.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment is not a vLLM deployment, or no endpoint URL is available.
+            ValueError: If `base_url` or `api_key` is passed.
+            ModuleNotFoundError: If the `openai` package is not installed.
+
+        Example: Chat with this deployment
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            openai_client = deployment.get_openai_client()
+            response = openai_client.chat.completions.create(
+                model=deployment.name,
+                messages=[{"role": "user", "content": "Hello"}],
+            )
+            ```
+        """
+        url = self.get_openai_url()
+        if url is None:
+            raise ModelServingException(
+                f"Deployment '{self.name}' has no OpenAI-compatible URL. "
+                "Only vLLM deployments serve one, and it requires the Istio client, "
+                "which is not set up when KServe is not installed or the Istio ingress gateway has no load balancer address."
+            )
+        return _build_openai_client(url, **kwargs)
+
+    @public
     def get_inference_url(self) -> str | None:
         """Get the KServe inference URL for standard model deployments.
 
@@ -1510,6 +1552,44 @@ class Deployment:
     @knative_mode.setter
     def knative_mode(self, knative_mode: bool | None):
         self._predictor.knative_mode = knative_mode
+
+    @public
+    @property
+    def llm_gateway(self) -> bool:
+        """The LLM gateway switch of this deployment, as stored by the backend.
+
+        It does not tell whether the deployment is served by the LLM gateway.
+        See [`Predictor.llm_gateway`][hsml.predictor.Predictor.llm_gateway].
+        Setting it only changes the local object; use [`set_llm_gateway`][hsml.deployment.Deployment.set_llm_gateway] to change an existing deployment.
+        """
+        return self._predictor.llm_gateway
+
+    @llm_gateway.setter
+    def llm_gateway(self, llm_gateway: bool):
+        self._predictor.llm_gateway = llm_gateway
+
+    @public
+    def set_llm_gateway(self, enabled: bool):
+        """Switch an existing deployment on or off the LLM gateway.
+
+        The change does not restart the deployment.
+        Requires the data owner role in the project.
+        When the backend stores the switch but cannot apply it yet, it applies it within a minute and the call logs this at INFO level.
+
+        Parameters:
+            enabled: Whether the LLM gateway serves this deployment.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Take a deployment off the LLM gateway
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            deployment.set_llm_gateway(False)
+            ```
+        """
+        self._serving_api._set_deployment_llm_gateway(self, enabled)
+        self._predictor.llm_gateway = enabled
 
     @public
     @property

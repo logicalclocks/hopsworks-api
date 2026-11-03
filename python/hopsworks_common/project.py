@@ -240,7 +240,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_model_serving()
+        return client._get_connection()._get_model_serving(self.project_namespace)
 
     @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:
