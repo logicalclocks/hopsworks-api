@@ -85,6 +85,10 @@ def http(mocker):
     instance._send_request.return_value = {"count": 1, "items": [SP_JSON]}
     mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
     mocker.patch("hopsworks_common.client._is_external", return_value=True)
+    mocker.patch(
+        "hopsworks_common.core.semantic_layer_api.VariableApi._get_service_discovery_domain",
+        return_value="consul",
+    )
     return instance
 
 
@@ -286,10 +290,18 @@ class TestGateway:
 
     def test_internal_clients_use_the_gateway_service(self, http, sales, mocker):
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch(
-            "hopsworks_common.core.semantic_layer_api.VariableApi._get_service_discovery_domain",
-            return_value="consul",
+        http._session.request.return_value = _response(body={"metrics": []})
+
+        sales.list_metrics()
+
+        assert _gateway_call(http)[1] == (
+            "https://semantic-gateway.service.consul:18443/semantic-layer/v1/projects/7/metrics"
         )
+
+    def test_external_clients_at_a_consul_host_use_the_gateway_service(
+        self, http, sales
+    ):
+        http._base_url = "https://hopsworks.glassfish.service.consul:28181"
         http._session.request.return_value = _response(body={"metrics": []})
 
         sales.list_metrics()
@@ -312,10 +324,6 @@ class TestGateway:
 
     def test_an_expired_pod_jwt_is_reread_once(self, http, sales, mocker):
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mocker.patch(
-            "hopsworks_common.core.semantic_layer_api.VariableApi._get_service_discovery_domain",
-            return_value="consul",
-        )
         http._is_external.return_value = False
         http._auth = auth.BearerAuth("old")
         http._read_jwt.return_value = "new"

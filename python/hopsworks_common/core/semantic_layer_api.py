@@ -16,7 +16,7 @@
 """Hopsworks Semantic Layer client.
 
 Semantic projects and their builds live on the Hopsworks REST API.
-Discovery and queries go to the semantic gateway, at `/semantic-layer/v1` on the Hopsworks host, with the same credential and TLS settings as the Hopsworks client.
+Discovery and queries go to the semantic gateway with the same credential and TLS settings as the Hopsworks client: at `/semantic-layer/v1` on the Hopsworks host from outside the cluster, and at the gateway's consul name from inside it.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ import json
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import urlparse
 
 from hopsworks_apigen import public
 from hopsworks_common import client, semantic_layer, usage
@@ -255,16 +256,24 @@ class SemanticLayerApi:
         override = os.environ.get(_GATEWAY_URL_ENV)
         if override:
             self._gateway_url = override.rstrip("/")
-        elif client._is_external():
+            return self._gateway_url
+        base_url = client._get_instance()._base_url.rstrip("/")
+        domain = VariableApi()._get_service_discovery_domain()
+        # An external client logged in at Payara's consul name, such as a job using an API key, is
+        # inside the cluster too, and Payara does not route /semantic-layer/ as the ingress does.
+        in_cluster = not client._is_external() or (
+            bool(domain)
+            and (urlparse(base_url).hostname or "").endswith(f".service.{domain}")
+        )
+        if not in_cluster:
             # The ingress routes /semantic-layer/ on the Hopsworks host to the gateway.
-            self._gateway_url = client._get_instance()._base_url.rstrip("/")
+            self._gateway_url = base_url
+        elif not domain:
+            raise SemanticLayerException(
+                "The semantic gateway cannot be found: the cluster's service discovery "
+                f"domain is not set. Set {_GATEWAY_URL_ENV} to its https://<host>:<port>."
+            )
         else:
-            domain = VariableApi()._get_service_discovery_domain()
-            if not domain:
-                raise SemanticLayerException(
-                    "The semantic gateway cannot be found: the cluster's service discovery "
-                    f"domain is not set. Set {_GATEWAY_URL_ENV} to its https://<host>:<port>."
-                )
             self._gateway_url = (
                 f"https://{_GATEWAY_SERVICE_NAME}.{domain}:{_GATEWAY_PORT}"
             )
