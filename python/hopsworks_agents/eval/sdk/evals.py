@@ -39,7 +39,7 @@ from .models import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from .client import AgentServing
 
@@ -798,6 +798,156 @@ class Evaluators:
         )
 
 
+class Checks:
+    """Checks the project wrote in Python: upload them, register what they declare.
+
+    A check is a function decorated with
+    [`check`][hopsworks_agents.eval.checks.check] in a file the project owns.
+    This puts that file where the evaluation job reads it and saves one library
+    entry per check it declares, so a suite picks it like any other check.
+    """
+
+    DEFAULT_DIR = "Resources/agent_evals/checks"
+
+    def __init__(self, client: AgentServing):
+        self._client = client
+
+    @public
+    def declared(self, local_path: str) -> list[dict[str, Any]]:
+        """What a local file or package declares, by importing it here.
+
+        Each entry carries ``name``, ``description``, ``needs_trace``,
+        ``reads_expectation``, ``timeout_s`` and the parameter ``defaults`` read
+        off the function's signature.
+        """
+        from ..checks import _declared_in, _import_path
+
+        module = _import_path(str(Path(local_path).resolve()))
+        return [d._as_dict() for d in _declared_in(module).values()]
+
+    @public
+    def upload(
+        self,
+        local_path: str,
+        *,
+        to: str = DEFAULT_DIR,
+        register: bool = True,
+        tags: Sequence[str] | None = None,
+        overwrite: bool = True,
+    ) -> list[EvaluatorTemplate]:
+        """Upload a check file or package to the project and register its checks.
+
+        The file lands under ``to`` in the project's HopsFS (the directory the
+        UI's picker opens on), and every check it declares becomes a library
+        entry pointing at it, with the check's description and default
+        parameters. A suite that applies the entry copies the reference in.
+
+        Parameters:
+            local_path: A ``.py`` file or a package directory on this machine.
+            to: The HopsFS directory to upload into, relative to the project.
+            register: Whether to save one library entry per declared check.
+            tags: Tags for the library entries; the agent's name, typically.
+            overwrite: Replace a file of the same name already there.
+
+        Returns:
+            `list[EvaluatorTemplate]`: the library entries saved, or an empty list.
+        """
+        from hopsworks_common.core import dataset_api
+
+        source = Path(local_path).resolve()
+        if not source.exists():
+            raise AgentServingError(f"{local_path} does not exist")
+        declared = self.declared(str(source)) if register else []
+        api = dataset_api.DatasetApi()
+        target = to.strip("/")
+        try:
+            api.mkdir(target)
+        except Exception:  # noqa: BLE001 -- exists already, most often
+            log.debug("%s not created", target)
+        api.upload(str(source), target, overwrite=overwrite)
+        if not register:
+            return []
+        return self._register(declared, {"file": f"{target}/{source.name}"}, tags)
+
+    @public
+    def register(
+        self,
+        local_path: str,
+        *,
+        git: dict[str, Any] | str | None = None,
+        path: str | None = None,
+        file: str | None = None,
+        tags: Sequence[str] | None = None,
+    ) -> list[EvaluatorTemplate]:
+        """Register the checks a local file declares, without uploading it.
+
+        For code the job reads from git: ``git={"url": ..., "ref": ...}`` or
+        ``git="deployment"`` for the evaluated deployment's own repository, with
+        ``path`` the file's path inside it (worked out from the local clone when
+        omitted). ``file`` instead names a HopsFS path already in the project.
+
+        Returns:
+            `list[EvaluatorTemplate]`: one library entry per declared check.
+        """
+        source = Path(local_path).resolve()
+        declared = self.declared(str(source))
+        if git is not None:
+            where: dict[str, Any] = {"git": git, "path": path or _repo_relative(source)}
+        elif file:
+            where = {"file": file}
+        else:
+            raise AgentServingError("register needs git=... or file=...")
+        return self._register(declared, where, tags)
+
+    def _register(
+        self,
+        declared: list[dict[str, Any]],
+        where: dict[str, Any],
+        tags: Sequence[str] | None,
+    ) -> list[EvaluatorTemplate]:
+        saved = []
+        for entry in declared:
+            row = {
+                "type": "python",
+                "name": entry["name"],
+                **where,
+                "params": dict(entry.get("defaults") or {}),
+                "needs_trace": entry["needs_trace"],
+                "reads_expectation": entry["reads_expectation"],
+                "timeout_s": entry["timeout_s"],
+            }
+            existing = self._client.evaluators.find(entry["name"])
+            if existing is not None:
+                saved.append(
+                    self._client.evaluators.update(
+                        existing,
+                        checks=[row],
+                        description=entry.get("description") or existing.description,
+                        tags=list(tags) if tags is not None else None,
+                    )
+                )
+            else:
+                saved.append(
+                    self._client.evaluators.save(
+                        entry["name"],
+                        [row],
+                        entry.get("description") or "",
+                        tags=tags,
+                    )
+                )
+        return saved
+
+
+def _repo_relative(source: Path) -> str:
+    """A file's path inside the repository it is in, found by walking up to ``.git``."""
+    for parent in [source, *source.parents]:
+        if (parent / ".git").exists():
+            return source.relative_to(parent).as_posix()
+    raise AgentServingError(
+        f"{source} is not inside a git checkout; pass path= explicitly"
+    )
+
+
 class Runs:
     def __init__(self, client: AgentServing):
         self._client = client
@@ -912,6 +1062,61 @@ class Runs:
         return EvaluatorResult.list_from_api(
             self._http.get(f"{EVALS}/runs/{run_id}/evaluator-results", trialId=trial_id)
         )
+
+    @public
+    def replay(
+        self,
+        run: Run | str,
+        fn: Callable[..., Any],
+        **params: Any,
+    ) -> list[tuple[Trial, EvaluatorResult]]:
+        """Grade a finished run's trials with a check, without writing anything.
+
+        Reads each trial's answer and trace back and runs ``fn`` on them the way
+        the job would, so a check can be written against last night's failures
+        and judged before it joins a suite. Trials whose trace is gone are graded
+        without one, which a check that needs it reports as ungradable.
+
+        Returns:
+            `list[tuple[Trial, EvaluatorResult]]`: each trial with the verdict the check gave it.
+        """
+        from ..checks import run_check
+
+        run = run if isinstance(run, Run) else self.get(run)
+        agent = self._client.get_agent(run.deployment_id) if run.deployment_id else None
+        expectations: dict[str, dict[str, str]] = {}
+        questions: dict[str, str] = {}
+        if run.suite_id:
+            try:
+                for task in self._client.suites.tasks(
+                    run.suite_id, version=run.suite_version
+                ):
+                    expectations[task.task_id] = dict(task.expectations or {})
+                    questions[task.task_id] = _first_user_turn(task.input_messages)
+            except AgentServingError:
+                log.debug("could not read the tasks of suite %s", run.suite_id)
+        graded = []
+        for trial in self.trials(run):
+            trace = None
+            if agent is not None and trial.trace_id:
+                try:
+                    trace = agent.trace(trial.trace_id)
+                except AgentServingError:
+                    trace = None
+            graded.append(
+                (
+                    trial,
+                    run_check(
+                        fn,
+                        answer=trial.final_output or "",
+                        question=questions.get(trial.task_id, ""),
+                        expectations=expectations.get(trial.task_id, {}),
+                        trace=trace,
+                        **params,
+                    ),
+                )
+            )
+        return graded
 
     @public
     def failure_history(

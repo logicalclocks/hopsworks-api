@@ -26,7 +26,7 @@ from hopsworks_apigen import public
 
 from ._transport import AgentServingError, Transport
 from .agent import Agent, is_agent
-from .evals import Evaluators, Jobs, Runs, Suites, Tasks
+from .evals import Checks, Evaluators, Jobs, Runs, Suites, Tasks
 from .models import ApiModel, ReviewJob, Run, Suite, Task
 
 
@@ -47,6 +47,7 @@ class AgentServing:
         suites: The project's evaluation suites.
         tasks: The tasks suites are made of.
         evaluators: The evaluator library (saved judge and check templates).
+        checks: Checks the project wrote in Python: upload and register them.
         runs: Evaluation runs, across agents.
         jobs: The per-agent evaluation and failure-analysis jobs.
     """
@@ -74,6 +75,7 @@ class AgentServing:
         self.suites = Suites(self)
         self.tasks = Tasks(self)
         self.evaluators = Evaluators(self)
+        self.checks = Checks(self)
         self.runs = Runs(self)
         self.jobs = Jobs(self)
 

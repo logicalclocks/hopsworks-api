@@ -307,11 +307,13 @@ class NoToolErrorEvaluator:
 
 
 class FunctionEvaluator:
-    """Wrap a plain function, the interface the design documents.
+    """Wrap a plain function, for code that builds a run directly.
 
-    The shape is::
-
-    def _grade(task, trial, trace) -> dict
+    The shape is ``fn(task, trial, trace) -> dict`` with ``score``, ``passed``,
+    ``reason`` and ``assertions``. A suite cannot name this: what a suite names
+    is a ``python`` check (:mod:`hopsworks_agents.eval.checks`), which resolves
+    code from the project rather than from the spec and shows it the stable
+    :class:`~hopsworks_agents.eval.checks.CheckContext` instead of these objects.
     """
 
     type = "function"
