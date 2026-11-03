@@ -5643,13 +5643,15 @@ class CRMAndAnalyticsConnector(StorageConnector):
         return self._client_secret
 
     def to_dict(self) -> dict[str, Any]:
+        crm_type = (
+            self._crm_type.value if hasattr(self._crm_type, "value") else self._crm_type
+        )
         payload = super().to_dict()
         payload.update(
             {
                 "apiKey": self._api_key,
-                "crmType": self._crm_type.value
-                if hasattr(self._crm_type, "value")
-                else self._crm_type,
+                # Jackson CRM subtype ids are uppercase, unlike CRMSource values.
+                "crmType": crm_type.upper() if isinstance(crm_type, str) else crm_type,
                 "username": self._username,
                 "password": self._password,
                 "domain": self._domain,
