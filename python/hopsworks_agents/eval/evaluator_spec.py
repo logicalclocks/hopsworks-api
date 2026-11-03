@@ -293,6 +293,10 @@ def _evaluators_from_spec(
             raise SpecError(f"entry {index + 1}: {err}") from err
         if evaluator is not None:
             evaluators.append(evaluator)
+    if sources is not None:
+        # Every built-in's name is spoken for before any python source names
+        # its checks, so a declared check never writes over a built-in's row.
+        sources._reserve([e.name for e in evaluators if e.type != "python"])
     return evaluators
 
 

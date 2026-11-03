@@ -519,7 +519,9 @@ def _selected(
     exclude: Sequence[str] | None,
 ) -> tuple[list[_Declared], list[str]]:
     """The declared checks a row runs, and the names in ``only`` it does not declare."""
-    wanted = list(only) if only else list(declared)
+    # None is "no filter"; an empty list is "nothing", which is what the UI
+    # writes when every box is unticked and must not read as everything.
+    wanted = list(declared) if only is None else list(only)
     skipped = [name for name in (exclude or []) if name]
     chosen = [declared[n] for n in wanted if n in declared and n not in skipped]
     missing = [n for n in wanted if n not in declared]
@@ -623,19 +625,40 @@ class _CheckSources:
         return self._import(source, self._fetch_local(source))
 
     def _claim(self, check_name: str, row: str) -> str:
-        """The name a row reports a declared check under, unique across the execution."""
+        """The name a row reports a declared check under, unique across the execution.
+
+        Bookkeeping only: this lock is never held while a source imports, so a
+        source that blocks at import (and keeps the import lock on its daemon
+        thread for ever) cannot stop the rows after it from being named.
+        """
         with self._lock:
             owner = self._claims.setdefault(check_name, row)
             return check_name if owner == row else f"{row}/{check_name}"
 
-    def _import(self, source: _Source, fetched: _Fetched) -> _Loaded:
-        """Import what was fetched, and remember it for the rest of the execution."""
-        with self._lock:
-            return self._import_locked(source, fetched)
+    def _reserve(self, names: Sequence[str]) -> None:
+        """Reserve the names of the suite's other evaluators, so no python check reuses one.
 
-    def _import_locked(self, source: _Source, fetched: _Fetched) -> _Loaded:
+        A built-in ``exact_match`` named ``verdict`` and a declared check
+        ``verdict`` wrote the same stored key; the built-in is in the spec
+        first and keeps the bare name, the check reports as ``<row>/verdict``.
+        """
+        with self._lock:
+            for name in names:
+                self._claims.setdefault(name, f"\0{name}")
+
+    def _import(
+        self, source: _Source, fetched: _Fetched, *, lock_timeout_s: float | None = None
+    ) -> _Loaded:
+        """Import what was fetched, and remember it for the rest of the execution.
+
+        The cache is read and written under the bookkeeping lock; the import
+        itself runs under the process-wide import lock, acquired with a bound,
+        so an import still blocked from an earlier row fails this one quickly
+        and clearly instead of stalling it.
+        """
         key = source._describe()
-        cached = self._loaded.get(key)
+        with self._lock:
+            cached = self._loaded.get(key)
         if cached is not None:
             return cached
         if source.module:
@@ -643,7 +666,9 @@ class _CheckSources:
             held: dict[str, ModuleType] = {}
         else:
             module, held = _import_path(
-                fetched.local, package_root=fetched.package_root
+                fetched.local,
+                package_root=fetched.package_root,
+                lock_timeout_s=lock_timeout_s,
             )
         loaded = _Loaded(
             module=module,
@@ -658,8 +683,8 @@ class _CheckSources:
             local=fetched.local,
             held=held,
         )
-        self._loaded[key] = loaded
-        return loaded
+        with self._lock:
+            return self._loaded.setdefault(key, loaded)
 
     def _fetch_local(self, source: _Source) -> _Fetched:
         """The source's code on local disk. I/O only: nothing of it runs here."""
@@ -998,7 +1023,7 @@ def _copy_tree(root: str, into: str) -> int:
 
 
 def _import_path(
-    local: str, *, package_root: str | None = None
+    local: str, *, package_root: str | None = None, lock_timeout_s: float | None = None
 ) -> tuple[ModuleType, dict[str, ModuleType]]:
     """Import a file or a package directory, isolated from every other source.
 
@@ -1012,8 +1037,16 @@ def _import_path(
     held, so the functions that bound it keep working. A check that imports a
     helper lazily inside the function will not find it: import at the top.
     """
-    with _IMPORT_LOCK:
+    budget = DEFAULT_TIMEOUT_S if lock_timeout_s is None else lock_timeout_s
+    if not _IMPORT_LOCK.acquire(timeout=budget):
+        raise RuntimeError(
+            "another source's import has not finished and still holds the import "
+            f"lock after {budget:g}s; this one could not start"
+        )
+    try:
         return _import_path_locked(local, package_root=package_root)
+    finally:
+        _IMPORT_LOCK.release()
 
 
 def _import_path_locked(
@@ -1132,7 +1165,7 @@ class PythonSourceEvaluator:
     ):
         self.name = name
         self.source = source
-        self.only = [str(n) for n in (only or [])] or None
+        self.only = None if only is None else [str(n) for n in only]
         self.exclude = [str(n) for n in (exclude or [])]
         self.params = {str(k): dict(v or {}) for k, v in (params or {}).items()}
         self._sources = sources
@@ -1182,7 +1215,10 @@ class PythonSourceEvaluator:
                     ) from None
                 try:
                     loaded = _run_with_timeout(
-                        lambda: sources._import(self.source, fetched), DEFAULT_TIMEOUT_S
+                        lambda: sources._import(
+                            self.source, fetched, lock_timeout_s=DEFAULT_TIMEOUT_S
+                        ),
+                        DEFAULT_TIMEOUT_S,
                     )
                 except _Timeout:
                     raise RuntimeError(
@@ -1232,9 +1268,15 @@ class PythonSourceEvaluator:
         failure = self._ensure_loaded()
         if failure or self._checks is None:
             result = _ungradable(self.name, self.type, failure or "not loaded")
-            result.assertions = {SKIPPED: True, "reason": failure}
+            result.assertions = {SKIPPED: True, "reason": failure, "row": self.name}
             return [result]
         results = []
+        if not self._checks and not self._missing:
+            result = _ungradable(
+                self.name, self.type, "no check selected: this row grades nothing"
+            )
+            result.assertions = {"row": self.name}
+            results.append(result)
         for name in self._missing:
             result = _ungradable(
                 name,

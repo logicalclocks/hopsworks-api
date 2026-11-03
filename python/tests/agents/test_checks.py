@@ -1250,6 +1250,78 @@ class TestSources:
                     )
         assert verdicts == {(("a", True), ("b", False))}
 
+    def test_a_blocked_import_does_not_stall_the_rows_after_it(
+        self, tmp_path, monkeypatch
+    ):
+        """good, blocked, good again: the third row is served, not deadlocked."""
+        from hopsworks_agents.eval.checks import _preload
+
+        good = tmp_path / "good.py"
+        good.write_text(VERDICT_FILE.format(verdict="True"))
+        blocked = _write(
+            tmp_path,
+            "blocked.py",
+            """
+            import time
+            time.sleep(2)
+            @check(needs_trace=False)
+            def v(ctx):
+                return True
+            """,
+        )
+        # Short on purpose: the stuck thread keeps the process-wide import lock
+        # until its sleep ends, and the tests after this one would wait for it.
+        monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.3)
+        sources = _CheckSources(dataset_api=object(), project_name="p")
+        sources._download = lambda path: path  # type: ignore[method-assign]
+        rows = _evaluators_from_spec(
+            [
+                {"type": "python", "name": "first", "file": str(good)},
+                {"type": "python", "name": "stuck", "file": str(blocked)},
+                {"type": "python", "name": "again", "file": str(good)},
+            ],
+            sources=sources,
+        )
+        started = time.monotonic()
+        _preload(rows)
+        results = _run_evaluators(rows, _task(), _trial(), None)
+        assert time.monotonic() - started < 5
+        by_row = {r.assertions.get("row"): r for r in results}
+        assert by_row["first"].passed is True
+        assert by_row["stuck"].assertions[SKIPPED] is True
+        assert "took longer" in by_row["stuck"].reason
+        assert by_row["again"].passed is True
+
+    def test_a_declared_check_never_writes_over_a_built_ins_row(self, tmp_path):
+        (tmp_path / "c.py").write_text(VERDICT_FILE.format(verdict="False"))
+        sources = _CheckSources(dataset_api=object(), project_name="p")
+        sources._download = lambda path: path  # type: ignore[method-assign]
+        built_in, python = _evaluators_from_spec(
+            [
+                {"type": "exact_match", "name": "verdict"},
+                {"type": "python", "name": "x", "file": str(tmp_path / "c.py")},
+            ],
+            sources=sources,
+        )
+        results = _run_evaluators(
+            [built_in, python],
+            _task(expectations={"verdict": "ok"}),
+            _trial("ok"),
+            None,
+        )
+        assert [(r.evaluator_name, r.passed) for r in results] == [
+            ("verdict", True),
+            ("x/verdict", False),
+        ]
+
+    def test_an_explicit_empty_only_selects_nothing(self, tmp_path):
+        (tmp_path / "c.py").write_text(VERDICT_FILE.format(verdict="True"))
+        rows = _rows([_file_evaluator(tmp_path / "c.py", "nothing", only=[])])
+        assert set(rows) == {"nothing"}
+        assert rows["nothing"].ungradable is True
+        assert not rows["nothing"].assertions.get(SKIPPED)
+        assert "no check selected" in rows["nothing"].reason
+
     def test_a_snapshot_is_named_by_the_commit_a_row_pins(self, tmp_path):
         sources = _CheckSources(workdir=str(tmp_path))
         at_one = _parse_source(
