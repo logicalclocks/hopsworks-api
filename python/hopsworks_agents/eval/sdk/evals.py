@@ -268,6 +268,22 @@ class Suites:
         return Check.list_from_api(rows)
 
     @public
+    def checks_manifest(
+        self, suite: Suite | str, version: int | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """What a published version froze its code checks to, by snapshot name.
+
+        Each value carries ``url``, ``ref``, ``path``, ``commit``, ``sha256``
+        and ``pinned_at``, written by the job on the version's first run for a
+        git source. Empty for a draft, or a version that froze nothing.
+        """
+        suite_id, version = _suite_ref(suite, version)
+        manifest = self._http.get(
+            f"{EVALS}/suites/{suite_id}/checks-manifest", version=version
+        )
+        return dict(manifest or {})
+
+    @public
     def publish(self, suite: Suite | str, version: int | None = None) -> Suite:
         """Freeze it, which is what lets a run say exactly what it executed."""
         suite_id, version = _suite_ref(suite, version)
