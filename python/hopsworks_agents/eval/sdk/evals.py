@@ -799,6 +799,10 @@ class Evaluators:
         )
 
 
+#: The tag every library entry that holds a code check carries.
+CUSTOM_CODE_TAG = "custom-code"
+
+
 class Checks:
     """Checks the project wrote in Python: upload them, register what they declare.
 
@@ -942,15 +946,24 @@ class Checks:
             f"{d['name']}: {d['description']}" if d.get("description") else d["name"]
             for d in declared
         )
+        # Every entry holding a code check carries CUSTOM_CODE_TAG, so the
+        # library can be filtered to them; the backend adds it as well, this
+        # just keeps what the caller sees honest without a second read.
+        tagged = [t for t in (tags or []) if t != CUSTOM_CODE_TAG] + [CUSTOM_CODE_TAG]
         existing = self._client.evaluators.find(name)
         if existing is not None:
+            kept = (
+                [t for t in existing.tags if t != CUSTOM_CODE_TAG]
+                if tags is None
+                else []
+            )
             return self._client.evaluators.update(
                 existing,
                 checks=[row],
                 description=description or existing.description,
-                tags=list(tags) if tags is not None else None,
+                tags=kept + tagged if tags is None else tagged,
             )
-        return self._client.evaluators.save(name, [row], description, tags=tags)
+        return self._client.evaluators.save(name, [row], description, tags=tagged)
 
 
 def _repo_relative(source: Path) -> str:
