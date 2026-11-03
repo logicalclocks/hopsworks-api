@@ -826,6 +826,20 @@ class Checks:
         return [d._as_dict() for d in _declared_in(module).values()]
 
     @public
+    def declared_in(self, file: str) -> list[str]:
+        """The checks a file already in the project declares, as the backend lists them.
+
+        A text scan on the server, never an import, and the same list the UI's
+        picker shows for that file.
+        """
+        return list(
+            self._client.http.request(
+                "GET", f"{EVALS}/checks/declared", params={"path": file}
+            )
+            or []
+        )
+
+    @public
     def upload(
         self,
         local_path: str,
