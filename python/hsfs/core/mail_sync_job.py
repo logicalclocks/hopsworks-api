@@ -92,11 +92,13 @@ MAX_THROTTLED_S = 3600.0
 MAX_RATE_LIMIT_BACKOFF_S = 64.0
 # A lease whose holder cannot be checked is taken over after this long; no sync runs for a day.
 UNVERIFIABLE_LEASE_MS = 24 * 3600_000
-# A run that finds the lease held by an execution that has not finished a window for this long fails instead of doing nothing.
+# A run that finds the lease held by an execution that has recorded no progress for this long fails instead of doing nothing.
 # Twice MAX_THROTTLED_S: a holder still within its throttling allowance is not reported.
 STALLED_LEASE_MS = 2 * int(MAX_THROTTLED_S * 1000)
-# A lease that cannot be read is held for this long after it was created: its holder can still be writing it.
+# A lease that cannot be read is held for this long after it was created or rewritten: its holder can still be writing it.
 LEASE_WRITE_GRACE_MS = 60_000
+# The holder records its progress in the lease at most this often.
+LEASE_TOUCH_INTERVAL_S = 60.0
 # Bytes per read when a message is streamed to a file.
 DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 # UTF-8 bytes; HopsFS names hold 255, and a write first goes to the name plus a 37-byte temporary suffix.
@@ -844,7 +846,8 @@ class _Lease:
 
     `is_running(holder)` reports whether the holder recorded in an existing lease still runs, or None when it cannot tell.
     The holder records its progress with `_touch`, and a run that finds a running holder without progress for `STALLED_LEASE_MS` fails.
-    HopsFS has no hard links, so a claim cannot be written whole and then linked into place: it is created empty, then written, and an unreadable lease counts as held for `LEASE_WRITE_GRACE_MS` after it was created.
+    HopsFS has no hard links, so a claim cannot be written whole and then linked into place: it is created empty, then written, and an unreadable lease counts as held for `LEASE_WRITE_GRACE_MS` after it was last written.
+    Progress rewrites the lease in place, never by replacing the file, so there is no moment without a lease for another run to create one in.
     """
 
     def __init__(
@@ -859,6 +862,7 @@ class _Lease:
         self._is_running = is_running
         self._clock = clock
         self._since = 0
+        self._touched_at = 0.0
 
     def __enter__(self) -> Self:
         for _ in range(3):
@@ -871,6 +875,7 @@ class _Lease:
                     f"Another sync of this mailbox is running; remove {self._path} only if it is not"
                 ) from None
             self._since = self._now_ms()
+            self._touched_at = self._clock()
             with os.fdopen(fd, "w") as f:
                 f.write(self._claim())
             return self
@@ -891,9 +896,24 @@ class _Lease:
             return None
         return lease if isinstance(lease, dict) and lease.get("holder") else None
 
-    def _touch(self) -> None:
-        """Record that the holder is still making progress."""
-        _atomic_write(self._path, self._claim().encode())
+    def _touch(self, force: bool = False) -> None:
+        """Record that the holder is still making progress, at most every `LEASE_TOUCH_INTERVAL_S` unless `force`.
+
+        Raises:
+            _MailSyncError: When the lease file is gone, so this run no longer holds it.
+        """
+        now = self._clock()
+        if not force and now - self._touched_at < LEASE_TOUCH_INTERVAL_S:
+            return
+        try:
+            fd = os.open(self._path, os.O_WRONLY | os.O_TRUNC)
+        except FileNotFoundError:
+            raise _MailSyncError(
+                f"The lease {self._path} was removed while this run held it; another sync may be writing the same directory"
+            ) from None
+        with os.fdopen(fd, "w") as f:
+            f.write(self._claim())
+        self._touched_at = now
 
     def _take_over_stale(self) -> bool:
         """Move a stale lease aside and report True, so the caller claims it again; False when the lease is held.
@@ -919,7 +939,7 @@ class _Lease:
             progress = int(lease.get("progress") or since)
         if running and now - progress >= STALLED_LEASE_MS:
             raise _MailSyncError(
-                f"Execution {holder} holds {self._path} but has not read a window for over "
+                f"Execution {holder} holds {self._path} but has recorded no progress for over "
                 f"{STALLED_LEASE_MS // 3600_000} hours; stop it if it is stuck"
             )
         if running or (running is None and now - since < UNVERIFIABLE_LEASE_MS):
@@ -1039,6 +1059,7 @@ class _SyncRun:
             seq += 1
             _write_state(self._target, self._source.state_dir, state, seq)
             self._log_progress(result, state)
+        self._progress(force=True)
         self._compact_ended_days(state, seq)
         result.cursor_ms = state.cursor_ms
         return result
@@ -1059,9 +1080,11 @@ class _SyncRun:
                 seen.update(row["message_id"] for row in batch)
             _advance(state, batch, through_ms, last_ids)
             self._log_progress(result, state)
+        self._progress(force=True)
         self._remove_unseen(seen)
         seq = _latest_seq(self._target, self._source.state_dir) + 1
         _write_state(self._target, self._source.state_dir, state, seq)
+        self._progress(force=True)
         self._compact_ended_days(state, seq)
         result.cursor_ms = state.cursor_ms
         return result
@@ -1129,8 +1152,7 @@ class _SyncRun:
                 pending_bytes += _row_bytes(row)
                 if row["day"] not in result.days:
                     result.days.append(row["day"])
-            if self._lease is not None:
-                self._lease._touch()
+            self._progress()
             # The queries of neighbouring windows overlap by a second or two.
             skip_ids = set(listed)
             window_lower = window_upper
@@ -1145,7 +1167,13 @@ class _SyncRun:
                 pending, pending_bytes, cut = [], 0, False
         result.days.sort()
 
+    def _progress(self, force: bool = False) -> None:
+        """Record in the lease that this run is still making progress; see `_Lease._touch`."""
+        if self._lease is not None:
+            self._lease._touch(force)
+
     def _log_progress(self, result: _RunResult, state: _SyncState) -> None:
+        self._progress()
         _logger.info(
             "Upserted %d messages so far, through %s",
             result.copied,
@@ -1187,6 +1215,7 @@ class _SyncRun:
         try:
             with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
                 for start in range(0, len(ids), FETCH_BATCH):
+                    self._progress()
                     batch = ids[start : start + FETCH_BATCH]
                     for message_id, message in zip(
                         batch, pool.map(self._source._get, batch), strict=True

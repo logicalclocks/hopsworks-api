@@ -817,7 +817,7 @@ class TestLease:
 
     def test_a_running_holder_without_progress_fails_the_run(self, tmp_path):
         self._lease(tmp_path, "5", NOW_MS - m.STALLED_LEASE_MS - 1)
-        with pytest.raises(m._MailSyncError, match="has not read a window") as e:
+        with pytest.raises(m._MailSyncError, match="has recorded no progress") as e:
             _run(
                 tmp_path,
                 FakeGmail([_message("a", DAY1)]),
@@ -833,8 +833,8 @@ class TestLease:
         progress = []
         touch = m._Lease._touch
 
-        def record(lease):
-            touch(lease)
+        def record(lease, force=False):
+            touch(lease, force)
             progress.append(json.loads(lease_path.read_text())["progress"])
 
         m._Lease._touch = record
@@ -843,6 +843,40 @@ class TestLease:
         finally:
             m._Lease._touch = touch
         assert progress and not lease_path.exists()
+
+    def test_progress_rewrites_the_lease_in_place_at_most_once_a_minute(self, tmp_path):
+        (tmp_path / "Resources").mkdir()
+        target = tmp_path / "Resources" / "mail"
+        clock = [NOW_MS / 1000]
+        with m._Lease(target, "1", lambda h: False, clock=lambda: clock[0]) as lease:
+            inode = lease._path.stat().st_ino
+            clock[0] += 10
+            lease._touch()
+            assert json.loads(lease._path.read_text())["progress"] == NOW_MS
+            clock[0] += m.LEASE_TOUCH_INTERVAL_S
+            lease._touch()
+            assert json.loads(lease._path.read_text())["progress"] == int(
+                clock[0] * 1000
+            )
+            clock[0] += 1
+            lease._touch(force=True)
+            assert json.loads(lease._path.read_text())["progress"] == int(
+                clock[0] * 1000
+            )
+            # Rewritten in place: never a moment without a lease file for another run to create.
+            assert lease._path.stat().st_ino == inode
+
+    def test_a_removed_lease_fails_the_run_at_its_next_progress(self, tmp_path):
+        (tmp_path / "Resources").mkdir()
+        target = tmp_path / "Resources" / "mail"
+        with (
+            pytest.raises(m._MailSyncError, match="was removed while this run held it"),
+            m._Lease(
+                target, "1", lambda h: False, clock=lambda: NOW_MS / 1000
+            ) as lease,
+        ):
+            lease._path.unlink()
+            lease._touch(force=True)
 
     @pytest.mark.parametrize("age_s, held", [(10, True), (120, False)])
     def test_an_unreadable_lease_is_held_while_its_holder_can_still_be_writing_it(
