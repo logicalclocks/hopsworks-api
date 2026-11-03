@@ -23,8 +23,12 @@ Windows select on `receivedDateTime`, when the message reached the mailbox, whic
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 import urllib.parse
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from hsfs.core import mail_sync_job as m
@@ -32,7 +36,6 @@ from hsfs.core import mail_sync_job as m
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from pathlib import Path
 
 
 GRAPH_API = "https://graph.microsoft.com/v1.0/"
@@ -49,7 +52,7 @@ LISTED_FIELDS = (
 class _GraphClient(m._RestClient):
     """Read-only Microsoft Graph client for one mailbox.
 
-    `user_path` is `me` for a delegated token, or `users/<mailbox>` for an app-only one.
+    `user_path` is `users/<mailbox>`, for delegated and app-only tokens alike, so a token for another account fails instead of reading that account.
     Every request asks for immutable ids, so the ids listed, fetched and stored agree.
     """
 
@@ -70,6 +73,7 @@ class _GraphClient(m._RestClient):
             sleep,
             clock,
             headers={"Prefer": 'IdType="ImmutableId"'},
+            api_root=GRAPH_API,
         )
 
     def _is_rate_limit(self, status: int, response: Any) -> bool:
@@ -78,13 +82,27 @@ class _GraphClient(m._RestClient):
 
     def _pages(self, path: str, params: dict[str, Any]) -> Iterator[dict]:
         """The items of a collection, following `@odata.nextLink`, which carries the query on."""
-        page = self._get(path, params) or {}
+        page = self._collection(path, params)
         while True:
             yield from page.get("value", [])
             next_link = page.get("@odata.nextLink")
             if not next_link:
                 return
-            page = self._get(next_link) or {}
+            page = self._collection(next_link)
+
+    def _collection(self, path: str, params: dict[str, Any] | None = None) -> dict:
+        """A page of a collection.
+
+        Raises:
+            _MailSyncError: When the collection is gone, such as a selected folder deleted in Outlook; listing it as empty would move the cursor past mail never copied.
+        """
+        page = self._get(path, params)
+        if page is None:
+            raise m._MailSyncError(
+                f"Outlook has no {path.split('?', 1)[0]} in this mailbox; "
+                "if a selected folder was deleted or moved, edit the sync job's folders"
+            )
+        return page
 
 
 def _graph_time(epoch_ms: int) -> str:
@@ -113,12 +131,19 @@ class _OutlookSource:
     service = "Outlook"
     state_dir = STATE_DIR
 
-    def __init__(self, client: _GraphClient, folder_ids: list[str]):
+    def __init__(
+        self, client: _GraphClient, folder_ids: list[str], scratch: Path | None = None
+    ):
         self._client = client
         self._folder_ids = folder_ids
         self._listed: dict[str, dict] = {}
         self._excluded: set[str] | None = None
         self._folder_paths: dict[str, str] | None = None
+        self._folder_parents: dict[str, str | None] = {}
+        # Messages are streamed here, so fetching a batch holds paths rather than whole messages in memory.
+        self._downloads = Path(
+            tempfile.mkdtemp(prefix="outlook_messages_", dir=scratch)
+        )
 
     def _collections(self) -> list[str]:
         if self._folder_ids:
@@ -153,7 +178,7 @@ class _OutlookSource:
         """
         oldest = None
         for path in self._collections():
-            page = self._client._get(
+            page = self._client._collection(
                 path,
                 {
                     "$orderby": "receivedDateTime asc",
@@ -161,29 +186,43 @@ class _OutlookSource:
                     "$select": "receivedDateTime",
                 },
             )
-            for message in (page or {}).get("value", []):
+            for message in page.get("value", []):
                 received = _epoch_ms(message["receivedDateTime"])
                 if received <= upper_ms:
                     oldest = received if oldest is None else min(oldest, received)
         return oldest
 
     def _excluded_folders(self) -> set[str]:
+        """The excluded folders and every folder below them, such as a folder deleted in Outlook, which moves under Deleted Items."""
         if self._excluded is None:
-            self._excluded = set()
+            roots = set()
             for name in EXCLUDED_FOLDERS:
                 folder = self._client._get(f"/mailFolders/{name}", {"$select": "id"})
                 # A mailbox can lack a well-known folder; Graph answers 404 for it.
                 if folder is not None:
-                    self._excluded.add(folder["id"])
+                    roots.add(folder["id"])
+            self._paths()
+            self._excluded = {
+                folder_id
+                for folder_id in self._folder_parents
+                if self._below(folder_id, roots)
+            } | roots
         return self._excluded
+
+    def _below(self, folder_id: str | None, roots: set[str]) -> bool:
+        while folder_id is not None:
+            if folder_id in roots:
+                return True
+            folder_id = self._folder_parents.get(folder_id)
+        return False
 
     def _paths(self) -> dict[str, str]:
         """Folder paths by id, such as `Inbox/Projects`, read once per run."""
         if self._folder_paths is None:
             self._folder_paths = {}
-            pending = [("/mailFolders", "")]
+            pending: list[tuple[str, str, str | None]] = [("/mailFolders", "", None)]
             while pending:
-                path, parent = pending.pop()
+                path, parent, parent_id = pending.pop()
                 for folder in self._client._pages(
                     path,
                     {
@@ -193,22 +232,39 @@ class _OutlookSource:
                 ):
                     name = f"{parent}/{folder['displayName']}".lstrip("/")
                     self._folder_paths[folder["id"]] = name
+                    self._folder_parents[folder["id"]] = parent_id
                     if folder.get("childFolderCount"):
                         pending.append(
-                            (f"/mailFolders/{_quote(folder['id'])}/childFolders", name)
+                            (
+                                f"/mailFolders/{_quote(folder['id'])}/childFolders",
+                                name,
+                                folder["id"],
+                            )
                         )
         return self._folder_paths
 
-    def _get(self, message_id: str) -> tuple[dict, bytes] | None:
-        raw = self._client._get(f"/messages/{_quote(message_id)}/$value", raw=True)
-        if raw is None:
+    def _get(self, message_id: str) -> tuple[dict, Path] | None:
+        """The message's listed metadata and the file its MIME source was streamed to; `_row` removes the file."""
+        download = self._downloads / f"{os.urandom(8).hex()}.eml"
+        if not self._client._get(
+            f"/messages/{_quote(message_id)}/$value", to_file=download
+        ):
+            download.unlink(missing_ok=True)
             return None
-        return self._listed.get(message_id, {"id": message_id}), raw
+        return self._listed.get(message_id, {"id": message_id}), download
 
     def _row(
-        self, message: tuple[dict, bytes], attachments_root: Path | None, prefix: str
+        self, message: tuple[dict, Path], attachments_root: Path | None, prefix: str
     ) -> dict:
-        return _parse_message(*message, self._paths(), attachments_root, prefix)
+        metadata, download = message
+        try:
+            raw = download.read_bytes()
+        finally:
+            download.unlink(missing_ok=True)
+        return _parse_message(metadata, raw, self._paths(), attachments_root, prefix)
+
+    def _close(self) -> None:
+        shutil.rmtree(self._downloads, ignore_errors=True)
 
 
 def _parse_message(
@@ -244,10 +300,11 @@ def _parse_message(
 
 
 def _user_path(connector) -> str:
-    """The Graph path of the mailbox: the signed-in user for a delegated token, the named user for an app-only one."""
-    if connector.auth_type == "CLIENT_CREDENTIALS":
-        return "users/" + _quote(connector.mailbox)
-    return "me"
+    """The Graph path of the data source's mailbox.
+
+    A delegated token is sent to the mailbox's path too, not `me`, so a token of another account fails with 403 or 404 instead of copying that account's mail; it also reaches a shared mailbox the account may read.
+    """
+    return "users/" + _quote(connector.mailbox)
 
 
 def _source(connector, config: m._SyncConfig) -> _OutlookSource:

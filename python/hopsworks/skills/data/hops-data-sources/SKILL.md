@@ -551,7 +551,7 @@ hops datasource labels support_outlook    # folder ids and paths: Inbox, Inbox/P
 hops datasource sync support_outlook --label <inbox folder id> --start-date 2026-01-01 --schedule hourly
 ```
 
-Without `--label` (SDK `folders=[...]`), every folder but Deleted Items, Junk Email, Drafts and Outbox is copied; a chosen folder's subfolders need choosing too.
+Without `--label` (SDK `folders=[...]`), every folder but Deleted Items, Junk Email, Drafts and Outbox and the folders below them is copied; a chosen folder's subfolders need choosing too.
 A message keeps its key when moved between folders, but its `labels` keep the folder it was in when copied.
 
 ## Next Steps

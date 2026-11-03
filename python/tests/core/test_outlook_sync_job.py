@@ -18,13 +18,14 @@ import re
 from datetime import datetime, timezone
 from email.message import EmailMessage
 
+import pytest
 from hsfs.core import mail_sync_job as m
 from hsfs.core import outlook_sync_job as o
 
 
 NOW_MS = int(datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc).timestamp() * 1000)
 HOUR = 3_600_000
-BASE = o.GRAPH_API + "me"
+BASE = o.GRAPH_API + "users/alice%40contoso.com"
 PROJECT_ROOT = "/Projects/mail"
 FOLDERS = {
     "id-inbox": ("Inbox", None, "inbox"),
@@ -32,6 +33,8 @@ FOLDERS = {
     "id-sent": ("Sent Items", None, "sentitems"),
     "id-deleted": ("Deleted Items", None, "deleteditems"),
     "id-junk": ("Junk Email", None, "junkemail"),
+    # A folder deleted in Outlook moves under Deleted Items.
+    "id-old": ("Old project", "id-deleted", None),
 }
 
 
@@ -62,6 +65,10 @@ class Response:
         self.content = content
         self.headers = headers or {}
 
+    def iter_content(self, chunk_size):
+        for start in range(0, len(self.content), chunk_size):
+            yield self.content[start : start + chunk_size]
+
     def json(self):
         if self._body is None:
             raise ValueError("no JSON")
@@ -90,7 +97,7 @@ class FakeGraph:
             "_mime": _mime(**kwargs),
         }
 
-    def get(self, url, params=None, headers=None, timeout=None):
+    def get(self, url, params=None, headers=None, timeout=None, stream=False):
         self.requests.append((url, dict(params or {}), dict(headers or {})))
         if self.throttle:
             return self.throttle.pop(0)
@@ -130,7 +137,7 @@ class FakeGraph:
         match = re.fullmatch(r"(?:/mailFolders/([^/]+))?/messages", path)
         if match:
             return self._list(match.group(1), params)
-        match = re.fullmatch(r"https://next/(\d+)/(.*)", url)
+        match = re.fullmatch(re.escape(BASE) + r"/next/(\d+)/(.*)", url)
         if match:
             return self._page(self._pending[match.group(2)], int(match.group(1)))
         raise AssertionError("unexpected request " + url)
@@ -166,7 +173,7 @@ class FakeGraph:
             key = next(k for k, v in self._pending.items() if v is listed)
         body = {"value": listed[start : start + self.page_size]}
         if start + self.page_size < len(listed):
-            body["@odata.nextLink"] = f"https://next/{start + self.page_size}/{key}"
+            body["@odata.nextLink"] = f"{BASE}/next/{start + self.page_size}/{key}"
         return Response(200, body)
 
 
@@ -218,7 +225,7 @@ def _run(tmp_path, graph, writer, config=None, now_ms=NOW_MS, sleeps=None):
         clock[0] += seconds
 
     client = o._GraphClient(
-        "me",
+        "users/alice%40contoso.com",
         lambda: ("token", None),
         session=graph,
         sleep=sleep,
@@ -227,7 +234,7 @@ def _run(tmp_path, graph, writer, config=None, now_ms=NOW_MS, sleeps=None):
     return m._SyncRun(
         config,
         "alice@contoso.com",
-        o._OutlookSource(client, config.labels),
+        o._OutlookSource(client, config.labels, scratch=tmp_path),
         writer,
         tmp_path,
         PROJECT_ROOT,
@@ -245,6 +252,7 @@ def test_a_backfill_copies_every_folder_but_the_excluded_ones(tmp_path):
     graph.add("c", NOW_MS - 2 * HOUR, folder="id-sent")
     graph.add("trash", NOW_MS - 2 * HOUR, folder="id-deleted")
     graph.add("spam", NOW_MS - 2 * HOUR, folder="id-junk")
+    graph.add("old", NOW_MS - 2 * HOUR, folder="id-old")
     graph.add("draft", NOW_MS - 2 * HOUR, draft=True)
     writer = FakeWriter()
     result = _run(tmp_path, graph, writer)
@@ -310,10 +318,10 @@ def test_every_request_asks_for_immutable_ids_and_pages_are_followed(tmp_path):
     _run(tmp_path, graph, writer)
     assert sorted(writer.table) == ["0", "1", "2"]
     assert all(h["Prefer"] == 'IdType="ImmutableId"' for _, _, h in graph.requests)
-    assert any(url.startswith("https://next/") for url, _, _ in graph.requests)
+    assert any("/next/" in url for url, _, _ in graph.requests)
 
 
-def test_throttled_requests_are_retried_until_served(tmp_path):
+def test_throttled_requests_are_retried_until_served_within_the_cap(tmp_path):
     graph = FakeGraph()
     graph.add("a", NOW_MS - 3 * HOUR)
     graph.throttle = [
@@ -359,10 +367,89 @@ def test_the_cursor_lives_in_its_own_state_directory(tmp_path):
     assert state.cursor_ms == NOW_MS - m.RUN_HORIZON_MS
 
 
-def test_the_mailbox_path_follows_the_auth_type():
-    delegated = type("C", (), {"auth_type": "OAUTH", "mailbox": "a@contoso.com"})()
-    app = type(
-        "C", (), {"auth_type": "CLIENT_CREDENTIALS", "mailbox": "a@contoso.com"}
-    )()
-    assert o._user_path(delegated) == "me"
-    assert o._user_path(app) == "users/a%40contoso.com"
+def test_delegated_and_app_only_tokens_read_the_configured_mailbox():
+    for auth_type in ("OAUTH", "CLIENT_CREDENTIALS"):
+        connector = type(
+            "C", (), {"auth_type": auth_type, "mailbox": "a@contoso.com"}
+        )()
+        assert o._user_path(connector) == "users/a%40contoso.com"
+
+
+def test_a_run_that_stays_throttled_past_the_cap_fails(tmp_path):
+    graph = FakeGraph()
+    graph.add("a", NOW_MS - 3 * HOUR)
+    graph.throttle = [
+        Response(
+            429,
+            {"error": {"code": "ApplicationThrottled"}},
+            headers={"Retry-After": "300"},
+        )
+    ] * 20
+    writer = FakeWriter()
+    with pytest.raises(
+        m._MailSyncError, match="throttled the sync for over 60 minutes"
+    ):
+        _run(tmp_path, graph, writer)
+    assert writer.table == {}
+
+
+def test_a_link_outside_graph_is_not_followed(tmp_path):
+    graph = FakeGraph(page_size=1)
+    graph.add("a", NOW_MS - 3 * HOUR)
+    graph.add("b", NOW_MS - 4 * HOUR)
+    page = graph._page
+
+    def elsewhere(listed, start, key=None):
+        response = page(listed, start, key)
+        if "@odata.nextLink" in response._body:
+            response._body["@odata.nextLink"] = "https://elsewhere.example/page2"
+        return response
+
+    graph._page = elsewhere
+    with pytest.raises(m._MailSyncError, match="link outside"):
+        _run(tmp_path, graph, FakeWriter())
+    assert not any("elsewhere" in url for url, _, _ in graph.requests)
+
+
+def test_a_deleted_selected_folder_fails_the_run_without_moving_the_cursor(tmp_path):
+    graph = FakeGraph()
+    graph.add("a", NOW_MS - 3 * HOUR, folder="id-projects")
+    writer = FakeWriter()
+    _run(tmp_path, graph, writer, config=_config(labels=["id-projects"]))
+    target = tmp_path / "Resources" / "outlook"
+    before, _ = m._read_state(target, o.STATE_DIR)
+    original_get = graph.get
+
+    def folder_gone(url, *args, **kwargs):
+        if "/mailFolders/id-projects/" in url:
+            return Response(404, {"error": {"code": "ErrorItemNotFound"}})
+        return original_get(url, *args, **kwargs)
+
+    graph.get = folder_gone
+    with pytest.raises(m._MailSyncError, match="edit the sync job's folders"):
+        _run(
+            tmp_path,
+            graph,
+            writer,
+            config=_config(labels=["id-projects"]),
+            now_ms=NOW_MS + 24 * HOUR,
+        )
+    after, _ = m._read_state(target, o.STATE_DIR)
+    assert after.cursor_ms == before.cursor_ms
+
+
+def test_messages_are_streamed_to_files_that_the_run_removes(tmp_path):
+    graph = FakeGraph()
+    graph.add("a", NOW_MS - 3 * HOUR, attachments=[("x.bin", b"1")])
+    seen = []
+    original_get = graph.get
+
+    def record(url, *args, stream=False, **kwargs):
+        if url.endswith("/$value"):
+            seen.append(stream)
+        return original_get(url, *args, stream=stream, **kwargs)
+
+    graph.get = record
+    _run(tmp_path, graph, FakeWriter())
+    assert seen == [True]
+    assert not list(tmp_path.glob("outlook_messages_*/*"))

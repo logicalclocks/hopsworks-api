@@ -84,12 +84,21 @@ WINDOW_MS = 7 * 24 * 3600_000
 THROTTLE_LOG_INTERVAL_S = 60.0
 # Longest wait honoured from a Retry-After header.
 MAX_RETRY_AFTER_S = 300.0
-# Attempts at a request that fails on the network or with a server error; rate limits are retried without limit.
+# Attempts at a request that fails on the network or with a server error.
 MAX_ATTEMPTS = 8
+# A run that has waited this long on rate limits fails, so a mailbox the service keeps throttling shows as a failed job.
+MAX_THROTTLED_S = 3600.0
 # Longest wait between two retries of a throttled request.
 MAX_RATE_LIMIT_BACKOFF_S = 64.0
 # A lease whose holder cannot be checked is taken over after this long; no sync runs for a day.
 UNVERIFIABLE_LEASE_MS = 24 * 3600_000
+# A run that finds the lease held by an execution that has not finished a window for this long fails instead of doing nothing.
+# Twice MAX_THROTTLED_S: a holder still within its throttling allowance is not reported.
+STALLED_LEASE_MS = 2 * int(MAX_THROTTLED_S * 1000)
+# A lease that cannot be read is held for this long after it was created: its holder can still be writing it.
+LEASE_WRITE_GRACE_MS = 60_000
+# Bytes per read when a message is streamed to a file.
+DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 # UTF-8 bytes; HopsFS names hold 255, and a write first goes to the name plus a 37-byte temporary suffix.
 MAX_FILENAME_LENGTH = 200
 
@@ -171,12 +180,15 @@ class _RestClient:
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.time,
         headers: dict[str, str] | None = None,
+        api_root: str | None = None,
     ):
         if session is None:
             import requests
 
             session = requests.Session()
         self._base_url = base_url
+        # Links in responses are followed only under this prefix, since each request carries the access token.
+        self._api_root = api_root or base_url
         self._token_provider = token_provider
         self._session = session
         self._sleep = sleep
@@ -188,6 +200,8 @@ class _RestClient:
         self._throttle_logged_at: float | None = None
         # Shared by the fetch workers: one throttled request pauses them all, rather than each spending quota to learn the same.
         self._paused_until = 0.0
+        # Seconds this client has held its requests back for rate limits, overlapping pauses counted once.
+        self._throttled_s = 0.0
 
     def _access_token(self, renew: bool = False) -> str:
         now_ms = int(self._clock() * 1000)
@@ -203,14 +217,25 @@ class _RestClient:
         return self._token
 
     def _get(
-        self, path: str, params: dict[str, Any] | None = None, raw: bool = False
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        raw: bool = False,
+        to_file: Path | None = None,
     ) -> Any:
-        """GET a resource as parsed JSON, or its body bytes with `raw`, or None when the service answers 404.
+        """GET a resource as parsed JSON, its body bytes with `raw`, or True after streaming its body into `to_file`; None when the service answers 404.
 
-        `path` is appended to the base URL unless it is a whole URL, such as a next-page link.
-        A rate-limited request is retried until the service serves it, so a throttled sync slows down instead of failing.
+        `path` is appended to the base URL unless it is a whole URL, such as a next-page link, which must be under the client's API root.
+        A rate-limited request is retried, so a throttled sync slows down, until the run has waited `MAX_THROTTLED_S` on rate limits.
         """
-        url = path if path.startswith("https://") else self._base_url + path
+        if path.startswith("https://"):
+            if not path.startswith(self._api_root):
+                raise _MailSyncError(
+                    f"{self.service} returned a link outside {self._api_root}; the sync does not send its token there"
+                )
+            url = path
+        else:
+            url = self._base_url + path
         renewed = False
         attempt = throttled = -1
         while True:
@@ -227,7 +252,13 @@ class _RestClient:
                         "Authorization": "Bearer " + self._access_token(),
                     },
                     timeout=(10, 60),
+                    stream=to_file is not None,
                 )
+                if to_file is not None and response.status_code == 200:
+                    with open(to_file, "wb") as f:
+                        for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
+                            f.write(chunk)
+                    return True
             except OSError as e:
                 if attempt >= MAX_ATTEMPTS - 1:
                     raise _MailSyncError(
@@ -292,9 +323,20 @@ class _RestClient:
         self._sleep(self._delay(attempt, retry_after))
 
     def _pause(self, attempt: int, retry_after: float | None) -> None:
-        """Hold every request back for the backoff; `_get` waits it out before its next attempt."""
-        resume = self._clock() + self._delay(attempt, retry_after)
+        """Hold every request back for the backoff; `_get` waits it out before its next attempt.
+
+        Raises:
+            _MailSyncError: When the run has waited `MAX_THROTTLED_S` on rate limits.
+        """
+        now = self._clock()
+        resume = now + self._delay(attempt, retry_after)
+        self._throttled_s += max(0.0, resume - max(self._paused_until, now))
         self._paused_until = max(self._paused_until, resume)
+        if self._throttled_s > MAX_THROTTLED_S:
+            raise _MailSyncError(
+                f"{self.service} throttled the sync for over {MAX_THROTTLED_S / 60:.0f} minutes; "
+                "the next run resumes from the last upsert"
+            )
 
 
 def _retry_after(response: Any) -> float | None:
@@ -637,14 +679,24 @@ def _write_from_file(name: str, version: int, rows_path: str, remove: bool) -> N
     _write_rows(fg, rows, remove)
 
 
-def _feature_group(fs, name: str, mailbox: str, service: str):
-    """The mailbox's Delta feature group, created with its schema on the first run."""
+def _owner_mark(connector_id: int) -> str:
+    """The end of the description of a feature group a data source's sync created."""
+    return f"(sync of data source {connector_id})"
+
+
+def _feature_group(fs, name: str, mailbox: str, service: str, connector_id: int):
+    """The mailbox's Delta feature group, created with its schema on the first run.
+
+    Raises:
+        _MailSyncError: When a feature group of that name exists that this data source's sync did not create, such as one a deleted sync job or another data source left behind.
+    """
     from hsfs.feature import Feature
 
+    mark = _owner_mark(connector_id)
     fg = fs.get_or_create_feature_group(
         name=name,
         version=1,
-        description=f"Emails of {mailbox}, copied by its {service} sync job",
+        description=f"Emails of {mailbox}, copied by its {service} sync job {mark}",
         primary_key=PRIMARY_KEY,
         partition_key=PARTITION_KEY,
         event_time=EVENT_TIME,
@@ -654,6 +706,11 @@ def _feature_group(fs, name: str, mailbox: str, service: str):
     )
     if fg.id is None:
         fg.save(features=[Feature(n, type=t) for n, t in COLUMNS])
+    elif not (fg.description or "").endswith(mark):
+        raise _MailSyncError(
+            f"The feature group {name} was not created by the sync of this data source, so the sync does not write into it; "
+            "sync into a new feature group, or delete that one"
+        )
     return fg
 
 
@@ -721,7 +778,11 @@ def _latest_seq(directory: Path, state_dir: str) -> int:
     if not states.is_dir():
         return 0
     return max(
-        (int(p.stem) for p in states.iterdir() if p.suffix == ".json" and p.stem.isdigit()),
+        (
+            int(p.stem)
+            for p in states.iterdir()
+            if p.suffix == ".json" and p.stem.isdigit()
+        ),
         default=0,
     )
 
@@ -782,6 +843,8 @@ class _Lease:
     """Exclusive use of an attachments directory by one execution, recoverable after that execution dies.
 
     `is_running(holder)` reports whether the holder recorded in an existing lease still runs, or None when it cannot tell.
+    The holder records its progress with `_touch`, and a run that finds a running holder without progress for `STALLED_LEASE_MS` fails.
+    HopsFS has no hard links, so a claim cannot be written whole and then linked into place: it is created empty, then written, and an unreadable lease counts as held for `LEASE_WRITE_GRACE_MS` after it was created.
     """
 
     def __init__(
@@ -795,9 +858,10 @@ class _Lease:
         self._holder = holder
         self._is_running = is_running
         self._clock = clock
+        self._since = 0
 
     def __enter__(self) -> Self:
-        for _ in range(2):
+        for _ in range(3):
             try:
                 fd = os.open(self._path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             except FileExistsError:
@@ -806,29 +870,81 @@ class _Lease:
                 raise _LeaseHeld(
                     f"Another sync of this mailbox is running; remove {self._path} only if it is not"
                 ) from None
+            self._since = self._now_ms()
             with os.fdopen(fd, "w") as f:
-                json.dump(
-                    {"holder": self._holder, "since": int(self._clock() * 1000)}, f
-                )
+                f.write(self._claim())
             return self
         raise _MailSyncError(f"Could not take the lease {self._path}")
 
-    def _take_over_stale(self) -> bool:
+    def _now_ms(self) -> int:
+        return int(self._clock() * 1000)
+
+    def _claim(self) -> str:
+        return json.dumps(
+            {"holder": self._holder, "since": self._since, "progress": self._now_ms()}
+        )
+
+    def _read(self, path: Path) -> dict | None:
         try:
-            lease = json.loads(self._path.read_text())
+            lease = json.loads(path.read_text())
         except (OSError, ValueError):
-            lease = {}
-        holder = lease.get("holder")
-        running = self._is_running(holder) if holder else None
-        age_ms = int(self._clock() * 1000) - int(lease.get("since") or 0)
-        if running or (running is None and age_ms < UNVERIFIABLE_LEASE_MS):
+            return None
+        return lease if isinstance(lease, dict) and lease.get("holder") else None
+
+    def _touch(self) -> None:
+        """Record that the holder is still making progress."""
+        _atomic_write(self._path, self._claim().encode())
+
+    def _take_over_stale(self) -> bool:
+        """Move a stale lease aside and report True, so the caller claims it again; False when the lease is held.
+
+        Raises:
+            _MailSyncError: When the holder runs but has made no progress for `STALLED_LEASE_MS`.
+        """
+        lease = self._read(self._path)
+        now = self._now_ms()
+        if lease is None:
+            try:
+                created_ms = int(self._path.stat().st_mtime * 1000)
+            except FileNotFoundError:
+                return True
+            if now - created_ms < LEASE_WRITE_GRACE_MS:
+                return False
+            # Its creator stopped between creating and writing it.
+            holder, running, since, progress = None, False, created_ms, created_ms
+        else:
+            holder = lease["holder"]
+            running = self._is_running(holder)
+            since = int(lease.get("since") or 0)
+            progress = int(lease.get("progress") or since)
+        if running and now - progress >= STALLED_LEASE_MS:
+            raise _MailSyncError(
+                f"Execution {holder} holds {self._path} but has not read a window for over "
+                f"{STALLED_LEASE_MS // 3600_000} hours; stop it if it is stuck"
+            )
+        if running or (running is None and now - since < UNVERIFIABLE_LEASE_MS):
             return False
         _logger.info("Taking over the lease of %s, which no longer runs", holder)
-        self._path.unlink(missing_ok=True)
+        # Moved aside rather than removed, so that of two runs taking over the same lease only one succeeds.
+        aside = self._path.with_name(f"{self._path.name}.{uuid.uuid4().hex}.stale")
+        try:
+            os.rename(self._path, aside)
+        except FileNotFoundError:
+            return True
+        moved = self._read(aside)
+        if lease is not None and (
+            moved is None or moved.get("since") != lease.get("since")
+        ):
+            # Another run took the lease over and claimed it between the read above and the move: give it back.
+            os.rename(aside, self._path)
+            return False
+        aside.unlink(missing_ok=True)
         return True
 
     def __exit__(self, *exc: object) -> None:
-        self._path.unlink(missing_ok=True)
+        lease = self._read(self._path)
+        if lease is not None and lease["holder"] == self._holder:
+            self._path.unlink(missing_ok=True)
 
 
 @dataclass
@@ -870,13 +986,16 @@ class _SyncRun:
         self._is_running = is_running
         self._clock = clock
         self._scratch = scratch
+        self._lease: _Lease | None = None
 
     def _run(self) -> _RunResult:
         # A missing dataset means the HopsFS mount is absent or the path is wrong; directories below it are ours.
         if not self._dataset.is_dir():
             raise _MailSyncError(f"The dataset {self._dataset.name} does not exist")
         self._target.parent.mkdir(parents=True, exist_ok=True)
-        with _Lease(self._target, self._execution_id, self._is_running, self._clock):
+        with _Lease(
+            self._target, self._execution_id, self._is_running, self._clock
+        ) as self._lease:
             if self._config.loading_strategy == "FULL_LOAD":
                 return self._full_load()
             return self._incremental()
@@ -1010,6 +1129,8 @@ class _SyncRun:
                 pending_bytes += _row_bytes(row)
                 if row["day"] not in result.days:
                     result.days.append(row["day"])
+            if self._lease is not None:
+                self._lease._touch()
             # The queries of neighbouring windows overlap by a second or two.
             skip_ids = set(listed)
             window_lower = window_upper
@@ -1187,17 +1308,20 @@ def _main(
             "recreate the sync job"
         )
     writer = _FeatureGroupWriter(
-        _feature_group(fs, config.feature_group_name, connector.mailbox, service),
+        _feature_group(
+            fs, config.feature_group_name, connector.mailbox, service, connector.id
+        ),
         isolated=True,
     )
     execution_id = (
         os.environ.get("HOPSWORKS_JOB_EXECUTION_ID") or f"local-{uuid.uuid4().hex}"
     )
+    source = source_factory(connector, config)
     try:
         result = _SyncRun(
             config,
             connector.mailbox,
-            source_factory(connector, config),
+            source,
             writer,
             fs_root,
             f"/Projects/{project.name}",
@@ -1208,6 +1332,10 @@ def _main(
         # A scheduled run that fires during a long backfill has nothing to do; it is not a failure.
         _logger.info("%s; this run does nothing", e)
         return
+    finally:
+        close = getattr(source, "_close", None)
+        if close is not None:
+            close()
     _logger.info(
         "Upserted %d messages into %s across %d days (%d deleted while listed, %d left out as unparseable); cursor %s",
         result.copied,

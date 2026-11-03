@@ -17,6 +17,7 @@
 import base64
 import json
 import logging
+import os
 import re
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -814,10 +815,82 @@ class TestLease:
         )
         assert result.copied == 1
 
+    def test_a_running_holder_without_progress_fails_the_run(self, tmp_path):
+        self._lease(tmp_path, "5", NOW_MS - m.STALLED_LEASE_MS - 1)
+        with pytest.raises(m._MailSyncError, match="has not read a window") as e:
+            _run(
+                tmp_path,
+                FakeGmail([_message("a", DAY1)]),
+                _config(),
+                FakeWriter(),
+                is_running=lambda h: h == "5",
+            )
+        assert not isinstance(e.value, m._LeaseHeld)
+
+    def test_the_holder_records_progress_per_window(self, tmp_path):
+        (tmp_path / "Resources").mkdir()
+        lease_path = tmp_path / "Resources" / "mail.__lease__"
+        progress = []
+        touch = m._Lease._touch
+
+        def record(lease):
+            touch(lease)
+            progress.append(json.loads(lease_path.read_text())["progress"])
+
+        m._Lease._touch = record
+        try:
+            _run(tmp_path, FakeGmail([_message("a", DAY1)]), _config(), FakeWriter())
+        finally:
+            m._Lease._touch = touch
+        assert progress and not lease_path.exists()
+
+    @pytest.mark.parametrize("age_s, held", [(10, True), (120, False)])
+    def test_an_unreadable_lease_is_held_while_its_holder_can_still_be_writing_it(
+        self, tmp_path, age_s, held
+    ):
+        (tmp_path / "Resources").mkdir()
+        lease = tmp_path / "Resources" / "mail.__lease__"
+        lease.write_text("")
+        created = NOW_MS / 1000 - age_s
+        os.utime(lease, (created, created))
+        client = FakeGmail([_message("a", DAY1)])
+        if held:
+            with pytest.raises(m._LeaseHeld):
+                _run(tmp_path, client, _config(), FakeWriter())
+        else:
+            assert _run(tmp_path, client, _config(), FakeWriter()).copied == 1
+
+    def test_a_run_releases_only_its_own_claim(self, tmp_path):
+        (tmp_path / "Resources").mkdir()
+        target = tmp_path / "Resources" / "mail"
+        lease = m._Lease(target, "1", lambda h: False, clock=lambda: NOW_MS / 1000)
+        with lease:
+            lease._path.write_text(json.dumps({"holder": "2", "since": NOW_MS}))
+        assert json.loads(lease._path.read_text())["holder"] == "2"
+
+    def test_a_takeover_that_lost_the_race_gives_the_new_claim_back(self, tmp_path):
+        (tmp_path / "Resources").mkdir()
+        target = tmp_path / "Resources" / "mail"
+        winner = {"holder": "2", "since": NOW_MS, "progress": NOW_MS}
+        lease = m._Lease(target, "3", lambda h: h == "2", clock=lambda: NOW_MS / 1000)
+        lease._path.write_text(json.dumps(winner))
+        read = lease._read
+        stale_once = [{"holder": "1", "since": NOW_MS - 1000}]
+
+        def stale_first(path):
+            # What this run read before run 2 took the stale lease over and claimed it.
+            return stale_once.pop() if stale_once else read(path)
+
+        lease._read = stale_first
+        assert lease._take_over_stale() is False
+        assert json.loads(lease._path.read_text()) == winner
+        assert [p.name for p in target.parent.iterdir()] == ["mail.__lease__"]
+
 
 class _FakeFeatureGroup:
     def __init__(self, id=None):
         self.id = id
+        self.description = None
         self.inserts = []
         self.removals = []
         self.saved = None
@@ -930,10 +1003,12 @@ class TestFeatureGroup:
         fs = mocker.MagicMock()
         fs.get_or_create_feature_group.return_value = fg
         assert (
-            m._feature_group(fs, "alice_examples", "alice@example.com", "Gmail") is fg
+            m._feature_group(fs, "alice_examples", "alice@example.com", "Gmail", 7)
+            is fg
         )
         kwargs = fs.get_or_create_feature_group.call_args.kwargs
         assert kwargs["name"] == "alice_examples"
+        assert kwargs["description"].endswith("(sync of data source 7)")
         assert kwargs["primary_key"] == ["message_id"]
         assert kwargs["partition_key"] == ["day"]
         assert kwargs["event_time"] == "internal_date"
@@ -941,11 +1016,31 @@ class TestFeatureGroup:
         assert kwargs["online_enabled"] is False
         assert [(f.name, f.type) for f in fg.saved] == list(m.COLUMNS)
 
-    def test_an_existing_feature_group_is_reused(self, mocker):
+    def test_a_feature_group_the_sync_created_is_reused(self, mocker):
         fg = _FakeFeatureGroup(5)
+        fg.description = "Emails of alice@example.com, copied by its Gmail sync job (sync of data source 7)"
         fs = mocker.MagicMock()
         fs.get_or_create_feature_group.return_value = fg
-        m._feature_group(fs, "alice_examples", "alice@example.com", "Gmail")
+        m._feature_group(fs, "alice_examples", "alice@example.com", "Gmail", 7)
+        assert fg.saved is None
+
+    @pytest.mark.parametrize(
+        "description",
+        [
+            None,
+            "Customer churn features",
+            "Emails of bob@example.com, copied by its Outlook sync job (sync of data source 8)",
+        ],
+    )
+    def test_a_feature_group_the_sync_did_not_create_is_refused(
+        self, mocker, description
+    ):
+        fg = _FakeFeatureGroup(5)
+        fg.description = description
+        fs = mocker.MagicMock()
+        fs.get_or_create_feature_group.return_value = fg
+        with pytest.raises(m._MailSyncError, match="was not created by the sync"):
+            m._feature_group(fs, "alice_examples", "alice@example.com", "Gmail", 7)
         assert fg.saved is None
 
 
@@ -964,7 +1059,7 @@ class _Session:
         self.responses = list(responses)
         self.auth_headers = []
 
-    def get(self, url, params=None, headers=None, timeout=None):
+    def get(self, url, params=None, headers=None, timeout=None, stream=False):
         self.auth_headers.append(headers["Authorization"])
         return self.responses.pop(0)
 
@@ -1012,13 +1107,19 @@ class TestGmailClient:
         return client, sleeps
 
     def test_rate_limits_are_retried_until_gmail_serves_the_request(self):
-        # 200 throttles at the 64s cap is over three hours of backoff.
-        throttled = [_rate_limited("rateLimitExceeded")] * 200
+        # 50 throttles at the 64s cap is about 50 minutes of backoff, inside MAX_THROTTLED_S.
+        throttled = [_rate_limited("rateLimitExceeded")] * 50
         client, sleeps = self._clocked_client([*throttled, _Response(200, {"id": "a"})])
         assert client._get_raw_message("a") == {"id": "a"}
-        assert len(sleeps) == 200
+        assert len(sleeps) == 50
         assert max(sleeps) <= m.MAX_RATE_LIMIT_BACKOFF_S + 1
-        assert sum(sleeps) > 3 * 3600
+
+    def test_a_request_throttled_past_the_cap_fails(self):
+        throttled = [_rate_limited("rateLimitExceeded")] * 200
+        client, sleeps = self._clocked_client([*throttled, _Response(200, {"id": "a"})])
+        with pytest.raises(m._MailSyncError, match="throttled the sync for over 60"):
+            client._get_raw_message("a")
+        assert sum(sleeps) + m.MAX_RATE_LIMIT_BACKOFF_S + 1 > m.MAX_THROTTLED_S
 
     def test_a_throttled_request_holds_back_a_concurrent_one(self):
         clock = [NOW_MS / 1000]

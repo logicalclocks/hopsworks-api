@@ -52,7 +52,14 @@ class _GmailClient(m._RestClient):
         sleep: Callable[[float], None] = m.time.sleep,
         clock: Callable[[], float] = m.time.time,
     ):
-        super().__init__(GMAIL_API + mailbox, token_provider, session, sleep, clock)
+        super().__init__(
+            GMAIL_API + mailbox,
+            token_provider,
+            session,
+            sleep,
+            clock,
+            api_root=GMAIL_API,
+        )
 
     def _is_rate_limit(self, status: int, response: Any) -> bool:
         if status == 429:
