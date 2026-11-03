@@ -25,8 +25,11 @@ never in the spec. The file declares what it offers with the decorator::
         quoted = ...
         return CheckResult(passed=ok, score=1.0 if ok else 0.0, reason=...)
 
-and a suite's check row says ``{"type": "python", "name": "price_matches_catalogue",
-"file": "Resources/agent_evals/checks/pricing.py", "params": {"tolerance": 0.005}}``.
+and a suite's row says ``{"type": "python", "name": "pricing",
+"file": "Resources/agent_evals/checks/pricing.py"}``: every check the file
+declares runs, each reported under its own name, the way a test file is
+pointed at and every test in it runs. ``only`` / ``exclude`` narrow that, and
+``params`` is keyed by check: ``{"price_matches_catalogue": {"tolerance": 0.005}}``.
 
 Three rules the rest of the runner already lives by hold here too. The function
 never raises into the run: an exception, a timeout or a file that will not load
@@ -385,35 +388,9 @@ def _declared_of(fn: Callable[..., Any]) -> _Declared:
     )
 
 
-def _resolve_in(
-    module: ModuleType, name: str, *, check_name: str = "", function: str = ""
-) -> _Declared:
-    """The check a row asks for: the declared one by name, else a plain function.
-
-    Raises ``LookupError`` with the names the module does declare, so the
-    reason on the row says what was there to pick from.
-    """
-    declared = _declared_in(module)
-    wanted = check_name or name
-    if function:
-        candidate = getattr(module, function, None)
-        if not callable(candidate):
-            raise LookupError(
-                f"{module.__name__} has no function {function!r}"
-                + _declared_hint(declared)
-            )
-        return _declared_of(candidate)
-    if wanted in declared:
-        return declared[wanted]
-    candidate = getattr(module, wanted, None)
-    if callable(candidate) and not inspect.isclass(candidate):
-        return _declared_of(candidate)
-    raise LookupError(f"no check named {wanted!r}" + _declared_hint(declared))
-
-
 def _declared_hint(declared: Mapping[str, _Declared]) -> str:
     if not declared:
-        return "; the module declares no @check"
+        return "; it declares no @check"
     return "; it declares " + ", ".join(sorted(declared))
 
 
@@ -511,23 +488,37 @@ def _parse_source(entry: Mapping[str, Any]) -> _Source:
 def _validate_entry(entry: Mapping[str, Any]) -> None:
     """Refuse a python row the job could not run, without touching any source."""
     _parse_source(entry)
-    for key in ("check", "function"):
-        value = entry.get(key)
-        if value and not _IDENTIFIER.match(str(value)):
-            raise ValueError(f"{key} {value!r} is not an identifier")
-    if entry.get("check") and entry.get("function"):
-        raise ValueError("a python check names check or function, not both")
+    for key in ("only", "exclude"):
+        names = entry.get(key)
+        if names is None:
+            continue
+        if not isinstance(names, (list, tuple)) or not all(
+            isinstance(n, str) and _IDENTIFIER.match(n) for n in names
+        ):
+            raise ValueError(f"{key} is a list of check names")
     params = entry.get("params")
-    if params is not None and not isinstance(params, Mapping):
-        raise ValueError("params is an object")
-    timeout = entry.get("timeout_s")
-    if timeout is not None:
-        try:
-            seconds = float(timeout)
-        except (TypeError, ValueError) as err:
-            raise ValueError("timeout_s is a number of seconds") from err
-        if seconds <= 0 or seconds > MAX_TIMEOUT_S:
-            raise ValueError(f"timeout_s is between 0 and {int(MAX_TIMEOUT_S)}")
+    if params is not None:
+        if not isinstance(params, Mapping):
+            raise ValueError("params is an object keyed by check name")
+        for check_name, value in params.items():
+            if not _IDENTIFIER.match(str(check_name)) or not isinstance(value, Mapping):
+                raise ValueError(
+                    "params is an object keyed by check name, each value an object "
+                    "of that check's parameters"
+                )
+
+
+def _selected(
+    declared: Mapping[str, _Declared],
+    only: Sequence[str] | None,
+    exclude: Sequence[str] | None,
+) -> tuple[list[_Declared], list[str]]:
+    """The declared checks a row runs, and the names in ``only`` it does not declare."""
+    wanted = list(only) if only else list(declared)
+    skipped = [name for name in (exclude or []) if name]
+    chosen = [declared[n] for n in wanted if n in declared and n not in skipped]
+    missing = [n for n in wanted if n not in declared]
+    return chosen, missing
 
 
 # ── resolving the code ──────────────────────────────────────────────────────
@@ -1080,69 +1071,57 @@ def _scrubbed(url: str) -> str:
 # ── the evaluator ───────────────────────────────────────────────────────────
 
 
-class PythonCheckEvaluator:
-    """A check the project wrote, run like a built-in one.
+class PythonSourceEvaluator:
+    """A source the project wrote: every check it declares, run like built-in ones.
 
-    Loads lazily on the first trial, so building a suite's evaluators (which
-    authoring does to validate a spec) never imports user code. A load that
-    fails -- unreadable file, bad import, no such check -- is reported on every
-    trial as skipped, which the runner turns into EVALUATOR_ERROR: the harness
-    failing, visibly, rather than a suite that quietly graded without one of
-    its checks.
+    One row, as many results as the source declares checks (``only`` and
+    ``exclude`` narrow that), each reported under the check's own name with
+    the row's name beside it in the assertions. Loads lazily on the first
+    trial, so building a suite's evaluators (which authoring does to validate
+    a spec) never imports user code. A load that fails -- unreadable file, bad
+    import -- is reported on every trial as one skipped row, which the runner
+    turns into EVALUATOR_ERROR: the harness failing, visibly, rather than a
+    suite that quietly graded without its checks. So is a name in ``only``
+    the source does not declare.
     """
 
     type = TYPE
+    # The Protocol's attribute: whether a trace is needed is per declared
+    # check, and each one says so on its own result.
+    needs_trace = False
 
     def __init__(
         self,
         name: str,
         source: _Source,
         *,
-        check_name: str = "",
-        function: str = "",
-        params: Mapping[str, Any] | None = None,
-        needs_trace: bool | None = None,
-        reads_expectation: bool | None = None,
-        timeout_s: float | None = None,
+        only: Sequence[str] | None = None,
+        exclude: Sequence[str] | None = None,
+        params: Mapping[str, Mapping[str, Any]] | None = None,
         sources: _CheckSources | None = None,
     ):
         self.name = name
         self.source = source
-        self.check_name = check_name
-        self.function = function
-        self.params = dict(params or {})
-        self._needs_trace = needs_trace
-        self._reads_expectation = reads_expectation
-        self._timeout_s = _bounded_timeout(timeout_s) if timeout_s else None
+        self.only = [str(n) for n in (only or [])] or None
+        self.exclude = [str(n) for n in (exclude or [])]
+        self.params = {str(k): dict(v or {}) for k, v in (params or {}).items()}
         self._sources = sources
-        self._declared: _Declared | None = None
+        self._checks: list[_Declared] | None = None
+        self._declared_names: list[str] = []
+        self._missing: list[str] = []
         self._loaded: _Loaded | None = None
         self._load_error: str | None = None
-        # The Protocol's attribute. Refined once the declaration is read.
-        self.needs_trace = True if needs_trace is None else bool(needs_trace)
-
-    @property
-    def reads_expectation(self) -> bool:
-        if self._reads_expectation is not None:
-            return self._reads_expectation
-        return bool(self._declared and self._declared.reads_expectation)
-
-    @property
-    def timeout_s(self) -> float:
-        if self._timeout_s:
-            return self._timeout_s
-        return self._declared.timeout_s if self._declared else DEFAULT_TIMEOUT_S
 
     def _ensure_loaded(self) -> str | None:
         """Load once; the reason it could not, or ``None``.
 
         Two budgets. Fetching (a clone, a download) is I/O and gets
-        ``FETCH_BUDGET_S``. Importing runs the check's module, which is the
-        check's code as much as the function is, so it gets the check's own
-        timeout: a module that blocks at import used to stall the run before
-        the timeout had anything to measure.
+        ``FETCH_BUDGET_S``. Importing runs the source's module, which is the
+        checks' code as much as the functions are, so it gets the largest
+        timeout the source's checks declare -- a module that blocks at import
+        used to stall the run before any timeout had something to measure.
         """
-        if self._declared is not None or self._load_error is not None:
+        if self._checks is not None or self._load_error is not None:
             return self._load_error
         try:
             if self._sources is None:
@@ -1165,60 +1144,100 @@ class PythonCheckEvaluator:
                     ) from None
                 try:
                     loaded = _run_with_timeout(
-                        lambda: sources._import(self.source, fetched), self.timeout_s
+                        lambda: sources._import(self.source, fetched), DEFAULT_TIMEOUT_S
                     )
                 except _Timeout:
                     raise RuntimeError(
-                        f"importing the source took longer than {self.timeout_s:g}s"
+                        f"importing the source took longer than {DEFAULT_TIMEOUT_S:g}s"
                     ) from None
             self._loaded = loaded
-            self._declared = _resolve_in(
-                loaded.module,
+            declared = _declared_in(loaded.module)
+            if not declared:
+                raise LookupError("it declares no @check")
+            self._declared_names = sorted(declared)
+            self._checks, self._missing = _selected(declared, self.only, self.exclude)
+            log.info(
+                "source %r loaded from %s: %s",
                 self.name,
-                check_name=self.check_name,
-                function=self.function,
+                loaded.origin,
+                ", ".join(c.name for c in self._checks) or "nothing selected",
             )
-            if self._needs_trace is None:
-                self.needs_trace = self._declared.needs_trace
-            log.info("check %r loaded from %s", self.name, loaded.origin)
         except KeyboardInterrupt:
             raise
         except BaseException as err:  # noqa: BLE001 -- the reason goes on every row
             self._load_error = (
-                f"check {self.name!r} could not be loaded from "
+                f"checks {self.name!r} could not be loaded from "
                 f"{self.source._describe()}: {_short(err)}"
             )
             log.warning("%s", self._load_error)
         return self._load_error
 
     def _grade(self, task: Task, trial: Trial, trace: Trace | None) -> EvaluatorResult:
-        failure = self._ensure_loaded()
-        if failure or self._declared is None:
-            result = _ungradable(self.name, self.type, failure or "not loaded")
-            result.assertions = {SKIPPED: True, "reason": failure}
-            return result
-        if self.needs_trace and trace is None:
-            return _ungradable(self.name, self.type, "no trace arrived for this trial")
-        params = {**dict(self._declared.defaults), **self.params}
-        context = _context_for(self.name, task, trial, trace, params)
-        try:
-            value = _call_with_timeout(
-                self._declared.fn, context, params, self.timeout_s
-            )
-        except _Timeout:
-            return _ungradable(
+        """The Protocol's one result; the runner asks for ``_grade_many`` first."""
+        results = self._grade_many(task, trial, trace)
+        return (
+            results[0]
+            if len(results) == 1
+            else _ungradable(
                 self.name,
                 self.type,
-                f"timed out after {self.timeout_s:g}s",
+                f"{len(results)} results; read them with _grade_many",
             )
-        except KeyboardInterrupt:
-            raise
-        except BaseException as err:  # noqa: BLE001 -- a bad check is not a bad agent
-            # BaseException, not Exception: a dependency calling sys.exit() is
-            # the check failing, not the job ending.
-            return _ungradable(self.name, self.type, f"check raised: {_short(err)}")
-        result = _as_result(self.name, value, pass_score=params.get("pass_score"))
+        )
+
+    def _grade_many(
+        self, task: Task, trial: Trial, trace: Trace | None
+    ) -> list[EvaluatorResult]:
+        failure = self._ensure_loaded()
+        if failure or self._checks is None:
+            result = _ungradable(self.name, self.type, failure or "not loaded")
+            result.assertions = {SKIPPED: True, "reason": failure}
+            return [result]
+        results = []
+        for name in self._missing:
+            result = _ungradable(
+                name,
+                self.type,
+                f"{self.source._describe()} declares no check named {name!r}; "
+                f"it declares {', '.join(self._declared_names)}",
+            )
+            result.assertions = {
+                SKIPPED: True,
+                "reason": result.reason,
+                "row": self.name,
+            }
+            results.append(result)
+        for declared in self._checks:
+            results.append(self._grade_one(declared, task, trial, trace))
+        return results
+
+    def _grade_one(
+        self, declared: _Declared, task: Task, trial: Trial, trace: Trace | None
+    ) -> EvaluatorResult:
+        name = declared.name
+        if declared.needs_trace and trace is None:
+            result = _ungradable(name, self.type, "no trace arrived for this trial")
+        else:
+            params = {**dict(declared.defaults), **self.params.get(name, {})}
+            context = _context_for(name, task, trial, trace, params)
+            try:
+                value = _call_with_timeout(
+                    declared.fn, context, params, declared.timeout_s
+                )
+            except _Timeout:
+                result = _ungradable(
+                    name, self.type, f"timed out after {declared.timeout_s:g}s"
+                )
+            except KeyboardInterrupt:
+                raise
+            except BaseException as err:  # noqa: BLE001 -- a bad check is not a bad agent
+                # BaseException, not Exception: a dependency calling sys.exit()
+                # is the check failing, not the job ending.
+                result = _ungradable(name, self.type, f"check raised: {_short(err)}")
+            else:
+                result = _as_result(name, value, pass_score=params.get("pass_score"))
         result.assertions.setdefault("source", self._provenance())
+        result.assertions.setdefault("row", self.name)
         return result
 
     def _provenance(self) -> dict[str, Any]:

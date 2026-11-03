@@ -356,7 +356,14 @@ def _run_evaluators(
     results: list[EvaluatorResult] = []
     for evaluator in evaluators:
         try:
-            results.append(evaluator._grade(task, trial, trace))
+            many = getattr(evaluator, "_grade_many", None)
+            if many is not None:
+                # One row, several results: a source of checks reports one per
+                # check it declares. Everything downstream reads results, not
+                # evaluators, so the extra rows need nothing else.
+                results.extend(many(task, trial, trace))
+            else:
+                results.append(evaluator._grade(task, trial, trace))
         except Exception as err:  # noqa: BLE001 — a bad evaluator is not a bad agent
             results.append(
                 EvaluatorResult(

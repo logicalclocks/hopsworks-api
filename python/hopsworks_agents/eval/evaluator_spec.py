@@ -15,10 +15,11 @@ is measured the same way. There is no inference: checks derived from whatever a
 task happened to declare would make two tasks in one suite incomparable, which
 is the thing a suite exists to prevent.
 
-**The spec never carries code.** A ``python`` check names a file in the
-project, a repository, or a module in the job's environment, and the check it
-wants from it; the code is resolved by the job, which runs as the project, from
-a place a project member already had to be able to write. Checks live on suites
+**The spec never carries code.** A ``python`` row names a file in the project,
+a repository, or a module in the job's environment, and every check the source
+declares with ``@check`` runs, each reported under its own name; the code is
+resolved by the job, which runs as the project, from a place a project member
+already had to be able to write. Checks live on suites
 and in the library and never on tasks, so a task promoted from production or
 imported from a file cannot bring one in. ``FunctionEvaluator`` stays the
 in-process wrapper for code that builds a run directly.
@@ -105,29 +106,19 @@ def _one(
     if kind == "python":
         # Imported here: the checks module pulls in the loader plumbing, and a
         # suite without a custom check should not need it.
-        from .checks import PythonCheckEvaluator, _parse_source, _validate_entry
+        from .checks import PythonSourceEvaluator, _parse_source, _validate_entry
 
         try:
             _validate_entry(entry)
             source = _parse_source(entry)
         except ValueError as err:
             raise SpecError(str(err)) from err
-        timeout = entry.get("timeout_s")
-        return PythonCheckEvaluator(
+        return PythonSourceEvaluator(
             name,
             source,
-            check_name=str(entry.get("check") or ""),
-            function=str(entry.get("function") or ""),
-            params=dict(entry.get("params") or {}),
-            needs_trace=(
-                None if entry.get("needs_trace") is None else bool(entry["needs_trace"])
-            ),
-            reads_expectation=(
-                None
-                if entry.get("reads_expectation") is None
-                else bool(entry["reads_expectation"])
-            ),
-            timeout_s=float(timeout) if timeout is not None else None,
+            only=entry.get("only"),
+            exclude=entry.get("exclude"),
+            params=entry.get("params"),
             sources=sources,
         )
 

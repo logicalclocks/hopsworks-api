@@ -65,12 +65,12 @@ for trial, verdict in agents.runs.replay(run, price_matches_catalogue):   # last
 
 ## Put it where the job reads it
 
-One of three sources per check row; the code is never in the spec.
+A suite's row names a source; every check the source declares runs, each reported under its own name, the way a test file is pointed at and every test in it runs. The code is never in the spec.
 
 ```python
 # 1. A file in the project (the picker opens on Resources/agent_evals/checks)
 agents.checks.upload("evaluation/checks/pricing.py", tags=[agent.name])
-#    -> uploads, and saves one library entry per declared check
+#    -> uploads, and saves one library entry for the file, describing what it declares
 
 # 2. A git repository, or the deployment's own
 agents.checks.register("evaluation/checks/pricing.py",
@@ -78,25 +78,26 @@ agents.checks.register("evaluation/checks/pricing.py",
 agents.checks.register("evaluation/checks/pricing.py", git="deployment", tags=[agent.name])
 
 # 3. Written by hand into a suite
-check("python", "price_matches_catalogue", file="Resources/agent_evals/checks/pricing.py",
-      params={"tolerance": 0.005})
-check("python", "price_matches_catalogue", git={"url": "https://...", "ref": "main", "commit": "a1b2c3d"},
-      path="evaluation/checks/pricing.py")
-check("python", "price_matches_catalogue", git="deployment", path="evaluation/checks/pricing.py")
-check("python", "short_answer", module="customer_checks")      # installed in the job's environment
+check("python", "pricing", file="Resources/agent_evals/checks/pricing.py",
+      params={"price_matches_catalogue": {"tolerance": 0.005}})
+check("python", "pricing", git={"url": "https://...", "ref": "main", "commit": "a1b2c3d"},
+      path="evaluation/checks/pricing.py", only=["price_matches_catalogue"])
+check("python", "pricing", git="deployment", path="evaluation/checks/pricing.py")
+check("python", "customer", module="customer_checks")      # installed in the job's environment
 ```
 
 | Key | Meaning |
 |---|---|
+| `name` | the row's label; results report under each declared check's own name, with the row in `assertions.row` |
 | `file` | a `.py` file or a package directory (with `__init__.py`) in the project's HopsFS, relative to the project or absolute |
 | `git` + `path` | `{"url": https, "ref": branch or tag, "commit": optional}`; `path` is the file inside the repository. Private repositories need a git provider token on the account the evaluation job runs as. https only. |
-| `git: "deployment"` + `path` | the evaluated deployment's own repository at the commit it is running; checks version with the agent, and a deployment that is not git-backed makes the check ungradable |
+| `git: "deployment"` + `path` | the evaluated deployment's own repository at the commit it is running; checks version with the agent, and a deployment that is not git-backed makes the row ungradable |
 | `module` | a module importable from the agent-pipeline environment the job runs in; install the package there |
-| `name` / `check` | `name` is what results report under and, by default, the declared check it runs; `check` names another declared check to run under this name (two rows, two params) |
-| `function` | a plain, undecorated function in the file |
-| `params` | keyword arguments for the function, merged over its defaults |
-| `needs_trace`, `reads_expectation`, `timeout_s` (max 600) | override what the decorator declares |
+| `only`, `exclude` | lists of declared check names, to run a subset; a name in `only` the source does not declare is a skipped row that says so |
+| `params` | keyed by check name, each value that check's keyword arguments, merged over its defaults |
 
-**Freezing.** A published suite is immutable. A `file` check is copied beside the suite's task snapshot when it is published; a `git` check is pinned by the job on the first run of the published version (the commit and hash go into `manifest.json` next to it) and every later run reads that copy. `git: "deployment"` is deliberately not frozen, and `module` cannot be: the environment is its version. Every result's `assertions.source` says what code graded it (`origin`, `sha256`, `commit`, `pinned`).
+`needs_trace`, `reads_expectation`, `timeout_s` and the description are the decorator's and only the decorator's. For a file in the project the backend scans the file when the row is saved and keeps what it declares on the row, so the task form knows which checks read an expectation and a monitor refuses a file that declares one (narrow it with `only` or `exclude`). A git or module source runs whatever it declares.
+
+**Freezing.** A published suite is immutable. A `file` source is copied beside the suite's task snapshot when it is published; a `git` source is pinned by the job on the first run of the published version (the repository tree and a `manifest.json` with the commit and hash, in one directory) and every later run reads that copy. `git: "deployment"` is deliberately not frozen, and `module` cannot be: the environment is its version. Every result's `assertions.source` says what code graded it (`origin`, `sha256`, `commit`, `pinned`).
 
 **Monitors.** A check that does not read `ctx.expectation` can grade live traffic like any other expectation-free check; the job reads the live file or module each run.

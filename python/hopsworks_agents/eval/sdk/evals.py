@@ -804,8 +804,10 @@ class Checks:
 
     A check is a function decorated with
     [`check`][hopsworks_agents.eval.checks.check] in a file the project owns.
-    This puts that file where the evaluation job reads it and saves one library
-    entry per check it declares, so a suite picks it like any other check.
+    A suite names the file; every check it declares runs, each reported under
+    its own name. This puts the file where the evaluation job reads it and
+    saves one library entry for it, so a suite picks the file like any other
+    check.
     """
 
     DEFAULT_DIR = "Resources/agent_evals/checks"
@@ -827,11 +829,12 @@ class Checks:
         return [d._as_dict() for d in _declared_in(module).values()]
 
     @public
-    def declared_in(self, file: str) -> list[str]:
-        """The checks a file already in the project declares, as the backend lists them.
+    def declared_in(self, file: str) -> list[dict[str, Any]]:
+        """What a file already in the project declares, as the backend lists it.
 
-        A text scan on the server, never an import, and the same list the UI's
-        picker shows for that file.
+        A text scan on the server, never an import, and the same list the UI
+        shows for that file: each entry carries ``name``, ``readsExpectation``,
+        ``needsTrace`` and ``description`` when the decorator states them.
         """
         return list(
             self._client.http.request(
@@ -846,26 +849,29 @@ class Checks:
         local_path: str,
         *,
         to: str = DEFAULT_DIR,
+        name: str | None = None,
         register: bool = True,
         tags: Sequence[str] | None = None,
         overwrite: bool = True,
-    ) -> list[EvaluatorTemplate]:
-        """Upload a check file or package to the project and register its checks.
+    ) -> EvaluatorTemplate | None:
+        """Upload a check file or package to the project and register it.
 
         The file lands under ``to`` in the project's HopsFS (the directory the
-        UI's picker opens on), and every check it declares becomes a library
-        entry pointing at it, with the check's description and default
-        parameters. A suite that applies the entry copies the reference in.
+        UI's picker opens on) and becomes one library entry, named after the
+        file unless ``name`` says otherwise, describing the checks it declares.
+        A suite that applies the entry copies the reference in and runs every
+        check the file declares.
 
         Parameters:
             local_path: A ``.py`` file or a package directory on this machine.
             to: The HopsFS directory to upload into, relative to the project.
-            register: Whether to save one library entry per declared check.
-            tags: Tags for the library entries; the agent's name, typically.
+            name: The library entry's name; the file's stem when omitted.
+            register: Whether to save the library entry.
+            tags: Tags for the library entry; the agent's name, typically.
             overwrite: Replace a file of the same name already there.
 
         Returns:
-            `list[EvaluatorTemplate]`: the library entries saved, or an empty list.
+            `EvaluatorTemplate`: the library entry saved, or `None` when not registered.
         """
         from hopsworks_common.core import dataset_api
 
@@ -881,8 +887,10 @@ class Checks:
             log.debug("%s not created", target)
         api.upload(str(source), target, overwrite=overwrite)
         if not register:
-            return []
-        return self._register(declared, {"file": f"{target}/{source.name}"}, tags)
+            return None
+        return self._register(
+            name or source.stem, declared, {"file": f"{target}/{source.name}"}, tags
+        )
 
     @public
     def register(
@@ -892,9 +900,10 @@ class Checks:
         git: dict[str, Any] | str | None = None,
         path: str | None = None,
         file: str | None = None,
+        name: str | None = None,
         tags: Sequence[str] | None = None,
-    ) -> list[EvaluatorTemplate]:
-        """Register the checks a local file declares, without uploading it.
+    ) -> EvaluatorTemplate:
+        """Register a local check file as a library entry, without uploading it.
 
         For code the job reads from git: ``git={"url": ..., "ref": ...}`` or
         ``git="deployment"`` for the evaluated deployment's own repository, with
@@ -902,7 +911,7 @@ class Checks:
         omitted). ``file`` instead names a HopsFS path already in the project.
 
         Returns:
-            `list[EvaluatorTemplate]`: one library entry per declared check.
+            `EvaluatorTemplate`: the library entry.
         """
         source = Path(local_path).resolve()
         declared = self.declared(str(source))
@@ -912,45 +921,36 @@ class Checks:
             where = {"file": file}
         else:
             raise AgentServingError("register needs git=... or file=...")
-        return self._register(declared, where, tags)
+        return self._register(name or source.stem, declared, where, tags)
 
     def _register(
         self,
+        name: str,
         declared: list[dict[str, Any]],
         where: dict[str, Any],
         tags: Sequence[str] | None,
-    ) -> list[EvaluatorTemplate]:
-        saved = []
-        for entry in declared:
-            row = {
-                "type": "python",
-                "name": entry["name"],
-                **where,
-                "params": dict(entry.get("defaults") or {}),
-                "needs_trace": entry["needs_trace"],
-                "reads_expectation": entry["reads_expectation"],
-                "timeout_s": entry["timeout_s"],
-            }
-            existing = self._client.evaluators.find(entry["name"])
-            if existing is not None:
-                saved.append(
-                    self._client.evaluators.update(
-                        existing,
-                        checks=[row],
-                        description=entry.get("description") or existing.description,
-                        tags=list(tags) if tags is not None else None,
-                    )
-                )
-            else:
-                saved.append(
-                    self._client.evaluators.save(
-                        entry["name"],
-                        [row],
-                        entry.get("description") or "",
-                        tags=tags,
-                    )
-                )
-        return saved
+    ) -> EvaluatorTemplate:
+        row = {"type": "python", "name": name, **where}
+        defaults = {
+            d["name"]: dict(d.get("defaults") or {})
+            for d in declared
+            if d.get("defaults")
+        }
+        if defaults:
+            row["params"] = defaults
+        description = "; ".join(
+            f"{d['name']}: {d['description']}" if d.get("description") else d["name"]
+            for d in declared
+        )
+        existing = self._client.evaluators.find(name)
+        if existing is not None:
+            return self._client.evaluators.update(
+                existing,
+                checks=[row],
+                description=description or existing.description,
+                tags=list(tags) if tags is not None else None,
+            )
+        return self._client.evaluators.save(name, [row], description, tags=tags)
 
 
 def _repo_relative(source: Path) -> str:

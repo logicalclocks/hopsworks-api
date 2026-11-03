@@ -1,9 +1,11 @@
-"""User-defined checks: declared with a decorator, resolved by the job, graded like any other.
+"""User-defined checks: a source the project wrote, every check it declares run.
 
-The spec never carries code. A row names a file, a repository or a module and the
-check it wants from it; the job resolves that into a function and shows it the one
-stable shape, `CheckContext`. Everything a check can get wrong -- raising, hanging,
-returning nonsense, not existing -- is the harness failing, never a pass.
+The spec never carries code. A row names a file, a repository or a module;
+the job resolves that, imports it, and runs every function declared with
+`@check`, each reported under its own name -- the way a test file is pointed
+at and every test in it runs. Everything a check can get wrong -- raising,
+hanging, returning nonsense, not existing -- is the harness failing, never a
+pass.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from hopsworks_agents.eval import checks as checks_module
 from hopsworks_agents.eval.checks import (
     CheckContext,
     CheckResult,
-    PythonCheckEvaluator,
+    PythonSourceEvaluator,
     ToolCall,
     _CheckSources,
     _declared_in,
@@ -85,6 +87,18 @@ def _trace(*calls: dict) -> dict:
     }
 
 
+def _rows(evaluators, task=None, trial=None, trace=None) -> dict:
+    """The results of one trial, by the name they report under."""
+    results = _run_evaluators(evaluators, task or _task(), trial or _trial(), trace)
+    by_name = {}
+    for result in results:
+        assert result.evaluator_name not in by_name, (
+            f"two rows named {result.evaluator_name}"
+        )
+        by_name[result.evaluator_name] = result
+    return by_name
+
+
 CHECK_FILE = """
 import json
 from hopsworks_agents.eval.checks import check, CheckResult, ungradable
@@ -105,23 +119,26 @@ def price_matches_catalogue(ctx, tolerance: float = 0.01):
 def _english(ctx):
     return "the" in ctx.answer.lower()
 
-def plain(ctx):
+def helper_not_a_check(ctx):
     return True
-
-def slow(ctx):
-    import time
-    time.sleep(5)
-    return True
-
-def explodes(ctx):
-    raise RuntimeError("boom")
 """
+
+DECLARED = {"price_matches_catalogue", "answers_in_english"}
 
 
 @pytest.fixture
 def check_file(tmp_path: Path) -> Path:
     path = tmp_path / "pricing.py"
     path.write_text(textwrap.dedent(CHECK_FILE))
+    return path
+
+
+def _write(tmp_path: Path, name: str, body: str) -> Path:
+    path = tmp_path / name
+    path.write_text(
+        "from hopsworks_agents.eval.checks import check, CheckResult\n"
+        + textwrap.dedent(body)
+    )
     return path
 
 
@@ -132,7 +149,7 @@ class TestDecorator:
     def test_bare_named_and_configured_forms(self, check_file):
         module, _held = _import_path(str(check_file))
         declared = _declared_in(module)
-        assert set(declared) == {"price_matches_catalogue", "answers_in_english"}
+        assert set(declared) == DECLARED
         price = declared["price_matches_catalogue"]
         assert price.needs_trace is True
         assert price.defaults == {"tolerance": 0.01}
@@ -181,6 +198,8 @@ class TestSpec:
                         "name": "c",
                         "git": {"url": "https://github.com/o/r.git", "ref": "main"},
                         "path": "evaluation/checks.py",
+                        "only": ["price"],
+                        "params": {"price": {"tolerance": 1}},
                     },
                     {
                         "type": "python",
@@ -229,23 +248,20 @@ class TestSpec:
                 "commit hash",
             ),
             (
-                {"type": "python", "name": "a", "file": "x.py", "function": "1bad"},
-                "identifier",
+                {"type": "python", "name": "a", "file": "x.py", "only": "price"},
+                "list of check names",
             ),
             (
-                {
-                    "type": "python",
-                    "name": "a",
-                    "file": "x.py",
-                    "check": "c",
-                    "function": "f",
-                },
-                "not both",
+                {"type": "python", "name": "a", "file": "x.py", "exclude": ["1bad"]},
+                "list of check names",
             ),
-            ({"type": "python", "name": "a", "file": "x.py", "params": []}, "object"),
             (
-                {"type": "python", "name": "a", "file": "x.py", "timeout_s": 5000},
-                "between 0 and 600",
+                {"type": "python", "name": "a", "file": "x.py", "params": []},
+                "keyed by check name",
+            ),
+            (
+                {"type": "python", "name": "a", "file": "x.py", "params": {"price": 3}},
+                "keyed by check name",
             ),
         ],
     )
@@ -272,147 +288,167 @@ class TestSpec:
         [evaluator] = _evaluators_from_spec(
             [{"type": "python", "name": "x", "file": str(missing)}]
         )
-        assert isinstance(evaluator, PythonCheckEvaluator)
+        assert isinstance(evaluator, PythonSourceEvaluator)
         assert evaluator.name == "x"
 
 
 # ── grading ─────────────────────────────────────────────────────────────────
 
 
-def _file_evaluator(check_file: Path, name: str, **entry) -> PythonCheckEvaluator:
+def _file_evaluator(path: Path, name: str = "checks", **entry) -> PythonSourceEvaluator:
     sources = _CheckSources(dataset_api=object(), project_name="p")
     # The file is local: stand in for the download with the path itself.
     sources._download = lambda path: path  # type: ignore[method-assign]
     [evaluator] = _evaluators_from_spec(
-        [{"type": "python", "name": name, "file": str(check_file), **entry}],
+        [{"type": "python", "name": name, "file": str(path), **entry}],
         sources=sources,
     )
     return evaluator
 
 
 class TestGrading:
-    def test_a_declared_check_is_found_by_name_and_sees_the_context(self, check_file):
-        evaluator = _file_evaluator(check_file, "price_matches_catalogue")
+    def test_every_declared_check_runs_under_its_own_name(self, check_file):
+        evaluator = _file_evaluator(check_file, "pricing")
         trace = _trace({"name": "lookup_product", "result": '{"price": 19.99}'})
-        [result] = _run_evaluators([evaluator], _task(), _trial(), trace)
-        assert result.passed is True
-        assert result.evaluator_type == "python"
-        assert result.assertions["quoted"] == 19.99
-        assert result.assertions["source"]["origin"].startswith("hopsfs ")
-        assert result.assertions["source"]["sha256"]
+        rows = _rows([evaluator], trial=_trial("the price is 19.99"), trace=trace)
+        assert set(rows) == DECLARED
+        assert rows["price_matches_catalogue"].passed is True
+        assert rows["answers_in_english"].passed is True
+        for row in rows.values():
+            assert row.evaluator_type == "python"
+            assert row.assertions["row"] == "pricing"
+            assert row.assertions["source"]["origin"].startswith("hopsfs ")
+            assert row.assertions["source"]["sha256"]
+        assert rows["price_matches_catalogue"].assertions["quoted"] == 19.99
 
-    def test_params_override_the_defaults(self, check_file):
+    def test_params_are_per_check_over_the_defaults(self, check_file):
         evaluator = _file_evaluator(
-            check_file, "price_matches_catalogue", params={"tolerance": 5}
+            check_file, params={"price_matches_catalogue": {"tolerance": 5}}
         )
         trace = _trace({"name": "lookup_product", "result": '{"price": 15.00}'})
-        [result] = _run_evaluators([evaluator], _task(), _trial(), trace)
-        assert result.passed is True
+        rows = _rows([evaluator], trace=trace)
+        assert rows["price_matches_catalogue"].passed is True
+
+    def test_only_and_exclude_narrow_what_runs(self, check_file):
+        rows = _rows([_file_evaluator(check_file, only=["answers_in_english"])])
+        assert set(rows) == {"answers_in_english"}
+        rows = _rows([_file_evaluator(check_file, exclude=["answers_in_english"])])
+        assert set(rows) == {"price_matches_catalogue"}
 
     def test_ungradable_when_the_precondition_did_not_hold(self, check_file):
-        evaluator = _file_evaluator(check_file, "price_matches_catalogue")
-        [result] = _run_evaluators([evaluator], _task(), _trial(), _trace())
-        assert result.ungradable is True
-        assert "never looked" in result.reason
+        rows = _rows([_file_evaluator(check_file)], trace=_trace())
+        assert rows["price_matches_catalogue"].ungradable is True
+        assert "never looked" in rows["price_matches_catalogue"].reason
 
-    def test_no_trace_is_ungradable_for_a_check_that_needs_one(self, check_file):
-        evaluator = _file_evaluator(check_file, "price_matches_catalogue")
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
-        assert result.ungradable is True
-        assert result.passed is None
+    def test_no_trace_is_ungradable_only_for_the_checks_that_need_one(self, check_file):
+        rows = _rows([_file_evaluator(check_file)], trial=_trial("the price"))
+        assert rows["price_matches_catalogue"].ungradable is True
+        assert rows["price_matches_catalogue"].passed is None
+        assert rows["answers_in_english"].passed is True
 
-    def test_a_check_declared_not_to_need_a_trace_grades_without_one(self, check_file):
-        evaluator = _file_evaluator(check_file, "answers_in_english")
-        [result] = _run_evaluators([evaluator], _task(), _trial("the price"), None)
-        assert result.passed is True
-        assert result.score == 1.0
-
-    def test_spec_overrides_the_declaration(self, check_file):
-        evaluator = _file_evaluator(check_file, "answers_in_english", needs_trace=True)
-        [result] = _run_evaluators([evaluator], _task(), _trial("the price"), None)
-        assert result.ungradable is True
-
-    def test_a_plain_function_by_function_key(self, check_file):
-        evaluator = _file_evaluator(check_file, "anything", function="plain")
-        [result] = _run_evaluators([evaluator], _task(), _trial(), _trace())
-        assert result.passed is True
-        assert result.evaluator_name == "anything"
-
-    def test_check_key_names_the_declared_check_under_another_row_name(
-        self, check_file
-    ):
-        evaluator = _file_evaluator(
-            check_file, "english_v2", check="answers_in_english"
+    def test_a_raising_check_is_the_harness_failing(self, tmp_path):
+        path = _write(
+            tmp_path,
+            "boom.py",
+            """
+            @check(needs_trace=False)
+            def explodes(ctx):
+                raise RuntimeError("boom")
+            """,
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial("the x"), _trace())
-        assert result.evaluator_name == "english_v2"
-        assert result.passed is True
+        rows = _rows([_file_evaluator(path)])
+        assert rows["explodes"].ungradable is True
+        assert "boom" in rows["explodes"].reason
+        assert not rows["explodes"].assertions.get(SKIPPED)
 
-    def test_a_raising_check_is_the_harness_failing(self, check_file):
-        evaluator = _file_evaluator(check_file, "x", function="explodes")
-        [result] = _run_evaluators([evaluator], _task(), _trial(), _trace())
-        assert result.ungradable is True
-        assert "boom" in result.reason
-        assert not result.assertions.get(SKIPPED)
-
-    def test_a_hanging_check_times_out_without_a_verdict(self, check_file):
-        evaluator = _file_evaluator(check_file, "x", function="slow", timeout_s=0.2)
-        started = time.monotonic()
-        [result] = _run_evaluators([evaluator], _task(), _trial(), _trace())
-        assert time.monotonic() - started < 3
-        assert result.ungradable is True
-        assert "timed out" in result.reason
-
-    def test_a_module_that_blocks_at_import_is_bounded_by_the_timeout(self, tmp_path):
-        slow = tmp_path / "slow.py"
-        slow.write_text(
-            "import time\ntime.sleep(5)\n"
-            "from hopsworks_agents.eval.checks import check\n"
-            "@check(needs_trace=False)\ndef v(ctx):\n    return True\n"
+    def test_a_hanging_check_times_out_without_a_verdict(self, tmp_path):
+        path = _write(
+            tmp_path,
+            "slow.py",
+            """
+            import time
+            @check(needs_trace=False, timeout_s=0.2)
+            def slow(ctx):
+                time.sleep(5)
+                return True
+            """,
         )
-        evaluator = _file_evaluator(slow, "v", timeout_s=0.2)
         started = time.monotonic()
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
+        rows = _rows([_file_evaluator(path)])
         assert time.monotonic() - started < 3
-        assert result.assertions[SKIPPED] is True
-        assert "importing the source took longer" in result.reason
+        assert rows["slow"].ungradable is True
+        assert "timed out" in rows["slow"].reason
+
+    def test_a_module_that_blocks_at_import_is_bounded(self, tmp_path, monkeypatch):
+        path = _write(
+            tmp_path,
+            "slow_import.py",
+            """
+            import time
+            time.sleep(5)
+            @check(needs_trace=False)
+            def v(ctx):
+                return True
+            """,
+        )
+        monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.2)
+        evaluator = _file_evaluator(path, "slow")
+        started = time.monotonic()
+        rows = _rows([evaluator])
+        assert time.monotonic() - started < 3
+        assert rows["slow"].assertions[SKIPPED] is True
+        assert "importing the source took longer" in rows["slow"].reason
 
     def test_a_check_calling_sys_exit_is_the_check_failing(self, tmp_path):
-        leaving = tmp_path / "leaving.py"
-        leaving.write_text(
-            "import sys\nfrom hopsworks_agents.eval.checks import check\n"
-            "@check(needs_trace=False)\ndef v(ctx):\n    sys.exit(3)\n"
+        path = _write(
+            tmp_path,
+            "leaving.py",
+            """
+            import sys
+            @check(needs_trace=False)
+            def v(ctx):
+                sys.exit(3)
+            """,
         )
-        evaluator = _file_evaluator(leaving, "v")
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
-        assert result.ungradable is True
-        assert "SystemExit" in result.reason
+        rows = _rows([_file_evaluator(path)])
+        assert rows["v"].ungradable is True
+        assert "SystemExit" in rows["v"].reason
 
-    def test_a_missing_check_is_skipped_on_every_trial(self, check_file):
-        evaluator = _file_evaluator(check_file, "no_such_check")
-        results = [
-            _run_evaluators([evaluator], _task(), _trial(), _trace())[0]
-            for _ in range(2)
-        ]
-        for result in results:
-            assert result.ungradable is True
-            assert result.assertions[SKIPPED] is True
-            assert "no check named 'no_such_check'" in result.reason
-            assert "price_matches_catalogue" in result.reason
+    def test_a_name_in_only_the_source_does_not_declare_is_skipped(self, check_file):
+        evaluator = _file_evaluator(
+            check_file, only=["no_such_check", "answers_in_english"]
+        )
+        for _ in range(2):
+            rows = _rows([evaluator], trial=_trial("the x"))
+            assert set(rows) == {"no_such_check", "answers_in_english"}
+            assert rows["no_such_check"].assertions[SKIPPED] is True
+            assert (
+                "declares no check named 'no_such_check'"
+                in rows["no_such_check"].reason
+            )
+            assert "price_matches_catalogue" in rows["no_such_check"].reason
+            assert rows["answers_in_english"].passed is True
+
+    def test_a_source_declaring_nothing_is_one_skipped_row(self, tmp_path):
+        path = tmp_path / "nothing.py"
+        path.write_text("def helper():\n    return 1\n")
+        rows = _rows([_file_evaluator(path, "nothing")])
+        assert set(rows) == {"nothing"}
+        assert rows["nothing"].assertions[SKIPPED] is True
+        assert "declares no @check" in rows["nothing"].reason
 
     def test_an_unreadable_file_is_skipped_not_failed(self, tmp_path):
-        evaluator = _file_evaluator(tmp_path / "missing.py", "x")
-        [result] = _run_evaluators([evaluator], _task(), _trial(), _trace())
-        assert result.assertions[SKIPPED] is True
-        assert result.passed is None
+        rows = _rows([_file_evaluator(tmp_path / "missing.py", "x")])
+        assert rows["x"].assertions[SKIPPED] is True
+        assert rows["x"].passed is None
 
     def test_no_sources_means_only_modules_load(self):
         [evaluator] = _evaluators_from_spec(
             [{"type": "python", "name": "x", "file": "Resources/a.py"}]
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial(), _trace())
-        assert result.assertions[SKIPPED] is True
-        assert "no way to read" in result.reason
+        rows = _rows([evaluator])
+        assert rows["x"].assertions[SKIPPED] is True
+        assert "no way to read" in rows["x"].reason
 
     def test_module_source_imports_from_the_environment(self, tmp_path, monkeypatch):
         package = tmp_path / "customer_checks"
@@ -424,12 +460,14 @@ class TestGrading:
         )
         monkeypatch.syspath_prepend(str(tmp_path))
         [evaluator] = _evaluators_from_spec(
-            [{"type": "python", "name": "short", "module": "customer_checks"}]
+            [{"type": "python", "name": "mod", "module": "customer_checks"}]
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial("ok"), None)
-        assert result.passed is True
-        assert result.assertions["source"]["origin"].startswith(
-            "module customer_checks"
+        rows = _rows([evaluator], trial=_trial("ok"))
+        assert rows["short"].passed is True
+        assert (
+            rows["short"]
+            .assertions["source"]["origin"]
+            .startswith("module customer_checks")
         )
 
     def test_a_package_directory_loads_its_init(self, tmp_path):
@@ -441,9 +479,8 @@ class TestGrading:
             "from .helpers import yes\n"
             "@check(needs_trace=False)\ndef uses_helper(ctx):\n    return yes()\n"
         )
-        evaluator = _file_evaluator(package, "uses_helper")
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
-        assert result.passed is True
+        rows = _rows([_file_evaluator(package)])
+        assert rows["uses_helper"].passed is True
 
 
 class TestReturnValues:
@@ -522,7 +559,7 @@ class TestRunCheck:
             answer="42",
             question="meaning?",
             expectation="42",
-            transcript="user: meaning?\\nagent: 42",
+            transcript="user: meaning?\nagent: 42",
             tools=[ToolCall(name="think", status="ERROR")],
             subject="ada",
             name="meaning",
@@ -729,6 +766,16 @@ class _FakeDatasetApi:
         return target
 
 
+VERDICT_FILE = (
+    "from hopsworks_agents.eval.checks import check\n"
+    "@check(needs_trace=False)\ndef verdict(ctx):\n    return {verdict}\n"
+)
+
+
+def _row(**where):
+    return {"type": "python", "name": "checks", **where}
+
+
 class TestSources:
     def test_a_relative_file_is_the_projects_and_is_downloaded(self, tmp_path):
         api = _FakeDatasetApi(
@@ -742,18 +789,11 @@ class TestSources:
             dataset_api=api, project_name="p", workdir=str(tmp_path)
         )
         [evaluator] = _evaluators_from_spec(
-            [
-                {
-                    "type": "python",
-                    "name": "answers_in_english",
-                    "file": "Resources/agent_evals/checks/pricing.py",
-                }
-            ],
-            sources=sources,
+            [_row(file="Resources/agent_evals/checks/pricing.py")], sources=sources
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial("the x"), None)
-        assert result.passed is True
-        assert result.assertions["source"]["origin"] == (
+        rows = _rows([evaluator], trial=_trial("the x"))
+        assert rows["answers_in_english"].passed is True
+        assert rows["answers_in_english"].assertions["source"]["origin"] == (
             "hopsfs /Projects/p/Resources/agent_evals/checks/pricing.py"
         )
 
@@ -772,23 +812,21 @@ class TestSources:
             dataset_api=api, project_name="p", workdir=str(tmp_path)
         )
         [evaluator] = _evaluators_from_spec(
-            [{"type": "python", "name": "uses_helper", "file": "Resources/checks"}],
-            sources=sources,
+            [_row(file="Resources/checks")], sources=sources
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
-        assert result.passed is True
+        assert _rows([evaluator])["uses_helper"].passed is True
 
     def test_a_file_frozen_by_publish_is_read_from_the_snapshot(self, tmp_path):
         """The backend repoints a published row at its copy; the job reads that and says so."""
         snapshot_dir = "/Projects/p/Resources/agent_evals/suites/s1/v2/checks"
-        code = (
-            "from hopsworks_agents.eval.checks import check\n"
-            "@check(needs_trace=False)\ndef which(ctx):\n    return True\n"
-        )
         api = _FakeDatasetApi(
             {
-                "/Projects/p/Resources/checks/c.py": code.replace("True", "False"),
-                f"{snapshot_dir}/0123456789ab-c.py": code,
+                "/Projects/p/Resources/checks/c.py": VERDICT_FILE.format(
+                    verdict="False"
+                ),
+                f"{snapshot_dir}/0123456789ab-c.py": VERDICT_FILE.format(
+                    verdict="True"
+                ),
             }
         )
         sources = _CheckSources(
@@ -801,20 +839,20 @@ class TestSources:
             [
                 {
                     "type": "python",
-                    "name": "which",
+                    "name": "frozen",
                     "file": f"{snapshot_dir}/0123456789ab-c.py",
                 },
-                {"type": "python", "name": "which", "file": "Resources/checks/c.py"},
+                {"type": "python", "name": "live", "file": "Resources/checks/c.py"},
             ],
             sources=sources,
         )
-        [result] = _run_evaluators([frozen], _task(), _trial(), None)
-        assert result.passed is True
-        assert result.assertions["source"]["pinned"] is True
-        assert result.assertions["source"]["origin"].startswith("snapshot ")
-        [result] = _run_evaluators([live], _task(), _trial(), None)
-        assert result.passed is False
-        assert result.assertions["source"]["pinned"] is False
+        row = _rows([frozen])["verdict"]
+        assert row.passed is True
+        assert row.assertions["source"]["pinned"] is True
+        assert row.assertions["source"]["origin"].startswith("snapshot ")
+        row = _rows([live])["verdict"]
+        assert row.passed is False
+        assert row.assertions["source"]["pinned"] is False
 
     def _fake_clone(self, tmp_path):
         def clone(url, ref, commit, into):
@@ -831,42 +869,34 @@ class TestSources:
         clone.calls = []
         return clone
 
+    def _git_row(self, url="https://github.com/o/r.git"):
+        return _row(
+            git={"url": url, "ref": "main"}, path="evaluation/checks/pricing.py"
+        )
+
     def test_a_git_source_is_cloned_once_and_the_commit_recorded(self, tmp_path):
         clone = self._fake_clone(tmp_path)
         sources = _CheckSources(workdir=str(tmp_path), clone=clone)
-        evaluators = _evaluators_from_spec(
+        a, b = _evaluators_from_spec(
             [
-                {
-                    "type": "python",
-                    "name": "answers_in_english",
-                    "git": {"url": "https://github.com/o/r.git", "ref": "main"},
-                    "path": "evaluation/checks/pricing.py",
-                },
-                {
-                    "type": "python",
-                    "name": "price_matches_catalogue",
-                    "git": {"url": "https://github.com/o/r.git", "ref": "main"},
-                    "path": "evaluation/checks/pricing.py",
-                },
+                {**self._git_row(), "name": "a"},
+                {**self._git_row(), "name": "b", "only": ["answers_in_english"]},
             ],
             sources=sources,
         )
         trace = _trace({"name": "lookup_product", "result": '{"price": 19.99}'})
-        results = _run_evaluators(evaluators, _task(), _trial("the 19.99"), trace)
-        assert [r.passed for r in results] == [True, True]
+        results = _run_evaluators([a, b], _task(), _trial("the 19.99"), trace)
+        assert [r.evaluator_name for r in results] == [
+            "price_matches_catalogue",
+            "answers_in_english",
+            "answers_in_english",
+        ]
+        assert all(r.passed for r in results)
         assert clone.calls == [("https://github.com/o/r.git", "main", "")]
         assert results[0].assertions["source"]["commit"] == "abc123def"
         assert results[0].assertions["source"]["pinned"] is False
 
-    def _git_row(self, name="answers_in_english", url="https://github.com/o/r.git"):
-        return {
-            "type": "python",
-            "name": name,
-            "git": {"url": url, "ref": "main"},
-            "path": "evaluation/checks/pricing.py",
-        }
-
-    def test_a_published_suite_pins_a_git_check_on_first_run(self, tmp_path):
+    def test_a_published_suite_pins_a_git_source_on_first_run(self, tmp_path):
         clone = self._fake_clone(tmp_path)
         api = _FakeDatasetApi()
         snapshot_dir = "/Projects/p/Resources/agent_evals/suites/s1/v1/checks"
@@ -880,9 +910,9 @@ class TestSources:
         [evaluator] = _evaluators_from_spec(
             [self._git_row(url="https://user:tok@github.com/o/r.git")], sources=sources
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial("the x"), None)
-        assert result.passed is True
-        assert result.assertions["source"]["pinned"] is True
+        rows = _rows([evaluator], trial=_trial("the x"))
+        assert rows["answers_in_english"].passed is True
+        assert rows["answers_in_english"].assertions["source"]["pinned"] is True
 
         # Frozen under a name that is the whole source identity, with the tree
         # around the file and a manifest inside, and no staging left behind.
@@ -910,13 +940,14 @@ class TestSources:
             clone=self._fake_clone(tmp_path),
         )
         [again] = _evaluators_from_spec([self._git_row()], sources=later)
-        [result] = _run_evaluators([again], _task(), _trial("the x"), None)
-        assert result.assertions["source"]["pinned"] is True
-        assert result.assertions["source"]["commit"] == "abc123def"
-        assert result.assertions["source"]["origin"].startswith("snapshot ")
+        rows = _rows([again], trial=_trial("the x"))
+        source = rows["answers_in_english"].assertions["source"]
+        assert source["pinned"] is True
+        assert source["commit"] == "abc123def"
+        assert source["origin"].startswith("snapshot ")
         assert later._clone.calls == []
 
-    def test_a_pinned_check_keeps_the_helpers_it_imports_from_the_repository(
+    def test_a_pinned_source_keeps_the_helpers_it_imports_from_the_repository(
         self, tmp_path
     ):
         """The tree is frozen, not the one file, so a helper elsewhere still imports."""
@@ -936,12 +967,9 @@ class TestSources:
 
         api = _FakeDatasetApi()
         snapshot_dir = "/Projects/p/Resources/agent_evals/suites/s1/v1/checks"
-        row = {
-            "type": "python",
-            "name": "uses_shared",
-            "git": {"url": "https://x/r.git", "ref": "main"},
-            "path": "evaluation/checks/c.py",
-        }
+        row = _row(
+            git={"url": "https://x/r.git", "ref": "main"}, path="evaluation/checks/c.py"
+        )
         first = _CheckSources(
             dataset_api=api,
             project_name="p",
@@ -949,9 +977,10 @@ class TestSources:
             workdir=str(tmp_path / "a"),
             clone=clone,
         )
-        [evaluator] = _evaluators_from_spec([row], sources=first)
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
-        assert result.passed is True
+        assert (
+            _rows(_evaluators_from_spec([row], sources=first))["uses_shared"].passed
+            is True
+        )
 
         def no_clone(*args):  # noqa: ARG001
             raise AssertionError("the snapshot should have been read instead")
@@ -963,10 +992,9 @@ class TestSources:
             workdir=str(tmp_path / "b"),
             clone=no_clone,
         )
-        [evaluator] = _evaluators_from_spec([row], sources=later)
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
-        assert result.passed is True, result.reason
-        assert result.assertions["source"]["pinned"] is True
+        rows = _rows(_evaluators_from_spec([row], sources=later))
+        assert rows["uses_shared"].passed is True, rows["uses_shared"].reason
+        assert rows["uses_shared"].assertions["source"]["pinned"] is True
 
     def test_two_first_runs_pin_once_and_the_loser_grades_with_the_winner(
         self, tmp_path
@@ -977,22 +1005,14 @@ class TestSources:
             def clone(url, ref, commit, into):  # noqa: ARG001
                 root = Path(into) / "repo"
                 (root / "c").mkdir(parents=True)
-                (root / "c" / "k.py").write_text(
-                    "from hopsworks_agents.eval.checks import check\n"
-                    f"@check(needs_trace=False)\ndef v(ctx):\n    return {verdict}\n"
-                )
+                (root / "c" / "k.py").write_text(VERDICT_FILE.format(verdict=verdict))
                 return str(root)
 
             return clone
 
         api = _FakeDatasetApi()
         snapshot_dir = "/Projects/p/Resources/agent_evals/suites/s1/v1/checks"
-        row = {
-            "type": "python",
-            "name": "v",
-            "git": {"url": "https://x/r.git", "ref": "main"},
-            "path": "c/k.py",
-        }
+        row = _row(git={"url": "https://x/r.git", "ref": "main"}, path="c/k.py")
         a = _CheckSources(
             dataset_api=api,
             project_name="p",
@@ -1008,16 +1028,12 @@ class TestSources:
             clone=clone_returning("False"),
         )
         # Both fetch before either imports: neither saw a snapshot.
-        [source_a] = [e.source for e in _evaluators_from_spec([row], sources=a)]
-        fetched_a = a._fetch_local(source_a)
-        fetched_b = b._fetch_local(source_a)
+        [source] = [e.source for e in _evaluators_from_spec([row], sources=a)]
+        fetched_a = a._fetch_local(source)
+        fetched_b = b._fetch_local(source)
         assert fetched_a.pinned and fetched_b.pinned
-        result_a = _run_evaluators(
-            [_evaluators_from_spec([row], sources=a)[0]], _task(), _trial(), None
-        )[0]
-        result_b = _run_evaluators(
-            [_evaluators_from_spec([row], sources=b)[0]], _task(), _trial(), None
-        )[0]
+        result_a = _rows(_evaluators_from_spec([row], sources=a))["verdict"]
+        result_b = _rows(_evaluators_from_spec([row], sources=b))["verdict"]
         # a staged first and won; b's rename was refused and b loaded a's copy.
         assert (result_a.passed, result_b.passed) == (True, True)
         assert len([f for f in api.files if f.endswith("/manifest.json")]) == 1
@@ -1039,22 +1055,16 @@ class TestSources:
             clone=clone,
         )
         [evaluator] = _evaluators_from_spec(
-            [
-                {
-                    "type": "python",
-                    "name": "answers_in_english",
-                    "git": "deployment",
-                    "path": "evaluation/checks/pricing.py",
-                }
-            ],
+            [_row(git="deployment", path="evaluation/checks/pricing.py")],
             sources=sources,
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial("the x"), None)
-        assert result.passed is True
+        rows = _rows([evaluator], trial=_trial("the x"))
+        assert rows["answers_in_english"].passed is True
         assert clone.calls == [("https://github.com/o/agent.git", "main", "fedcba9")]
-        assert result.assertions["source"]["commit"] == "fedcba9"
+        source = rows["answers_in_english"].assertions["source"]
+        assert source["commit"] == "fedcba9"
         # Never pinned: the checks move with the agent.
-        assert result.assertions["source"]["pinned"] is False
+        assert source["pinned"] is False
         assert api.uploaded == []
 
     def test_a_deployment_without_a_repository_is_skipped(self, tmp_path):
@@ -1066,9 +1076,9 @@ class TestSources:
             [{"type": "python", "name": "x", "git": "deployment", "path": "c.py"}],
             sources=sources,
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
-        assert result.assertions[SKIPPED] is True
-        assert "not git-backed" in result.reason
+        rows = _rows([evaluator])
+        assert rows["x"].assertions[SKIPPED] is True
+        assert "not git-backed" in rows["x"].reason
 
     def test_a_failed_clone_names_no_credential(self, tmp_path):
         def clone(url, ref, commit, into):  # noqa: ARG001
@@ -1086,9 +1096,9 @@ class TestSources:
             ],
             sources=sources,
         )
-        [result] = _run_evaluators([evaluator], _task(), _trial(), None)
-        assert result.assertions[SKIPPED] is True
-        assert "secret" not in result.reason
+        rows = _rows([evaluator])
+        assert rows["x"].assertions[SKIPPED] is True
+        assert "secret" not in rows["x"].reason
 
     def test_helpers_of_the_same_name_do_not_leak_between_sources(self, tmp_path):
         """A second source's `helpers` must not be the first's, cached in sys.modules."""
@@ -1109,50 +1119,28 @@ class TestSources:
             [
                 {
                     "type": "python",
-                    "name": "v",
+                    "name": "a",
                     "file": str(tmp_path / "a" / "checks.py"),
                 },
                 {
                     "type": "python",
-                    "name": "v",
+                    "name": "b",
                     "file": str(tmp_path / "b" / "checks.py"),
                 },
             ],
             sources=sources,
         )
         results = _run_evaluators([a, b], _task(), _trial(), None)
-        assert [r.passed for r in results] == [True, False]
+        assert [(r.assertions["row"], r.passed) for r in results] == [
+            ("a", True),
+            ("b", False),
+        ]
         assert "helpers" not in sys.modules
         assert str(tmp_path / "a") not in sys.path
 
-    def test_two_files_of_the_same_name_do_not_collide(self, tmp_path):
-        first = tmp_path / "a" / "checks.py"
-        second = tmp_path / "b" / "checks.py"
-        first.parent.mkdir()
-        second.parent.mkdir()
-        first.write_text(
-            "from hopsworks_agents.eval.checks import check\n"
-            "@check(needs_trace=False)\ndef verdict(ctx):\n    return True\n"
-        )
-        second.write_text(
-            "from hopsworks_agents.eval.checks import check\n"
-            "@check(needs_trace=False)\ndef verdict(ctx):\n    return False\n"
-        )
-        sources = _CheckSources(dataset_api=object(), project_name="p")
-        sources._download = lambda path: path  # type: ignore[method-assign]
-        a, b = _evaluators_from_spec(
-            [
-                {"type": "python", "name": "verdict", "file": str(first)},
-                {"type": "python", "name": "verdict", "file": str(second)},
-            ],
-            sources=sources,
-        )
-        results = _run_evaluators([a, b], _task(), _trial(), None)
-        assert [r.passed for r in results] == [True, False]
-
 
 class TestRunJobWiring:
-    def test_check_sources_pins_only_a_published_suite(self, monkeypatch):
+    def test_check_sources_pins_only_a_published_suite(self):
         from hopsworks_agents.eval.run_job import _check_sources
 
         class Session:
@@ -1202,9 +1190,6 @@ class TestRunJobWiring:
 
     def test_module_constants(self):
         assert checks_module.TYPE == "python"
-        assert (
-            "python"
-            in __import__(
-                "hopsworks_agents.eval.evaluator_spec", fromlist=["SPEC_TYPES"]
-            ).SPEC_TYPES
-        )
+        from hopsworks_agents.eval.evaluator_spec import SPEC_TYPES
+
+        assert "python" in SPEC_TYPES
