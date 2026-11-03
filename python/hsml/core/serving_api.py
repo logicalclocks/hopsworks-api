@@ -432,7 +432,7 @@ class ServingApi:
         self,
         deployment_instance: deployment.Deployment,
         active: bool | None,
-        sampling_percentage: int | None,
+        sampling_percentage: float | None,
         duration_days: int | None = None,
     ) -> dict[str, Any]:
         """Switch a running deployment's tracing without redeploying it, returning the stored tracing config."""
@@ -464,7 +464,7 @@ class ServingApi:
         until_ms: int | None,
         batch_size: int,
     ) -> int:
-        """Delete one batch of the deployment's trace rows from each trace table, returning the rows deleted."""
+        """Delete one batch of the deployment's trace rows, returning the rows deleted."""
         _client = client._get_instance()
         path_params = [
             "project",

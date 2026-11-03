@@ -21,6 +21,8 @@ With telemetry on, every on-demand and model-dependent transformation, and each 
 - the cumulative call count and duration, exported as Prometheus counters, so an average over any interval and across replicas is `rate(seconds) / rate(calls)`;
 - the minimum and maximum duration over the last complete window of `_WINDOW_SECONDS`, exported as gauges.
 
+Each phase also adds its time to the request's `transformations` stage of this feature view, which [`hopsworks_common.request_metrics`][] exports.
+
 Spans are opened only for sampled requests, and only for the first row of each.
 Each feature view's transformation DAG is exported as one gauge series per edge.
 """
@@ -33,7 +35,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common import tracing
+from hopsworks_common import request_metrics, tracing
 
 
 if TYPE_CHECKING:
@@ -51,73 +53,12 @@ KIND_MODEL_DEPENDENT = "model_dependent"
 ROW_SPAN_NAME = "transformations"
 SPAN_KIND_ATTRIBUTE = "hopsworks.span.kind"
 
-_WINDOW_SECONDS = 60
-_WINDOW_NS = _WINDOW_SECONDS * 1_000_000_000
+_WINDOW_SECONDS = request_metrics._WINDOW_SECONDS
+_WINDOW_NS = request_metrics._WINDOW_NS
+_Series = request_metrics._Series
 
 _PHASE_LABELS = ["feature_view", "feature_view_version", "kind"]
 _FUNCTION_LABELS = [*_PHASE_LABELS, "transformation", "outputs"]
-
-
-class _Series:
-    """Running count and duration of one transformation or phase, plus its extremes over fixed windows.
-
-    Updates are not locked: under concurrent requests a window can miss an extreme, and a rotation racing an update can drop one call from a window.
-    """
-
-    __slots__ = (
-        "calls",
-        "errors",
-        "total_ns",
-        "_window_end_ns",
-        "_window_calls",
-        "_window_min_ns",
-        "_window_max_ns",
-        "_last_calls",
-        "_last_min_ns",
-        "_last_max_ns",
-    )
-
-    def __init__(self):
-        self.calls = 0
-        self.errors = 0
-        self.total_ns = 0
-        self._window_end_ns = 0
-        self._window_calls = 0
-        self._window_min_ns = 0
-        self._window_max_ns = 0
-        self._last_calls = 0
-        self._last_min_ns = 0
-        self._last_max_ns = 0
-
-    def _observe(self, duration_ns: int, now_ns: int) -> None:
-        if now_ns >= self._window_end_ns:
-            self._rotate(now_ns)
-        self.calls += 1
-        self.total_ns += duration_ns
-        if self._window_calls == 0 or duration_ns < self._window_min_ns:
-            self._window_min_ns = duration_ns
-        if duration_ns > self._window_max_ns:
-            self._window_max_ns = duration_ns
-        self._window_calls += 1
-
-    def _rotate(self, now_ns: int) -> None:
-        # A window that ended more than a window ago saw no calls in the window after it, so it is not the last complete one.
-        fresh = now_ns < self._window_end_ns + _WINDOW_NS
-        self._last_calls = self._window_calls if fresh else 0
-        self._last_min_ns = self._window_min_ns
-        self._last_max_ns = self._window_max_ns
-        self._window_calls = 0
-        self._window_min_ns = 0
-        self._window_max_ns = 0
-        self._window_end_ns = now_ns + _WINDOW_NS
-
-    def _last_window(self, now_ns: int) -> tuple[int, int, int]:
-        """Calls, minimum and maximum of the last complete window as of `now_ns`, without rotating."""
-        if now_ns >= self._window_end_ns + _WINDOW_NS:
-            return 0, 0, 0
-        if now_ns >= self._window_end_ns:
-            return self._window_calls, self._window_min_ns, self._window_max_ns
-        return self._last_calls, self._last_min_ns, self._last_max_ns
 
 
 def _node_id(tf: transformation_function.TransformationFunction) -> str:
@@ -136,6 +77,10 @@ class _Telemetry:
     ):
         self.feature_view = feature_view_name
         self.feature_view_version = str(feature_view_version)
+        # How the request stages name this feature view.
+        self.stage_name = f"{feature_view_name}:{feature_view_version}"
+        request_metrics._declare("feature_lookup", self.stage_name)
+        request_metrics._declare("transformations", self.stage_name)
         self.phases = {kind: _Series() for kind in execution_graphs}
         # Keyed by id(tf): the DAG holds the transformation functions for the life of the vector server.
         self.functions: dict[int, tuple[str, Any, _Series, dict[str, Any]]] = {}
@@ -248,6 +193,9 @@ class _Phase:
     def __exit__(self, exc_type, exc, tb):
         end_ns = time.perf_counter_ns()
         self._telemetry.phases[self._kind]._observe(end_ns - self._start_ns, end_ns)
+        tracing._add_stage_ns(
+            "transformations", self._telemetry.stage_name, end_ns - self._start_ns
+        )
         if self._span is not None:
             return self._span.__exit__(exc_type, exc, tb)
         return False
