@@ -7,13 +7,14 @@ declared, so ``def chat(request)`` and ``def chat(request, ctx)`` both work.
 The context bundles per-turn conveniences (history, memory, logger,
 deployment/framework identity, correlation ids) and ``emit_event`` for
 surfacing intermediate progress (tool calls, retrieval, code execution) as
-``tool_event`` SSE frames while streaming — without the author hand-crafting
+AG-UI events while streaming — without the author hand-crafting
 SSE.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from typing import TYPE_CHECKING, Any
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 
     from .evaluation import EvalTrial
     from .memory import ChatMemory, Turn
-    from .models import ChatRequest
+    from .models import ChatRequest, ResumeAnswer
 
 
 class HandlerContext:
@@ -92,6 +93,10 @@ class HandlerContext:
         # turn lifecycle bookkeeping, owned by AgentApp
         self._turn_open = False
         self._next_seq = 1
+        # a resume holds the conversation's pending record until the turn ends
+        self._claimed = False
+        # the turn asked a person and is waiting: the record is fresh, not held
+        self._paused = False
         # the turn's root OTel span, set by the route when tracing is active.
         # None when untraced, so every read must tolerate it.
         self._span: Any = None
@@ -115,6 +120,13 @@ class HandlerContext:
         # above is drained into the response metadata and is empty while
         # streaming, so it can't double as the record we persist
         self._recorded_events: list[dict[str, Any]] = []
+        # The answers this run carries, by interrupt id, and how many times the
+        # handler has asked so far: an interrupt without a key is named by its
+        # place in the turn, which a replay of the same turn reproduces.
+        self._resume: dict[str, ResumeAnswer] = {
+            answer.interrupt_id: answer for answer in getattr(request, "resume", [])
+        }
+        self._interrupts_asked = 0
 
     @property
     def history(self) -> list[Turn]:
@@ -502,6 +514,88 @@ class HandlerContext:
         return await asyncio.to_thread(self.system_context, header, state_header)
 
     @public
+    def interrupt(
+        self,
+        message: str | None = None,
+        *,
+        reason: str = "confirmation",
+        key: str | None = None,
+        response_schema: dict[str, Any] | None = None,
+        tool_call_id: str | None = None,
+        expires_in: float | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ResumeAnswer:
+        """Pause the turn and ask a person, returning their answer once they give it.
+
+        The first time, this ends the run: the client receives an AG-UI
+        interrupt saying what was asked, and nothing after this line runs.
+        When the client answers, the turn runs again from the start with the
+        answer attached, and this call returns it instead of pausing.
+        So everything before it runs twice, and must be safe to repeat: ask
+        before acting, not after.
+
+        Example:
+            ```python
+            @agent_app.chat
+            async def chat(request, ctx):
+                order = await find_order(request.text)
+                answer = ctx.interrupt(
+                    f"Refund {order.amount} to order {order.id}?",
+                    key=f"refund-{order.id}-{order.amount}",
+                    response_schema={
+                        "type": "object",
+                        "properties": {"approved": {"type": "boolean"}},
+                        "required": ["approved"],
+                    },
+                )
+                if answer.cancelled or not answer.payload.get("approved"):
+                    return "Understood, no refund."
+                await refund(order)
+                return "Refunded."
+            ```
+
+        Parameters:
+            message: What to ask, for the person reading it.
+            reason: Why the agent is asking: `confirmation`, `input_required` or `tool_call`, or a word of your own.
+            key: A name for this question that is the same each time the turn runs; by default its place among the turn's questions.
+                It must name the action and what it does, not only the object it is about (`refund-42-40EUR`, not `refund-42`): the answer is taken only when the replay asks the same question, the same `message`, `reason`, `response_schema`, `tool_call_id` and `metadata`, and a question that changed since it was answered is asked again.
+            response_schema: A JSON Schema the answer's payload should match; the chat panel builds its form from it.
+            tool_call_id: The tool call this question is about, when it is about one.
+            expires_in: Seconds after which the question can no longer be answered.
+            metadata: Anything else the client should see with the question.
+
+        Returns:
+            `ResumeAnswer`: the person's answer, on the run that resumes the turn.
+        """
+        index = self._interrupts_asked
+        self._interrupts_asked += 1
+        interrupt_id = key or f"interrupt-{index}"
+        question: dict[str, Any] = {"id": interrupt_id, "reason": reason}
+        if message is not None:
+            question["message"] = message
+        if tool_call_id is not None:
+            question["tool_call_id"] = tool_call_id
+        if response_schema is not None:
+            question["response_schema"] = response_schema
+        if metadata is not None:
+            question["metadata"] = metadata
+        answer = self._resume.get(interrupt_id)
+        # The replay is not deterministic (a model drives it, the data moved on): the
+        # answer is to what was asked then, so a question that is not the same one,
+        # under the same id, is asked again instead of taking the earlier answer.
+        if answer is not None and (
+            answer.asked is None or answer.asked == _question_fingerprint(question)
+        ):
+            return answer
+        if expires_in is not None:
+            from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+            question["expires_at"] = (
+                datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+            ).isoformat()
+        raise Interrupted([question])
+
+    @public
     async def emit_event(
         self,
         name: str,
@@ -510,10 +604,14 @@ class HandlerContext:
         data: dict[str, Any] | None = None,
         event_id: str | None = None,
     ) -> None:
-        """Surface an intermediate progress event (a tool call, a retrieval, a.
+        """Surface an intermediate progress event (a retrieval, a plan, a code run).
 
-        code run). While streaming it is sent immediately as a ``tool_event``
-        SSE frame; otherwise it is buffered into the response metadata.
+        On ``/v1/run`` it is sent immediately as an AG-UI ``STEP_STARTED`` (for
+        ``running``) or ``STEP_FINISHED`` event, with ``message``, ``data`` and
+        the status under the event's ``metadata.hopsworks``; on ``/v1/chat`` it is
+        buffered into the response metadata.
+        Tool calls the framework makes are reported as AG-UI tool calls without
+        this, when tracing is on.
 
         ``event_id`` ties a ``running`` event to its later ``done``/``failed``
         so a client renders one chip that updates rather than several. Pass the
@@ -526,6 +624,25 @@ class HandlerContext:
         self._handler_emitted.add(name)
         self._emit_sync(name, status, message, data, event_id)
 
+    async def _emit_tool_call(
+        self,
+        name: str,
+        status: str,
+        event_id: str | None,
+        args: Any = None,
+        result: Any = None,
+        message: str | None = None,
+    ) -> None:
+        """Report a tool call the handler's framework made, as an AG-UI tool call.
+
+        For the framework stream helpers, which see the call itself. Like
+        ``emit_event`` it keeps the automatic emitter off the tool.
+        """
+        self._handler_emitted.add(name)
+        self._emit_sync(
+            name, status, message, None, event_id, kind="tool", args=args, result=result
+        )
+
     def _emit_sync(
         self,
         name: str,
@@ -533,18 +650,28 @@ class HandlerContext:
         message: str | None,
         data: dict[str, Any] | None,
         event_id: str | None,
+        *,
+        kind: str = "step",
+        args: Any = None,
+        result: Any = None,
     ) -> None:
         """Non-async emit used by both ``emit_event`` and the auto-emit span.
 
         processor (which runs in sync OTel callbacks, possibly off-thread).
+        ``kind`` says how the event goes on the wire: a ``tool`` is an AG-UI tool
+        call, carrying its arguments and result, and a ``step`` is an AG-UI step.
         """
-        payload: dict[str, Any] = {"name": name, "status": status}
+        payload: dict[str, Any] = {"name": name, "status": status, "kind": kind}
         if event_id is not None:
             payload["id"] = event_id
         if message is not None:
             payload["message"] = message
         if data is not None:
             payload["data"] = data
+        if args is not None:
+            payload["args"] = _bounded_text(args, _MAX_ARGS_TEXT)
+        if result is not None:
+            payload["result"] = _bounded_text(result)
         self._dispatch(payload)
 
     @public
@@ -554,7 +681,7 @@ class HandlerContext:
         """Pipe a LangChain/LangGraph ``astream_events(version="v2")`` stream.
 
         through, yielding assistant text deltas and turning tool calls into
-        ``tool_event`` chips automatically — no manual ``emit_event`` and no
+        AG-UI tool calls automatically — no manual ``emit_event`` and no
         dependency on tracing:
 
             async for delta in ctx.stream_langchain(agent.astream_events(...)):
@@ -579,33 +706,34 @@ class HandlerContext:
                             if text:
                                 yield text
             elif kind == "on_tool_start":
-                tool_input = (event.get("data") or {}).get("input")
-                await self.emit_event(
+                await self._emit_tool_call(
                     event.get("name", "tool"),
-                    status="running",
-                    message=str(tool_input) if tool_input else None,
-                    event_id=event.get("run_id"),
+                    "running",
+                    event.get("run_id"),
+                    args=(event.get("data") or {}).get("input") or None,
                 )
             elif kind == "on_tool_end":
-                await self.emit_event(
+                output = (event.get("data") or {}).get("output")
+                await self._emit_tool_call(
                     event.get("name", "tool"),
-                    status="done",
-                    event_id=event.get("run_id"),
+                    "done",
+                    event.get("run_id"),
+                    result=getattr(output, "content", output),
                 )
             elif kind == "on_tool_error":
                 err = (event.get("data") or {}).get("error")
-                await self.emit_event(
+                await self._emit_tool_call(
                     event.get("name", "tool"),
-                    status="failed",
+                    "failed",
+                    event.get("run_id"),
                     message=str(err) if err else None,
-                    event_id=event.get("run_id"),
                 )
 
     @public
     async def stream_llamaindex(self, handler: Any) -> AsyncIterator[str]:
         """Pipe a LlamaIndex workflow agent run through, yielding assistant.
 
-        text deltas and turning tool calls into ``tool_event`` chips:
+        text deltas and turning tool calls into AG-UI tool calls:
 
             handler = agent.run(msg)          # a WorkflowHandler
             async for delta in ctx.stream_llamaindex(handler):
@@ -622,18 +750,19 @@ class HandlerContext:
                 if isinstance(delta, str) and delta:
                     yield delta
             elif cls == "ToolCall":
-                kwargs = getattr(event, "tool_kwargs", None)
-                await self.emit_event(
+                await self._emit_tool_call(
                     getattr(event, "tool_name", "tool"),
-                    status="running",
-                    message=str(kwargs) if kwargs else None,
-                    event_id=getattr(event, "tool_id", None),
+                    "running",
+                    getattr(event, "tool_id", None),
+                    args=getattr(event, "tool_kwargs", None) or None,
                 )
             elif cls == "ToolCallResult":
-                await self.emit_event(
+                output = getattr(event, "tool_output", None)
+                await self._emit_tool_call(
                     getattr(event, "tool_name", "tool"),
-                    status="done",
-                    event_id=getattr(event, "tool_id", None),
+                    "done",
+                    getattr(event, "tool_id", None),
+                    result=getattr(output, "content", output),
                 )
 
     def _dispatch(self, payload: dict[str, Any]) -> None:
@@ -655,3 +784,52 @@ class HandlerContext:
             # off-thread (a framework tool running in a threadpool): hop back
             # onto the loop safely
             loop.call_soon_threadsafe(queue.put_nowait, ("tool_event", payload))
+
+
+# Arguments and results ride on progress events and into the memory transcript,
+# so a tool that returns a whole document does not get to fill either.
+_MAX_EVENT_TEXT = 4000
+# A tool call's arguments are JSON a client may parse (the chat panel shows
+# them as the call was made), so they are bounded far more loosely than a
+# result or a message, which are read by a person.
+_MAX_ARGS_TEXT = 64_000
+
+
+def _bounded_text(value: Any, limit: int = _MAX_EVENT_TEXT) -> str:
+    if isinstance(value, str):
+        text = value
+    else:
+        try:
+            text = json.dumps(value, default=str)
+        except (TypeError, ValueError):
+            text = str(value)
+    if len(text) > limit:
+        return text[:limit] + "…"
+    return text
+
+
+#: What makes a question the one that was asked: the id names it, these say what it is.
+_ASKED_KEYS = ("message", "reason", "response_schema", "tool_call_id", "metadata")
+
+
+def _question_fingerprint(question: dict[str, Any]) -> str:
+    """A digest of what a question asks, to tell an answer's question from another under the same id."""
+    import hashlib  # noqa: PLC0415
+
+    asked = {key: question.get(key) for key in _ASKED_KEYS}
+    return hashlib.sha256(
+        json.dumps(asked, sort_keys=True, default=str).encode()
+    ).hexdigest()[:32]
+
+
+class Interrupted(Exception):  # noqa: N818 -- it is a signal, not an error
+    """Raised by ``ctx.interrupt`` to end the run with a question for a person.
+
+    The route catches it and ends the run with an AG-UI interrupt outcome; a
+    handler that catches it by accident (``except Exception``) keeps the turn
+    from pausing, so let it through.
+    """
+
+    def __init__(self, interrupts: list[dict[str, Any]]):
+        super().__init__("the turn is waiting for a person")
+        self.interrupts = interrupts

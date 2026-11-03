@@ -700,6 +700,7 @@ class ChatReply(ApiModel):
     usage: dict[str, int] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     status: str = "completed"
+    interrupts: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def parts(self) -> list[dict[str, Any]]:
@@ -724,6 +725,11 @@ class ChatReply(ApiModel):
     @property
     def failed(self) -> bool:
         return self.status == "failed"
+
+    @property
+    def interrupted(self) -> bool:
+        """Whether the agent paused to ask a person; `interrupts` holds what it asked."""
+        return self.status == "interrupted"
 
     @property
     def tool_events(self) -> list[ToolEvent]:
@@ -900,6 +906,14 @@ class Feedback(ApiModel):
             and message.get("role") == "user"
             and message.get("content")
         ]
+
+    @property
+    def given_via(self) -> str | None:
+        """Where the verdict was given, when the client said so: ``chat-app`` for the agent's chat app.
+
+        Not `source`, which is who gave it.
+        """
+        return self.raw.get("source") or None
 
     @property
     def source(self) -> str:

@@ -2,10 +2,12 @@
 
 Registers automatically:
 
-- ``GET  /.well-known/hopsworks-agent.json``  — protocol manifest
-- ``POST /v1/chat``                           — non-streaming chat
-- ``POST /v1/chat/stream``                    — SSE streaming (when a stream
-  handler is registered; otherwise the capability is off)
+- ``GET  /.well-known/hopsworks-agent.json``  — manifest: endpoints and
+  AG-UI capabilities
+- ``POST /v1/run``                            — one AG-UI run: ``RunAgentInput``
+  in, AG-UI events out as server-sent events (see ``agui``)
+- ``POST /v1/chat``                           — the same turn as one JSON reply,
+  for callers that do not stream
 - ``GET  /health``                            — liveness probe
 
 Being a FastAPI subclass, it works anywhere a FastAPI app does (uvicorn,
@@ -21,15 +23,19 @@ import inspect
 import json
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any
 
+from ag_ui.core import AgentCapabilities, RunAgentInput
+from ag_ui.core.version import PROTOCOL_VERSION as AGUI_PROTOCOL_VERSION
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from hopsworks_apigen import public
 
 from . import conventions
-from .context import HandlerContext
+from .agui import RunStream, _resume_answer, _to_chat_request
+from .context import HandlerContext, Interrupted, _question_fingerprint
 from .evaluation import RunVerifier, env_eval_mode, parse_baggage
 from .evaluation import active as eval_active
 from .memory import TURN_ABANDONED, TURN_CLOSED, ChatMemory, MemoryEraseError
@@ -38,22 +44,20 @@ from .models import (
     PROTOCOL,
     PROTOCOL_VERSION,
     AgentError,
+    AgentResponse,
     ChatRequest,
     ChatResponse,
     FeedbackRequest,
+    ResumeAnswer,
     new_conversation_id,
     new_response_id,
 )
+from .pending import EXPIRED_GRACE, RETENTION, _PendingQuestions, _ProcessPending
 from .tracing import resolve_framework, setup_tracing, turn_span
 
 
 ChatHandler = Callable[..., Awaitable[ChatResponse | str] | ChatResponse | str]
 StreamHandler = Callable[..., AsyncIterator["str | ChatResponse"]]
-
-
-def _sse(event: str, data: Any) -> str:
-    payload = data if isinstance(data, str) else json.dumps(data)
-    return f"event: {event}\ndata: {payload}\n\n"
 
 
 def _wants_context(handler: Callable[..., Any]) -> bool:
@@ -90,6 +94,12 @@ NOT_GIVEN = _NotGiven()
 
 #: conversations whose latest trace the app keeps in memory for feedback by conversation
 LAST_TRACE_LIMIT = 10_000
+# How long an AG-UI run may be silent before a comment line keeps the
+# connection alive: a proxy in front (ingress-nginx: 60 s) closes a response
+# it has not seen a byte of, and a long model call or a slow tool is longer.
+# A comment is a transport frame every SSE reader drops; it never becomes an
+# event.
+SSE_KEEP_ALIVE_S = 15.0
 
 
 class AgentApp(FastAPI):
@@ -144,8 +154,8 @@ class AgentApp(FastAPI):
         # is not to serve them.
         self._memory_routes = memory_routes
 
-        # advertise tool_event SSE frames (emitted via ctx.emit_event); off by
-        # default so existing manifests are unchanged
+        # report tool calls the framework makes as AG-UI tool calls, from its
+        # tracing spans; off by default
         self._tool_events = tool_events
         self._auto_tool_events = False
 
@@ -164,6 +174,11 @@ class AgentApp(FastAPI):
         self._last_trace: OrderedDict[str, str] = OrderedDict()
         # Evaluation trials' bindings, by trial conversation; see _resolve_subject.
         self._trial_subjects: _BoundedDict = _BoundedDict(LAST_TRACE_LIMIT)
+        # What each paused conversation waits on, when the memory store does
+        # not keep it (no memory, or one that is not shared). In this process
+        # only: a resume another replica or a restarted pod receives is then
+        # refused, since answers nobody asked for must not reach the handler.
+        self._local_pending = _ProcessPending()
 
         # framework: explicit arg > AGENT_FRAMEWORK env (platform-injected) >
         # 'custom'. Drives which OpenInference instrumentor tracing activates.
@@ -329,10 +344,17 @@ class AgentApp(FastAPI):
         }
 
     def _manifest(self) -> dict[str, Any]:
+        """What this agent is and what it can do, for a client to discover it.
+
+        AG-UI defines no discovery endpoint, so the manifest is ours, but its
+        ``capabilities`` are AG-UI's ``AgentCapabilities``: a TypeScript client
+        can hand them out of ``getCapabilities()`` as they are.
+        What only Hopsworks reads is under ``capabilities.custom.hopsworks``,
+        where ``streaming`` still means a stream handler is registered, so the
+        answer arrives token by token rather than whole.
+        """
         streaming = self._stream_handler is not None
-        endpoints: dict[str, str] = {"chat": "/v1/chat"}
-        if streaming:
-            endpoints["stream"] = "/v1/chat/stream"
+        endpoints: dict[str, str] = {"run": "/v1/run", "chat": "/v1/chat"}
         if self.memory is not None and self._memory_routes:
             # server-managed history is available: clients can list/clear it
             endpoints["conversations"] = "/v1/conversations"
@@ -343,9 +365,79 @@ class AgentApp(FastAPI):
             endpoints["graph"] = "/v1/graph"
         # always served: a chat UI built on the gateway has nowhere else to send a verdict
         endpoints["feedback"] = "/v1/feedback"
+        hopsworks: dict[str, Any] = {
+            "streaming": streaming,
+            # protocol-level statement that history is server-side. The
+            # per-tier detail is under "memory" below; this was previously
+            # hardcoded True even with no store configured, which was wrong.
+            "conversation_history": self.memory is not None,
+            "memory": self._memory_capabilities(),
+            # server-side history is inspectable/clearable via the endpoints
+            "conversation_management": self.memory is not None,
+            "attachments": any(m != "text" for m in self._input_modalities),
+            "input_modalities": self._input_modalities,
+            "output_modalities": self._output_modalities,
+            "citations": False,
+            "tool_events": self._tool_events,
+            # a structure graph is available to visualize the agent
+            "graph": self._graph_spec is not None,
+            # end users can rate a turn through the agent itself
+            "feedback": True,
+            # This agent continues an incoming W3C trace context and
+            # propagates hopsworks.eval.* baggage onto its spans, so a
+            # caller that generated the traceparent can find the trace
+            # afterwards. False means tracing is off on the deployment;
+            # *absent* means an SDK too old to do it at all. The eval
+            # runner checks this before running a suite, rather than
+            # discovering afterwards that every trial points at a trace
+            # that was never created.
+            "trace_correlation": self.tracer_provider is not None,
+            # Running with tools mocked or pointed at scratch resources.
+            # Lets the runner refuse to fire a sandboxed suite — one full
+            # of injection and exfiltration attempts — at a deployment
+            # whose tools can still mutate production systems.
+            "eval_mode": self._eval_mode,
+            # This agent reads hopsworks.eval.* baggage and skips its
+            # production side effects for a turn that belongs to a
+            # verified run — so a sandboxed suite may be fired at it even
+            # while it serves real traffic. The runner accepts either this
+            # or eval_mode.
+            "eval_per_request": self._eval_per_request,
+        }
+        inputs = set(self._input_modalities)
+        outputs = set(self._output_modalities)
+        capabilities = AgentCapabilities.model_validate(
+            {
+                "identity": {
+                    "name": self._agent_name,
+                    "description": self._agent_description,
+                    "version": self._agent_version,
+                    "provider": "hopsworks",
+                },
+                "transport": {"streaming": True},
+                "multimodal": {
+                    "input": {
+                        "image": "image" in inputs,
+                        "audio": "audio" in inputs,
+                        "file": "file" in inputs,
+                    },
+                    "output": {
+                        "image": "image" in outputs,
+                        "audio": "audio" in outputs,
+                    },
+                },
+                "state": {
+                    "memory": self.memory is not None,
+                    "persistent_state": bool(getattr(self.memory, "_long_term", False)),
+                },
+                "human_in_the_loop": {"feedback": True},
+                "custom": {"hopsworks": hopsworks},
+            }
+        )
         return {
             "protocol": PROTOCOL,
-            "protocol_version": PROTOCOL_VERSION,
+            "protocol_version": AGUI_PROTOCOL_VERSION,
+            "hopsworks_version": PROTOCOL_VERSION,
             "agent": {
                 "name": self._agent_name,
                 "description": self._agent_description,
@@ -353,45 +445,7 @@ class AgentApp(FastAPI):
                 "framework": self.framework,
             },
             "endpoints": endpoints,
-            "capabilities": {
-                "streaming": streaming,
-                # protocol-level statement that history is server-side. The
-                # per-tier detail is under "memory" below; this was previously
-                # hardcoded True even with no store configured, which was wrong.
-                "conversation_history": self.memory is not None,
-                "memory": self._memory_capabilities(),
-                # server-side history is inspectable/clearable via the endpoints
-                "conversation_management": self.memory is not None,
-                "attachments": any(m != "text" for m in self._input_modalities),
-                "input_modalities": self._input_modalities,
-                "output_modalities": self._output_modalities,
-                "citations": False,
-                "tool_events": self._tool_events,
-                # a structure graph is available to visualize the agent
-                "graph": self._graph_spec is not None,
-                # end users can rate a turn through the agent itself
-                "feedback": True,
-                # This agent continues an incoming W3C trace context and
-                # propagates hopsworks.eval.* baggage onto its spans, so a
-                # caller that generated the traceparent can find the trace
-                # afterwards. False means tracing is off on the deployment;
-                # *absent* means an SDK too old to do it at all. The eval
-                # runner checks this before running a suite, rather than
-                # discovering afterwards that every trial points at a trace
-                # that was never created.
-                "trace_correlation": self.tracer_provider is not None,
-                # Running with tools mocked or pointed at scratch resources.
-                # Lets the runner refuse to fire a sandboxed suite — one full
-                # of injection and exfiltration attempts — at a deployment
-                # whose tools can still mutate production systems.
-                "eval_mode": self._eval_mode,
-                # This agent reads hopsworks.eval.* baggage and skips its
-                # production side effects for a turn that belongs to a
-                # verified run — so a sandboxed suite may be fired at it even
-                # while it serves real traffic. The runner accepts either this
-                # or eval_mode.
-                "eval_per_request": self._eval_per_request,
-            },
+            "capabilities": capabilities.model_dump(by_alias=True, exclude_none=True),
             "ui": {
                 "welcome_message": self._welcome_message,
                 "suggested_prompts": self._suggested_prompts,
@@ -430,6 +484,10 @@ class AgentApp(FastAPI):
             attributes[conventions.MESSAGE_ID] = ctx.message_id
         if ctx.deployment_id:
             attributes[conventions.DEPLOYMENT_ID] = ctx.deployment_id
+        if ctx.request.resume:
+            attributes[conventions.TURN_RESUMED] = [
+                f"{a.interrupt_id}:{a.status}" for a in ctx.request.resume
+            ]
         text = ctx.request.text
         if text:
             attributes[conventions.INPUT_VALUE] = text
@@ -602,6 +660,12 @@ class AgentApp(FastAPI):
         housekeeping: skip it and the store keeps a question whose answer never
         arrived, which then reappears as history on the next turn.
         """
+        # Answered only when the turn completed: a handler that reported the turn
+        # failed has not answered, so the question goes back to the person rather
+        # than leaving them a 409 nothing_to_resume on their retry.
+        await self._settle_pending(
+            ctx, answered=response is not None and response.status == "completed"
+        )
         if self.memory is None or not ctx._turn_open:
             return
         ctx._turn_open = False
@@ -630,8 +694,6 @@ class AgentApp(FastAPI):
 
     def _write_turn_items(self, ctx: HandlerContext, response: ChatResponse) -> None:
         """Assistant reply + any tool events, in emission order."""
-        import json
-
         for event in ctx._recorded_events:
             self.memory.record_item(
                 ctx.conversation_id,
@@ -771,6 +833,230 @@ class AgentApp(FastAPI):
         finally:
             current_context.reset(token)
 
+    def _pending_store(self) -> _PendingQuestions:
+        """Where paused conversations are kept: the memory store's, when it has one."""
+        shared = self.memory._pending_questions() if self.memory is not None else None
+        return shared if shared is not None else self._local_pending
+
+    async def _check_resume(
+        self,
+        conversation_id: str | None,
+        answers: list[ResumeAnswer],
+        run_id: str | None,
+    ) -> ChatRequest | None:
+        """The paused request a resume replays, with every answer it has, after checking and claiming it.
+
+        The replay is the request the turn paused on, not the resume's own: the
+        handler is asked the same thing again, with the same context, metadata,
+        state and history, and only the answers are new. A client answering a
+        question sends just the answers.
+
+        A turn that asks twice pauses twice, and a client answers only what is
+        open, as AG-UI asks; the answers from earlier pauses are kept with the
+        paused request and handed back, since the replay asks those questions
+        again too.
+
+        AG-UI asks a resume to answer every open interrupt and nothing else, and
+        a question past its expiry cannot be answered any more. The record is
+        claimed before the replay runs, so that two replicas handed the same
+        answer do not both run the action it approves; ``_settle_pending``
+        deletes it when the turn completes and gives it back when it does not.
+        Returns None when the request resumes nothing.
+
+        Raises:
+            AgentError: The conversation is not paused (it never was, it was
+                answered already, or its record is gone with a restarted pod),
+                another resume holds it, the answers leave a question open,
+                answer one that was not asked or answer one that has expired,
+                or the store could not be read.
+        """
+        if not answers:
+            return None
+        store = self._pending_store()
+        try:
+            pending = await asyncio.to_thread(store._get, conversation_id or "")
+        except Exception as err:  # noqa: BLE001 -- said to the client, retryable
+            raise AgentError(
+                "The agent could not read what this conversation is waiting on.",
+                "pending_unavailable",
+                503,
+            ) from err
+        if pending is None:
+            # Unchecked answers would be consumed by ctx.interrupt() without
+            # pausing: a fresh or finished conversation could approve an
+            # action nobody was asked about, and repeat it.
+            raise AgentError(
+                "The resume answers questions this conversation is not waiting "
+                "on: it was never paused, it was answered already, or the agent "
+                "restarted since. Send the message again instead.",
+                "nothing_to_resume",
+                409,
+            )
+        if pending.claimed:
+            raise _resume_in_progress()
+        record = json.loads(pending.record)
+        paused = _restore_request(record["request"])
+        expires: dict[str, str | None] = record["expires"]
+        asked: dict[str, str] = record.get("asked") or {}
+        earlier = {a.interrupt_id: a for a in paused.resume}
+        # each answer carries what it answers, so the replay takes it for that question only
+        answers = [
+            a.model_copy(update={"asked": asked.get(a.interrupt_id)})
+            for a in answers
+            if a.interrupt_id not in earlier
+        ]
+        asked = set(expires)
+        answered = {answer.interrupt_id for answer in answers}
+        if asked - answered:
+            raise AgentError(
+                "The resume leaves these questions unanswered: "
+                + ", ".join(sorted(asked - answered)),
+                "unanswered_interrupts",
+                400,
+            )
+        if answered - asked:
+            raise AgentError(
+                "The resume answers questions this conversation was not asked: "
+                + ", ".join(sorted(answered - asked)),
+                "unknown_interrupt",
+                400,
+            )
+        now = datetime.now(timezone.utc)
+        expired = sorted(i for i, at in expires.items() if at and _before(at, now))
+        if expired:
+            raise AgentError(
+                "These questions expired before they were answered: "
+                + ", ".join(expired),
+                "interrupt_expired",
+                400,
+            )
+        try:
+            claimed = await asyncio.to_thread(
+                store._claim, conversation_id or "", pending.version
+            )
+        except Exception as err:  # noqa: BLE001
+            raise AgentError(
+                "The agent could not take up the answers just now.",
+                "pending_unavailable",
+                503,
+            ) from err
+        if not claimed:
+            raise _resume_in_progress()
+        return paused.model_copy(
+            update={"resume": [*earlier.values(), *answers], "run_id": run_id}
+        )
+
+    async def _pause(
+        self, ctx: HandlerContext, span: Any, interrupts: list[dict]
+    ) -> AgentError | None:
+        """Record what the conversation now waits on, and say so on the span.
+
+        Returns the error to end the turn with when it could not be recorded:
+        a question the agent cannot recognise the answer to must not be asked.
+        """
+        # A question asked again under an id already answered (the replay asked a
+        # different question by it) sheds that answer: the one that comes is for it.
+        asked_now = {q["id"] for q in interrupts}
+        kept = ctx.request.model_copy(
+            update={
+                "resume": [
+                    a for a in ctx.request.resume if a.interrupt_id not in asked_now
+                ]
+            }
+        )
+        record = {
+            # the request as the handler was given it, answers so far included
+            "request": kept.model_dump(mode="json"),
+            "expires": {q["id"]: q.get("expires_at") for q in interrupts},
+            # what each question asked: its answer is for that question only
+            "asked": {q["id"]: _question_fingerprint(q) for q in interrupts},
+        }
+        try:
+            await asyncio.to_thread(
+                self._pending_store()._put,
+                ctx.conversation_id,
+                json.dumps(record),
+                _record_expiry(interrupts),
+            )
+        except Exception:  # noqa: BLE001
+            import logging  # noqa: PLC0415
+
+            logging.getLogger(__name__).exception("could not record the questions")
+            failure = AgentError(
+                "The agent asked a question it could not record, so it would not "
+                "recognise the answer. Try again.",
+                "pending_unavailable",
+                503,
+            )
+            _record_span_error(span, failure)
+            return failure
+        ctx._paused = True
+        _set_span_attribute(
+            span, conventions.TURN_INTERRUPTS, [q["id"] for q in interrupts]
+        )
+        return None
+
+    @staticmethod
+    def _let_finish(ctx: HandlerContext, task: asyncio.Task) -> bool:
+        """When the client hangs up: whether the handler is left to finish rather than cancelled.
+
+        A resumed turn's handler may be running the action the person approved
+        (a refund, a delete), in a thread a cancel would not stop. Cancelling
+        the task and giving the claim back would let a retry of the resume run
+        the action a second time; so the handler runs to its end, and the
+        record is settled from what it did (``_finish_detached``), while the
+        claim keeps a second resume out. Any other turn is cancelled as before.
+        """
+        if ctx._claimed and not task.done():
+            return True
+        task.cancel()
+        return False
+
+    async def _finish_detached(
+        self, ctx: HandlerContext, task: asyncio.Task, outcome: dict[str, Any]
+    ) -> None:
+        """End a resumed turn whose client hung up, once its handler is really done."""
+        import contextlib  # noqa: PLC0415
+
+        # the pump logged the handler's own failure; what it produced is in `outcome`
+        with contextlib.suppress(BaseException):
+            await task
+        if "interrupt" in outcome:
+            # asked again after the client left: recorded for whoever comes back
+            await self._pause(ctx, None, outcome["interrupt"])
+            await self._finalize_turn(ctx, None)
+            return
+        response = outcome.get("answered")
+        if response is None and (outcome["chunks"] or outcome.get("final")):
+            response = self._merge_stream_result(
+                outcome["chunks"], outcome.get("final"), ctx
+            )
+        await self._finalize_turn(ctx, response)
+
+    async def _settle_pending(self, ctx: HandlerContext, *, answered: bool) -> None:
+        """Clean up what the conversation waited on, as the turn ends.
+
+        Answered, the record is deleted: its questions are behind the
+        conversation, and so are they when a new message moved it on instead.
+        A resume that did not finish gives its claim back, so the person can
+        answer again. Best effort: a record that cannot be deleted stays
+        claimed, which refuses a second resume until the lease runs out.
+        """
+        if not answered and not (ctx._claimed and not ctx._paused):
+            return
+        store = self._pending_store()
+        try:
+            if answered:
+                await asyncio.to_thread(store._clear, ctx.conversation_id)
+            else:
+                await asyncio.to_thread(store._release, ctx.conversation_id)
+        except Exception:  # noqa: BLE001
+            import logging  # noqa: PLC0415
+
+            logging.getLogger(__name__).exception(
+                "could not settle what conversation %s waited on", ctx.conversation_id
+            )
+
     def _register_routes(self) -> None:
         @self.get("/.well-known/hopsworks-agent.json")
         async def manifest() -> dict[str, Any]:
@@ -801,9 +1087,27 @@ class AgentApp(FastAPI):
                 return _error_response(
                     AgentError("No chat handler registered.", "not_implemented", 501)
                 )
+            try:
+                replay = await self._check_resume(
+                    request.conversation_id, request.resume, request.run_id
+                )
+            except AgentError as err:
+                return _error_response(err)
+            if replay is not None:
+                request = replay
+            if request.message is None:
+                return _error_response(
+                    AgentError(
+                        "The request has no message, and resumes no paused turn.",
+                        "no_message",
+                        422,
+                    )
+                )
             ctx = self._prepare(request)
+            ctx._claimed = replay is not None
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
+                await self._settle_pending(ctx, answered=False)
                 return _error_response(refused)
             await self._resolve_subject(ctx)
             await self._open_turn(ctx)
@@ -825,6 +1129,22 @@ class AgentApp(FastAPI):
                 ctx._span = span
                 try:
                     response = await self._run_chat(ctx)
+                except Interrupted as paused:
+                    # Not finalized as an answer: the turn is abandoned, and the
+                    # resume asks it again, so the transcript holds it once.
+                    unrecorded = await self._pause(ctx, span, paused.interrupts)
+                    if unrecorded is not None:
+                        return _error_response(unrecorded)
+                    interrupted = AgentResponse.text(
+                        "", conversation_id=ctx.conversation_id
+                    )
+                    interrupted.status = "interrupted"
+                    interrupted.interrupts = paused.interrupts
+                    interrupted.id = ctx.response_id
+                    trace_id = _trace_id(span)
+                    if trace_id:
+                        interrupted.metadata["trace_id"] = trace_id
+                    return JSONResponse(interrupted.model_dump())
                 except AgentError as err:
                     _record_span_error(span, err)
                     return _error_response(err)
@@ -847,16 +1167,40 @@ class AgentApp(FastAPI):
                     await self._finalize_turn(ctx, response)
             return JSONResponse(response.model_dump())
 
-        @self.post("/v1/chat/stream")
-        async def stream_route(request: ChatRequest, raw: Request) -> Response:
+        @self.post("/v1/run")
+        async def run_route(run: RunAgentInput, raw: Request) -> Response:
+            # Refusals before the run starts are plain HTTP errors, as AG-UI
+            # clients expect: nothing has streamed yet, so there is no run to end.
+            if self._chat_handler is None and self._stream_handler is None:
+                return _error_response(
+                    AgentError("No chat handler registered.", "not_implemented", 501)
+                )
+            try:
+                replay = await self._check_resume(
+                    run.thread_id,
+                    [_resume_answer(entry) for entry in run.resume or []],
+                    run.run_id or None,
+                )
+                request = replay or _to_chat_request(
+                    run, server_history=self.memory is not None
+                )
+            except AgentError as err:
+                return _error_response(err)
             ctx = self._prepare(request)
+            ctx._claimed = replay is not None
             refused = await self._attach_evaluation(ctx, raw.headers)
             if refused is not None:
+                await self._settle_pending(ctx, answered=False)
                 return _error_response(refused)
             await self._resolve_subject(ctx)
             await self._open_turn(ctx)
+            stream = RunStream(
+                ctx.conversation_id,
+                request.run_id or ctx.turn_id,
+                accept=raw.headers.get("accept"),
+            )
             return StreamingResponse(
-                self._stream_events(ctx, raw), media_type="text/event-stream"
+                self._run_events(ctx, raw, stream), media_type=stream.media_type
             )
 
         self._register_feedback_route()
@@ -889,6 +1233,7 @@ class AgentApp(FastAPI):
                     "correctedAnswer": request.corrected_answer,
                     "expectedToolBehavior": request.expected_tool_behavior,
                     "note": request.note,
+                    "source": request.source,
                     # filed under the end user, never under the deployment's own account
                     "reviewer": (request.subject or "").strip() or "anonymous",
                 }
@@ -1095,10 +1440,12 @@ class AgentApp(FastAPI):
                     )
             return JSONResponse({"removed": removed, "vectors_removed": vectors})
 
-    async def _stream_events(
-        self, ctx: HandlerContext, raw: Request
+    async def _run_events(
+        self, ctx: HandlerContext, raw: Request, stream: RunStream
     ) -> AsyncIterator[str]:
-        # graceful degradation: no stream handler -> run chat, emit one event
+        # One AG-UI run. With no stream handler the chat handler runs and its
+        # answer goes out whole, so a caller never has to ask which was written.
+        #
         # Every exit below — normal completion, AgentError, handler crash,
         # client disconnect — has to end the turn, because its user message is
         # already in the store. Hence one finally around the whole generator.
@@ -1129,23 +1476,20 @@ class AgentApp(FastAPI):
             ) as span,
         ):
             ctx._span = span
+            trace_id = _trace_id(span)
             completed: ChatResponse | None = None
+            # What the handler produced, kept outside the queue: a resumed turn
+            # whose client hung up is settled from this once the handler is
+            # really done (see _finish_detached), and `detached` says so.
+            outcome: dict[str, Any] = {"chunks": []}
+            detached = False
             try:
-                if self._stream_handler is None:
-                    try:
-                        response = await self._run_chat(ctx)
-                    except AgentError as err:
-                        _record_span_error(span, err)
-                        yield _sse("error", err.detail())
-                        return
-                    completed = response
-                    yield _sse("message.completed", response.model_dump())
-                    return
-
-                # Run the handler as a task that feeds a queue, so ctx.emit_event
-                # (tool_event frames) interleaves with the handler's own yields.
+                yield stream._started(trace_id)
                 from .autoevents import current_context
 
+                # The handler runs as a task that feeds a queue, so progress
+                # events (ctx.emit_event, automatic tool calls) go out while it
+                # works rather than after it.
                 queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
                 ctx._event_queue = queue
                 ctx._loop = asyncio.get_running_loop()
@@ -1153,19 +1497,32 @@ class AgentApp(FastAPI):
                 async def pump() -> None:
                     token = current_context.set(ctx)
                     try:
-                        async for item in self._invoke_stream(ctx):
-                            await queue.put(("item", item))
+                        if self._stream_handler is None:
+                            response = await self._run_chat(ctx)
+                            outcome["answered"] = response
+                            await queue.put(("final", response))
+                        else:
+                            async for item in self._invoke_stream(ctx):
+                                if isinstance(item, ChatResponse):
+                                    outcome["final"] = item
+                                else:
+                                    outcome["chunks"].append(item)
+                                await queue.put(("item", item))
+                    except Interrupted as paused:
+                        outcome["interrupt"] = paused.interrupts
+                        await queue.put(("interrupt", paused.interrupts))
                     except AgentError as err:
-                        await queue.put(("error", err.detail()))
+                        await queue.put(("error", err))
                     except Exception as err:  # noqa: BLE001 — surfaced to the client
+                        import logging  # noqa: PLC0415
+
+                        logging.getLogger(__name__).exception("the handler failed")
                         await queue.put(
                             (
                                 "error",
-                                {
-                                    "code": "agent_error",
-                                    "message": str(err),
-                                    "retryable": False,
-                                },
+                                AgentError(
+                                    f"{type(err).__name__}: {err}", "agent_error", 500
+                                ),
                             )
                         )
                     finally:
@@ -1175,9 +1532,20 @@ class AgentApp(FastAPI):
                 task = asyncio.create_task(pump())
                 chunks: list[str] = []
                 final: ChatResponse | None = None
+                answered: ChatResponse | None = None
                 try:
                     while True:
-                        kind, payload = await queue.get()
+                        try:
+                            kind, payload = await asyncio.wait_for(
+                                queue.get(), timeout=SSE_KEEP_ALIVE_S
+                            )
+                        except asyncio.TimeoutError:
+                            if await raw.is_disconnected():
+                                _mark_cancelled(span)
+                                detached = self._let_finish(ctx, task)
+                                return
+                            yield ": keep-alive\n\n"
+                            continue
                         if kind == "done":
                             break
                         if await raw.is_disconnected():
@@ -1186,21 +1554,30 @@ class AgentApp(FastAPI):
                             # with a short latency -- the shape of a fast,
                             # healthy reply.
                             _mark_cancelled(span)
-                            task.cancel()
+                            detached = self._let_finish(ctx, task)
                             return
                         if kind == "error":
-                            _record_span_error(
-                                span, AgentError(str(payload.get("message", "")))
-                            )
-                            yield _sse("error", payload)
+                            _record_span_error(span, payload)
+                            yield stream._error(payload, trace_id=trace_id)
+                            return
+                        if kind == "interrupt":
+                            # The run ends here with the question; the turn is
+                            # abandoned and asked again when it is resumed.
+                            unrecorded = await self._pause(ctx, span, payload)
+                            if unrecorded is not None:
+                                yield stream._error(unrecorded, trace_id=trace_id)
+                                return
+                            yield stream._interrupted(payload, trace_id=trace_id)
                             return
                         if kind == "tool_event":
-                            yield _sse("tool_event", payload)
+                            yield stream._progress(payload)
+                        elif kind == "final":
+                            answered = payload
                         elif isinstance(payload, ChatResponse):
                             final = payload
                         else:
                             chunks.append(payload)
-                            yield _sse("message.delta", {"delta": {"text": payload}})
+                            yield stream._text(payload)
                 except asyncio.CancelledError:
                     # What a client hanging up actually looks like. Starlette
                     # cancels the generator on disconnect, so the await above
@@ -1209,19 +1586,64 @@ class AgentApp(FastAPI):
                     # healthy reply -- and the turn stayed open until the
                     # reaper called it abandoned much later.
                     _mark_cancelled(span)
+                    detached = self._let_finish(ctx, task)
+                    raise
+                except GeneratorExit:
+                    # the same hang-up, as a server that closes the generator
+                    # instead of cancelling it reports it
+                    _mark_cancelled(span)
+                    detached = self._let_finish(ctx, task)
                     raise
                 finally:
-                    if not task.done():
+                    if not detached and not task.done():
                         task.cancel()
 
-                response = self._merge_stream_result(chunks, final, ctx)
+                response = answered or self._merge_stream_result(chunks, final, ctx)
                 completed = response
-                yield _sse("message.completed", response.model_dump())
+                yield stream._finished(
+                    response,
+                    subject=ctx.subject if ctx.has_subject else None,
+                    subject_source=ctx.subject_source if ctx.has_subject else None,
+                )
             finally:
-                # Best effort: if the whole task tree is being cancelled this may
-                # not get to run, which is what the store's stale-turn reaper is
-                # there to catch.
-                await self._finalize_turn(ctx, completed)
+                if detached:
+                    # settled when the handler is really done, not now
+                    keeper = asyncio.create_task(
+                        self._finish_detached(ctx, task, outcome)
+                    )
+                    _DETACHED.add(keeper)
+                    keeper.add_done_callback(_DETACHED.discard)
+                else:
+                    # Best effort: if the whole task tree is being cancelled this
+                    # may not get to run, which is what the store's stale-turn
+                    # reaper is there to catch.
+                    await self._finalize_turn(ctx, completed)
+
+
+# Turns settled after their client hung up, held so the loop keeps them.
+_DETACHED: set[asyncio.Task] = set()
+
+
+def _set_span_attribute(span: Any, key: str, value: Any) -> None:
+    if span is None:
+        return
+    import contextlib  # noqa: PLC0415
+
+    with contextlib.suppress(Exception):  # never let telemetry break a turn
+        span.set_attribute(key, value)
+
+
+def _trace_id(span: Any) -> str | None:
+    """The turn's trace id as a hex string, or None when the turn is untraced."""
+    if span is None:
+        return None
+    try:
+        context = span.get_span_context()
+    except Exception:  # noqa: BLE001 — correlation is best-effort
+        return None
+    if not getattr(context, "is_valid", False):
+        return None
+    return format(context.trace_id, "032x")
 
 
 def _stamp_request_context(span: Any, ctx: HandlerContext) -> None:
@@ -1231,8 +1653,6 @@ def _stamp_request_context(span: Any, ctx: HandlerContext) -> None:
     not a smaller context, it is no context, and a replay given one would fail
     for a reason the original turn never had.
     """
-    import json
-
     context = getattr(ctx.request, "context", None) or {}
     if not context:
         return
@@ -1385,3 +1805,58 @@ def _annotate_span(ctx: HandlerContext, response: ChatResponse) -> None:
         response.metadata.setdefault("trace_id", format(ctxt.trace_id, "032x"))
     except Exception:  # noqa: BLE001 — correlation is best-effort
         pass
+
+
+def _before(stamp: str, now: datetime) -> bool:
+    """Whether an ISO timestamp is in the past: as a time, not as text.
+
+    Compared as strings, "+00:00" against "Z" or a different precision gave the
+    wrong answer for a stamp a client wrote itself.
+    """
+    try:
+        at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return stamp < now.isoformat()
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return at < now
+
+
+def _resume_in_progress() -> AgentError:
+    return AgentError(
+        "Another request is answering these questions already.",
+        "resume_in_progress",
+        409,
+    )
+
+
+def _record_expiry(interrupts: list[dict]) -> Any:
+    """When a paused record can go: its last question's expiry, or the retention for one that has none."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc)
+    ends = []
+    for question in interrupts:
+        at = question.get("expires_at")
+        if not at:
+            ends = []
+            break
+        ends.append(datetime.fromisoformat(str(at).replace("Z", "+00:00")))
+    # a day past the last expiry, so a late answer is told the question
+    # expired rather than that the conversation was never paused
+    end = max(ends) + EXPIRED_GRACE if ends else now + RETENTION
+    return end.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _restore_request(data: dict[str, Any]) -> ChatRequest:
+    """A paused request back from its record, AG-UI messages and tools as the models they were."""
+    request = ChatRequest.model_validate(data)
+    try:
+        from ag_ui.core import Message, Tool  # noqa: PLC0415
+        from pydantic import TypeAdapter  # noqa: PLC0415
+
+        request.messages = TypeAdapter(list[Message]).validate_python(request.messages)
+        request.tools = TypeAdapter(list[Tool]).validate_python(request.tools)
+    except Exception:  # noqa: BLE001 -- a /v1/chat request carries plain values
+        pass
+    return request

@@ -292,7 +292,7 @@ class TestManifest:
         assert (
             TestClient(build_app())
             .get("/.well-known/hopsworks-agent.json")
-            .json()["capabilities"]["eval_per_request"]
+            .json()["capabilities"]["custom"]["hopsworks"]["eval_per_request"]
             is False
         )
         manifest = (
@@ -300,8 +300,10 @@ class TestManifest:
             .get("/.well-known/hopsworks-agent.json")
             .json()
         )
-        assert manifest["capabilities"]["eval_per_request"] is True
-        assert manifest["capabilities"]["eval_mode"] is False
+        assert (
+            manifest["capabilities"]["custom"]["hopsworks"]["eval_per_request"] is True
+        )
+        assert manifest["capabilities"]["custom"]["hopsworks"]["eval_mode"] is False
 
 
 class TestPerRequest:
@@ -340,8 +342,12 @@ class TestPerRequest:
         app = build_app(eval_per_request=True)
         app._eval_verifier = RunVerifier(lambda run_id: None)
         response = TestClient(app).post(
-            "/v1/chat/stream",
-            json=REQUEST,
+            "/v1/run",
+            json={
+                "threadId": "",
+                "runId": "r1",
+                "messages": [{"id": "m1", "role": "user", "content": "hi"}],
+            },
             headers={"baggage": BAGGAGE},
         )
         assert response.status_code == 403

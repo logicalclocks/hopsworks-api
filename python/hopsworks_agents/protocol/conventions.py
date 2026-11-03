@@ -169,6 +169,12 @@ TURN_LLM_SPANS = "hopsworks.turn.llm_spans"
 # fast answer.
 TURN_CANCELLED = "hopsworks.turn.cancelled"
 
+# A turn that paused to ask a person: the ids of what it asked. Not an error and
+# not an answer -- the turn goes on in a later run, whose span carries the ids it
+# was resumed with, so the question and its answer can be read side by side.
+TURN_INTERRUPTS = "hopsworks.turn.interrupts"
+TURN_RESUMED = "hopsworks.turn.resumed"
+
 # ── eval correlation ──────────────────────────────────────────────────────
 
 # Sent by the eval runner as W3C baggage and copied onto spans by the SDK's

@@ -99,6 +99,7 @@ class Predictor(DeployableComponent):
         env_vars: dict[str, str] | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        triton_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | Default | None = None,
         memory: DeploymentMemoryConfig | dict | Default | None = None,
         feature_logging: DeploymentLoggingConfig | dict | Default | None = None,
@@ -190,6 +191,7 @@ class Predictor(DeployableComponent):
         self._git_resolved_branch = git_resolved_branch
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
+        self._triton_image_tag = triton_image_tag
         self._knative_mode = knative_mode
 
     @public
@@ -276,6 +278,8 @@ class Predictor(DeployableComponent):
             return PREDICTOR.MODEL_SERVER_TF_SERVING
         if model_framework == MODEL.FRAMEWORK_LLM:
             return PREDICTOR.MODEL_SERVER_VLLM
+        if model_framework == MODEL.FRAMEWORK_TRITON:
+            return PREDICTOR.MODEL_SERVER_TRITON
         return PREDICTOR.MODEL_SERVER_PYTHON
 
     @classmethod
@@ -569,6 +573,9 @@ class Predictor(DeployableComponent):
         kwargs["vllm_image_tag"] = util._extract_field_from_json(
             json_decamelized, "vllm_image_tag"
         )
+        kwargs["triton_image_tag"] = util._extract_field_from_json(
+            json_decamelized, "triton_image_tag"
+        )
         kwargs["missing_mandatory_tags"] = util._extract_field_from_json(
             json_decamelized, "missing_mandatory_tags"
         )
@@ -606,6 +613,11 @@ class Predictor(DeployableComponent):
                 **predictor_dict,
                 "vllmVariant": self._vllm_variant,
                 "vllmImageTag": self._vllm_image_tag,
+            }
+        if self._model_server == PREDICTOR.MODEL_SERVER_TRITON:
+            predictor_dict = {
+                **predictor_dict,
+                "tritonImageTag": self._triton_image_tag,
             }
         if self.model_name is not None:
             predictor_dict = {**predictor_dict, "modelName": self._model_name}
@@ -1092,6 +1104,16 @@ class Predictor(DeployableComponent):
 
     @public
     @property
+    def triton_image_tag(self):
+        """Triton Inference Server image tag of this predictor; see [`ModelServing.get_triton_image_tags`][hsml.model_serving.ModelServing.get_triton_image_tags]."""
+        return self._triton_image_tag
+
+    @triton_image_tag.setter
+    def triton_image_tag(self, triton_image_tag: str | None):
+        self._triton_image_tag = triton_image_tag
+
+    @public
+    @property
     def knative_mode(self):
         """Whether this deployment runs in KServe Knative mode.
 
@@ -1173,6 +1195,7 @@ class Predictor(DeployableComponent):
         """Get the KServe inference URL for standard model deployments and feature view deployments.
 
         Returns the full URL with `:predict` suffix for KServe inference protocol.
+        A Triton deployment speaks Open Inference Protocol v2 instead, so its URL ends in `/v2/models/<name>/infer`, or in `:infer` through the Hopsworks REST API.
         This method only returns a URL for standard model deployments (non-vLLM,
         with a model attached) and for feature view deployments.
 

@@ -1,13 +1,15 @@
 # hopsworks_agents.protocol
 
-Server helpers for the **Hopsworks Agent Protocol**: make any Python agent chat-ready in the Hopsworks UI with a few lines. `AgentApp` is a FastAPI subclass that automatically exposes:
+Server helpers that make any Python agent chat-ready in the Hopsworks UI with a few lines. `AgentApp` is a FastAPI subclass that speaks [AG-UI](https://docs.ag-ui.com), the open agent–user interaction protocol, so any AG-UI client can talk to it, and automatically exposes:
 
 | Route | Purpose |
 |---|---|
-| `GET /.well-known/hopsworks-agent.json` | Protocol manifest — the Hopsworks chat panel auto-detects the agent from it |
-| `POST /v1/chat` | Non-streaming chat |
-| `POST /v1/chat/stream` | SSE streaming (when a stream handler is registered) |
+| `GET /.well-known/hopsworks-agent.json` | Manifest — endpoints and AG-UI `AgentCapabilities`; the Hopsworks chat panel auto-detects the agent from it |
+| `POST /v1/run` | One AG-UI run: `RunAgentInput` in, AG-UI events out as server-sent events |
+| `POST /v1/chat` | The same turn as one JSON reply, for callers that do not stream |
 | `GET /health` | Liveness probe |
+
+What Hopsworks adds to AG-UI rides under a `hopsworks` key in AG-UI's own extension points: the subject, context and metadata in `forwardedProps.hopsworks`; the trace id in `RUN_STARTED.metadata.hopsworks`; the trace id, subject and citations in `RUN_FINISHED.result.hopsworks`, and there too, as `text`, a stream handler's final text when it rewrites the draft it streamed (a final text that only adds to the draft streams the rest instead); the would-be HTTP status and retryability in `RUN_ERROR.metadata.hopsworks`; and image, file or audio parts of the reply as `CUSTOM` events named `hopsworks.media`. A client that knows nothing of it ignores it.
 
 CORS is enabled by default (required for the in-browser chat panel). Part of the `hopsworks` package; serving an agent needs the `agents` extra (`pip install 'hopsworks[agents]'`).
 
@@ -40,14 +42,15 @@ Run it like any FastAPI app (`uvicorn my_agent:agent_app`). Deploy it as a Hopsw
 
 Notes:
 
-- `request.conversation_id` is **always set** (generated on the first turn) — safe to pass straight to a LangGraph checkpointer / LlamaIndex chat store. History is server-side: the request carries only the new message.
+- `request.conversation_id` is **always set** (the AG-UI `threadId`, generated on the first turn) — safe to pass straight to a LangGraph checkpointer / LlamaIndex chat store.
+- An AG-UI client may resend the whole conversation. With memory configured the server's transcript is the history and the resent messages are ignored; without it they reach the handler as `request.prior_messages`, and `to_framework_messages()` returns them before the new message.
 - `request.text` gives the plain message text; `request.to_framework_messages()` gives `[{"role", "content"}]` accepted by LangChain/LangGraph/LlamaIndex.
 - Returning a plain `str` from the handler is shorthand for `AgentResponse.text(...)`.
 - Raise `AgentError("msg", code="...", status_code=400, retryable=False)` for structured errors.
 
 ## Streaming
 
-Register an async generator; the manifest advertises `streaming: true` automatically, `/v1/chat/stream` emits `message.delta` events, and `/v1/chat` still works by collecting the stream:
+Register an async generator; the manifest advertises `streaming: true` (under `capabilities.custom.hopsworks`) automatically, `/v1/run` emits the deltas as AG-UI `TEXT_MESSAGE_CONTENT` events, and `/v1/chat` still works by collecting the stream:
 
 ```python
 @agent_app.stream
@@ -59,7 +62,7 @@ async def stream(request):
     yield AgentResponse.text(text="", citations=[...], usage={"output_tokens": 42})
 ```
 
-If only a `@chat` handler exists, `/v1/chat/stream` degrades gracefully to a single `message.completed` event.
+If only a `@chat` handler exists, `/v1/run` sends its answer as one text message.
 
 ## Multimodal (v1.1)
 
@@ -85,7 +88,7 @@ async def chat(request):
     )
 ```
 
-`request.images` / `request.files` / `request.audio_clips` expose non-text parts; the manifest advertises the modalities so the Hopsworks chat panel enables the matching attachment pickers and renders returned images/files/audio inline. Binary parts don't stream — they arrive in the final `message.completed` response.
+`request.images` / `request.files` / `request.audio_clips` expose non-text parts; the manifest advertises the modalities so the Hopsworks chat panel enables the matching attachment pickers and renders returned images/files/audio inline. Binary parts don't stream: AG-UI assistant messages carry text only, so on `/v1/run` each one arrives as a `CUSTOM` event named `hopsworks.media`, before `RUN_FINISHED`. Inbound, an AG-UI image, audio or document part must carry its bytes inline (`source.type` `data`).
 
 ## Tracing (automatic)
 
@@ -148,7 +151,7 @@ A deployment can carry the policy instead, set in its form and injected as
 `AGENT_MEMORY_CONFIG`. `AgentApp` applies it only when the agent passed no
 `memory=` of its own, so **code wins**: an explicit store is used as given, and
 an explicit `memory=None` stays off however the deployment is configured. The
-manifest reports which it was, under `capabilities.memory.source`.
+manifest reports which it was, under `capabilities.custom.hopsworks.memory.source`.
 
 A policy switches on every tier it does not mention, so `{"enabled": true}` gives
 semantic and episodic memory as well as the conversation itself; `"long_term":
@@ -358,9 +361,12 @@ memory accessors: `history`, `summary`, `state(scope=...)`, `recall`/`remember`/
 
 ## Progress (tool) events
 
-With `AgentApp(tool_events=True)`, tool calls surface as `tool_event` SSE frames
-(interleaved with the reply while streaming; buffered into response `metadata`
-otherwise), which the chat panel renders as progress chips.
+With `AgentApp(tool_events=True)`, progress surfaces as AG-UI events on `/v1/run`
+(buffered into response `metadata` on `/v1/chat`), which the chat panel renders as
+progress chips. Tool calls are AG-UI tool calls (`TOOL_CALL_START`, `_ARGS`, `_END`,
+`_RESULT`, with the arguments and the result); what the agent reports with
+`ctx.emit_event` is an AG-UI step (`STEP_STARTED` / `STEP_FINISHED`), its status,
+message and data under the event's `metadata.hopsworks`.
 
 - **Automatic** — when tracing is active, the SDK taps the framework
   instrumentation it already runs (LangChain/LangGraph, LlamaIndex, OpenAI
@@ -393,6 +399,34 @@ otherwise), which the chat panel renders as progress chips.
           yield delta
   ```
 
+## Asking a person first (human in the loop)
+
+`ctx.interrupt(...)` pauses a turn to ask a person, and returns their answer once they give it. The run ends with an AG-UI interrupt (`RUN_FINISHED` with `outcome.type` `interrupt`); the client answers with a new run on the same thread whose `resume` answers every open question, and the turn runs again from the start with the answers attached, so the same call now returns instead of pausing:
+
+```python
+@agent_app.chat
+async def chat(request, ctx):
+    order = await find_order(request.text)
+    answer = ctx.interrupt(
+        f"Refund {order.amount} to order {order.id}?",
+        key=f"refund-{order.id}",
+        response_schema={"type": "object", "properties": {"approved": {"type": "boolean"}}},
+    )
+    if answer.cancelled or not answer.payload.get("approved"):
+        return "Understood, no refund."
+    await refund(order)
+    return "Refunded."
+```
+
+- Everything before the call runs again on resume, so ask before acting, never after.
+- `key` names the question the same way each time the turn runs; without it the question is named by its place in the turn (`interrupt-0`, `interrupt-1`, ...).
+- A turn can ask several times: each pause asks one question, and a client answers only what is open — the agent keeps the earlier answers.
+- The agent keeps the paused turn's request (message, context, metadata, state, history), so a resume needs only the answers, and the replay sees exactly what the paused turn saw. It checks the resume answers exactly the open questions and none has passed `expires_in`. A resume on a conversation that is not waiting on anything (never paused, or answered already) is refused with 409 `nothing_to_resume`: answers nobody asked for never reach `ctx.interrupt`, and the client sends the message again instead.
+- What a conversation waits on is kept by the memory store: with `ManagedMemoryService` in its own table (`agent_memory_pending_1`, created by Hopsworks), so any replica can take the answer and a restart forgets nothing. Without memory, or with `InMemoryAgentMemory`, it is kept in the process, and a resume another replica or a restarted pod receives is refused.
+- A resume claims the record before the replay runs, so two replicas handed the same answer do not both run the action: the second gets 409 `resume_in_progress`. The record is deleted when the turn completes, and also when a new message moves the conversation on instead of answering; a turn that fails gives the claim back, so the person can answer again. A claim held longer than 15 minutes (a replica that died mid-turn) can be taken again. Deleting the conversation deletes the record, and a record whose questions expired goes a day later (30 days for questions with no expiry). The paused run is not a turn of its own in memory: the transcript holds the question once, with the answer that finished it.
+- `/v1/chat` pauses too: the reply has `status: "interrupted"` and the questions in `interrupts`, and a request carrying `resume` (and no message) continues it. From Python, `agent.chat(None, conversation_id=..., resume={"refund-42": {"approved": True}})`.
+- In an evaluation run nobody is there to answer: the runner answers from the task context's `interrupt_answers` (question id to payload) and cancels the rest.
+
 ## End-user feedback
 
 A chat UI built on the agent's endpoint has the gateway, the serving credential and the
@@ -403,7 +437,7 @@ Hopsworks account. So the agent takes the verdict and relays it itself:
 POST /v1/feedback
 {"trace_id": "<metadata.trace_id of the reply>", "verdict": "negative",
  "issue_category": "wrong_tool", "corrected_answer": "...", "note": "...",
- "subject": "alice"}
+ "subject": "alice", "source": "my-portal"}
 ```
 
 `verdict` is `positive`, `negative` or `false_alarm`. A client that kept no trace id sends
@@ -411,8 +445,11 @@ POST /v1/feedback
 is speaking, asserted by the client like the chat request's; the row lands in Hopsworks under
 the reviewer `user:<subject>` (`user:anonymous` without one), so it never collides with a
 reviewer's account, shows as **user** in the Feedback tab, and reaches the failure analysis as
-a signal to triage rather than a verdict that closes the trace. The manifest advertises
-`endpoints.feedback` and `capabilities.feedback`.
+a signal to triage rather than a verdict that closes the trace. `source` is optional: where
+the verdict was given, a short tag of lowercase letters, digits, `_` and `-` (an agent's chat
+app sends `chat-app`), stored with the row so a reviewer can tell one place's verdicts from
+another's. The manifest advertises
+`endpoints.feedback` and `capabilities.custom.hopsworks.feedback` (and AG-UI's `capabilities.humanInTheLoop.feedback`).
 
 The relay runs over the deployment's own credential (`REST_ENDPOINT`, `DEPLOYMENT_ID` and the
 key the platform mounts), the same way an agent reaches the feature store; outside a

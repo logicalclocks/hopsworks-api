@@ -459,3 +459,32 @@ class TestModelClearCache:
         # Validation happens before any filesystem access, nothing is removed.
         base_dirs_spy.assert_not_called()
         assert os.path.exists(os.path.join(base, "p1", "m1", "1"))
+
+
+class TestReadJson:
+    def _engine(self, mocker):
+        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
+        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
+        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
+        return model_engine.ModelEngine()
+
+    def test_reads_over_rest_without_the_local_engine(self, mocker):
+        engine = self._engine(mocker)
+        engine._dataset_api.path_exists.return_value = True
+        engine._dataset_api.read_content.return_value = mocker.Mock(
+            content=b'{"input_schema": {}}'
+        )
+        model = _make_model(mocker)
+
+        assert engine._read_json(model, "model_schema.json") == {"input_schema": {}}
+        engine._dataset_api.read_content.assert_called_once_with(
+            f"{model.version_path}/model_schema.json"
+        )
+        engine._engine._download.assert_not_called()
+
+    def test_missing_file_reads_nothing(self, mocker):
+        engine = self._engine(mocker)
+        engine._dataset_api.path_exists.return_value = False
+
+        assert engine._read_json(_make_model(mocker), "input_example.json") is None
+        engine._dataset_api.read_content.assert_not_called()

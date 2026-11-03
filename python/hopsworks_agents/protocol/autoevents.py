@@ -2,7 +2,7 @@
 
 When ``tool_events`` is on and tracing is active, this bridges the framework
 instrumentation the SDK already runs (LangChain/LangGraph, LlamaIndex, OpenAI
-Agents, Claude Agent SDK) to ``tool_event`` SSE frames — so tool calls show up
+Agents, Claude Agent SDK) to AG-UI tool-call events — so tool calls show up
 in the chat panel with zero code in the agent, the same way they do in
 framework tracing.
 
@@ -135,6 +135,21 @@ def install_llm_span_detection(tracer_provider: Any) -> bool:
         return False
 
 
+# Where OpenInference and the GenAI conventions put a tool call's arguments and
+# its result.
+_ARG_KEYS = ("input.value", "tool.parameters", "gen_ai.tool.call.arguments")
+_RESULT_KEYS = ("output.value", "gen_ai.tool.call.result")
+
+
+def _attribute(span: Any, keys: tuple[str, ...]) -> Any:
+    attributes = getattr(span, "attributes", None) or {}
+    for key in keys:
+        value = attributes.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
 @public
 def install_auto_tool_events(tracer_provider: Any) -> bool:
     """Register the span processor on the given provider. Returns True when.
@@ -165,7 +180,15 @@ def install_auto_tool_events(tracer_provider: Any) -> bool:
                 ctx._auto_suppressed.add(span_id)
                 return
             try:
-                ctx._emit_sync(name, "running", None, None, span_id)
+                ctx._emit_sync(
+                    name,
+                    "running",
+                    None,
+                    None,
+                    span_id,
+                    kind="tool",
+                    args=_attribute(span, _ARG_KEYS),
+                )
             except Exception:  # noqa: BLE001 — never disturb the span
                 log.debug("auto tool-event on_start failed", exc_info=True)
 
@@ -191,9 +214,14 @@ def install_auto_tool_events(tracer_provider: Any) -> bool:
                 ctx._emit_sync(
                     name,
                     "failed" if failed else "done",
-                    None,
+                    getattr(span.status, "description", None) if failed else None,
                     None,
                     span_id,
+                    kind="tool",
+                    # Instrumentations set the arguments once the call is made, after
+                    # the span opened, so the close is usually the first to see them.
+                    args=_attribute(span, _ARG_KEYS),
+                    result=None if failed else _attribute(span, _RESULT_KEYS),
                 )
             except Exception:  # noqa: BLE001
                 log.debug("auto tool-event on_end failed", exc_info=True)

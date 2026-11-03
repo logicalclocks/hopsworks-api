@@ -31,6 +31,7 @@ from typing import Any
 
 import humps
 from hopsworks_apigen import public
+from hopsworks_common import tracing
 from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     ModelServingException,
@@ -326,7 +327,10 @@ class _LogWorker:
                     self.dropped,
                 )
             return False
-        self._queue.put_nowait((item, rows, size))
+        # The request's trace context, so the write it is batched into shows in that request's trace.
+        self._queue.put_nowait(
+            (item, rows, size, tracing._capture() if tracing._enabled else None)
+        )
         return True
 
     def _run(self) -> None:
@@ -361,8 +365,22 @@ class _LogWorker:
                 # a combined post's rows from the reservation active on this
                 # thread, and stacked per-request reservations would leave only
                 # the last request's allowance visible.
-                with _Reservation(self._budget, rows, size):
-                    self._target([item for item, _rows, _size in group])
+                items = [entry[0] for entry in group]
+                if tracing._enabled:
+                    # Under the first traced request of the batch: later ones may be sampled when the first was not.
+                    parent = next((e[3] for e in group if e[3] is not None), None)
+                    with (
+                        _Reservation(self._budget, rows, size),
+                        tracing._child_span(
+                            "feature_log_write",
+                            {"hopsworks.rows": rows, "hopsworks.requests": len(group)},
+                            parent=parent,
+                        ),
+                    ):
+                        self._target(items)
+                else:
+                    with _Reservation(self._budget, rows, size):
+                        self._target(items)
             except Exception as error:  # noqa: BLE001 - logging must not take serving down
                 self.failed += rows
                 if _worth_logging(self.failed, rows):
@@ -1128,15 +1146,18 @@ class DefaultPredict:
         if not self.logging_enabled:
             return
         try:
-            self._log_worker._submit(
-                (
-                    rows,
-                    feature_vectors,
-                    predictions,
-                    request_id,
-                    datetime.now(timezone.utc),
-                )
+            entry = (
+                rows,
+                feature_vectors,
+                predictions,
+                request_id,
+                datetime.now(timezone.utc),
             )
+            if tracing._enabled:
+                with tracing._child_span("feature_log", {"hopsworks.rows": len(rows)}):
+                    self._log_worker._submit(entry)
+            else:
+                self._log_worker._submit(entry)
         except Exception as error:  # noqa: BLE001 - logging cannot fail a prediction
             self._log_worker.failed += len(rows)
             if _worth_logging(self._log_worker.failed, len(rows)):
@@ -1434,9 +1455,17 @@ class DefaultPredict:
             inputs = _decode_rows(inputs)
         try:
             rows = self.prepare_rows(inputs)
-            vectors = fetch(rows)
-            if inspect.isawaitable(vectors):
-                vectors = await vectors
+            if tracing._enabled:
+                with tracing._child_span(
+                    "feature_lookup", {"hopsworks.rows": len(rows)}
+                ):
+                    vectors = fetch(rows)
+                    if inspect.isawaitable(vectors):
+                        vectors = await vectors
+            else:
+                vectors = fetch(rows)
+                if inspect.isawaitable(vectors):
+                    vectors = await vectors
             if len(vectors) != len(rows):
                 raise _http_error(
                     500,
@@ -1444,7 +1473,11 @@ class DefaultPredict:
                     f"The feature lookup returned {len(vectors)} vectors for "
                     f"{len(rows)} rows.",
                 )
-            output = self.model_predict(vectors)
+            if tracing._enabled:
+                with tracing._child_span("model_predict"):
+                    output = self.model_predict(vectors)
+            else:
+                output = self.model_predict(vectors)
             if self.model is None:
                 columns = [str(c) for c in vectors.columns]
                 self._check_output_columns(columns)
