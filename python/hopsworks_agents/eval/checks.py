@@ -110,6 +110,8 @@ FETCH_BUDGET_S = 300.0
 _SKIPPED_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".mypy_cache"}
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_]\w*$")
+#: A Windows drive path, absolute wherever the job's own path rules say.
+_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 _MODULE = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$")
 _COMMIT = re.compile(r"^[0-9a-fA-F]{7,40}$")
 _REF = re.compile(r"^[\w./-]+$")
@@ -117,6 +119,9 @@ _REF = re.compile(r"^[\w./-]+$")
 MANIFEST = "manifest.json"
 #: The attribute the decorator leaves on a function.
 _MARK = "__hopsworks_check__"
+#: Importing a source edits sys.path and sys.modules, which every thread shares;
+#: two trials importing two sources at once handed one the other's helper.
+_IMPORT_LOCK = threading.RLock()
 
 
 # ── what a check sees ───────────────────────────────────────────────────────
@@ -600,6 +605,11 @@ class _CheckSources:
         self._clone = clone
         self._checkouts: dict[tuple[str, str, str], str] = {}
         self._loaded: dict[str, _Loaded] = {}
+        self._lock = threading.RLock()
+        #: Which row reports under each declared check name. Two sources may both
+        #: declare ``verdict``; the first row keeps the bare name and the second
+        #: reports as ``<row>/verdict``, so two results never share one id.
+        self._claims: dict[str, str] = {}
 
     def _close(self) -> None:
         if self._own_workdir:
@@ -612,8 +622,18 @@ class _CheckSources:
             return cached
         return self._import(source, self._fetch_local(source))
 
+    def _claim(self, check_name: str, row: str) -> str:
+        """The name a row reports a declared check under, unique across the execution."""
+        with self._lock:
+            owner = self._claims.setdefault(check_name, row)
+            return check_name if owner == row else f"{row}/{check_name}"
+
     def _import(self, source: _Source, fetched: _Fetched) -> _Loaded:
         """Import what was fetched, and remember it for the rest of the execution."""
+        with self._lock:
+            return self._import_locked(source, fetched)
+
+    def _import_locked(self, source: _Source, fetched: _Fetched) -> _Loaded:
         key = source._describe()
         cached = self._loaded.get(key)
         if cached is not None:
@@ -696,7 +716,7 @@ class _CheckSources:
     # -- file ---------------------------------------------------------------
 
     def _absolute(self, file: str) -> str:
-        if file.startswith("/"):
+        if file.startswith("/") or os.path.isabs(file) or _DRIVE.match(file):
             return file
         if not self._project_name:
             raise RuntimeError("no project to resolve a relative file path against")
@@ -814,7 +834,10 @@ class _CheckSources:
         if source.file:
             identity = f"hopsfs {self._absolute(source.file)}"
         else:
-            identity = f"git {_scrubbed(source.git_url)}@{source.git_ref}:{source.path}"
+            # The commit, when the row pins one: two rows pinned to two commits
+            # are two sources, and one snapshot for both graded with the first's.
+            at = source.git_commit or source.git_ref
+            identity = f"git {_scrubbed(source.git_url)}@{at}:{source.path}"
         return _snapshot_name(identity, source.path or source.file)
 
     def _snapshot_of(self, source: _Source) -> _Fetched | None:
@@ -989,6 +1012,13 @@ def _import_path(
     held, so the functions that bound it keep working. A check that imports a
     helper lazily inside the function will not find it: import at the top.
     """
+    with _IMPORT_LOCK:
+        return _import_path_locked(local, package_root=package_root)
+
+
+def _import_path_locked(
+    local: str, *, package_root: str | None = None
+) -> tuple[ModuleType, dict[str, ModuleType]]:
     local = os.path.abspath(local)
     parent = package_root or os.path.dirname(local)
     unique = f"hopsworks_check_{hashlib.sha1(local.encode()).hexdigest()[:12]}"  # noqa: S324
@@ -1109,8 +1139,10 @@ class PythonSourceEvaluator:
         self._checks: list[_Declared] | None = None
         self._declared_names: list[str] = []
         self._missing: list[str] = []
+        self._report: dict[str, str] = {}
         self._loaded: _Loaded | None = None
         self._load_error: str | None = None
+        self._lock = threading.Lock()
 
     def _ensure_loaded(self) -> str | None:
         """Load once; the reason it could not, or ``None``.
@@ -1123,6 +1155,12 @@ class PythonSourceEvaluator:
         """
         if self._checks is not None or self._load_error is not None:
             return self._load_error
+        with self._lock:
+            if self._checks is not None or self._load_error is not None:
+                return self._load_error
+            return self._load()
+
+    def _load(self) -> str | None:
         try:
             if self._sources is None:
                 if not self.source.module:
@@ -1156,6 +1194,9 @@ class PythonSourceEvaluator:
                 raise LookupError("it declares no @check")
             self._declared_names = sorted(declared)
             self._checks, self._missing = _selected(declared, self.only, self.exclude)
+            self._report = {
+                c.name: sources._claim(c.name, self.name) for c in self._checks
+            }
             log.info(
                 "source %r loaded from %s: %s",
                 self.name,
@@ -1215,8 +1256,19 @@ class PythonSourceEvaluator:
         self, declared: _Declared, task: Task, trial: Trial, trace: Trace | None
     ) -> EvaluatorResult:
         name = declared.name
+        report = self._report.get(name, name)
         if declared.needs_trace and trace is None:
-            result = _ungradable(name, self.type, "no trace arrived for this trial")
+            result = _ungradable(report, self.type, "no trace arrived for this trial")
+        elif declared.reads_expectation and not task._expects_text(name):
+            # Declared to read what only a task carries. Graded anyway, an empty
+            # expectation matched an answer on live traffic and read as a pass.
+            # The backend refuses such a file for a monitor when it can scan it;
+            # a git or module source cannot be scanned, so the rule is kept here.
+            result = _ungradable(
+                report,
+                self.type,
+                "reads the task's expectation, and this trial carries none for it",
+            )
         else:
             params = {**dict(declared.defaults), **self.params.get(name, {})}
             context = _context_for(name, task, trial, trace, params)
@@ -1226,18 +1278,20 @@ class PythonSourceEvaluator:
                 )
             except _Timeout:
                 result = _ungradable(
-                    name, self.type, f"timed out after {declared.timeout_s:g}s"
+                    report, self.type, f"timed out after {declared.timeout_s:g}s"
                 )
             except KeyboardInterrupt:
                 raise
             except BaseException as err:  # noqa: BLE001 -- a bad check is not a bad agent
                 # BaseException, not Exception: a dependency calling sys.exit()
                 # is the check failing, not the job ending.
-                result = _ungradable(name, self.type, f"check raised: {_short(err)}")
+                result = _ungradable(report, self.type, f"check raised: {_short(err)}")
             else:
-                result = _as_result(name, value, pass_score=params.get("pass_score"))
+                result = _as_result(report, value, pass_score=params.get("pass_score"))
         result.assertions.setdefault("source", self._provenance())
         result.assertions.setdefault("row", self.name)
+        if report != name:
+            result.assertions.setdefault("check", name)
         return result
 
     def _provenance(self) -> dict[str, Any]:
@@ -1250,6 +1304,20 @@ class PythonSourceEvaluator:
             **({"commit": loaded.commit} if loaded.commit else {}),
             "pinned": loaded.pinned,
         }
+
+
+def _preload(evaluators: Sequence[Any]) -> None:
+    """Load every python source before the first trial, in spec order.
+
+    Loading is lazy so authoring never imports user code, but a run should not
+    discover a broken source on its first trial, and the name a row reports a
+    shared check under depends on which row claimed it first: done here, in
+    spec order, that is the same in every run rather than whichever trial
+    thread got there first.
+    """
+    for evaluator in evaluators:
+        if isinstance(evaluator, PythonSourceEvaluator):
+            evaluator._ensure_loaded()
 
 
 class _Timeout(Exception):
@@ -1500,7 +1568,7 @@ def run_check(
         subject: Who the task is asked as.
         context: The request context the task replays, as ``ctx.task.context``.
         task: The task's details (``task_id``, ``version``, ``task_type``, ``category``, ``tags``), for ``ctx.task``.
-        trial: The trial's details (``trial_id``, ``run_id``, ``trial_index``, ``deployment_id``, ``status``, ``latency_ms``, ``trace_status``), for ``ctx.trial``.
+        trial: The trial's details (``trial_id``, ``run_id``, ``trial_index``, ``deployment_id``, ``status``, ``latency_ms``, ``trace_status``, ``input_tokens``, ``output_tokens``), for ``ctx.trial``.
         name: The name to report under; the check's own when omitted.
         timeout_s: Overrides the check's own timeout.
         **params: The check's parameters, merged over its defaults.
@@ -1555,6 +1623,9 @@ def run_check(
         transcript=transcript,
         final_output=answer,
         latency_ms=float(details.get("latency_ms") or 0.0),
+        session_id=str(details.get("session_id") or ""),
+        input_tokens=_int_or_none(details.get("input_tokens")),
+        output_tokens=_int_or_none(details.get("output_tokens")),
     )
     for key, enum in (("status", TrialStatus), ("trace_status", TraceStatus)):
         given = details.get(key)
@@ -1640,6 +1711,13 @@ def _question_and_answer_of(trace: Any) -> tuple[str, str]:
 
 
 # ── small helpers ───────────────────────────────────────────────────────────
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return None if value is None else int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_json(text: str) -> Any:

@@ -502,14 +502,20 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
             _write_trials(store, finished)
             written.update(t.trial_id for t in finished)
 
+        from .checks import _preload
+
         if run.get("runType") == "ONLINE_SAMPLE":
+            evaluators = _evaluators_for(
+                run, judge_completer=completer, sources=sources
+            )
+            _preload(evaluators)
             result = _run_sample(
                 client,
                 session,
                 host,
                 project.id,
                 run,
-                _evaluators_for(run, judge_completer=completer, sources=sources),
+                evaluators,
                 strategy=args.sample_strategy,
                 shared=not args.sample_independent,
                 on_progress=record,
@@ -535,17 +541,18 @@ def _execute(run_id: str, session, base: str, project, host: str, args) -> bool:
         ).json()
         suite = _to_suite(run, tasks)
 
+        # One list for the whole suite: every task is measured the same way,
+        # which is what makes the run's pass rate comparable to the next one's.
+        evaluators = _evaluators_for_suite(
+            suite, judge_completer=completer, query=query, sources=sources
+        )
+        _preload(evaluators)
         result = _run_suite(
             client,
             suite,
             run_id=run_id,
             deployment_id=run["deploymentId"],
-            # One list for the whole suite: every task is measured the same
-            # way, which is what makes the run's pass rate comparable to the
-            # next one's.
-            evaluators=_evaluators_for_suite(
-                suite, judge_completer=completer, query=query, sources=sources
-            ),
+            evaluators=evaluators,
             config=RunnerConfig(
                 n_trials=_run_trials(run, 1),
                 **({"timeout_s": args.trial_timeout_s} if args.trial_timeout_s else {}),

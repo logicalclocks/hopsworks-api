@@ -88,7 +88,7 @@ check("python", "customer", module="customer_checks")      # installed in the jo
 
 | Key | Meaning |
 |---|---|
-| `name` | the row's label; results report under each declared check's own name, with the row in `assertions.row` |
+| `name` | the row's label; results report under each declared check's own name, with the row in `assertions.row`. When two rows of one suite declare the same check name, the row later in the suite reports it as `<row>/<check>` |
 | `file` | a `.py` file or a package directory (with `__init__.py`) in the project's HopsFS, relative to the project or absolute |
 | `git` + `path` | `{"url": https, "ref": branch or tag, "commit": optional}`; `path` is the file inside the repository. Private repositories need a git provider token on the account the evaluation job runs as. https only. |
 | `git: "deployment"` + `path` | the evaluated deployment's own repository at the commit it is running; checks version with the agent, and a deployment that is not git-backed makes the row ungradable |

@@ -470,6 +470,31 @@ class TestGrading:
             .startswith("module customer_checks")
         )
 
+    def test_a_check_that_reads_the_expectation_is_ungradable_without_one(
+        self, tmp_path
+    ):
+        """Declared to read what only a task carries; on live traffic there is none."""
+        path = _write(
+            tmp_path,
+            "expects.py",
+            """
+            @check(needs_trace=False, reads_expectation=True)
+            def mentions(ctx):
+                return ctx.expectation.lower() in ctx.answer.lower()
+            """,
+        )
+        evaluator = _file_evaluator(path)
+        # A task with nothing for it: the empty expectation is in every answer.
+        rows = _rows([evaluator], task=_task(expectations={}), trial=_trial("anything"))
+        assert rows["mentions"].ungradable is True
+        assert "carries none" in rows["mentions"].reason
+        rows = _rows(
+            [evaluator],
+            task=_task(expectations={"mentions": "any"}),
+            trial=_trial("anything"),
+        )
+        assert rows["mentions"].passed is True
+
     def test_a_package_directory_loads_its_init(self, tmp_path):
         package = tmp_path / "checks"
         package.mkdir()
@@ -618,6 +643,24 @@ class TestRunCheck:
         assert ctx.trial.trial_id == "r/t9/2/0" and ctx.trial.deployment_id == 7
         assert ctx.trial.status == "FAILED" and ctx.trial.latency_ms == 12.5
         assert ctx.trial.trace_status == "RECEIVED"
+
+    def test_token_counts_reach_the_trial(self):
+        seen = {}
+
+        def capture(ctx):
+            seen["ctx"] = ctx
+            return True
+
+        run_check(
+            capture,
+            answer="x",
+            tools=[],
+            trial={"input_tokens": 120, "output_tokens": "7", "session_id": "s1"},
+        )
+        assert (seen["ctx"].trial.input_tokens, seen["ctx"].trial.output_tokens) == (
+            120,
+            7,
+        )
 
     def test_the_job_trace_dict_is_accepted(self):
         result = run_check(
@@ -850,9 +893,11 @@ class TestSources:
         assert row.passed is True
         assert row.assertions["source"]["pinned"] is True
         assert row.assertions["source"]["origin"].startswith("snapshot ")
-        row = _rows([live])["verdict"]
+        # The second row declaring `verdict` reports it under its own name.
+        row = _rows([live])["live/verdict"]
         assert row.passed is False
         assert row.assertions["source"]["pinned"] is False
+        assert row.assertions["check"] == "verdict"
 
     def _fake_clone(self, tmp_path):
         def clone(url, ref, commit, into):
@@ -889,7 +934,7 @@ class TestSources:
         assert [r.evaluator_name for r in results] == [
             "price_matches_catalogue",
             "answers_in_english",
-            "answers_in_english",
+            "b/answers_in_english",
         ]
         assert all(r.passed for r in results)
         assert clone.calls == [("https://github.com/o/r.git", "main", "")]
@@ -1131,12 +1176,106 @@ class TestSources:
             sources=sources,
         )
         results = _run_evaluators([a, b], _task(), _trial(), None)
-        assert [(r.assertions["row"], r.passed) for r in results] == [
-            ("a", True),
-            ("b", False),
+        assert [(r.evaluator_name, r.assertions["row"], r.passed) for r in results] == [
+            ("v", "a", True),
+            ("b/v", "b", False),
         ]
         assert "helpers" not in sys.modules
         assert str(tmp_path / "a") not in sys.path
+
+    def test_two_rows_sharing_a_check_name_never_share_a_result_id(self, tmp_path):
+        """Stored results are keyed by trial and name; the second row's name says which row."""
+        from hopsworks_agents.eval.checks import _preload
+
+        for name in ("x", "y"):
+            (tmp_path / f"{name}.py").write_text(VERDICT_FILE.format(verdict="True"))
+        sources = _CheckSources(dataset_api=object(), project_name="p")
+        sources._download = lambda path: path  # type: ignore[method-assign]
+        rows = _evaluators_from_spec(
+            [
+                {"type": "python", "name": "x", "file": str(tmp_path / "x.py")},
+                {"type": "python", "name": "y", "file": str(tmp_path / "y.py")},
+            ],
+            sources=sources,
+        )
+        # Preloaded in spec order, so the first row keeps the bare name whatever
+        # trial thread grades first.
+        _preload(rows)
+        results = _run_evaluators(list(reversed(rows)), _task(), _trial(), None)
+        assert sorted(r.evaluator_name for r in results) == ["verdict", "y/verdict"]
+        assert len({f"t/{r.evaluator_name}" for r in results}) == 2
+
+    def test_concurrent_trials_do_not_hand_one_source_anothers_helper(self, tmp_path):
+        """Importing edits sys.path and sys.modules; trials run on threads."""
+        import concurrent.futures
+
+        for name, verdict in (("a", "True"), ("b", "False")):
+            folder = tmp_path / name
+            folder.mkdir()
+            (folder / "helpers.py").write_text(
+                f"def verdict():\n    return {verdict}\n"
+            )
+            (folder / "checks.py").write_text(
+                "from hopsworks_agents.eval.checks import check\n"
+                "from helpers import verdict\n"
+                "@check(needs_trace=False)\ndef v(ctx):\n    return verdict()\n"
+            )
+        verdicts = set()
+        for _ in range(3):
+            sources = _CheckSources(dataset_api=object(), project_name="p")
+            sources._download = lambda path: path  # type: ignore[method-assign]
+            a, b = _evaluators_from_spec(
+                [
+                    {
+                        "type": "python",
+                        "name": "a",
+                        "file": str(tmp_path / "a" / "checks.py"),
+                    },
+                    {
+                        "type": "python",
+                        "name": "b",
+                        "file": str(tmp_path / "b" / "checks.py"),
+                    },
+                ],
+                sources=sources,
+            )
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                futures = [
+                    pool.submit(_run_evaluators, [a, b], _task(), _trial(), None)
+                    for _ in range(16)
+                ]
+                for future in futures:
+                    verdicts.add(
+                        tuple((r.assertions["row"], r.passed) for r in future.result())
+                    )
+        assert verdicts == {(("a", True), ("b", False))}
+
+    def test_a_snapshot_is_named_by_the_commit_a_row_pins(self, tmp_path):
+        sources = _CheckSources(workdir=str(tmp_path))
+        at_one = _parse_source(
+            {
+                "git": {"url": "https://x/r", "ref": "main", "commit": "aaaaaaa"},
+                "path": "c.py",
+            }
+        )
+        at_two = _parse_source(
+            {
+                "git": {"url": "https://x/r", "ref": "main", "commit": "bbbbbbb"},
+                "path": "c.py",
+            }
+        )
+        tip = _parse_source(
+            {"git": {"url": "https://x/r", "ref": "main"}, "path": "c.py"}
+        )
+        names = {sources._snapshot_key(s) for s in (at_one, at_two, tip)}
+        assert len(names) == 3
+        assert all(n.endswith("-c.py") for n in names)
+
+    def test_a_windows_drive_path_is_absolute(self):
+        sources = _CheckSources(project_name="p")
+        assert sources._absolute("C:\\checks\\pricing.py") == "C:\\checks\\pricing.py"
+        assert sources._absolute("D:/checks/pricing.py") == "D:/checks/pricing.py"
+        assert sources._absolute("Resources/x.py") == "/Projects/p/Resources/x.py"
 
 
 class TestRunJobWiring:
