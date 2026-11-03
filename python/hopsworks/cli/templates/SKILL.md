@@ -251,6 +251,24 @@ hops superset dashboard list
 hops superset dashboard create "My Dashboard" [--published]
 ```
 
+## Semantic Layer
+
+Wraps `project.get_semantic_layer_api()`: metrics defined in YAML next to a dbt project, over feature groups.
+The `hops-semantic` skill covers the YAML.
+
+```bash
+hops semantic list
+hops semantic create <name> --path <dbt project dir> [--format AUTO|DBT|NATIVE|MANIFEST_JSON] [--mode FOLLOW|PINNED]
+hops semantic compile <name> [--wait] [--fail-on-error]     # --fail-on-error exits 1 on errors, for CI
+hops semantic builds <name>
+hops semantic promote <name> <build id>
+hops semantic metrics <name>
+hops semantic dimensions <name> [--metrics a,b]
+hops semantic sql <name> --metrics a,b [--group-by metric_time__month,customer__country] [--where "..."] [--order-by -a] [--limit N]
+hops semantic query <name> --metrics a,b [...same flags] [--output table|json|csv]
+hops semantic delete <name> --yes
+```
+
 ## File system (HopsFS)
 
 ```bash

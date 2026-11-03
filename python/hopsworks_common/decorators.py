@@ -31,6 +31,7 @@ from hopsworks_common.core.constants import (
     confluent_kafka_not_installed_message,
     great_expectations_not_installed_message,
     polars_not_installed_message,
+    pyarrow_not_installed_message,
     pyiceberg_not_installed_message,
     trino_not_installed_message,
 )
@@ -175,7 +176,7 @@ def _uses_pyarrow(f):
     @functools.wraps(f)
     def g(*args, **kwds):
         if not HAS_PYARROW:
-            raise ModuleNotFoundError("PyArrow is required for Arrow feature logging")
+            raise ModuleNotFoundError(pyarrow_not_installed_message)
         return f(*args, **kwds)
 
     return g
