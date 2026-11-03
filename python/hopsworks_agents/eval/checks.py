@@ -45,12 +45,14 @@ which is what keeps authoring-time validation free of any I/O.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib
 import importlib.util
 import inspect
 import json
 import logging
+import math
 import os
 import posixpath
 import re
@@ -68,7 +70,7 @@ from typing import TYPE_CHECKING, Any
 from hopsworks_apigen import public
 
 from .evaluators import SKIPPED, _ungradable
-from .models import EvaluatorResult, Task, Trial
+from .models import EvaluatorResult, Task, TraceStatus, Trial, TrialStatus
 
 
 if TYPE_CHECKING:
@@ -90,6 +92,17 @@ MAX_TIMEOUT_S = 600.0
 #: snapshot. Bounded, because a check is a few files and a repository is not.
 MAX_SNAPSHOT_FILES = 200
 MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024
+#: A git source is frozen with the repository tree around it, so the helpers a
+#: check imports from elsewhere in the repository are frozen with it. Bounded
+#: too: past this a repository is not pinned and the run says so.
+MAX_TREE_FILES = 2000
+MAX_TREE_BYTES = 20 * 1024 * 1024
+MAX_TREE_FILE_BYTES = 2 * 1024 * 1024
+#: The directory inside a snapshot that holds the frozen tree.
+TREE = "tree"
+#: How long fetching a source (a clone, a download) may take. Separate from the
+#: check's own timeout, which bounds the check's code -- its import included.
+FETCH_BUDGET_S = 300.0
 #: Directories never copied from a package of checks.
 _SKIPPED_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".mypy_cache"}
 
@@ -521,6 +534,19 @@ def _validate_entry(entry: Mapping[str, Any]) -> None:
 
 
 @dataclass
+class _Fetched:
+    """A source's code on local disk, before anything of it has run."""
+
+    local: str
+    package_root: str | None = None
+    origin: str = ""
+    commit: str = ""
+    #: True when read from, or just frozen into, a published suite's snapshot.
+    pinned: bool = False
+    manifest: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class _Loaded:
     """A module imported from a source, and where it really came from."""
 
@@ -532,6 +558,14 @@ class _Loaded:
     pinned: bool = False
     #: The local file or directory the module was imported from.
     local: str = ""
+    #: What the import pulled in from beside the source, taken back out of
+    #: ``sys.modules`` so another source's helper of the same name imports
+    #: fresh. Held here so the functions that bound them keep working.
+    held: dict[str, ModuleType] = field(default_factory=dict)
+
+
+class _TooLarge(Exception):
+    """A repository bigger than a snapshot is allowed to be."""
 
 
 class _CheckSources:
@@ -540,8 +574,12 @@ class _CheckSources:
     Built by the job, which is the only place the pieces exist: a dataset API
     for the project's files, the serving view of the deployment under test,
     and the published suite's snapshot directory when there is one. Checkouts
-    and downloads are shared across the suites of one execution, so a file two
+    and imports are shared across the suites of one execution, so a file two
     suites name is fetched once.
+
+    Fetching and importing are two steps on purpose. Fetching is I/O with a
+    budget of its own; importing runs the check's code, so it runs under the
+    check's own timeout. :meth:`_load` does both for callers that do not care.
 
     Parameters:
         dataset_api: The project's dataset API, for ``file`` sources and snapshots.
@@ -577,46 +615,72 @@ class _CheckSources:
             shutil.rmtree(self._workdir, ignore_errors=True)
 
     def _load(self, source: _Source) -> _Loaded:
-        """The module for a source, imported once per execution."""
+        """Fetch and import, once per execution."""
+        cached = self._loaded.get(source._describe())
+        if cached is not None:
+            return cached
+        return self._import(source, self._fetch_local(source))
+
+    def _import(self, source: _Source, fetched: _Fetched) -> _Loaded:
+        """Import what was fetched, and remember it for the rest of the execution."""
         key = source._describe()
         cached = self._loaded.get(key)
         if cached is not None:
             return cached
-        loaded = self._fetch(source)
+        if source.module:
+            module = importlib.import_module(source.module)
+            held: dict[str, ModuleType] = {}
+        else:
+            module, held = _import_path(
+                fetched.local, package_root=fetched.package_root
+            )
+        loaded = _Loaded(
+            module=module,
+            origin=fetched.origin,
+            sha256=(
+                _digest_of(fetched.local)
+                if fetched.local and os.path.exists(fetched.local)
+                else ""
+            ),
+            commit=fetched.commit,
+            pinned=fetched.pinned,
+            local=fetched.local,
+            held=held,
+        )
         self._loaded[key] = loaded
         return loaded
 
-    def _fetch(self, source: _Source) -> _Loaded:
+    def _fetch_local(self, source: _Source) -> _Fetched:
+        """The source's code on local disk. I/O only: nothing of it runs here."""
         if source.module:
-            module = importlib.import_module(source.module)
-            path = getattr(module, "__file__", "") or ""
-            return _Loaded(
-                module=module,
+            spec = importlib.util.find_spec(source.module)
+            if spec is None:
+                raise ModuleNotFoundError(f"no module named {source.module!r}")
+            path = (
+                spec.origin if spec.origin not in (None, "built-in", "frozen") else ""
+            )
+            return _Fetched(
+                local=path or "",
                 origin=f"module {source.module} ({path or 'built in'})",
-                sha256=_digest_of(path) if path and os.path.isfile(path) else "",
-                local=path,
+            )
+
+        if source.file:
+            absolute = self._absolute(source.file)
+            local = self._download(absolute)
+            # A published suite's row points at the copy the backend froze
+            # beside its tasks; nothing has to be looked up to know that.
+            pinned = self._snapshot_dir is not None and absolute.startswith(
+                self._snapshot_dir + "/"
+            )
+            return _Fetched(
+                local=local,
+                origin=f"{'snapshot' if pinned else 'hopsfs'} {absolute}",
+                pinned=pinned,
             )
 
         snapshot = self._snapshot_of(source)
         if snapshot is not None:
-            local, manifest = snapshot
-            return _Loaded(
-                module=_import_path(local),
-                origin=f"snapshot {self._snapshot_dir}",
-                sha256=_digest_of(local),
-                commit=str(manifest.get("commit") or ""),
-                pinned=True,
-                local=local,
-            )
-
-        if source.file:
-            local = self._download(self._absolute(source.file))
-            return _Loaded(
-                module=_import_path(local),
-                origin=f"hopsfs {self._absolute(source.file)}",
-                sha256=_digest_of(local),
-                local=local,
-            )
+            return snapshot
 
         url, ref, commit = self._git_target(source)
         root = self._checkout(url, ref, commit)
@@ -626,18 +690,17 @@ class _CheckSources:
                 f"{source.path} is not in {_scrubbed(url)}@{commit or ref or 'HEAD'}"
             )
         resolved = commit or _head_of(root)
-        loaded = _Loaded(
-            module=_import_path(local, package_root=root),
-            origin=f"git {_scrubbed(url)}@{resolved or ref or 'HEAD'}:{source.path}",
-            sha256=_digest_of(local),
-            commit=resolved,
+        fetched = _Fetched(
             local=local,
+            package_root=root,
+            origin=f"git {_scrubbed(url)}@{resolved or ref or 'HEAD'}:{source.path}",
+            commit=resolved,
         )
-        if not source.deployment:
+        if source.deployment:
             # The deployment's own repository is deliberately never pinned: its
             # checks move with the agent, which is the point of naming it.
-            self._snapshot(source, loaded, url=url, ref=ref)
-        return loaded
+            return fetched
+        return self._pin(source, fetched, root=root, url=url, ref=ref) or fetched
 
     # -- file ---------------------------------------------------------------
 
@@ -695,10 +758,10 @@ class _CheckSources:
                     continue
                 copied += 1
                 total += size
-                if copied > MAX_SNAPSHOT_FILES or total > MAX_SNAPSHOT_BYTES:
+                if copied > MAX_TREE_FILES or total > MAX_TREE_BYTES:
                     raise RuntimeError(
-                        f"{root} holds more than {MAX_SNAPSHOT_FILES} files or "
-                        f"{MAX_SNAPSHOT_BYTES // (1024 * 1024)} MB; a package of "
+                        f"{root} holds more than {MAX_TREE_FILES} files or "
+                        f"{MAX_TREE_BYTES // (1024 * 1024)} MB; a snapshot of "
                         "checks is smaller than that"
                     )
                 relative = child_path[len(root) :].lstrip("/")
@@ -751,88 +814,192 @@ class _CheckSources:
 
     # -- snapshots ----------------------------------------------------------
 
-    def _snapshot_of(self, source: _Source) -> tuple[str, dict[str, Any]] | None:
-        """The published copy of this source, when the suite has one."""
+    def _snapshot_key(self, source: _Source) -> str:
+        """What a source is frozen under: its whole identity, hashed, plus its basename.
+
+        The basename alone collided: two ``checks.py`` from two places froze
+        into one copy, and whichever was copied last graded for both.
+        """
+        if source.file:
+            identity = f"hopsfs {self._absolute(source.file)}"
+        else:
+            identity = f"git {_scrubbed(source.git_url)}@{source.git_ref}:{source.path}"
+        return _snapshot_name(identity, source.path or source.file)
+
+    def _snapshot_of(self, source: _Source) -> _Fetched | None:
+        """The published copy of a git source, when the suite has one."""
         if self._snapshot_dir is None or self._dataset_api is None:
             return None
-        name = _snapshot_name(source)
+        name = self._snapshot_key(source)
+        target = f"{self._snapshot_dir}/{name}"
         try:
-            is_dir, _ = self._stat(f"{self._snapshot_dir}/{name}")
+            self._stat(f"{target}/{MANIFEST}")
         except FileNotFoundError:
             return None
-        local = self._download(f"{self._snapshot_dir}/{name}")
+        return self._from_snapshot(self._download(target), source, name)
+
+    def _from_snapshot(self, local_dir: str, source: _Source, name: str) -> _Fetched:
         manifest: dict[str, Any] = {}
         try:
-            manifest_local = self._download(f"{self._snapshot_dir}/{MANIFEST}")
-            with open(manifest_local, encoding="utf-8") as handle:
-                manifests = json.load(handle)
-            manifest = dict((manifests or {}).get(name) or {})
+            with open(os.path.join(local_dir, MANIFEST), encoding="utf-8") as handle:
+                manifest = dict(json.load(handle) or {})
         except Exception:  # noqa: BLE001 -- the code is what matters
-            log.debug("no readable manifest beside %s", name)
-        return local, manifest
+            log.debug("no readable manifest in snapshot %s", name)
+        tree = os.path.join(local_dir, TREE)
+        return _Fetched(
+            local=os.path.join(tree, source.path),
+            package_root=tree,
+            origin=f"snapshot {self._snapshot_dir}/{name}",
+            commit=str(manifest.get("commit") or ""),
+            pinned=True,
+            manifest=manifest,
+        )
 
-    def _snapshot(
-        self, source: _Source, loaded: _Loaded, *, url: str, ref: str
-    ) -> None:
-        """Freeze a git source beside the published suite's tasks, once."""
+    def _pin(
+        self, source: _Source, fetched: _Fetched, *, root: str, url: str, ref: str
+    ) -> _Fetched | None:
+        """Freeze a git source beside the published suite's tasks, once, whoever is first.
+
+        Two runs of one version can both find no snapshot, clone a branch that
+        moved in between, and each believe its copy is the frozen one. So each
+        stages its copy under a name of its own and renames it into place:
+        HopsFS renames atomically and refuses an existing destination, so
+        exactly one wins, and the loser throws its copy away and grades with
+        the winner's -- the same code every later run reads.
+
+        The whole repository tree goes in, not the one file: a check may
+        import a helper from anywhere in the repository, and a snapshot that
+        held only the entry file passed on its first run and failed with
+        ``ModuleNotFoundError`` in the next job.
+        """
         if self._snapshot_dir is None or self._dataset_api is None:
-            return
-        name = _snapshot_name(source)
+            return None
+        name = self._snapshot_key(source)
+        staging_local = os.path.join(self._workdir, "pin", uuid.uuid4().hex, name)
         try:
-            self._dataset_api.mkdir(self._snapshot_dir)
-        except Exception:  # noqa: BLE001 -- exists already, most often
-            log.debug("snapshot directory %s not created", self._snapshot_dir)
+            copied = _copy_tree(root, os.path.join(staging_local, TREE))
+        except _TooLarge as err:
+            log.warning(
+                "not pinning %s: %s; this run grades with the live checkout", name, err
+            )
+            return None
+        manifest = {
+            "url": _scrubbed(url),
+            "ref": ref,
+            "path": source.path,
+            "basename": posixpath.basename(source.path),
+            "commit": fetched.commit,
+            "sha256": _digest_of(fetched.local),
+            "files": copied,
+            "pinned_at": datetime.now(tz=timezone.utc).isoformat(),
+        }
+        with open(
+            os.path.join(staging_local, MANIFEST), "w", encoding="utf-8"
+        ) as handle:
+            json.dump(manifest, handle, indent=2, sort_keys=True)
+
+        staging_remote = f"{self._snapshot_dir}/.staging-{uuid.uuid4().hex}"
+        target = f"{self._snapshot_dir}/{name}"
+        won = False
         try:
-            self._dataset_api.upload(loaded.local, self._snapshot_dir, overwrite=True)
-            manifests: dict[str, Any] = {}
             try:
-                existing = self._download(f"{self._snapshot_dir}/{MANIFEST}")
-                with open(existing, encoding="utf-8") as handle:
-                    manifests = dict(json.load(handle) or {})
-            except Exception:  # noqa: BLE001 -- first snapshot of the suite
-                manifests = {}
-            manifests[name] = {
-                "url": _scrubbed(url),
-                "ref": ref,
-                "commit": loaded.commit,
-                "sha256": loaded.sha256,
-                "path": source.path,
-                "pinned_at": datetime.now(tz=timezone.utc).isoformat(),
-            }
-            manifest_local = os.path.join(self._workdir, MANIFEST)
-            with open(manifest_local, "w", encoding="utf-8") as handle:
-                json.dump(manifests, handle, indent=2, sort_keys=True)
-            self._dataset_api.upload(manifest_local, self._snapshot_dir, overwrite=True)
-            loaded.pinned = True
-            loaded.origin = f"{loaded.origin} (pinned)"
-            log.info("pinned %s at %s into %s", name, loaded.commit, self._snapshot_dir)
+                self._dataset_api.mkdir(self._snapshot_dir)
+            except Exception:  # noqa: BLE001 -- exists already, most often
+                log.debug("snapshot directory %s not created", self._snapshot_dir)
+            self._dataset_api.mkdir(staging_remote)
+            self._dataset_api.upload(staging_local, staging_remote, overwrite=True)
+            try:
+                self._dataset_api.move(
+                    f"{staging_remote}/{name}", target, overwrite=False
+                )
+                won = True
+            except Exception:  # noqa: BLE001 -- the other run's copy is the snapshot
+                won = False
         except Exception:  # noqa: BLE001 -- a run that cannot pin still grades
             log.warning(
                 "could not snapshot %s into %s; this run grades with the live "
-                "code and the next one pins",
+                "checkout and the next one pins",
                 name,
                 self._snapshot_dir,
                 exc_info=True,
             )
+            return None
+        finally:
+            try:
+                self._dataset_api.remove(staging_remote)
+            except Exception:  # noqa: BLE001 -- best effort
+                log.debug("staging %s not removed", staging_remote)
+        if won:
+            log.info(
+                "pinned %s at %s into %s", name, fetched.commit, self._snapshot_dir
+            )
+            tree = os.path.join(staging_local, TREE)
+            return _Fetched(
+                local=os.path.join(tree, source.path),
+                package_root=tree,
+                origin=f"{fetched.origin} (pinned)",
+                commit=fetched.commit,
+                pinned=True,
+                manifest=manifest,
+            )
+        log.info("another run pinned %s first; grading with its copy", name)
+        return self._from_snapshot(self._download(target), source, name)
 
 
-def _snapshot_name(source: _Source) -> str:
-    """The name a source is frozen under: its own basename."""
-    return posixpath.basename((source.path or source.file).rstrip("/"))
+def _snapshot_name(identity: str, path: str) -> str:
+    """``<12 hex of the identity>-<basename>``: unique per source, readable by a person."""
+    digest = hashlib.sha256(identity.encode()).hexdigest()[:12]
+    return f"{digest}-{posixpath.basename(path.rstrip('/'))}"
 
 
-def _import_path(local: str, *, package_root: str | None = None) -> ModuleType:
-    """Import a file or a package directory under a name nothing else uses.
+def _copy_tree(root: str, into: str) -> int:
+    """A repository's files, layout kept, under the snapshot caps.
 
-    Two suites in one execution may name files called ``checks.py`` in different
-    places; a fixed module name would hand the second the first's code. The
-    parent directory (or the repository root) goes on ``sys.path`` so the file's
-    own imports resolve, which is what lets a check share helpers with the agent.
+    Raises :class:`_TooLarge` past them: a repository that big is not pinned,
+    and the run says so rather than freezing half of it.
+    """
+    copied = 0
+    total = 0
+    for current, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in _SKIPPED_DIRS]
+        for file in files:
+            path = os.path.join(current, file)
+            if os.path.islink(path):
+                continue
+            size = os.path.getsize(path)
+            if size > MAX_TREE_FILE_BYTES:
+                continue
+            copied += 1
+            total += size
+            if copied > MAX_TREE_FILES or total > MAX_TREE_BYTES:
+                raise _TooLarge(
+                    f"more than {MAX_TREE_FILES} files or "
+                    f"{MAX_TREE_BYTES // (1024 * 1024)} MB"
+                )
+            relative = os.path.relpath(path, root)
+            destination = os.path.join(into, relative)
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            shutil.copyfile(path, destination)
+    return copied
+
+
+def _import_path(
+    local: str, *, package_root: str | None = None
+) -> tuple[ModuleType, dict[str, ModuleType]]:
+    """Import a file or a package directory, isolated from every other source.
+
+    The entry gets a name nothing else uses, so two ``checks.py`` in one
+    execution do not hand each other their code. Its own imports need the same
+    care: ``from helpers import yes`` lands ``helpers`` in ``sys.modules`` by
+    that name, and a second source's ``helpers`` would silently reuse the
+    first's. So the parent directory (or the repository root) goes on
+    ``sys.path`` only for the import, and whatever the import pulled in from
+    under it is taken back out of ``sys.modules`` afterwards and returned,
+    held, so the functions that bound it keep working. A check that imports a
+    helper lazily inside the function will not find it: import at the top.
     """
     local = os.path.abspath(local)
     parent = package_root or os.path.dirname(local)
-    if parent not in sys.path:
-        sys.path.insert(0, parent)
     unique = f"hopsworks_check_{hashlib.sha1(local.encode()).hexdigest()[:12]}"  # noqa: S324
     if os.path.isdir(local):
         init = os.path.join(local, "__init__.py")
@@ -848,13 +1015,31 @@ def _import_path(local: str, *, package_root: str | None = None) -> ModuleType:
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot import {local}")
     module = importlib.util.module_from_spec(spec)
+    before = set(sys.modules)
+    added_path = parent not in sys.path
+    if added_path:
+        sys.path.insert(0, parent)
+    importlib.invalidate_caches()
     sys.modules[unique] = module
     try:
         spec.loader.exec_module(module)
     except BaseException:
         sys.modules.pop(unique, None)
         raise
-    return module
+    finally:
+        if added_path:
+            with contextlib.suppress(ValueError):
+                sys.path.remove(parent)
+        held: dict[str, ModuleType] = {}
+        prefix = parent.rstrip(os.sep) + os.sep
+        for name in set(sys.modules) - before:
+            if name == unique or name.startswith(unique + "."):
+                continue
+            pulled = sys.modules.get(name)
+            file = getattr(pulled, "__file__", None) or ""
+            if file.startswith(prefix):
+                held[name] = sys.modules.pop(name)
+    return module, held
 
 
 def _digest_of(local: str) -> str:
@@ -949,7 +1134,14 @@ class PythonCheckEvaluator:
         return self._declared.timeout_s if self._declared else DEFAULT_TIMEOUT_S
 
     def _ensure_loaded(self) -> str | None:
-        """Load once; the reason it could not, or ``None``."""
+        """Load once; the reason it could not, or ``None``.
+
+        Two budgets. Fetching (a clone, a download) is I/O and gets
+        ``FETCH_BUDGET_S``. Importing runs the check's module, which is the
+        check's code as much as the function is, so it gets the check's own
+        timeout: a module that blocks at import used to stall the run before
+        the timeout had anything to measure.
+        """
         if self._declared is not None or self._load_error is not None:
             return self._load_error
         try:
@@ -961,17 +1153,37 @@ class PythonCheckEvaluator:
                 sources = _CheckSources()
             else:
                 sources = self._sources
-            self._loaded = sources._load(self.source)
+            loaded = sources._loaded.get(self.source._describe())
+            if loaded is None:
+                try:
+                    fetched = _run_with_timeout(
+                        lambda: sources._fetch_local(self.source), FETCH_BUDGET_S
+                    )
+                except _Timeout:
+                    raise RuntimeError(
+                        f"fetching the source took longer than {FETCH_BUDGET_S:g}s"
+                    ) from None
+                try:
+                    loaded = _run_with_timeout(
+                        lambda: sources._import(self.source, fetched), self.timeout_s
+                    )
+                except _Timeout:
+                    raise RuntimeError(
+                        f"importing the source took longer than {self.timeout_s:g}s"
+                    ) from None
+            self._loaded = loaded
             self._declared = _resolve_in(
-                self._loaded.module,
+                loaded.module,
                 self.name,
                 check_name=self.check_name,
                 function=self.function,
             )
             if self._needs_trace is None:
                 self.needs_trace = self._declared.needs_trace
-            log.info("check %r loaded from %s", self.name, self._loaded.origin)
-        except Exception as err:  # noqa: BLE001 -- the reason goes on every row
+            log.info("check %r loaded from %s", self.name, loaded.origin)
+        except KeyboardInterrupt:
+            raise
+        except BaseException as err:  # noqa: BLE001 -- the reason goes on every row
             self._load_error = (
                 f"check {self.name!r} could not be loaded from "
                 f"{self.source._describe()}: {_short(err)}"
@@ -999,7 +1211,11 @@ class PythonCheckEvaluator:
                 self.type,
                 f"timed out after {self.timeout_s:g}s",
             )
-        except Exception as err:  # noqa: BLE001 -- a bad check is not a bad agent
+        except KeyboardInterrupt:
+            raise
+        except BaseException as err:  # noqa: BLE001 -- a bad check is not a bad agent
+            # BaseException, not Exception: a dependency calling sys.exit() is
+            # the check failing, not the job ending.
             return _ungradable(self.name, self.type, f"check raised: {_short(err)}")
         result = _as_result(self.name, value, pass_score=params.get("pass_score"))
         result.assertions.setdefault("source", self._provenance())
@@ -1021,23 +1237,18 @@ class _Timeout(Exception):
     pass
 
 
-def _call_with_timeout(
-    fn: Callable[..., Any],
-    context: CheckContext,
-    params: Mapping[str, Any],
-    timeout_s: float,
-) -> Any:
-    """The function's return value, or ``_Timeout``.
+def _run_with_timeout(fn: Callable[[], Any], timeout_s: float) -> Any:
+    """``fn()`` on a thread, or ``_Timeout``.
 
-    A thread per call: the function is the user's and may block on anything. A
-    thread cannot be killed, so a check that hangs costs one leaked daemon
+    A thread per call: the code is the user's and may block on anything. A
+    thread cannot be killed, so something that hangs costs one leaked daemon
     thread and an ungradable row, and the run moves on.
     """
     box: dict[str, Any] = {}
 
     def run() -> None:
         try:
-            box["value"] = fn(context, **params)
+            box["value"] = fn()
         except BaseException as err:  # noqa: BLE001 -- carried back to the caller
             box["error"] = err
 
@@ -1051,6 +1262,16 @@ def _call_with_timeout(
     return box.get("value")
 
 
+def _call_with_timeout(
+    fn: Callable[..., Any],
+    context: CheckContext,
+    params: Mapping[str, Any],
+    timeout_s: float,
+) -> Any:
+    """The function's return value on one trial, or ``_Timeout``."""
+    return _run_with_timeout(lambda: fn(context, **params), timeout_s)
+
+
 def _as_result(name: str, value: Any, *, pass_score: Any = None) -> EvaluatorResult:
     """Whatever the function returned, as the row the runner records."""
     if isinstance(value, CheckResult):
@@ -1062,6 +1283,8 @@ def _as_result(name: str, value: Any, *, pass_score: Any = None) -> EvaluatorRes
         passed = value.passed
         if passed is None and score is None:
             return _ungradable(name, TYPE, value.reason or "no verdict returned")
+        if score is not None and not _finite(score):
+            return _ungradable(name, TYPE, f"score {score!r} is not a finite number")
         if passed is None:
             passed = float(score) >= _pass_score(pass_score)
         if score is None:
@@ -1077,6 +1300,10 @@ def _as_result(name: str, value: Any, *, pass_score: Any = None) -> EvaluatorRes
     if isinstance(value, bool):
         return EvaluatorResult(name, TYPE, 1.0 if value else 0.0, value, "")
     if isinstance(value, (int, float)):
+        if not _finite(value):
+            # NaN compared as greater-or-equal to anything is False, and then
+            # clamped read as a confident 1.0: a perfect pass from no number.
+            return _ungradable(name, TYPE, f"score {value!r} is not a finite number")
         score = _clamp(float(value))
         return EvaluatorResult(
             name, TYPE, score, score >= _pass_score(pass_score), f"scored {score:g}"
@@ -1111,6 +1338,13 @@ def _pass_score(value: Any) -> float:
 
 def _clamp(score: float) -> float:
     return max(0.0, min(1.0, float(score)))
+
+
+def _finite(value: Any) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
 
 
 # ── the context ─────────────────────────────────────────────────────────────
@@ -1208,6 +1442,9 @@ def run_check(
     tools: Sequence[Mapping[str, Any] | ToolCall] | None = None,
     trace: Any = None,
     subject: str = "",
+    context: Mapping[str, Any] | None = None,
+    task: Mapping[str, Any] | None = None,
+    trial: Mapping[str, Any] | None = None,
     name: str | None = None,
     timeout_s: float | None = None,
     **params: Any,
@@ -1242,6 +1479,9 @@ def run_check(
         tools: Tool calls as dicts (``name``, ``arguments``, ``result``, ``status``) or ``ToolCall``.
         trace: A trace from ``agent.trace()``, the job's trace dict, or ``None``.
         subject: Who the task is asked as.
+        context: The request context the task replays, as ``ctx.task.context``.
+        task: The task's details (``task_id``, ``version``, ``task_type``, ``category``, ``tags``), for ``ctx.task``.
+        trial: The trial's details (``trial_id``, ``run_id``, ``trial_index``, ``deployment_id``, ``status``, ``latency_ms``, ``trace_status``), for ``ctx.trial``.
         name: The name to report under; the check's own when omitted.
         timeout_s: Overrides the check's own timeout.
         **params: The check's parameters, merged over its defaults.
@@ -1268,40 +1508,58 @@ def run_check(
     all_expectations = dict(expectations or {})
     if expectation:
         all_expectations[check_name] = expectation
-    task = Task(
-        task_id="local",
+    about = dict(task or {})
+    details = dict(trial or {})
+    task_row = Task(
+        task_id=str(about.get("task_id") or "local"),
+        task_version=int(about.get("version") or 1),
         input_messages=json.dumps(
             list(messages) if messages else [{"role": "user", "content": question}]
         ),
-        task_type="multi_turn" if transcript else "single_turn",
+        task_type=str(
+            about.get("task_type") or ("multi_turn" if transcript else "single_turn")
+        ),
         expectations=all_expectations,
-        subject=subject,
+        category=str(about.get("category") or ""),
+        tags=[str(t) for t in (about.get("tags") or [])],
+        subject=subject or str(about.get("subject") or ""),
+        context=dict(context if context is not None else about.get("context") or {}),
     )
-    trial = Trial(
-        trial_id="local",
-        run_id="local",
-        task_id="local",
-        task_version=1,
-        trial_index=0,
-        deployment_id=0,
+    trial_row = Trial(
+        trial_id=str(details.get("trial_id") or "local"),
+        run_id=str(details.get("run_id") or "local"),
+        task_id=task_row.task_id,
+        task_version=task_row.task_version,
+        trial_index=int(details.get("trial_index") or 0),
+        deployment_id=int(details.get("deployment_id") or 0),
         trace_id=str((trace_dict or {}).get("trace_id") or ""),
         transcript=transcript,
         final_output=answer,
+        latency_ms=float(details.get("latency_ms") or 0.0),
     )
+    for key, enum in (("status", TrialStatus), ("trace_status", TraceStatus)):
+        given = details.get(key)
+        if given:
+            try:
+                setattr(trial_row, key, enum(str(given)))
+            except ValueError:
+                log.debug("ignoring unknown %s %r", key, given)
     merged = {**dict(declared.defaults), **params}
     if declared.needs_trace and trace_dict is None and tools is None:
         return _ungradable(check_name, TYPE, "no trace arrived for this trial")
-    context = _context_for(check_name, task, trial, trace_dict, merged)
+    shown = _context_for(check_name, task_row, trial_row, trace_dict, merged)
     try:
         value = _call_with_timeout(
             declared.fn,
-            context,
+            shown,
             merged,
             _bounded_timeout(timeout_s or declared.timeout_s),
         )
     except _Timeout:
         return _ungradable(check_name, TYPE, "timed out")
-    except Exception as err:  # noqa: BLE001 -- the same rule as in the job
+    except KeyboardInterrupt:
+        raise
+    except BaseException as err:  # noqa: BLE001 -- the same rule as in the job
         return _ungradable(check_name, TYPE, f"check raised: {_short(err)}")
     return _as_result(check_name, value, pass_score=merged.get("pass_score"))
 

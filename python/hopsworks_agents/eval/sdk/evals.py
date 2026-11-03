@@ -33,6 +33,7 @@ from .models import (
     Task,
     TaskDiff,
     Trial,
+    as_json,
     change_of,
     verdict_of,
 )
@@ -822,7 +823,7 @@ class Checks:
         """
         from ..checks import _declared_in, _import_path
 
-        module = _import_path(str(Path(local_path).resolve()))
+        module, _held = _import_path(str(Path(local_path).resolve()))
         return [d._as_dict() for d in _declared_in(module).values()]
 
     @public
@@ -1086,10 +1087,12 @@ class Runs:
     ) -> list[tuple[Trial, EvaluatorResult]]:
         """Grade a finished run's trials with a check, without writing anything.
 
-        Reads each trial's answer and trace back and runs ``fn`` on them the way
-        the job would, so a check can be written against last night's failures
-        and judged before it joins a suite. Trials whose trace is gone are graded
-        without one, which a check that needs it reports as ungradable.
+        Reads each trial's answer and trace back and runs ``fn`` on them with
+        the context the job built -- the task's messages, subject, request
+        context and details, the trial's status and latency -- so a check that
+        reads any of those grades here as it did there. Trials whose trace is
+        gone are graded without one, which a check that needs it reports as
+        ungradable.
 
         Returns:
             `list[tuple[Trial, EvaluatorResult]]`: each trial with the verdict the check gave it.
@@ -1098,15 +1101,13 @@ class Runs:
 
         run = run if isinstance(run, Run) else self.get(run)
         agent = self._client.get_agent(run.deployment_id) if run.deployment_id else None
-        expectations: dict[str, dict[str, str]] = {}
-        questions: dict[str, str] = {}
+        tasks: dict[str, Task] = {}
         if run.suite_id:
             try:
                 for task in self._client.suites.tasks(
                     run.suite_id, version=run.suite_version
                 ):
-                    expectations[task.task_id] = dict(task.expectations or {})
-                    questions[task.task_id] = _first_user_turn(task.input_messages)
+                    tasks[task.task_id] = task
             except AgentServingError:
                 log.debug("could not read the tasks of suite %s", run.suite_id)
         graded = []
@@ -1117,14 +1118,37 @@ class Runs:
                     trace = agent.trace(trial.trace_id)
                 except AgentServingError:
                     trace = None
+            task = tasks.get(trial.task_id)
+            messages = as_json(task.input_messages, None) if task else None
             graded.append(
                 (
                     trial,
                     run_check(
                         fn,
                         answer=trial.final_output or "",
-                        question=questions.get(trial.task_id, ""),
-                        expectations=expectations.get(trial.task_id, {}),
+                        question=_first_user_turn(task.input_messages) if task else "",
+                        messages=messages if isinstance(messages, list) else None,
+                        expectations=dict(task.expectations or {}) if task else {},
+                        subject=(task.subject or "") if task else "",
+                        context=task.request_context if task else None,
+                        task={
+                            "task_id": trial.task_id,
+                            "version": task.version if task else 1,
+                            "task_type": task.task_type if task else "single_turn",
+                            "category": (task.category or "") if task else "",
+                            "tags": list(getattr(task, "tags", None) or [])
+                            if task
+                            else [],
+                        },
+                        trial={
+                            "trial_id": trial.trial_id,
+                            "run_id": trial.run_id,
+                            "trial_index": trial.trial_index,
+                            "deployment_id": run.deployment_id,
+                            "status": trial.status,
+                            "latency_ms": trial.latency_ms,
+                            "trace_status": trial.trace_status,
+                        },
                         trace=trace,
                         **params,
                     ),
