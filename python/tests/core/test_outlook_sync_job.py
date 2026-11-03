@@ -178,11 +178,19 @@ class FakeWriter:
     def _compact(self, days):
         self.compacted.extend(days)
 
-    def _upsert(self, rows, overwrite):
-        if overwrite:
-            self.table = {}
+    def _upsert(self, rows):
         for row in rows:
             self.table[row["message_id"]] = row
+
+    def _keys(self):
+        return [
+            {k: row[k] for k in ("message_id", "internal_date", "day")}
+            for row in self.table.values()
+        ]
+
+    def _remove(self, keys):
+        for key in keys:
+            del self.table[key["message_id"]]
 
 
 def _config(**kwargs):

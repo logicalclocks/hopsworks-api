@@ -530,7 +530,7 @@ fs.get_data_source("support_inbox").sync(query="-category:promotions", schedule=
 emails = fs.get_feature_group("support_examples", version=1)
 ```
 
-`INCREMENTAL_TIMESTAMP` (the default) upserts messages received since the previous run, and its first run backfills from `initial_value`; `FULL_LOAD` overwrites the feature group on every run.
+`INCREMENTAL_TIMESTAMP` (the default) upserts messages received since the previous run, and its first run backfills from `initial_value`; `FULL_LOAD` copies every selected message on every run, then removes the rows and attachments of the messages it did not copy.
 The copy is an archive: deletions and label changes in Gmail after a message was copied do not reach it until a full load.
 A sync job is a Python job; schedule it `hourly` or `daily`, and monitor it like any job.
 To search the emails, use **hops-email-search**.
