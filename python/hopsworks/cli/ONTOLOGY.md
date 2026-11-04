@@ -27,7 +27,7 @@ Leaves:
 - Transfer: `upload`, `download`, `import`, `export`, `clone`, `push`, `pull`, `mirror`, `share`, `unshare`, `install`, `register`.
 - Domain: `create-external`, `infer-metadata`, `test-access`, `validate`, `trigger`, `use`, `mkdir`, `acquire`, `release`, `renew`, `write-doc`, `delete-assets`.
 - Views: `lineage`, `logs`, `history`, `schema`, `columns`, `tables`, `databases`, `catalogs`, `schemas`, `triggered`, `url`, `dir`, `status`.
-- Top level: `setup`, `login`, `logout`, `context`, `sql`, `update`.
+- Top level: `setup`, `login`, `logout`, `context`, `sql`, `score`, `update`.
 
 ## Not used
 

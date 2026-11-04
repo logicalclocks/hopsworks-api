@@ -31,6 +31,7 @@ into bucket folders:
 - [hops-transformations](ml/hops-transformations/SKILL.md) — built-in/custom/on-demand transforms + transformation store.
 - [hops-train](ml/hops-train/SKILL.md) — train + register a model.
 - [hops-batch-inference](ml/hops-batch-inference/SKILL.md) — batch scoring + prediction logging.
+- [hops-score](ml/hops-score/SKILL.md) — score or rank rows over connected data with `hops score`.
 - [hops-online-inference](ml/hops-online-inference/SKILL.md) — KServe model deployment.
 - [hops-monitoring](ml/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
 

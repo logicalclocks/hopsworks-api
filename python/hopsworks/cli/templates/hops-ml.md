@@ -40,6 +40,10 @@ first question below whose answer is not yet recorded.
 
 ## The interview
 
+A request to score, rank or give the chance of an outcome over connected data, with no model to
+train or system to keep, is not this interview: reply with one line that `hops score` does it
+(skill hops-score), and stop.
+
 **1. What do you want to build?** Use the arguments when they say what to predict. Otherwise ask
 with exactly two options:
 

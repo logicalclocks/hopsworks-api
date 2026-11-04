@@ -71,7 +71,9 @@ is the whole dispatch:
 1. **The goal.** Write down the pieces the request names, each with its asset name. Add a piece
    one of them needs only when that need's exit check fails: "a model on the deals" with no
    feature view makes the view inside the model piece; "score the deals daily with the best
-   model" when a model exists is the inference piece alone.
+   model" when a model exists is the inference piece alone. "Score", "rank" or "the chance of" an outcome over connected data (a CRM, a database, a
+   feature group), with no model named, is not a piece: run `hops score` as the **hops-score**
+   skill says.
 2. **Run what is missing, in needs order.** For each piece, run its exit check. Passing: the piece
    exists; say so in one line and go on. Failing: spawn its builder with the Agent tool and its
    prompt below, then run the exit check again. Failing again: stop and say which check failed
