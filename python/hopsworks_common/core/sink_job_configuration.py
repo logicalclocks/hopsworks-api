@@ -128,6 +128,30 @@ class FullLoadConfig:
         self._initial_value = initial_value
 
 
+def _date_millis(value: Any) -> int:
+    """Epoch milliseconds from a number, an ISO time (UTC when it names no zone) or a date string such as 20261101."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value)
+    if "T" in text:
+        parsed = datetime.fromisoformat(text[:-1] if text.endswith("Z") else text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return int(parsed.timestamp() * 1000)
+    return util._get_timestamp_from_date_string(text)
+
+
+def _timestamp_start(value: Any) -> Any:
+    """An INCREMENTAL_TIMESTAMP start as the backend reads it, epoch milliseconds.
+
+    A number or a digit string is already epoch milliseconds and passes as given; an ISO
+    time or a dashed date (2026-11-01) is converted.
+    """
+    if value is None or isinstance(value, (int, float)) or str(value).isdigit():
+        return value
+    return _date_millis(value)
+
+
 @public("hopsworks.core.LoadingConfig")
 class LoadingConfig:
     def __init__(
@@ -169,36 +193,16 @@ class LoadingConfig:
             incremental_config = {"sourceCursorField": self._source_cursor_field}
             if self._rest_filter_param is not None:
                 incremental_config["restFilterParam"] = self._rest_filter_param
-            if self._loading_strategy in [
-                LoadingStrategy.INCREMENTAL_ID,
-                LoadingStrategy.INCREMENTAL_TIMESTAMP,
-            ]:
+            if self._loading_strategy == LoadingStrategy.INCREMENTAL_ID:
                 incremental_config["initialValue"] = self._initial_value
+            elif self._loading_strategy == LoadingStrategy.INCREMENTAL_TIMESTAMP:
+                incremental_config["initialValue"] = _timestamp_start(
+                    self._initial_value
+                )
             elif self._initial_value is not None:
-                if isinstance(self._initial_value, (int, float)):
-                    incremental_config["initialIngestionDate"] = int(
-                        self._initial_value
-                    )
-                else:
-                    initial_value = str(self._initial_value)
-                    parsed = None
-                    if "T" in initial_value:
-                        if initial_value.endswith("Z"):
-                            parsed = datetime.fromisoformat(initial_value[:-1])
-                            if parsed.tzinfo is None:
-                                parsed = parsed.replace(tzinfo=timezone.utc)
-                        else:
-                            parsed = datetime.fromisoformat(initial_value)
-                            if parsed.tzinfo is None:
-                                parsed = parsed.replace(tzinfo=timezone.utc)
-                    if parsed is not None:
-                        incremental_config["initialIngestionDate"] = int(
-                            parsed.timestamp() * 1000
-                        )
-                    else:
-                        incremental_config["initialIngestionDate"] = (
-                            util._get_timestamp_from_date_string(initial_value)
-                        )
+                incremental_config["initialIngestionDate"] = _date_millis(
+                    self._initial_value
+                )
             if all(value is None for value in incremental_config.values()):
                 incremental_config = None
 
@@ -440,6 +444,17 @@ class SinkJobConfiguration:
     @classmethod
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
+        flat = {"loading_strategy", "source_cursor_field", "initial_value"} & set(
+            json_decamelized
+        )
+        if flat:
+            raise ValueError(
+                f"{', '.join(sorted(flat))} belong in loading_config, for example "
+                '{"loading_config": {"loading_strategy": "INCREMENTAL_ID", '
+                '"incremental_loading_config": {"source_cursor_field": "id", '
+                '"initial_value": "0"}}}; at the top level they would be ignored '
+                "and the job would run a full load."
+            )
         loading_config = LoadingConfig.from_response_json(
             json_decamelized.get("loading_config", {})
         )

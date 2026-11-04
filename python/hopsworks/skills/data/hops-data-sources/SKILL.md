@@ -190,6 +190,17 @@ hops fg ingest sf_accounts --connector my_salesforce --table account --primary-k
 hops job run <job printed above>      # copy again later
 ```
 
+Copy only new rows on later runs: pick the strategy by the cursor column's type, `incremental-id` (an increasing number), `incremental-timestamp` (a timestamp) or `incremental-date` (a date). Each run reads from where the last one stopped; `--start` sets where the first run begins: an id for `incremental-id`; for `incremental-timestamp` epoch milliseconds or an ISO time or dashed date (`2026-11-01`), read as UTC when it names no zone; for `incremental-date` a date (`2026-11-01` or `20261101`) or an ISO time. The default `--strategy full` copies the whole table each run.
+
+```bash
+hops fg ingest orders --connector pg --table orders --primary-key id \
+  --strategy incremental-id --cursor id --start 0
+hops fg ingest events --connector pg --table events --primary-key id \
+  --strategy incremental-timestamp --cursor updated_at --start 2026-11-01T00:00:00Z
+```
+
+In the SDK the same settings sit inside `loading_config`: `SinkJobConfiguration(loading_config=LoadingConfig(loading_strategy="INCREMENTAL_ID", source_cursor_field="id", initial_value="0"))` (`from hopsworks.core import LoadingConfig, SinkJobConfiguration`). A dict passed as `sink_job_conf` takes the response shape: `{"loading_config": {"loading_strategy": "INCREMENTAL_ID", "incremental_loading_config": {"source_cursor_field": "id", "initial_value": "0"}}}`; loading keys at its top level are refused.
+
 The per-feature-group `sink_job` shown here is for ingesting a **single** table. Without `features`, `save()` reads the schema from the data source, as `hops datasource preview` shows it. When ingesting more than one table from the same connector, default to one multi-table job for all of them — see [Ingest many tables with one job](#ingest-many-tables-with-one-job) — instead of looping this pattern.
 
 ```python

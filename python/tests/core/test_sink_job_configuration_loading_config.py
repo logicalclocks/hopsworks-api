@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import json
+
 import pytest
 from hopsworks_common.core import sink_job_configuration
 
@@ -151,3 +153,62 @@ class TestLoadingConfig:
                 "initialValue": "100",
             },
         }
+
+
+@pytest.mark.parametrize(
+    "start, expected",
+    [
+        ("2026-11-01T00:00:00Z", 1793491200000),
+        ("2026-11-01T01:00:00+01:00", 1793491200000),
+        ("2026-11-01", 1793491200000),
+        ("1793491200000", "1793491200000"),
+        (1793491200000, 1793491200000),
+    ],
+)
+def test_incremental_timestamp_start_is_epoch_millis(start, expected):
+    config = sink_job_configuration.LoadingConfig(
+        loading_strategy="INCREMENTAL_TIMESTAMP",
+        source_cursor_field="updated_at",
+        initial_value=start,
+    )
+    assert config.to_dict()["incrementalLoadingConfig"]["initialValue"] == expected
+
+
+def test_incremental_id_start_is_sent_as_given():
+    config = sink_job_configuration.LoadingConfig(
+        loading_strategy="INCREMENTAL_ID", source_cursor_field="id", initial_value="10"
+    )
+    assert config.to_dict()["incrementalLoadingConfig"]["initialValue"] == "10"
+
+
+def test_a_flat_loading_key_is_refused():
+    with pytest.raises(ValueError, match="belong in loading_config"):
+        sink_job_configuration.SinkJobConfiguration.from_response_json(
+            {"loading_strategy": "INCREMENTAL_ID", "source_cursor_field": "id"}
+        )
+
+
+@pytest.mark.parametrize("start", ["20261101", "2026-11-01", "2026-11-01T00:00:00Z"])
+def test_incremental_date_start_keeps_its_date(start):
+    config = sink_job_configuration.LoadingConfig(
+        loading_strategy="INCREMENTAL_DATE",
+        source_cursor_field="day",
+        initial_value=start,
+    )
+    assert config.to_dict()["incrementalLoadingConfig"]["initialIngestionDate"] == (
+        1793491200000
+    )
+
+
+def test_the_refusal_example_round_trips():
+    with pytest.raises(ValueError) as refused:
+        sink_job_configuration.SinkJobConfiguration.from_response_json(
+            {"loading_strategy": "INCREMENTAL_ID"}
+        )
+    example = json.loads(str(refused.value).split("for example ")[1].split("; at")[0])
+    config = sink_job_configuration.SinkJobConfiguration.from_response_json(example)
+    assert config.loading_config.to_dict() == {
+        "loadingStrategy": "INCREMENTAL_ID",
+        "incrementalLoadingConfig": {"sourceCursorField": "id", "initialValue": "0"},
+        "fullLoadConfig": None,
+    }

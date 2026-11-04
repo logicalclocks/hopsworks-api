@@ -719,6 +719,14 @@ def fg_create_external(
         output.print_json(_fg_to_dict(fg))
 
 
+_INGEST_STRATEGIES = {
+    "full": "FULL_LOAD",
+    "incremental-id": "INCREMENTAL_ID",
+    "incremental-timestamp": "INCREMENTAL_TIMESTAMP",
+    "incremental-date": "INCREMENTAL_DATE",
+}
+
+
 @fg_group.command("ingest")
 @click.argument("name")
 @click.option(
@@ -738,6 +746,21 @@ def fg_create_external(
 @click.option("--version", type=int, help="Feature group version.")
 @click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
 @click.option("--event-time", "event_time", help="Event-time column.")
+@click.option(
+    "--strategy",
+    type=click.Choice(list(_INGEST_STRATEGIES)),
+    default="full",
+    show_default=True,
+    help="full copies the whole table each run; incremental-* copies only rows past the last run's cursor.",
+)
+@click.option(
+    "--cursor",
+    help="Column the incremental strategies track (an id, timestamp or date column).",
+)
+@click.option(
+    "--start",
+    help="First run's start: an id for incremental-id; epoch ms, an ISO time or a dashed date for incremental-timestamp; a date or ISO time for incremental-date.",
+)
 @click.option("--online", is_flag=True, help="Also load the online feature store.")
 @click.option("--description", default="", help="Free-form description.")
 @click.option(
@@ -755,6 +778,9 @@ def fg_ingest(
     version: int | None,
     primary_key: str | None,
     event_time: str | None,
+    strategy: str,
+    cursor: str | None,
+    start: str | None,
     online: bool,
     description: str,
     wait: bool,
@@ -774,6 +800,9 @@ def fg_ingest(
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
         event_time: Event-time column.
+        strategy: Loading strategy, full or incremental-*.
+        cursor: Column an incremental strategy tracks.
+        start: First run's start value.
         online: Whether to enable the online store.
         description: Free-form description.
         wait: Whether to wait for the copy to end.
@@ -783,6 +812,7 @@ def fg_ingest(
         datasource as ds_cmd,  # noqa: PLC0415 - it imports fg
     )
 
+    sink_job_conf = _sink_job_conf(strategy, cursor, start)
     fs = session.get_feature_store(ctx)
     try:
         data_source = fs.get_data_source(connector_name)
@@ -797,7 +827,15 @@ def fg_ingest(
     # The SDK prints banners on save and run; --json keeps stdout for the payload.
     with auth.quiet() if output.JSON_MODE else contextlib.nullcontext():
         fg = _ingest(
-            fs, name, version, description, online, primary_key, event_time, data_source
+            fs,
+            name,
+            version,
+            description,
+            online,
+            primary_key,
+            event_time,
+            data_source,
+            sink_job_conf,
         )
         execution = _run_ingest(fg, wait)
     if output.JSON_MODE:
@@ -810,8 +848,40 @@ def fg_ingest(
         )
 
 
+def _sink_job_conf(strategy: str, cursor: str | None, start: str | None):
+    """The sink job's loading config, or None for a full load with the backend defaults."""
+    from hopsworks_common.core.sink_job_configuration import (  # noqa: PLC0415 - SDK loaded on use
+        LoadingConfig,
+        SinkJobConfiguration,
+    )
+
+    if strategy == "full":
+        if cursor or start:
+            raise click.UsageError(
+                "--cursor and --start go with an incremental --strategy."
+            )
+        return None
+    if not cursor:
+        raise click.UsageError(f"--strategy {strategy} needs --cursor.")
+    return SinkJobConfiguration(
+        loading_config=LoadingConfig(
+            loading_strategy=_INGEST_STRATEGIES[strategy],
+            source_cursor_field=cursor,
+            initial_value=start,
+        )
+    )
+
+
 def _ingest(
-    fs, name, version, description, online, primary_key, event_time, data_source
+    fs,
+    name,
+    version,
+    description,
+    online,
+    primary_key,
+    event_time,
+    data_source,
+    sink_job_conf=None,
 ):
     """The sink feature group on ``data_source``, saved: its schema read from the source."""
     try:
@@ -824,6 +894,7 @@ def _ingest(
             event_time=event_time,
             data_source=data_source,
             sink_enabled=True,
+            sink_job_conf=sink_job_conf,
         )
         fg.save()
     except Exception as exc:  # noqa: BLE001

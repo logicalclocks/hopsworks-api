@@ -256,6 +256,76 @@ def test_ingest_makes_a_sink_group_on_the_table_and_runs_its_job(mock_project):
     assert "my_salesforce_to_sf_accounts_1" in result.output
 
 
+def _ingest_args(*extra):
+    return [
+        "fg",
+        "ingest",
+        "events",
+        "--connector",
+        "pg",
+        "--table",
+        "events",
+        "--primary-key",
+        "id",
+        "--no-wait",
+        *extra,
+    ]
+
+
+def _ingest_project(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_data_source.return_value = DataSource(storage_connector=mock.MagicMock())
+    fg = fs.create_feature_group.return_value
+    fg.name, fg.version = "events", 1
+    fg.sink_job.name = "pg_to_events_1"
+    return fs
+
+
+def test_ingest_incremental_sends_strategy_cursor_and_start(mock_project):
+    fs = _ingest_project(mock_project)
+    result = CliRunner().invoke(
+        cli,
+        _ingest_args(
+            "--strategy",
+            "incremental-timestamp",
+            "--cursor",
+            "updated_at",
+            "--start",
+            "2026-11-01T00:00:00Z",
+        ),
+    )
+    assert result.exit_code == 0, result.output
+    conf = fs.create_feature_group.call_args.kwargs["sink_job_conf"]
+    assert conf.loading_config.to_dict()["loadingStrategy"] == "INCREMENTAL_TIMESTAMP"
+    assert conf.loading_config.to_dict()["incrementalLoadingConfig"] == {
+        "sourceCursorField": "updated_at",
+        "initialValue": 1793491200000,
+    }
+
+
+def test_ingest_full_keeps_the_backend_defaults(mock_project):
+    fs = _ingest_project(mock_project)
+    result = CliRunner().invoke(cli, _ingest_args())
+    assert result.exit_code == 0, result.output
+    assert fs.create_feature_group.call_args.kwargs["sink_job_conf"] is None
+
+
+@pytest.mark.parametrize(
+    "extra, message",
+    [
+        (("--strategy", "incremental-id"), "--strategy incremental-id needs --cursor"),
+        (("--cursor", "id"), "--cursor and --start go with an incremental --strategy"),
+        (("--start", "5"), "--cursor and --start go with an incremental --strategy"),
+    ],
+)
+def test_ingest_refuses_a_cursor_mismatch_before_any_call(mock_project, extra, message):
+    fs = _ingest_project(mock_project)
+    result = CliRunner().invoke(cli, _ingest_args(*extra))
+    assert result.exit_code == 2, result.output
+    assert message in result.output
+    fs.create_feature_group.assert_not_called()
+
+
 def test_a_cell_keeps_its_row_on_one_line():
     from hopsworks.cli.commands.fg import _truncate_cell
 
