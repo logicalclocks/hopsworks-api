@@ -17,6 +17,7 @@ from hopsworks_common.semantic_layer import (
     SemanticBuild,
     SemanticIssue,
     SemanticMetric,
+    SemanticProject,
 )
 
 
@@ -489,6 +490,28 @@ class TestProjectSettings:
 
         assert result.exit_code == 0, result.output
         assert "has no valid build" in result.output
+
+    def test_show_lists_tags_and_missing_mandatory_tags(self, sales):
+        sales.get_tags.return_value = {"owner": "finance", "domain": "sales"}
+        sales.missing_mandatory_tags = ["certified"]
+
+        result = _run("show", "sales")
+
+        assert result.exit_code == 0, result.output
+        assert "domain, owner" in result.output
+        assert "certified" in result.output
+
+    def test_list_warns_about_missing_mandatory_tags(self, sl):
+        sl.get_projects.return_value = [
+            SemanticProject(name="sales", missing_mandatory_tags=[{"name": "owner"}]),
+            SemanticProject(name="tagged"),
+        ]
+
+        result = _run("list")
+
+        assert result.exit_code == 0, result.output
+        assert "sales lacks mandatory tags: owner" in result.output
+        assert "tagged lacks" not in result.output
 
 
 class TestExplainAndTest:

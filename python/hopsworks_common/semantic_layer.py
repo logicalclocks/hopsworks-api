@@ -301,6 +301,7 @@ class SemanticProject:
         latest_build: dict[str, Any] | SemanticBuild | None = None,
         creator: str | None = None,
         created: str | None = None,
+        missing_mandatory_tags: list[dict[str, Any] | str] | None = None,
         semantic_layer_api: SemanticLayerApi | None = None,
         **kwargs,
     ) -> None:
@@ -320,6 +321,10 @@ class SemanticProject:
         )
         self._creator = creator
         self._created = created
+        self._missing_mandatory_tags = [
+            tag["name"] if isinstance(tag, dict) else tag
+            for tag in missing_mandatory_tags or []
+        ]
         self._semantic_layer_api = semantic_layer_api
 
     @classmethod
@@ -355,6 +360,7 @@ class SemanticProject:
             else None,
             "creator": self._creator,
             "created": self._created,
+            "missing_mandatory_tags": self._missing_mandatory_tags,
         }
 
     def json(self) -> str:
@@ -437,6 +443,12 @@ class SemanticProject:
     def created(self) -> str | None:
         """When the semantic project was registered, as an ISO-8601 UTC timestamp."""
         return self._created
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[str]:
+        """Names of the mandatory semantic project tags the project lacks, empty when it has them all or on a community cluster."""
+        return self._missing_mandatory_tags
 
     # region Builds
 

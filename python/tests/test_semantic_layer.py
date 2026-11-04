@@ -172,7 +172,16 @@ class TestModels:
         )
         assert sp.to_dict()["latest_build"]["git_commit"] == "a1b2c3d"
         assert sp.current_build_id is None
+        assert sp.missing_mandatory_tags == []
         assert SemanticProject.from_response_json(None) is None
+
+    def test_missing_mandatory_tags_are_their_names(self):
+        sp = SemanticProject.from_response_json(
+            {"id": 7, "name": "sales", "missingMandatoryTags": [{"name": "owner"}]}
+        )
+
+        assert sp.missing_mandatory_tags == ["owner"]
+        assert sp.to_dict()["missing_mandatory_tags"] == ["owner"]
 
     def test_build_with_issues(self):
         build = SemanticBuild.from_response_json(

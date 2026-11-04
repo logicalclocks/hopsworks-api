@@ -120,6 +120,14 @@ def list_cmd(ctx: click.Context) -> None:
             for sp in projects
         ],
     )
+    for sp in projects:
+        if sp.missing_mandatory_tags:
+            output.warn(
+                "%s lacks mandatory tags: %s (hops semantic tag set %s <name> <value>).",
+                sp.name,
+                ", ".join(sp.missing_mandatory_tags),
+                sp.name,
+            )
 
 
 @semantic_group.command("create")
@@ -237,9 +245,14 @@ def show_cmd(ctx: click.Context, name: str) -> None:
     except SemanticLayerException as exc:
         serving = None
         served = exc.error_msg or str(exc)
+    tags = sp.get_tags()
     if output.JSON_MODE:
         output.print_json(
-            {**sp.to_dict(), "serving": serving.to_dict() if serving else None}
+            {
+                **sp.to_dict(),
+                "tags": tags,
+                "serving": serving.to_dict() if serving else None,
+            }
         )
         return
     output.print_table(
@@ -254,6 +267,8 @@ def show_cmd(ctx: click.Context, name: str) -> None:
             ["current build", sp.current_build_id or "-"],
             ["latest build", _build_label(sp.latest_build)],
             ["gateway serves", served],
+            ["tags", ", ".join(sorted(tags)) or "-"],
+            ["missing mandatory tags", ", ".join(sp.missing_mandatory_tags) or "-"],
         ],
     )
 
