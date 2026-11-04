@@ -1,13 +1,9 @@
-"""Tests for ``hops score``: links, refusals, admission, reads, schedule and the current run.
+"""Unit tests for ``hops score``: links, refusals, the generated SQL text, caps, schedule, publication.
 
-SQL runs on real pandas frames in an in-memory SQLite database; no part of the code
-under test is replaced.
+Nothing here executes SQL. The SQL runs against the cluster's Trino in tests/live/test_score.py.
 """
 
 from __future__ import annotations
-
-import hashlib
-import sqlite3
 
 import pandas as pd
 import pytest
@@ -15,27 +11,6 @@ from hopsworks.cli.commands import score
 from hopsworks.cli.commands.score import GroupInfo
 from hopsworks.score import kumo_job
 from hopsworks.score.kumo_job import Link, ScoreRefused
-
-
-class SqliteSql:
-    """The `rows` and `frame` interface of kumo_job.TrinoSql, over real frames."""
-
-    def __init__(self, **frames: pd.DataFrame):
-        self.conn = sqlite3.connect(":memory:")
-        # The Trino functions the seeded sample order calls.
-        self.conn.create_function("to_utf8", 1, lambda v: v)
-        self.conn.create_function(
-            "md5", 1, lambda v: hashlib.md5(str(v).encode()).hexdigest()
-        )
-        self.conn.create_function("concat", -1, lambda *a: "".join(map(str, a)))
-        for name, frame in frames.items():
-            frame.to_sql(name, self.conn, index=False)
-
-    def rows(self, sql):
-        return self.conn.execute(sql).fetchall()
-
-    def frame(self, sql):
-        return pd.read_sql_query(sql, self.conn)
 
 
 def info(name, columns, pk=(), fk=(), cached=True, version=1):
@@ -165,15 +140,16 @@ def test_link_checks_columns_and_types(crm):
 
 def test_non_unique_right_side_refuses_with_counts(crm):
     p = plan(crm, ["deals.contact_id=contacts.id"])
-    sql = SqliteSql(
-        contacts_1=pd.DataFrame({"id": [1, 2, 2, 3], "region": list("abcd")})
+    link = p.links[0]
+    assert score.unique_sql(p, link) == (
+        'SELECT (SELECT count(*) FROM "contacts_1"), '
+        '(SELECT count(*) FROM (SELECT DISTINCT "id" FROM "contacts_1"))'
     )
     with pytest.raises(
         ScoreRefused, match=r"contacts.id is not unique, 4 rows hold 3 distinct"
     ):
-        score.check_unique(p, sql)
-    ok = SqliteSql(contacts_1=pd.DataFrame({"id": [1, 2, 3], "region": list("abc")}))
-    score.check_unique(p, ok)
+        score.check_counts(link, 4, 3)
+    score.check_counts(link, 3, 3)
 
 
 def test_external_group_is_refused_with_the_ingest_command(crm):
@@ -395,65 +371,15 @@ def test_ended_executions_allow_a_run():
 # region: the current run
 
 
-def _scores(run_id, ids, scores):
-    return pd.DataFrame({"id": ids, "run_id": run_id, "score": scores})
-
-
-def _runs(*rows):
-    return pd.DataFrame(
-        rows,
-        columns=[
-            "run_id",
-            "started_at",
-            "completed_at",
-            "query_rows",
-            "scored_rows",
-            "model_version",
-        ],
+def test_the_current_run_is_read_from_the_runs_table_only():
+    sql = score.current_run_sql("pipe")
+    assert (
+        'FROM "pipe_score_runs_1" ORDER BY completed_at DESC, run_id DESC LIMIT 1'
+        in sql
     )
-
-
-def test_a_closed_deal_leaves_the_current_ranking_on_the_next_run():
-    sql = SqliteSql(
-        pipe_scores_1=pd.concat(
-            [_scores("A", [1, 2], [0.9, 0.2]), _scores("B", [2], [0.3])]
-        ),
-        pipe_score_runs_1=_runs(
-            ("A", "2026-11-01 10:00", "2026-11-01 10:05", 2, 2, "m"),
-            ("B", "2026-11-02 10:00", "2026-11-02 10:05", 1, 1, "m"),
-        ),
-    )
-    run, ranking = score.current_ranking(sql, "pipe")
-    assert run["run_id"] == "B"
-    assert list(ranking["id"]) == [2]  # deal 1 closed: no current score
-
-
-def test_all_closed_gives_an_empty_run_that_is_named():
-    sql = SqliteSql(
-        pipe_scores_1=_scores("A", [1], [0.9]),
-        pipe_score_runs_1=_runs(
-            ("A", "2026-11-01 10:00", "2026-11-01 10:05", 1, 1, "m"),
-            ("B", "2026-11-02 10:00", "2026-11-02 10:01", 0, 0, "m"),
-        ),
-    )
-    run, ranking = score.current_ranking(sql, "pipe")
-    assert run["run_id"] == "B" and run["scored_rows"] == 0
-    assert ranking is None
-
-
-def test_scores_without_a_run_row_are_never_current():
-    # A run killed after its scores insert and before its run row.
-    sql = SqliteSql(
-        pipe_scores_1=pd.concat(
-            [_scores("A", [1], [0.9]), _scores("B", [1, 2], [0.5, 0.4])]
-        ),
-        pipe_score_runs_1=_runs(
-            ("A", "2026-11-01 10:00", "2026-11-01 10:05", 1, 1, "m")
-        ),
-    )
-    run, ranking = score.current_ranking(sql, "pipe")
-    assert run["run_id"] == "A"
-    assert list(ranking["id"]) == [1]
+    ranking = score.ranking_sql("pipe", "20261101T100000-ab12cd", 5)
+    assert "\"pipe_scores_1\" WHERE run_id = '20261101T100000-ab12cd'" in ranking
+    assert ranking.endswith("ORDER BY score DESC LIMIT 5")
 
 
 # region: publication order

@@ -277,21 +277,31 @@ def build_plan(
     )
 
 
-def check_unique(plan: Plan, sql: Any) -> None:
+def unique_sql(plan: Plan, link: Link) -> str:
+    """Rows and distinct keys of the right side of a link."""
+    cols = ", ".join(kumo_job.ident(c) for c in link.right_cols)
+    tbl = kumo_job.table(plan, link.right)
+    return (
+        f"SELECT (SELECT count(*) FROM {tbl}), "
+        f"(SELECT count(*) FROM (SELECT DISTINCT {cols} FROM {tbl}))"
+    )
+
+
+def check_counts(link: Link, rows: int, distinct: int) -> None:
     """Refuse a link whose right side repeats a key: a row could join to several."""
+    if rows != distinct:
+        right = "+".join(f"{link.right}.{c}" for c in link.right_cols)
+        raise ScoreRefused(
+            f"link {link}: {right} is not unique, {rows} rows hold {distinct} distinct keys. "
+            f"Link the other way round, or ingest {link.right} without repeated keys."
+        )
+
+
+def check_unique(plan: Plan, sql: Any) -> None:
+    """Run the uniqueness count of every link through `sql` and refuse a repeated key."""
     for link in plan.links:
-        cols = ", ".join(kumo_job.ident(c) for c in link.right_cols)
-        tbl = kumo_job.table(plan, link.right)
-        rows, distinct = sql.rows(
-            f"SELECT (SELECT count(*) FROM {tbl}), "
-            f"(SELECT count(*) FROM (SELECT DISTINCT {cols} FROM {tbl}))"
-        )[0]
-        if rows != distinct:
-            right = "+".join(f"{link.right}.{c}" for c in link.right_cols)
-            raise ScoreRefused(
-                f"link {link}: {right} is not unique, {rows} rows hold {distinct} distinct keys. "
-                f"Link the other way round, or ingest {link.right} without repeated keys."
-            )
+        rows, distinct = sql.rows(unique_sql(plan, link))[0]
+        check_counts(link, rows, distinct)
 
 
 # region: schedule --------------------------------------------------------
@@ -332,12 +342,23 @@ def _runs_table(name: str) -> str:
     return kumo_job.ident(f"{name}_score_runs_1")
 
 
-def current_run(sql: Any, name: str) -> dict[str, Any] | None:
-    """The latest completed run: the newest row of `<name>_score_runs`."""
-    rows = sql.rows(
+def current_run_sql(name: str) -> str:
+    return (
         "SELECT run_id, started_at, completed_at, query_rows, scored_rows, model_version "
         f"FROM {_runs_table(name)} ORDER BY completed_at DESC, run_id DESC LIMIT 1"
     )
+
+
+def ranking_sql(name: str, run_id: Any, top: int) -> str:
+    return (
+        f"SELECT * FROM {kumo_job.ident(f'{name}_scores_1')} "
+        f"WHERE run_id = {kumo_job.literal(run_id)} ORDER BY score DESC LIMIT {int(top)}"
+    )
+
+
+def current_run(sql: Any, name: str) -> dict[str, Any] | None:
+    """The latest completed run: the newest row of `<name>_score_runs`."""
+    rows = sql.rows(current_run_sql(name))
     if not rows:
         return None
     keys = (
@@ -358,10 +379,7 @@ def current_ranking(
     run = current_run(sql, name)
     if run is None or not run["scored_rows"]:
         return run, None
-    return run, sql.frame(
-        f"SELECT * FROM {kumo_job.ident(f'{name}_scores_1')} "
-        f"WHERE run_id = {kumo_job.literal(run['run_id'])} ORDER BY score DESC LIMIT {int(top)}"
-    )
+    return run, sql.frame(ranking_sql(name, run["run_id"], top))
 
 
 # region: command ---------------------------------------------------------

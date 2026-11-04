@@ -17,14 +17,17 @@
 
 Makes feature groups of deals and contacts, then checks: a first run, a deal scored on run A
 and closed before run B (absent from the current ranking), the all-closed run (the current run
-is empty and named), and `--delete` leaving no job, schedule or scores group. Not covered here:
-the CRM path with `hops fg ingest` and the external group refusal, which need data sources. Runs
+is empty and named), scores of a run with no run row never current, and `--delete` leaving no job,
+schedule or scores group. The admission and link checks run against the cluster's Trino: an
+oversized entity group refused before any read, the related caps counted on the rows reachable
+from the selection, a non-unique link refused. Not covered here: the CRM path with `hops fg ingest` and the external group refusal, which need data sources. Runs
 only with HOPS_LIVE=1 and a cluster login in HOPSWORKS_HOST,
 HOPSWORKS_API_KEY and HOPSWORKS_PROJECT; the project needs the scoring-pipeline environment.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -107,6 +110,14 @@ def test_scores_current_run_and_delete():
         shown = _hops("score", name, "--show")
         assert "5 of 5 query rows scored" in _out(shown) or "scored_rows" in _out(shown)
 
+        # A run killed after its scores insert and before its run row is never current.
+        scores_fg = fs.get_feature_group(f"{name}_scores", version=1)
+        orphan = scores_fg.read().head(2)
+        orphan["run_id"] = "orphan"
+        orphan["scored_at"] = pd.Timestamp("2099-01-01")
+        scores_fg.insert(orphan, wait=True)
+        assert "orphan" not in _out(_hops("score", name, "--show", "--json"))
+
         # Close deal 0 and score again: it has no current score after run B.
         fg = fs.get_feature_group(deals, version=1)
         row = frame.iloc[[0]].copy()
@@ -134,3 +145,156 @@ def test_scores_current_run_and_delete():
         _hops("score", name, "--delete", "--yes")
         for fg in created:
             fg.delete()
+
+
+class _Cluster:
+    """Feature groups of one test, deleted at the end; Trino through the project's own client."""
+
+    def __init__(self):
+        import hopsworks
+        from hopsworks.score import kumo_job
+
+        self.project = hopsworks.login()
+        self.fs = self.project.get_feature_store()
+        self.tag = uuid.uuid4().hex[:6]
+        self.groups = []
+        self.sql = kumo_job.TrinoSql(self.project, self.fs.name)
+
+    def make(self, stem, frame, pk):
+        fg = self.fs.create_feature_group(
+            f"{stem}_{self.tag}", version=1, primary_key=pk, statistics_config=False
+        )
+        fg.insert(frame, wait=True)
+        self.groups.append(fg)
+        return f"{stem}_{self.tag}"
+
+    def plan(self, entity, links, **kw):
+        from hopsworks.cli.commands import score
+
+        names = {entity, *(g for text in links for g in _groups(text))}
+        infos = {n: score._info(self.fs.get_feature_group(n, version=1)) for n in names}
+        return score.build_plan(
+            "adm", entity, infos, [score.parse_link(t) for t in links], "won", **kw
+        )
+
+    def drop(self):
+        for fg in self.groups:
+            with contextlib.suppress(Exception):
+                fg.delete()
+
+
+def _groups(link):
+    return [side.split(".")[0] for side in link.replace("+", "=").split("=")]
+
+
+@pytest.fixture
+def cluster():
+    c = _Cluster()
+    yield c
+    c.drop()
+
+
+def _crm_frames(n_deals=60, per_deal=3):
+    import numpy as np
+    import pandas as pd
+
+    deals = pd.DataFrame(
+        {
+            "id": np.arange(n_deals),
+            "contact_id": np.arange(n_deals) % 20,
+            "won": (np.arange(n_deals) % 2).astype(object),
+            "closed_at": pd.Timestamp("2026-01-01")
+            + pd.to_timedelta(np.arange(n_deals), unit="D"),
+        }
+    )
+    deals.loc[:1, ["won", "closed_at"]] = None  # two open deals
+    contacts = pd.DataFrame({"id": np.arange(20), "account_id": np.arange(20) % 5})
+    accounts = pd.DataFrame({"id": np.arange(5), "plan": list("abcde")})
+    activities = pd.DataFrame(
+        {
+            "id": np.arange(n_deals * per_deal),
+            "deal_id": np.repeat(np.arange(n_deals), per_deal),
+            "kind": "call",
+        }
+    )
+    return deals, contacts, accounts, activities
+
+
+def test_oversized_entity_group_is_refused_before_any_read(cluster, monkeypatch):
+    from hopsworks.score import kumo_job
+
+    deals, contacts, _, _ = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    plan = cluster.plan(d, [f"{d}.contact_id={c}.id"], cutoff=f"{d}.closed_at")
+    monkeypatch.setattr(kumo_job, "ENTITY_BYTES_MAX", 50)
+    reader = kumo_job.Reader(cluster.sql)
+    with pytest.raises(kumo_job.ScoreRefused, match="over the cap of 50 bytes"):
+        kumo_job.load_inputs(plan, reader)
+    assert reader.reads == []
+    assert [g for kind, g, _ in reader.calls if kind == "admission"]
+
+
+def test_related_caps_count_only_the_rows_reachable_from_the_selection(
+    cluster, monkeypatch
+):
+    from hopsworks.score import kumo_job
+
+    deals, contacts, accounts, activities = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    a = cluster.make("accounts", accounts, ["id"])
+    act = cluster.make("activities", activities, ["id"])
+    plan = cluster.plan(
+        d,
+        [
+            f"{d}.contact_id={c}.id",
+            f"{c}.account_id={a}.id",
+            f"{act}.deal_id={d}.id",
+        ],
+        cutoff=f"{d}.closed_at",
+        context_rows=2,
+        query_rows=10,
+    )
+    # The selection: the 2 open deals and the 2 most recently closed.
+    closed = deals[deals["won"].notna()].sort_values("closed_at", ascending=False)
+    chosen = deals[deals["won"].isna()]["id"].tolist() + closed["id"].head(2).tolist()
+    want_contacts = contacts[
+        contacts["id"].isin(deals[deals["id"].isin(chosen)]["contact_id"])
+    ]
+    want = {
+        c: len(want_contacts),
+        a: accounts["id"].isin(want_contacts["account_id"]).sum(),
+        act: activities["deal_id"].isin(chosen).sum(),
+    }
+    assert want[act] < len(activities)
+
+    reader = kumo_job.Reader(cluster.sql)
+    stats = kumo_job.admit(plan, reader)
+    assert {g: s["rows"] for g, s in stats.items() if g != d} == want
+    assert reader.reads == []
+
+    # A cap between the reachable count and the whole table admits; one below it refuses.
+    monkeypatch.setattr(kumo_job, "RELATED_ROWS_MAX", sum(want.values()))
+    kumo_job.admit(plan, kumo_job.Reader(cluster.sql))
+    monkeypatch.setattr(kumo_job, "RELATED_ROWS_MAX", sum(want.values()) - 1)
+    reader = kumo_job.Reader(cluster.sql)
+    with pytest.raises(kumo_job.ScoreRefused, match="reachable from the selected rows"):
+        kumo_job.load_inputs(plan, reader)
+    assert reader.reads == []
+
+
+def test_non_unique_right_side_of_a_link_is_refused(cluster):
+    import pandas as pd
+    from hopsworks.cli.commands import score
+    from hopsworks.score import kumo_job
+
+    deals, contacts, _, _ = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    dup = pd.concat([contacts, contacts.head(1)], ignore_index=True).assign(
+        row=lambda f: range(len(f))
+    )
+    c = cluster.make("contacts", dup, ["row"])
+    plan = cluster.plan(d, [f"{d}.contact_id={c}.id"])
+    with pytest.raises(kumo_job.ScoreRefused, match="is not unique, 21 rows hold 20"):
+        score.check_unique(plan, cluster.sql)
