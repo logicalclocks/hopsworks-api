@@ -514,7 +514,7 @@ The audit log is CSV in `date=YYYY-MM-DD` partitions (columns `execution_id, op,
 
 A `gmail` data source is a mailbox, read with an OAuth refresh token or a Workspace service account with domain-wide delegation, both with the `gmail.readonly` scope.
 Its credentials are write-only; code that calls Gmail itself asks for a short-lived token with `get_access_token()`.
-It is not browsed or mounted: a sync job upserts its emails into a Delta feature group named after the mailbox (`dowling.jim@gmail.com` → `dowling_jim_gmails`), partitioned by the `day` of the UTC receive time (an hourly job adds a file per run, and the first run after midnight compacts the finished day), and writes attachments as files whose paths the `attachments` column lists.
+It is not browsed or mounted: a sync job upserts its emails into a Delta feature group named after the mailbox (`jane.doe@gmail.com` → `jane_doe_gmails`), partitioned by the `day` of the UTC receive time (an hourly job adds a file per run, and the first run after midnight compacts the finished day), and writes attachments as files whose paths the `attachments` column lists.
 
 ```bash
 hops datasource create gmail support_inbox --mailbox support@example.com --auth-type OAUTH --client-id CID --client-secret - --refresh-token - < secrets.txt

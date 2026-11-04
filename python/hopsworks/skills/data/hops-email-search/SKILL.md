@@ -5,7 +5,7 @@ description: Search and analyze emails that a Gmail data source copied into a Ho
 
 # Email search with DuckDB
 
-A Gmail data source's sync job upserts every email into a Delta feature group named after the mailbox (`dowling.jim@gmail.com` → `dowling_jim_gmails`, version 1), partitioned by `day`.
+A Gmail data source's sync job upserts every email into a Delta feature group named after the mailbox (`jane.doe@gmail.com` → `jane_doe_gmails`, version 1), partitioned by `day`.
 In a Hopsworks terminal that table is mounted read-only, and the DuckDB CLI reads it in place with its `delta` extension.
 
 Use **only the DuckDB CLI** for inspecting and querying emails.

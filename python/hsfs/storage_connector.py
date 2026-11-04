@@ -7286,7 +7286,7 @@ class GmailConnector(StorageConnector):
             ```
 
         Parameters:
-            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `dowling_jim_gmails` for `dowling.jim@gmail.com`.
+            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `jane_doe_gmails` for `jane.doe@gmail.com`.
             attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/gmail/<feature group name>`.
             query: Gmail search query selecting the messages, written as in the Gmail search box.
             labels: Gmail label ids selecting the messages to copy, such as `["INBOX", "SENT"]`; a message carrying any of them is copied, and without labels every message is. [`get_labels`][hsfs.storage_connector.GmailConnector.get_labels] lists the mailbox's labels.
