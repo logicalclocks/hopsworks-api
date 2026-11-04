@@ -136,13 +136,16 @@ def literal(value: Any) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def admission_sql(plan: Plan, group: str) -> str:
-    """Row count and the summed byte length of the projected columns of one group."""
-    sizes = " + ".join(
+def _sizes(plan: Plan, group: str) -> str:
+    return " + ".join(
         f"coalesce(length(cast({ident(c)} as varchar)), 0)"
         for c in plan.groups[group].names
     )
-    return f"SELECT count(*), coalesce(sum({sizes}), 0) FROM {table(plan, group)}"
+
+
+def admission_sql(plan: Plan, group: str) -> str:
+    """Row count and the summed byte length of the projected columns of one group."""
+    return f"SELECT count(*), coalesce(sum({_sizes(plan, group)}), 0) FROM {table(plan, group)}"
 
 
 def _order(plan: Plan) -> str:
@@ -157,16 +160,16 @@ def _columns(plan: Plan, group: str) -> str:
     return ", ".join(ident(c) for c in plan.groups[group].names)
 
 
-def query_sql(plan: Plan) -> str:
+def query_sql(plan: Plan, columns: str | None = None) -> str:
     """The rows to score: the target is null, or the `--where` filter, at most query_rows."""
     cond = f"({plan.where})" if plan.where else f"{ident(plan.target)} IS NULL"
     return (
-        f"SELECT {_columns(plan, plan.entity)} FROM {table(plan, plan.entity)} "
+        f"SELECT {columns or _columns(plan, plan.entity)} FROM {table(plan, plan.entity)} "
         f"WHERE {cond} ORDER BY {_order(plan)} LIMIT {plan.query_rows}"
     )
 
 
-def context_sql(plan: Plan) -> str:
+def context_sql(plan: Plan, columns: str | None = None) -> str:
     """The labelled rows, at most context_rows, never a row the query takes."""
     conds = [f"{ident(plan.target)} IS NOT NULL"]
     if plan.cutoff:
@@ -174,7 +177,7 @@ def context_sql(plan: Plan) -> str:
     if plan.where:
         conds.append(f"NOT coalesce(({plan.where}), false)")
     return (
-        f"SELECT {_columns(plan, plan.entity)} FROM {table(plan, plan.entity)} "
+        f"SELECT {columns or _columns(plan, plan.entity)} FROM {table(plan, plan.entity)} "
         f"WHERE {' AND '.join(conds)} ORDER BY {_order(plan)} LIMIT {plan.context_rows}"
     )
 
@@ -188,6 +191,89 @@ def related_sql(plan: Plan, group: str, cols: list[str], keys: list[tuple]) -> s
         rows = ", ".join("(" + ", ".join(literal(v) for v in k) + ")" for k in keys)
         match = f"({names}) IN ({rows})"
     return f"SELECT {_columns(plan, group)} FROM {table(plan, group)} WHERE {match}"
+
+
+Step = tuple[
+    str, list[str], str, list[str]
+]  # source group, its columns, target group, its columns
+
+
+def steps(plan: Plan) -> list[Step]:
+    """The order the related groups are reached from the entity through the links, 2 hops at most."""
+    depth = {plan.entity: 0}
+    pending = list(plan.links)
+    out: list[Step] = []
+    progressed = True
+    while pending and progressed:
+        progressed = False
+        for link in list(pending):
+            if link.left in depth and link.right not in depth:
+                src, src_cols, dst, dst_cols = (
+                    link.left,
+                    link.left_cols,
+                    link.right,
+                    link.right_cols,
+                )
+            elif link.right in depth and link.left not in depth:
+                src, src_cols, dst, dst_cols = (
+                    link.right,
+                    link.right_cols,
+                    link.left,
+                    link.left_cols,
+                )
+            else:
+                if link.left in depth and link.right in depth:
+                    pending.remove(link)
+                continue
+            if depth[src] + 1 > MAX_DEPTH:
+                raise ScoreRefused(
+                    f"{dst} is more than {MAX_DEPTH} hops from {plan.entity}."
+                )
+            depth[dst] = depth[src] + 1
+            out.append((src, src_cols, dst, dst_cols))
+            pending.remove(link)
+            progressed = True
+    unreached = [g for g in plan.related if g not in depth]
+    if unreached:
+        raise ScoreRefused(
+            f"{', '.join(unreached)} not reachable from {plan.entity} through the links."
+        )
+    return out
+
+
+def reach_sql(plan: Plan) -> str | None:
+    """Rows and bytes of the related rows reachable from the selected context and query rows.
+
+    The same IN-filter the reads use, as a chain of semi-joins from the selected entity keys,
+    one row per related group: (group, rows, bytes). None when the plan has no related group.
+    """
+    chain = steps(plan)
+    if not chain:
+        return None
+    keys = list(
+        dict.fromkeys(
+            c for src, cols, _, _ in chain if src == plan.entity for c in cols
+        )
+    )
+    cols = ", ".join(ident(c) for c in keys)
+    ctes = [f"sel AS (({query_sql(plan, cols)}) UNION ({context_sql(plan, cols)}))"]
+    alias = {plan.entity: "sel"}
+    counts = []
+    for i, (src, src_cols, dst, dst_cols) in enumerate(chain):
+        name = f"r{i}"
+        match = " AND ".join(
+            f"s.{ident(sc)} = t.{ident(dc)}"
+            for sc, dc in zip(src_cols, dst_cols, strict=True)
+        )
+        ctes.append(
+            f"{name} AS (SELECT {_columns(plan, dst)} FROM {table(plan, dst)} t "
+            f"WHERE EXISTS (SELECT 1 FROM {alias[src]} s WHERE {match}))"
+        )
+        alias[dst] = name
+        counts.append(
+            f"SELECT {literal(dst)}, count(*), coalesce(sum({_sizes(plan, dst)}), 0) FROM {name}"
+        )
+    return f"WITH {', '.join(ctes)} " + " UNION ALL ".join(counts)
 
 
 # region: reads -----------------------------------------------------------
@@ -205,6 +291,13 @@ class Reader:
         rows, size = self.sql.rows(sql)[0]
         self.calls.append(("admission", group, int(rows)))
         return int(rows), int(size)
+
+    def reach(self, sql: str) -> dict[str, tuple[int, int]]:
+        out = {}
+        for group, rows, size in self.sql.rows(sql):
+            self.calls.append(("admission", group, int(rows)))
+            out[group] = (int(rows), int(size))
+        return out
 
     def read(self, group: str, sql: str) -> Any:
         started = time.perf_counter()
@@ -234,31 +327,48 @@ def check_caps(plan: Plan) -> None:
         raise ScoreRefused("--context-rows needs 2 or more, --query-rows 1 or more.")
 
 
-def admit(plan: Plan, reader: Reader) -> dict[str, dict[str, int]]:
-    """Count rows and bytes of every group, and refuse over a cap, before any frame is read."""
-    check_caps(plan)
-    stats = {}
-    for group in plan.groups:
-        rows, size = reader.admission(group, admission_sql(plan, group))
-        stats[group] = {"rows": rows, "bytes": size}
-    entity = stats[plan.entity]
-    if entity["bytes"] > ENTITY_BYTES_MAX:
+def check_admission(
+    plan: Plan, entity: tuple[int, int], reach: dict[str, tuple[int, int]]
+) -> None:
+    """Refuse over a cap.
+
+    `entity` is (rows, bytes) of the projected entity group, `reach` the (rows, bytes) of each
+    related group's rows reachable from the selected rows.
+    """
+    rows, size = entity
+    if size > ENTITY_BYTES_MAX:
         raise ScoreRefused(
-            f"{plan.entity}: {entity['rows']} rows, {entity['bytes']} bytes after projection, "
+            f"{plan.entity}: {rows} rows, {size} bytes after projection, "
             f"over the cap of {ENTITY_BYTES_MAX} bytes for the entity group. Nothing was read."
         )
-    rel_rows = sum(stats[g]["rows"] for g in plan.related)
-    rel_bytes = sum(stats[g]["bytes"] for g in plan.related)
+    rel_rows = sum(r for r, _ in reach.values())
+    rel_bytes = sum(b for _, b in reach.values())
+    detail = ", ".join(f"{g} {r}" for g, (r, _) in reach.items())
     if rel_rows > RELATED_ROWS_MAX:
         raise ScoreRefused(
-            f"related groups {', '.join(plan.related)}: {rel_rows} rows, over the cap of "
-            f"{RELATED_ROWS_MAX}. Nothing was read."
+            f"related rows reachable from the selected rows: {rel_rows} ({detail}), over the "
+            f"cap of {RELATED_ROWS_MAX}. Narrow the selection with --where or --context-rows. "
+            "Nothing was read."
         )
     if rel_bytes > RELATED_BYTES_MAX:
         raise ScoreRefused(
-            f"related groups {', '.join(plan.related)}: {rel_bytes} bytes after projection, "
-            f"over the cap of {RELATED_BYTES_MAX} bytes. Nothing was read."
+            f"related rows reachable from the selected rows: {rel_bytes} bytes after projection "
+            f"({detail} rows), over the cap of {RELATED_BYTES_MAX} bytes. Nothing was read."
         )
+
+
+def admit(plan: Plan, reader: Reader) -> dict[str, dict[str, int]]:
+    """Count the entity group and the related rows reachable from the selection, in Trino.
+
+    Refuses over a cap before any frame is read.
+    """
+    check_caps(plan)
+    rows, size = reader.admission(plan.entity, admission_sql(plan, plan.entity))
+    sql = reach_sql(plan)
+    reach = reader.reach(sql) if sql else {}
+    check_admission(plan, (rows, size), reach)
+    stats = {plan.entity: {"rows": rows, "bytes": size}}
+    stats.update({g: {"rows": r, "bytes": b} for g, (r, b) in reach.items()})
     reader.log(
         "admission ok: "
         + ", ".join(
@@ -278,61 +388,24 @@ def read_related(plan: Plan, reader: Reader, entity_rows: Any) -> dict[str, Any]
     import pandas as pd  # noqa: PLC0415
 
     frames = {plan.entity: entity_rows}
-    depth = {plan.entity: 0}
     total = 0
-    pending = list(plan.links)
-    progressed = True
-    while pending and progressed:
-        progressed = False
-        for link in list(pending):
-            if link.left in frames and link.right not in frames:
-                src, src_cols, dst, dst_cols = (
-                    link.left,
-                    link.left_cols,
-                    link.right,
-                    link.right_cols,
-                )
-            elif link.right in frames and link.left not in frames:
-                src, src_cols, dst, dst_cols = (
-                    link.right,
-                    link.right_cols,
-                    link.left,
-                    link.left_cols,
-                )
-            else:
-                if link.left in frames and link.right in frames:
-                    pending.remove(link)
-                continue
-            if depth[src] + 1 > MAX_DEPTH:
-                raise ScoreRefused(
-                    f"{dst} is more than {MAX_DEPTH} hops from {plan.entity}."
-                )
-            keys = _key_tuples(frames[src], src_cols)
-            parts = [
-                reader.read(
-                    dst, related_sql(plan, dst, dst_cols, keys[i : i + IN_CHUNK])
-                )
-                for i in range(0, len(keys), IN_CHUNK)
-            ]
-            frame = (
-                pd.concat(parts, ignore_index=True).drop_duplicates()
-                if parts
-                else reader.read(dst, _empty_sql(plan, dst))
-            )
-            total += len(frame)
-            if total > RELATED_ROWS_MAX:
-                raise ScoreRefused(
-                    f"related rows reached {total}, over the cap of {RELATED_ROWS_MAX}."
-                )
-            frames[dst] = frame
-            depth[dst] = depth[src] + 1
-            pending.remove(link)
-            progressed = True
-    unreached = [g for g in plan.related if g not in frames]
-    if unreached:
-        raise ScoreRefused(
-            f"{', '.join(unreached)} not reachable from {plan.entity} through the links."
+    for src, src_cols, dst, dst_cols in steps(plan):
+        keys = _key_tuples(frames[src], src_cols)
+        parts = [
+            reader.read(dst, related_sql(plan, dst, dst_cols, keys[i : i + IN_CHUNK]))
+            for i in range(0, len(keys), IN_CHUNK)
+        ]
+        frame = (
+            pd.concat(parts, ignore_index=True).drop_duplicates()
+            if parts
+            else reader.read(dst, _empty_sql(plan, dst))
         )
+        total += len(frame)
+        if total > RELATED_ROWS_MAX:
+            raise ScoreRefused(
+                f"related rows reached {total}, over the cap of {RELATED_ROWS_MAX}."
+            )
+        frames[dst] = frame
     return {g: f for g, f in frames.items() if g != plan.entity}
 
 

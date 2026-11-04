@@ -214,97 +214,113 @@ def test_time_and_cutoff_must_be_timestamps_of_the_right_group(crm):
 # region: caps and admission
 
 
-def _tables():
-    deals = pd.DataFrame(
-        {
-            "id": [1, 2, 3, 4, 5],
-            "contact_id": [10, 10, 11, 12, 11],
-            "won": [True, False, None, True, None],
-            "created_at": pd.to_datetime(["2026-01-01"] * 5),
-            "closed_at": pd.to_datetime(
-                ["2026-02-01", "2026-03-01", None, "2026-04-01", None]
-            ),
-        }
-    )
-    contacts = pd.DataFrame(
-        {
-            "id": [10, 11, 12, 13],
-            "region": list("abcd"),
-            "created_at": pd.to_datetime(["2025-01-01"] * 4),
-        }
-    )
-    activities = pd.DataFrame(
-        {
-            "id": range(1, 7),
-            "deal_id": [1, 3, 3, 5, 99, 4],
-            "occurred_at": pd.to_datetime(["2026-01-15"] * 6),
-            "kind": list("xyxyxy"),
-        }
-    )
-    return SqliteSql(deals_1=deals, contacts_1=contacts, activities_1=activities)
-
-
-def test_entity_over_the_byte_cap_refuses_before_any_read(crm, monkeypatch):
-    monkeypatch.setattr(kumo_job, "ENTITY_BYTES_MAX", 50)
-    p = plan(crm, ["deals.contact_id=contacts.id"])
-    reader = kumo_job.Reader(_tables())
-    with pytest.raises(
-        ScoreRefused,
-        match=r"deals: 5 rows, \d+ bytes after projection, over the cap of 50",
-    ):
-        kumo_job.load_inputs(p, reader)
-    assert reader.reads == []
-    assert {g for k, g, _ in reader.calls if k == "admission"} == {"deals", "contacts"}
-
-
-def test_related_caps_refuse_before_any_read(crm, monkeypatch):
-    monkeypatch.setattr(kumo_job, "RELATED_ROWS_MAX", 3)
-    p = plan(crm, ["deals.contact_id=contacts.id"])
-    reader = kumo_job.Reader(_tables())
-    with pytest.raises(ScoreRefused, match="4 rows, over the cap of 3"):
-        kumo_job.load_inputs(p, reader)
-    assert reader.reads == []
+def _accounts(crm):
+    crm["contacts"].columns["account_id"] = "bigint"
+    crm["accounts"] = info("accounts", {"id": "bigint", "plan": "string"}, pk=["id"])
 
 
 def test_context_rows_above_the_measured_size_refuse(crm):
     p = plan(crm, [], context_rows=2000)
     with pytest.raises(ScoreRefused, match="over 1000"):
-        kumo_job.admit(p, kumo_job.Reader(_tables()))
+        kumo_job.check_caps(p)
 
 
-def test_reads_are_bounded_and_filtered_by_the_selected_keys(crm):
+def test_reach_sql_counts_only_rows_reachable_from_the_selected_rows(crm):
     p = plan(
         crm,
         ["deals.contact_id=contacts.id", "activities.deal_id=deals.id"],
-        time=["deals.created_at", "activities.occurred_at"],
         cutoff="deals.closed_at",
         context_rows=2,
     )
-    reader = kumo_job.Reader(_tables())
-    inputs = kumo_job.load_inputs(p, reader)
-    assert sorted(inputs.query["id"]) == [3, 5]  # target null
-    assert list(inputs.context["id"]) == [4, 2]  # the 2 most recent labels
-    # contacts of the selected deals only (10, 11, 12), activities of deals 2..5 only
-    assert sorted(inputs.related["contacts"]["id"]) == [10, 11, 12]
-    assert sorted(inputs.related["activities"]["deal_id"]) == [3, 3, 4, 5]
+    sql = kumo_job.reach_sql(p)
+    # The selection: the query rows and the context rows, bounded as the reads are.
+    assert (
+        'WITH sel AS ((SELECT "contact_id", "id" FROM "deals_1" WHERE "won" IS NULL'
+        in sql
+    )
+    assert 'LIMIT 10000) UNION (SELECT "contact_id", "id" FROM "deals_1" WHERE' in sql
+    assert "LIMIT 2))" in sql
+    # Each related group is filtered by the keys of the group it is reached from.
+    assert (
+        'r0 AS (SELECT "id", "region", "created_at" FROM "contacts_1" t '
+        'WHERE EXISTS (SELECT 1 FROM sel s WHERE s."contact_id" = t."id"))'
+    ) in sql
+    assert 'FROM "activities_1" t WHERE EXISTS' in sql
+    assert 's."id" = t."deal_id"' in sql
+    # No count runs over a whole related table.
+    assert 'FROM "contacts_1")' not in sql and 'FROM "activities_1")' not in sql
+    assert sql.count("UNION ALL") == 1
 
 
-def test_query_with_no_rows_reads_nothing_else(crm):
-    crm_sql = _tables()
-    crm_sql.conn.execute("UPDATE deals_1 SET won = 0 WHERE won IS NULL")
+def test_reach_sql_follows_two_hops_from_the_previous_group(crm):
+    _accounts(crm)
+    p = plan(crm, ["deals.contact_id=contacts.id", "contacts.account_id=accounts.id"])
+    sql = kumo_job.reach_sql(p)
+    assert 'FROM sel s WHERE s."contact_id" = t."id"' in sql
+    assert 'FROM r0 s WHERE s."account_id" = t."id"' in sql
+
+
+def test_reach_sql_matches_composite_keys_on_every_column(crm):
+    crm["deals"].columns["region"] = "string"
+    crm["contacts"].columns["region"] = "string"
+    p = plan(crm, ["deals.contact_id+deals.region=contacts.id+contacts.region"])
+    sql = kumo_job.reach_sql(p)
+    assert 's."contact_id" = t."id" AND s."region" = t."region"' in sql
+
+
+def test_reach_sql_is_none_without_related_groups(crm):
+    assert kumo_job.reach_sql(plan(crm, [])) is None
+
+
+def test_a_third_hop_is_refused_by_the_reach_chain(crm):
+    _accounts(crm)
+    crm["accounts"].columns["org_id"] = "bigint"
+    crm["orgs"] = info("orgs", {"id": "bigint"}, pk=["id"])
+    p = kumo_job.Plan(
+        "pipe",
+        "deals",
+        ["id"],
+        "won",
+        {g: kumo_job.Group(1, [["id", "bigint"]]) for g in crm if g != "activities"},
+        [
+            Link("deals", ["contact_id"], "contacts", ["id"]),
+            Link("contacts", ["account_id"], "accounts", ["id"]),
+            Link("accounts", ["org_id"], "orgs", ["id"]),
+        ],
+    )
+    with pytest.raises(ScoreRefused, match="more than 2 hops"):
+        kumo_job.reach_sql(p)
+
+
+def test_entity_over_the_byte_cap_refuses(crm, monkeypatch):
+    monkeypatch.setattr(kumo_job, "ENTITY_BYTES_MAX", 50)
     p = plan(crm, ["deals.contact_id=contacts.id"])
-    reader = kumo_job.Reader(crm_sql)
-    inputs = kumo_job.load_inputs(p, reader)
-    assert inputs.query.empty and inputs.related == {}
-    assert [g for _, g, _ in reader.reads] == ["deals"]
+    with pytest.raises(
+        ScoreRefused,
+        match=r"deals: 5 rows, 51 bytes after projection, over the cap of 50",
+    ):
+        kumo_job.check_admission(p, (5, 51), {})
+    kumo_job.check_admission(p, (5, 50), {})
 
 
-def test_where_picks_the_query_rows_and_leaves_them_out_of_the_context(crm):
-    p = plan(crm, [], where="id IN (1, 3)")
-    reader = kumo_job.Reader(_tables())
-    inputs = kumo_job.load_inputs(p, reader)
-    assert sorted(inputs.query["id"]) == [1, 3]
-    assert 1 not in set(inputs.context["id"])
+def test_related_rows_over_the_cap_refuse_on_the_reachable_count(crm, monkeypatch):
+    monkeypatch.setattr(kumo_job, "RELATED_ROWS_MAX", 10)
+    p = plan(crm, ["deals.contact_id=contacts.id", "activities.deal_id=deals.id"])
+    with pytest.raises(
+        ScoreRefused, match=r"reachable .*: 11 \(contacts 4, activities 7\)"
+    ):
+        kumo_job.check_admission(
+            p, (1, 1), {"contacts": (4, 40), "activities": (7, 70)}
+        )
+    kumo_job.check_admission(p, (1, 1), {"contacts": (4, 40), "activities": (6, 60)})
+
+
+def test_related_bytes_over_the_cap_refuse_on_the_reachable_count(crm, monkeypatch):
+    monkeypatch.setattr(kumo_job, "RELATED_BYTES_MAX", 100)
+    p = plan(crm, ["deals.contact_id=contacts.id"])
+    with pytest.raises(ScoreRefused, match=r"101 bytes after projection"):
+        kumo_job.check_admission(p, (1, 1), {"contacts": (2, 101)})
+    kumo_job.check_admission(p, (1, 1), {"contacts": (2, 100)})
 
 
 def test_missing_weights_are_refused_clearly(monkeypatch):

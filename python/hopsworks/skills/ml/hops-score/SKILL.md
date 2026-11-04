@@ -34,7 +34,7 @@ with the counts and the cap.
 | --- | --- |
 | `--context-rows` | 1,000 (a larger value refuses) |
 | `--query-rows` | 10,000 per run, scored in batches of 1,000 |
-| Related rows / bytes after projection | 100,000 / 1 GB |
+| Related rows / bytes after projection, counted on the rows reachable from the selected rows | 100,000 / 1 GB |
 | Entity group bytes after projection | 256 MB |
 
 Related rows are read only for the selected context and query entities. The job has 4 cores
