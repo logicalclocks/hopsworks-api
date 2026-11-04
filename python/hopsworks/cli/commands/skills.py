@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 
 import click
@@ -319,7 +320,9 @@ def skills_install(agents: tuple[str, ...], target_dir: str, force: bool) -> Non
         _report([a for a in results if AGENT_SKILL_DIRS[a] == base], result)
     if "hermes" in results:
         # Hermes loads a repository's skills only once the repository is trusted.
-        output.info("Run `hermes skills trust %s` so Hermes loads them.", root)
+        output.info(
+            "Run `hermes skills trust %s` so Hermes loads them.", shlex.quote(str(root))
+        )
 
     if output.JSON_MODE:
         output.print_json(

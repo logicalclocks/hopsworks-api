@@ -71,9 +71,11 @@ def test_agents_sharing_a_directory_get_one_copy(tmp_path):
 
 
 def test_hermes_is_told_to_trust_the_repository(tmp_path):
-    result = _run("--dir", str(tmp_path), "--agent", "hermes")
+    repo = tmp_path / "my repo"
+    repo.mkdir()
+    result = _run("--dir", str(repo), "--agent", "hermes")
     assert result.exit_code == 0, result.output
-    assert f"hermes skills trust {tmp_path.resolve()}" in result.output
+    assert f"hermes skills trust '{repo.resolve()}'" in result.output
     assert "hermes skills trust" not in _run("--dir", str(tmp_path)).output
 
 
