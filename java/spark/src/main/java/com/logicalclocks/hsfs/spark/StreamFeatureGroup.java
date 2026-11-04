@@ -1423,6 +1423,16 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
   }
 
   /**
+   * Whether this feature group's statistics merge each commit into the previous snapshot, as decided by the
+   * feature group's statistics configuration and the cluster settings.
+   *
+   * @return true if incremental statistics are in effect
+   */
+  public boolean incrementalStatisticsEffective() {
+    return statisticsEngine.incrementalStatisticsEnabled(statisticsConfig);
+  }
+
+  /**
    * Recompute the statistics for the stream feature group and save them to the feature store.
    *
    * @return statistics object of computed statistics

@@ -20,11 +20,14 @@ package com.logicalclocks.hsfs.spark.engine;
 import com.logicalclocks.hsfs.EntityEndpointType;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.Split;
+import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.metadata.FeatureDescriptiveStatistics;
 import com.logicalclocks.hsfs.metadata.SplitStatistics;
 import com.logicalclocks.hsfs.metadata.Statistics;
 import com.logicalclocks.hsfs.metadata.StatisticsApi;
+import com.logicalclocks.hsfs.metadata.Variable;
+import com.logicalclocks.hsfs.metadata.VariablesApi;
 
 import com.logicalclocks.hsfs.spark.FeatureView;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
@@ -46,12 +49,24 @@ import java.util.Map;
 
 public class StatisticsEngine {
 
+  // the cluster default under which statistics jobs merge a commit's rows into the previous snapshot,
+  // for feature groups that leave their own setting unset
+  static final String INCREMENTAL_STATISTICS_VARIABLE = "statistics_incremental_enabled";
+  // the cluster kill switch: when false no feature group merges, whatever it sets
+  static final String INCREMENTAL_STATISTICS_ALLOWED_VARIABLE = "statistics_incremental_allowed";
+
   private StatisticsApi statisticsApi;
+  private VariablesApi variablesApi;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(StatisticsEngine.class);
 
   public StatisticsEngine(EntityEndpointType entityType) {
+    this(entityType, new VariablesApi());
+  }
+
+  StatisticsEngine(EntityEndpointType entityType, VariablesApi variablesApi) {
     this.statisticsApi = new StatisticsApi(entityType);
+    this.variablesApi = variablesApi;
   }
 
   public Statistics computeStatistics(TrainingDataset trainingDataset, Dataset<Row> dataFrame)
@@ -80,18 +95,26 @@ public class StatisticsEngine {
 
   public Statistics computeStatistics(FeatureGroupBase featureGroup, Dataset<Row> dataFrame, Long commitId)
       throws FeatureStoreException, IOException {
+    // A feature group's statistics carry the state the statistics job merges the next commit's rows into
+    // when the cluster enables incremental statistics; whether a merge applies is decided there.
     Statistics statistics = computeStatistics(dataFrame,
         featureGroup.getStatisticsConfig().getColumns(),
         featureGroup.getStatisticsConfig().getHistograms(),
         featureGroup.getStatisticsConfig().getCorrelations(),
         featureGroup.getStatisticsConfig().getExactUniqueness(),
-        commitId);
+        commitId, incrementalStatisticsEnabled(featureGroup.getStatisticsConfig()));
 
     return statisticsApi.post(featureGroup, statistics);
   }
 
   private Statistics computeStatistics(Dataset<Row> dataFrame, List<String> statisticColumns, Boolean histograms,
       Boolean correlations, Boolean exactUniqueness, Long commitId) {
+    return computeStatistics(dataFrame, statisticColumns, histograms, correlations, exactUniqueness, commitId,
+        false);
+  }
+
+  private Statistics computeStatistics(Dataset<Row> dataFrame, List<String> statisticColumns, Boolean histograms,
+      Boolean correlations, Boolean exactUniqueness, Long commitId, boolean mergeableState) {
     String content;
 
     if (dataFrame.isEmpty()) {
@@ -104,14 +127,43 @@ public class StatisticsEngine {
       content = buildEmptyStatistics(statisticColumns);
     } else {
       // if no empty, compute statistics
-      content = SparkEngine.getInstance().profile(dataFrame, statisticColumns, histograms, correlations,
-        exactUniqueness);
+      content = mergeableState
+          ? SparkEngine.getInstance().profile(dataFrame, statisticColumns, correlations, histograms,
+              exactUniqueness, null, null, true)
+          : SparkEngine.getInstance().profile(dataFrame, statisticColumns, correlations, histograms,
+              exactUniqueness);
     }
 
     Collection<FeatureDescriptiveStatistics> featureDescriptiveStatistics = parseDeequStatistics(content);
     
     Long commitTime = Timestamp.valueOf(LocalDateTime.now()).getTime();
     return new Statistics(commitTime, 1.0f, featureDescriptiveStatistics, commitId, null);
+  }
+
+  /**
+   * Whether incremental statistics are on for a feature group: the cluster allows them, and the feature group's
+   * own setting decides, falling back to the cluster default when it has none.
+   * A backend without the settings allows them and defaults to off.
+   */
+  public boolean incrementalStatisticsEnabled(StatisticsConfig statisticsConfig) {
+    String allowed = readVariable(INCREMENTAL_STATISTICS_ALLOWED_VARIABLE);
+    if (allowed != null && !"true".equalsIgnoreCase(allowed)) {
+      return false;
+    }
+    if (statisticsConfig != null && statisticsConfig.getIncremental() != null) {
+      return statisticsConfig.getIncremental();
+    }
+    return "true".equalsIgnoreCase(readVariable(INCREMENTAL_STATISTICS_VARIABLE));
+  }
+
+  /** The value of a cluster variable, or null when it is missing or not readable. */
+  private String readVariable(String name) {
+    try {
+      return variablesApi.get(name).map(Variable::getValue).orElse(null);
+    } catch (IOException | FeatureStoreException | RuntimeException e) {
+      LOGGER.debug("Incremental statistics setting {} not readable", name, e);
+      return null;
+    }
   }
 
   public Statistics computeAndSaveSplitStatistics(TrainingDataset trainingDataset)
