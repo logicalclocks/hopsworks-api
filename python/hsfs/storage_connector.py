@@ -7675,7 +7675,7 @@ class OutlookConnector(_MailSyncMixin, StorageConnector):
             ```
 
         Parameters:
-            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `jim_outlooks` for `jim@outlook.com`.
+            feature_group_name: Name of the feature group; defaults to the mailbox's local part and first domain label, as in `jane_doe_outlooks` for `jane.doe@outlook.com`.
             attachments_path: Directory inside a dataset, relative to the project root, that attachments are written to; defaults to `Resources/outlook/<feature group name>`.
             folders: Folder ids selecting the messages to copy; a message in any of them is copied. [`get_folders`][hsfs.storage_connector.OutlookConnector.get_folders] lists the mailbox's folders. A chosen folder's subfolders are not included unless chosen too.
             loading_strategy: `INCREMENTAL_TIMESTAMP` or `FULL_LOAD`.

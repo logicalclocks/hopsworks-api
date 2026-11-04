@@ -542,7 +542,7 @@ An `outlook` data source is a Microsoft 365 or Outlook.com mailbox, read through
 - `CLIENT_CREDENTIALS`: a client secret of an app with the `Mail.Read` application permission in the mailbox's tenant, which needs `--tenant-id`.
 
 Its credentials are write-only, and Hopsworks stores the new refresh token Microsoft returns on each use.
-It syncs exactly like Gmail, into a feature group with the same columns (`jim@outlook.com` → `jim_outlooks`), so **hops-email-search** works on it too.
+It syncs exactly like Gmail, into a feature group with the same columns (`jane.doe@outlook.com` → `jane_doe_outlooks`), so **hops-email-search** works on it too.
 It selects folders instead of labels and takes no query:
 
 ```bash

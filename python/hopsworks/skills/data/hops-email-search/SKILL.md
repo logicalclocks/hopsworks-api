@@ -5,7 +5,7 @@ description: Search and analyze emails that a Gmail or Outlook data source copie
 
 # Email search with DuckDB
 
-A Gmail or Outlook data source's sync job upserts every email into a Delta feature group named after the mailbox (`jane.doe@gmail.com` → `jane_doe_gmails`, `jim@outlook.com` → `jim_outlooks`, version 1), partitioned by `day`.
+A Gmail or Outlook data source's sync job upserts every email into a Delta feature group named after the mailbox (`jane.doe@gmail.com` → `jane_doe_gmails`, `jane.doe@outlook.com` → `jane_doe_outlooks`, version 1), partitioned by `day`.
 Both have the same columns; where their content differs, the table says so.
 In a Hopsworks terminal that table is mounted read-only, and the DuckDB CLI reads it in place with its `delta` extension.
 
