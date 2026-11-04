@@ -688,7 +688,7 @@ def main(argv: list[str] | None = None) -> int:
     import hopsworks  # noqa: PLC0415 - the job image ships it
 
     project = hopsworks.login()
-    if another_run_active(project, f"{plan.name}-score"):
+    if another_run_active(project, f"kumo-score-{plan.name}"):
         log("another run of this job is active: exiting")
         return 0
     fs = project.get_feature_store()

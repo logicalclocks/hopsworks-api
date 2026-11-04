@@ -364,7 +364,9 @@ class _Job:
 
 def test_a_running_execution_refuses_a_second_run_and_names_it():
     job = _Job(_Execution(7, "RUNNING"), _Execution(6, "FINISHED"))
-    with pytest.raises(ScoreRefused, match=r"job deals-score has execution #7 RUNNING"):
+    with pytest.raises(
+        ScoreRefused, match=r"job kumo-score-deals has execution #7 RUNNING"
+    ):
         score.refuse_if_running(job, "deals")
 
 

@@ -1,6 +1,6 @@
 """``hops score``: rank rows of ingested feature groups with Kumo-Relational.
 
-The verb checks the inputs, deploys the job ``<name>-score`` on the ``scoring-pipeline``
+The verb checks the inputs, deploys the job ``kumo-score-<name>`` on the ``scoring-pipeline``
 environment with the script shipped in ``hopsworks.score``, runs it and reads the result.
 Scores land in ``<name>_scores``; a run is current once its row is in ``<name>_score_runs``.
 """
@@ -368,7 +368,7 @@ def current_ranking(
 
 
 def _job_name(name: str) -> str:
-    return f"{name}-score"
+    return f"kumo-score-{name}"
 
 
 def _active_execution(job: Any) -> Any | None:
@@ -509,13 +509,13 @@ def score_cmd(
 
     `hops score deals --entity deals --target won --link deals.contact_id=contacts.id`
     ranks the open deals (target null) against the closed ones with Kumo-Relational,
-    on CPU, as the job deals-score. Scores go to deals_scores; `--show` prints the
+    on CPU, as the job kumo-score-deals. Scores go to deals_scores; `--show` prints the
     current run. `hops score deals` again re-runs the job.
 
     \f
     Args:
         ctx: Click context.
-        name: System name; the job is `<name>-score`, the groups `<name>_scores`, `<name>_score_runs`.
+        name: System name; the job is `kumo-score-<name>`, the groups `<name>_scores`, `<name>_score_runs`.
         entity: Feature group of the rows to score.
         target: Label column of the entity group.
         positive: Value of the target that is positive.

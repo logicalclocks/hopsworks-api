@@ -129,7 +129,7 @@ def test_scores_current_run_and_delete():
         assert deleted.returncode == 0, _out(deleted)
         assert fs.get_feature_group(f"{name}_scores", version=1) is None
         assert fs.get_feature_group(f"{name}_score_runs", version=1) is None
-        assert "not found" in _out(_hops("job", "info", f"{name}-score")).lower()
+        assert "not found" in _out(_hops("job", "info", f"kumo-score-{name}")).lower()
     finally:
         _hops("score", name, "--delete", "--yes")
         for fg in created:
