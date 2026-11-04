@@ -148,7 +148,7 @@ def _write(tmp_path: Path, name: str, body: str) -> Path:
 
 class TestDecorator:
     def test_bare_named_and_configured_forms(self, check_file):
-        module, _held, _sub = _import_path(str(check_file))
+        module, _held, _sub, _read = _import_path(str(check_file))
         declared = _declared_in(module)
         assert set(declared) == DECLARED
         price = declared["price_matches_catalogue"]
@@ -564,7 +564,7 @@ class TestReturnValues:
 
 class TestRunCheck:
     def test_synthetic_inputs(self, check_file):
-        module, _held, _sub = _import_path(str(check_file))
+        module, _held, _sub, _read = _import_path(str(check_file))
         result = run_check(
             module.price_matches_catalogue,
             answer="It costs 19.99",
@@ -882,9 +882,13 @@ class TestSources:
         source = row.assertions["source"]
         assert source["pinned"] is False
         assert source["origin"] == "hopsfs /Projects/p/Resources/checks/c.py"
+        # The hash is of what the import read: each file by its relative path.
+        assert source["files"] == ["c.py"]
         assert (
             source["sha256"]
-            == hashlib.sha256(VERDICT_FILE.format(verdict="False").encode()).hexdigest()
+            == hashlib.sha256(
+                b"c.py\0" + VERDICT_FILE.format(verdict="False").encode()
+            ).hexdigest()
         )
         # Nothing was written beside the suite's tasks for it.
         assert not any(f.startswith(snapshot_dir) for f in api.files)
@@ -1526,11 +1530,13 @@ class TestRowsAreWritable:
             tmp_path,
             "pair.py",
             """
+            class Mute:
+                def __str__(self):
+                    raise RuntimeError("no text for this")
+
             @check(needs_trace=False)
             def circular(ctx):
-                loop = {}
-                loop["self"] = loop
-                return CheckResult(passed=True, assertions=loop)
+                return CheckResult(passed=True, reason=Mute())
 
             @check(needs_trace=False)
             def fine(ctx):
@@ -1661,10 +1667,13 @@ class TestRefusals:
                 _validate_entry({"type": "python", "file": "c.py", key: "price"})
 
     def test_a_url_with_credentials_is_refused(self):
-        with pytest.raises(ValueError, match="must not carry credentials"):
-            _parse_source(
-                {"git": {"url": "https://user:tok@github.com/o/r.git"}, "path": "c.py"}
-            )
+        for url in (
+            "https://user:tok@github.com/o/r.git",
+            "https://github.com/o/r.git?access_token=tok",
+            "https://github.com/o/r.git#tok",
+        ):
+            with pytest.raises(ValueError, match="carries no credentials"):
+                _parse_source({"git": {"url": url}, "path": "c.py"})
         # An "@" past the host is a path, not a credential.
         source = _parse_source({"git": {"url": "https://x/o/r@v2"}, "path": "c.py"})
         assert source.git_url == "https://x/o/r@v2"
@@ -1819,3 +1828,147 @@ class TestPinningEdges:
         sources._close()
         assert not os.path.exists(made)
         assert sources._made_workdir is None
+
+
+class TestWhatGradedIsWhatIsRecorded:
+    """`assertions.source` names the code that graded: every file, as read, under the runner's key."""
+
+    def test_a_packages_submodules_are_not_reused_by_the_next_import(self, tmp_path):
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("from . import pricing\n")
+
+        def version(verdict):
+            (pkg / "pricing.py").write_text(VERDICT_FILE.format(verdict=verdict))
+
+        version("True")
+        first = _rows([_file_evaluator(pkg, "p")])["verdict"]
+        assert first.passed is True
+        assert not any(
+            n.startswith("hopsworks_check_") and "." in n for n in sys.modules
+        ), "a package's submodule stayed in sys.modules"
+        version("False")
+        second = _rows([_file_evaluator(pkg, "p")])["verdict"]
+        assert second.passed is False
+        assert (
+            first.assertions["source"]["sha256"]
+            != second.assertions["source"]["sha256"]
+        )
+
+    def test_the_hash_covers_every_file_the_import_read(self, tmp_path):
+        (tmp_path / "helpers.py").write_text("def verdict():\n    return True\n")
+        (tmp_path / "checks.py").write_text(
+            "from hopsworks_agents.eval.checks import check\n"
+            "from helpers import verdict\n"
+            "@check(needs_trace=False)\ndef v(ctx):\n    return verdict()\n"
+        )
+        before = _rows([_file_evaluator(tmp_path / "checks.py", "c")])["v"]
+        assert before.passed is True
+        assert sorted(before.assertions["source"]["files"]) == [
+            "checks.py",
+            "helpers.py",
+        ]
+        (tmp_path / "helpers.py").write_text("def verdict():\n    return False\n")
+        after = _rows([_file_evaluator(tmp_path / "checks.py", "c")])["v"]
+        assert after.passed is False
+        assert (
+            before.assertions["source"]["sha256"]
+            != after.assertions["source"]["sha256"]
+        )
+
+    def test_the_hash_is_of_the_bytes_that_ran_not_a_second_read(self, tmp_path):
+        """A stale bytecode cache must not run code the hash does not describe."""
+        import py_compile
+
+        path = tmp_path / "c.py"
+        path.write_text(VERDICT_FILE.format(verdict="True"))
+        # The cache says True; the source now says False, with the same mtime.
+        py_compile.compile(
+            str(path), cfile=str(tmp_path / "__pycache__" / "c.cpython-x.pyc")
+        )
+        stat = path.stat()
+        path.write_text(VERDICT_FILE.format(verdict="False"))
+        os.utime(path, (stat.st_atime, stat.st_mtime))
+        row = _rows([_file_evaluator(path, "c")])["verdict"]
+        assert row.passed is False
+        assert (
+            row.assertions["source"]["sha256"]
+            == hashlib.sha256(b"c.py\0" + path.read_bytes()).hexdigest()
+        )
+
+    def test_a_checks_own_source_key_does_not_erase_the_provenance(self, tmp_path):
+        path = _write(
+            tmp_path,
+            "own.py",
+            """
+            @check(needs_trace=False)
+            def v(ctx):
+                return CheckResult(passed=True, assertions={"source": "price catalogue", "row": 3})
+            """,
+        )
+        row = _rows([_file_evaluator(path, "r")])["v"]
+        assert row.assertions["source"]["sha256"]
+        assert row.assertions["row"] == "r"
+        assert row.assertions["check_source"] == "price catalogue"
+        assert row.assertions["check_row"] == 3
+
+    def test_passed_must_be_a_bool(self):
+        @check(needs_trace=False)
+        def relays(ctx):
+            return {"passed": "false"}
+
+        @check(needs_trace=False)
+        def relays_too(ctx):
+            return CheckResult(passed="no")  # type: ignore[arg-type]
+
+        for fn in (relays, relays_too):
+            row = run_check(fn, answer="x")
+            assert row.ungradable is True and "not a bool" in row.reason
+
+    def test_odd_keys_cycles_and_non_finite_numbers_are_still_written(self):
+        from decimal import Decimal
+
+        loop: dict = {"n": 1}
+        loop["self"] = loop
+
+        @check(needs_trace=False)
+        def odd(ctx):
+            return CheckResult(
+                passed=True,
+                assertions={
+                    (1, 2): "pair",
+                    Decimal("1"): "one",
+                    "nan": float("nan"),
+                    "loop": loop,
+                },
+            )
+
+        row = run_check(odd, answer="x")
+        assert row.passed is True
+        text = json.dumps(row.assertions, allow_nan=False)
+        assert "<cycle>" in text and "nan" in text
+        assert row.assertions["(1, 2)"] == "pair" and row.assertions["1"] == "one"
+
+    def test_a_snapshot_of_exactly_the_cap_is_read_back(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(checks_module, "MAX_TREE_FILES", 2)
+
+        def clone(url, ref, commit, into):  # noqa: ARG001
+            root = Path(into) / "repo"
+            (root / "c").mkdir(parents=True)
+            (root / "c" / "k.py").write_text(VERDICT_FILE.format(verdict="True"))
+            (root / "c" / "extra.txt").write_text("x")
+            return str(root)
+
+        api = _FakeDatasetApi()
+        snapshot_dir = "/Projects/p/Resources/agent_evals/suites/s1/v1/checks"
+        row = {"type": "python", "name": "checks", "git": {"url": "https://x/r.git", "ref": "main"}, "path": "c/k.py"}  # fmt: skip
+        first = _CheckSources(dataset_api=api, project_name="p", snapshot_dir=snapshot_dir, workdir=str(tmp_path / "1"), clone=clone)  # fmt: skip
+        assert (
+            _rows(_evaluators_from_spec([row], sources=first))["verdict"].passed is True
+        )
+        [manifest] = [f for f in api.files if f.endswith("/manifest.json")]
+        assert json.loads(api.files[manifest])["tree"] is True
+        later = _CheckSources(dataset_api=api, project_name="p", snapshot_dir=snapshot_dir, workdir=str(tmp_path / "2"), clone=clone)  # fmt: skip
+        result = _rows(_evaluators_from_spec([row], sources=later))["verdict"]
+        assert result.passed is True
+        assert result.assertions["source"]["origin"].startswith("snapshot ")

@@ -52,6 +52,7 @@ import contextlib
 import copy
 import hashlib
 import importlib
+import importlib.machinery
 import importlib.util
 import inspect
 import json
@@ -419,12 +420,6 @@ def _declared_of(fn: Callable[..., Any]) -> _Declared:
     )
 
 
-def _declared_hint(declared: Mapping[str, _Declared]) -> str:
-    if not declared:
-        return "; it declares no @check"
-    return "; it declares " + ", ".join(sorted(declared))
-
-
 # ── the spec ────────────────────────────────────────────────────────────────
 
 
@@ -509,12 +504,13 @@ def _parse_source(entry: Mapping[str, Any]) -> _Source:
     commit = str(git.get("commit") or "").strip()
     if not url.startswith("https://"):
         raise ValueError("a git url must start with https://")
-    if "@" in url[len("https://") :].split("/", 1)[0]:
+    if "@" in url[len("https://") :].split("/", 1)[0] or "?" in url or "#" in url:
         # Stored in the suite's spec, which every member reads. The job clones
-        # with the project's git credentials; the url names the repository.
+        # with the project's git credentials; the url names the repository and
+        # nothing else: a token rides in a query string as easily as in userinfo.
         raise ValueError(
-            "a git url must not carry credentials; the job clones with the "
-            "project's git credentials"
+            "a git url names the repository and carries no credentials, query "
+            "string or fragment; the job clones with the project's git credentials"
         )
     if ref and not _REF.match(ref):
         raise ValueError(f"git ref {ref!r} is not a branch or tag name")
@@ -602,6 +598,8 @@ class _Loaded:
     held: dict[str, ModuleType] = field(default_factory=dict)
     #: A package's own modules, as its ``__init__`` imported them.
     submodules: dict[str, ModuleType] = field(default_factory=dict)
+    #: Every source file the import read, relative to the source's root.
+    files: tuple[str, ...] = ()
 
 
 class _TooLarge(Exception):
@@ -618,8 +616,8 @@ class _CheckSources:
     suites name is fetched once.
 
     Fetching and importing are two steps on purpose. Fetching is I/O with a
-    budget of its own; importing runs the check's code, so it runs under the
-    check's own timeout. :meth:`_load` does both for callers that do not care.
+    budget of its own; importing runs the source's module, so it runs under an
+    import budget of its own. :meth:`_load` does both for callers that do not care.
 
     Parameters:
         dataset_api: The project's dataset API, for ``file`` sources and git snapshots.
@@ -719,25 +717,30 @@ class _CheckSources:
             module = importlib.import_module(source.module)
             held: dict[str, ModuleType] = {}
             submodules = _submodules_of(source.module)
+            sha256 = (
+                _digest_of(fetched.local)
+                if fetched.local and os.path.exists(fetched.local)
+                else ""
+            )
+            files: tuple[str, ...] = ()
         else:
-            module, held, submodules = _import_path(
+            module, held, submodules, imported = _import_path(
                 fetched.local,
                 package_root=fetched.package_root,
                 lock_timeout_s=lock_timeout_s,
             )
+            sha256 = imported.sha256
+            files = imported.files
         loaded = _Loaded(
             module=module,
             origin=fetched.origin,
-            sha256=(
-                _digest_of(fetched.local)
-                if fetched.local and os.path.exists(fetched.local)
-                else ""
-            ),
+            sha256=sha256,
             commit=fetched.commit,
             pinned=fetched.pinned,
             local=fetched.local,
             held=held,
             submodules=submodules,
+            files=files,
         )
         with self._lock:
             return self._loaded.setdefault(key, loaded)
@@ -813,7 +816,7 @@ class _CheckSources:
             raise ValueError(f"{file} is not a HopsFS path in this project")
         return f"{own}{file.strip('/')}"
 
-    def _download(self, path: str) -> str:
+    def _download(self, path: str, *, capped: bool = True) -> str:
         """A HopsFS file or directory, read from the mount or copied under the work directory.
 
         The job has HopsFS mounted, so a project file is read in place, with the
@@ -834,7 +837,7 @@ class _CheckSources:
             self._download_siblings(path, target)
             return local
         local = os.path.join(target, posixpath.basename(path.rstrip("/")))
-        self._download_tree(path, local)
+        self._download_tree(path, local, capped=capped)
         return local
 
     def _download_siblings(self, path: str, target: str) -> None:
@@ -868,7 +871,7 @@ class _CheckSources:
         attributes = (row or {}).get("attributes") or row or {}
         return bool(attributes.get("dir")), int(attributes.get("size") or 0)
 
-    def _download_tree(self, path: str, local: str) -> None:
+    def _download_tree(self, path: str, local: str, *, capped: bool = True) -> None:
         from .agent_source import _download_hopsfs_tree
 
         _download_hopsfs_tree(
@@ -877,8 +880,8 @@ class _CheckSources:
             local,
             project_name=self._project_name,
             skipped_dirs=_SKIPPED_DIRS,
-            max_files=MAX_TREE_FILES,
-            max_bytes=MAX_TREE_BYTES,
+            max_files=MAX_TREE_FILES if capped else None,
+            max_bytes=MAX_TREE_BYTES if capped else None,
             too_large=lambda: RuntimeError(
                 f"{path.rstrip('/')} holds more than {MAX_TREE_FILES} files or "
                 f"{MAX_TREE_BYTES // (1024 * 1024)} MB; a snapshot of checks is "
@@ -937,14 +940,11 @@ class _CheckSources:
         The basename alone collided: two ``checks.py`` from two places froze
         into one copy, and whichever was copied last graded for both.
         """
-        if source.file:
-            identity = f"hopsfs {self._absolute(source.file)}"
-        else:
-            # The commit, when the row pins one: two rows pinned to two commits
-            # are two sources, and one snapshot for both graded with the first's.
-            at = source.git_commit or source.git_ref
-            identity = f"git {_scrubbed(source.git_url)}@{at}:{source.path}"
-        return _snapshot_name(identity, source.path or source.file)
+        # The commit, when the row pins one: two rows pinned to two commits
+        # are two sources, and one snapshot for both graded with the first's.
+        at = source.git_commit or source.git_ref
+        identity = f"git {_scrubbed(source.git_url)}@{at}:{source.path}"
+        return _snapshot_name(identity, source.path)
 
     def _snapshot_of(self, source: _Source) -> _Fetched | None:
         """The published copy of a git source, when the suite has one."""
@@ -956,7 +956,9 @@ class _CheckSources:
             self._stat(f"{target}/{MANIFEST}")
         except FileNotFoundError:
             return None
-        return self._from_snapshot(self._download(target), source, name)
+        # Capped when it was written; read back whole, manifest included, so
+        # a tree of exactly the cap is not refused as one over it.
+        return self._from_snapshot(self._download(target, capped=False), source, name)
 
     def _from_snapshot(self, local_dir: str, source: _Source, name: str) -> _Fetched:
         manifest: dict[str, Any] = {}
@@ -1112,7 +1114,9 @@ class _CheckSources:
             )
         log.info("another run pinned %s first; grading with its copy", name)
         try:
-            return self._from_snapshot(self._download(target), source, name)
+            return self._from_snapshot(
+                self._download(target, capped=False), source, name
+            )
         except Exception:  # noqa: BLE001 -- their copy is unreadable right now
             log.warning(
                 "another run pinned %s but its copy could not be read; this run "
@@ -1160,9 +1164,67 @@ def _copy_tree(root: str, into: str) -> int:
     return copied
 
 
+@dataclass(frozen=True)
+class _Imported:
+    """What an import read: the files, relative to the source's root, and their hash."""
+
+    sha256: str = ""
+    files: tuple[str, ...] = ()
+
+
+class _RecordingLoader(importlib.machinery.SourceFileLoader):
+    """A source loader that compiles the bytes it read and keeps them.
+
+    The hash a result records has to be of the text that ran, not of a second
+    read after the import: an edit during a slow import graded the old text
+    and recorded the new hash. Bytecode caches are not consulted for the same
+    reason -- a stale ``.pyc`` would run code the hash does not describe.
+    """
+
+    def __init__(self, fullname: str, path: str, record: dict[str, bytes]):
+        super().__init__(fullname, path)
+        self._record = record
+
+    def get_code(self, fullname: str) -> Any:
+        source = self.get_data(self.path)
+        self._record[os.path.abspath(self.path)] = source
+        return self.source_to_code(source, self.path)
+
+
+class _RecordingFinder:
+    """Serves the modules under one directory tree through :class:`_RecordingLoader`.
+
+    Put at the front of ``sys.meta_path`` for one import: a helper imported
+    from beside the entry (``from helpers import x``), a package's submodule
+    or anything under a repository root is read through it and so recorded;
+    everything else (the standard library, site-packages) is not its business.
+    """
+
+    def __init__(self, root: str, record: dict[str, bytes]):
+        self._root = root
+        self._prefix = root.rstrip(os.sep) + os.sep
+        self._record = record
+
+    def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> Any:
+        entries = [self._root] if path is None else [str(p) for p in path]
+        for entry in entries:
+            if entry != self._root and not entry.startswith(self._prefix):
+                continue
+            finder = importlib.machinery.FileFinder(
+                entry, (self._loader, importlib.machinery.SOURCE_SUFFIXES)
+            )
+            spec = finder.find_spec(fullname)
+            if spec is not None:
+                return spec
+        return None
+
+    def _loader(self, fullname: str, path: str) -> _RecordingLoader:
+        return _RecordingLoader(fullname, path, self._record)
+
+
 def _import_path(
     local: str, *, package_root: str | None = None, lock_timeout_s: float | None = None
-) -> tuple[ModuleType, dict[str, ModuleType], dict[str, ModuleType]]:
+) -> tuple[ModuleType, dict[str, ModuleType], dict[str, ModuleType], _Imported]:
     """Import a file or a package directory, isolated from every other source.
 
     The entry gets a name nothing else uses, so two ``checks.py`` in one
@@ -1178,7 +1240,13 @@ def _import_path(
     fetched with it. A check that imports a helper lazily inside the function
     will not find it: import at the top.
 
-    Returns the module, the held modules, and a package's own submodules.
+    A package's own submodules are taken out of ``sys.modules`` too and held:
+    left there, the next run id in the same job re-executed ``__init__.py``
+    but ``from . import pricing`` handed it the previous run's module, so an
+    edit made between two runs graded as the old code under the new hash.
+
+    Returns the module, the held modules, a package's own submodules, and
+    what was read -- every file, hashed as read.
     """
     budget = IMPORT_LOCK_WAIT_S if lock_timeout_s is None else lock_timeout_s
     if not _IMPORT_LOCK.acquire(timeout=budget):
@@ -1194,21 +1262,27 @@ def _import_path(
 
 def _import_path_locked(
     local: str, *, package_root: str | None = None
-) -> tuple[ModuleType, dict[str, ModuleType], dict[str, ModuleType]]:
+) -> tuple[ModuleType, dict[str, ModuleType], dict[str, ModuleType], _Imported]:
     local = os.path.abspath(local)
-    parent = package_root or os.path.dirname(local)
+    parent = os.path.abspath(package_root or os.path.dirname(local))
     unique = f"hopsworks_check_{hashlib.sha1(local.encode()).hexdigest()[:12]}"  # noqa: S324
+    record: dict[str, bytes] = {}
     if os.path.isdir(local):
         init = os.path.join(local, "__init__.py")
         if not os.path.isfile(init):
             raise ImportError(f"{local} is a directory without __init__.py")
         spec = importlib.util.spec_from_file_location(
-            unique, init, submodule_search_locations=[local]
+            unique,
+            init,
+            loader=_RecordingLoader(unique, init, record),
+            submodule_search_locations=[local],
         )
     else:
         if not local.endswith(".py"):
             raise ImportError(f"{local} is not a Python file")
-        spec = importlib.util.spec_from_file_location(unique, local)
+        spec = importlib.util.spec_from_file_location(
+            unique, local, loader=_RecordingLoader(unique, local, record)
+        )
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot import {local}")
     module = importlib.util.module_from_spec(spec)
@@ -1216,6 +1290,8 @@ def _import_path_locked(
     added_path = parent not in sys.path
     if added_path:
         sys.path.insert(0, parent)
+    finder = _RecordingFinder(parent, record)
+    sys.meta_path.insert(0, finder)
     importlib.invalidate_caches()
     sys.modules[unique] = module
     try:
@@ -1226,19 +1302,33 @@ def _import_path_locked(
                 sys.modules.pop(name, None)
         raise
     finally:
+        with contextlib.suppress(ValueError):
+            sys.meta_path.remove(finder)
         if added_path:
             with contextlib.suppress(ValueError):
                 sys.path.remove(parent)
         held: dict[str, ModuleType] = {}
+        submodules: dict[str, ModuleType] = {}
         prefix = parent.rstrip(os.sep) + os.sep
         for name in set(sys.modules) - before:
-            if name == unique or name.startswith(unique + "."):
+            if name == unique:
+                continue
+            if name.startswith(unique + "."):
+                submodules[name] = sys.modules.pop(name)
                 continue
             pulled = sys.modules.get(name)
             file = getattr(pulled, "__file__", None) or ""
             if file.startswith(prefix):
                 held[name] = sys.modules.pop(name)
-    return module, held, _submodules_of(unique)
+    digest = hashlib.sha256()
+    files = []
+    for path in sorted(record):
+        relative = os.path.relpath(path, parent)
+        files.append(relative)
+        digest.update(relative.encode())
+        digest.update(b"\0")
+        digest.update(record[path])
+    return module, held, submodules, _Imported(digest.hexdigest(), tuple(files))
 
 
 def _submodules_of(package: str) -> dict[str, ModuleType]:
@@ -1514,10 +1604,15 @@ class PythonSourceEvaluator:
                 # value is inside too: a malformed result is this check's
                 # failure, not its siblings'.
                 result = _ungradable(report, self.type, f"check raised: {_short(err)}")
-        result.assertions.setdefault("source", self._provenance())
-        result.assertions.setdefault("row", self.name)
+        # The provenance is the runner's to write: a check that put a `source`
+        # of its own in the assertions kept it under its own name, not over this.
+        for key in ("source", "row", "check"):
+            if key in result.assertions:
+                result.assertions[f"check_{key}"] = result.assertions.pop(key)
+        result.assertions["source"] = self._provenance()
+        result.assertions["row"] = self.name
         if report != name:
-            result.assertions.setdefault("check", name)
+            result.assertions["check"] = name
         return result
 
     def _provenance(self) -> dict[str, Any]:
@@ -1527,6 +1622,7 @@ class PythonSourceEvaluator:
         return {
             "origin": loaded.origin,
             "sha256": loaded.sha256,
+            **({"files": list(loaded.files)} if loaded.files else {}),
             **({"commit": loaded.commit} if loaded.commit else {}),
             "pinned": loaded.pinned,
         }
@@ -1605,6 +1701,10 @@ def _as_result(name: str, value: Any, *, pass_score: Any = None) -> EvaluatorRes
         passed = _unwrap_scalar(value.passed)
         if passed is None and score is None:
             return _ungradable(name, TYPE, reason or "no verdict returned")
+        if passed is not None and not isinstance(passed, bool):
+            # bool("false") is True: a check relaying a model's JSON verdict
+            # as text read as a pass. Outside the contract, so no verdict.
+            return _ungradable(name, TYPE, f"passed is {passed!r}, not a bool")
         if score is not None and not _finite(score):
             return _ungradable(name, TYPE, f"score {score!r} is not a finite number")
         if passed is None:
@@ -1691,23 +1791,40 @@ def _unwrap_scalar(value: Any) -> Any:
 
 
 def _json_safe_assertions(assertions: Any) -> dict[str, Any]:
-    """The assertions as something ``json.dumps`` writes without a ``default``."""
+    """The assertions as something ``json.dumps`` writes with its defaults.
+
+    Keys become text, a cycle is cut, a NaN or infinity becomes text (written
+    bare, the front's ``JSON.parse`` dropped the whole row), and the values a
+    check is likely to hand over -- numpy scalars and arrays, ``Decimal``,
+    ``datetime``, sets, bytes -- become numbers, lists or text.
+    """
     if not isinstance(assertions, Mapping):
         assertions = {"value": assertions}
-    return dict(json.loads(json.dumps(dict(assertions), default=_json_default)))
+    safe = _json_safe_value(assertions, ())
+    return safe if isinstance(safe, dict) else {"value": safe}
 
 
-def _json_default(value: Any) -> Any:
+def _json_safe_value(value: Any, path: tuple[int, ...]) -> Any:
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else str(value)
     item = getattr(value, "item", None)
     if callable(item) and type(value).__module__.split(".")[0] == "numpy":
         with contextlib.suppress(TypeError, ValueError):
-            return item()
+            return _json_safe_value(item(), path)
     tolist = getattr(value, "tolist", None)
-    if callable(tolist):
+    if callable(tolist) and not isinstance(value, (Mapping, list, tuple, set)):
         with contextlib.suppress(TypeError, ValueError):
-            return tolist()
-    if isinstance(value, (set, frozenset, tuple)):
-        return list(value)
+            return _json_safe_value(tolist(), path)
+    if id(value) in path:
+        return "<cycle>"
+    if isinstance(value, Mapping):
+        return {
+            str(k): _json_safe_value(v, (*path, id(value))) for k, v in value.items()
+        }
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_json_safe_value(v, (*path, id(value))) for v in value]
     isoformat = getattr(value, "isoformat", None)
     if callable(isoformat):
         return isoformat()
@@ -1768,7 +1885,7 @@ def _context_for(
             category=task.category or "",
             tags=tuple(task.tags or ()),
             subject=task.subject or "",
-            context=dict(task.context or {}),
+            context=_copied(task.context or {}),
         ),
         params=dict(params),
         check_name=name,

@@ -845,7 +845,7 @@ class Checks:
         """
         from ..checks import _declared_in, _import_path
 
-        module, _held, submodules = _import_path(str(Path(local_path).resolve()))
+        module, _held, submodules, _read = _import_path(str(Path(local_path).resolve()))
         return [d._as_dict() for d in _declared_in(module, submodules).values()]
 
     @public

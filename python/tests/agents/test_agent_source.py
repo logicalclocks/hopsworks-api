@@ -451,3 +451,19 @@ class TestHopsfsTree:
         root = _download_hopsfs_directory(api, "/Projects/p/Models/a/1", str(tmp_path))
         assert (Path(root) / "agent.py").read_text() == "print(1)"
         assert not (Path(root) / "big.bin").exists()
+
+    def test_the_model_download_keeps_nested_directories(self, tmp_path):
+        """A child of a subfolder was placed under the root by its basename."""
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_directory
+
+        api = self._Api(
+            {
+                "Models/a/1/agent.py": "print(1)",
+                "Models/a/1/tools/search.py": "def search(): ...",
+                "Models/a/1/tools/deep/x.py": "x = 1",
+            }
+        )
+        root = _download_hopsfs_directory(api, "/Projects/p/Models/a/1", str(tmp_path))
+        assert (Path(root) / "tools" / "search.py").read_text() == "def search(): ..."
+        assert (Path(root) / "tools" / "deep" / "x.py").read_text() == "x = 1"
+        assert not (Path(root) / "search.py").exists()

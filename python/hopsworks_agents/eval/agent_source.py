@@ -347,6 +347,10 @@ def _download_hopsfs_tree(
     cap instead of copying half a tree.
     """
     root = "/" + path.strip("/")
+    if not project_name and root.startswith("/Projects/"):
+        # The listing is project-relative; a child of a subfolder placed under
+        # the root by its basename alone landed at the wrong path.
+        project_name = root.split("/")[2]
     os.makedirs(target, exist_ok=True)
     pending = [root]
     copied = 0
