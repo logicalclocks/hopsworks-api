@@ -954,6 +954,7 @@ class _SyncRun:
         Readers keep the previous rows until the run removes them at its end, and a run that fails part way leaves them in place; the next full load starts over.
         """
         state = self._expected_state()
+        self._check_path_owner(state)
         result = _RunResult(0, [], 0, 0, None)
         seen: set[str] = set()
         for batch, through_ms, last_ids in self._windows(
@@ -975,18 +976,36 @@ class _SyncRun:
         """Remove the rows, then the attachment directories, of the messages not in `seen`.
 
         Rows go first: a run that dies in between leaves files no row lists, never a row listing missing files.
+        Only the directories of the removed rows are deleted; other files under the path are left alone.
         """
         stale = [key for key in self._writer._keys() if key["message_id"] not in seen]
-        if stale:
-            self._writer._remove(stale)
-            _logger.info("Removed %d messages the full load did not see", len(stale))
-        kept = {_safe_name(message_id) for message_id in seen}
-        for day_dir in self._target.glob("day=*"):
-            for message_dir in day_dir.iterdir():
-                if message_dir.name not in kept:
-                    shutil.rmtree(message_dir)
-            if not any(day_dir.iterdir()):
+        if not stale:
+            return
+        self._writer._remove(stale)
+        _logger.info("Removed %d messages the full load did not see", len(stale))
+        for key in stale:
+            day_dir = self._target / f"day={key['day']}"
+            shutil.rmtree(day_dir / _safe_name(key["message_id"]), ignore_errors=True)
+            if day_dir.is_dir() and not any(day_dir.iterdir()):
                 day_dir.rmdir()
+
+    def _check_path_owner(self, expected: _SyncState) -> None:
+        """Refuse to load into a path whose attachments belong to another feature group or data source.
+
+        An unreadable state does not refuse: a full load is how that state is rebuilt.
+        """
+        try:
+            state, _ = _read_state(self._target)
+        except _GmailSyncError:
+            return
+        if state is not None and (state.feature_group, state.connector_id) != (
+            expected.feature_group,
+            expected.connector_id,
+        ):
+            raise _GmailSyncError(
+                f"The path {self._config.path} holds the attachments of the feature group {state.feature_group}, "
+                "which this job does not write. Choose a new path, or delete that directory."
+            )
 
     def _windows(
         self,
