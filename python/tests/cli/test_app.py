@@ -38,6 +38,7 @@ def _fake_app(**overrides):
     a.idle_cooldown_seconds = overrides.get("idle_cooldown_seconds")
     a.cold_start_timeout_seconds = overrides.get("cold_start_timeout_seconds")
     a.app_url = overrides.get("app_url")
+    a.public_access = overrides.get("public_access", False)
     return a
 
 
@@ -148,6 +149,19 @@ def test_app_info_shows_url(mock_project):
     assert result.exit_code == 0, result.output
     assert "https://host/dash" in result.output
     assert "RUNNING" in result.output
+
+
+def test_app_info_shows_the_public_link_state(mock_project):
+    apps = mock_project.get_app_api.return_value
+    for public, text in ((True, "on"), (False, "off")):
+        apps.get_app.return_value = _fake_app(name="dash", public_access=public)
+        result = CliRunner().invoke(cli, ["app", "info", "dash"])
+        assert result.exit_code == 0, result.output
+        row = next(line for line in result.output.splitlines() if "Public link" in line)
+        assert row.split()[-1] == text
+        result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["public_access"] is public
 
 
 def test_app_info_shows_custom_metadata(mock_project):
