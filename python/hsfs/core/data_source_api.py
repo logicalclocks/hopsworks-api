@@ -302,8 +302,10 @@ class DataSourceApi:
         ]
 
         query_params = data_source.to_dict()
-        if file_columns:
-            query_params["fileColumns"] = list(file_columns)
+        if file_columns is not None:
+            query_params["storeFiles"] = True
+            if file_columns:
+                query_params["fileColumns"] = list(file_columns)
 
         return dsd.DataSourceData.from_response_json(
             self._browse(data_source._storage_connector, path_params, query_params)

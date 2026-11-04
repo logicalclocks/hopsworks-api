@@ -807,7 +807,8 @@ class StorageConnector(ABC):
         Parameters:
             data_source (DataSource): The data source to retrieve data from.
             use_cached (bool): Whether to use cached data if available. Only supported for CRM, Google Sheets, and REST connectors. Defaults to `True`.
-            file_columns: SQL Server only: `varbinary(max)` or `image` columns to store as files, besides the FILESTREAM columns.
+            file_columns: SQL Server only: `varbinary(max)` or `image` columns to store as files, besides the FILESTREAM columns; `[]` for the FILESTREAM columns alone.
+                Leave it `None` to read the source schema, as for an external feature group.
                 Each file column is returned as a string path feature and a bigint `<column>_size` feature, and the preview shows its size instead of the bytes.
 
         Returns:

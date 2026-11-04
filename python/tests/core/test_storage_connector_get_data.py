@@ -301,6 +301,31 @@ class TestFileColumns:
 
         source.get_data(file_columns=["Body"])
         assert browse.call_args.args[2]["fileColumns"] == ["Body"]
+        assert browse.call_args.args[2]["storeFiles"] is True
+
+        source.get_data(file_columns=[])
+        assert browse.call_args.args[2]["storeFiles"] is True
+        assert "fileColumns" not in browse.call_args.args[2]
 
         source.get_data()
         assert "fileColumns" not in browse.call_args.args[2]
+        assert "storeFiles" not in browse.call_args.args[2]
+
+    def test_column_metadata_is_kept(self):
+        data = DataSourceData.from_response_json(
+            {
+                "features": [],
+                "columnMetadata": [
+                    {
+                        "name": "Body",
+                        "sourceType": "varbinary",
+                        "fileStream": False,
+                        "fileCandidate": True,
+                        "file": True,
+                    }
+                ],
+            }
+        )
+        assert data.column_metadata[0]["source_type"] == "varbinary"
+        assert data.column_metadata[0]["file"] is True
+        assert DataSourceData().column_metadata == []
