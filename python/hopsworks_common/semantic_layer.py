@@ -24,6 +24,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import humps
+import requests
 from hopsworks_apigen import public
 from hopsworks_common import usage, util
 from hopsworks_common.client.exceptions import (
@@ -453,24 +454,39 @@ class SemanticProject:
             hopsworks.client.exceptions.SemanticLayerException: When `wait` is set and the compile has not ended after ten minutes.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        build = self._semantic_layer_api._compile(self, wait)
-        self._latest_build = build
+        api = self._semantic_layer_api
         if not wait:
+            build = api._compile(self, wait)
+            self._latest_build = build
             return build
+        # One budget for the whole wait, every request included: the server's own wait and the polls.
         deadline = time.monotonic() + _COMPILE_TIMEOUT_SECONDS
-        while build.status not in _FINAL_BUILD_STATUSES:
-            if time.monotonic() > deadline:
+
+        def budget() -> tuple[float, float]:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise SemanticLayerException(
-                    f"Build {build.id} of semantic project '{self._name}' is still "
-                    f"{build.status} after {_COMPILE_TIMEOUT_SECONDS:.0f} seconds."
+                    f"The compile of semantic project '{self._name}' has not ended after "
+                    f"{_COMPILE_TIMEOUT_SECONDS:.0f} seconds."
                 )
-            time.sleep(_COMPILE_POLL_SECONDS)
-            build = self._semantic_layer_api._get_build(self, build.id)
-        self._latest_build = build
-        if build.status == "VALID":
-            return build
-        if build.issues is None:
-            build = self._semantic_layer_api._get_build(self, build.id)
+            return (min(30.0, remaining), remaining)
+
+        try:
+            build = api._compile(self, wait, timeout=budget())
+            while build.status not in _FINAL_BUILD_STATUSES:
+                time.sleep(_COMPILE_POLL_SECONDS)
+                build = api._get_build(self, build.id, timeout=budget())
+            # A compile in FOLLOW mode moves the build queries use.
+            self.update_from_response_json(api._get(self, timeout=budget()))
+            if build.status == "VALID":
+                return build
+            if build.issues is None:
+                build = api._get_build(self, build.id, timeout=budget())
+        except requests.Timeout as err:
+            raise SemanticLayerException(
+                f"The compile of semantic project '{self._name}' has not ended after "
+                f"{_COMPILE_TIMEOUT_SECONDS:.0f} seconds."
+            ) from err
         raise SemanticBuildException(self._name, build)
 
     @public

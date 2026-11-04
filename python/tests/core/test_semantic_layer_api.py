@@ -192,20 +192,65 @@ class TestControlPlane:
         assert builds[0].issues is None
 
 
+def _control_plane(*builds):
+    """A `_send_request` that answers the compile POST and build GETs with `builds` in order, and the project GET."""
+    remaining = list(builds)
+
+    def answer(method, path, **kwargs):
+        if method == "GET" and path == ["project", 119, "semantic", "projects", 7]:
+            return {**SP_JSON, "currentBuildId": 13}
+        return remaining.pop(0)
+
+    return answer
+
+
 class TestCompile:
     def test_wait_posts_with_wait_true_and_returns_the_valid_build(self, http, sales):
-        http._send_request.return_value = {"id": 13, "status": "VALID", "errorCount": 0}
+        http._send_request.reset_mock()  # the fixture listed the projects
+        http._send_request.side_effect = _control_plane(
+            {"id": 13, "status": "VALID", "errorCount": 0}
+        )
 
         build = sales.compile()
 
-        call = http._send_request.call_args
-        assert call.args == (
+        post = http._send_request.call_args_list[0]
+        assert post.args == (
             "POST",
             ["project", 119, "semantic", "projects", 7, "builds"],
         )
-        assert call.kwargs["query_params"] == {"wait": "true"}
+        assert post.kwargs["query_params"] == {"wait": "true"}
         assert build.id == 13
-        assert sales.latest_build is build
+
+    def test_a_compile_refreshes_the_build_queries_use(self, http, sales):
+        http._send_request.side_effect = _control_plane(
+            {"id": 13, "status": "VALID", "errorCount": 0}
+        )
+
+        sales.compile()
+
+        assert sales.current_build_id == 13
+
+    def test_every_request_of_a_waited_compile_is_bounded(self, http, sales, mocker):
+        http._send_request.reset_mock()  # the fixture listed the projects
+        mocker.patch("hopsworks_common.semantic_layer.time.sleep")
+        http._send_request.side_effect = _control_plane(
+            {"id": 13, "status": "COMPILING"}, {"id": 13, "status": "VALID"}
+        )
+
+        sales.compile()
+
+        for call in http._send_request.call_args_list:
+            connect, read = call.kwargs["timeout"]
+            assert 0 < connect <= 30
+            assert 0 < read <= 600
+
+    def test_a_stalled_request_ends_the_wait_with_a_semantic_layer_error(
+        self, http, sales
+    ):
+        http._send_request.side_effect = requests.Timeout("read timed out")
+
+        with pytest.raises(SemanticLayerException, match="has not ended"):
+            sales.compile()
 
     def test_without_wait_returns_the_compiling_build(self, http, sales):
         http._send_request.return_value = {"id": 13, "status": "COMPILING"}
@@ -228,10 +273,10 @@ class TestCompile:
             "column": 5,
             "element": "metric:bookings",
         }
-        http._send_request.side_effect = [
+        http._send_request.side_effect = _control_plane(
             {"id": 13, "status": "INVALID", "errorCount": 1, "warningCount": 0},
             {"id": 13, "status": "INVALID", "errorCount": 1, "issues": [issue]},
-        ]
+        )
 
         with pytest.raises(SemanticBuildException) as err:
             sales.compile()
@@ -249,23 +294,30 @@ class TestCompile:
         ) in str(err.value)
 
     def test_failed_build_raises_even_without_issues(self, http, sales):
-        http._send_request.return_value = {"id": 13, "status": "FAILED", "issues": []}
+        http._send_request.reset_mock()  # the fixture listed the projects
+        http._send_request.side_effect = _control_plane(
+            {"id": 13, "status": "FAILED", "issues": []}
+        )
 
         with pytest.raises(SemanticBuildException) as err:
             sales.compile()
 
         assert err.value.issues == []
-        assert http._send_request.call_count == 2  # list + POST, no GET for issues
+        methods = [call.args[0] for call in http._send_request.call_args_list]
+        assert methods == [
+            "POST",
+            "GET",
+        ]  # the compile and the project, no GET for issues
 
     def test_a_build_still_compiling_after_the_wait_is_polled(
         self, http, sales, mocker
     ):
         mocker.patch("hopsworks_common.semantic_layer.time.sleep")
-        http._send_request.side_effect = [
+        http._send_request.side_effect = _control_plane(
             {"id": 13, "status": "COMPILING"},
             {"id": 13, "status": "COMPILING"},
             {"id": 13, "status": "VALID"},
-        ]
+        )
 
         assert sales.compile().status == "VALID"
 

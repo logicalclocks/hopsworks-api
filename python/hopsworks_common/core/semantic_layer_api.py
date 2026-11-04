@@ -212,13 +212,17 @@ class SemanticLayerApi:
         return f"/Projects/{self._project_name}/{root_path.strip('/')}"
 
     def _compile(
-        self, sp: semantic_layer.SemanticProject, wait: bool
+        self,
+        sp: semantic_layer.SemanticProject,
+        wait: bool,
+        timeout: tuple[float, float] | None = None,
     ) -> semantic_layer.SemanticBuild:
         _client = client._get_instance()
         response = _client._send_request(
             "POST",
             self._path(sp.id, "builds"),
             query_params={"wait": "true"} if wait else None,
+            timeout=timeout,
         )
         return semantic_layer.SemanticBuild.from_response_json(response)
 
@@ -233,12 +237,23 @@ class SemanticLayerApi:
         ]
 
     def _get_build(
-        self, sp: semantic_layer.SemanticProject, build_id: int
+        self,
+        sp: semantic_layer.SemanticProject,
+        build_id: int,
+        timeout: tuple[float, float] | None = None,
     ) -> semantic_layer.SemanticBuild:
         _client = client._get_instance()
         return semantic_layer.SemanticBuild.from_response_json(
-            _client._send_request("GET", self._path(sp.id, "builds", build_id))
+            _client._send_request(
+                "GET", self._path(sp.id, "builds", build_id), timeout=timeout
+            )
         )
+
+    def _get(
+        self, sp: semantic_layer.SemanticProject, timeout: tuple[float, float] | None
+    ) -> dict[str, Any]:
+        _client = client._get_instance()
+        return _client._send_request("GET", self._path(sp.id), timeout=timeout)
 
     def _promote(
         self, sp: semantic_layer.SemanticProject, build_id: int
