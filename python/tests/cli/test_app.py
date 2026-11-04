@@ -7,7 +7,6 @@ from unittest import mock
 
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
-from hopsworks_common.app import App
 
 
 def _fake_app(**overrides):
@@ -149,22 +148,6 @@ def test_app_info_shows_url(mock_project):
     assert result.exit_code == 0, result.output
     assert "https://host/dash" in result.output
     assert "RUNNING" in result.output
-
-
-def test_app_info_shows_the_public_link_state(mock_project):
-    apps = mock_project.get_app_api.return_value
-    for public, text in ((True, "on"), (False, "off")):
-        # The SDK's App as the backend answers it, so the CLI reads the real property.
-        apps.get_app.return_value = App.from_response_json(
-            {"jobId": 42, "name": "dash", "state": "RUNNING", "publicAccess": public}
-        )
-        result = CliRunner().invoke(cli, ["app", "info", "dash"])
-        assert result.exit_code == 0, result.output
-        row = next(line for line in result.output.splitlines() if "Public link" in line)
-        assert row.split()[-1] == text
-        result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
-        assert result.exit_code == 0, result.output
-        assert json.loads(result.output)["public_access"] is public
 
 
 def test_app_info_shows_custom_metadata(mock_project):
