@@ -15,7 +15,7 @@
 #
 
 import pytest
-from hopsworks_common import tracing
+from hopsworks_common import request_metrics, tracing
 from hsfs import engine, transformation_function
 from hsfs.core import (
     transformation_execution_dag,
@@ -82,7 +82,20 @@ def telemetry_off(mocker):
 def telemetry_on(mocker, span_exporter):
     # span_exporter switches telemetry on; patching it again here would restore the switched-on value at teardown.
     mocker.patch.dict(transformation_telemetry._telemetries, clear=True)
+    _fresh_request_metrics(mocker)
     return span_exporter
+
+
+def _fresh_request_metrics(mocker):
+    mocker.patch.object(request_metrics, "_stages", {})
+    mocker.patch.object(request_metrics, "_buckets", {})
+    mocker.patch.object(tracing, "_request_observers", [request_metrics._observe])
+
+
+def _stage_metrics():
+    registry = prometheus_client.CollectorRegistry()
+    registry.register(request_metrics._Collector())
+    return registry
 
 
 def _server(mocker, graphs):
@@ -163,7 +176,15 @@ class TestDisabled:
 
 
 class TestEnabled:
-    def test_sampled_request_traces_its_first_row(self, mocker, graphs, telemetry_on):
+    @pytest.mark.parametrize("coarse_clock", [False, True])
+    def test_sampled_request_traces_its_first_row(
+        self, mocker, graphs, telemetry_on, coarse_clock
+    ):
+        if coarse_clock:
+            clock = mocker.patch.object(
+                transformation_telemetry, "time", wraps=transformation_telemetry.time
+            )
+            clock.time_ns.return_value = 1_700_000_000 * SECOND_NS
         server = _server(mocker, graphs)
 
         with (
@@ -188,7 +209,8 @@ class TestEnabled:
         assert by_name["total"].attributes["hopsworks.transformation.depends_on"] == (
             "doubled"
         )
-        assert by_name["doubled"].end_time <= by_name["total"].start_time
+        # A coarse wall clock can make reconstructed timestamps overlap even for sequential calls.
+        assert names.index("doubled") < names.index("total")
         # Both rows are measured, though only the first is traced.
         metrics = _metrics()
         assert _sample(metrics, "hopsworks_transformations_calls_total") == 2
@@ -278,6 +300,59 @@ class TestEnabled:
         metrics = _metrics()
         assert _sample(metrics, "hopsworks_transformations_calls_total") == 1
         assert _sample(metrics, "hopsworks_transformations_seconds_total") > 0
+
+    def test_a_request_adds_both_phases_of_every_row_to_its_transformations_stage(
+        self, mocker, graphs, telemetry_on
+    ):
+        server = _server(mocker, graphs)
+
+        for _ in range(2):
+            with tracing._request_scope(1):
+                _apply(server)
+                _apply(server)
+
+        metrics = _metrics()
+        phases = sum(
+            _sample(metrics, "hopsworks_transformations_seconds_total", kind=kind)
+            for kind in ("on_demand", "model_dependent")
+        )
+        stages = _stage_metrics()
+        transformations = {
+            "stage": "transformations",
+            "name": f"{FEATURE_VIEW}:{VERSION}",
+        }
+        assert (
+            stages.get_sample_value(
+                "hopsworks_prediction_stage_seconds_count", transformations
+            )
+            == 2
+        )
+        assert stages.get_sample_value(
+            "hopsworks_prediction_stage_seconds_sum", transformations
+        ) == pytest.approx(phases)
+        assert (
+            stages.get_sample_value(
+                "hopsworks_prediction_stage_seconds_bucket",
+                {**transformations, "le": "+Inf"},
+            )
+            == 2
+        )
+
+    def test_transformations_outside_a_request_are_not_a_request(
+        self, mocker, graphs, telemetry_on
+    ):
+        server = _server(mocker, graphs)
+
+        _apply(server)
+
+        assert _sample(_metrics(), "hopsworks_transformations_calls_total") == 1
+        assert (
+            _stage_metrics().get_sample_value(
+                "hopsworks_prediction_stage_seconds_count",
+                {"stage": "transformations", "name": f"{FEATURE_VIEW}:{VERSION}"},
+            )
+            == 0
+        )
 
     def test_exports_dag_edges(self, mocker, graphs, telemetry_on):
         _server(mocker, graphs)
@@ -379,3 +454,16 @@ class TestWindow:
 
         series._observe(7, 3 * window)
         assert series._last_window(3 * window + 1) == (0, 5, 5)
+
+    def test_recent_extremes_include_the_current_window(self):
+        series = transformation_telemetry._Series()
+        window = transformation_telemetry._WINDOW_NS
+
+        series._observe(5, 0)
+        assert series._recent(1) == (1, 5, 5)
+
+        series._observe(2, window)
+        series._observe(9, window + 1)
+        assert series._recent(window + 2) == (3, 2, 9)
+        assert series._recent(2 * window) == (2, 2, 9)
+        assert series._recent(3 * window) == (0, 0, 0)

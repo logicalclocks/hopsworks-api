@@ -76,6 +76,11 @@ Build it after the SLA holds, record it in `inference.monitoring` (`hops-reqs/re
   Batch: the scoring job calls `fv.log(features_df, predictions=..., model=...)` after it writes the predictions, then `fv.materialize_log()` without `wait`: the materialization job finishes on its own, and waiting holds every scoring run, benchmark and integration test for its whole run (two minutes of a three-minute job on a small cluster).
   The log's prediction column takes the label's type, so log the label-typed prediction (0/1 for a binary label) and keep a score in the prediction feature group.
   Prove it once: score or send a request, and read the log back (`fv.read_log(...)`) at the end of the phase, after the materialization job has finished (`hops job history`); record the log feature group and its row count.
+- **`tracing`** (realtime only): create the deployment with it from the first attempt, since a deployment created without it gains the collector sidecar only through an update, which restarts it:
+  `model.deploy(..., tracing={"enabled": True, "sampling_percentage": <sampling_percentage>, "duration_days": <duration_days>})` (**hops-online-inference**, Where the time goes).
+  A traced deployment serves one worker per replica, so every benchmark attempt runs with it on and the replica lever accounts for it.
+  Prove it once: after the benchmark, `deployment.tracing.active` is not False, `deployment.tracing.paused_reason` is None, and `GET /hopsworks-api/api/project/{project_id}/serving/{deployment_id}/latency?window=1h` lists `feature_lookup`, `transformations`, `model_predict` and, with feature logging, `feature_log`, each with requests; record the deployment, the sampling, `deployment.tracing.active_until` and the stages listed.
+  Absent, the deployment is created without tracing.
 - **`watch`** is the user's words.
   Turn each thing it names into one concrete check, and quote the words it serves in the check's `from`.
   Feature or prediction drift is a feature monitoring configuration on the feature view, compared with the training dataset the model was trained on (`with_reference_training_dataset`), on a cron no more often than the inference cadence.

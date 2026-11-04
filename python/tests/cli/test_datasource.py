@@ -106,6 +106,14 @@ _MINIMAL: dict[str, list[str]] = {
         "--site-url",
         "https://contoso.sharepoint.com/sites/Finance",
     ],
+    "gmail": [
+        "--mailbox",
+        "a@example.com",
+        "--auth-type",
+        "SERVICE_ACCOUNT",
+        "--key-path",
+        "/Projects/p/sa.json",
+    ],
 }
 
 # The Jackson subtype name and the FeaturestoreConnectorType each command sends.
@@ -131,6 +139,7 @@ _DTOS: dict[str, tuple[str, str]] = {
     "glue": ("featurestoreGlueConnectorDTO", "GLUE"),
     "google-sheets": ("featurestoreGoogleSheetsConnectorDTO", "GOOGLE_SHEETS"),
     "sharepoint": ("featurestoreSharePointConnectorDTO", "SHAREPOINT"),
+    "gmail": ("featurestoreGmailConnectorDTO", "GMAIL"),
 }
 
 
@@ -995,6 +1004,53 @@ def test_hopsworks_sends_the_remote_project_and_api_key():
     assert body["verify"] is False
 
 
+def test_gmail_oauth_reads_its_secrets_from_the_environment():
+    body = _create(
+        [
+            "gmail",
+            "n",
+            "--mailbox",
+            "a@example.com",
+            "--auth-type",
+            "OAUTH",
+            "--client-id",
+            "cid",
+        ],
+        env={
+            "HOPSWORKS_DS_GMAIL_CLIENT_SECRET": "cs",
+            "HOPSWORKS_DS_GMAIL_REFRESH_TOKEN": "rt",
+        },
+    )
+    assert (
+        body["authType"],
+        body["clientId"],
+        body["clientSecret"],
+        body["refreshToken"],
+    ) == (
+        "OAUTH",
+        "cid",
+        "cs",
+        "rt",
+    )
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (
+            ["--auth-type", "OAUTH", "--client-id", "c"],
+            "--auth-type OAUTH needs --client-secret",
+        ),
+        (
+            ["--auth-type", "SERVICE_ACCOUNT", "--key-path", "k", "--client-id", "c"],
+            "--auth-type SERVICE_ACCOUNT does not take --client-id",
+        ),
+    ],
+)
+def test_gmail_credentials_follow_the_auth_type(argv, message):
+    assert message in _refused(["gmail", "n", "--mailbox", "a@example.com", *argv])
+
+
 @pytest.mark.parametrize(
     "host", ["https://hopsworks.example.com", "hopsworks.example.com/hopsworks-api"]
 )
@@ -1036,6 +1092,19 @@ def test_a_failed_test_exits_with_the_checkers_output():
 
     assert result.exit_code == 1
     assert "refused" in result.output
+
+
+def test_labels_lists_the_gmail_labels_by_id():
+    fs = mock.MagicMock()
+    fs.get_data_source.return_value.storage_connector.get_labels.return_value = {
+        "INBOX": "INBOX",
+        "Label_7": "receipts",
+    }
+    with mock.patch.object(ds.session, "get_feature_store", return_value=fs):
+        result = CliRunner().invoke(cli, ["datasource", "labels", "inbox"])
+
+    assert result.exit_code == 0, result.output
+    assert "Label_7" in result.output and "receipts" in result.output
 
 
 def test_sharepoint_sends_the_site_and_the_secret():
