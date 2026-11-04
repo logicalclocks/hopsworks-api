@@ -225,6 +225,24 @@ class TestModels:
         assert group_by.entity_path == ["listing"]
         assert group_by.date_parts_supported is False
 
+    def test_metric_tags_keep_the_case_of_schema_names_and_value_keys(self):
+        metric = SemanticMetric.from_response_json(
+            {
+                "name": "revenue",
+                "type": "SIMPLE",
+                "tags": {"dataOwnership": {"ownerTeam": "finance", "certified": True}},
+            }
+        )
+
+        assert metric.tags == {
+            "dataOwnership": {"ownerTeam": "finance", "certified": True}
+        }
+        assert metric.to_dict()["tags"] == metric.tags
+
+    def test_a_metric_without_tags_has_an_empty_mapping(self):
+        assert SemanticMetric.from_response_json({"name": "orders"}).tags == {}
+        assert SemanticMetric(name="orders").tags == {}
+
 
 def test_polars_conversion_of_a_json_result():
     pl = pytest.importorskip("polars")

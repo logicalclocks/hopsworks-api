@@ -306,13 +306,126 @@ class TestProjects:
         result = _run("metrics", "sales")
 
         assert result.exit_code == 0, result.output
+        assert result.output.splitlines()[0].split() == [
+            "NAME",
+            "TYPE",
+            "AGG",
+            "LABEL",
+            "TAGS",
+            "DESCRIPTION",
+        ]
         assert result.output.splitlines()[2].split() == [
             "revenue",
             "SIMPLE",
             "SUM",
             "-",
+            "-",
             "Net",
         ]
+        sales.list_metrics.assert_called_once_with(tag=None)
+
+    def test_metrics_tag_filter_repeats_and_the_table_names_each_schema(self, sales):
+        sales.list_metrics.return_value = [
+            SemanticMetric(
+                name="revenue",
+                type="SIMPLE",
+                tags={"ownership": {"owner": "finance"}, "domain": "sales"},
+            )
+        ]
+
+        result = _run("metrics", "sales", "--tag", "ownership", "--tag", "domain")
+
+        assert result.exit_code == 0, result.output
+        sales.list_metrics.assert_called_once_with(tag=["ownership", "domain"])
+        assert result.output.splitlines()[2].split()[4] == "domain,ownership"
+
+    def test_create_passes_tags_parsed_as_json(self, sl):
+        sl.create_project.return_value = mock.MagicMock(name="sp", id=7)
+
+        result = _run(
+            "create",
+            "sales",
+            "--path",
+            "dbt",
+            "--tag",
+            'ownership={"owner": "finance"}',
+            "--tag",
+            "domain=sales",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert sl.create_project.call_args.kwargs["tags"] == {
+            "ownership": {"owner": "finance"},
+            "domain": "sales",
+        }
+
+    def test_create_refuses_a_tag_without_a_value(self, sl):
+        result = _run("create", "sales", "--path", "dbt", "--tag", "ownership")
+
+        assert result.exit_code == 2
+        assert "NAME=VALUE" in result.output
+        sl.create_project.assert_not_called()
+
+
+class TestTags:
+    def test_list_prints_each_value_as_json(self, sales):
+        sales.get_tags.return_value = {"ownership": {"owner": "finance"}, "tier": 1}
+
+        result = _run("tag", "list", "sales")
+
+        assert result.exit_code == 0, result.output
+        lines = result.output.splitlines()
+        assert lines[0].split() == ["NAME", "VALUE"]
+        assert lines[2].split(maxsplit=1) == ["ownership", '{"owner": "finance"}']
+        assert lines[3].split() == ["tier", "1"]
+
+    def test_list_in_json_is_the_mapping(self, sales):
+        sales.get_tags.return_value = {"tier": 1}
+
+        result = _run("--json", "tag", "list", "sales")
+
+        assert json.loads(result.output) == {"tier": 1}
+
+    def test_get_prints_the_value(self, sales):
+        sales.get_tag.return_value = {"owner": "finance"}
+
+        result = _run("tag", "get", "sales", "ownership")
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output) == {"owner": "finance"}
+        sales.get_tag.assert_called_once_with("ownership")
+
+    def test_get_of_a_missing_tag_exits_one(self, sales):
+        sales.get_tag.return_value = None
+
+        result = _run("tag", "get", "sales", "ownership")
+
+        assert result.exit_code == 1
+        assert "has no tag 'ownership'" in result.output
+
+    @pytest.mark.parametrize(
+        ("raw", "value"),
+        [('{"owner": "finance"}', {"owner": "finance"}), ("sales", "sales"), ("3", 3)],
+    )
+    def test_set_parses_json_and_falls_back_to_a_string(self, sales, raw, value):
+        result = _run("tag", "set", "sales", "domain", raw)
+
+        assert result.exit_code == 0, result.output
+        sales.add_tag.assert_called_once_with("domain", value)
+
+    def test_delete(self, sales):
+        result = _run("tag", "delete", "sales", "domain")
+
+        assert result.exit_code == 0, result.output
+        sales.delete_tag.assert_called_once_with("domain")
+
+    def test_an_unknown_project_names_the_list_command(self, sl):
+        sl.get_project.return_value = None
+
+        result = _run("tag", "list", "nope")
+
+        assert result.exit_code == 1
+        assert "hops semantic list" in result.output
 
 
 class TestDiscovery:

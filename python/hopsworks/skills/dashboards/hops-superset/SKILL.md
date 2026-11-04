@@ -11,7 +11,8 @@ SDK (`project.get_superset_api()`).
 
 ## Contract
 
-- **Input:** an offline-materialized feature group (queryable in Trino).
+- **Input:** an offline-materialized feature group (queryable in Trino), or the
+  metrics of a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md)).
 - **Output:** a published Superset dashboard (charts + datasets) and its URL.
 - **Pre-condition:** Superset enabled on the cluster, and the FG materialized to
   the offline (Trino) store.
@@ -204,6 +205,43 @@ def ensure_dataset(api, database_id, schema, name, sql):
 
 Use the same pattern for charts (key on `slice_name`) and dashboards
 (key on `dashboard_title`).
+
+### Metrics from the semantic layer
+
+When a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md))
+defines the metric a chart shows, chart that metric's SQL instead of deriving it
+again from the feature group: the definition holds the joins, filters and
+aggregation its owners agreed on, so every dashboard shows the same number.
+Until Superset 7.0 reads semantic layers itself, such a chart reads a virtual
+dataset over the SQL of a metric query:
+
+```bash
+hops semantic metrics sales                       # the metrics, and the tag schemas each sets
+hops semantic dimensions sales --metrics revenue  # what they can be grouped by
+hops semantic sql sales --metrics revenue,orders --group-by metric_time__month,customer__country
+```
+
+```python
+sales = project.get_semantic_layer_api().get_project("sales")
+sql = sales.sql(
+    metrics=["revenue", "orders"],
+    group_by=["metric_time__month", "customer__country"],
+)
+dataset_id = ensure_dataset(api, trino_db_id, schema, "sales_revenue_by_month", sql)
+api.update_dataset(dataset_id, sql=sql)  # a reused dataset takes the current build's SQL
+```
+
+- One dataset per metric query: its columns are the group-bys and the metrics,
+  one row per group. Group in the query by what the charts group by. A chart
+  then reads a metric column without aggregating it again (`MAX(revenue)` at the
+  dataset's grain); only an additive metric, a simple `sum` or `count`, may be
+  summed when a chart groups coarser. A ratio or a distinct count summed again
+  is wrong.
+- Leave out `--limit` and `--order-by`; Superset applies its own.
+- The SQL is fixed when the dataset is written. A dashboard program writes it
+  again on every run, so rerun the program after the definitions change.
+- The SQL names its tables in full (`"delta"."<project>_featurestore"."<fg>_<version>"`),
+  so the Trino connection's default catalog does not matter.
 
 ---
 
@@ -427,6 +465,10 @@ last line printing the dashboard URL.
   name on another dashboard is left alone.
 - An ML system's dashboard (the app phase of `/hops-build`) keeps its program in
   the system's repository, under `<slug>/dashboards/`, instead of the user's home.
+- **Metric charts:** a dataset over a metric query (§2, Metrics from the semantic
+  layer) is a `METRIC_DATASETS` entry, `{"name", "semantic_project", "metrics",
+  "group_by"}`, whose SQL the program gets from `SemanticProject.sql` on every
+  run; a chart names it as its `dataset` like a feature group's.
 
 ```bash
 python ~/dashboards/customers-overview.py            # create or update, prints the URL
@@ -463,6 +505,7 @@ a chart that still fails is dropped from `CHARTS` with a line saying why.
 ## Next Steps
 
 - Get a feature group materialized offline to chart: **hops-fg**.
+- Define a metric once, then chart its SQL: **hops-semantic**.
 - Inspect / query the underlying Trino table: **hops-trino-sql**, **hops-data-discovery**.
 - A custom interactive app instead of BI dashboards: **hops-app**.
 

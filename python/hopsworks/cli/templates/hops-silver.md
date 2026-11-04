@@ -92,6 +92,8 @@ Tag every silver and rejects feature group `analytics_table` with `{"layer": "si
 
 For each job, run one window of its cadence (`hops job run <slug>-silver-<cadence> --start-time <t0> --end-time <t1> --wait`) over a stretch of bronze arrivals, check that only that window's rows were read (the job's log states its window and row counts), that a second run of the same window leaves every silver table unchanged, and that the tags are set.
 Run `hops factory system status <slug>` and fix anything it flags.
+**Semantic layer.** When the dbt project in `dbt/` has `semantic_models:` (load **hops-semantic**), register it as the semantic project `<layer>_silver`, `<layer>` being the slug with each `-` as `_`, unless `hops semantic show <layer>_silver` already finds it: `hops semantic create <layer>_silver --path <dir>`, with `<dir>` the dbt project's HopsFS directory (`$PWD/dbt` under the terminal's HopsFS mount, or where the backfill uploaded it from an external client) and the cluster's mandatory semantic project tags as `--tag` when a create is refused for them.
+Then run `hops semantic test <layer>_silver` and fix the YAML until every metric passes, and record `outputs.semantic_project` as `{name, path, build, tested}` (the build the test compiled, `tested` in UTC). A dbt project without `semantic_models:` registers nothing.
 Set `outputs.applied_spec` to the spec just built (`sources` names and versions, `tasks`, `extra_tasks`, `engine`, `schedule`, `layer.lifecycle`, `history`, `deletes`, `schema_changes`, `late_data`, `quality`, `freshness`), set `layer.status: built`, and report the silver tables, the job, its schedule and the checks, in a few lines.
 
 ### apply

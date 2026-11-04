@@ -35,18 +35,25 @@ class GitEngine:
         self._log = logging.getLogger(__name__)
 
     def _execute_op_blocking(
-        self, git_op: GitOpExecution, command: str
+        self, git_op: GitOpExecution, command: str, timeout: float | None = None
     ) -> GitOpExecution:
         """Poll a git execution status until it reaches a terminal state.
 
         Parameters:
             git_op: Git execution to monitor.
             command: Git operation running.
+            timeout: Seconds to wait before giving up with a `GitException`, or `None` to wait as long as it runs.
 
         Returns:
             The final GitOpExecution object.
         """
+        deadline = None if timeout is None else time.monotonic() + timeout
         while git_op.success is None:
+            if deadline is not None and time.monotonic() > deadline:
+                raise GitException(
+                    f"Git command {command} has not finished after {timeout:.0f} seconds; "
+                    f"it is still running, in state {git_op.state}."
+                )
             self._log.info(f"Running command {command}, current status {git_op.state}")
             git_op = self._git_op_execution_api._get_execution(
                 git_op.repository.id, git_op.id

@@ -20,7 +20,7 @@ from __future__ import annotations
 import datetime
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 import humps
@@ -176,6 +176,7 @@ class SemanticMetric:
     `queryable_granularities` are the grains `metric_time` can be grouped by for this metric.
     `requires_metric_time` is set when every query of the metric must group by `metric_time`.
     `filter` is the metric's own filter, applied to every query of it.
+    `tags` are the schematised tags its definition sets in `config.meta.hopsworks.tags`, tag schema name to value, checked against the tag schemas when the project compiles.
     """
 
     name: str | None = None
@@ -186,6 +187,7 @@ class SemanticMetric:
     queryable_granularities: list[str] | None = None
     requires_metric_time: bool | None = None
     filter: str | None = None
+    tags: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_response_json(
@@ -193,7 +195,10 @@ class SemanticMetric:
     ) -> SemanticMetric | None:
         if not json_dict:
             return None
-        return cls(**_known_fields(cls, humps.decamelize(json_dict)))
+        fields = _known_fields(cls, humps.decamelize(json_dict))
+        # Tag schema names and the keys inside tag values are the user's, so they keep their case.
+        fields["tags"] = json_dict.get("tags") or {}
+        return cls(**fields)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -575,20 +580,95 @@ class SemanticProject:
 
     # endregion
 
+    # region Tags
+
+    @public
+    @usage._method_logger
+    def add_tag(self, name: str, value: Any) -> None:
+        """Attach a schematised tag to the semantic project, or replace its value.
+
+        The tag schema `name` must exist, and `value` must match it; administrators create the schemas.
+        The value can be any JSON value: a string, number, boolean, list or object.
+        Schematised tags need Hopsworks Enterprise; other editions refuse the request.
+
+        ```python
+        sales.add_tag("ownership", {"owner": "finance", "certified": True})
+        ```
+
+        Parameters:
+            name: Name of the tag schema.
+            value: Value of the tag.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the schema does not exist, the value does not match it, or the backend encounters another error.
+        """
+        self._semantic_layer_api._add_tag(self, name, value)
+
+    @public
+    @usage._method_logger
+    def delete_tag(self, name: str) -> None:
+        """Remove a tag from the semantic project.
+
+        A tag that a mandatory tag rule requires can still be removed; the project then lists it as missing.
+
+        Parameters:
+            name: Name of the tag schema.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._semantic_layer_api._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """The value of one tag attached to the semantic project.
+
+        Parameters:
+            name: Name of the tag schema.
+
+        Returns:
+            The tag value, or `None` if the project has no such tag.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._semantic_layer_api._get_tag(self, name)
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Every tag attached to the semantic project.
+
+        Metric tags are not included: they are part of each metric's definition, in [`SemanticMetric.tags`][hopsworks_common.semantic_layer.SemanticMetric].
+
+        Returns:
+            Tag schema names to tag values, empty when the project has none.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._semantic_layer_api._get_tags(self)
+
+    # endregion
+
     # region Discovery
 
     @public
     @usage._method_logger
-    def list_metrics(self) -> list[SemanticMetric]:
-        """Every metric of the current build.
+    def list_metrics(
+        self, tag: str | Sequence[str] | None = None
+    ) -> list[SemanticMetric]:
+        """Every metric of the current build, or the metrics that carry every given tag.
+
+        Parameters:
+            tag: Tag schema names; only metrics whose definitions set all of them are listed.
 
         Returns:
-            The metrics.
+            The metrics, each with its tags.
 
         Raises:
             hopsworks.client.exceptions.SemanticLayerException: If the gateway refuses the request, for example because no build is valid yet.
         """
-        return self._semantic_layer_api._metrics(self)
+        return self._semantic_layer_api._metrics(self, _as_list(tag))
 
     @public
     @usage._method_logger

@@ -84,6 +84,16 @@ class GitApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        return self._clone(url, path, provider=provider, branch=branch)
+
+    def _clone(
+        self,
+        url: str,
+        path: str,
+        provider: str | None = None,
+        branch: str | None = None,
+        timeout: float | None = None,
+    ) -> git_repo.GitRepo:
         _client = client._get_instance()
 
         # Support absolute and relative path to dataset
@@ -118,7 +128,7 @@ class GitApi:
                 "/p/" + str(_client._project_id) + "/settings/git"
             )
         )
-        git_op = self._git_engine._execute_op_blocking(git_op, "CLONE")
+        git_op = self._git_engine._execute_op_blocking(git_op, "CLONE", timeout=timeout)
         return self.get_repo(git_op.repository.name, git_op.repository.path)
 
     @public
