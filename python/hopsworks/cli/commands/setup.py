@@ -635,6 +635,6 @@ def _suggest_skills_install(root: Path) -> None:
             return
     output.info(
         "Run `hops skills install` to add the %d Hopsworks skills to this repository "
-        "(--agent codex|copilot|opencode for other agents).",
+        "(--agent codex|copilot|hermes|opencode|pi for other agents).",
         len(shipped),
     )
