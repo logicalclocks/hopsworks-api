@@ -322,3 +322,54 @@ class PlatformIntelligenceException(Exception):
 @also_available_as("hsml.client.exceptions.TrinoException")
 class TrinoException(Exception):
     """Generic Trino exception."""
+
+
+@public("hopsworks.client.exceptions.SemanticLayerException")
+class SemanticLayerException(Exception):
+    """A Hopsworks Semantic Layer request was refused, or named a semantic project that does not exist.
+
+    `status_code` is the HTTP status, and `None` when the client raised the error itself.
+    `error_code` is the gateway's code, such as `SEMANTIC_LAYER_NO_VALID_BUILD` or `SEMANTIC_LAYER_INVALID_QUERY`.
+    `error_msg` names what was wrong, for example the unknown metric or group-by of an invalid query.
+    `usr_msg` carries the query engine's own message when execution failed.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        error_code: str | None = None,
+        error_msg: str | None = None,
+        usr_msg: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
+        self.error_msg = error_msg
+        self.usr_msg = usr_msg
+
+
+@public("hopsworks.client.exceptions.SemanticBuildException")
+class SemanticBuildException(SemanticLayerException):
+    """A compile ended `INVALID` or `FAILED`, so its build will never be served.
+
+    The semantic project keeps answering queries from its last valid build.
+    `build` is the failed [`SemanticBuild`][hopsworks_common.semantic_layer.SemanticBuild] and `issues` its validation issues, which are empty for a `FAILED` compile that could not run at all.
+    """
+
+    _LISTED_ISSUES = 20
+
+    def __init__(self, project_name: str, build: Any) -> None:
+        issues = list(build.issues or [])
+        lines = [
+            f"Build {build.id} of semantic project '{project_name}' is {build.status}"
+            f" with {build.error_count or 0} errors and {build.warning_count or 0} warnings."
+        ]
+        lines += [f"  {issue}" for issue in issues[: self._LISTED_ISSUES]]
+        if len(issues) > self._LISTED_ISSUES:
+            lines.append(
+                f"  ... and {len(issues) - self._LISTED_ISSUES} more in the build's issues."
+            )
+        super().__init__("\n".join(lines))
+        self.build = build
+        self.issues = issues

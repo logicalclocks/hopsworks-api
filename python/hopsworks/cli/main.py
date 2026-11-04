@@ -49,6 +49,7 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
     "transformation": "hopsworks.cli.commands.transformation:transformation_group",
     "superset": "hopsworks.cli.commands.superset:superset_group",
     "search": "hopsworks.cli.commands.search:search_cmd",
+    "semantic": "hopsworks.cli.commands.semantic:semantic_group",
     "trino": "hopsworks.cli.commands.trino:trino_group",
     "sql": "hopsworks.cli.commands.trino:trino_query",  # top-level alias of `trino query`
     "context": "hopsworks.cli.commands.context:context_cmd",
@@ -68,16 +69,19 @@ _NO_VALID_SCOPE = 320004
 def _explain_rest_error(exc: BaseException | None) -> str | None:
     """Reduce a REST failure to the one line a user can act on.
 
-    Returns None for anything that is not the SDK's ``RestAPIError``, so callers
-    can re-raise unrelated exceptions untouched. A missing API key scope names
-    the scope the endpoint wanted and how to grant it; every other REST error
-    keeps the status, the error code and the server's own user message and
-    drops the URL and raw body that ``str(exc)`` carries.
+    Returns None for anything that is neither the SDK's ``RestAPIError`` nor a
+    ``SemanticLayerException``, so callers can re-raise unrelated exceptions
+    untouched. A semantic layer error already reads as that one line. A missing
+    API key scope names the scope the endpoint wanted and how to grant it; every
+    other REST error keeps the status, the error code and the server's own user
+    message and drops the URL and raw body that ``str(exc)`` carries.
     """
     from hopsworks_common.client import (
         exceptions,  # noqa: PLC0415 - loaded once the SDK has raised
     )
 
+    if isinstance(exc, exceptions.SemanticLayerException):
+        return str(exc)
     if not isinstance(exc, exceptions.RestAPIError):
         return None
     response = exc.response
