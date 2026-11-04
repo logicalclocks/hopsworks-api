@@ -145,6 +145,7 @@ hops semantic update sales --path Jupyter/analytics/dbt_v2     # a new root path
 ## Discover
 
 ```bash
+hops search revenue --type metric      # metrics in every semantic project; DETAIL names the semantic project
 hops semantic metrics sales
 hops semantic dimensions sales --metrics revenue,average_order_value   # only what every listed metric supports
 hops semantic metrics sales --group-by customer__country               # only metrics that can be grouped by it

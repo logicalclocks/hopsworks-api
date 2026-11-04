@@ -336,9 +336,55 @@ class FeatureSearchResult(SearchResultItem):
     """Search result for a Feature."""
 
 
+@public("hopsworks.core.search_api.MetricSearchResult")
+class MetricSearchResult(SearchResultItem):
+    """Search result for a semantic layer metric.
+
+    A metric name is unique only within its semantic project.
+    Query the metric through that project, from [`SemanticLayerApi.get_project`][hopsworks.core.semantic_layer_api.SemanticLayerApi.get_project] with `semantic_project_name`.
+    """
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self._label = data.get("label")
+        self._semantic_project_id = data.get("semanticProjectId")
+        self._semantic_project_name = data.get("semanticProjectName")
+
+    @public
+    @property
+    def label(self) -> str | None:
+        """Display label of the metric, which is the metric name unless the definition sets one."""
+        return self._label
+
+    @public
+    @property
+    def semantic_project_id(self) -> int | None:
+        """ID of the semantic project that defines the metric."""
+        return self._semantic_project_id
+
+    @public
+    @property
+    def semantic_project_name(self) -> str | None:
+        """Name of the semantic project that defines the metric."""
+        return self._semantic_project_name
+
+    def json(self) -> dict:
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            A dictionary representation of the metric search result.
+        """
+        return {
+            **super().json(),
+            "label": self._label,
+            "semantic_project_id": self._semantic_project_id,
+            "semantic_project_name": self._semantic_project_name,
+        }
+
+
 @public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
-    """Every bucket of a search: feature store entities, jobs, apps, models, deployments and agents."""
+    """Every bucket of a search: feature store entities, jobs, apps, models, deployments, agents, datasets and metrics."""
 
     def __init__(self, response_data: dict):
         self._log = logging.getLogger(__name__)
@@ -356,9 +402,10 @@ class FeaturestoreSearchResult:
         self._features = [
             FeatureSearchResult(f) for f in response_data.get("features", [])
         ]
-        # Jobs, apps, models, deployments and agents share the same index and
-        # response shape; the type-specific fields (jobType, framework,
-        # servingTool, modelName) stay reachable through raw_data.
+        # Jobs, apps, models, deployments, agents and datasets share the same
+        # index and response shape; the type-specific fields (jobType,
+        # framework, servingTool, modelName, datasetId) stay reachable through
+        # raw_data.
         self._jobs = [SearchResultItem(j) for j in response_data.get("jobs", [])]
         self._apps = [SearchResultItem(a) for a in response_data.get("apps", [])]
         self._models = [SearchResultItem(m) for m in response_data.get("models", [])]
@@ -366,6 +413,12 @@ class FeaturestoreSearchResult:
             SearchResultItem(d) for d in response_data.get("deployments", [])
         ]
         self._agents = [SearchResultItem(a) for a in response_data.get("agents", [])]
+        self._datasets = [
+            SearchResultItem(d) for d in response_data.get("datasets", [])
+        ]
+        self._metrics = [
+            MetricSearchResult(m) for m in response_data.get("metrics", [])
+        ]
 
         # Store metadata about result counts
         self._feature_groups_offset = response_data.get("featuregroupsFrom", 0)
@@ -386,6 +439,10 @@ class FeaturestoreSearchResult:
         self._deployments_total = response_data.get("deploymentsTotal", 0)
         self._agents_offset = response_data.get("agentsFrom", 0)
         self._agents_total = response_data.get("agentsTotal", 0)
+        self._datasets_offset = response_data.get("datasetsFrom", 0)
+        self._datasets_total = response_data.get("datasetsTotal", 0)
+        self._metrics_offset = response_data.get("metricsFrom", 0)
+        self._metrics_total = response_data.get("metricsTotal", 0)
 
     @public
     @property
@@ -440,6 +497,18 @@ class FeaturestoreSearchResult:
     def agents(self) -> list[SearchResultItem]:
         """List of Agent search results."""
         return self._agents
+
+    @public
+    @property
+    def datasets(self) -> list[SearchResultItem]:
+        """List of Dataset search results."""
+        return self._datasets
+
+    @public
+    @property
+    def metrics(self) -> list[MetricSearchResult]:
+        """List of semantic layer Metric search results."""
+        return self._metrics
 
     @public
     @property
@@ -549,6 +618,30 @@ class FeaturestoreSearchResult:
         """Total number of Agents matching the search."""
         return self._agents_total
 
+    @public
+    @property
+    def datasets_offset(self) -> int:
+        """Total offset for the return list of datasets within the whole result."""
+        return self._datasets_offset
+
+    @public
+    @property
+    def datasets_total(self) -> int:
+        """Total number of Datasets matching the search."""
+        return self._datasets_total
+
+    @public
+    @property
+    def metrics_offset(self) -> int:
+        """Total offset for the return list of metrics within the whole result."""
+        return self._metrics_offset
+
+    @public
+    @property
+    def metrics_total(self) -> int:
+        """Total number of Metrics matching the search."""
+        return self._metrics_total
+
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary.
 
@@ -583,6 +676,12 @@ class FeaturestoreSearchResult:
             "agents": [i.json() for i in self._agents],
             "agentsFrom": self._agents_offset,
             "agentsTotal": self._agents_total,
+            "datasets": [i.json() for i in self._datasets],
+            "datasetsFrom": self._datasets_offset,
+            "datasetsTotal": self._datasets_total,
+            "metrics": [i.json() for i in self._metrics],
+            "metricsFrom": self._metrics_offset,
+            "metricsTotal": self._metrics_total,
         }
 
     def __repr__(self):
