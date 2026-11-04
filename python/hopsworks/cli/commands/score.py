@@ -23,6 +23,7 @@ from hopsworks.score.kumo_job import Group, Link, Plan, ScoreRefused
 ENVIRONMENT = "scoring-pipeline"
 JOB_CORES = 4
 JOB_MEMORY_MB = 6144
+MAX_CONCURRENT = "maxConcurrentExecutions"
 SCRIPT = Path(kumo_job.__file__)
 DEFAULT_TOP = 20
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -389,24 +390,27 @@ def _job_name(name: str) -> str:
     return f"kumo-score-{name}"
 
 
-def _active_execution(job: Any) -> Any | None:
-    from hopsworks_common.constants import JOBS  # noqa: PLC0415 - SDK loaded on use
+def run_refusal(exc: BaseException, name: str) -> ScoreRefused | None:
+    """The refusal of a second run: the server's HTTP 409 on the execution start, with its message."""
+    from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
+        RestAPIError,
+    )
 
-    for execution in job.get_executions() or []:
-        if execution.state not in JOBS.FINAL_STATES:
-            return execution
-    return None
-
-
-def refuse_if_running(job: Any, name: str) -> None:
-    """One run per system: refuse while the job has an execution that has not ended."""
-    execution = _active_execution(job)
-    if execution is not None:
-        raise ScoreRefused(
-            f"job {_job_name(name)} has execution #{execution.id} {execution.state}. "
-            "One run per system: wait for it to end, or stop it with "
-            f"`hops job stop {_job_name(name)}`."
-        )
+    cause = exc
+    while cause is not None and not isinstance(cause, RestAPIError):
+        cause = cause.__cause__
+    if cause is None or cause.response.status_code != RestAPIError.STATUS_CODE_CONFLICT:
+        return None
+    try:
+        body = cause.response.json()
+    except ValueError:
+        body = {}
+    reason = body.get("usrMsg") or body.get("errorMsg") or "an execution is running"
+    job_name = _job_name(name)
+    return ScoreRefused(
+        f"job {job_name} is already running: {reason} "
+        f"One run per system: wait for it to end, or stop it with `hops job stop {job_name}`."
+    )
 
 
 def _fail(exc: ScoreRefused) -> click.ClickException:
@@ -692,14 +696,12 @@ def _score(
                 f"Could not check job '{job_name}': {exc}"
             ) from exc
         job = None
-    if job is not None:
-        refuse_if_running(job, name)
 
     cron = resolve_schedule(schedule, project.id, name) if schedule else None
     if entity is None:
         if job is None:
             raise click.UsageError(f"No system {name} yet: pass --entity and --target.")
-        _run_and_report(ctx, job, name, top, start_timeout, cron)
+        _run_and_report(ctx, job, name, top, start_timeout, cron, update=True)
         return
     if not target:
         raise click.UsageError("--target is required with --entity.")
@@ -750,6 +752,7 @@ def _score(
         raise click.ClickException(f"Could not prepare the job: {exc}") from exc
     config["appPath"] = uploaded or f"{dest}/{SCRIPT.name}"
     config["environmentName"] = ENVIRONMENT
+    config[MAX_CONCURRENT] = 1
     config["defaultArgs"] = f"--config {shlex.quote(plan.to_json())}"
     config["resourceConfig"] = {
         **config.get("resourceConfig", {}),
@@ -764,10 +767,18 @@ def _score(
     _run_and_report(ctx, job, name, top, start_timeout, cron)
 
 
-def _run_and_report(ctx, job, name, top, start_timeout, cron) -> None:
+def _run_and_report(ctx, job, name, top, start_timeout, cron, update=False) -> None:
     from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
 
     job_name = _job_name(name)
+    if update and job.config.get(MAX_CONCURRENT) != 1:
+        job.config[MAX_CONCURRENT] = 1
+        try:
+            job = job.save()
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not update job '{job_name}': {exc}"
+            ) from exc
     if cron:
         try:
             job.schedule(cron_expression=cron, max_active_runs=1)
@@ -777,5 +788,11 @@ def _run_and_report(ctx, job, name, top, start_timeout, cron) -> None:
             ) from exc
         output.success("✓ Scheduled %s (%s)", job_name, cron)
     # The wait is `hops job run --wait`: bounded by the start timeout, failures print the log tails.
-    job_cmd._run(job, job_name, True, "run", start_timeout=start_timeout)
+    try:
+        job_cmd._run(job, job_name, True, "run", start_timeout=start_timeout)
+    except click.ClickException as exc:
+        refusal = run_refusal(exc, name)
+        if refusal is None:
+            raise
+        raise _fail(refusal) from exc
     _show(ctx, name, top)

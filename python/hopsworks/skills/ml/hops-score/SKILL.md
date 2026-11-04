@@ -43,8 +43,9 @@ and 6144 MB. A project without the `scoring-pipeline` environment is refused.
 ## Run, schedule and re-run
 
 `hops score <name> ...` deploys the job `kumo-score-<name>`, runs it and waits as `hops job run --wait`
-does. `hops score <name>` again re-runs it. One run per system: while the job has an execution
-that has not ended, the verb refuses and names it. `--schedule` alone runs daily at a time
+does. `hops score <name>` again re-runs it. One run per system: the job is created with
+`maxConcurrentExecutions: 1`, so Hopsworks refuses a second execution (HTTP 409) while one
+runs, and the verb prints that refusal with the stop command. `--schedule` alone runs daily at a time
 derived from the project and the name; `--schedule "<quartz cron>"` is kept as given and must
 not fire more often than hourly. A scheduled run is not waited on.
 

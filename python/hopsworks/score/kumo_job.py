@@ -734,17 +734,6 @@ class TrinoSql:
         return pd.DataFrame(rows, columns=names)
 
 
-def another_run_active(project: Any, job_name: str) -> bool:
-    """True when the job has another execution that is not in a final state."""
-    from hopsworks_common.constants import (
-        JOBS,  # noqa: PLC0415 - the job image ships it
-    )
-
-    job = project.get_job_api().get_job(job_name)
-    active = [e for e in job.get_executions() or [] if e.state not in JOBS.FINAL_STATES]
-    return len(active) > 1  # this run is one of them
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, help="The plan, as JSON.")
@@ -761,9 +750,6 @@ def main(argv: list[str] | None = None) -> int:
     import hopsworks  # noqa: PLC0415 - the job image ships it
 
     project = hopsworks.login()
-    if another_run_active(project, f"kumo-score-{plan.name}"):
-        log("another run of this job is active: exiting")
-        return 0
     fs = project.get_feature_store()
     reader = Reader(TrinoSql(project, fs.name), log)
     scores_fg = fs.get_or_create_feature_group(

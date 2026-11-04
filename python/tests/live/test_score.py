@@ -20,8 +20,8 @@ and closed before run B (absent from the current ranking), the all-closed run (t
 is empty and named), scores of a run with no run row never current, and `--delete` leaving no job,
 schedule or scores group. The admission and link checks run against the cluster's Trino: an
 oversized entity group refused before any read, the related caps counted on the rows reachable
-from the selection, a non-unique link refused. Not covered here: the CRM path with `hops fg ingest` and the external group refusal, which need data sources. Runs
-only with HOPS_LIVE=1 and a cluster login in HOPSWORKS_HOST,
+from the selection, a non-unique link refused. Not covered here: the CRM path with
+`hops fg ingest` and the external group refusal, which need data sources. Runs only with HOPS_LIVE=1 and a cluster login in HOPSWORKS_HOST,
 HOPSWORKS_API_KEY and HOPSWORKS_PROJECT; the project needs the scoring-pipeline environment.
 """
 

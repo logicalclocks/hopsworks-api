@@ -5,12 +5,19 @@ Nothing here executes SQL. The SQL runs against the cluster's Trino in tests/liv
 
 from __future__ import annotations
 
+import json
+
+import click
 import pandas as pd
 import pytest
+import requests
 from hopsworks.cli.commands import score
 from hopsworks.cli.commands.score import GroupInfo
 from hopsworks.score import kumo_job
 from hopsworks.score.kumo_job import Link, ScoreRefused
+from hopsworks_common import util
+from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.job import Job
 
 
 def info(name, columns, pk=(), fk=(), cached=True, version=1):
@@ -341,31 +348,73 @@ def test_cron_that_is_not_quartz_is_refused():
 # region: one run per system
 
 
-class _Execution:
-    def __init__(self, ident, state):
-        self.id, self.state = ident, state
+# region: one run per system, kept by the server
+
+
+def _response(status, body):
+    response = requests.Response()
+    response.status_code = status
+    response.reason = "Conflict" if status == 409 else "Error"
+    response._content = json.dumps(body).encode()
+    return response
 
 
 class _Job:
-    def __init__(self, *executions):
-        self._executions = list(executions)
+    """A job whose run the server refuses, with a real response."""
 
-    def get_executions(self):
-        return self._executions
+    def __init__(self, response):
+        self.response = response
+        self.config = {score.MAX_CONCURRENT: 1}
 
-
-def test_a_running_execution_refuses_a_second_run_and_names_it():
-    job = _Job(_Execution(7, "RUNNING"), _Execution(6, "FINISHED"))
-    with pytest.raises(
-        ScoreRefused, match=r"job kumo-score-deals has execution #7 RUNNING"
-    ):
-        score.refuse_if_running(job, "deals")
+    def run(self, **_):
+        raise RestAPIError("http://hopsworks/jobs/executions", self.response)
 
 
-def test_ended_executions_allow_a_run():
-    score.refuse_if_running(
-        _Job(_Execution(6, "FINISHED"), _Execution(5, "FAILED")), "deals"
+def test_the_servers_409_on_the_execution_start_is_a_clear_refusal():
+    body = {
+        "errorCode": 130010,
+        "errorMsg": "Job kumo-score-deals has execution #7 running.",
+        "usrMsg": "Execution #7 is running.",
+    }
+    with pytest.raises(click.ClickException) as raised:
+        score._run_and_report(None, _Job(_response(409, body)), "deals", 20, 60, None)
+    message = raised.value.message
+    assert (
+        "job kumo-score-deals is already running: Execution #7 is running." in message
     )
+    assert "hops job stop kumo-score-deals" in message
+
+
+def test_the_409_message_falls_back_to_the_error_message():
+    err = RestAPIError(
+        "http://hopsworks/jobs/executions",
+        _response(409, {"errorMsg": "Execution #9 is running."}),
+    )
+    assert "Execution #9 is running." in str(score.run_refusal(err, "deals"))
+    assert score.run_refusal(click.ClickException("x"), "deals") is None
+
+
+def test_other_failures_of_the_execution_start_pass_through():
+    with pytest.raises(click.ClickException, match="Could not run job"):
+        score._run_and_report(
+            None, _Job(_response(500, {"errorMsg": "boom"})), "deals", 20, 60, None
+        )
+
+
+def test_the_sdk_carries_max_concurrent_executions_in_the_job_config():
+    config = {"type": "pythonJobConfiguration", "appPath": "hdfs://p/a.py"}
+    config[score.MAX_CONCURRENT] = 1
+    sent = util._validate_job_conf(config, "proj")
+    assert json.loads(json.dumps(sent))["maxConcurrentExecutions"] == 1
+    response = {
+        "id": 1,
+        "name": "kumo-score-deals",
+        "creationTime": 0,
+        "jobType": "PYTHON",
+        "creator": {},
+        "config": dict(sent),
+    }
+    assert Job.from_response_json(response).config["maxConcurrentExecutions"] == 1
 
 
 # region: the current run
