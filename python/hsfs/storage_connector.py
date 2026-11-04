@@ -784,7 +784,10 @@ class StorageConnector(ABC):
 
     @public
     def get_data(
-        self, data_source: ds.DataSource, use_cached: bool = True
+        self,
+        data_source: ds.DataSource,
+        use_cached: bool = True,
+        file_columns: list[str] | None = None,
     ) -> DataSourceData | None:
         """Retrieve the data from the data source.
 
@@ -802,6 +805,9 @@ class StorageConnector(ABC):
         Parameters:
             data_source (DataSource): The data source to retrieve data from.
             use_cached (bool): Whether to use cached data if available. Only supported for CRM, Google Sheets, and REST connectors. Defaults to `True`.
+            file_columns: SQL Server only: `varbinary(max)` or `image` columns to store as files, besides the FILESTREAM columns; `[]` for the FILESTREAM columns alone.
+                Leave it `None` to read the source schema, as for an external feature group.
+                Each file column is returned as a string path feature and a bigint `<column>_size` feature, and the preview shows its size instead of the bytes.
 
         Returns:
             An object containing the data retrieved from the data source, or `None` when the backend answered with an empty body.
@@ -826,7 +832,7 @@ class StorageConnector(ABC):
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
         self._require_credentials()
-        data = self._data_source_api._get_data(data_source)
+        data = self._data_source_api._get_data(data_source, file_columns=file_columns)
         # When the source refuses the read, the backend still answers 200 and reports the failure
         # in schemaFetchFailed, so the UI can render the source's own message.
         # Read the features off that reply and the schema is simply empty, with the reason in a

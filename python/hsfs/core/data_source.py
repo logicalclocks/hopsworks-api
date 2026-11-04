@@ -357,7 +357,9 @@ class DataSource:
         return None
 
     @public
-    def get_data(self, use_cached: bool = True) -> dsd.DataSourceData | None:
+    def get_data(
+        self, use_cached: bool = True, file_columns: list[str] | None = None
+    ) -> dsd.DataSourceData | None:
         """Retrieve the data from the data source.
 
         Example:
@@ -375,6 +377,10 @@ class DataSource:
                 Whether to use cached data if available.
                 Only supported for CRM, Google Sheets, and REST connectors.
                 Defaults to `True`.
+            file_columns:
+                SQL Server only: `varbinary(max)` or `image` columns to store as files, besides the FILESTREAM columns; `[]` for the FILESTREAM columns alone.
+                Leave it `None` to read the source schema, as for an external feature group.
+                Each file column is returned as a string path feature and a bigint `<column>_size` feature, and the preview shows its size instead of the bytes.
 
         Returns:
             An object containing the data retrieved from the data source, or `None` when the backend answered with an empty body.
@@ -382,7 +388,9 @@ class DataSource:
         Raises:
             hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source.
         """
-        return self._storage_connector.get_data(self, use_cached=use_cached)
+        return self._storage_connector.get_data(
+            self, use_cached=use_cached, file_columns=file_columns
+        )
 
     @public
     def get_metadata(self) -> dict:
