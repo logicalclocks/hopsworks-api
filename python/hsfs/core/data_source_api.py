@@ -286,7 +286,9 @@ class DataSourceApi:
             for item in (response.get("items") or [])
         }
 
-    def _get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
+    def _get_data(
+        self, data_source: ds.DataSource, file_columns: list[str] | None = None
+    ) -> dsd.DataSourceData:
         _client = client._get_instance()
         path_params = [
             "project",
@@ -300,6 +302,8 @@ class DataSourceApi:
         ]
 
         query_params = data_source.to_dict()
+        if file_columns:
+            query_params["fileColumns"] = list(file_columns)
 
         return dsd.DataSourceData.from_response_json(
             self._browse(data_source._storage_connector, path_params, query_params)

@@ -286,3 +286,21 @@ class TestStorageConnectorGetDataBatch:
 
         assert "deals" in str(excinfo.value)
         assert "boom" in str(excinfo.value)
+
+
+class TestFileColumns:
+    def test_file_columns_reach_the_request(self, mocker):
+        connector = SqlConnector(id=1, name="erp", featurestore_id=1)
+        mocker.patch.object(connector, "_require_credentials")
+        browse = mocker.patch.object(
+            connector._data_source_api, "_browse", return_value={"features": []}
+        )
+        mocker.patch("hopsworks_common.client._get_instance")
+        source = data_source.DataSource(database="sales", group="dbo", table="docs")
+        source._storage_connector = connector
+
+        source.get_data(file_columns=["Body"])
+        assert browse.call_args.args[2]["fileColumns"] == ["Body"]
+
+        source.get_data()
+        assert "fileColumns" not in browse.call_args.args[2]
