@@ -605,7 +605,7 @@ class TestIncremental:
     ):
         client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()
         _run(tmp_path, client, _config(labels=["INBOX"]), writer)
-        with pytest.raises(m._MailSyncError, match="full load"):
+        with pytest.raises(m._MailSyncError, match="full load|holds the attachments"):
             _run(
                 tmp_path,
                 client,
@@ -775,6 +775,112 @@ class TestFullLoad:
             _run(tmp_path, client, config_b, FakeWriter(), execution_id="8")
         attachment = writer_a.table["a"]["attachments"][0]
         assert (tmp_path / attachment.removeprefix(PROJECT_ROOT + "/")).exists()
+
+    def test_the_next_full_load_deletes_what_a_failed_cleanup_left(
+        self, tmp_path, monkeypatch
+    ):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        writer = FakeWriter()
+        config = _config(strategy="FULL_LOAD")
+        _run(tmp_path, client, config, writer)
+        left = tmp_path / "Resources" / "mail" / "day=2026-10-20" / "a"
+        client.messages.clear()
+        rmtree = m.shutil.rmtree
+
+        def fail(path, *args, **kwargs):
+            if "day=" not in str(path):
+                return rmtree(path, *args, **kwargs)
+            raise PermissionError(path)
+
+        monkeypatch.setattr(m.shutil, "rmtree", fail)
+        with pytest.raises(PermissionError):
+            _run(tmp_path, client, config, writer, execution_id="8")
+        assert writer.table == {}
+        assert left.is_dir()
+        monkeypatch.setattr(m.shutil, "rmtree", rmtree)
+        _run(tmp_path, client, config, writer, execution_id="9")
+        assert not left.parent.exists()
+
+    def test_a_full_load_skips_a_leftover_directory_already_gone(
+        self, tmp_path, monkeypatch
+    ):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        writer = FakeWriter()
+        config = _config(strategy="FULL_LOAD")
+        _run(tmp_path, client, config, writer)
+        client.messages.clear()
+        rmtree = m.shutil.rmtree
+
+        def fail(path, *args, **kwargs):
+            if "day=" not in str(path):
+                return rmtree(path, *args, **kwargs)
+            raise PermissionError(path)
+
+        monkeypatch.setattr(m.shutil, "rmtree", fail)
+        with pytest.raises(PermissionError):
+            _run(tmp_path, client, config, writer, execution_id="8")
+        monkeypatch.setattr(m.shutil, "rmtree", rmtree)
+        rmtree(tmp_path / "Resources" / "mail" / "day=2026-10-20")
+        _run(tmp_path, client, config, writer, execution_id="9")
+
+    def test_an_interrupted_first_full_load_still_owns_its_path(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(m, "UPSERT_BATCH", 2)
+        messages = [
+            _message(str(i), DAY1 - i * m.WINDOW_MS, attachments=[("x.bin", b"1")])
+            for i in range(5)
+        ]
+        client = FakeGmail(messages)
+        client.fail_ids.add("0")
+        writer_a = FakeWriter()
+        with pytest.raises(m._MailSyncError):
+            _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer_a)
+        assert writer_a.table
+        client.fail_ids.clear()
+        client.messages.clear()
+        config_b = _config(strategy="FULL_LOAD", featureGroupName="bob_examples")
+        with pytest.raises(m._MailSyncError, match="alice_examples"):
+            _run(tmp_path, client, config_b, FakeWriter(), execution_id="8")
+        attachment = next(iter(writer_a.table.values()))["attachments"][0]
+        assert (tmp_path / attachment.removeprefix(PROJECT_ROOT + "/")).exists()
+
+    def test_an_unreadable_state_does_not_release_the_path(self, tmp_path):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        writer_a = FakeWriter()
+        _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer_a)
+        target = tmp_path / "Resources" / "mail"
+        for state in target.rglob("[0-9]*.json"):
+            state.write_text("{")
+        config_b = _config(strategy="FULL_LOAD", featureGroupName="bob_examples")
+        with pytest.raises(m._MailSyncError, match="alice_examples"):
+            _run(tmp_path, client, config_b, FakeWriter(), execution_id="8")
+        assert (target / "day=2026-10-20" / "a" / "x.bin").exists()
+
+    def test_a_path_whose_owner_cannot_be_told_is_refused(self, tmp_path):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        _run(tmp_path, client, _config(strategy="FULL_LOAD"), FakeWriter())
+        target = tmp_path / "Resources" / "mail"
+        (target / m.OWNER_FILE).write_text("{")
+        with pytest.raises(m._MailSyncError, match="cannot be read"):
+            _run(
+                tmp_path,
+                client,
+                _config(strategy="FULL_LOAD"),
+                FakeWriter(),
+                execution_id="8",
+            )
+        (target / m.OWNER_FILE).unlink()
+        for state in target.rglob("[0-9]*.json"):
+            state.unlink()
+        with pytest.raises(m._MailSyncError, match="cannot tell"):
+            _run(
+                tmp_path,
+                client,
+                _config(strategy="FULL_LOAD"),
+                FakeWriter(),
+                execution_id="9",
+            )
 
     def test_incremental_after_a_full_load_continues_from_its_cursor(self, tmp_path):
         client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()

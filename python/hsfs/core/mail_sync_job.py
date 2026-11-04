@@ -132,6 +132,10 @@ COMPACTION_TARGET_BYTES = 192 * 1024 * 1024
 EVENT_TIME = "internal_date"
 
 
+# Names the data source and feature group whose attachments the path holds; written before the first row or file.
+OWNER_FILE = "_sync_owner.json"
+
+
 class _MailSyncError(Exception):
     """A sync run that cannot continue; its message is shown in the job log."""
 
@@ -734,6 +738,8 @@ class _SyncState:
     cursor_ids: list[str] = field(default_factory=list)
     # Days written to since they were last compacted; each is compacted once it has ended.
     uncompacted_days: list[str] = field(default_factory=list)
+    # Attachment directories, relative to the path, of rows a full load removed; deleted by the next full load if that one fails first.
+    stale_dirs: list[str] = field(default_factory=list)
     schema_version: int = STATE_SCHEMA_VERSION
 
     def _identity(self) -> tuple:
@@ -1016,6 +1022,7 @@ class _SyncRun:
         with _Lease(
             self._target, self._execution_id, self._is_running, self._clock
         ) as self._lease:
+            self._claim_path()
             if self._config.loading_strategy == "FULL_LOAD":
                 return self._full_load()
             return self._incremental()
@@ -1070,7 +1077,7 @@ class _SyncRun:
         Readers keep the previous rows until the run removes them at its end, and a run that fails part way leaves them in place; the next full load starts over.
         """
         state = self._expected_state()
-        self._check_path_owner(state)
+        previous = self._previous_state()
         result = _RunResult(0, [], 0, 0, None)
         seen: set[str] = set()
         for batch, through_ms, last_ids in self._windows(
@@ -1082,7 +1089,7 @@ class _SyncRun:
             _advance(state, batch, through_ms, last_ids)
             self._log_progress(result, state)
         self._progress(force=True)
-        self._remove_unseen(seen)
+        self._remove_unseen(state, seen, previous.stale_dirs if previous else [])
         seq = _latest_seq(self._target, self._source.state_dir) + 1
         _write_state(self._target, self._source.state_dir, state, seq)
         self._progress(force=True)
@@ -1090,40 +1097,84 @@ class _SyncRun:
         result.cursor_ms = state.cursor_ms
         return result
 
-    def _remove_unseen(self, seen: set[str]) -> None:
-        """Remove the rows, then the attachment directories, of the messages not in `seen`.
+    def _remove_unseen(
+        self, state: _SyncState, seen: set[str], carried: list[str]
+    ) -> None:
+        """Remove the rows, then the attachment directories, of the messages not in `seen`, and the directories in `carried` that an earlier full load left.
 
         Rows go first: a run that dies in between leaves files no row lists, never a row listing missing files.
-        Only the directories of the removed rows are deleted; other files under the path are left alone.
+        The directories are recorded in the state before the rows go, so a run that fails before deleting them leaves them to the next full load.
+        Only those directories are deleted; other files under the path are left alone.
         """
         stale = [key for key in self._writer._keys() if key["message_id"] not in seen]
-        if not stale:
-            return
-        self._writer._remove(stale)
-        _logger.info("Removed %d messages the full load did not see", len(stale))
-        for key in stale:
-            day_dir = self._target / f"day={key['day']}"
-            shutil.rmtree(day_dir / _safe_name(key["message_id"]), ignore_errors=True)
-            if day_dir.is_dir() and not any(day_dir.iterdir()):
-                day_dir.rmdir()
+        kept = {_safe_name(message_id) for message_id in seen}
+        dirs = {d for d in carried if d.split("/", 1)[-1] not in kept}
+        dirs.update(
+            f"day={key['day']}/{_safe_name(key['message_id'])}" for key in stale
+        )
+        state.stale_dirs = sorted(dirs)
+        if stale:
+            seq = _latest_seq(self._target, self._source.state_dir) + 1
+            _write_state(self._target, self._source.state_dir, state, seq)
+            self._writer._remove(stale)
+            _logger.info("Removed %d messages the full load did not see", len(stale))
+        for relative in state.stale_dirs:
+            message_dir = self._target / relative
+            try:
+                shutil.rmtree(message_dir)
+            except FileNotFoundError:
+                continue
+            if not any(message_dir.parent.iterdir()):
+                message_dir.parent.rmdir()
+        state.stale_dirs = []
 
-    def _check_path_owner(self, expected: _SyncState) -> None:
-        """Refuse to load into a path whose attachments belong to another feature group or data source.
-
-        An unreadable state does not refuse: a full load is how that state is rebuilt.
-        """
+    def _previous_state(self) -> _SyncState | None:
+        """The newest readable state of the path; none when it cannot be read, since a full load is how that state is rebuilt."""
         try:
-            state, _ = _read_state(self._target, self._source.state_dir)
+            return _read_state(self._target, self._source.state_dir)[0]
         except _MailSyncError:
-            return
-        if state is not None and (state.feature_group, state.connector_id) != (
-            expected.feature_group,
-            expected.connector_id,
-        ):
-            raise _MailSyncError(
-                f"The path {self._config.path} holds the attachments of the feature group {state.feature_group}, "
-                "which this job does not write. Choose a new path, or delete that directory."
+            return None
+
+    def _claim_path(self) -> None:
+        """Record this job's data source and feature group as the owner of the path, or refuse a path another one owns.
+
+        A path with no owner file is claimed only when it holds no attachments, or when its readable state names this job's data source and feature group, as a path an earlier version of the job filled does.
+
+        Raises:
+            _MailSyncError: When the path belongs to another data source or feature group, or its owner cannot be told.
+        """
+        owner = {
+            "connector_id": self._config.connector_id,
+            "feature_group": self._config.feature_group_name,
+        }
+        owner_file = self._target / OWNER_FILE
+        if owner_file.exists():
+            try:
+                recorded = json.loads(owner_file.read_text())
+            except ValueError:
+                recorded = None
+            if recorded == owner:
+                return
+            holder = (
+                f"the attachments of the feature group {recorded.get('feature_group')}"
+                if isinstance(recorded, dict)
+                else f"an owner file, {OWNER_FILE}, that cannot be read"
             )
+            raise _MailSyncError(
+                f"The path {self._config.path} holds {holder}, which this job does not write. "
+                "Choose a new path, or delete that directory."
+            )
+        state = self._previous_state()
+        adopted = state is not None and (state.connector_id, state.feature_group) == (
+            owner["connector_id"],
+            owner["feature_group"],
+        )
+        if not adopted and any(self._target.glob("day=*")):
+            raise _MailSyncError(
+                f"The path {self._config.path} holds attachments that this job cannot tell are its own. "
+                "Choose a new path, or delete that directory."
+            )
+        _atomic_write(owner_file, json.dumps(owner).encode())
 
     def _windows(
         self,
