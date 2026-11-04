@@ -1,6 +1,6 @@
 ---
 name: hops-delta
-description: Call the Delta maintenance methods on a feature group from the Python or PySpark client, and choose a write mode. Auto-invoke when the user mentions delta_optimize, delta_compact, delta_vacuum, delta_checkpoint, delta_cleanup_metadata, the _delta_log, Delta time travel, or append versus upsert on a feature group. For diagnosing small files and slow queries across table formats, hops-table-maintenance is the skill.
+description: Call the Delta maintenance methods on a feature group from the Python or PySpark client, and choose a write mode. Auto-invoke when the user mentions delta_optimize, delta_compact, delta_vacuum, delta_checkpoint, delta_cleanup_metadata, delete_partitions, reloading partitions, the _delta_log, Delta time travel, or append versus upsert on a feature group. For diagnosing small files and slow queries across table formats, hops-table-maintenance is the skill.
 ---
 
 # Delta feature group maintenance
@@ -118,6 +118,15 @@ late.
 - Partitioning by something that never changes, such as a single model name,
   gives you one partition that grows forever. That still compacts, but nothing
   ages out of it; add a date column if you want old data to become inert.
+- **Reload a few partitions with `delete_partitions` then `append`.** A Spark
+  upsert scans every partition of the table even when the batch covers a few
+  days, and `overwrite=True` deletes the whole table first.
+  `fg.delete_partitions({"snapshot_date": [...]})` is a DELETE on partition
+  columns only, so Delta drops whole files from the log without reading them;
+  follow it with `fg.insert(df, operation="insert")`. Do not reach for
+  `DeltaTable.forPath(...).delete(...)` yourself: that bypasses Hopsworks, so
+  the commit never reaches the feature group's commit timeline. The deleted
+  files are reclaimed by `delta_vacuum` like any other.
 
 ## Docs
 
