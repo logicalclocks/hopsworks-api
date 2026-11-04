@@ -7,7 +7,7 @@ Prefer subclassing:
 ### Default predictor subclass
 
 ```python
-# predictor.py — deploy with model.deploy(script_file="predictor.py", default_predictor=True, passed_features=[...])
+# predictor.py: deploy with model.deploy(script_file="predictor.py", default_predictor=True, passed_features=[...])
 from hsml.default_predictor import DefaultPredict
 
 
@@ -38,6 +38,8 @@ The contract itself is in [deployment-schema.md](deployment-schema.md).
 
 Copy-paste `predictor.py` skeletons for the four lookup patterns follow.
 Each loads its model with the `load_model_file` helper from the parent skill's "Writing predictor.py Files" section.
+`Predict.__init__` takes, besides `self`, only `project`, `deployment`, `model` and `async_logger`, which the runtime passes by keyword.
+Any other parameter, `*args`, `**kwargs` or a positional-only parameter is refused by `model.deploy` and `hops deployment create` before upload.
 
 ### Basic Predictor
 

@@ -1762,3 +1762,22 @@ def test_dropped_scaling_fields_names_what_an_older_backend_left_out():
     )
     assert _dropped_scaling_fields(None, {}) == []
     assert _dropped_scaling_fields(sent, None) == []
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        None,
+        "",
+        "null",
+        "predictor terminated unsuccessfully. null",
+        # As the serving runtime reports a predictor that exits while starting.
+        "predictor terminated unsuccessfully. \n\nnull",
+    ],
+)
+def test_a_reason_ending_in_null_names_no_cause(reason):
+    assert serving_engine._no_reason(reason)
+
+
+def test_a_reason_with_a_cause_is_kept():
+    assert not serving_engine._no_reason("ImagePullBackOff: image not found")

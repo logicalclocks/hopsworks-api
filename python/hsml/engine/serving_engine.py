@@ -104,6 +104,51 @@ def _render_chunk(chunk) -> str:
 _SCHEMA_NOT_FOUND = 240037
 
 
+def _no_reason(reason: str | None) -> bool:
+    """True for a failure reason that names no cause: none, empty, or ending in "null"."""
+    # The runtime may put blank lines before the null ("terminated unsuccessfully. \n\nnull").
+    reason = " ".join((reason or "").split())
+    return reason in ("", "null") or reason.endswith(". null")
+
+
+# The failed-start log reads share this budget, so a stalled log endpoint cannot hold back the deployment's own error.
+_FAILED_START_LOG_SECONDS = 30
+
+
+def _predictor_log_tail(serving, deployment_instance) -> str:
+    """The last predictor log lines of the running and of the previous container, or "" when none can be read.
+
+    A predictor that fails while starting is restarted, so the running container can hold nothing or only
+    startup lines when the failure is seen, and the traceback is then in the previous one. Both are shown.
+    Once the budget is spent nothing is shown, so the deployment's error goes out whole and on time.
+    """
+    deadline = time.monotonic() + _FAILED_START_LOG_SECONDS
+    parts = []
+    for previous, label in ((False, "running"), (True, "previous")):
+        try:
+            chunks = serving._serving_api._get_logs(
+                deployment_instance,
+                "predictor",
+                30,
+                source="kubernetes",
+                previous=previous,
+                deadline=deadline,
+            )
+        except Exception:  # noqa: BLE001
+            if time.monotonic() >= deadline:
+                return ""
+            continue
+        if not any((c.content or "").strip() for c in chunks or []):
+            continue
+        lines = serving._format_log_chunks(chunks).strip().splitlines()[-30:]
+        parts.append(
+            f"\nLast predictor log lines ({label} container):\n" + "\n".join(lines)
+        )
+    if time.monotonic() >= deadline:
+        return ""
+    return "".join(parts)
+
+
 # The scaling fields a backend older than 5.2 does not know and silently drops (HWORKS-3106, HWORKS-3113).
 _SCALING_FIELDS_5_2 = (
     "autoscaler",
@@ -212,7 +257,13 @@ class ServingEngine:
                     status == PREDICTOR_STATE.STATUS_RUNNING
                     and state.status == PREDICTOR_STATE.STATUS_FAILED
                 ):
-                    error_msg = state.condition.reason
+                    reason = (state.condition.reason or "").strip()
+                    if _no_reason(reason):
+                        error_msg = (
+                            f"deployment failed (condition {state.condition.type})"
+                        )
+                    else:
+                        error_msg = reason
                     if (
                         state.condition.type
                         == PREDICTOR_STATE.CONDITION_TYPE_INITIALIZED
@@ -220,16 +271,16 @@ class ServingEngine:
                         == PREDICTOR_STATE.CONDITION_TYPE_STARTED
                     ):
                         component = (
-                            "transformer"
-                            if "transformer" in state.condition.reason
-                            else "predictor"
+                            "transformer" if "transformer" in reason else "predictor"
                         )
                         error_msg += (
                             ". Please, check the server logs using `.get_logs(component='"
                             + component
                             + "')`"
                         )
-                    raise ModelServingException(error_msg)
+                    raise ModelServingException(
+                        error_msg + _predictor_log_tail(self, deployment_instance)
+                    )
             raise ModelServingException(
                 "Deployment has not reached the desired status within the expected awaiting time. Check the current status by using `.get_state()`, "
                 "explore the server logs using `.get_logs()` or set a higher value for await_"
@@ -399,7 +450,7 @@ class ServingEngine:
                 print("Deployments is already running and updating")
                 return (True, state)
             if state.status == PREDICTOR_STATE.STATUS_FAILED:
-                print("Deployment is in failed state. " + state.condition.reason)
+                print(f"Deployment is in failed state. {state.condition.reason}")
                 return (True, state)
             if state.status == PREDICTOR_STATE.STATUS_STOPPING:
                 raise ModelServingException(
@@ -1114,6 +1165,7 @@ class ServingEngine:
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
+        previous: bool = False,
     ) -> str:
         """Return deployment logs as a single plain-text string.
 
@@ -1128,6 +1180,7 @@ class ServingEngine:
             since: ISO-8601 lower bound for log timestamps, if any.
             until: ISO-8601 upper bound for log timestamps, if any.
             pod: Specific pod name to read logs for, if any.
+            previous: Read the previous, terminated container instead of the running one, for a crashed or restarted predictor.
 
         Returns:
             All matching log chunks concatenated into a single string.
@@ -1140,6 +1193,7 @@ class ServingEngine:
             since=since,
             until=until,
             pod=pod,
+            previous=previous,
         )
         return self._format_log_chunks(chunks or [])
 

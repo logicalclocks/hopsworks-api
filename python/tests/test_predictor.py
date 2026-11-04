@@ -442,6 +442,50 @@ class TestPredictor:
         # Assert
         assert "Predictor scripts are required" in str(e_info.value)
 
+    @pytest.mark.parametrize(
+        "init, refused",
+        [
+            ("self, *args, **kwargs", "*args, **kwargs"),
+            ("self, config", "config"),
+            ("self, model, /", "model (positional-only)"),
+        ],
+    )
+    def test_validate_script_file_refuses_an_unsupported_predict_init(
+        self, tmp_path, init, refused
+    ):
+        script = tmp_path / "predictor.py"
+        script.write_text(
+            f"import os\n\n\nclass Predict:\n    def __init__({init}):\n        pass\n"
+        )
+
+        with pytest.raises(ValueError) as e_info:
+            predictor.Predictor._validate_script_file(
+                MODEL.FRAMEWORK_PYTHON, str(script)
+            )
+
+        message = str(e_info.value)
+        assert f"{script}:5" in message
+        assert refused in message
+        assert "project, deployment, model, async_logger" in message
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "class Predict:\n    def __init__():\n        pass\n",
+            "class Predict:\n    def __init__(self):\n        pass\n",
+            "class Predict:\n    def __init__(self, project, deployment, model, async_logger):\n        pass\n",
+            "class Predict:\n    def predict(self, inputs):\n        return inputs\n",
+            "class Transformer:\n    def __init__(self, config):\n        pass\n",
+        ],
+    )
+    def test_validate_script_file_accepts_a_supported_predict_init(
+        self, tmp_path, source
+    ):
+        script = tmp_path / "predictor.py"
+        script.write_text(source)
+
+        predictor.Predictor._validate_script_file(MODEL.FRAMEWORK_PYTHON, str(script))
+
     def test_validate_script_file_tf_script_file(self):
         # Act
         predictor.Predictor._validate_script_file(

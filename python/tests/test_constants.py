@@ -106,6 +106,7 @@ class TestConstants:
             "MAX_BATCH_ROWS_ENV_VAR": "SERVING_MAX_BATCH_ROWS",
             "SCRIPT_KIND_ENV_VAR": "SERVING_SCRIPT_KIND",
             "SCRIPT_KIND_PREDICTOR": "predictor",
+            "PREDICT_INIT_ARGS": ("project", "deployment", "model", "async_logger"),
             "SCHEMA_ENFORCER_ENV_VAR": "SERVING_SCHEMA_ENFORCER",
             "SCHEMA_ENFORCER_PREDICTOR": "predictor",
             "SCHEMA_ENFORCER_TRANSFORMER": "transformer",

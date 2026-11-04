@@ -136,7 +136,12 @@ def test_agent_logs_one_shot_defaults_to_kubernetes_source(mock_project):
     result = CliRunner().invoke(cli, ["agent", "logs", "my-agent", "--tail", "5"])
     assert result.exit_code == 0, result.output
     agent.read_logs.assert_called_with(
-        component="predictor", tail=5, source="kubernetes", since=None, until=None
+        component="predictor",
+        tail=5,
+        source="kubernetes",
+        since=None,
+        until=None,
+        previous=False,
     )
     assert "line1" in result.output
 
