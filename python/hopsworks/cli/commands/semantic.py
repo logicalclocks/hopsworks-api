@@ -802,6 +802,8 @@ def test_cmd(
     SQL as you also catches what only the query engine sees, such as a type it cannot
     aggregate or a feature group you cannot read. Each metric runs ungrouped, so it reads
     its whole feature groups once: narrow it with --metrics on large data.
+    The metrics run on the build just compiled, so the command exits 1 when that build does not answer queries: a PINNED project before its promote, or a gateway still serving the previous build.
+    --no-compile tests the build that answers queries now.
 
     Args:
         ctx: Click context.
@@ -818,19 +820,26 @@ def test_cmd(
             ctx.exit(1)
         if not output.JSON_MODE:
             _render_build(build)
-        if sp.current_build_id != build.id and not output.JSON_MODE:
-            output.info(
-                "Build %s does not answer queries until it is promoted; "
-                "testing build %s, which does.",
+        if sp.current_build_id != build.id:
+            output.error(
+                "Build %s does not answer queries until it is promoted "
+                "(hops semantic promote %s %s); --no-compile tests build %s, which does.",
+                build.id,
+                name,
                 build.id,
                 sp.current_build_id,
             )
-        elif sp.current_build_id == build.id:
-            served = _await_serving(sp, build.id)
-            if served != build.id and not output.JSON_MODE:
-                output.warn(
-                    "The gateway still serves build %s; testing that build.", served
-                )
+            ctx.exit(1)
+        served = _await_serving(sp, build.id)
+        if served != build.id:
+            output.error(
+                "The gateway still serves build %s, not build %s, after %s s; "
+                "run the test again once it serves the new build.",
+                served,
+                build.id,
+                _SERVING_WAIT_SECONDS,
+            )
+            ctx.exit(1)
     names = metrics or [m.name for m in sp.list_metrics()]
     results = []
     for metric in names:

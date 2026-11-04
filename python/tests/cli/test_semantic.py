@@ -427,6 +427,27 @@ class TestExplainAndTest:
         statuses = {r["metric"]: r["status"] for r in json.loads(result.output)}
         assert statuses == {"revenue": "PASS", "bookings": "FAIL"}
 
+    def test_test_refuses_a_compiled_build_that_is_not_promoted(self, sales):
+        sales.compile.return_value = SemanticBuild(id=13, status="VALID")
+
+        result = _run("--json", "test", "sales")
+
+        assert result.exit_code == 1
+        sales.query.assert_not_called()
+        assert "hops semantic promote sales 13" in result.output
+
+    def test_test_refuses_while_the_gateway_serves_another_build(self, sales, mocker):
+        mocker.patch("hopsworks.cli.commands.semantic.time.sleep")
+        mocker.patch("hopsworks.cli.commands.semantic._SERVING_WAIT_SECONDS", 0)
+        sales.compile.return_value = SemanticBuild(id=12, status="VALID")
+        sales.serving.return_value = mock.MagicMock(build_id=11)
+
+        result = _run("test", "sales")
+
+        assert result.exit_code == 1
+        sales.query.assert_not_called()
+        assert "still serves build 11, not build 12" in result.output
+
     def test_test_stops_at_an_invalid_build(self, sales):
         sales.compile.side_effect = SemanticBuildException("sales", _invalid_build())
 

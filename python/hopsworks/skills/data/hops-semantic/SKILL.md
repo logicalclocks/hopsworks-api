@@ -130,6 +130,7 @@ hops semantic create sales --path Jupyter/analytics/dbt        # register; the f
 hops semantic compile sales --wait                             # see errors and warnings now
 hops semantic compile sales --fail-on-error                    # CI: exit 1 on an INVALID or FAILED build
 hops semantic test sales                                       # CI: compile, then run every metric once on Trino; exit 1 on any failure
+hops semantic test sales --no-compile                          # PINNED: test the promoted build; a plain test exits 1 on an unpromoted build
 hops semantic builds sales                                     # * marks the build answering queries
 hops semantic build sales 13                                   # one build's errors and warnings at file:line
 hops semantic show sales                                       # settings, the build queries use, and whether it is stale
