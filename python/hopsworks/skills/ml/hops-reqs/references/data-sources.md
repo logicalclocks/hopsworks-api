@@ -74,6 +74,7 @@ index must be loaded, or the source is an API with no table to mount.
 | elasticsearch | Elasticsearch | `--host` | `--password`, `--api-key`, `--truststore-password` (`HOPSWORKS_DS_ELASTICSEARCH_<OPTION>`) |
 | gcs | Google Cloud Storage | `--bucket`, `--key-path` | `--encryption-key` (`HOPSWORKS_DS_GCS_ENCRYPTION_KEY`) |
 | glue | AWS Glue Data Catalog | `--database`, `--region` | `--secret-key`, `--session-token` (`HOPSWORKS_DS_GLUE_<OPTION>`) |
+| gmail | A Gmail mailbox, upserted into a Delta feature group by `hops datasource sync` | `--mailbox`, `--auth-type` | `--client-secret`, `--refresh-token` (`HOPSWORKS_DS_GMAIL_<OPTION>`) |
 | google-sheets | Google Sheets | `--key-path` | none; the key file is uploaded to HopsFS first |
 | hopsfs | A dataset in this project | `--dataset` | none |
 | hopsworks | Feature groups of a project on another Hopsworks cluster | `--host`, `--project` | `--api-key` (`HOPSWORKS_DS_HOPSWORKS_API_KEY`) |
