@@ -20,6 +20,7 @@ from hsfs.constructor import query
 from hsfs.core import (
     feature_monitoring_config_engine,
     feature_view_engine,
+    iceberg_engine,
     kafka_engine,
 )
 from hsfs.statistics_config import StatisticsConfig
@@ -517,7 +518,9 @@ def offline_fg_materialization(
         write_options["txnVersion"] = str(
             sum(int(v) for v in offset_dict[f"{entity._online_topic_name}"].values())
         )
-    if filtered_count == 0 and _offline_table_exists(spark, entity, location):
+    if filtered_count == 0 and _offline_table_exists(
+        spark, entity, location, write_options
+    ):
         print("No records for the offline table in this range, skipping the insert")
     else:
         entity.insert(
@@ -559,14 +562,20 @@ def _path_exists(spark, location: str) -> bool:
     return path.getFileSystem(spark._jsc.hadoopConfiguration()).exists(path)
 
 
-def _offline_table_exists(spark, entity, location: str) -> bool:
+def _offline_table_exists(spark, entity, location: str, write_options: dict) -> bool:
     """Whether the offline table exists; until it does, the insert creates it."""
-    marker = {"DELTA": "_delta_log", "HUDI": ".hoodie"}.get(
-        (entity.time_travel_format or "").upper()
-    )
-    return marker is not None and _path_exists(
-        spark, f"{location.rstrip('/')}/{marker}"
-    )
+    time_travel_format = (entity.time_travel_format or "").upper()
+    if time_travel_format == "DELTA":
+        return _path_exists(spark, f"{location.rstrip('/')}/_delta_log")
+    if time_travel_format == "ICEBERG":
+        return iceberg_engine.IcebergEngine(
+            entity.feature_store_id,
+            entity.feature_store_name,
+            entity,
+            spark,
+            spark.sparkContext,
+        )._table_exists(write_options)
+    return False
 
 
 def _remove_path(spark, location: str) -> None:

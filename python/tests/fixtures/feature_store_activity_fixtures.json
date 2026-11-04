@@ -1,0 +1,64 @@
+{
+  "get_list": {
+    "response": {
+      "count": 3,
+      "items": [
+        {
+          "href": "https://hopsworks.example/hopsworks-api/api/project/1/featurestores/2/featuregroups/3/activities",
+          "type": "ONLINE_INGESTION",
+          "timestamp": 1790978599000,
+          "user": {
+            "href": "https://hopsworks.example/hopsworks-api/api/users/10000",
+            "firstname": "Test",
+            "lastname": "User",
+            "email": "user@hopsworks.ai",
+            "username": "testuser"
+          },
+          "onlineIngestion": {
+            "id": 1092,
+            "numEntries": 5,
+            "results": [
+              {
+                "onlineIngestionId": 1092,
+                "status": "UPSERTED",
+                "rows": 5
+              }
+            ]
+          }
+        },
+        {
+          "href": "https://hopsworks.example/hopsworks-api/api/project/1/featurestores/2/featuregroups/3/activities",
+          "type": "COMMIT",
+          "timestamp": 1790978736000,
+          "user": {
+            "href": "https://hopsworks.example/hopsworks-api/api/users/10000",
+            "firstname": "Test",
+            "lastname": "User",
+            "email": "user@hopsworks.ai",
+            "username": "testuser"
+          },
+          "commit": {
+            "commitID": 1790978735276,
+            "commitDateString": "20261002221855276",
+            "rowsInserted": 5,
+            "rowsUpdated": 0,
+            "rowsDeleted": 0
+          }
+        },
+        {
+          "href": "https://hopsworks.example/hopsworks-api/api/project/1/featurestores/2/featuregroups/3/activities",
+          "type": "METADATA",
+          "timestamp": 1790978560000,
+          "user": {
+            "href": "https://hopsworks.example/hopsworks-api/api/users/10000",
+            "firstname": "Test",
+            "lastname": "User",
+            "email": "user@hopsworks.ai",
+            "username": "testuser"
+          },
+          "metadata": "The feature group was created"
+        }
+      ]
+    }
+  }
+}
