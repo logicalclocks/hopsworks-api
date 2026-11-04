@@ -27,6 +27,7 @@ from hsfs import storage_connector as sc
 
 
 if TYPE_CHECKING:
+    from hopsworks_common.job import Job
     from hopsworks_common.job_schedule import JobSchedule
     from hsfs import feature_group as fg
     from hsfs.core import data_source_data as dsd
@@ -271,6 +272,29 @@ class DataSource:
     @storage_connector.setter
     def storage_connector(self, storage_connector: sc.StorageConnector) -> None:
         self._storage_connector = storage_connector
+
+    @public
+    def sync(self, **kwargs: Any) -> Job:
+        """Copy a Gmail data source into a Delta feature group with a job.
+
+        Takes the arguments of [`GmailConnector.sync`][hsfs.storage_connector.GmailConnector.sync].
+
+        Example:
+            ```python
+            job = fs.get_data_source("support_inbox").sync(schedule="daily")
+            ```
+
+        Returns:
+            The sync job.
+
+        Raises:
+            ValueError: If the data source is not a Gmail data source.
+        """
+        if not isinstance(self._storage_connector, sc.GmailConnector):
+            raise ValueError(
+                "Only Gmail data sources can be synced into a feature group."
+            )
+        return self._storage_connector.sync(**kwargs)
 
     @public
     def get_databases(self) -> list[str]:
