@@ -431,6 +431,7 @@ def _format_address(name: str, address: str) -> str:
 _TAG = re.compile(r"<[^>]+>")
 _SCRIPT = re.compile(r"<(script|style)\b.*?</\1>", re.IGNORECASE | re.DOTALL)
 _BLANK_LINES = re.compile(r"\n\s*\n\s*\n+")
+_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 _UNSAFE_NAME = re.compile(r"[\x00-\x1f\x7f/\\:*?\"<>|]+")
 # HopsFS keeps inode names in a latin1 column (hops.hdfs_inodes.name), and its mount answers EIO for any other character.
 _NOT_LATIN1 = re.compile(r"[^\x00-\xff]+")
@@ -504,6 +505,26 @@ def _unique(name: str, taken: set[str]) -> str:
 # endregion
 
 # region Files
+
+
+def _message_dir(relative: str) -> str:
+    """`relative` when it is an attachment directory as the copy names it, `day=YYYY-MM-DD/<safe name>`.
+
+    Raises:
+        _MailSyncError: For any other path, which the run does not delete.
+    """
+    day, separator, name = relative.partition("/")
+    if (
+        separator
+        and day.startswith("day=")
+        and _DAY.fullmatch(day[len("day=") :])
+        and name
+        and name == _safe_name(name)
+    ):
+        return relative
+    raise _MailSyncError(
+        f"Not deleting {relative!r}: it is not an attachment directory of this sync"
+    )
 
 
 def _day_of(epoch_ms: int) -> str:
@@ -1108,9 +1129,10 @@ class _SyncRun:
         """
         stale = [key for key in self._writer._keys() if key["message_id"] not in seen]
         kept = {_safe_name(message_id) for message_id in seen}
-        dirs = {d for d in carried if d.split("/", 1)[-1] not in kept}
+        dirs = {_message_dir(d) for d in carried if d.split("/", 1)[-1] not in kept}
         dirs.update(
-            f"day={key['day']}/{_safe_name(key['message_id'])}" for key in stale
+            _message_dir(f"day={key['day']}/{_safe_name(key['message_id'])}")
+            for key in stale
         )
         state.stale_dirs = sorted(dirs)
         if stale:

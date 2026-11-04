@@ -882,6 +882,37 @@ class TestFullLoad:
                 execution_id="9",
             )
 
+    @pytest.mark.parametrize(
+        "entry", ["/elsewhere", "day=2026-10-20/..", "../outside/x", "day=../x"]
+    )
+    def test_a_full_load_deletes_only_attachment_directories(self, tmp_path, entry):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        writer = FakeWriter()
+        config = _config(strategy="FULL_LOAD")
+        _run(tmp_path, client, config, writer)
+        target = tmp_path / "Resources" / "mail"
+        outside = tmp_path / "elsewhere"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("keep")
+        for path in target.rglob("[0-9]*.json"):
+            state = json.loads(path.read_text())
+            state["stale_dirs"] = [entry.replace("/elsewhere", str(outside))]
+            path.write_text(json.dumps(state))
+        with pytest.raises(m._MailSyncError, match="Not deleting"):
+            _run(tmp_path, client, config, writer, execution_id="8")
+        assert (outside / "keep.txt").exists()
+
+    def test_a_row_with_an_unexpected_day_is_not_deleted_from(self, tmp_path):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        writer = FakeWriter()
+        config = _config(strategy="FULL_LOAD")
+        _run(tmp_path, client, config, writer)
+        writer.table["a"]["day"] = "../../elsewhere"
+        client.messages.clear()
+        with pytest.raises(m._MailSyncError, match="Not deleting"):
+            _run(tmp_path, client, config, writer, execution_id="8")
+        assert "a" in writer.table
+
     def test_incremental_after_a_full_load_continues_from_its_cursor(self, tmp_path):
         client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()
         _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
