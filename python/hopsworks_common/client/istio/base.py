@@ -30,6 +30,9 @@ class Client(base.Client):
     SERVING_API_KEY = "SERVING_API_KEY"
     HOPSWORKS_PUBLIC_HOST = "HOPSWORKS_PUBLIC_HOST"
     TOKEN_EXPIRED_MAX_RETRIES = 0
+    # Model traffic: a 502/503/504 or a refused gateway is the deployment's answer
+    # (an OOMKilled predictor, a route not ready yet), which callers report or skip themselves.
+    RETRY_WHILE_UNAVAILABLE = False
 
     BASE_PATH_PARAMS = []
 

@@ -82,6 +82,7 @@ class Client(base.Client):
 
         _logger.debug("Setting up requests session")
         self._session = requests.session()
+        self._retry_window = base._retry_window()
         self._connected = True
 
         self._verify = self._get_verify(hostname_verification, trust_store_path)
