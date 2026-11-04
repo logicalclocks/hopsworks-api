@@ -539,6 +539,40 @@ class SemanticProject:
             self._semantic_layer_api._promote(self, build_id)
         )
 
+    @public
+    @usage._method_logger
+    def update(
+        self,
+        root_path: str | None = None,
+        format: Literal["AUTO", "DBT", "NATIVE", "MANIFEST_JSON"] | None = None,
+        deployment_mode: Literal["FOLLOW", "PINNED"] | None = None,
+    ) -> SemanticProject:
+        """Change where the definitions are read from, how they are read, or which build answers queries.
+
+        A new root path or format compiles the definitions again in the background, and the git repository becomes the one the new root path is in.
+        A setting left as `None` keeps its value; the name cannot change.
+        This object is updated in place.
+
+        Parameters:
+            root_path: Directory of the definitions, relative to the project, under `/hopsfs/`, or `/Projects/<project>/...`.
+            format: Format of the definitions; `AUTO` detects it from the files.
+            deployment_mode: `FOLLOW` serves every new valid build; `PINNED` serves a build until another is promoted.
+
+        Returns:
+            This semantic project, with its new settings.
+
+        Raises:
+            ValueError: If no setting is given.
+            hopsworks.client.exceptions.RestAPIError: If the path is outside the project or the backend encounters another error.
+        """
+        if root_path is None and format is None and deployment_mode is None:
+            raise ValueError(
+                "Give at least one of root_path, format and deployment_mode."
+            )
+        return self.update_from_response_json(
+            self._semantic_layer_api._update(self, root_path, format, deployment_mode)
+        )
+
     # endregion
 
     # region Discovery

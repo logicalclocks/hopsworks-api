@@ -313,3 +313,125 @@ class TestProjects:
             "-",
             "Net",
         ]
+
+
+class TestDiscovery:
+    def test_metrics_narrowed_to_those_compatible_with_group_bys(self, sales):
+        sales.list_metrics.return_value = [
+            SemanticMetric(name="revenue", type="SIMPLE"),
+            SemanticMetric(name="bookings", type="SIMPLE"),
+        ]
+        sales.compatible_metrics.return_value = ["revenue"]
+
+        result = _run("--json", "metrics", "sales", "--group-by", "customer__country")
+
+        assert result.exit_code == 0, result.output
+        sales.compatible_metrics.assert_called_once_with(["customer__country"])
+        assert [m["name"] for m in json.loads(result.output)] == ["revenue"]
+
+    def test_dimension_values_pass_the_group_by_metrics_and_limit(self, sales):
+        sales.dimension_values.return_value = ["SE", None]
+
+        result = _run(
+            "dimension-values", "sales", "customer__country", "--metrics", "revenue"
+        )
+
+        assert result.exit_code == 0, result.output
+        sales.dimension_values.assert_called_once_with(
+            "customer__country", metrics=["revenue"], limit=100
+        )
+        assert result.output.splitlines() == ["SE", ""]
+
+    def test_build_shows_its_issues(self, sales):
+        sales.get_build.return_value = _invalid_build()
+
+        result = _run("build", "sales", "13")
+
+        assert result.exit_code == 0, result.output
+        sales.get_build.assert_called_once_with(13)
+        assert "models/semantic.yml:12:5" in result.output
+
+
+class TestProjectSettings:
+    def test_update_needs_a_setting(self, sales):
+        result = _run("update", "sales")
+
+        assert result.exit_code == 2
+        sales.update.assert_not_called()
+
+    def test_update_passes_only_the_given_settings(self, sales):
+        result = _run("update", "sales", "--mode", "pinned")
+
+        assert result.exit_code == 0, result.output
+        sales.update.assert_called_once_with(
+            root_path=None, format=None, deployment_mode="PINNED"
+        )
+
+    def test_show_reports_why_nothing_is_served(self, sales):
+        sales.serving.side_effect = SemanticLayerException(
+            "no valid build", error_msg="semantic project 7 has no valid build"
+        )
+
+        result = _run("show", "sales")
+
+        assert result.exit_code == 0, result.output
+        assert "has no valid build" in result.output
+
+
+class TestExplainAndTest:
+    def test_explain_prints_the_sql_without_running_the_query(self, sales):
+        sales.sql.return_value = "SELECT 1"
+
+        result = _run("query", "sales", "--metrics", "revenue", "--explain")
+
+        assert result.exit_code == 0, result.output
+        assert result.output.strip() == "SELECT 1"
+        sales.query.assert_not_called()
+
+    def test_test_compiles_waits_for_the_new_build_and_runs_every_metric(
+        self, sales, mocker
+    ):
+        mocker.patch("hopsworks.cli.commands.semantic.time.sleep")
+        sales.compile.return_value = SemanticBuild(id=12, status="VALID")
+        sales.serving.return_value = mock.MagicMock(build_id=12)
+        sales.list_metrics.return_value = [
+            SemanticMetric(name="revenue", type="SIMPLE"),
+            SemanticMetric(name="bookings", type="SIMPLE"),
+        ]
+        sales.query.return_value = [{"revenue": 1.0}]
+
+        result = _run("test", "sales")
+
+        assert result.exit_code == 0, result.output
+        sales.compile.assert_called_once_with(wait=True)
+        assert [c.args[0] for c in sales.query.call_args_list] == [
+            ["revenue"],
+            ["bookings"],
+        ]
+        assert "2 of 2 metrics ran" in result.output
+
+    def test_test_exits_one_when_a_metric_fails_on_the_engine(self, sales):
+        sales.list_metrics.return_value = [
+            SemanticMetric(name="revenue", type="SIMPLE"),
+            SemanticMetric(name="bookings", type="SIMPLE"),
+        ]
+        sales.query.side_effect = [
+            [{"revenue": 1.0}],
+            SemanticLayerException("failed", error_msg="the query failed on Trino"),
+        ]
+
+        result = _run("--json", "test", "sales", "--no-compile")
+
+        assert result.exit_code == 1
+        sales.compile.assert_not_called()
+        statuses = {r["metric"]: r["status"] for r in json.loads(result.output)}
+        assert statuses == {"revenue": "PASS", "bookings": "FAIL"}
+
+    def test_test_stops_at_an_invalid_build(self, sales):
+        sales.compile.side_effect = SemanticBuildException("sales", _invalid_build())
+
+        result = _run("test", "sales")
+
+        assert result.exit_code == 1
+        sales.query.assert_not_called()
+        assert "UNIQUE_NAMES" in result.output

@@ -255,6 +255,28 @@ class SemanticLayerApi:
         _client = client._get_instance()
         return _client._send_request("GET", self._path(sp.id), timeout=timeout)
 
+    def _update(
+        self,
+        sp: semantic_layer.SemanticProject,
+        root_path: str | None,
+        format: str | None,
+        deployment_mode: str | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if root_path is not None:
+            body["rootPath"] = self._absolute_path(root_path)
+        if format is not None:
+            body["format"] = format.upper()
+        if deployment_mode is not None:
+            body["deploymentMode"] = deployment_mode.upper()
+        _client = client._get_instance()
+        return _client._send_request(
+            "PUT",
+            self._path(sp.id),
+            headers={"content-type": _JSON},
+            data=json.dumps(body),
+        )
+
     def _promote(
         self, sp: semantic_layer.SemanticProject, build_id: int
     ) -> dict[str, Any]:

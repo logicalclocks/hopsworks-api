@@ -1,6 +1,6 @@
 ---
 name: hops-semantic
-description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Author semantic YAML (semantic_models, measures, dimensions, entities, metrics) next to a dbt project, map semantic models to feature groups, compile and validate with `hops semantic compile`, list metrics and dimensions, and get SQL or rows for a metric query. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input a dbt project over feature groups; output a compiled semantic project and metric query results.
+description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Author semantic YAML (semantic_models, measures, dimensions, entities, metrics) next to a dbt project, map semantic models to feature groups, compile and validate with `hops semantic compile`, test every metric on Trino with `hops semantic test`, list metrics, dimensions, entities and dimension values, and get SQL or rows for a metric query. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input a dbt project over feature groups; output a compiled semantic project and metric query results.
 ---
 
 # Semantic Layer on Hopsworks
@@ -129,7 +129,11 @@ Rules that keep a compile valid:
 hops semantic create sales --path Jupyter/analytics/dbt        # register; the first compile starts in the background
 hops semantic compile sales --wait                             # see errors and warnings now
 hops semantic compile sales --fail-on-error                    # CI: exit 1 on an INVALID or FAILED build
+hops semantic test sales                                       # CI: compile, then run every metric once on Trino; exit 1 on any failure
 hops semantic builds sales                                     # * marks the build answering queries
+hops semantic build sales 13                                   # one build's errors and warnings at file:line
+hops semantic show sales                                       # settings, the build queries use, and whether it is stale
+hops semantic update sales --path Jupyter/analytics/dbt_v2     # a new root path or format compiles again
 ```
 
 - **When builds happen.** A clone, pull, checkout or reset through Hopsworks git (UI or REST) recompiles automatically.
@@ -143,6 +147,9 @@ hops semantic builds sales                                     # * marks the bui
 ```bash
 hops semantic metrics sales
 hops semantic dimensions sales --metrics revenue,average_order_value   # only what every listed metric supports
+hops semantic metrics sales --group-by customer__country               # only metrics that can be grouped by it
+hops semantic entities sales
+hops semantic dimension-values sales customer__country --limit 20
 ```
 
 ```python
@@ -162,6 +169,7 @@ A leading `-` in `--order-by` sorts descending; NULLs sort last.
 
 ```bash
 hops semantic sql sales --metrics revenue --group-by metric_time__month,customer__country --order-by -revenue --limit 10
+hops semantic query sales --metrics revenue --group-by customer__country --explain   # the same SQL, as mf query --explain
 hops semantic query sales --metrics revenue,average_order_value --group-by metric_time__month \
   --where "{{ Dimension('order__status') }} = 'paid'" --start-time 2026-01-01 --end-time 2026-06-30 -o csv
 ```

@@ -1,18 +1,23 @@
-"""``hops semantic``: Semantic Layer projects, builds, discovery and metric queries.
+"""``hops semantic``: Semantic Layer projects, builds, discovery, metric queries and tests.
 
 Wraps ``project.get_semantic_layer_api()``. The query verbs follow MetricFlow's
-``mf`` CLI: metrics and group-bys are comma-separated, ``--where`` repeats, and
-``--order-by`` (alias ``--order``) sorts descending on a leading ``-``.
+``mf`` CLI: metrics and group-bys are comma-separated, ``--where`` repeats,
+``--order-by`` (alias ``--order``) sorts descending on a leading ``-``, and
+``query --explain`` prints the SQL instead of running it.
 """
 
 from __future__ import annotations
 
 import sys
+import time
 from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import output, session
-from hopsworks_common.client.exceptions import SemanticBuildException
+from hopsworks_common.client.exceptions import (
+    SemanticBuildException,
+    SemanticLayerException,
+)
 
 
 if TYPE_CHECKING:
@@ -49,6 +54,11 @@ def _split(
 
 def _build_label(build: SemanticBuild | None) -> str:
     return f"{build.id} {build.status}" if build else "-"
+
+
+# The gateway caches each caller's session for up to a minute; a little longer covers the request.
+_SERVING_WAIT_SECONDS = 90
+_SERVING_POLL_SECONDS = 5
 
 
 # region Projects
@@ -156,6 +166,104 @@ def delete_cmd(ctx: click.Context, name: str, yes: bool) -> None:
         output.print_json({"deleted": name})
         return
     output.success("Deleted semantic project %s.", name)
+
+
+@semantic_group.command("show")
+@click.argument("name")
+@click.pass_context
+def show_cmd(ctx: click.Context, name: str) -> None:
+    """Show a semantic project's settings, the build that answers queries, and whether it is stale.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+    """
+    sp = _semantic_project(ctx, name)
+    try:
+        serving = sp.serving()
+        served = f"build {serving.build_id}" + (
+            " (stale: the newest compile is invalid or running)"
+            if serving.stale
+            else ""
+        )
+    except SemanticLayerException as exc:
+        serving = None
+        served = exc.error_msg or str(exc)
+    if output.JSON_MODE:
+        output.print_json(
+            {**sp.to_dict(), "serving": serving.to_dict() if serving else None}
+        )
+        return
+    output.print_table(
+        ["FIELD", "VALUE"],
+        [
+            ["name", sp.name],
+            ["id", sp.id],
+            ["root path", sp.root_path],
+            ["git repository", sp.git_repository_id or "-"],
+            ["format", sp.format],
+            ["mode", sp.deployment_mode],
+            ["current build", sp.current_build_id or "-"],
+            ["latest build", _build_label(sp.latest_build)],
+            ["gateway serves", served],
+        ],
+    )
+
+
+@semantic_group.command("update")
+@click.argument("name")
+@click.option("--path", "root_path", help="New directory of the definitions.")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["AUTO", "DBT", "NATIVE", "MANIFEST_JSON"], case_sensitive=False),
+    help="New format of the definitions.",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["FOLLOW", "PINNED"], case_sensitive=False),
+    help="New deployment mode.",
+)
+@click.pass_context
+def update_cmd(
+    ctx: click.Context,
+    name: str,
+    root_path: str | None,
+    fmt: str | None,
+    mode: str | None,
+) -> None:
+    """Change a semantic project's root path, format or deployment mode.
+
+    A new root path or format compiles the definitions again in the background.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        root_path: New directory of the definitions.
+        fmt: New format.
+        mode: New deployment mode.
+    """
+    if root_path is None and fmt is None and mode is None:
+        raise click.UsageError("Give at least one of --path, --format and --mode.")
+    sp = _semantic_project(ctx, name).update(
+        root_path=root_path,
+        format=fmt.upper() if fmt else None,
+        deployment_mode=mode.upper() if mode else None,
+    )
+    if output.JSON_MODE:
+        output.print_json(sp.to_dict())
+        return
+    output.success(
+        "Updated semantic project %s: %s, %s, %s.",
+        sp.name,
+        sp.root_path,
+        sp.format,
+        sp.deployment_mode,
+    )
+    if root_path is not None or fmt is not None:
+        output.info(
+            "It compiles again; follow it with `hops semantic builds %s`.", sp.name
+        )
 
 
 # endregion
@@ -279,6 +387,21 @@ def builds_cmd(ctx: click.Context, name: str) -> None:
     )
 
 
+@semantic_group.command("build")
+@click.argument("name")
+@click.argument("build_id", type=int)
+@click.pass_context
+def build_cmd(ctx: click.Context, name: str, build_id: int) -> None:
+    """Show one build with its validation issues, each at its file and line.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        build_id: Build id, from `hops semantic builds`.
+    """
+    _render_build(_semantic_project(ctx, name).get_build(build_id))
+
+
 @semantic_group.command("promote")
 @click.argument("name")
 @click.argument("build_id", type=int)
@@ -305,15 +428,27 @@ def promote_cmd(ctx: click.Context, name: str, build_id: int) -> None:
 
 @semantic_group.command("metrics")
 @click.argument("name")
+@click.option(
+    "--group-by",
+    "group_by",
+    multiple=True,
+    callback=_split,
+    help="Only metrics that can be grouped by all of these, comma-separated.",
+)
 @click.pass_context
-def metrics_cmd(ctx: click.Context, name: str) -> None:
+def metrics_cmd(ctx: click.Context, name: str, group_by: list[str] | None) -> None:
     """List the metrics of a semantic project's current build.
 
     Args:
         ctx: Click context.
         name: Semantic project name.
+        group_by: Group-by names the metrics must support.
     """
-    metrics = _semantic_project(ctx, name).list_metrics()
+    sp = _semantic_project(ctx, name)
+    metrics = sp.list_metrics()
+    if group_by:
+        compatible = set(sp.compatible_metrics(group_by))
+        metrics = [m for m in metrics if m.name in compatible]
     if output.JSON_MODE:
         output.print_json([m.to_dict() for m in metrics])
         return
@@ -365,6 +500,72 @@ def dimensions_cmd(ctx: click.Context, name: str, metrics: list[str] | None) -> 
             for d in dimensions
         ],
     )
+
+
+@semantic_group.command("entities")
+@click.argument("name")
+@click.option(
+    "--metrics",
+    multiple=True,
+    callback=_split,
+    help="Only entities every one of these metrics can be grouped by, comma-separated.",
+)
+@click.pass_context
+def entities_cmd(ctx: click.Context, name: str, metrics: list[str] | None) -> None:
+    """List the entities: the keys that join semantic models, and group-bys too.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        metrics: Metric names.
+    """
+    entities = _semantic_project(ctx, name).entities(metrics=metrics)
+    if output.JSON_MODE:
+        output.print_json([e.to_dict() for e in entities])
+        return
+    output.print_table(
+        ["NAME", "DESCRIPTION"],
+        [[e.name, output.first_line(e.description)] for e in entities],
+    )
+
+
+@semantic_group.command("dimension-values")
+@click.argument("name")
+@click.argument("group_by")
+@click.option(
+    "--metrics",
+    multiple=True,
+    callback=_split,
+    help="Only values that occur in the rows of these metrics, comma-separated.",
+)
+@click.option(
+    "--limit", type=int, default=100, show_default=True, help="Most values to list."
+)
+@click.pass_context
+def dimension_values_cmd(
+    ctx: click.Context,
+    name: str,
+    group_by: str,
+    metrics: list[str] | None,
+    limit: int,
+) -> None:
+    """List the distinct values of a dimension, read on the query engine as you.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        group_by: Dimension name, such as customer__country.
+        metrics: Metric names.
+        limit: Most values to list.
+    """
+    values = _semantic_project(ctx, name).dimension_values(
+        group_by, metrics=metrics, limit=limit
+    )
+    if output.JSON_MODE:
+        output.print_json(values)
+        return
+    for value in values:
+        click.echo("" if value is None else value)
 
 
 # endregion
@@ -491,6 +692,11 @@ def sql_cmd(
     show_default=True,
     help="How to print the rows; --json is the same as --output json.",
 )
+@click.option(
+    "--explain",
+    is_flag=True,
+    help="Print the SQL instead of running it, as `hops semantic sql` does.",
+)
 @click.pass_context
 def query_cmd(
     ctx: click.Context,
@@ -503,6 +709,7 @@ def query_cmd(
     start_time: str | None,
     end_time: str | None,
     fmt: str,
+    explain: bool,
 ) -> None:
     """Run a metric query as you on the query engine and print the rows.
 
@@ -517,7 +724,21 @@ def query_cmd(
         start_time: Earliest metric_time, inclusive.
         end_time: Latest metric_time, inclusive.
         fmt: table, json or csv.
+        explain: Print the SQL instead of the rows.
     """
+    if explain:
+        ctx.invoke(
+            sql_cmd,
+            name=name,
+            metrics=metrics,
+            group_by=group_by,
+            where=where,
+            order_by=order_by,
+            limit=limit,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        return
     import pandas as pd
 
     df = _semantic_project(ctx, name).query(
@@ -541,6 +762,107 @@ def query_cmd(
                 for row in df.itertuples(index=False)
             ],
         )
+
+
+# endregion
+
+# region Tests
+
+
+def _await_serving(sp: SemanticProject, build_id: int) -> int:
+    """Wait for the gateway to serve `build_id`; return the build it serves when the wait ends."""
+    deadline = time.monotonic() + _SERVING_WAIT_SECONDS
+    served = sp.serving().build_id
+    while served != build_id and time.monotonic() < deadline:
+        time.sleep(_SERVING_POLL_SECONDS)
+        served = sp.serving().build_id
+    return served
+
+
+@semantic_group.command("test")
+@click.argument("name")
+@click.option(
+    "--metrics",
+    multiple=True,
+    callback=_split,
+    help="Only these metrics, comma-separated; every metric by default.",
+)
+@click.option(
+    "--no-compile",
+    is_flag=True,
+    help="Test the build that answers queries now, without compiling first.",
+)
+@click.pass_context
+def test_cmd(
+    ctx: click.Context, name: str, metrics: list[str] | None, no_compile: bool
+) -> None:
+    """Compile, then run every metric once on the query engine; exit 1 if anything fails.
+
+    A compile checks the definitions against the feature groups; running each metric's
+    SQL as you also catches what only the query engine sees, such as a type it cannot
+    aggregate or a feature group you cannot read. Each metric runs ungrouped, so it reads
+    its whole feature groups once: narrow it with --metrics on large data.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        metrics: Metric names to run.
+        no_compile: Skip the compile.
+    """
+    sp = _semantic_project(ctx, name)
+    if not no_compile:
+        try:
+            build = sp.compile(wait=True)
+        except SemanticBuildException as exc:
+            _render_build(exc.build)
+            ctx.exit(1)
+        if not output.JSON_MODE:
+            _render_build(build)
+        if sp.current_build_id != build.id and not output.JSON_MODE:
+            output.info(
+                "Build %s does not answer queries until it is promoted; "
+                "testing build %s, which does.",
+                build.id,
+                sp.current_build_id,
+            )
+        elif sp.current_build_id == build.id:
+            served = _await_serving(sp, build.id)
+            if served != build.id and not output.JSON_MODE:
+                output.warn(
+                    "The gateway still serves build %s; testing that build.", served
+                )
+    names = metrics or [m.name for m in sp.list_metrics()]
+    results = []
+    for metric in names:
+        try:
+            rows = sp.query([metric], limit=1, dataframe_type="python")
+            results.append({"metric": metric, "status": "PASS", "rows": len(rows)})
+        except SemanticLayerException as exc:
+            results.append(
+                {"metric": metric, "status": "FAIL", "error": exc.error_msg or str(exc)}
+            )
+    failed = [r for r in results if r["status"] == "FAIL"]
+    if output.JSON_MODE:
+        output.print_json(results)
+    else:
+        output.print_table(
+            ["METRIC", "STATUS", "DETAIL"],
+            [
+                [
+                    r["metric"],
+                    r["status"],
+                    output.first_line(r.get("error")) if "error" in r else "",
+                ]
+                for r in results
+            ],
+        )
+        summary = f"{len(results) - len(failed)} of {len(results)} metrics ran"
+        if failed:
+            output.error(summary)
+        else:
+            output.success(summary)
+    if failed:
+        ctx.exit(1)
 
 
 # endregion

@@ -180,6 +180,25 @@ class TestControlPlane:
         )
         assert sales.current_build_id == 9
 
+    def test_update_puts_only_the_given_settings_with_an_absolute_root(
+        self, http, sales
+    ):
+        http._send_request.return_value = {**SP_JSON, "deploymentMode": "PINNED"}
+
+        assert sales.update(root_path="Resources/v2", deployment_mode="pinned") is sales
+
+        call = http._send_request.call_args
+        assert call.args == ("PUT", ["project", 119, "semantic", "projects", 7])
+        assert json.loads(call.kwargs["data"]) == {
+            "rootPath": "/Projects/demo/Resources/v2",
+            "deploymentMode": "PINNED",
+        }
+        assert sales.deployment_mode == "PINNED"
+
+    def test_update_needs_a_setting(self, http, sales):
+        with pytest.raises(ValueError):
+            sales.update()
+
     def test_get_builds_newest_first_without_issues(self, http, sales):
         http._send_request.return_value = {
             "count": 2,
