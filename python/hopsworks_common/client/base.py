@@ -282,6 +282,9 @@ class Client:
         # Update request with the new token
         request.auth = self._auth
         prepped = self._session.prepare_request(request)
+        # The sleep can overshoot, for example while the process is suspended.
+        if deadline is not None and time.monotonic() > deadline:
+            return None
         response = self._session.send(
             prepped, verify=self._verify, stream=stream, timeout=timeout
         )

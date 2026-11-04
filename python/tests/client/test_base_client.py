@@ -252,6 +252,38 @@ class TestBaseClient:
 
         assert clock[0] - 1000.0 <= Client.RATE_LIMITED_RETRY_BUDGET_SECONDS
 
+    @changes_environ
+    def test_token_refresh_overshooting_the_deadline_is_not_sent(self, mocker):
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
+        client = self._init_test_client()
+        unauthorized = self._unauthorized_response()
+        mocker.patch("requests.sessions.Session.prepare_request")
+        send = mocker.patch(
+            "requests.sessions.Session.send",
+            side_effect=[
+                self._rate_limited_response(mocker),
+                unauthorized,
+                self._ok_response(),
+            ],
+        )
+        mocker.patch("hopsworks_common.client.base.Client._read_jwt")
+        clock = [1000.0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: clock[0]
+        )
+
+        def sleep(seconds):
+            # The token refresh wait is the only sub-second sleep; it overshoots by 120 s.
+            clock[0] += seconds + (120 if seconds < 1 else 0)
+
+        mocker.patch("hopsworks_common.client.base.time.sleep", side_effect=sleep)
+
+        with pytest.raises(RestAPIError) as error:
+            client._send_request("GET", ["variables", "versions"])
+
+        assert error.value.response is unauthorized
+        assert send.call_count == 2
+
     def _unauthorized_response(self):
         response = requests.Response()
         response.status_code = 401
