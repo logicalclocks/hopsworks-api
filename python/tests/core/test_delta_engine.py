@@ -2573,6 +2573,7 @@ class TestDeltaEngine:
         fake_write = mocker.Mock()
         fake_delta_table = mocker.Mock()
         fake_delta_table.merge.return_value.when_matched_update_all.return_value.when_not_matched_insert_all.return_value.execute = mocker.Mock()
+        fake_delta_table.schema.return_value.to_arrow.return_value = pa.schema([])
 
         class _FakeTableNotFoundError(Exception):
             pass
@@ -2649,12 +2650,14 @@ class TestDeltaEngine:
         Only sets up write_deltalake and a table that exists — no merge builder chain needed.
         """
         fake_write = mocker.Mock()
+        fake_delta_table = mocker.Mock()
+        fake_delta_table.schema.return_value.to_arrow.return_value = pa.schema([])
 
         class _FakeTableNotFoundError(Exception):
             pass
 
         fake_deltalake = types.SimpleNamespace(
-            DeltaTable=mocker.Mock(return_value=mocker.Mock()),
+            DeltaTable=mocker.Mock(return_value=fake_delta_table),
             write_deltalake=fake_write,
         )
         fake_exceptions = types.SimpleNamespace(
@@ -2985,3 +2988,89 @@ def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
         ("fg/chunk/a", 1),
         ("fg/chunk/b", 1),
     ]
+
+
+def _local_delta_rs_engine(mocker, monkeypatch, location):
+    # Drop any fake left in sys.modules so these tests reach the real delta-rs.
+    monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+    monkeypatch.delitem(sys.modules, "deltalake.exceptions", raising=False)
+    pytest.importorskip("deltalake")
+    _patch_client(mocker, is_external=False)
+    fg = _make_fg(location)
+    fg.primary_key = ["id"]
+    fg.event_time = None
+    fg.partition_key = []
+    engine = DeltaEngine(1, "fs", fg, None, None)
+    mocker.patch.object(engine, "_get_delta_rs_location", return_value=location)
+    mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+    return engine
+
+
+def _write_table_with_utc_timestamps(location):
+    """Create a table whose `ts` column is `timestamp`, as Spark creates it."""
+    from deltalake import write_deltalake
+
+    write_deltalake(
+        location,
+        pa.table(
+            {
+                "id": pa.array([1], pa.int64()),
+                "ts": pa.array(
+                    [pd.Timestamp("2026-10-21 09:00:00", tz="UTC")],
+                    pa.timestamp("us", tz="UTC"),
+                ),
+            }
+        ),
+        configuration={"delta.enableChangeDataFeed": "true"},
+    )
+
+
+@pytest.mark.parametrize("operation", ["insert", "upsert"])
+def test_write_naive_timestamps_into_table_with_utc_timestamps(
+    mocker, monkeypatch, tmp_path, operation
+):
+    location = str(tmp_path / "fg")
+    engine = _local_delta_rs_engine(mocker, monkeypatch, location)
+    _write_table_with_utc_timestamps(location)
+    from deltalake import DeltaTable
+
+    df = pd.DataFrame(
+        {
+            "id": pd.Series([2], dtype="int64"),
+            "ts": pd.to_datetime(["2026-10-21 11:30:00"]),
+        }
+    )
+
+    engine._write_delta_rs_dataset(df, operation=operation)
+
+    table = DeltaTable(location)
+    assert "timestampNtz" not in (table.protocol().writer_features or [])
+    rows = sorted(table.to_pyarrow_table().to_pylist(), key=lambda r: r["id"])
+    # Naive timestamps keep their wall time, as UTC.
+    assert [r["ts"].isoformat() for r in rows] == [
+        "2026-10-21T09:00:00+00:00",
+        "2026-10-21T11:30:00+00:00",
+    ]
+
+
+def test_write_naive_timestamps_into_table_with_ntz_timestamps_stays_naive(
+    mocker, monkeypatch, tmp_path
+):
+    location = str(tmp_path / "fg")
+    engine = _local_delta_rs_engine(mocker, monkeypatch, location)
+    df = pd.DataFrame(
+        {
+            "id": pd.Series([1], dtype="int64"),
+            "ts": pd.to_datetime(["2026-10-21 11:30:00"]),
+        }
+    )
+    engine._write_delta_rs_dataset(df, operation="insert")
+    from deltalake import DeltaTable
+
+    engine._write_delta_rs_dataset(
+        df.assign(id=pd.Series([2], dtype="int64")), operation="insert"
+    )
+
+    table = DeltaTable(location).to_pyarrow_table()
+    assert table.schema.field("ts").type == pa.timestamp("us")
+    assert table.num_rows == 2
