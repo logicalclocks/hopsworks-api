@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common import client, util
+from hopsworks_common import client, tag, util
 from hsfs import decorators, storage_connector
 
 
@@ -347,3 +347,61 @@ class StorageConnectorApi:
             explicit_provenance.Links.Direction.DOWNSTREAM,
             explicit_provenance.Links.Type.TRAINING_DATASET,
         )
+
+    def _tags_path(
+        self, storage_connector_instance: storage_connector.StorageConnector, *rest: str
+    ) -> list:
+        _client = client._get_instance()
+        return [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector_instance._featurestore_id,
+            "storageconnectors",
+            storage_connector_instance.name,
+            "tags",
+            *rest,
+        ]
+
+    def _add_tag(
+        self,
+        storage_connector_instance: storage_connector.StorageConnector,
+        name: str,
+        value: Any,
+    ) -> None:
+        client._get_instance()._send_request(
+            "PUT",
+            self._tags_path(storage_connector_instance, name),
+            headers={"content-type": "application/json"},
+            data=json.dumps(value),
+        )
+
+    def _delete_tag(
+        self, storage_connector_instance: storage_connector.StorageConnector, name: str
+    ) -> None:
+        client._get_instance()._send_request(
+            "DELETE", self._tags_path(storage_connector_instance, name)
+        )
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags_metadata(
+        self,
+        storage_connector_instance: storage_connector.StorageConnector,
+        name: str | None = None,
+    ) -> dict[str, tag.Tag]:
+        """Get the tags attached to a storage connector, or the one named `name`.
+
+        Returns:
+            Dict of tag name to Tag object; empty when the named tag is not attached.
+        """
+        path_params = (
+            self._tags_path(storage_connector_instance)
+            if name is None
+            else self._tags_path(storage_connector_instance, name)
+        )
+        return {
+            t.name: t
+            for t in tag.Tag.from_response_json(
+                client._get_instance()._send_request("GET", path_params)
+            )
+        }

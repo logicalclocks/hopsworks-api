@@ -57,6 +57,7 @@ if TYPE_CHECKING:
 
     from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
     from hopsworks_common.job import Job
+    from hopsworks_common.tag import Tag
 
     if HAS_NUMPY:
         import numpy as np
@@ -641,6 +642,109 @@ class StorageConnector(ABC):
         if training_datasets_provenance and training_datasets_provenance.accessible:
             return training_datasets_provenance.accessible
         return []
+
+    @public
+    def add_tag(self, name: str, value: Any) -> None:
+        """Attach a tag to the storage connector.
+
+        A tag consists of a name-value pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json -- primitives, arrays or json objects.
+        Attaching a tag that is already attached replaces its value.
+        Only a data owner of the project that owns the feature store can attach tags, and the online feature store connectors cannot be tagged.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_data_source("conn_name").storage_connector
+
+            sc.add_tag(name="example_tag", value={"owner": "risk"})
+            ```
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._storage_connector_api._add_tag(self, name, value)
+
+    @public
+    def delete_tag(self, name: str) -> None:
+        """Delete a tag attached to the storage connector.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._storage_connector_api._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to the storage connector.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            Tag value or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        attached = self.get_tag_metadata(name)
+        return attached.value if attached is not None else None
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to the storage connector.
+
+        Returns:
+            The dictionary of tag names and values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return {
+            tag_name: attached.value
+            for tag_name, attached in self.get_tags_metadata().items()
+        }
+
+    @public
+    def get_tag_metadata(self, name: str) -> Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`StorageConnector.get_tag`][hsfs.storage_connector.StorageConnector.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._storage_connector_api._get_tags_metadata(self, name).get(name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, Tag]:
+        """Retrieve all tags attached to the storage connector, with their metadata.
+
+        Unlike [`StorageConnector.get_tags`][hsfs.storage_connector.StorageConnector.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._storage_connector_api._get_tags_metadata(self)
 
     @public
     def get_databases(self) -> list[str]:

@@ -42,6 +42,7 @@ DOC_TYPE_ARG = Literal[
     "MODEL",
     "DEPLOYMENT",
     "AGENT",
+    "DATASOURCE",
     "ALL",
 ]
 

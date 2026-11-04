@@ -20,7 +20,7 @@ import os
 from pathlib import WindowsPath
 
 import pytest
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs import engine, storage_connector
 from hsfs.engine import python, spark
 from hsfs.storage_connector import BigQueryConnector
@@ -4297,3 +4297,116 @@ class TestCRMShopifyConnector:
             "secret",
         )
         assert payload["privateAppPassword"] is None
+
+
+class TestStorageConnectorTags:
+    _BASE = [
+        "project",
+        119,
+        "featurestores",
+        67,
+        "storageconnectors",
+        "test_s3",
+        "tags",
+    ]
+
+    @staticmethod
+    def _client(mocker, response=None, side_effect=None):
+        client_mock = mocker.Mock()
+        client_mock._project_id = 119
+        client_mock._send_request.return_value = response
+        client_mock._send_request.side_effect = side_effect
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        return client_mock
+
+    @staticmethod
+    def _connector(backend_fixtures):
+        return storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_s3"]["response"]
+        )
+
+    @staticmethod
+    def _error(mocker, status_code, error_code):
+        response = mocker.Mock()
+        response.status_code = status_code
+        response.json.return_value = {"errorCode": error_code}
+        return RestAPIError("url", response)
+
+    @staticmethod
+    def _tags(*items):
+        return {"count": len(items), "items": list(items)}
+
+    def test_add_tag_puts_json_value_under_connector_name(
+        self, mocker, backend_fixtures
+    ):
+        client = self._client(mocker)
+
+        self._connector(backend_fixtures).add_tag("owner", {"team": "risk"})
+
+        call = client._send_request.call_args
+        assert call.args == ("PUT", [*self._BASE, "owner"])
+        assert call.kwargs["headers"] == {"content-type": "application/json"}
+        assert json.loads(call.kwargs["data"]) == {"team": "risk"}
+
+    def test_delete_tag_path(self, mocker, backend_fixtures):
+        client = self._client(mocker)
+
+        self._connector(backend_fixtures).delete_tag("owner")
+
+        assert client._send_request.call_args.args == (
+            "DELETE",
+            [*self._BASE, "owner"],
+        )
+
+    def test_get_tags_returns_values(self, mocker, backend_fixtures):
+        client = self._client(
+            mocker,
+            self._tags(
+                {"name": "owner", "value": '{"team": "risk"}'},
+                {"name": "tier", "value": "3"},
+            ),
+        )
+
+        tags = self._connector(backend_fixtures).get_tags()
+
+        assert tags == {"owner": {"team": "risk"}, "tier": 3}
+        assert client._send_request.call_args.args == ("GET", self._BASE)
+
+    def test_get_tag_reads_the_named_tag(self, mocker, backend_fixtures):
+        client = self._client(
+            mocker, self._tags({"name": "owner", "value": '{"team": "risk"}'})
+        )
+
+        value = self._connector(backend_fixtures).get_tag("owner")
+
+        assert value == {"team": "risk"}
+        assert client._send_request.call_args.args == ("GET", [*self._BASE, "owner"])
+
+    def test_get_tag_missing_returns_none(self, mocker, backend_fixtures):
+        self._client(mocker, side_effect=self._error(mocker, 404, 370002))
+        sc = self._connector(backend_fixtures)
+
+        assert sc.get_tag("owner") is None
+        assert sc.get_tag_metadata("owner") is None
+        assert sc.get_tags() == {}
+        assert sc.get_tags_metadata() == {}
+
+    def test_get_tags_metadata_keeps_created_on(self, mocker, backend_fixtures):
+        self._client(
+            mocker,
+            self._tags(
+                {"name": "owner", "value": '"risk"', "createdOn": 1700000000000}
+            ),
+        )
+
+        attached = self._connector(backend_fixtures).get_tags_metadata()["owner"]
+
+        assert attached.value == "risk"
+        assert attached.created_on is not None
+        assert attached.created_on.timestamp() == 1700000000
+
+    def test_connector_not_found_is_not_swallowed(self, mocker, backend_fixtures):
+        self._client(mocker, side_effect=self._error(mocker, 404, 270042))
+
+        with pytest.raises(RestAPIError):
+            self._connector(backend_fixtures).get_tags()
