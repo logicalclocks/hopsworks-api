@@ -374,13 +374,14 @@ class StorageConnectorApi:
             self._tags_path(storage_connector_instance, name),
             headers={"content-type": "application/json"},
             data=json.dumps(value),
+            timeout=60,
         )
 
     def _delete_tag(
         self, storage_connector_instance: storage_connector.StorageConnector, name: str
     ) -> None:
         client._get_instance()._send_request(
-            "DELETE", self._tags_path(storage_connector_instance, name)
+            "DELETE", self._tags_path(storage_connector_instance, name), timeout=60
         )
 
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
@@ -402,6 +403,6 @@ class StorageConnectorApi:
         return {
             t.name: t
             for t in tag.Tag.from_response_json(
-                client._get_instance()._send_request("GET", path_params)
+                client._get_instance()._send_request("GET", path_params, timeout=60)
             )
         }

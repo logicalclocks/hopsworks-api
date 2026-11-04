@@ -4347,6 +4347,7 @@ class TestStorageConnectorTags:
         assert call.args == ("PUT", [*self._BASE, "owner"])
         assert call.kwargs["headers"] == {"content-type": "application/json"}
         assert json.loads(call.kwargs["data"]) == {"team": "risk"}
+        assert call.kwargs["timeout"] == 60
 
     def test_delete_tag_path(self, mocker, backend_fixtures):
         client = self._client(mocker)
@@ -4357,6 +4358,7 @@ class TestStorageConnectorTags:
             "DELETE",
             [*self._BASE, "owner"],
         )
+        assert client._send_request.call_args.kwargs["timeout"] == 60
 
     def test_get_tags_returns_values(self, mocker, backend_fixtures):
         client = self._client(
@@ -4371,6 +4373,7 @@ class TestStorageConnectorTags:
 
         assert tags == {"owner": {"team": "risk"}, "tier": 3}
         assert client._send_request.call_args.args == ("GET", self._BASE)
+        assert client._send_request.call_args.kwargs["timeout"] == 60
 
     def test_get_tag_reads_the_named_tag(self, mocker, backend_fixtures):
         client = self._client(
