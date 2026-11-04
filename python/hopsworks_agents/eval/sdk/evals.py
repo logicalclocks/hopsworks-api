@@ -845,23 +845,23 @@ class Checks:
         """
         from ..checks import _declared_in, _import_path
 
-        module, _held = _import_path(str(Path(local_path).resolve()))
-        return [d._as_dict() for d in _declared_in(module).values()]
+        module, _held, submodules = _import_path(str(Path(local_path).resolve()))
+        return [d._as_dict() for d in _declared_in(module, submodules).values()]
 
     @public
     def declared_in(self, file: str) -> list[dict[str, Any]]:
         """What a file already in the project declares, as the backend lists it.
 
         A text scan on the server, never an import, and the same list the UI
-        shows for that file: each entry carries ``name``, ``readsExpectation``,
-        ``needsTrace`` and ``description`` when the decorator states them.
+        shows for that file. Each entry carries the keys ``declared`` does --
+        ``name``, ``description``, ``needs_trace``, ``reads_expectation`` and
+        the parameter ``defaults`` the scan could read -- so the two lists
+        compare directly.
         """
-        return list(
-            self._client.http.request(
-                "GET", f"{EVALS}/checks/declared", params={"path": file}
-            )
-            or []
+        rows = self._client.http.request(
+            "GET", f"{EVALS}/checks/declared", params={"path": file}
         )
+        return [_snake_keys(dict(row)) for row in (rows or [])]
 
     @public
     def upload(
@@ -968,6 +968,18 @@ class Checks:
         tagged = [t for t in (tags or []) if t != CUSTOM_CODE_TAG] + [CUSTOM_CODE_TAG]
         existing = self._client.evaluators.find(name)
         if existing is not None:
+            # Updated only when it is this same source's entry: an LLM judge
+            # that happens to share the file's stem is not replaced by it.
+            same = [
+                c
+                for c in existing.checks
+                if isinstance(c, dict) and c.get("type") == "python"
+            ]
+            if len(existing.checks) != 1 or not same or not _same_source(same[0], row):
+                raise AgentServingError(
+                    f"a library entry named {name!r} already exists and is not "
+                    "this source's; pass name= to register under another name"
+                )
             kept = (
                 [t for t in existing.tags if t != CUSTOM_CODE_TAG]
                 if tags is None
@@ -980,6 +992,22 @@ class Checks:
                 tags=kept + tagged if tags is None else tagged,
             )
         return self._client.evaluators.save(name, [row], description, tags=tagged)
+
+
+def _same_source(existing: dict[str, Any], row: dict[str, Any]) -> bool:
+    """Whether two python rows name the same file, module or repository path."""
+    keys = ("file", "module", "git", "path")
+    return all(existing.get(k) == row.get(k) for k in keys)
+
+
+def _snake_keys(row: dict[str, Any]) -> dict[str, Any]:
+    """The backend's camelCase keys as the SDK's snake_case ones."""
+    renamed = {
+        "readsExpectation": "reads_expectation",
+        "needsTrace": "needs_trace",
+        "timeoutS": "timeout_s",
+    }
+    return {renamed.get(k, k): v for k, v in row.items()}
 
 
 def _repo_relative(source: Path) -> str:

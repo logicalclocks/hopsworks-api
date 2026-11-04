@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 import pytest
+from hopsworks_agents.eval.checks import CheckResult
+from hopsworks_agents.eval.checks import check as declare_check
 from hopsworks_agents.eval.sdk import (
     Agent,
     AgentServing,
@@ -2786,3 +2789,219 @@ class TestWhereFeedbackWasGiven:
         from hopsworks_agents.eval.sdk.models import Feedback
 
         assert Feedback.from_api({"feedbackId": "f"}).given_via is None
+
+
+class TestChecks:
+    """Uploading and registering a project's own checks, and reading a run back through one."""
+
+    FILE = (
+        "from hopsworks_agents.eval.checks import check\n"
+        "@check(needs_trace=False, description='Says the')\n"
+        "def answers_in_english(ctx, prefix: str = 'the'):\n"
+        "    return ctx.answer.lower().startswith(prefix)\n"
+    )
+
+    @staticmethod
+    def _fake_dataset_api(monkeypatch):
+        from hopsworks_common.core import dataset_api
+
+        calls: list[tuple] = []
+
+        class FakeDatasetApi:
+            def mkdir(self, path):
+                calls.append(("mkdir", path))
+
+            def upload(self, local, target, overwrite=True):
+                calls.append(("upload", os.path.basename(local), target, overwrite))
+
+        monkeypatch.setattr(dataset_api, "DatasetApi", FakeDatasetApi)
+        return calls
+
+    def test_upload_puts_the_file_in_the_project_and_registers_one_entry(
+        self, tmp_path, monkeypatch
+    ):
+        calls = self._fake_dataset_api(monkeypatch)
+        (tmp_path / "english.py").write_text(self.FILE)
+        evals, session = client(
+            Reply([]),  # find: no entry of that name yet
+            Reply({"templateId": "e", "name": "english", "spec": "[]"}),
+        )
+        saved = evals.checks.upload(str(tmp_path / "english.py"), tags=["support"])
+        assert saved.template_id == "e"
+        assert calls == [
+            ("mkdir", "Resources/agent_evals/checks"),
+            ("upload", "english.py", "Resources/agent_evals/checks", True),
+        ]
+        method, url, _params, body = session.sent[-1]
+        assert (method, url) == ("POST", "/agent-evals/evaluators")
+        assert json.loads(body["spec"]) == [
+            {
+                "type": "python",
+                "name": "english",
+                "file": "Resources/agent_evals/checks/english.py",
+                "params": {"answers_in_english": {"prefix": "the"}},
+            }
+        ]
+        assert body["description"] == "answers_in_english: Says the"
+        assert json.loads(body["tags"]) == ["support", "custom-code"]
+
+    def test_upload_without_registering_saves_no_entry(self, tmp_path, monkeypatch):
+        calls = self._fake_dataset_api(monkeypatch)
+        (tmp_path / "english.py").write_text(self.FILE)
+        evals, session = client()
+        assert evals.checks.upload(str(tmp_path / "english.py"), register=False) is None
+        assert [c[0] for c in calls] == ["mkdir", "upload"]
+        assert session.sent == []
+
+    def test_register_names_the_deployments_repository_without_uploading(
+        self, tmp_path, monkeypatch
+    ):
+        calls = self._fake_dataset_api(monkeypatch)
+        (tmp_path / "english.py").write_text(self.FILE)
+        evals, session = client(
+            Reply([]),
+            Reply({"templateId": "e", "name": "english", "spec": "[]"}),
+        )
+        evals.checks.register(
+            str(tmp_path / "english.py"), git="deployment", path="evaluation/english.py"
+        )
+        assert calls == []
+        _method, _url, _params, body = session.sent[-1]
+        assert json.loads(body["spec"]) == [
+            {
+                "type": "python",
+                "name": "english",
+                "git": "deployment",
+                "path": "evaluation/english.py",
+                "params": {"answers_in_english": {"prefix": "the"}},
+            }
+        ]
+
+    def test_register_updates_this_sources_entry_and_refuses_another(
+        self, tmp_path, monkeypatch
+    ):
+        self._fake_dataset_api(monkeypatch)
+        (tmp_path / "pricing.py").write_text(self.FILE)
+        own = {
+            "templateId": "e",
+            "name": "pricing",
+            "spec": json.dumps([{"type": "python", "name": "pricing", "file": "Resources/x/pricing.py"}]),
+            "tags": json.dumps(["custom-code", "support"]),
+        }  # fmt: skip
+        evals, session = client(Reply([own]), Reply(own))
+        evals.checks.register(
+            str(tmp_path / "pricing.py"), file="Resources/x/pricing.py"
+        )
+        _method, _url, _params, body = session.sent[-1]
+        assert body["templateId"] == "e"
+        assert json.loads(body["tags"]) == ["support", "custom-code"]
+
+        # An LLM judge that happens to be named "pricing" is not replaced.
+        judge = {
+            "templateId": "j",
+            "name": "pricing",
+            "spec": json.dumps([{"type": "llm_judge"}]),
+        }
+        evals, session = client(Reply([judge]))
+        with pytest.raises(AgentServingError, match="is not this source's"):
+            evals.checks.register(
+                str(tmp_path / "pricing.py"), file="Resources/x/pricing.py"
+            )
+        assert [m for m, *_ in session.sent] == ["GET"]
+
+        # Nor is this file's entry pointing somewhere else.
+        other = {"templateId": "o", "name": "pricing", "spec": json.dumps([{"type": "python", "name": "pricing", "file": "Resources/y/pricing.py"}])}  # fmt: skip
+        evals, _session = client(Reply([other]))
+        with pytest.raises(AgentServingError, match="is not this source's"):
+            evals.checks.register(
+                str(tmp_path / "pricing.py"), file="Resources/x/pricing.py"
+            )
+
+    def test_declared_in_asks_the_backend_and_reads_as_declared_does(self):
+        evals, session = client(
+            Reply(
+                [
+                    {
+                        "name": "answers_in_english",
+                        "readsExpectation": False,
+                        "needsTrace": False,
+                        "description": "Says the",
+                        "defaults": {"prefix": "the"},
+                    }
+                ]
+            )
+        )
+        declared = evals.checks.declared_in("Resources/agent_evals/checks/english.py")
+        assert session.sent == [
+            (
+                "GET",
+                "/agent-evals/checks/declared",
+                {"path": "Resources/agent_evals/checks/english.py"},
+                None,
+            )
+        ]
+        assert declared == [
+            {
+                "name": "answers_in_english",
+                "reads_expectation": False,
+                "needs_trace": False,
+                "description": "Says the",
+                "defaults": {"prefix": "the"},
+            }
+        ]
+
+    def test_checks_manifest_reads_what_a_version_froze(self):
+        frozen = {"ab12-pricing.py": {"url": "https://x/r.git", "commit": "abc"}}
+        evals, session = client(Reply(frozen))
+        assert evals.suites.checks_manifest("s1", version=2) == frozen
+        assert session.sent == [
+            ("GET", "/agent-evals/suites/s1/checks-manifest", {"version": 2}, None)
+        ]
+
+    def test_replay_grades_every_trial_and_writes_nothing(self):
+        evals, session = client(
+            Reply({"runId": "r1", "suiteId": "s1", "suiteVersion": 1, "status": "SUCCEEDED"}),
+            Reply(
+                [
+                    {
+                        "taskId": "t1",
+                        "version": 1,
+                        "inputMessages": json.dumps([{"role": "user", "content": "hi"}]),
+                        "expectations": {"agrees": "yes"},
+                        "subject": "alice",
+                        "context": json.dumps({"tier": "gold"}),
+                    }
+                ]
+            ),
+            Reply(
+                [
+                    {"trialId": "a", "runId": "r1", "taskId": "t1", "status": "PASSED", "finalOutput": "yes indeed", "inputTokens": 13},
+                    {"trialId": "b", "runId": "r1", "taskId": "t1", "status": "FAILED", "finalOutput": "no"},
+                ]
+            ),
+        )  # fmt: skip
+
+        @declare_check(needs_trace=False, reads_expectation=True)
+        def agrees(ctx):
+            return CheckResult(
+                passed=ctx.expectation in ctx.answer,
+                assertions={
+                    "subject": ctx.task.subject,
+                    "tier": ctx.task.context.get("tier"),
+                    "status": ctx.trial.status,
+                    "tokens": ctx.trial.input_tokens,
+                },
+            )
+
+        graded = evals.runs.replay("r1", agrees)
+        assert [(t.trial_id, r.passed) for t, r in graded] == [
+            ("a", True),
+            ("b", False),
+        ]
+        assert graded[0][1].assertions == {
+            "subject": "alice",
+            "tier": "gold",
+            "status": "PASSED",
+            "tokens": 13,
+        }
+        assert [m for m, *_ in session.sent] == ["GET", "GET", "GET"]

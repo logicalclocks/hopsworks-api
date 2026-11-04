@@ -10,6 +10,7 @@ pass.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -147,7 +148,7 @@ def _write(tmp_path: Path, name: str, body: str) -> Path:
 
 class TestDecorator:
     def test_bare_named_and_configured_forms(self, check_file):
-        module, _held = _import_path(str(check_file))
+        module, _held, _sub = _import_path(str(check_file))
         declared = _declared_in(module)
         assert set(declared) == DECLARED
         price = declared["price_matches_catalogue"]
@@ -296,7 +297,7 @@ class TestSpec:
 
 
 def _file_evaluator(path: Path, name: str = "checks", **entry) -> PythonSourceEvaluator:
-    sources = _CheckSources(dataset_api=object(), project_name="p")
+    sources = _CheckSources(dataset_api=object())
     # The file is local: stand in for the download with the path itself.
     sources._download = lambda path: path  # type: ignore[method-assign]
     [evaluator] = _evaluators_from_spec(
@@ -392,6 +393,7 @@ class TestGrading:
             """,
         )
         monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.2)
+        monkeypatch.setattr(checks_module, "IMPORT_LOCK_WAIT_S", 0.2)
         evaluator = _file_evaluator(path, "slow")
         started = time.monotonic()
         rows = _rows([evaluator])
@@ -562,7 +564,7 @@ class TestReturnValues:
 
 class TestRunCheck:
     def test_synthetic_inputs(self, check_file):
-        module, _held = _import_path(str(check_file))
+        module, _held, _sub = _import_path(str(check_file))
         result = run_check(
             module.price_matches_catalogue,
             answer="It costs 19.99",
@@ -859,18 +861,11 @@ class TestSources:
         )
         assert _rows([evaluator])["uses_helper"].passed is True
 
-    def test_a_file_frozen_by_publish_is_read_from_the_snapshot(self, tmp_path):
-        """The backend repoints a published row at its copy; the job reads that and says so."""
+    def test_a_file_source_is_read_live_and_never_pinned(self, tmp_path):
+        """Published or not, a project file is read as it is now, and the row says which text."""
         snapshot_dir = "/Projects/p/Resources/agent_evals/suites/s1/v2/checks"
         api = _FakeDatasetApi(
-            {
-                "/Projects/p/Resources/checks/c.py": VERDICT_FILE.format(
-                    verdict="False"
-                ),
-                f"{snapshot_dir}/0123456789ab-c.py": VERDICT_FILE.format(
-                    verdict="True"
-                ),
-            }
+            {"/Projects/p/Resources/checks/c.py": VERDICT_FILE.format(verdict="False")}
         )
         sources = _CheckSources(
             dataset_api=api,
@@ -878,26 +873,21 @@ class TestSources:
             snapshot_dir=snapshot_dir,
             workdir=str(tmp_path),
         )
-        frozen, live = _evaluators_from_spec(
-            [
-                {
-                    "type": "python",
-                    "name": "frozen",
-                    "file": f"{snapshot_dir}/0123456789ab-c.py",
-                },
-                {"type": "python", "name": "live", "file": "Resources/checks/c.py"},
-            ],
+        [live] = _evaluators_from_spec(
+            [{"type": "python", "name": "live", "file": "Resources/checks/c.py"}],
             sources=sources,
         )
-        row = _rows([frozen])["verdict"]
-        assert row.passed is True
-        assert row.assertions["source"]["pinned"] is True
-        assert row.assertions["source"]["origin"].startswith("snapshot ")
-        # The second row declaring `verdict` reports it under its own name.
-        row = _rows([live])["live/verdict"]
+        row = _rows([live])["verdict"]
         assert row.passed is False
-        assert row.assertions["source"]["pinned"] is False
-        assert row.assertions["check"] == "verdict"
+        source = row.assertions["source"]
+        assert source["pinned"] is False
+        assert source["origin"] == "hopsfs /Projects/p/Resources/checks/c.py"
+        assert (
+            source["sha256"]
+            == hashlib.sha256(VERDICT_FILE.format(verdict="False").encode()).hexdigest()
+        )
+        # Nothing was written beside the suite's tasks for it.
+        assert not any(f.startswith(snapshot_dir) for f in api.files)
 
     def _fake_clone(self, tmp_path):
         def clone(url, ref, commit, into):
@@ -952,9 +942,7 @@ class TestSources:
             workdir=str(tmp_path),
             clone=clone,
         )
-        [evaluator] = _evaluators_from_spec(
-            [self._git_row(url="https://user:tok@github.com/o/r.git")], sources=sources
-        )
+        [evaluator] = _evaluators_from_spec([self._git_row()], sources=sources)
         rows = _rows([evaluator], trial=_trial("the x"))
         assert rows["answers_in_english"].passed is True
         assert rows["answers_in_english"].assertions["source"]["pinned"] is True
@@ -973,7 +961,7 @@ class TestSources:
         assert manifest["url"] == "https://github.com/o/r.git"
         assert manifest["path"] == "evaluation/checks/pricing.py"
         assert manifest["basename"] == "pricing.py"
-        assert "tok" not in json.dumps(manifest)
+        assert manifest["tree"] is True
         assert not any(".staging-" in f for f in api.files)
 
         # The next run reads the snapshot and never clones.
@@ -1135,7 +1123,7 @@ class TestSources:
                 {
                     "type": "python",
                     "name": "x",
-                    "git": {"url": "https://u:secret@x/r", "ref": "main"},
+                    "git": {"url": "https://x/r", "ref": "main"},
                     "path": "c.py",
                 }
             ],
@@ -1145,43 +1133,126 @@ class TestSources:
         assert rows["x"].assertions[SKIPPED] is True
         assert "secret" not in rows["x"].reason
 
-    def test_helpers_of_the_same_name_do_not_leak_between_sources(self, tmp_path):
-        """A second source's `helpers` must not be the first's, cached in sys.modules."""
-        for name, verdict in (("a", "True"), ("b", "False")):
-            folder = tmp_path / name
-            folder.mkdir()
-            (folder / "helpers.py").write_text(
-                f"def verdict():\n    return {verdict}\n"
-            )
-            (folder / "checks.py").write_text(
+    @staticmethod
+    def _repo_with_helper(verdict: str):
+        """A clone whose entry file imports a sibling `helpers` module."""
+
+        def clone(url, ref, commit, into):  # noqa: ARG001
+            root = Path(into) / "repo"
+            root.mkdir(parents=True)
+            (root / "helpers.py").write_text(f"def verdict():\n    return {verdict}\n")
+            (root / "checks.py").write_text(
                 "from hopsworks_agents.eval.checks import check\n"
                 "from helpers import verdict\n"
                 "@check(needs_trace=False)\ndef v(ctx):\n    return verdict()\n"
             )
-        sources = _CheckSources(dataset_api=object(), project_name="p")
-        sources._download = lambda path: path  # type: ignore[method-assign]
-        a, b = _evaluators_from_spec(
+            return str(root)
+
+        return clone
+
+    def _two_repos(self, tmp_path):
+        """Rows a and b, each a repository with its own `helpers`."""
+        clones = {
+            "https://x/a.git": self._repo_with_helper("True"),
+            "https://x/b.git": self._repo_with_helper("False"),
+        }
+
+        def clone(url, ref, commit, into):
+            return clones[url](url, ref, commit, into)
+
+        sources = _CheckSources(workdir=str(tmp_path), clone=clone)
+        return _evaluators_from_spec(
             [
                 {
                     "type": "python",
                     "name": "a",
-                    "file": str(tmp_path / "a" / "checks.py"),
+                    "git": {"url": "https://x/a.git"},
+                    "path": "checks.py",
                 },
                 {
                     "type": "python",
                     "name": "b",
-                    "file": str(tmp_path / "b" / "checks.py"),
+                    "git": {"url": "https://x/b.git"},
+                    "path": "checks.py",
                 },
             ],
             sources=sources,
         )
+
+    def test_helpers_of_the_same_name_do_not_leak_between_sources(self, tmp_path):
+        """A second source's `helpers` must not be the first's, cached in sys.modules."""
+        a, b = self._two_repos(tmp_path)
         results = _run_evaluators([a, b], _task(), _trial(), None)
         assert [(r.evaluator_name, r.assertions["row"], r.passed) for r in results] == [
             ("v", "a", True),
             ("b/v", "b", False),
         ]
         assert "helpers" not in sys.modules
-        assert str(tmp_path / "a") not in sys.path
+        assert not any(str(tmp_path) in entry for entry in sys.path)
+
+    def test_a_helper_beside_a_file_imports_with_or_without_the_mount(self, tmp_path):
+        """The job reads the file off the HopsFS mount; a download fetches the siblings too."""
+        (tmp_path / "helpers.py").write_text("def verdict():\n    return True\n")
+        (tmp_path / "checks.py").write_text(
+            "from hopsworks_agents.eval.checks import check\n"
+            "from helpers import verdict\n"
+            "@check(needs_trace=False)\ndef v(ctx):\n    return verdict()\n"
+        )
+        # In place, as off the mount.
+        rows = _rows([_file_evaluator(tmp_path / "checks.py", "mounted")])
+        assert rows["v"].passed is True
+        assert str(tmp_path) not in sys.path
+        # Downloaded: the entry and the .py files beside it, nothing else.
+        api = _FakeDatasetApi(
+            {
+                "/Projects/p/Resources/c/checks.py": (
+                    tmp_path / "checks.py"
+                ).read_text(),
+                "/Projects/p/Resources/c/helpers.py": (
+                    tmp_path / "helpers.py"
+                ).read_text(),
+                "/Projects/p/Resources/c/notes.txt": "not code",
+                "/Projects/p/Resources/c/sub/deep.py": "x = 1\n",
+            }
+        )
+        sources = _CheckSources(
+            dataset_api=api, project_name="p", workdir=str(tmp_path / "w")
+        )
+        [row] = _evaluators_from_spec(
+            [{"type": "python", "name": "fetched", "file": "Resources/c/checks.py"}],
+            sources=sources,
+        )
+        assert _rows([row])["v"].passed is True
+        fetched = {
+            os.path.relpath(os.path.join(d, f), tmp_path / "w")
+            for d, _, files in os.walk(tmp_path / "w")
+            for f in files
+            if f.endswith(".py")
+        }
+        assert {os.path.basename(f) for f in fetched} == {"checks.py", "helpers.py"}
+
+    def test_a_package_imports_its_own_modules_and_declares_their_checks(
+        self, tmp_path
+    ):
+        """What `__init__` imports from the package is the package's, checks included."""
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "helpers.py").write_text("def verdict():\n    return True\n")
+        (pkg / "pricing.py").write_text(
+            "from hopsworks_agents.eval.checks import check\n"
+            "from .helpers import verdict\n"
+            "@check(needs_trace=False)\ndef in_pricing(ctx):\n    return verdict()\n"
+        )
+        (pkg / "__init__.py").write_text(
+            "from hopsworks_agents.eval.checks import check\n"
+            "from . import pricing\n"
+            "@check(needs_trace=False)\ndef in_init(ctx):\n    return True\n"
+        )
+        rows = _rows([_file_evaluator(pkg, "pkg")])
+        assert {name: r.passed for name, r in rows.items()} == {
+            "in_init": True,
+            "in_pricing": True,
+        }
 
     def test_two_rows_sharing_a_check_name_never_share_a_result_id(self, tmp_path):
         """Stored results are keyed by trial and name; the second row's name says which row."""
@@ -1189,7 +1260,7 @@ class TestSources:
 
         for name in ("x", "y"):
             (tmp_path / f"{name}.py").write_text(VERDICT_FILE.format(verdict="True"))
-        sources = _CheckSources(dataset_api=object(), project_name="p")
+        sources = _CheckSources(dataset_api=object())
         sources._download = lambda path: path  # type: ignore[method-assign]
         rows = _evaluators_from_spec(
             [
@@ -1209,36 +1280,9 @@ class TestSources:
         """Importing edits sys.path and sys.modules; trials run on threads."""
         import concurrent.futures
 
-        for name, verdict in (("a", "True"), ("b", "False")):
-            folder = tmp_path / name
-            folder.mkdir()
-            (folder / "helpers.py").write_text(
-                f"def verdict():\n    return {verdict}\n"
-            )
-            (folder / "checks.py").write_text(
-                "from hopsworks_agents.eval.checks import check\n"
-                "from helpers import verdict\n"
-                "@check(needs_trace=False)\ndef v(ctx):\n    return verdict()\n"
-            )
         verdicts = set()
-        for _ in range(3):
-            sources = _CheckSources(dataset_api=object(), project_name="p")
-            sources._download = lambda path: path  # type: ignore[method-assign]
-            a, b = _evaluators_from_spec(
-                [
-                    {
-                        "type": "python",
-                        "name": "a",
-                        "file": str(tmp_path / "a" / "checks.py"),
-                    },
-                    {
-                        "type": "python",
-                        "name": "b",
-                        "file": str(tmp_path / "b" / "checks.py"),
-                    },
-                ],
-                sources=sources,
-            )
+        for round_ in range(3):
+            a, b = self._two_repos(tmp_path / str(round_))
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
                 futures = [
                     pool.submit(_run_evaluators, [a, b], _task(), _trial(), None)
@@ -1272,7 +1316,8 @@ class TestSources:
         # Short on purpose: the stuck thread keeps the process-wide import lock
         # until its sleep ends, and the tests after this one would wait for it.
         monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.3)
-        sources = _CheckSources(dataset_api=object(), project_name="p")
+        monkeypatch.setattr(checks_module, "IMPORT_LOCK_WAIT_S", 0.3)
+        sources = _CheckSources(dataset_api=object())
         sources._download = lambda path: path  # type: ignore[method-assign]
         rows = _evaluators_from_spec(
             [
@@ -1294,7 +1339,7 @@ class TestSources:
 
     def test_a_declared_check_never_writes_over_a_built_ins_row(self, tmp_path):
         (tmp_path / "c.py").write_text(VERDICT_FILE.format(verdict="False"))
-        sources = _CheckSources(dataset_api=object(), project_name="p")
+        sources = _CheckSources(dataset_api=object())
         sources._download = lambda path: path  # type: ignore[method-assign]
         built_in, python = _evaluators_from_spec(
             [
@@ -1343,11 +1388,26 @@ class TestSources:
         assert len(names) == 3
         assert all(n.endswith("-c.py") for n in names)
 
-    def test_a_windows_drive_path_is_absolute(self):
+    def test_a_file_is_this_projects(self):
+        """Absolute paths are accepted under this project only; the rule is not ee's alone."""
         sources = _CheckSources(project_name="p")
-        assert sources._absolute("C:\\checks\\pricing.py") == "C:\\checks\\pricing.py"
-        assert sources._absolute("D:/checks/pricing.py") == "D:/checks/pricing.py"
         assert sources._absolute("Resources/x.py") == "/Projects/p/Resources/x.py"
+        assert sources._absolute("/Projects/p/Resources/x.py") == (
+            "/Projects/p/Resources/x.py"
+        )
+        for other in (
+            "/Projects/q/Resources/x.py",
+            "/Projects/p/../q/x.py",
+            "/apps/shared/x.py",
+            "C:\\checks\\pricing.py",
+            "D:/checks/pricing.py",
+        ):
+            with pytest.raises(ValueError, match="not .* this project"):
+                sources._absolute(other)
+        # Without a project (a local run), a drive path is absolute, not relative.
+        local = _CheckSources()
+        assert local._absolute("C:\\checks\\pricing.py") == "C:\\checks\\pricing.py"
+        assert local._absolute("D:/checks/pricing.py") == "D:/checks/pricing.py"
 
 
 class TestRunJobWiring:
@@ -1404,3 +1464,358 @@ class TestRunJobWiring:
         from hopsworks_agents.eval.evaluator_spec import SPEC_TYPES
 
         assert "python" in SPEC_TYPES
+
+
+# ── review round 4 ──────────────────────────────────────────────────────────
+
+
+class TestRowsAreWritable:
+    """What a check returns ends up in a JSON column; it must get there."""
+
+    def test_assertions_that_are_not_json_are_written_as_text(self):
+        from datetime import datetime, timezone
+        from decimal import Decimal
+
+        when = datetime(2026, 11, 4, tzinfo=timezone.utc)
+
+        @check(needs_trace=False)
+        def odd(ctx):
+            return CheckResult(
+                passed=True,
+                reason=Decimal("1.5"),  # type: ignore[arg-type]
+                assertions={
+                    "expected": Decimal("19.99"),
+                    "when": when,
+                    "ids": {2, 1},
+                    "pair": (1, 2),
+                    "raw": b"bytes",
+                },
+            )
+
+        result = run_check(odd, answer="x")
+        json.dumps(result.assertions)
+        assert result.reason == "1.5"
+        assert result.assertions["expected"] == "19.99"
+        assert result.assertions["when"] == when.isoformat()
+        assert sorted(result.assertions["ids"]) == [1, 2]
+        assert result.assertions["pair"] == [1, 2]
+        assert result.assertions["raw"] == "bytes"
+
+    def test_numpy_scalars_are_verdicts(self):
+        numpy = pytest.importorskip("numpy")
+
+        @check(needs_trace=False)
+        def yes(ctx):
+            return numpy.bool_(True)
+
+        @check(needs_trace=False)
+        def scored(ctx):
+            return CheckResult(
+                score=numpy.float64(0.5), assertions={"n": numpy.int64(3)}
+            )
+
+        assert run_check(yes, answer="x").passed is True
+        row = run_check(scored, answer="x", pass_score=0.5)
+        assert (row.passed, row.score) == (True, 0.5)
+        assert row.assertions == {"n": 3}
+        json.dumps(row.assertions)
+
+    def test_a_malformed_result_fails_only_its_own_check(self, tmp_path):
+        """Reading the return value is the check's failure, not its siblings'."""
+        path = _write(
+            tmp_path,
+            "pair.py",
+            """
+            @check(needs_trace=False)
+            def circular(ctx):
+                loop = {}
+                loop["self"] = loop
+                return CheckResult(passed=True, assertions=loop)
+
+            @check(needs_trace=False)
+            def fine(ctx):
+                return True
+            """,
+        )
+        rows = _rows([_file_evaluator(path, "pair")])
+        assert rows["fine"].passed is True
+        assert rows["circular"].ungradable is True
+        assert "check raised" in rows["circular"].reason
+
+    def test_pass_score_is_read_here_not_handed_to_the_check(self):
+        @check(needs_trace=False)
+        def scored(ctx):
+            return 0.6
+
+        @check(needs_trace=False)
+        def takes_it(ctx, pass_score: float = 0.9):
+            return CheckResult(score=0.6, assertions={"seen": pass_score})
+
+        assert run_check(scored, answer="x", pass_score=0.5).passed is True
+        assert run_check(scored, answer="x", pass_score=0.7).passed is False
+        row = run_check(takes_it, answer="x", pass_score=0.5)
+        assert row.passed is True and row.assertions == {"seen": 0.5}
+
+    def test_pass_score_in_a_rows_params_decides_a_float(self, tmp_path):
+        path = _write(
+            tmp_path,
+            "scored.py",
+            """
+            @check(needs_trace=False)
+            def scored(ctx):
+                return 0.6
+            """,
+        )
+        rows = _rows(
+            [_file_evaluator(path, "s", params={"scored": {"pass_score": 0.5}})]
+        )
+        assert rows["scored"].passed is True and rows["scored"].score == 0.6
+
+
+class TestACheckCannotHurtTheRun:
+    def test_a_hanging_check_is_called_once_per_run(self, tmp_path):
+        path = _write(
+            tmp_path,
+            "hang.py",
+            """
+            import time
+            CALLS = []
+
+            @check(needs_trace=False, timeout_s=0.2)
+            def hangs(ctx):
+                CALLS.append(1)
+                time.sleep(3)
+                return True
+
+            @check(needs_trace=False)
+            def quick(ctx):
+                return True
+            """,
+        )
+        evaluator = _file_evaluator(path, "h")
+        first = _rows([evaluator])
+        second = _rows([evaluator])
+        assert "timed out after 0.2s" in first["hangs"].reason
+        assert "not called again" in second["hangs"].reason
+        assert second["quick"].passed is True
+        assert evaluator._loaded.module.CALLS == [1]
+
+    def test_a_check_cannot_reorder_the_runners_trace(self):
+        @check
+        def meddles(ctx):
+            ctx.trace["tool_calls"].reverse()
+            ctx.trace["tool_names"].clear()
+            return True
+
+        trace = _trace({"name": "a"}, {"name": "b"})
+        assert run_check(meddles, answer="x", trace=trace).passed is True
+        assert [c["name"] for c in trace["tool_calls"]] == ["a", "b"]
+        assert trace["tool_names"] == ["a", "b"]
+
+    def test_run_check_honours_reads_expectation(self):
+        @check(needs_trace=False, reads_expectation=True)
+        def agrees(ctx):
+            return ctx.expectation in ctx.answer
+
+        without = run_check(agrees, answer="yes")
+        assert without.ungradable is True
+        assert "carries none" in without.reason
+        assert run_check(agrees, answer="yes", expectation="yes").passed is True
+
+    def test_a_missing_only_name_never_writes_over_a_built_ins_row(self, tmp_path):
+        (tmp_path / "c.py").write_text(VERDICT_FILE.format(verdict="True"))
+        sources = _CheckSources(dataset_api=object())
+        sources._download = lambda path: path  # type: ignore[method-assign]
+        rows = _evaluators_from_spec(
+            [
+                {"type": "exact_match", "name": "contains"},
+                {"type": "regex", "name": "x", "pattern": "^the"},
+                {
+                    "type": "python",
+                    "name": "p",
+                    "file": str(tmp_path / "c.py"),
+                    "only": ["contains"],
+                },
+                {"type": "python", "name": "x", "file": str(tmp_path / "missing.py")},
+            ],
+            sources=sources,
+        )
+        results = _run_evaluators(rows, _task(), _trial(), None)
+        names = [r.evaluator_name for r in results]
+        assert names == ["contains", "x", "p/contains", "x/x"]
+        assert results[2].assertions[SKIPPED] is True
+        assert results[3].assertions[SKIPPED] is True
+        assert len({f"t/{n}" for n in names}) == 4
+
+
+class TestRefusals:
+    def test_retired_row_keys_are_refused(self):
+        for key in (
+            "check",
+            "function",
+            "timeout_s",
+            "needs_trace",
+            "reads_expectation",
+        ):
+            with pytest.raises(ValueError, match=f"{key} is not a row key"):
+                _validate_entry({"type": "python", "file": "c.py", key: "price"})
+
+    def test_a_url_with_credentials_is_refused(self):
+        with pytest.raises(ValueError, match="must not carry credentials"):
+            _parse_source(
+                {"git": {"url": "https://user:tok@github.com/o/r.git"}, "path": "c.py"}
+            )
+        # An "@" past the host is a path, not a credential.
+        source = _parse_source({"git": {"url": "https://x/o/r@v2"}, "path": "c.py"})
+        assert source.git_url == "https://x/o/r@v2"
+
+    def test_a_check_name_that_no_row_could_select_is_refused(self):
+        with pytest.raises(ValueError, match="not an identifier"):
+
+            @check("price-matches")
+            def _(ctx):
+                return True
+
+    def test_a_blocked_import_fails_a_distinct_later_source_with_the_lock_reason(
+        self, tmp_path, monkeypatch
+    ):
+        """The lock cannot be taken back from a stuck import; the next source says so."""
+        from hopsworks_agents.eval.checks import _preload
+
+        good = tmp_path / "good.py"
+        good.write_text(VERDICT_FILE.format(verdict="True"))
+        other = tmp_path / "other.py"
+        other.write_text(VERDICT_FILE.format(verdict="True"))
+        blocked = _write(
+            tmp_path,
+            "blocked.py",
+            """
+            import time
+            time.sleep(1.5)
+            @check(needs_trace=False)
+            def v(ctx):
+                return True
+            """,
+        )
+        monkeypatch.setattr(checks_module, "DEFAULT_TIMEOUT_S", 0.3)
+        monkeypatch.setattr(checks_module, "IMPORT_LOCK_WAIT_S", 0.2)
+        sources = _CheckSources(dataset_api=object())
+        sources._download = lambda path: path  # type: ignore[method-assign]
+        rows = _evaluators_from_spec(
+            [
+                {"type": "python", "name": "first", "file": str(good)},
+                {"type": "python", "name": "stuck", "file": str(blocked)},
+                {"type": "python", "name": "other", "file": str(other)},
+            ],
+            sources=sources,
+        )
+        started = time.monotonic()
+        _preload(rows)
+        results = _run_evaluators(rows, _task(), _trial(), None)
+        assert time.monotonic() - started < 3
+        by_row = {r.assertions.get("row"): r for r in results}
+        assert by_row["first"].passed is True
+        assert "importing the source took longer" in by_row["stuck"].reason
+        assert "another source's import has not finished" in by_row["other"].reason
+        # Once the stuck import ends, the lock is free and the source loads.
+        time.sleep(1.6)
+        [again] = _evaluators_from_spec(
+            [{"type": "python", "name": "other", "file": str(other)}],
+            sources=_CheckSources(dataset_api=object()),
+        )
+        again._sources._download = lambda path: path  # type: ignore[method-assign]
+        assert _rows([again])["verdict"].passed is True
+
+
+class TestPinningEdges:
+    def _verdict_clone(self, verdict: str, *, files: int = 0):
+        def clone(url, ref, commit, into):  # noqa: ARG001
+            root = Path(into) / "repo"
+            (root / "c").mkdir(parents=True)
+            (root / "c" / "k.py").write_text(VERDICT_FILE.format(verdict=verdict))
+            for i in range(files):
+                (root / "c" / f"extra{i}.txt").write_text("x")
+            (root / ".git").mkdir()
+            (root / ".git" / "HEAD").write_text("abc123def\n")
+            clone.calls.append((url, ref, commit))
+            return str(root)
+
+        clone.calls = []
+        return clone
+
+    ROW = {"type": "python", "name": "checks", "git": {"url": "https://x/r.git", "ref": "main"}, "path": "c/k.py"}  # fmt: skip
+    SNAPSHOT_DIR = "/Projects/p/Resources/agent_evals/suites/s1/v1/checks"
+
+    def _sources(self, api, tmp_path, clone):
+        return _CheckSources(
+            dataset_api=api,
+            project_name="p",
+            snapshot_dir=self.SNAPSHOT_DIR,
+            workdir=str(tmp_path),
+            clone=clone,
+        )
+
+    def test_the_loser_of_the_pin_race_grades_with_the_winners_copy(self, tmp_path):
+        api = _FakeDatasetApi()
+        a = self._sources(api, tmp_path / "a", self._verdict_clone("True"))
+        b = self._sources(api, tmp_path / "b", self._verdict_clone("False"))
+        # b looked for a snapshot before a pinned one: it sees none and clones.
+        b._snapshot_of = lambda source: None  # type: ignore[method-assign]
+        pins = []
+        real_pin = b._pin
+        b._pin = lambda *args, **kw: pins.append(1) or real_pin(*args, **kw)  # type: ignore[method-assign]
+
+        result_a = _rows(_evaluators_from_spec([self.ROW], sources=a))["verdict"]
+        result_b = _rows(_evaluators_from_spec([self.ROW], sources=b))["verdict"]
+        assert pins == [1]
+        # b's own clone said False; it graded with a's frozen copy.
+        assert (result_a.passed, result_b.passed) == (True, True)
+        assert result_b.assertions["source"]["origin"].startswith("snapshot ")
+        assert len([f for f in api.files if f.endswith("/manifest.json")]) == 1
+        assert not any(".staging-" in f for f in api.files)
+
+    def test_a_failed_move_with_nothing_frozen_grades_with_the_live_checkout(
+        self, tmp_path
+    ):
+        api = _FakeDatasetApi()
+
+        def flaky_move(source, destination, overwrite=False):  # noqa: ARG001
+            raise RuntimeError("namenode: connection reset")
+
+        api.move = flaky_move  # type: ignore[method-assign]
+        sources = self._sources(api, tmp_path, self._verdict_clone("True"))
+        result = _rows(_evaluators_from_spec([self.ROW], sources=sources))["verdict"]
+        assert result.passed is True
+        assert result.assertions["source"]["pinned"] is False
+        assert result.assertions["source"]["origin"].startswith("git ")
+        assert not any(f.endswith("/manifest.json") for f in api.files)
+
+    def test_a_repository_over_the_cap_is_pinned_by_commit(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(checks_module, "MAX_TREE_FILES", 2)
+        api = _FakeDatasetApi()
+        first = self._sources(api, tmp_path / "1", self._verdict_clone("True", files=5))
+        result = _rows(_evaluators_from_spec([self.ROW], sources=first))["verdict"]
+        assert result.passed is True
+        source = result.assertions["source"]
+        assert source["pinned"] is True and source["commit"] == "abc123def"
+        [manifest_path] = [f for f in api.files if f.endswith("/manifest.json")]
+        manifest = json.loads(api.files[manifest_path])
+        assert manifest["tree"] is False and manifest["commit"] == "abc123def"
+        assert not any("/tree/" in f for f in api.files)
+
+        # The next run clones at the pinned commit, whatever the branch does.
+        later_clone = self._verdict_clone("True")
+        later = self._sources(api, tmp_path / "2", later_clone)
+        result = _rows(_evaluators_from_spec([self.ROW], sources=later))["verdict"]
+        assert later_clone.calls == [("https://x/r.git", "main", "abc123def")]
+        assert result.assertions["source"]["origin"].endswith("(commit only)")
+        assert result.assertions["source"]["pinned"] is True
+
+    def test_a_workdir_is_made_on_first_use_and_removed_on_close(self):
+        sources = _CheckSources()
+        assert sources._made_workdir is None
+        made = sources._workdir
+        assert os.path.isdir(made)
+        sources._close()
+        assert not os.path.exists(made)
+        assert sources._made_workdir is None

@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Callable, Collection, Iterable, Sequence
 
 
 log = logging.getLogger(__name__)
@@ -314,38 +314,90 @@ def _github_tarball(url: str, ref: str, token: str, into: str) -> str:
 
 
 def _download_hopsfs_directory(dataset_api: Any, path: str, into: str) -> str:
-    """Every source file under a HopsFS path, downloaded flat into ``into`` keeping structure."""
-    root = path.rstrip("/")
+    """Every source file under a HopsFS path, downloaded into ``into`` keeping structure."""
     target = os.path.join(into, "model")
+    _download_hopsfs_tree(
+        dataset_api,
+        path,
+        target,
+        keep=lambda relative, size: _is_source(relative) and size <= MAX_FILE_BYTES,
+        skipped_dirs=SKIPPED_DIRS,
+    )
+    return target
+
+
+def _download_hopsfs_tree(
+    dataset_api: Any,
+    path: str,
+    target: str,
+    *,
+    project_name: str = "",
+    keep: Callable[[str, int], bool] | None = None,
+    skipped_dirs: Collection[str] = SKIPPED_DIRS,
+    max_files: int | None = None,
+    max_bytes: int | None = None,
+    too_large: Callable[[], Exception] | None = None,
+) -> int:
+    """A HopsFS directory copied under ``target``, layout kept; the files copied.
+
+    ``DatasetApi.list`` returns project-relative paths (``Resources/x/y.py``),
+    one listing per directory, and says nothing about what each is, so every
+    entry is stat'ed once for ``dir`` and ``size``. ``keep`` filters by relative
+    path and size; ``max_files``/``max_bytes`` raise ``too_large()`` past the
+    cap instead of copying half a tree.
+    """
+    root = "/" + path.strip("/")
     os.makedirs(target, exist_ok=True)
     pending = [root]
+    copied = 0
+    total = 0
     while pending:
         current = pending.pop()
-        listing = dataset_api.list(current.lstrip("/"), limit=1000) or {}
-        for item in listing.get("items") or []:
-            attributes = item.get("attributes") or item
-            item_path = str(attributes.get("path") or "")
-            if not item_path:
-                continue
+        for child in dataset_api.list(current.lstrip("/"), limit=1000) or []:
+            child_path = _absolute_hopsfs_path(str(child), root, project_name)
+            try:
+                row = dataset_api._get(child_path.lstrip("/"))  # noqa: SLF001
+            except Exception as err:  # noqa: BLE001 -- said as a reason
+                raise FileNotFoundError(
+                    f"{child_path} is not readable: {type(err).__name__}: {err}"
+                ) from err
+            attributes = (row or {}).get("attributes") or row or {}
             if attributes.get("dir"):
-                name = Path(item_path).name
-                if name not in SKIPPED_DIRS:
-                    pending.append(item_path)
+                if Path(child_path).name not in skipped_dirs:
+                    pending.append(child_path)
                 continue
-            relative = (
-                item_path[len(root) :].lstrip("/")
-                if item_path.startswith(root)
-                else Path(item_path).name
-            )
-            if (
-                not _is_source(relative)
-                or int(attributes.get("size") or 0) > MAX_FILE_BYTES
+            relative = child_path[len(root) :].lstrip("/")
+            size = int(attributes.get("size") or 0)
+            if keep is not None and not keep(relative, size):
+                continue
+            copied += 1
+            total += size
+            if (max_files is not None and copied > max_files) or (
+                max_bytes is not None and total > max_bytes
             ):
-                continue
+                raise (
+                    too_large() if too_large else RuntimeError(f"{root} is too large")
+                )
             local = os.path.join(target, relative)
             os.makedirs(os.path.dirname(local), exist_ok=True)
-            dataset_api.download(item_path, local, overwrite=True)
-    return target
+            dataset_api.download(child_path, local, overwrite=True)
+    return copied
+
+
+def _absolute_hopsfs_path(child: str, root: str, project_name: str) -> str:
+    """A listed child as an absolute path under ``root``.
+
+    The listing gives project-relative paths; an absolute one is kept, and a
+    relative one is placed under the project, or under the root when no
+    project is known.
+    """
+    if child.startswith("/"):
+        return child
+    if child.startswith("Projects/"):
+        return "/" + child
+    if project_name:
+        return f"/Projects/{project_name}/{child}"
+    return f"{root}/{child.split('/')[-1]}"
 
 
 #: "scheme://user:token@" anywhere in a piece of text. The credential has to end before the

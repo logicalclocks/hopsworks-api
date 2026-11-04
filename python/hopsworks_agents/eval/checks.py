@@ -49,6 +49,7 @@ which is what keeps authoring-time validation free of any I/O.
 from __future__ import annotations
 
 import contextlib
+import copy
 import hashlib
 import importlib
 import importlib.util
@@ -91,13 +92,11 @@ TYPE = "python"
 DEFAULT_TIMEOUT_S = 30.0
 #: The spec may not ask for more than this; a check is not a job.
 MAX_TIMEOUT_S = 600.0
-#: A package directory of checks is copied whole into a published suite's
-#: snapshot. Bounded, because a check is a few files and a repository is not.
-MAX_SNAPSHOT_FILES = 200
-MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024
-#: A git source is frozen with the repository tree around it, so the helpers a
-#: check imports from elsewhere in the repository are frozen with it. Bounded
-#: too: past this a repository is not pinned and the run says so.
+#: A git source is pinned with the repository tree around it, so the helpers a
+#: check imports from elsewhere in it are pinned with it; a package directory
+#: in the project is read whole the same way. One cap for both, the same one
+#: the backend applies when a row is written: past it a tree is not copied, and
+#: a git source is pinned by commit alone, so later runs clone it at that commit.
 MAX_TREE_FILES = 2000
 MAX_TREE_BYTES = 20 * 1024 * 1024
 MAX_TREE_FILE_BYTES = 2 * 1024 * 1024
@@ -106,10 +105,21 @@ TREE = "tree"
 #: How long fetching a source (a clone, a download) may take. Separate from the
 #: check's own timeout, which bounds the check's code -- its import included.
 FETCH_BUDGET_S = 300.0
+#: How long an import waits for another source's import to finish before
+#: giving up with its own reason. Short: a source blocked at import keeps the
+#: lock for ever, and every later source would otherwise spend its whole import
+#: budget waiting and report a timeout that was not its own.
+IMPORT_LOCK_WAIT_S = 5.0
 #: Directories never copied from a package of checks.
 _SKIPPED_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".mypy_cache"}
 
-_IDENTIFIER = re.compile(r"^[A-Za-z_]\w*$")
+#: ASCII on purpose: the backend's check is ASCII, and a name the backend
+#: refuses must not be one the job accepts.
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+#: The row keys of the design before a row became a source. Refused rather
+#: than ignored: a row in the old shape would otherwise run every check in the
+#: file and say nothing about the one it meant.
+_RETIRED_KEYS = ("check", "function", "timeout_s", "needs_trace", "reads_expectation")
 #: A Windows drive path, absolute wherever the job's own path rules say.
 _DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 _MODULE = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$")
@@ -330,9 +340,17 @@ def check(
     """
 
     def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
+        check_name = str(explicit or fn.__name__)
+        if not _IDENTIFIER.match(check_name):
+            # A name a row cannot select (only, exclude and params take
+            # identifiers) is refused where it is written, not at the first run.
+            raise ValueError(
+                f"check name {check_name!r} is not an identifier "
+                "(letters, digits and underscores, not starting with a digit)"
+            )
         declared = _Declared(
             fn=fn,
-            name=str(explicit or fn.__name__),
+            name=check_name,
             needs_trace=bool(needs_trace),
             reads_expectation=bool(reads_expectation),
             timeout_s=_bounded_timeout(timeout_s),
@@ -373,13 +391,21 @@ def _bounded_timeout(value: Any) -> float:
     return min(seconds, MAX_TIMEOUT_S)
 
 
-def _declared_in(module: ModuleType) -> dict[str, _Declared]:
-    """Every check the module declares, by name."""
+def _declared_in(
+    module: ModuleType, submodules: Mapping[str, ModuleType] | None = None
+) -> dict[str, _Declared]:
+    """Every check the module declares, by name.
+
+    For a package, the modules it imported are read too: a check declared in
+    ``pkg/pricing.py`` and imported by ``pkg/__init__.py`` is the package's,
+    which is how the backend's scan of the package lists it.
+    """
     found: dict[str, _Declared] = {}
-    for value in vars(module).values():
-        declared = getattr(value, _MARK, None)
-        if isinstance(declared, _Declared) and declared.fn is value:
-            found[declared.name] = declared
+    for mod in (module, *(submodules or {}).values()):
+        for value in vars(mod).values():
+            declared = getattr(value, _MARK, None)
+            if isinstance(declared, _Declared) and declared.fn is value:
+                found.setdefault(declared.name, declared)
     return found
 
 
@@ -483,6 +509,13 @@ def _parse_source(entry: Mapping[str, Any]) -> _Source:
     commit = str(git.get("commit") or "").strip()
     if not url.startswith("https://"):
         raise ValueError("a git url must start with https://")
+    if "@" in url[len("https://") :].split("/", 1)[0]:
+        # Stored in the suite's spec, which every member reads. The job clones
+        # with the project's git credentials; the url names the repository.
+        raise ValueError(
+            "a git url must not carry credentials; the job clones with the "
+            "project's git credentials"
+        )
     if ref and not _REF.match(ref):
         raise ValueError(f"git ref {ref!r} is not a branch or tag name")
     if commit and not _COMMIT.match(commit):
@@ -492,6 +525,13 @@ def _parse_source(entry: Mapping[str, Any]) -> _Source:
 
 def _validate_entry(entry: Mapping[str, Any]) -> None:
     """Refuse a python row the job could not run, without touching any source."""
+    retired = [k for k in _RETIRED_KEYS if k in entry]
+    if retired:
+        raise ValueError(
+            f"{', '.join(retired)} is not a row key: a row names a source and every "
+            "@check in it runs; the decorator states a check's settings, and "
+            "only/exclude/params select and parametrise"
+        )
     _parse_source(entry)
     for key in ("only", "exclude"):
         names = entry.get(key)
@@ -560,10 +600,12 @@ class _Loaded:
     #: ``sys.modules`` so another source's helper of the same name imports
     #: fresh. Held here so the functions that bound them keep working.
     held: dict[str, ModuleType] = field(default_factory=dict)
+    #: A package's own modules, as its ``__init__`` imported them.
+    submodules: dict[str, ModuleType] = field(default_factory=dict)
 
 
 class _TooLarge(Exception):
-    """A repository bigger than a snapshot is allowed to be."""
+    """A tree bigger than a snapshot is allowed to be."""
 
 
 class _CheckSources:
@@ -580,11 +622,12 @@ class _CheckSources:
     check's own timeout. :meth:`_load` does both for callers that do not care.
 
     Parameters:
-        dataset_api: The project's dataset API, for ``file`` sources and snapshots.
+        dataset_api: The project's dataset API, for ``file`` sources and git snapshots.
         project_name: Makes a relative ``file`` absolute: ``/Projects/<name>/...``.
         serving_view: Returns the deployment's serving row, for ``"deployment"``.
-        snapshot_dir: The published suite's ``checks/`` directory in HopsFS, or
-            ``None`` for a draft, a monitor, or a job that must not pin.
+        snapshot_dir: The published suite's ``checks/`` directory in HopsFS,
+            where git sources are pinned, or ``None`` for a draft, a monitor,
+            or a job that must not pin.
         workdir: Where checkouts land; a temporary directory, removed by ``close``.
     """
 
@@ -602,8 +645,10 @@ class _CheckSources:
         self._project_name = project_name
         self._serving_view = serving_view
         self._snapshot_dir = snapshot_dir.rstrip("/") if snapshot_dir else None
-        self._workdir = workdir or tempfile.mkdtemp(prefix="agent-checks-")
-        self._own_workdir = workdir is None
+        # Made on first use: a module source needs none, and one evaluator
+        # built without shared sources used to leave an empty directory behind.
+        self._given_workdir = workdir
+        self._made_workdir: str | None = None
         self._clone = clone
         self._checkouts: dict[tuple[str, str, str], str] = {}
         self._loaded: dict[str, _Loaded] = {}
@@ -613,9 +658,18 @@ class _CheckSources:
         #: reports as ``<row>/verdict``, so two results never share one id.
         self._claims: dict[str, str] = {}
 
+    @property
+    def _workdir(self) -> str:
+        if self._given_workdir:
+            return self._given_workdir
+        if self._made_workdir is None:
+            self._made_workdir = tempfile.mkdtemp(prefix="agent-checks-")
+        return self._made_workdir
+
     def _close(self) -> None:
-        if self._own_workdir:
-            shutil.rmtree(self._workdir, ignore_errors=True)
+        if self._made_workdir is not None:
+            shutil.rmtree(self._made_workdir, ignore_errors=True)
+            self._made_workdir = None
 
     def _load(self, source: _Source) -> _Loaded:
         """Fetch and import, once per execution."""
@@ -664,8 +718,9 @@ class _CheckSources:
         if source.module:
             module = importlib.import_module(source.module)
             held: dict[str, ModuleType] = {}
+            submodules = _submodules_of(source.module)
         else:
-            module, held = _import_path(
+            module, held, submodules = _import_path(
                 fetched.local,
                 package_root=fetched.package_root,
                 lock_timeout_s=lock_timeout_s,
@@ -682,6 +737,7 @@ class _CheckSources:
             pinned=fetched.pinned,
             local=fetched.local,
             held=held,
+            submodules=submodules,
         )
         with self._lock:
             return self._loaded.setdefault(key, loaded)
@@ -701,20 +757,14 @@ class _CheckSources:
             )
 
         if source.file:
+            # Read live on every run, published or not: a project file is the
+            # project's to edit, and the row's sha256 says which text graded.
+            # Only a git source is pinned, since a branch moves under nobody's
+            # hand in particular.
             absolute = self._absolute(source.file)
-            local = self._download(absolute)
-            # A published suite's row points at the copy the backend froze
-            # beside its tasks; nothing has to be looked up to know that.
-            pinned = self._snapshot_dir is not None and absolute.startswith(
-                self._snapshot_dir + "/"
-            )
-            return _Fetched(
-                local=local,
-                origin=f"{'snapshot' if pinned else 'hopsfs'} {absolute}",
-                pinned=pinned,
-            )
+            return _Fetched(local=self._download(absolute), origin=f"hopsfs {absolute}")
 
-        snapshot = self._snapshot_of(source)
+        snapshot = None if source.deployment else self._snapshot_of(source)
         if snapshot is not None:
             return snapshot
 
@@ -741,18 +791,39 @@ class _CheckSources:
     # -- file ---------------------------------------------------------------
 
     def _absolute(self, file: str) -> str:
-        if file.startswith("/") or os.path.isabs(file) or _DRIVE.match(file):
-            return file
+        """The file's HopsFS path, inside this project.
+
+        An absolute path is accepted only under ``/Projects/<this project>/``:
+        the backend refuses a row naming another project's file, and the job
+        user may well be able to read one, so the rule is kept here too rather
+        than trusted to the row having passed through the backend.
+        """
         if not self._project_name:
+            if file.startswith("/") or os.path.isabs(file) or _DRIVE.match(file):
+                return file
             raise RuntimeError("no project to resolve a relative file path against")
-        return f"/Projects/{self._project_name}/{file.strip('/')}"
+        own = f"/Projects/{self._project_name}/"
+        if file.startswith("/"):
+            if not file.startswith(own) or ".." in file.split("/"):
+                raise ValueError(
+                    f"{file} is not in this project; a file is under {own}"
+                )
+            return file
+        if os.path.isabs(file) or _DRIVE.match(file):
+            raise ValueError(f"{file} is not a HopsFS path in this project")
+        return f"{own}{file.strip('/')}"
 
     def _download(self, path: str) -> str:
-        """A HopsFS file or directory, copied under the work directory."""
+        """A HopsFS file or directory, read from the mount or copied under the work directory.
+
+        The job has HopsFS mounted, so a project file is read in place, with the
+        files beside it there as they are. Without a mount (a local run), a
+        single file is fetched with the ``.py`` files beside it, so a helper
+        next to the entry imports in both cases rather than in one.
+        """
         if self._dataset_api is None:
             raise RuntimeError("no dataset API to read project files with")
         if os.path.isdir("/hopsfs") and os.path.exists(f"/hopsfs{path}"):
-            # Mounted: read in place. Cheaper than a download and the same bytes.
             return f"/hopsfs{path}"
         target = os.path.join(self._workdir, "files", uuid.uuid4().hex)
         os.makedirs(target, exist_ok=True)
@@ -760,10 +831,33 @@ class _CheckSources:
         if not is_dir:
             local = os.path.join(target, posixpath.basename(path))
             self._dataset_api.download(path, local, overwrite=True)
+            self._download_siblings(path, target)
             return local
         local = os.path.join(target, posixpath.basename(path.rstrip("/")))
         self._download_tree(path, local)
         return local
+
+    def _download_siblings(self, path: str, target: str) -> None:
+        """The ``.py`` files in a file's directory, beside its copy; best effort."""
+        parent = posixpath.dirname(path)
+        try:
+            listed = self._dataset_api.list(parent.lstrip("/"), limit=1000) or []
+        except Exception:  # noqa: BLE001 -- the entry alone is still a source
+            log.debug("could not list %s for the files beside %s", parent, path)
+            return
+        for child in listed:
+            name = posixpath.basename(str(child))
+            if not name.endswith(".py") or name == posixpath.basename(path):
+                continue
+            sibling = f"{parent}/{name}"
+            try:
+                is_dir, _ = self._stat(sibling)
+                if not is_dir:
+                    self._dataset_api.download(
+                        sibling, os.path.join(target, name), overwrite=True
+                    )
+            except Exception:  # noqa: BLE001 -- a helper that cannot be read is found out at import
+                log.debug("could not fetch %s beside %s", sibling, path)
 
     def _stat(self, path: str) -> tuple[bool, int]:
         """Whether a HopsFS path is a directory, and its size."""
@@ -775,35 +869,22 @@ class _CheckSources:
         return bool(attributes.get("dir")), int(attributes.get("size") or 0)
 
     def _download_tree(self, path: str, local: str) -> None:
-        root = path.rstrip("/")
-        os.makedirs(local, exist_ok=True)
-        pending = [root]
-        copied = 0
-        total = 0
-        while pending:
-            current = pending.pop()
-            for child in self._dataset_api.list(current.lstrip("/"), limit=1000) or []:
-                child_path = child if str(child).startswith("/") else f"/{child}"
-                if not child_path.startswith("/Projects/"):
-                    child_path = f"/Projects/{self._project_name}{child_path}"
-                name = posixpath.basename(child_path)
-                is_dir, size = self._stat(child_path)
-                if is_dir:
-                    if name not in _SKIPPED_DIRS:
-                        pending.append(child_path)
-                    continue
-                copied += 1
-                total += size
-                if copied > MAX_TREE_FILES or total > MAX_TREE_BYTES:
-                    raise RuntimeError(
-                        f"{root} holds more than {MAX_TREE_FILES} files or "
-                        f"{MAX_TREE_BYTES // (1024 * 1024)} MB; a snapshot of "
-                        "checks is smaller than that"
-                    )
-                relative = child_path[len(root) :].lstrip("/")
-                destination = os.path.join(local, relative)
-                os.makedirs(os.path.dirname(destination), exist_ok=True)
-                self._dataset_api.download(child_path, destination, overwrite=True)
+        from .agent_source import _download_hopsfs_tree
+
+        _download_hopsfs_tree(
+            self._dataset_api,
+            path,
+            local,
+            project_name=self._project_name,
+            skipped_dirs=_SKIPPED_DIRS,
+            max_files=MAX_TREE_FILES,
+            max_bytes=MAX_TREE_BYTES,
+            too_large=lambda: RuntimeError(
+                f"{path.rstrip('/')} holds more than {MAX_TREE_FILES} files or "
+                f"{MAX_TREE_BYTES // (1024 * 1024)} MB; a snapshot of checks is "
+                "smaller than that"
+            ),
+        )
 
     # -- git ----------------------------------------------------------------
 
@@ -884,12 +965,31 @@ class _CheckSources:
                 manifest = dict(json.load(handle) or {})
         except Exception:  # noqa: BLE001 -- the code is what matters
             log.debug("no readable manifest in snapshot %s", name)
+        commit = str(manifest.get("commit") or "")
         tree = os.path.join(local_dir, TREE)
+        if not os.path.isdir(tree) and commit:
+            # Too big to copy: the manifest pinned the commit and this run
+            # clones at it, which freezes the code as well as a copy would.
+            url, ref, _ = self._git_target(source)
+            root = self._checkout(url, ref, commit)
+            local = os.path.join(root, source.path)
+            if not os.path.exists(local):
+                raise FileNotFoundError(
+                    f"{source.path} is not in {_scrubbed(url)}@{commit}"
+                )
+            return _Fetched(
+                local=local,
+                package_root=root,
+                origin=f"snapshot {self._snapshot_dir}/{name} (commit only)",
+                commit=commit,
+                pinned=True,
+                manifest=manifest,
+            )
         return _Fetched(
             local=os.path.join(tree, source.path),
             package_root=tree,
             origin=f"snapshot {self._snapshot_dir}/{name}",
-            commit=str(manifest.get("commit") or ""),
+            commit=commit,
             pinned=True,
             manifest=manifest,
         )
@@ -909,19 +1009,35 @@ class _CheckSources:
         The whole repository tree goes in, not the one file: a check may
         import a helper from anywhere in the repository, and a snapshot that
         held only the entry file passed on its first run and failed with
-        ``ModuleNotFoundError`` in the next job.
+        ``ModuleNotFoundError`` in the next job. A repository over the tree cap
+        is pinned by its commit alone: the manifest records it and later runs
+        clone at it, so a published version never grades a moving branch.
         """
         if self._snapshot_dir is None or self._dataset_api is None:
             return None
         name = self._snapshot_key(source)
         staging_local = os.path.join(self._workdir, "pin", uuid.uuid4().hex, name)
+        copied: int | None
         try:
             copied = _copy_tree(root, os.path.join(staging_local, TREE))
         except _TooLarge as err:
+            if not fetched.commit:
+                log.warning(
+                    "not pinning %s: %s and the checkout has no commit to pin; "
+                    "this run grades with the live checkout",
+                    name,
+                    err,
+                )
+                return None
             log.warning(
-                "not pinning %s: %s; this run grades with the live checkout", name, err
+                "%s is %s: pinning its commit %s without a copy of the tree",
+                name,
+                err,
+                fetched.commit,
             )
-            return None
+            shutil.rmtree(os.path.join(staging_local, TREE), ignore_errors=True)
+            os.makedirs(staging_local, exist_ok=True)
+            copied = None
         manifest = {
             "url": _scrubbed(url),
             "ref": ref,
@@ -930,6 +1046,7 @@ class _CheckSources:
             "commit": fetched.commit,
             "sha256": _digest_of(fetched.local),
             "files": copied,
+            "tree": copied is not None,
             "pinned_at": datetime.now(tz=timezone.utc).isoformat(),
         }
         with open(
@@ -952,7 +1069,17 @@ class _CheckSources:
                     f"{staging_remote}/{name}", target, overwrite=False
                 )
                 won = True
-            except Exception:  # noqa: BLE001 -- the other run's copy is the snapshot
+            except Exception as err:  # noqa: BLE001 -- refused, or the move itself failed
+                # Refused because the other run's copy is there: the snapshot
+                # is theirs. Failed for any other reason, with no copy there:
+                # nothing is pinned, and this run grades with its checkout.
+                try:
+                    self._stat(f"{target}/{MANIFEST}")
+                except FileNotFoundError:
+                    raise RuntimeError(
+                        f"the move into {target} failed and nothing is there: "
+                        f"{_short(err)}"
+                    ) from err
                 won = False
         except Exception:  # noqa: BLE001 -- a run that cannot pin still grades
             log.warning(
@@ -974,15 +1101,26 @@ class _CheckSources:
             )
             tree = os.path.join(staging_local, TREE)
             return _Fetched(
-                local=os.path.join(tree, source.path),
-                package_root=tree,
+                local=os.path.join(tree, source.path)
+                if copied is not None
+                else fetched.local,
+                package_root=tree if copied is not None else fetched.package_root,
                 origin=f"{fetched.origin} (pinned)",
                 commit=fetched.commit,
                 pinned=True,
                 manifest=manifest,
             )
         log.info("another run pinned %s first; grading with its copy", name)
-        return self._from_snapshot(self._download(target), source, name)
+        try:
+            return self._from_snapshot(self._download(target), source, name)
+        except Exception:  # noqa: BLE001 -- their copy is unreadable right now
+            log.warning(
+                "another run pinned %s but its copy could not be read; this run "
+                "grades with the live checkout",
+                name,
+                exc_info=True,
+            )
+            return None
 
 
 def _snapshot_name(identity: str, path: str) -> str:
@@ -992,10 +1130,10 @@ def _snapshot_name(identity: str, path: str) -> str:
 
 
 def _copy_tree(root: str, into: str) -> int:
-    """A repository's files, layout kept, under the snapshot caps.
+    """A repository's files, layout kept, under the tree cap.
 
-    Raises :class:`_TooLarge` past them: a repository that big is not pinned,
-    and the run says so rather than freezing half of it.
+    Raises :class:`_TooLarge` past it: a repository that big is pinned by
+    commit rather than copied, and the run says so.
     """
     copied = 0
     total = 0
@@ -1024,20 +1162,25 @@ def _copy_tree(root: str, into: str) -> int:
 
 def _import_path(
     local: str, *, package_root: str | None = None, lock_timeout_s: float | None = None
-) -> tuple[ModuleType, dict[str, ModuleType]]:
+) -> tuple[ModuleType, dict[str, ModuleType], dict[str, ModuleType]]:
     """Import a file or a package directory, isolated from every other source.
 
     The entry gets a name nothing else uses, so two ``checks.py`` in one
     execution do not hand each other their code. Its own imports need the same
     care: ``from helpers import yes`` lands ``helpers`` in ``sys.modules`` by
     that name, and a second source's ``helpers`` would silently reuse the
-    first's. So the parent directory (or the repository root) goes on
+    first's. So the file's directory (or the repository root) goes on
     ``sys.path`` only for the import, and whatever the import pulled in from
     under it is taken back out of ``sys.modules`` afterwards and returned,
-    held, so the functions that bound it keep working. A check that imports a
-    helper lazily inside the function will not find it: import at the top.
+    held, so the functions that bound it keep working. A helper beside the
+    file imports the same way everywhere: the job reads project files from the
+    HopsFS mount, and without a mount the ``.py`` files beside the entry are
+    fetched with it. A check that imports a helper lazily inside the function
+    will not find it: import at the top.
+
+    Returns the module, the held modules, and a package's own submodules.
     """
-    budget = DEFAULT_TIMEOUT_S if lock_timeout_s is None else lock_timeout_s
+    budget = IMPORT_LOCK_WAIT_S if lock_timeout_s is None else lock_timeout_s
     if not _IMPORT_LOCK.acquire(timeout=budget):
         raise RuntimeError(
             "another source's import has not finished and still holds the import "
@@ -1051,7 +1194,7 @@ def _import_path(
 
 def _import_path_locked(
     local: str, *, package_root: str | None = None
-) -> tuple[ModuleType, dict[str, ModuleType]]:
+) -> tuple[ModuleType, dict[str, ModuleType], dict[str, ModuleType]]:
     local = os.path.abspath(local)
     parent = package_root or os.path.dirname(local)
     unique = f"hopsworks_check_{hashlib.sha1(local.encode()).hexdigest()[:12]}"  # noqa: S324
@@ -1078,7 +1221,9 @@ def _import_path_locked(
     try:
         spec.loader.exec_module(module)
     except BaseException:
-        sys.modules.pop(unique, None)
+        for name in list(sys.modules):
+            if name == unique or name.startswith(unique + "."):
+                sys.modules.pop(name, None)
         raise
     finally:
         if added_path:
@@ -1093,7 +1238,17 @@ def _import_path_locked(
             file = getattr(pulled, "__file__", None) or ""
             if file.startswith(prefix):
                 held[name] = sys.modules.pop(name)
-    return module, held
+    return module, held, _submodules_of(unique)
+
+
+def _submodules_of(package: str) -> dict[str, ModuleType]:
+    """The modules under a package name that are imported, by name."""
+    prefix = package + "."
+    return {
+        name: module
+        for name, module in list(sys.modules.items())
+        if name.startswith(prefix) and module is not None
+    }
 
 
 def _digest_of(local: str) -> str:
@@ -1175,6 +1330,14 @@ class PythonSourceEvaluator:
         self._report: dict[str, str] = {}
         self._loaded: _Loaded | None = None
         self._load_error: str | None = None
+        #: The name the load-failure row, or the "nothing selected" row, reports
+        #: under: claimed like a check's, so it never shares a built-in's id.
+        self._own_report: str = name
+        #: Checks that timed out once in this execution. A thread cannot be
+        #: killed, so a check that hangs is not called again: one leaked thread
+        #: per hanging check, not one per trial, and a CPU-bound one cannot
+        #: starve the rest of the run.
+        self._timed_out: dict[str, float] = {}
         self._lock = threading.Lock()
 
     def _ensure_loaded(self) -> str | None:
@@ -1182,8 +1345,10 @@ class PythonSourceEvaluator:
 
         Two budgets. Fetching (a clone, a download) is I/O and gets
         ``FETCH_BUDGET_S``. Importing runs the source's module, which is the
-        checks' code as much as the functions are, so it gets the largest
-        timeout the source's checks declare -- a module that blocks at import
+        checks' code as much as the functions are, so it gets
+        ``DEFAULT_TIMEOUT_S`` of its own (the decorator's timeouts are not known
+        until the import is done), after a bounded wait of ``IMPORT_LOCK_WAIT_S``
+        for any other source still importing -- a module that blocks at import
         used to stall the run before any timeout had something to measure.
         """
         if self._checks is not None or self._load_error is not None:
@@ -1194,15 +1359,12 @@ class PythonSourceEvaluator:
             return self._load()
 
     def _load(self) -> str | None:
+        sources = self._sources if self._sources is not None else _CheckSources()
         try:
-            if self._sources is None:
-                if not self.source.module:
-                    raise RuntimeError(
-                        "this run has no way to read project files or repositories"
-                    )
-                sources = _CheckSources()
-            else:
-                sources = self._sources
+            if self._sources is None and not self.source.module:
+                raise RuntimeError(
+                    "this run has no way to read project files or repositories"
+                )
             loaded = sources._loaded.get(self.source._describe())
             if loaded is None:
                 try:
@@ -1213,26 +1375,36 @@ class PythonSourceEvaluator:
                     raise RuntimeError(
                         f"fetching the source took longer than {FETCH_BUDGET_S:g}s"
                     ) from None
+                # The wait for the lock and the import itself are two budgets,
+                # each with its own reason: the lock's RuntimeError says another
+                # source holds it, the timeout here says this one is slow.
                 try:
                     loaded = _run_with_timeout(
                         lambda: sources._import(
-                            self.source, fetched, lock_timeout_s=DEFAULT_TIMEOUT_S
+                            self.source, fetched, lock_timeout_s=IMPORT_LOCK_WAIT_S
                         ),
-                        DEFAULT_TIMEOUT_S,
+                        IMPORT_LOCK_WAIT_S + DEFAULT_TIMEOUT_S,
                     )
                 except _Timeout:
                     raise RuntimeError(
                         f"importing the source took longer than {DEFAULT_TIMEOUT_S:g}s"
                     ) from None
             self._loaded = loaded
-            declared = _declared_in(loaded.module)
+            declared = _declared_in(loaded.module, loaded.submodules)
             if not declared:
                 raise LookupError("it declares no @check")
             self._declared_names = sorted(declared)
             self._checks, self._missing = _selected(declared, self.only, self.exclude)
+            # Every name this row will report under is claimed here, in spec
+            # order: the checks it runs, the names in ``only`` it lacks, and
+            # its own name for the row that says nothing was selected.
             self._report = {
                 c.name: sources._claim(c.name, self.name) for c in self._checks
             }
+            for name in self._missing:
+                self._report[name] = sources._claim(name, self.name)
+            if not self._checks and not self._missing:
+                self._own_report = sources._claim(self.name, self.name)
             log.info(
                 "source %r loaded from %s: %s",
                 self.name,
@@ -1246,6 +1418,7 @@ class PythonSourceEvaluator:
                 f"checks {self.name!r} could not be loaded from "
                 f"{self.source._describe()}: {_short(err)}"
             )
+            self._own_report = sources._claim(self.name, self.name)
             log.warning("%s", self._load_error)
         return self._load_error
 
@@ -1267,19 +1440,21 @@ class PythonSourceEvaluator:
     ) -> list[EvaluatorResult]:
         failure = self._ensure_loaded()
         if failure or self._checks is None:
-            result = _ungradable(self.name, self.type, failure or "not loaded")
+            result = _ungradable(self._own_report, self.type, failure or "not loaded")
             result.assertions = {SKIPPED: True, "reason": failure, "row": self.name}
             return [result]
         results = []
         if not self._checks and not self._missing:
             result = _ungradable(
-                self.name, self.type, "no check selected: this row grades nothing"
+                self._own_report,
+                self.type,
+                "no check selected: this row grades nothing",
             )
             result.assertions = {"row": self.name}
             results.append(result)
         for name in self._missing:
             result = _ungradable(
-                name,
+                self._report.get(name, name),
                 self.type,
                 f"{self.source._describe()} declares no check named {name!r}; "
                 f"it declares {', '.join(self._declared_names)}",
@@ -1311,14 +1486,23 @@ class PythonSourceEvaluator:
                 self.type,
                 "reads the task's expectation, and this trial carries none for it",
             )
+        elif name in self._timed_out:
+            result = _ungradable(
+                report,
+                self.type,
+                f"timed out after {self._timed_out[name]:g}s on an earlier trial "
+                "of this run and is not called again",
+            )
         else:
-            params = {**dict(declared.defaults), **self.params.get(name, {})}
+            params, pass_score = _split_pass_score(declared, self.params.get(name, {}))
             context = _context_for(name, task, trial, trace, params)
             try:
                 value = _call_with_timeout(
                     declared.fn, context, params, declared.timeout_s
                 )
+                result = _as_result(report, value, pass_score=pass_score)
             except _Timeout:
+                self._timed_out.setdefault(name, declared.timeout_s)
                 result = _ungradable(
                     report, self.type, f"timed out after {declared.timeout_s:g}s"
                 )
@@ -1326,10 +1510,10 @@ class PythonSourceEvaluator:
                 raise
             except BaseException as err:  # noqa: BLE001 -- a bad check is not a bad agent
                 # BaseException, not Exception: a dependency calling sys.exit()
-                # is the check failing, not the job ending.
+                # is the check failing, not the job ending. Reading the return
+                # value is inside too: a malformed result is this check's
+                # failure, not its siblings'.
                 result = _ungradable(report, self.type, f"check raised: {_short(err)}")
-            else:
-                result = _as_result(report, value, pass_score=params.get("pass_score"))
         result.assertions.setdefault("source", self._provenance())
         result.assertions.setdefault("row", self.name)
         if report != name:
@@ -1402,16 +1586,25 @@ def _call_with_timeout(
 
 
 def _as_result(name: str, value: Any, *, pass_score: Any = None) -> EvaluatorResult:
-    """Whatever the function returned, as the row the runner records."""
+    """Whatever the function returned, as the row the runner records.
+
+    The row is written as JSON, so what the check put in ``assertions`` is made
+    JSON-safe here (a ``Decimal``, a ``datetime``, a set, a numpy scalar become
+    text or a list) and ``reason`` is made text: a row that could not be
+    written used to fail the run's final write and lose the trials with it.
+    """
+    value = _unwrap_scalar(value)
     if isinstance(value, CheckResult):
+        reason = _text(value.reason)
+        assertions = _json_safe_assertions(value.assertions)
         if value.ungradable:
-            result = _ungradable(name, TYPE, value.reason or "ungradable")
-            result.assertions = dict(value.assertions)
+            result = _ungradable(name, TYPE, reason or "ungradable")
+            result.assertions = assertions
             return result
-        score = value.score
-        passed = value.passed
+        score = _unwrap_scalar(value.score)
+        passed = _unwrap_scalar(value.passed)
         if passed is None and score is None:
-            return _ungradable(name, TYPE, value.reason or "no verdict returned")
+            return _ungradable(name, TYPE, reason or "no verdict returned")
         if score is not None and not _finite(score):
             return _ungradable(name, TYPE, f"score {score!r} is not a finite number")
         if passed is None:
@@ -1423,8 +1616,8 @@ def _as_result(name: str, value: Any, *, pass_score: Any = None) -> EvaluatorRes
             TYPE,
             _clamp(score),
             bool(passed),
-            value.reason,
-            dict(value.assertions),
+            reason,
+            assertions,
         )
     if isinstance(value, bool):
         return EvaluatorResult(name, TYPE, 1.0 if value else 0.0, value, "")
@@ -1465,6 +1658,64 @@ def _pass_score(value: Any) -> float:
         return 1.0
 
 
+def _split_pass_score(
+    declared: _Declared, overrides: Mapping[str, Any]
+) -> tuple[dict[str, Any], Any]:
+    """The check's parameters over its defaults, and the ``pass_score`` among them.
+
+    ``pass_score`` is the threshold a returned score passes at. It is read
+    here, not by the check, so it is handed to the function only when the
+    function declares it: merged blindly, a check without that parameter
+    raised ``TypeError`` and was ungradable whenever someone set it.
+    """
+    params = {**dict(declared.defaults), **dict(overrides)}
+    pass_score = params.get("pass_score")
+    if "pass_score" not in declared.defaults:
+        params.pop("pass_score", None)
+    return params, pass_score
+
+
+def _unwrap_scalar(value: Any) -> Any:
+    """A numpy scalar (``numpy.bool_``, ``numpy.float64``) as the Python value."""
+    if isinstance(value, (bool, int, float, str, bytes, Mapping, CheckResult)):
+        return value
+    if value is None:
+        return None
+    item = getattr(value, "item", None)
+    if callable(item) and type(value).__module__.split(".")[0] == "numpy":
+        try:
+            return item()
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
+def _json_safe_assertions(assertions: Any) -> dict[str, Any]:
+    """The assertions as something ``json.dumps`` writes without a ``default``."""
+    if not isinstance(assertions, Mapping):
+        assertions = {"value": assertions}
+    return dict(json.loads(json.dumps(dict(assertions), default=_json_default)))
+
+
+def _json_default(value: Any) -> Any:
+    item = getattr(value, "item", None)
+    if callable(item) and type(value).__module__.split(".")[0] == "numpy":
+        with contextlib.suppress(TypeError, ValueError):
+            return item()
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        with contextlib.suppress(TypeError, ValueError):
+            return tolist()
+    if isinstance(value, (set, frozenset, tuple)):
+        return list(value)
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return isoformat()
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
 def _clamp(score: float) -> float:
     return max(0.0, min(1.0, float(score)))
 
@@ -1495,7 +1746,9 @@ def _context_for(
         expectation=task._expects_text(name),
         expectations=dict(task.expectations),
         tools=tuple(_tool_calls_of(trace)),
-        trace=dict(trace) if trace is not None else None,
+        # A deep copy: a check sorting ``ctx.trace["tool_calls"]`` in place
+        # reordered the runner's trace for every evaluator after it.
+        trace=_copied(trace) if trace is not None else None,
         trial=TrialInfo(
             trial_id=trial.trial_id,
             run_id=trial.run_id,
@@ -1520,6 +1773,13 @@ def _context_for(
         params=dict(params),
         check_name=name,
     )
+
+
+def _copied(trace: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        return copy.deepcopy(dict(trace))
+    except Exception:  # noqa: BLE001 -- something in it refuses to be copied
+        return dict(trace)
 
 
 def _messages_of(raw: Any) -> list[dict[str, Any]]:
@@ -1583,7 +1843,8 @@ def run_check(
     No cluster is needed: give it an answer and the tools you want it to see,
     or a whole trace read with ``agent.trace(trace_id)``, and it returns the
     exact row the job would record -- verdict, score, reason, assertions --
-    including an ungradable row when the check raised or timed out.
+    including an ungradable row when the check raised or timed out, needs a
+    trace and got none, or reads an expectation and was given none.
 
     Example:
         ```python
@@ -1613,7 +1874,7 @@ def run_check(
         trial: The trial's details (``trial_id``, ``run_id``, ``trial_index``, ``deployment_id``, ``status``, ``latency_ms``, ``trace_status``, ``input_tokens``, ``output_tokens``), for ``ctx.trial``.
         name: The name to report under; the check's own when omitted.
         timeout_s: Overrides the check's own timeout.
-        **params: The check's parameters, merged over its defaults.
+        **params: The check's parameters, merged over its defaults; ``pass_score`` is the threshold a returned score passes at.
 
     Returns:
         `EvaluatorResult`: the row the job would record.
@@ -1676,9 +1937,15 @@ def run_check(
                 setattr(trial_row, key, enum(str(given)))
             except ValueError:
                 log.debug("ignoring unknown %s %r", key, given)
-    merged = {**dict(declared.defaults), **params}
+    merged, pass_score = _split_pass_score(declared, params)
     if declared.needs_trace and trace_dict is None and tools is None:
         return _ungradable(check_name, TYPE, "no trace arrived for this trial")
+    if declared.reads_expectation and not task_row._expects_text(check_name):
+        return _ungradable(
+            check_name,
+            TYPE,
+            "reads the task's expectation, and this trial carries none for it",
+        )
     shown = _context_for(check_name, task_row, trial_row, trace_dict, merged)
     try:
         value = _call_with_timeout(
@@ -1687,13 +1954,13 @@ def run_check(
             merged,
             _bounded_timeout(timeout_s or declared.timeout_s),
         )
+        return _as_result(check_name, value, pass_score=pass_score)
     except _Timeout:
         return _ungradable(check_name, TYPE, "timed out")
     except KeyboardInterrupt:
         raise
     except BaseException as err:  # noqa: BLE001 -- the same rule as in the job
         return _ungradable(check_name, TYPE, f"check raised: {_short(err)}")
-    return _as_result(check_name, value, pass_score=merged.get("pass_score"))
 
 
 def _tool_dict(tool: Mapping[str, Any] | ToolCall) -> dict[str, Any]:
