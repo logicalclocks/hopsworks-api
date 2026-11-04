@@ -7,6 +7,7 @@ from unittest import mock
 
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
+from hopsworks_common.app import App
 
 
 def _fake_app(**overrides):
@@ -38,7 +39,6 @@ def _fake_app(**overrides):
     a.idle_cooldown_seconds = overrides.get("idle_cooldown_seconds")
     a.cold_start_timeout_seconds = overrides.get("cold_start_timeout_seconds")
     a.app_url = overrides.get("app_url")
-    a.public_access = overrides.get("public_access", False)
     return a
 
 
@@ -154,7 +154,10 @@ def test_app_info_shows_url(mock_project):
 def test_app_info_shows_the_public_link_state(mock_project):
     apps = mock_project.get_app_api.return_value
     for public, text in ((True, "on"), (False, "off")):
-        apps.get_app.return_value = _fake_app(name="dash", public_access=public)
+        # The SDK's App as the backend answers it, so the CLI reads the real property.
+        apps.get_app.return_value = App.from_response_json(
+            {"jobId": 42, "name": "dash", "state": "RUNNING", "publicAccess": public}
+        )
         result = CliRunner().invoke(cli, ["app", "info", "dash"])
         assert result.exit_code == 0, result.output
         row = next(line for line in result.output.splitlines() if "Public link" in line)
