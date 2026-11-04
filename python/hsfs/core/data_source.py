@@ -275,9 +275,9 @@ class DataSource:
 
     @public
     def sync(self, **kwargs: Any) -> Job:
-        """Copy a Gmail data source into a Delta feature group with a job.
+        """Copy a Gmail or Outlook data source into a Delta feature group with a job.
 
-        Takes the arguments of [`GmailConnector.sync`][hsfs.storage_connector.GmailConnector.sync].
+        Takes the arguments of [`GmailConnector.sync`][hsfs.storage_connector.GmailConnector.sync] or [`OutlookConnector.sync`][hsfs.storage_connector.OutlookConnector.sync].
 
         Example:
             ```python
@@ -288,11 +288,13 @@ class DataSource:
             The sync job.
 
         Raises:
-            ValueError: If the data source is not a Gmail data source.
+            ValueError: If the data source is not a Gmail or Outlook data source.
         """
-        if not isinstance(self._storage_connector, sc.GmailConnector):
+        if not isinstance(
+            self._storage_connector, (sc.GmailConnector, sc.OutlookConnector)
+        ):
             raise ValueError(
-                "Only Gmail data sources can be synced into a feature group."
+                "Only Gmail and Outlook data sources can be synced into a feature group."
             )
         return self._storage_connector.sync(**kwargs)
 
