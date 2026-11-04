@@ -2022,7 +2022,7 @@ def connector_databases(ctx: click.Context, name: str) -> None:
 @click.option(
     "--feature-group",
     help="Feature group to upsert the emails into; defaults to one named after the mailbox, "
-    "e.g. dowling_jim_gmails for dowling.jim@gmail.com or jim_outlooks for jim@outlook.com.",
+    "e.g. jane_doe_gmails for jane.doe@gmail.com or jim_outlooks for jim@outlook.com.",
 )
 @click.option(
     "--attachments-path",
