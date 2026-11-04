@@ -158,11 +158,12 @@ sales.dimension_values("customer__country", limit=100)
 Group-bys take a grain suffix (`metric_time__month`, `order__order_ts__week`) or a date part (`metric_time__extract_dow`).
 `--where` takes MetricFlow's filter syntax, `{{ Dimension('customer__country') }} = 'SE'`, `{{ TimeDimension('metric_time', 'month') }} >= '2026-01-01'` or `{{ Entity('customer') }} = 42`, and repeats as `AND`.
 A leading `-` in `--order-by` sorts descending; NULLs sort last.
+`--start-time`/`--end-time` and `time_range` keep `metric_time` from start through end, both inclusive, each truncated to the query's time grain: a monthly query ending `2026-02-01` includes all of February.
 
 ```bash
 hops semantic sql sales --metrics revenue --group-by metric_time__month,customer__country --order-by -revenue --limit 10
 hops semantic query sales --metrics revenue,average_order_value --group-by metric_time__month \
-  --where "{{ Dimension('order__status') }} = 'paid'" --start-time 2026-01-01 --end-time 2026-07-01 -o csv
+  --where "{{ Dimension('order__status') }} = 'paid'" --start-time 2026-01-01 --end-time 2026-06-30 -o csv
 ```
 
 ```python
@@ -172,7 +173,7 @@ df = sales.query(
     filters=[("customer__country", "IN", ["SE", "NO"])],     # bound as literals, never parsed as SQL
     having=[("revenue", ">", 1000)],
     order_by=["-revenue"],
-    time_range=("2026-01-01", "2026-07-01"),                 # end exclusive
+    time_range=("2026-01-01", "2026-06-30"),                 # both ends inclusive
     group_limit={"group_by": ["customer__country"], "top": 5, "metric": "revenue"},
     dataframe_type="pandas",                                 # or polars, pyarrow, python
 )

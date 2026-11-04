@@ -288,6 +288,15 @@ class TestGateway:
         assert kwargs["verify"] == "/tmp/ca_chain.pem"
         assert metrics[0].agg == "SUM"
 
+    def test_requests_bound_the_read_past_the_gateway_query_timeout(self, http, sales):
+        http._session.request.return_value = _response(body={"metrics": []})
+
+        sales.list_metrics()
+
+        connect, read = _gateway_call(http)[2]["timeout"]
+        assert connect is not None
+        assert read is not None and read > 300
+
     def test_internal_clients_use_the_gateway_service(self, http, sales, mocker):
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         http._session.request.return_value = _response(body={"metrics": []})
@@ -595,6 +604,38 @@ class TestQuery:
             sales.query(["revenue"])
 
         assert "cut at 2 rows" in caplog.text
+
+    def test_an_arrow_result_at_the_row_cap_logs_a_warning(self, http, sales, caplog):
+        http._session.request.return_value = _response(
+            content=_arrow_stream(pa.table({"revenue": [1.0, 2.0]})),
+            content_type="application/vnd.apache.arrow.stream",
+            headers={"X-Semantic-Max-Rows": "2"},
+        )
+
+        with caplog.at_level(logging.WARNING):
+            sales.query(["revenue"], dataframe_type="pyarrow")
+
+        assert "may be cut at the gateway's row limit of 2 rows" in caplog.text
+
+    @pytest.mark.parametrize(
+        "headers",
+        [{"X-Semantic-Max-Rows": "3"}, {}],
+        ids=["below_the_cap", "older_gateway_without_the_header"],
+    )
+    def test_an_arrow_result_without_a_reached_cap_logs_nothing(
+        self, http, sales, caplog, headers
+    ):
+        http._session.request.return_value = _response(
+            content=_arrow_stream(pa.table({"revenue": [1.0, 2.0]})),
+            content_type="application/vnd.apache.arrow.stream",
+            headers=headers,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            table = sales.query(["revenue"], dataframe_type="pyarrow")
+
+        assert table.num_rows == 2
+        assert caplog.text == ""
 
     def test_an_unknown_dataframe_type_fails_before_any_request(self, http, sales):
         with pytest.raises(ValueError, match="dataframe_type"):

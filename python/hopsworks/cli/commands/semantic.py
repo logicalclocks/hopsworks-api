@@ -408,9 +408,15 @@ def _query_options(fn: Callable) -> Callable:
         ),
         click.option("--limit", type=int, help="Maximum number of rows."),
         click.option(
-            "--start-time", help="Earliest metric_time, inclusive, as ISO-8601."
+            "--start-time",
+            help="Earliest metric_time as ISO-8601, inclusive and truncated to the "
+            "query's time grain.",
         ),
-        click.option("--end-time", help="Latest metric_time, exclusive, as ISO-8601."),
+        click.option(
+            "--end-time",
+            help="Latest metric_time as ISO-8601, inclusive and truncated to the "
+            "query's time grain: a monthly query ending 2026-02-01 includes February.",
+        ),
     ]
     for option in reversed(options):
         fn = option(fn)
@@ -461,8 +467,8 @@ def sql_cmd(
         where: Text filters.
         order_by: Sort columns.
         limit: Row limit.
-        start_time: Earliest metric_time.
-        end_time: Latest metric_time, exclusive.
+        start_time: Earliest metric_time, inclusive.
+        end_time: Latest metric_time, inclusive.
     """
     sql = _semantic_project(ctx, name).sql(
         **_query_kwargs(metrics, group_by, where, order_by, limit, start_time, end_time)
@@ -508,8 +514,8 @@ def query_cmd(
         where: Text filters.
         order_by: Sort columns.
         limit: Row limit.
-        start_time: Earliest metric_time.
-        end_time: Latest metric_time, exclusive.
+        start_time: Earliest metric_time, inclusive.
+        end_time: Latest metric_time, inclusive.
         fmt: table, json or csv.
     """
     import pandas as pd

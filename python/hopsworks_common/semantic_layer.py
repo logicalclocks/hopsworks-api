@@ -693,7 +693,9 @@ class SemanticProject:
                 NULLs sort last.
             limit: Maximum number of rows.
             offset: Number of rows to skip.
-            time_range: A `(start, end)` tuple or a `{"start", "end"}` dict of ISO-8601 strings, dates or datetimes; `metric_time` must be at or after `start` and before `end`, and either may be `None`.
+            time_range:
+                A `(start, end)` tuple or a `{"start", "end"}` dict of ISO-8601 strings, dates or datetimes, either of which may be `None`.
+                It keeps `metric_time` from `start` through `end`, both inclusive, each truncated to the query's time grain: a monthly query ending `2026-02-01` includes all of February.
             group_limit: Keep only the top groups, as a dict `{"group_by", "top", "metric", "descending"}`, for example the five countries with the most revenue.
 
         Returns:
@@ -738,7 +740,7 @@ class SemanticProject:
 
         The arguments are those of [`sql`][hopsworks_common.semantic_layer.SemanticProject.sql].
         Results come back as an Arrow stream when `pyarrow` is installed, which keeps column types, and as JSON otherwise.
-        The gateway caps the number of rows it returns; a result cut by the cap logs a warning when it comes back as JSON.
+        The gateway caps the number of rows it returns, and a result that may have been cut by the cap logs a warning.
 
         Parameters:
             metrics: Metric names.
@@ -749,7 +751,7 @@ class SemanticProject:
             order_by: Metric or group-by column names; a leading `-` sorts descending.
             limit: Maximum number of rows.
             offset: Number of rows to skip.
-            time_range: A `(start, end)` tuple or a `{"start", "end"}` dict bounding `metric_time`, end exclusive.
+            time_range: A `(start, end)` tuple or a `{"start", "end"}` dict bounding `metric_time`, both ends inclusive and truncated to the query's time grain.
             group_limit: Keep only the top groups, as a dict `{"group_by", "top", "metric", "descending"}`.
             dataframe_type: `pandas`, `polars`, `pyarrow`, or `python` for a list of rows, each a dict keyed by column name.
 

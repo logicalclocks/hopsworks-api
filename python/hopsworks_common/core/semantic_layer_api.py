@@ -50,8 +50,10 @@ _GATEWAY_PORT = 18443
 _GATEWAY_PATH = "semantic-layer/v1"
 _JSON = "application/json"
 _ARROW_STREAM = "application/vnd.apache.arrow.stream"
-# Only the connect is bounded: a query may run for as long as the gateway's own timeout allows.
-_GATEWAY_TIMEOUT = (30, None)
+# The gateway sends nothing until its answer is ready, so the read timeout bounds a whole query.
+# 330 s outlasts the gateway's QUERY_TIMEOUT_SECONDS and the ingress proxy timeout, both 300 s
+# by default, so the gateway's own 504 arrives first.
+_GATEWAY_TIMEOUT = (30, 330)
 _GROUP_BY_KEYS = {
     "dimensions": "dimensions",
     "entities": "entities",
@@ -394,7 +396,18 @@ class SemanticLayerApi:
                 response.headers.get("X-Semantic-Stale"),
                 response.headers.get("X-Semantic-Build"),
             )
-            return _read_arrow_stream(response.content)
+            table = _read_arrow_stream(response.content)
+            # An Arrow stream cannot flag truncation, so a result that fills the cap may have been cut.
+            # An older gateway sends no cap.
+            max_rows = response.headers.get("X-Semantic-Max-Rows")
+            if max_rows and table.num_rows >= int(max_rows):
+                _logger.warning(
+                    "The result of the query on semantic project '%s' may be cut at the "
+                    "gateway's row limit of %s rows; add a limit, filters or fewer group-bys.",
+                    sp.name,
+                    max_rows,
+                )
+            return table
         result = _json_of(sp, response)
         if result.get("truncated"):
             _logger.warning(
