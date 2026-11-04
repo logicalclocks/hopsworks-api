@@ -100,6 +100,7 @@ hops fg create-external <name> --connector <ds> --path sales/ --data-format parq
 hops fg create-external <name> --connector <ds> --database <db> --table <collection> --primary-key <cols>
 ```
 
+- A HubSpot, Salesforce or Shopify source is never mounted: `create-external` refuses it, since no Python read, preview or SQL works on such a group. A Google Analytics source cannot be mounted either. Copy the others with `hops fg ingest <name> --connector <ds> --table <resource> --primary-key <cols> --no-statistics` (skill hops-data-sources).
 - `--features "id:bigint,city:string,..."` is optional; without it the schema is read from the source.
 - To look at a source table, mount a LIMIT query with `--no-statistics` and `hops fg preview` it (or `hops datasource preview <ds> --table T`). Never read a data source with a database driver and a credential copied from a secret; report a failed read. A query is written against the source's schema (`schema.table`), not the `--database` name. `hops datasource infer-metadata` is optional (needs the cluster's platform intelligence key) and comes after the look.
 - `--online` enables the online store; rows then go in with `hops fg insert`, offline data stays in the source.

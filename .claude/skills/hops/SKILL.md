@@ -82,6 +82,8 @@ hops fg create-external <name> \
   [--event-time <col>] [--description <text>]
 ```
 
+- A HubSpot, Salesforce or Shopify source is never mounted: `create-external` refuses it, since no Python read, preview or SQL works on such a group. A Google Analytics source cannot be mounted either. Copy the others with `hops fg ingest <name> --connector <ds> --table <resource> --primary-key <cols> --no-statistics` (skill hops-data-sources).
+
 ### Insert
 
 ```bash

@@ -14,6 +14,7 @@ from hopsworks.cli.main import cli
 from hsfs.core.data_source import DataSource
 from hsfs.feature_group import ExternalFeatureGroup, SpineGroup
 from hsfs.feature_store import FeatureStore
+from hsfs.storage_connector import CRMSource
 
 
 def _external_fg(**source):
@@ -311,6 +312,16 @@ def test_ingest_full_keeps_the_backend_defaults(mock_project):
 
 
 @pytest.mark.parametrize(
+    "extra, expected", [((), None), (("--no-statistics",), False)]
+)
+def test_ingest_statistics_off_only_when_asked(mock_project, extra, expected):
+    fs = _ingest_project(mock_project)
+    result = CliRunner().invoke(cli, [*_ingest_args(), *extra])
+    assert result.exit_code == 0, result.output
+    assert fs.create_feature_group.call_args.kwargs["statistics_config"] is expected
+
+
+@pytest.mark.parametrize(
     "extra, message",
     [
         (("--strategy", "incremental-id"), "--strategy incremental-id needs --cursor"),
@@ -416,3 +427,33 @@ def test_ingest_json_stdout_is_the_payload_only(mock_project, wait):
     payload = json.loads(result.stdout)
     assert payload["job"] == "my_salesforce_to_sf_accounts_1"
     assert payload["execution"]["id"] == 5
+
+
+def test_create_external_refuses_a_crm_source_and_names_ingest(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    connector = mock.MagicMock()
+    connector.type = "CRM"
+    connector.crm_type = CRMSource.HUBSPOT
+    fs.get_data_source.return_value = DataSource(storage_connector=connector)
+    result = CliRunner().invoke(
+        cli,
+        ["fg", "create-external", "deals", "--connector", "my_hubspot", "--table", "deals"],
+    )
+    assert result.exit_code == 2, result.output
+    assert "hops fg ingest deals --connector my_hubspot" in result.output
+    fs.create_external_feature_group.assert_not_called()
+
+
+def test_create_external_refuses_google_analytics_without_an_ingest_hint(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    connector = mock.MagicMock()
+    connector.type = "CRM"
+    connector.crm_type = CRMSource.GOOGLE_ANALYTICS
+    fs.get_data_source.return_value = DataSource(storage_connector=connector)
+    result = CliRunner().invoke(
+        cli, ["fg", "create-external", "ga", "--connector", "my_ga", "--table", "traffic"]
+    )
+    assert result.exit_code == 2, result.output
+    assert "cannot be read in place" in result.output
+    assert "fg ingest" not in result.output
+    fs.create_external_feature_group.assert_not_called()
