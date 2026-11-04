@@ -482,23 +482,34 @@ def job_backfill(
 
 @job_group.command("stop")
 @click.argument("name")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="End the execution at once without waiting for its logs to upload; the logs will be incomplete.",
+)
 @click.pass_context
-def job_stop(ctx: click.Context, name: str) -> None:
+def job_stop(ctx: click.Context, name: str, force: bool) -> None:
     """Stop the most recent execution of ``name``.
 
     Args:
         ctx: Click context.
         name: Job name.
+        force: End the execution at once, giving up the logs it has not uploaded.
     """
     executions = _executions(_get_job(ctx, name))
     if not executions:
         raise click.ClickException(f"No executions for job '{name}'.")
     latest = executions[0]
     try:
-        latest.stop()
+        latest.stop(force=force)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Stop failed: {exc}") from exc
-    output.success("✓ Stopped execution %s of %s", getattr(latest, "id", "?"), name)
+    output.success(
+        "✓ %s execution %s of %s",
+        "Force-stopped" if force else "Stopped",
+        getattr(latest, "id", "?"),
+        name,
+    )
 
 
 def _log_dir(path: str | None) -> str | None:
