@@ -555,16 +555,19 @@ class FeaturestoreSearchResult:
         """Total number of Agents matching the search."""
         return self._agents_total
 
+    @public
     @property
     def data_sources(self) -> list[SearchResultItem]:
         """List of Data Source search results."""
         return self._data_sources
 
+    @public
     @property
     def data_sources_offset(self) -> int:
         """Total offset for the return list of data sources within the whole result."""
         return self._data_sources_offset
 
+    @public
     @property
     def data_sources_total(self) -> int:
         """Total number of Data Sources matching the search."""
