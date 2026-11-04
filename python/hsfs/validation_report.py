@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     import great_expectations
 
 import humps
+from hopsworks_common.core.constants import lazy_module
 from hsfs import util
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.decorators import _uses_great_expectations
@@ -35,7 +36,7 @@ from hsfs.ge_validation_result import (
 
 
 if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
+    great_expectations = lazy_module("great_expectations")
 
 
 @public

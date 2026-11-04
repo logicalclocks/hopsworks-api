@@ -376,7 +376,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     @staticmethod
     def _get_spark_session_and_context():
-        if isinstance(engine._get_instance(), engine.spark.Engine):
+        if engine._is_spark(engine._get_instance()):
             return (
                 engine._get_instance()._spark_session,
                 engine._get_instance()._spark_context,
@@ -389,7 +389,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # applies a RonDB delete by primary key. The offline delete is handled
         # separately by `_commit_delete`.
         online_engine = engine._get_instance()
-        if isinstance(online_engine, engine.spark.Engine):
+        if engine._is_spark(online_engine):
             online_engine._delete_online_dataframe(
                 feature_group, delete_df, write_options
             )

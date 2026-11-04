@@ -106,6 +106,7 @@ import logging
 
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import lazy_module
 from hopsworks_common.spark_connect_utils import (
     _is_spark_connect_env,
     _is_spark_connect_session,
@@ -137,7 +138,7 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
 if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
+    great_expectations = lazy_module("great_expectations")
 
 if HAS_AVRO:
     import avro

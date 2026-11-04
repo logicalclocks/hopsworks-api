@@ -21,6 +21,7 @@ from typing import Literal
 
 from hopsworks_apigen import also_available_as
 from hopsworks_common import client
+from hopsworks_common.client import session_cache
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 
 
@@ -74,7 +75,10 @@ class VariableApi:
         _client = client._get_instance()
 
         path_params = ["variables", "versions"]
-        resp = _client._send_request("GET", path_params)
+        resp = session_cache.get_host("versions")
+        if resp is None:
+            resp = _client._send_request("GET", path_params)
+            session_cache.put_host("versions", resp)
 
         for entry in resp:
             if entry["software"] == software:

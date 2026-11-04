@@ -15,7 +15,6 @@
 #
 from __future__ import annotations
 
-import getpass
 import importlib
 import logging
 import os
@@ -379,6 +378,8 @@ def login(
 
     if api_key is None and is_saas:
         print("Copy your API Key (first register/login at https://run.hopsworks.ai)")
+        import getpass
+
         api_key = getpass.getpass(prompt="\nPaste it here: ")
 
         # If api key was provided as input, save the API key locally on disk to avoid users having to enter it again in the same environment
@@ -435,6 +436,8 @@ def _get_cached_api_key_path():
     If not sufficient permissions are set in HOME to create the API key (writable and executable), it uses the temp directory to store it.
     """
     api_key_name = ".hw_api_key"
+    import getpass
+
     api_key_folder = f".{getpass.getuser()}_hopsworks_app"
 
     # Path for current working directory api key

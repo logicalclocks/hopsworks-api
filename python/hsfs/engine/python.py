@@ -57,7 +57,11 @@ from botocore.response import StreamingBody
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
-from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
+from hopsworks_common.core.constants import (
+    HAS_POLARS,
+    lazy_module,
+    polars_not_installed_message,
+)
 from hopsworks_common.core.type_systems import (
     _convert_offline_type_to_pyarrow_type,
     _create_extended_type,
@@ -107,7 +111,7 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
 if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
+    great_expectations = lazy_module("great_expectations")
 
 if HAS_NUMPY:
     import numpy as np
@@ -331,6 +335,15 @@ class Engine:
                 dataframe_type,
             )
         else:
+            from hsfs.core import arrow_flight_client
+
+            query_service = arrow_flight_client._get_instance()
+            if query_service.enabled_on_cluster and query_service.disabled_reason:
+                raise FeatureStoreException(
+                    "Hopsworks Query Service client failed to initialise for this session: "
+                    f"{query_service.disabled_reason}. Call `fs._reset_hopsworks_feature_query_service_client()` on the feature store "
+                    "to retry."
+                )
             raise ValueError(
                 "Reading data with Hive is not supported when using hopsworks client version >= 4.0"
             )

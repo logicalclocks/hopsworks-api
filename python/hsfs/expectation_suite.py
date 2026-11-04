@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 import humps
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.core.constants import lazy_module
 from hsfs import util
 from hsfs.core import expectation_suite_engine
 from hsfs.core.constants import (
@@ -39,18 +40,11 @@ from hsfs.core.variable_api import VariableApi
 
 # if great_expectations is not installed, we will default to using native Hopsworks class as return values
 from hsfs.decorators import _uses_great_expectations
-from hsfs.ge_expectation import GeExpectation
+from hsfs.ge_expectation import GeExpectation, _expectation_configuration
 
 
 if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
-
-    if GE_MAJOR == 1:
-        from great_expectations.expectations.expectation_configuration import (
-            ExpectationConfiguration as _ExpectationConfiguration,
-        )
-    else:
-        _ExpectationConfiguration = great_expectations.core.ExpectationConfiguration
+    great_expectations = lazy_module("great_expectations")
 
 
 @public
@@ -330,7 +324,7 @@ class ExpectationSuite:
             TypeError: If the expectation type is not supported.
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
-            expectation, _ExpectationConfiguration
+            expectation, _expectation_configuration()
         ):
             json_dict = expectation.to_json_dict()
             # GE 1.x ships type/severity fields; map back to the legacy shape.

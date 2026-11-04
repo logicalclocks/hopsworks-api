@@ -24,20 +24,25 @@ if TYPE_CHECKING:
 
 import humps
 from hopsworks_apigen import public
+from hopsworks_common.core.constants import lazy_module
 from hopsworks_common.decorators import _uses_great_expectations
 from hsfs import util
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 
 
 if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
+    great_expectations = lazy_module("great_expectations")
 
+
+def _expectation_configuration() -> type:
+    """Great Expectations' ExpectationConfiguration class, which moved in GE 1."""
     if GE_MAJOR == 1:
         from great_expectations.expectations.expectation_configuration import (
-            ExpectationConfiguration as _ExpectationConfiguration,
+            ExpectationConfiguration,
         )
-    else:
-        _ExpectationConfiguration = great_expectations.core.ExpectationConfiguration
+
+        return ExpectationConfiguration
+    return great_expectations.core.ExpectationConfiguration
 
 
 @public
@@ -138,10 +143,10 @@ class GeExpectation:
             The expectation as a Great Expectations object.
         """
         if GE_MAJOR == 1:
-            return _ExpectationConfiguration(
+            return _expectation_configuration()(
                 type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
             )
-        return _ExpectationConfiguration(
+        return _expectation_configuration()(
             expectation_type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
         )
 

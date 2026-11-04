@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature_group, feature_view, storage_connector, training_dataset
 from hsfs.constructor import fs_query
 from hsfs.core import arrow_flight_client
@@ -367,3 +368,42 @@ class TestDataSourceError:
             is None
         )
         assert arrow_flight_client._data_source_error(ValueError("ORA-00942")) is None
+
+
+def test_init_failure_is_reported_as_itself(mocker):
+    # Another process of the same user deleted the certificates this one reads.
+    mocker.patch("hopsworks_common.client._get_instance")
+    variables = mocker.patch("hsfs.core.arrow_flight_client.VariableApi").return_value
+    variables._get_service_discovery_domain.return_value = "consul"
+    variables._get_flyingduck_enabled.return_value = True
+    mocker.patch.object(
+        arrow_flight_client.ArrowFlightClient,
+        "_retrieve_host_url",
+        return_value="grpc+tls://flyingduck:5005",
+    )
+    mocker.patch.object(
+        arrow_flight_client.ArrowFlightClient,
+        "_initialize_flight_client",
+        side_effect=FileNotFoundError("ca_chain.pem"),
+    )
+
+    with pytest.warns(
+        UserWarning, match="Client initialisation failed: .*ca_chain.pem"
+    ):
+        query_service = arrow_flight_client.ArrowFlightClient()
+
+    assert query_service.enabled_on_cluster
+    assert query_service.disabled_for_session
+    assert "ca_chain.pem" in query_service.disabled_reason
+
+
+def test_sql_offline_raises_the_init_failure(mocker):
+    query_service = mocker.Mock(enabled_on_cluster=True, disabled_reason="ca_chain.pem")
+    mocker.patch(
+        "hsfs.core.arrow_flight_client._get_instance", return_value=query_service
+    )
+
+    with pytest.raises(
+        FeatureStoreException, match="failed to initialise.*ca_chain.pem"
+    ):
+        python.Engine()._sql_offline("SELECT 1", "default")

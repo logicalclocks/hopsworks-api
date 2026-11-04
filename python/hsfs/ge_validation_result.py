@@ -28,13 +28,14 @@ if TYPE_CHECKING:
 import dateutil
 import humps
 from hopsworks_apigen import public
+from hopsworks_common.core.constants import lazy_module
 from hsfs import util
 from hsfs.core.constants import HAS_GREAT_EXPECTATIONS
 from hsfs.decorators import _uses_great_expectations
 
 
 if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
+    great_expectations = lazy_module("great_expectations")
 
 
 def _normalize_expectation_config_to_legacy_shape(
