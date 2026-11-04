@@ -1,0 +1,8 @@
+{
+    "host": "hopsworks.glassfish.service.consul",
+    "port": 28181,
+    "project": "<project>",
+    "verify_certs": false,
+    "rdrs_host": "rdrs.service.consul",
+    "rdrs_port": 4406
+}
