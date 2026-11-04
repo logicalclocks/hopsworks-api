@@ -752,6 +752,30 @@ class TestFullLoad:
         assert writer.table == {}
         assert not list((tmp_path / "Resources" / "mail").glob("day=*"))
 
+    def test_a_full_load_keeps_files_it_did_not_write(self, tmp_path):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        writer = FakeWriter()
+        _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
+        foreign = tmp_path / "Resources" / "mail" / "day=2026-10-20" / "user-data"
+        foreign.mkdir()
+        (foreign / "important.bin").write_bytes(b"keep")
+        client.messages.clear()
+        _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer, execution_id="8")
+        assert writer.table == {}
+        assert (foreign / "important.bin").read_bytes() == b"keep"
+        assert not (foreign.parent / "a").exists()
+
+    def test_a_full_load_refuses_a_path_another_feature_group_owns(self, tmp_path):
+        client = FakeGmail([_message("a", DAY1, attachments=[("x.bin", b"1")])])
+        writer_a = FakeWriter()
+        _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer_a)
+        client.messages.clear()
+        config_b = _config(strategy="FULL_LOAD", featureGroupName="bob_examples")
+        with pytest.raises(m._MailSyncError, match="alice_examples"):
+            _run(tmp_path, client, config_b, FakeWriter(), execution_id="8")
+        attachment = writer_a.table["a"]["attachments"][0]
+        assert (tmp_path / attachment.removeprefix(PROJECT_ROOT + "/")).exists()
+
     def test_incremental_after_a_full_load_continues_from_its_cursor(self, tmp_path):
         client, writer = FakeGmail([_message("a", DAY1)]), FakeWriter()
         _run(tmp_path, client, _config(strategy="FULL_LOAD"), writer)
