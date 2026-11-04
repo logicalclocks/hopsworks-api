@@ -128,6 +128,10 @@ _COMMIT = re.compile(r"^[0-9a-fA-F]{7,40}$")
 _REF = re.compile(r"^[\w./-]+$")
 #: What a published suite's snapshot records about the code it froze.
 MANIFEST = "manifest.json"
+#: Assertion keys the runner writes; a check's own values for them are kept under
+#: ``check_reserved``. ``skipped`` is among them because the runner reads it as
+#: a check that could not run.
+_RESERVED_KEYS = ("source", "row", "check", SKIPPED)
 #: The attribute the decorator leaves on a function.
 _MARK = "__hopsworks_check__"
 #: Importing a source edits sys.path and sys.modules, which every thread shares;
@@ -1046,7 +1050,7 @@ class _CheckSources:
             "path": source.path,
             "basename": posixpath.basename(source.path),
             "commit": fetched.commit,
-            "sha256": _digest_of(fetched.local),
+            "sha256": _digest_of(fetched.local, root),
             "files": copied,
             "tree": copied is not None,
             "pinned_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -1204,17 +1208,27 @@ class _RecordingFinder:
         self._root = root
         self._prefix = root.rstrip(os.sep) + os.sep
         self._record = record
+        # One finder per directory for the whole import: a FileFinder lists its
+        # directory once and caches it, which matters on the FUSE mount.
+        self._finders: dict[str, importlib.machinery.FileFinder] = {}
 
     def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> Any:
         entries = [self._root] if path is None else [str(p) for p in path]
         for entry in entries:
             if entry != self._root and not entry.startswith(self._prefix):
                 continue
-            finder = importlib.machinery.FileFinder(
-                entry, (self._loader, importlib.machinery.SOURCE_SUFFIXES)
-            )
+            finder = self._finders.get(entry)
+            if finder is None:
+                finder = importlib.machinery.FileFinder(
+                    entry, (self._loader, importlib.machinery.SOURCE_SUFFIXES)
+                )
+                self._finders[entry] = finder
             spec = finder.find_spec(fullname)
-            if spec is not None:
+            # Only a module with source to read. A folder without __init__.py
+            # comes back as a namespace spec with no loader; claimed here it
+            # leaked between sources and shadowed a standard-library package
+            # of the same name, so it is left to the path finder, as before.
+            if spec is not None and spec.loader is not None:
                 return spec
         return None
 
@@ -1318,7 +1332,12 @@ def _import_path_locked(
                 continue
             pulled = sys.modules.get(name)
             file = getattr(pulled, "__file__", None) or ""
-            if file.startswith(prefix):
+            # A namespace package (a folder without __init__.py) has no file but
+            # a path; one that lives under the source is the source's too.
+            portions = [str(p) for p in getattr(pulled, "__path__", None) or []]
+            if file.startswith(prefix) or (
+                not file and portions and all(p.startswith(prefix) for p in portions)
+            ):
                 held[name] = sys.modules.pop(name)
     digest = hashlib.sha256()
     files = []
@@ -1328,6 +1347,12 @@ def _import_path_locked(
         digest.update(relative.encode())
         digest.update(b"\0")
         digest.update(record[path])
+    # A helper loaded from bytecode or an extension ran without its source
+    # being read, so it is named, and said not to be in the hash.
+    for pulled in held.values():
+        file = getattr(pulled, "__file__", None) or ""
+        if file and os.path.abspath(file) not in record:
+            files.append(f"{os.path.relpath(file, parent)} (not hashed)")
     return module, held, submodules, _Imported(digest.hexdigest(), tuple(files))
 
 
@@ -1341,18 +1366,32 @@ def _submodules_of(package: str) -> dict[str, ModuleType]:
     }
 
 
-def _digest_of(local: str) -> str:
-    """sha256 of a file, or of a directory's Python files in path order."""
-    digest = hashlib.sha256()
-    path = Path(local)
+def _digest_of(local: str, root: str | None = None) -> str:
+    """sha256 of a file, or of a directory's Python files, by the import's formula.
+
+    Each file as its relative path, a NUL byte and its bytes, in path order, relative to ``root``
+    (the directory the import puts on ``sys.path``; the file's own directory
+    by default), which is what :func:`_import_path` records. A file imported
+    on its own, or a package whose every module is imported, hashes the same
+    either way, so a pinned snapshot's manifest and its results agree.
+    """
+    path = Path(os.path.abspath(local))
+    base = Path(os.path.abspath(root)) if root else path.parent
     if path.is_dir():
-        for file in sorted(path.rglob("*.py")):
-            if any(part in _SKIPPED_DIRS for part in file.relative_to(path).parts):
-                continue
-            digest.update(str(file.relative_to(path)).encode())
-            digest.update(file.read_bytes())
+        files = [
+            f
+            for f in sorted(path.rglob("*.py"))
+            if not any(part in _SKIPPED_DIRS for part in f.relative_to(path).parts)
+        ]
     elif path.is_file():
-        digest.update(path.read_bytes())
+        files = [path]
+    else:
+        files = []
+    digest = hashlib.sha256()
+    for file in files:
+        digest.update(os.path.relpath(file, base).encode())
+        digest.update(b"\0")
+        digest.update(file.read_bytes())
     return digest.hexdigest()
 
 
@@ -1604,11 +1643,17 @@ class PythonSourceEvaluator:
                 # value is inside too: a malformed result is this check's
                 # failure, not its siblings'.
                 result = _ungradable(report, self.type, f"check raised: {_short(err)}")
-        # The provenance is the runner's to write: a check that put a `source`
-        # of its own in the assertions kept it under its own name, not over this.
-        for key in ("source", "row", "check"):
-            if key in result.assertions:
-                result.assertions[f"check_{key}"] = result.assertions.pop(key)
+        # These keys are the runner's: the provenance, the row, the check's
+        # name, and `skipped`, which the runner reads as "a check that could
+        # not run" and turns a passing trial into a harness error with. A
+        # check's own values for them are kept, together, under one key.
+        reserved = {
+            key: result.assertions.pop(key)
+            for key in _RESERVED_KEYS
+            if key in result.assertions
+        }
+        if reserved:
+            result.assertions["check_reserved"] = reserved
         result.assertions["source"] = self._provenance()
         result.assertions["row"] = self.name
         if report != name:

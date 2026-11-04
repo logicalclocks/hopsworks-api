@@ -389,19 +389,20 @@ def _download_hopsfs_tree(
 
 
 def _absolute_hopsfs_path(child: str, root: str, project_name: str) -> str:
-    """A listed child as an absolute path under ``root``.
+    """A listed child as an absolute HopsFS path.
 
-    The listing gives project-relative paths; an absolute one is kept, and a
-    relative one is placed under the project, or under the root when no
-    project is known.
+    ``DatasetApi.list`` returns paths relative to the project with a leading
+    slash (``/Models/a/1/agent.py``, from ``util._convert_to_project_rel_path``),
+    so a child is placed under ``/Projects/<project>`` unless it already is
+    there; with no project known it is placed under the root by its name.
     """
-    if child.startswith("/"):
+    if child.startswith("/Projects/"):
         return child
     if child.startswith("Projects/"):
         return "/" + child
     if project_name:
-        return f"/Projects/{project_name}/{child}"
-    return f"{root}/{child.split('/')[-1]}"
+        return f"/Projects/{project_name}/{child.lstrip('/')}"
+    return f"{root}/{child.rstrip('/').split('/')[-1]}"
 
 
 #: "scheme://user:token@" anywhere in a piece of text. The credential has to end before the

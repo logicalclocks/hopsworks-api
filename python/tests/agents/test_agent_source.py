@@ -391,11 +391,12 @@ class TestHopsfsTree:
             return path.strip("/").removeprefix("Projects/p/")
 
         def list(self, path, offset=0, limit=1000):  # noqa: ARG002
+            # What DatasetApi.list returns: project-relative, with a leading slash.
             prefix = self._relative(path) + "/"
             children = set()
             for f in self.files:
                 if f.startswith(prefix):
-                    children.add(prefix + f[len(prefix) :].split("/", 1)[0])
+                    children.add("/" + prefix + f[len(prefix) :].split("/", 1)[0])
             return sorted(children)
 
         def _get(self, path):
@@ -467,3 +468,14 @@ class TestHopsfsTree:
         assert (Path(root) / "tools" / "search.py").read_text() == "def search(): ..."
         assert (Path(root) / "tools" / "deep" / "x.py").read_text() == "x = 1"
         assert not (Path(root) / "search.py").exists()
+
+    def test_a_flat_agent_is_downloaded_from_the_real_listing_shape(self, tmp_path):
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_directory
+
+        api = self._Api(
+            {"Models/a/1/agent.py": "print(1)", "Models/a/1/tools/search.py": "s"}
+        )
+        root = _download_hopsfs_directory(api, "/Projects/p/Models/a/1", str(tmp_path))
+        assert (Path(root) / "agent.py").read_text() == "print(1)"
+        assert (Path(root) / "tools" / "search.py").read_text() == "s"
+        assert not (Path(root) / "ch.py").exists()

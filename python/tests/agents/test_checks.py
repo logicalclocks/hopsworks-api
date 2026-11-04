@@ -763,12 +763,17 @@ class _FakeDatasetApi:
         raise RuntimeError(f"{path} not found")
 
     def list(self, path, limit=1000):  # noqa: ARG002
+        """Children as ``DatasetApi.list`` returns them: project-relative, with a leading slash."""
         prefix = "/" + path.strip("/") + "/"
         children = set()
         for f in self.files:
             if f.startswith(prefix):
                 rest = f[len(prefix) :]
-                children.add(prefix + rest.split("/", 1)[0])
+                child = prefix + rest.split("/", 1)[0]
+                parts = child.split("/")
+                if child.startswith("/Projects/") and len(parts) > 3:
+                    child = "/" + "/".join(parts[3:])
+                children.add(child)
         return sorted(children)
 
     def download(self, path, local, overwrite=True):  # noqa: ARG002
@@ -1909,8 +1914,10 @@ class TestWhatGradedIsWhatIsRecorded:
         row = _rows([_file_evaluator(path, "r")])["v"]
         assert row.assertions["source"]["sha256"]
         assert row.assertions["row"] == "r"
-        assert row.assertions["check_source"] == "price catalogue"
-        assert row.assertions["check_row"] == 3
+        assert row.assertions["check_reserved"] == {
+            "source": "price catalogue",
+            "row": 3,
+        }
 
     def test_passed_must_be_a_bool(self):
         @check(needs_trace=False)
@@ -1972,3 +1979,97 @@ class TestWhatGradedIsWhatIsRecorded:
         result = _rows(_evaluators_from_spec([row], sources=later))["verdict"]
         assert result.passed is True
         assert result.assertions["source"]["origin"].startswith("snapshot ")
+
+
+class TestRoundSix:
+    """Namespace folders, a check's own `skipped`, and one hash formula."""
+
+    @staticmethod
+    def _source_with_lib(root: Path, verdict: str) -> Path:
+        (root / "lib").mkdir(parents=True)
+        (root / "lib" / "helpers.py").write_text(
+            f"def verdict():\n    return {verdict}\n"
+        )
+        (root / "c.py").write_text(
+            "from hopsworks_agents.eval.checks import check\n"
+            "from lib.helpers import verdict\n"
+            "@check(needs_trace=False)\ndef v(ctx):\n    return verdict()\n"
+        )
+        return root / "c.py"
+
+    def test_a_helper_folder_without_init_does_not_leak_between_sources(self, tmp_path):
+        a = self._source_with_lib(tmp_path / "a", "True")
+        b = self._source_with_lib(tmp_path / "b", "False")
+        first = _rows([_file_evaluator(a, "a")])["v"]
+        assert first.passed is True
+        assert "lib" not in sys.modules and "lib.helpers" not in sys.modules
+        second = _rows([_file_evaluator(b, "b")])["v"]
+        assert second.passed is False
+        assert "lib/helpers.py" in second.assertions["source"]["files"]
+        assert (
+            first.assertions["source"]["sha256"]
+            != second.assertions["source"]["sha256"]
+        )
+
+    def test_a_plain_folder_named_like_the_standard_library_does_not_shadow_it(
+        self, tmp_path
+    ):
+        sys.modules.pop("tomllib", None)
+        (tmp_path / "tomllib").mkdir()
+        (tmp_path / "tomllib" / "notes.txt").write_text("not a module")
+        path = _write(
+            tmp_path,
+            "c.py",
+            """
+            import tomllib
+
+            @check(needs_trace=False)
+            def v(ctx):
+                return tomllib.loads('a = 1')['a'] == 1
+            """,
+        )
+        assert _rows([_file_evaluator(path, "c")])["v"].passed is True
+        assert getattr(sys.modules["tomllib"], "__file__", None)
+
+    def test_a_checks_own_skipped_does_not_make_the_trial_a_harness_error(
+        self, tmp_path
+    ):
+        from hopsworks_agents.eval.evaluators import _was_skipped
+
+        path = _write(
+            tmp_path,
+            "counts.py",
+            """
+            @check(needs_trace=False)
+            def counts(ctx):
+                return CheckResult(
+                    passed=True,
+                    assertions={"checked": 4, "skipped": 1, "source": "s", "check_source": "kept"},
+                )
+            """,
+        )
+        rows = _rows([_file_evaluator(path, "r")])
+        row = rows["counts"]
+        assert row.passed is True
+        assert not _was_skipped([row])
+        assert row.assertions["checked"] == 4
+        assert row.assertions["check_source"] == "kept"
+        assert row.assertions["check_reserved"] == {"skipped": 1, "source": "s"}
+
+    def test_a_pinned_snapshots_manifest_and_its_results_agree(self, tmp_path):
+        def clone(url, ref, commit, into):  # noqa: ARG001
+            root = Path(into) / "repo"
+            (root / "c").mkdir(parents=True)
+            (root / "c" / "k.py").write_text(VERDICT_FILE.format(verdict="True"))
+            return str(root)
+
+        api = _FakeDatasetApi()
+        snapshot_dir = "/Projects/p/Resources/agent_evals/suites/s1/v1/checks"
+        row = {"type": "python", "name": "checks", "git": {"url": "https://x/r.git", "ref": "main"}, "path": "c/k.py"}  # fmt: skip
+        sources = _CheckSources(dataset_api=api, project_name="p", snapshot_dir=snapshot_dir, workdir=str(tmp_path), clone=clone)  # fmt: skip
+        result = _rows(_evaluators_from_spec([row], sources=sources))["verdict"]
+        [manifest] = [f for f in api.files if f.endswith("/manifest.json")]
+        assert (
+            json.loads(api.files[manifest])["sha256"]
+            == result.assertions["source"]["sha256"]
+        )
