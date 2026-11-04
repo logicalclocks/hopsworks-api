@@ -80,7 +80,7 @@ class TestGmailConnector:
 
     def test_get_access_token(self, mocker):
         mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi._get_gmail_access_token",
+            "hsfs.core.storage_connector_api.StorageConnectorApi._get_mail_access_token",
             return_value={
                 "accessToken": "ya29.x",
                 "expiresAt": 1761400000000,
@@ -106,7 +106,7 @@ class TestGmailConnector:
 
     def test_sync_creates_starts_and_schedules_the_job(self, mocker):
         put = mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi._put_gmail_sync_job"
+            "hsfs.core.storage_connector_api.StorageConnectorApi._put_mail_sync_job"
         )
         job = mocker.MagicMock()
         get = mocker.patch("hopsworks_common.core.job_api.JobApi.get", return_value=job)
@@ -119,10 +119,11 @@ class TestGmailConnector:
             schedule="hourly",
         )
 
-        fs_id, name, job_name, body = put.call_args.args
-        assert (fs_id, name, job_name) == (
+        fs_id, name, service, job_name, body = put.call_args.args
+        assert (fs_id, name, service, job_name) == (
             67,
             "support inbox",
+            "gmail",
             "support_inbox_gmail_sync",
         )
         assert body == {
@@ -141,7 +142,7 @@ class TestGmailConnector:
 
     def test_daily_runs_at_midnight_utc(self, mocker):
         mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi._put_gmail_sync_job"
+            "hsfs.core.storage_connector_api.StorageConnectorApi._put_mail_sync_job"
         )
         job = mocker.MagicMock()
         mocker.patch("hopsworks_common.core.job_api.JobApi.get", return_value=job)
@@ -156,7 +157,7 @@ class TestGmailConnector:
 
     def test_sync_without_start_or_schedule_only_saves_the_job(self, mocker):
         mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi._put_gmail_sync_job"
+            "hsfs.core.storage_connector_api.StorageConnectorApi._put_mail_sync_job"
         )
         job = mocker.MagicMock()
         mocker.patch("hopsworks_common.core.job_api.JobApi.get", return_value=job)
@@ -169,7 +170,7 @@ class TestGmailConnector:
     )
     def test_sync_refuses_unknown_schedules_and_strategies(self, kwargs, mocker):
         put = mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi._put_gmail_sync_job"
+            "hsfs.core.storage_connector_api.StorageConnectorApi._put_mail_sync_job"
         )
         with pytest.raises(ValueError):
             _connector().sync(**kwargs)
@@ -177,7 +178,7 @@ class TestGmailConnector:
 
     def test_list_sync_jobs(self, mocker):
         mocker.patch(
-            "hsfs.core.storage_connector_api.StorageConnectorApi._get_gmail_sync_jobs",
+            "hsfs.core.storage_connector_api.StorageConnectorApi._get_mail_sync_jobs",
             return_value=[
                 {
                     "jobName": "nightly",

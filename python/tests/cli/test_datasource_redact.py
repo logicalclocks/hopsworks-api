@@ -43,6 +43,7 @@ _SECRETS = {
     ],
     "MongoDBConnector": ["password"],
     "OpenSearchConnector": ["password", "trust_store_password"],
+    "OutlookConnector": ["client_secret", "refresh_token"],
     "RedshiftConnector": ["database_password"],
     "S3Connector": [
         "access_key",
