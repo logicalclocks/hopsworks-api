@@ -135,6 +135,14 @@ class TestPredictor:
             "user_tag": "x",
         }
 
+    def test_agent_fields_come_after_the_existing_arguments(self):
+        # Callers that pass the constructor's arguments by position must keep their bindings.
+        import inspect
+
+        params = list(inspect.signature(predictor.Predictor.__init__).parameters)
+        assert params.index("agent_framework") > params.index("llm_gateway")
+        assert params.index("chat_config") > params.index("llm_gateway")
+
     def test_to_dict_omits_unset_agent_fields(self, mocker):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)

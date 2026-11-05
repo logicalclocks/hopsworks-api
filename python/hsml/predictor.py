@@ -102,8 +102,6 @@ class Predictor(DeployableComponent):
         triton_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | Default | None = None,
         memory: DeploymentMemoryConfig | dict | Default | None = None,
-        agent_framework: str | None = None,
-        chat_config: dict[str, Any] | None = None,
         feature_logging: DeploymentLoggingConfig | dict | Default | None = None,
         git_url: str | None = None,
         git_provider: str | None = None,
@@ -117,6 +115,10 @@ class Predictor(DeployableComponent):
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
         llm_gateway: bool | None = None,
+        # Appended rather than inserted, so a caller passing the arguments above by
+        # position keeps its bindings.
+        agent_framework: str | None = None,
+        chat_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
