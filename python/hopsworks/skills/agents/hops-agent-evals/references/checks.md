@@ -19,6 +19,7 @@ Reference for **hops-agent-evals**. A suite's checks are `check(type, name=None,
 | `tool_latency` | `tool`, `max_ms` | — | the tool's spans finished within budget |
 | `sql_state` | `sql`/`query`, `expect` | — | a query against the agent's state returns the expectation (sandboxed suites) |
 | `human_review` | `prompt` | — | waits for a person's verdict in the UI or `run.review_trial()` |
+| `python` | `file` or `git`+`path` or `module`, `only`/`exclude`, `params` (keyed by check) | whatever a declared check reads from `ctx.expectation` (declared with `reads_expectation=True`) | a source the project wrote: every function declared with `@check` runs, each reported under its own name; see [custom-checks.md](custom-checks.md) |
 | `llm_judge` | provider keys below, `criteria` (a list, or a dict name → `{weight}`), `rubric`, `inputs` | the rubric (shown as the expected answer instead when `inputs` drops `rubric` and keeps `expected_result`) | a model grades the answer against the criteria |
 | `pairwise` | provider keys, `reference` | reference answer | a model prefers the answer to the reference |
 | `tool_arguments_judge` | provider keys, `tool` | — | a model judges the tool's arguments were right for the request |

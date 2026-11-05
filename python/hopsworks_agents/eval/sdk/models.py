@@ -272,6 +272,10 @@ class Trial(ApiModel):
     final_output: str | None = None
     error_type: str | None = None
     error_message: str | None = None
+    session_id: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    estimated_cost: float | None = None
 
     @property
     def passed(self) -> bool:
