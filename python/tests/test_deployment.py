@@ -2118,6 +2118,26 @@ class TestDeployment:
         assert url == "https://example.com/v1/project/name/v1"
         mock_predictor_get_openai_url.assert_called_once()
 
+    # get anthropic url
+
+    def test_get_anthropic_url_drops_the_trailing_v1(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(
+            p, "get_openai_url", return_value="https://example.com/v1/ns/depl/v1"
+        )
+
+        assert d.get_anthropic_url() == "https://example.com/v1/ns/depl"
+
+    def test_get_anthropic_url_is_none_when_there_is_no_openai_url(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(p, "get_openai_url", return_value=None)
+
+        assert d.get_anthropic_url() is None
+
     # get openai client
 
     def test_get_openai_client_uses_the_deployment_url(self, mocker, backend_fixtures):
