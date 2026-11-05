@@ -48,7 +48,7 @@ hops fg list                              # List all feature groups
 hops fg info <name> [--version N]         # Show details + schema
 hops fg preview <name> [--n 10]           # Preview data rows
 hops fg features <name>                   # List features with types
-hops fg stats <name> --compute            # Trigger statistics computation
+hops fg stats <name> --compute            # Compute statistics (turns them on, waits for the job)
 hops fg search <name> --vector "0.1,..."  # KNN similarity search
 hops fg keywords <name>                   # List tags (aka keywords)
 hops fg add-keyword <name> <kw>           # Attach a keyword
@@ -78,9 +78,11 @@ Flags:
 hops fg create-external <name> \
   --connector <connector-name> \
   --query "SELECT ... FROM ..." \
-  --primary-key <cols> \
+  --primary-key <cols> --no-statistics \
   [--event-time <col>] [--description <text>]
 ```
+
+- Mount with `--no-statistics`: statistics start a job that reads the whole source, and the mount waits for it. Compute them later with `hops fg stats <name> --compute` (it turns statistics on and waits for the job) and read them with `hops fg stats <name>`.
 
 - A HubSpot, Salesforce or Shopify source is never mounted: `create-external` refuses it, since no Python read, preview or SQL works on such a group. A Google Analytics source cannot be mounted either. Copy the others with `hops fg ingest <name> --connector <ds> --table <resource> --primary-key <cols> --no-statistics` (skill hops-data-sources).
 

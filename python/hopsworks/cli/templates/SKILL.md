@@ -56,7 +56,7 @@ hops fg list                              # List all feature groups
 hops fg info <name> [--version N]         # Show details + schema + tags
 hops fg preview <name> [--n 10]           # Preview data rows
 hops fg features <name>                   # List features with types
-hops fg stats <name> --compute            # Trigger statistics computation
+hops fg stats <name> --compute            # Compute statistics (turns them on, waits for the job)
 hops fg search <name> --vector "0.1,..."  # KNN similarity search
 hops fg keywords <name>                   # List tags (aka keywords)
 hops fg add-keyword <name> <kw>           # Attach a keyword
@@ -93,14 +93,15 @@ Give one source spec:
 
 ```bash
 # SQL / warehouse sources (Snowflake, BigQuery, Redshift, JDBC, ...)
-hops fg create-external <name> --connector <ds> --query "SELECT ... FROM ..." --primary-key <cols>
+hops fg create-external <name> --connector <ds> --query "SELECT ... FROM ..." --primary-key <cols> --no-statistics
 # Object storage (S3, ADLS, GCS): a file or a prefix
-hops fg create-external <name> --connector <ds> --path sales/ --data-format parquet --primary-key <cols>
+hops fg create-external <name> --connector <ds> --path sales/ --data-format parquet --primary-key <cols> --no-statistics
 # MongoDB collection
-hops fg create-external <name> --connector <ds> --database <db> --table <collection> --primary-key <cols>
+hops fg create-external <name> --connector <ds> --database <db> --table <collection> --primary-key <cols> --no-statistics
 ```
 
 - A HubSpot, Salesforce or Shopify source is never mounted: `create-external` refuses it, since no Python read, preview or SQL works on such a group. A Google Analytics source cannot be mounted either. Copy the others with `hops fg ingest <name> --connector <ds> --table <resource> --primary-key <cols> --no-statistics` (skill hops-data-sources).
+- Mount with `--no-statistics`: statistics start a job that reads the whole source, and the mount waits for it. Compute them later with `hops fg stats <name> --compute` (it turns statistics on and waits for the job) and read them with `hops fg stats <name>`.
 - `--features "id:bigint,city:string,..."` is optional; without it the schema is read from the source.
 - To look at a source table, mount a LIMIT query with `--no-statistics` and `hops fg preview` it (or `hops datasource preview <ds> --table T`). Never read a data source with a database driver and a credential copied from a secret; report a failed read. A query is written against the source's schema (`schema.table`), not the `--database` name. `hops datasource infer-metadata` is optional (needs the cluster's platform intelligence key) and comes after the look.
 - `--online` enables the online store; rows then go in with `hops fg insert`, offline data stays in the source.

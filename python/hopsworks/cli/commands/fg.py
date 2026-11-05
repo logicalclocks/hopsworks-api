@@ -1232,7 +1232,7 @@ def fg_delete(
 @click.option(
     "--compute",
     is_flag=True,
-    help="Trigger recomputation; otherwise read cached stats.",
+    help="Compute statistics in a job and wait for it, turning them on if off; otherwise read cached stats.",
 )
 @click.pass_context
 def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) -> None:
@@ -1242,15 +1242,26 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
         ctx: Click context.
         name: Feature group name.
         version: Feature group version.
-        compute: When True, trigger a recomputation job.
+        compute: When True, compute statistics in a job and wait for it.
     """
     fg = _get_fg(ctx, name, version)
     if compute:
+        # compute_statistics() only warns on a group with statistics off, so they
+        # are turned on and persisted first.
+        if not fg.statistics_config.enabled:
+            fg.statistics_config.enabled = True
+            try:
+                fg.update_statistics_config()
+            except Exception as exc:  # noqa: BLE001
+                raise click.ClickException(
+                    f"Could not turn statistics on: {exc}"
+                ) from exc
+            output.success("✓ Enabled statistics on %s v%s", fg.name, fg.version)
         try:
             fg.compute_statistics()
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(f"Stats compute failed: {exc}") from exc
-        output.success("✓ Triggered statistics compute for %s", name)
+        output.success("✓ Computed statistics for %s v%s", fg.name, fg.version)
         return
 
     try:

@@ -182,7 +182,7 @@ fv.log(logging_data=vector, predictions=pred)   # also: untransformed_features, 
 ```
 
 ## Toolset
-- **CLI:** `hops fg stats <name> [--compute]`, `hops fg info <name>` (statistics only; monitoring/validation/alerts are SDK).
+- **CLI:** `hops fg stats <name> [--compute]` (`--compute` turns statistics on and waits for the job), `hops fg info <name>` (statistics only; monitoring/validation/alerts are SDK).
 - **SDK:** `StatisticsConfig`, `fg/fv.create_feature_monitoring()`, `fg.save_expectation_suite()`, `fg.get_validation_history()`, `fg/fv.create_alert()`, `fv.log()`.
 - **Source:** `python/hsfs/feature_group.py`, `feature_view.py`, `core/feature_monitoring_config.py`, `expectation_suite.py`, `ge_expectation.py`.
 
