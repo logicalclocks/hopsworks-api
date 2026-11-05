@@ -455,6 +455,20 @@ def test_the_plan_survives_the_job_launchers_unquoted_expansion(crm):
     assert kumo_job.Plan.from_arg(argv[3]) == p
 
 
+def test_a_scheduled_runs_appended_fire_times_are_accepted(crm):
+    """Hopsworks appends -start_time (and may append -end_time) to a scheduled run's args."""
+    p = plan(crm, ["deals.contact_id=contacts.id"])
+    argv = score.job_args("pipe", p).split() + [
+        "-start_time",
+        "2026-11-05T03:37:00Z",
+        "-end_time",
+        "2026-11-06T03:37:00Z",
+    ]
+    args = kumo_job.job_args_parser().parse_args(argv)
+    assert args.system == "pipe"
+    assert kumo_job.Plan.from_arg(args.config) == p
+
+
 @pytest.mark.parametrize("name", ["Sales", "my sales", "s'x", "1sales", "sales-1"])
 def test_a_system_name_the_job_cannot_carry_is_refused(name):
     from click.testing import CliRunner

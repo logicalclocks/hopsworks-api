@@ -539,11 +539,11 @@ def test_a_rerun_writes_the_admission_fields_reads_them_back_and_starts(cluster)
         first = _started(setup)
         assert _await(project, job_name, first).success is True
 
-        # The job as an older hops score left it: without the fields.
+        # The run limit edited away; a member may change it, not the platform class (130103).
         job = api.get_job(job_name)
-        for key in ("maxConcurrentExecutions", "platformClass"):
-            job.config.pop(key, None)
+        job.config.pop("maxConcurrentExecutions", None)
         job.save()
+        assert _admission(api.get_job(job_name)) == (None, "scoring")
 
         rerun = _hops("score", name)
         stored = api.get_job(job_name)

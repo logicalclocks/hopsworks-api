@@ -893,7 +893,7 @@ class TrinoSql:
         return pd.DataFrame(kept, columns=names), size
 
 
-def main(argv: list[str] | None = None) -> int:
+def job_args_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--system", required=True, help="The system name.")
     parser.add_argument(
@@ -903,7 +903,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--hold-before-publish", type=float, default=0, help=argparse.SUPPRESS
     )
-    args = parser.parse_args(argv)
+    # A scheduled run appends -start_time <fire instant> (and may append -end_time).
+    # A run scores the current state, so they are accepted and ignored.
+    parser.add_argument("-start_time", dest="_fired_at", help=argparse.SUPPRESS)
+    parser.add_argument("-end_time", dest="_fired_end", help=argparse.SUPPRESS)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = job_args_parser().parse_args(argv)
     plan = Plan.from_arg(args.config)
     t_start = time.perf_counter()
 

@@ -429,7 +429,11 @@ def current_ranking(
     run = current_run(sql, name)
     if run is None or not run["scored_rows"]:
         return run, None
-    return run, sql.frame(ranking_sql(name, run["run_id"], top))
+    scores = kumo_job.output_groups(name)[0]
+    frame, _ = sql.frame(
+        ranking_sql(name, run["run_id"], top), top, kumo_job.ENTITY_BYTES_MAX, scores
+    )
+    return run, frame
 
 
 # region: command ---------------------------------------------------------
@@ -561,7 +565,11 @@ def _sql(ctx: click.Context) -> Any:
 )
 @click.option("--show", is_flag=True, help="Print the current ranking.")
 @click.option(
-    "--top", type=int, default=DEFAULT_TOP, show_default=True, help="Rows to print."
+    "--top",
+    type=click.IntRange(1, kumo_job.QUERY_ROWS_MAX),
+    default=DEFAULT_TOP,
+    show_default=True,
+    help="Rows to print.",
 )
 @click.option(
     "--delete",
