@@ -20,7 +20,7 @@ import shlex
 import sys
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -32,6 +32,7 @@ NUM_NEIGHBORS = (16, 16)
 BATCH = 1_000
 MAX_DEPTH = 2
 SEED = "kumo-score-1"
+FETCH_ROWS = 1_000
 
 CONTEXT_ROWS_MAX = 1_000
 QUERY_ROWS_MAX = 10_000
@@ -147,6 +148,8 @@ class Plan:
     time: dict[str, str] = field(default_factory=dict)
     context_rows: int = CONTEXT_ROWS_MAX
     query_rows: int = QUERY_ROWS_MAX
+    # Delta table version of each group, set by admit(): every later query reads it.
+    pins: dict[str, int] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), separators=(",", ":"))
@@ -179,7 +182,20 @@ def ident(name: str) -> str:
 
 
 def table(plan: Plan, group: str) -> str:
-    return ident(f"{group}_{plan.groups[group].version}")
+    """The group's offline table, at its pinned Delta version once admit() pinned it."""
+    name = ident(f"{group}_{plan.groups[group].version}")
+    if group in plan.pins:
+        return f"{name} FOR VERSION AS OF {int(plan.pins[group])}"
+    return name
+
+
+def pin_sql(plan: Plan) -> str:
+    """The current Delta version of each group's table, from the connector's $history table."""
+    return " UNION ALL ".join(
+        f"SELECT {literal(g)}, max(version) FROM "
+        f"{ident(f'{g}_{plan.groups[g].version}$history')}"
+        for g in sorted(plan.groups)
+    )
 
 
 def literal(value: Any) -> str:
@@ -357,12 +373,24 @@ def reach_sql(plan: Plan) -> str | None:
 
 
 class Reader:
-    """Runs SQL through `sql` (an object with `.frame(sql)` and `.rows(sql)`) and logs each call."""
+    """Runs SQL through `sql` and logs each call.
+
+    `sql` has `.rows(sql)` and `.frame(sql, max_rows, max_bytes)`; the frame read refuses as
+    soon as a chunk would take it past either cap, and returns the frame and its bytes.
+    """
 
     def __init__(self, sql: Any, log: Any = None) -> None:
         self.sql = sql
         self.log = log or (lambda msg: None)
         self.calls: list[tuple[str, str, int]] = []  # (kind, group, rows)
+
+    def pins(self, sql: str) -> dict[str, int]:
+        out = {}
+        for group, version in self.sql.rows(sql):
+            if version is None:
+                raise ScoreRefused(f"{group} has no Delta history to pin.")
+            out[group] = int(version)
+        return out
 
     def admission(self, group: str, sql: str) -> tuple[int, int]:
         rows, size = self.sql.rows(sql)[0]
@@ -376,18 +404,35 @@ class Reader:
             out[group] = (int(rows), int(size))
         return out
 
-    def read(self, group: str, sql: str) -> Any:
+    def read(
+        self, group: str, sql: str, max_rows: int, max_bytes: int
+    ) -> tuple[Any, int]:
         started = time.perf_counter()
-        frame = self.sql.frame(sql)
+        frame, size = self.sql.frame(sql, max_rows, max_bytes, group)
         self.calls.append(("read", group, len(frame)))
         self.log(
-            f"read {group}: {len(frame)} rows in {time.perf_counter() - started:.1f}s"
+            f"read {group}: {len(frame)} rows {size} bytes in "
+            f"{time.perf_counter() - started:.1f}s"
         )
-        return frame
+        return frame, size
 
     @property
     def reads(self) -> list[tuple[str, str, int]]:
         return [c for c in self.calls if c[0] == "read"]
+
+
+def row_bytes(row: tuple) -> int:
+    """A row's size as admission counts it: the text length of each non-null value."""
+    return sum(len(str(v)) for v in row if v is not None)
+
+
+def check_read(group: str, rows: int, size: int, max_rows: int, max_bytes: int) -> None:
+    """Refuse a read about to hold more than its caps; called before a chunk is kept."""
+    if rows > max_rows or size > max_bytes:
+        raise ScoreRefused(
+            f"{group}: the read reached {rows} rows, {size} bytes, over what is left of the "
+            f"caps ({max_rows} rows, {max_bytes} bytes). Stopped before keeping more."
+        )
 
 
 def check_caps(plan: Plan) -> None:
@@ -434,12 +479,14 @@ def check_admission(
         )
 
 
-def admit(plan: Plan, reader: Reader) -> dict[str, dict[str, int]]:
-    """Count the entity group and the related rows reachable from the selection, in Trino.
+def admit(plan: Plan, reader: Reader) -> tuple[Plan, dict[str, dict[str, int]]]:
+    """Pin each group's Delta version, then count the selection's rows at those versions.
 
-    Refuses over a cap before any frame is read.
+    The entity group and the related rows reachable from the selection, in Trino. Refuses over a cap before any frame is read. Returns the pinned plan: its reads see
+    the state admission counted, whatever is written in between.
     """
     check_caps(plan)
+    plan = replace(plan, pins=reader.pins(pin_sql(plan)))
     rows, size = reader.admission(plan.entity, admission_sql(plan, plan.entity))
     sql = reach_sql(plan)
     reach = reader.reach(sql) if sql else {}
@@ -447,25 +494,31 @@ def admit(plan: Plan, reader: Reader) -> dict[str, dict[str, int]]:
     stats = {plan.entity: {"rows": rows, "bytes": size}}
     stats.update({g: {"rows": r, "bytes": b} for g, (r, b) in reach.items()})
     reader.log(
-        "admission ok: "
+        "admission ok at versions "
+        + ", ".join(f"{g} @{v}" for g, v in sorted(plan.pins.items()))
+        + ": "
         + ", ".join(
             f"{g} {s['rows']} rows {s['bytes']} bytes" for g, s in stats.items()
         )
     )
-    return stats
+    return plan, stats
 
 
 def read_related(plan: Plan, reader: Reader) -> dict[str, Any]:
-    """The related rows reachable from the selected entity rows, as admission counted them."""
+    """The related rows reachable from the selected entity rows, as admission counted them.
+
+    The related caps hold over all groups together, enforced while reading.
+    """
     frames = {}
-    total = 0
+    rows = size = 0
     for group in sorted(plan.related):
-        frame = reader.read(group, related_sql(plan, group))
-        total += len(frame)
-        if total > RELATED_ROWS_MAX:
-            raise ScoreRefused(
-                f"related rows reached {total}, over the cap of {RELATED_ROWS_MAX}."
-            )
+        frame, got = reader.read(
+            group,
+            related_sql(plan, group),
+            RELATED_ROWS_MAX - rows,
+            RELATED_BYTES_MAX - size,
+        )
+        rows, size = rows + len(frame), size + got
         frames[group] = frame
     return frames
 
@@ -477,14 +530,23 @@ class Inputs:
     related: dict[str, Any]
 
 
-def load_inputs(plan: Plan, reader: Reader) -> Inputs:
-    """Admission, then the bounded reads. A query with no rows reads nothing else."""
-    admit(plan, reader)
-    query = reader.read(plan.entity, query_sql(plan))
+def read_inputs(plan: Plan, reader: Reader) -> Inputs:
+    """The bounded reads of a pinned plan. A query with no rows reads nothing else."""
+    query, size = reader.read(
+        plan.entity, query_sql(plan), plan.query_rows, ENTITY_BYTES_MAX
+    )
     if query.empty:
         return Inputs(query, query.iloc[0:0], {})
-    context = reader.read(plan.entity, context_sql(plan))
+    context, _ = reader.read(
+        plan.entity, context_sql(plan), plan.context_rows, ENTITY_BYTES_MAX - size
+    )
     return Inputs(query, context, read_related(plan, reader))
+
+
+def load_inputs(plan: Plan, reader: Reader) -> Inputs:
+    """Admission, then the reads at the versions admission pinned."""
+    pinned, _ = admit(plan, reader)
+    return read_inputs(pinned, reader)
 
 
 # region: model -----------------------------------------------------------
@@ -779,11 +841,30 @@ class TrinoSql:
     def rows(self, sql: str) -> list[tuple]:
         return self._run(sql)[1]
 
-    def frame(self, sql: str) -> Any:
+    def frame(
+        self, sql: str, max_rows: int, max_bytes: int, group: str = ""
+    ) -> tuple[Any, int]:
+        """The result and its bytes, fetched in chunks.
+
+        Refuses, and cancels the query, before keeping a chunk that takes it past
+        `max_rows` or `max_bytes`.
+        """
         import pandas as pd  # noqa: PLC0415
 
-        names, rows = self._run(sql)
-        return pd.DataFrame(rows, columns=names)
+        cur = self.conn.cursor()
+        cur.execute(sql)
+        names = [str(c[0]) for c in cur.description or []]
+        kept: list = []
+        size = 0
+        while chunk := cur.fetchmany(FETCH_ROWS):
+            size += sum(row_bytes(r) for r in chunk)
+            try:
+                check_read(group, len(kept) + len(chunk), size, max_rows, max_bytes)
+            except ScoreRefused:
+                cur.cancel()
+                raise
+            kept.extend(chunk)
+        return pd.DataFrame(kept, columns=names), size
 
 
 def main(argv: list[str] | None = None) -> int:

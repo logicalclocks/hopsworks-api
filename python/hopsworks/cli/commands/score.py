@@ -883,8 +883,8 @@ def _score(
         kumo_job.check_output_group(fg, name)
     sql = _sql(ctx)
     reader = kumo_job.Reader(sql, lambda msg: output.info("%s", msg))
-    kumo_job.admit(plan, reader)
-    check_unique(plan, sql)
+    pinned, _ = kumo_job.admit(plan, reader)
+    check_unique(pinned, sql)
     if not plan.time:
         output.warn(
             "No --time given: the scores may use rows from after each label's time."

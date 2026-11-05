@@ -37,7 +37,10 @@ with the counts and the cap.
 | Related rows / bytes after projection, counted on the rows reachable from the selected rows | 100,000 / 1 GB |
 | Entity group bytes after projection | 256 MB |
 
-Related rows are read only for the selected context and query entities. The job has 4 cores
+Admission pins each group's Delta table version, and every read is at that version, so rows
+ingested during a run wait for the next run. The caps are enforced again while reading.
+Related rows are read only for the selected context and query entities: every row reachable
+through the links, up to 2 hops. The job has 4 cores
 and 6144 MB. A project without the `scoring-pipeline` environment is refused.
 
 ## Run, schedule and re-run

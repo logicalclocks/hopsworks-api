@@ -781,3 +781,46 @@ def test_a_link_naming_a_view_group_with_a_newer_version_is_refused():
         score.check_link_pins([link], pins, {"contacts": 2})
     score.check_link_pins([link], pins, {"contacts": 1})
     score.check_link_pins([score.parse_link("activities.deal_id=x.id")], pins, {})
+
+
+# region: pinned input
+
+
+def test_pinned_versions_reach_every_query_after_admission(crm):
+    from dataclasses import replace
+
+    p = plan(crm, ["deals.contact_id=contacts.id"], cutoff="deals.closed_at")
+    assert kumo_job.pin_sql(p) == (
+        "SELECT 'contacts', max(version) FROM \"contacts_1$history\" UNION ALL "
+        "SELECT 'deals', max(version) FROM \"deals_1$history\""
+    )
+    pinned = replace(p, pins={"deals": 7, "contacts": 3})
+    for sql in (
+        kumo_job.query_sql(pinned),
+        kumo_job.context_sql(pinned),
+        kumo_job.admission_sql(pinned, "deals"),
+    ):
+        assert 'FROM "deals_1" FOR VERSION AS OF 7 ' in sql + " "
+    for sql in (
+        kumo_job.reach_sql(pinned),
+        kumo_job.related_sql(pinned, "contacts"),
+    ):
+        assert '"deals_1" FOR VERSION AS OF 7 ' in sql
+        assert 'FROM "contacts_1" FOR VERSION AS OF 3 t WHERE' in sql
+    unique = score.unique_sql(pinned, pinned.links[0])
+    assert unique.count('"contacts_1" FOR VERSION AS OF 3') == 2
+    assert "FOR VERSION" not in kumo_job.query_sql(p)
+
+
+def test_the_pins_of_the_cli_never_travel_to_the_job(crm):
+    p = plan(crm, ["deals.contact_id=contacts.id"])
+    assert json.loads(p.to_json())["pins"] == {}
+
+
+def test_a_read_stops_before_keeping_rows_or_bytes_past_the_cap():
+    assert kumo_job.row_bytes((12, "abc", None, 1.5)) == 2 + 3 + 3
+    kumo_job.check_read("contacts", 100, 1_000, 100, 1_000)
+    with pytest.raises(ScoreRefused, match="contacts: the read reached 101 rows"):
+        kumo_job.check_read("contacts", 101, 10, 100, 1_000)
+    with pytest.raises(ScoreRefused, match="1001 bytes, over what is left"):
+        kumo_job.check_read("contacts", 1, 1_001, 100, 1_000)

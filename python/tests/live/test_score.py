@@ -270,7 +270,7 @@ def test_related_caps_count_only_the_rows_reachable_from_the_selection(
     assert want[act] < len(activities)
 
     reader = kumo_job.Reader(cluster.sql)
-    stats = kumo_job.admit(plan, reader)
+    _, stats = kumo_job.admit(plan, reader)
     assert {g: s["rows"] for g, s in stats.items() if g != d} == want
     assert reader.reads == []
 
@@ -515,9 +515,52 @@ def test_a_group_reached_two_ways_reads_the_union_in_any_link_order(cluster):
             d, order, cutoff=f"{d}.closed_at", context_rows=2, query_rows=10
         )
         reader = kumo_job.Reader(cluster.sql)
-        stats = kumo_job.admit(plan, reader)
-        frames = kumo_job.read_related(plan, reader)
+        pinned, stats = kumo_job.admit(plan, reader)
+        frames = kumo_job.read_related(pinned, reader)
         assert {g: set(f["id"]) for g, f in frames.items()} == want
         assert {g: len(f) for g, f in frames.items()} == {
             g: s["rows"] for g, s in stats.items() if g != d
         }
+
+
+def test_the_reads_see_the_state_admission_pinned(cluster, monkeypatch):
+    """Rows ingested between admission and the reads are not read.
+
+    The read caps hold chunk by chunk.
+    """
+    from hopsworks.score import kumo_job
+
+    deals, _, _, activities = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    act = cluster.make("activities", activities, ["id"])
+    plan = cluster.plan(
+        d,
+        [f"{act}.deal_id={d}.id"],
+        cutoff=f"{d}.closed_at",
+        context_rows=2,
+        query_rows=10,
+    )
+    reader = kumo_job.Reader(cluster.sql)
+    pinned, stats = kumo_job.admit(plan, reader)
+    assert set(pinned.pins) == {d, act}
+
+    # Between admission and the reads: more activities for every deal, and a new open deal.
+    extra = activities.assign(id=activities["id"] + 100_000)
+    cluster.fs.get_feature_group(act, version=1).insert(extra, wait=True)
+    new_deal = deals.head(1).assign(id=10_000)
+    cluster.fs.get_feature_group(d, version=1).insert(new_deal, wait=True)
+
+    inputs = kumo_job.read_inputs(pinned, reader)
+    assert len(inputs.related[act]) == stats[act]["rows"]
+    assert 10_000 not in set(inputs.query["id"])
+    assert len(inputs.query) == 2
+    # The same plan unpinned sees the new state, so the pin is what kept it out.
+    latest, later = kumo_job.admit(plan, kumo_job.Reader(cluster.sql))
+    assert later[act]["rows"] > stats[act]["rows"]
+    assert latest.pins[act] > pinned.pins[act]
+
+    # The related cap, lowered after admission, stops the read chunk by chunk.
+    monkeypatch.setattr(kumo_job, "FETCH_ROWS", 2)
+    monkeypatch.setattr(kumo_job, "RELATED_ROWS_MAX", stats[act]["rows"] - 1)
+    with pytest.raises(kumo_job.ScoreRefused, match="Stopped before keeping more"):
+        kumo_job.read_related(pinned, kumo_job.Reader(cluster.sql))
