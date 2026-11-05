@@ -443,6 +443,27 @@ def test_non_unique_right_side_of_a_link_is_refused(cluster):
         score.check_unique(plan, cluster.sql)
 
 
+def test_labelled_rows_of_one_class_are_refused_before_any_job(cluster):
+    deals, contacts, _, _ = _crm_frames()
+    deals.loc[2:, "won"] = 1
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    name = f"oneclass{cluster.tag}"
+    done = _hops(
+        "score",
+        name,
+        "--entity",
+        d,
+        "--target",
+        "won",
+        "--link",
+        f"{d}.contact_id={c}.id",
+    )
+    assert done.returncode != 0, _out(done)
+    assert "hold one class only (positive)" in _out(done)
+    assert cluster.project.get_job_api().get_job(f"kumo-score-{name}") is None
+
+
 def test_unrelated_namesakes_and_a_matching_input_survive(cluster):
     """Namesakes the system did not make are refused by setup and left by `--delete`.
 

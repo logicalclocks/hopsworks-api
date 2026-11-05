@@ -623,6 +623,17 @@ def is_positive(plan: Plan, values: Any) -> Any:
     )
 
 
+def check_classes(plan: Plan, values: Any) -> None:
+    """Refuse labelled rows of one class only: the model needs both."""
+    labels = is_positive(plan, values)
+    if labels.nunique() < 2:
+        held = "none" if labels.empty else ("positive" if labels.all() else "negative")
+        raise ScoreRefused(
+            f"the {len(labels)} labelled rows of {plan.entity} hold one class only "
+            f"({held}): the model needs rows of both. Score a target that has both outcomes."
+        )
+
+
 def build_relational(sdm: Any, plan: Plan, inputs: Inputs) -> tuple[Any, dict]:
     """The sampler over the groups, and the task link to the entity table."""
     import pandas as pd  # noqa: PLC0415
@@ -728,11 +739,7 @@ def score(plan: Plan, inputs: Inputs, started: Any, log: Any) -> Any:
         f"model loaded in {time.perf_counter() - t0:.1f}s, {torch.get_num_threads()} threads"
     )
 
-    labels = is_positive(plan, inputs.context[plan.target])
-    if labels.nunique() < 2:
-        raise ScoreRefused(
-            f"the {len(inputs.context)} labelled rows hold one class only: the model needs both."
-        )
+    check_classes(plan, inputs.context[plan.target])
     sampler, link = build_relational(sdm, plan, inputs)
     kw = {
         "task_link": link,

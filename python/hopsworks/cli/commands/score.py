@@ -351,6 +351,14 @@ def check_counts(link: Link, rows: int, distinct: int) -> None:
         )
 
 
+def check_classes(plan: Plan, sql: Any) -> None:
+    """Refuse before any job exists when the labelled rows hold one class, as the job would."""
+    import pandas as pd  # noqa: PLC0415
+
+    rows = sql.rows(kumo_job.context_sql(plan, kumo_job.ident(plan.target)))
+    kumo_job.check_classes(plan, pd.Series([r[0] for r in rows], dtype=object))
+
+
 def check_unique(plan: Plan, sql: Any) -> None:
     """Run the uniqueness count of every link through `sql` and refuse a repeated key."""
     for link in plan.links:
@@ -912,6 +920,7 @@ def _score(
     reader = kumo_job.Reader(sql, lambda msg: output.info("%s", msg))
     pinned, _ = kumo_job.admit(plan, reader)
     check_unique(pinned, sql)
+    check_classes(pinned, sql)
     if not plan.time:
         output.warn(
             "No --time given: the scores may use rows from after each label's time."

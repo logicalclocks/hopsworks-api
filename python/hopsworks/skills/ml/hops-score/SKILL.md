@@ -13,6 +13,8 @@ feature group. Use a trained model (hops-train, hops-batch-inference) when the u
 
 ## Input contract
 
+- Find the entity table first: `hops datasource tables <source>` for every connected source in the inventory (a database source's name rarely says what it holds), then `hops datasource preview` the candidates. Pick the table whose label has both outcomes among its rows.
+- Labelled rows of both classes: the run refuses a context of one class only, before any job exists. A source with only won (or only lost) closed rows cannot be scored; say so and name what is missing.
 - Cached feature groups only. A source is copied in first: `hops fg ingest <name> --connector <source> --table <table> --primary-key <cols>`. An external group is refused, and the message names that command.
 - One entity group: one row per entity, a primary key (composite is fine) and a target column. Rows with a null target are scored; labelled rows are the context. `--where "<filter>"` scores the rows it picks instead, and the context is every other labelled row.
 - Related groups are named only by links, never matched by column name. Either `--fv <feature view>` (its joins are the links) or `--link deals.contact_id=contacts.id`, repeatable; a composite key is `--link a.k1+a.k2=b.k1+b.k2`. The right side of a link must be unique on its key. A group is at most 2 hops from the entity. A group with no link, or two links for one pair, is refused with the candidates listed.
