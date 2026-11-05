@@ -112,6 +112,18 @@ class TestMultiTableIngestionJob:
         assert "batchSize" not in job.targets[0].to_dict()
         assert job.targets[1].to_dict()["batchSize"] == 999
 
+    def test_attach_feature_group_keeps_file_columns(self):
+        job = _builder()
+        job._attach_feature_group(
+            _feature_group(3),
+            SinkJobConfiguration(
+                file_columns=["Body"], files_directory="Resources/chosen"
+            ),
+        )
+        files = job.targets[0].to_dict()["fileColumns"]
+        assert files["directory"] == "Resources/chosen"
+        assert files["columns"][0]["sourceColumn"] == "Body"
+
     def test_attach_feature_group_without_config(self):
         job = _builder()
         job._attach_feature_group(_feature_group(5), None)
