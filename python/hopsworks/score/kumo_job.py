@@ -211,13 +211,13 @@ def literal(value: Any) -> str:
 
 def _sizes(plan: Plan, group: str) -> str:
     return " + ".join(
-        f"coalesce(length(cast({ident(c)} as varchar)), 0)"
+        f"coalesce(length(to_utf8(cast({ident(c)} as varchar))), 0)"
         for c in plan.groups[group].names
     )
 
 
 def admission_sql(plan: Plan, group: str) -> str:
-    """Row count and the summed byte length of the projected columns of one group."""
+    """Row count and the summed UTF-8 byte length of the projected columns of one group."""
     return f"SELECT count(*), coalesce(sum({_sizes(plan, group)}), 0) FROM {table(plan, group)}"
 
 
@@ -417,15 +417,15 @@ class Reader:
 
 
 def row_bytes(row: tuple) -> int:
-    """A row's size as admission counts it: the text length of each non-null value."""
-    return sum(len(str(v)) for v in row if v is not None)
+    """A row's size as admission counts it: the UTF-8 bytes of the text of each non-null value."""
+    return sum(len(str(v).encode("utf-8")) for v in row if v is not None)
 
 
 def check_read(group: str, rows: int, size: int, max_rows: int, max_bytes: int) -> None:
     """Refuse a read about to hold more than its caps; called before a chunk is kept."""
     if rows > max_rows or size > max_bytes:
         raise ScoreRefused(
-            f"{group}: the read reached {rows} rows, {size} bytes, over what is left of the "
+            f"{group}: the read reached {rows} rows, {size} bytes (UTF-8), over what is left of the "
             f"caps ({max_rows} rows, {max_bytes} bytes). Stopped before keeping more."
         )
 
@@ -455,7 +455,7 @@ def check_admission(
     rows, size = entity
     if size > ENTITY_BYTES_MAX:
         raise ScoreRefused(
-            f"{plan.entity}: {rows} rows, {size} bytes after projection, "
+            f"{plan.entity}: {rows} rows, {size} bytes (UTF-8) after projection, "
             f"over the cap of {ENTITY_BYTES_MAX} bytes for the entity group. Nothing was read."
         )
     rel_rows = sum(r for r, _ in reach.values())
@@ -469,7 +469,7 @@ def check_admission(
         )
     if rel_bytes > RELATED_BYTES_MAX:
         raise ScoreRefused(
-            f"related rows reachable from the selected rows: {rel_bytes} bytes after projection "
+            f"related rows reachable from the selected rows: {rel_bytes} bytes (UTF-8) after projection "
             f"({detail} rows), over the cap of {RELATED_BYTES_MAX} bytes. Nothing was read."
         )
 

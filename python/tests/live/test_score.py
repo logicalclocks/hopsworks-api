@@ -339,6 +339,36 @@ def test_oversized_entity_group_is_refused_before_any_read(cluster, monkeypatch)
     assert [g for kind, g, _ in reader.calls if kind == "admission"]
 
 
+def test_non_ascii_text_crossing_the_byte_cap_is_refused_at_admission(
+    cluster, monkeypatch
+):
+    import pandas as pd
+    from hopsworks.score import kumo_job
+
+    n = 10
+    notes = pd.DataFrame(
+        {
+            "id": range(n),
+            "won": [i % 2 for i in range(n)],
+            "note": ["\U0001f600" * 20] * n,
+        }
+    )
+    g = cluster.make("notes", notes, ["id"])
+    plan = cluster.plan(g, [])
+    cap = 500
+    characters, octets = cluster.sql.rows(
+        f'SELECT sum(length(note)), sum(length(to_utf8(note))) FROM "{g}_1"'
+    )[0]
+    assert characters < cap < octets
+    monkeypatch.setattr(kumo_job, "ENTITY_BYTES_MAX", cap)
+    reader = kumo_job.Reader(cluster.sql)
+    with pytest.raises(
+        kumo_job.ScoreRefused, match=r"bytes \(UTF-8\) after projection"
+    ):
+        kumo_job.load_inputs(plan, reader)
+    assert reader.reads == []
+
+
 def test_related_caps_count_only_the_rows_reachable_from_the_selection(
     cluster, monkeypatch
 ):

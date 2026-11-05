@@ -28,14 +28,15 @@ hops score deals --entity deals --target won \
 ## Caps
 
 Counted by Trino on the offline tables before anything is read; over a cap the run refuses
-with the counts and the cap.
+with the counts and the cap. Bytes are UTF-8 octets of each value's text, so non-ASCII text counts
+more than its character count.
 
 | Cap | Value |
 | --- | --- |
 | `--context-rows` | 1,000 (a larger value refuses) |
 | `--query-rows` | 10,000 per run, scored in batches of 1,000 |
-| Related rows / bytes after projection, counted on the rows reachable from the selected rows | 100,000 / 1 GB |
-| Entity group bytes after projection | 256 MB |
+| Related rows / bytes (UTF-8) after projection, counted on the rows reachable from the selected rows | 100,000 / 1 GB |
+| Entity group bytes (UTF-8) after projection | 256 MB |
 
 Admission pins each group's Delta table version, and every read is at that version, so rows
 ingested during a run wait for the next run. The caps are enforced again while reading.

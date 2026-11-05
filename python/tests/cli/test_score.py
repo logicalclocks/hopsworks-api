@@ -354,7 +354,7 @@ def test_entity_over_the_byte_cap_refuses(crm, monkeypatch):
     p = plan(crm, ["deals.contact_id=contacts.id"])
     with pytest.raises(
         ScoreRefused,
-        match=r"deals: 5 rows, 51 bytes after projection, over the cap of 50",
+        match=r"deals: 5 rows, 51 bytes \(UTF-8\) after projection, over the cap of 50",
     ):
         kumo_job.check_admission(p, (5, 51), {})
     kumo_job.check_admission(p, (5, 50), {})
@@ -375,7 +375,7 @@ def test_related_rows_over_the_cap_refuse_on_the_reachable_count(crm, monkeypatc
 def test_related_bytes_over_the_cap_refuse_on_the_reachable_count(crm, monkeypatch):
     monkeypatch.setattr(kumo_job, "RELATED_BYTES_MAX", 100)
     p = plan(crm, ["deals.contact_id=contacts.id"])
-    with pytest.raises(ScoreRefused, match=r"101 bytes after projection"):
+    with pytest.raises(ScoreRefused, match=r"101 bytes \(UTF-8\) after projection"):
         kumo_job.check_admission(p, (1, 1), {"contacts": (2, 101)})
     kumo_job.check_admission(p, (1, 1), {"contacts": (2, 100)})
 
@@ -819,8 +819,23 @@ def test_the_pins_of_the_cli_never_travel_to_the_job(crm):
 
 def test_a_read_stops_before_keeping_rows_or_bytes_past_the_cap():
     assert kumo_job.row_bytes((12, "abc", None, 1.5)) == 2 + 3 + 3
+    assert kumo_job.row_bytes(("é", "😀", None)) == 2 + 4
     kumo_job.check_read("contacts", 100, 1_000, 100, 1_000)
     with pytest.raises(ScoreRefused, match="contacts: the read reached 101 rows"):
         kumo_job.check_read("contacts", 101, 10, 100, 1_000)
-    with pytest.raises(ScoreRefused, match="1001 bytes, over what is left"):
+    with pytest.raises(ScoreRefused, match=r"1001 bytes \(UTF-8\), over what is left"):
         kumo_job.check_read("contacts", 1, 1_001, 100, 1_000)
+
+
+def test_the_byte_cap_counts_utf8_octets_in_sql_and_in_the_read(crm):
+    p = plan(crm, ["deals.contact_id=contacts.id"])
+    sql = kumo_job.admission_sql(p, "contacts")
+    assert "length(to_utf8(cast(" in sql
+    assert "coalesce(length(to_utf8(" in sql
+    # 40 four-byte characters: 40 characters, under a cap of 100; 160 bytes, over it.
+    chunk = [("😀" * 20, "😀" * 20)]
+    assert sum(len(v) for v in chunk[0]) == 40
+    size = sum(kumo_job.row_bytes(r) for r in chunk)
+    assert size == 160
+    with pytest.raises(ScoreRefused, match=r"160 bytes \(UTF-8\), over what is left"):
+        kumo_job.check_read("contacts", len(chunk), size, 100, 100)
