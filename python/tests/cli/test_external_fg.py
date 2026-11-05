@@ -220,3 +220,15 @@ def test_preview_rows_key_columns_by_their_feature_names():
     assert _preview_rows(nested) == [
         {"id": "001", "billingpostalcode": None, "account_name": "Edge"}
     ]
+
+
+def test_info_shows_the_schema_of_an_external_fg(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fs.get_feature_group.return_value = _external_fg(
+        database="neondb", group="public", table="customers"
+    )
+    result = CliRunner().invoke(cli, ["fg", "info", "sales", "--version", "1"])
+    assert result.exit_code == 0, result.output
+    assert any(
+        line.split()[:2] == ["Schema", "public"] for line in result.output.splitlines()
+    ), result.output
