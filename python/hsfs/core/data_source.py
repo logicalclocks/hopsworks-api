@@ -735,6 +735,10 @@ class DataSource:
     def delete_tag(self, name: str) -> None:
         """Delete a tag attached to the data source's storage connector.
 
+        The tag belongs to the storage connector, so it is removed from every data source that uses that connector, whatever table, query or path it names.
+        Attaching it again needs the value again.
+        Only a data owner of the project that owns the feature store can delete tags.
+
         Parameters:
             name: Name of the tag to be removed.
 
