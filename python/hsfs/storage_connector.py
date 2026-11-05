@@ -477,6 +477,7 @@ class StorageConnector(ABC):
         """User provided description of the storage connector."""
         return self._description
 
+    @public
     @property
     def missing_mandatory_tags(self) -> list[dict[str, Any]]:
         """Mandatory tags this data source does not carry, as reported when it was last fetched.
