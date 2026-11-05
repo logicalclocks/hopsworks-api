@@ -4394,6 +4394,16 @@ class TestStorageConnectorTags:
         assert sc.get_tags() == {}
         assert sc.get_tags_metadata() == {}
 
+    def test_a_missing_tags_result_is_not_shared_between_calls(
+        self, mocker, backend_fixtures
+    ):
+        self._client(mocker, side_effect=self._error(mocker, 404, 370002))
+        sc = self._connector(backend_fixtures)
+
+        sc.get_tags_metadata()["owner"] = "added by the caller"
+
+        assert sc.get_tags_metadata() == {}
+
     def test_get_tags_metadata_keeps_created_on(self, mocker, backend_fixtures):
         self._client(
             mocker,
