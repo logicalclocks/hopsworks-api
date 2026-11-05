@@ -454,7 +454,8 @@ External feature groups are read through the remote cluster's Hopsworks Query Se
 ds = fs.get_data_source("my_remote_cluster")
 table = [t for t in ds.get_tables("sales_featurestore") if t.table == "transactions_1"][0]
 ext_fg = fs.create_external_feature_group(
-    name="remote_transactions", version=1, data_source=table, primary_key=["id"]
+    name="remote_transactions", version=1, data_source=table, primary_key=["id"],
+    statistics_config=False,
 )
 ext_fg.save()
 df = ext_fg.read()   # Python engine: via the remote Hopsworks Query Service
