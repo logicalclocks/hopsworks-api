@@ -72,3 +72,9 @@ that failed after its insert stay in the group as history and are never current.
 
 `hops score <name> --delete` removes the job with its schedule and both feature groups, after
 listing them. The input groups and the environment stay.
+
+Ownership: the groups the verb makes carry `hops-score:<name>` in their description, and its
+job runs `Resources/hops-score/<name>/kumo_job.py` with `--system <name>`. A group or job of
+the same name without that marker is never adopted, updated or deleted: setup refuses and
+names it, `--delete` leaves it. An input group named `<name>_scores` or `<name>_score_runs` is
+refused.

@@ -298,3 +298,74 @@ def test_non_unique_right_side_of_a_link_is_refused(cluster):
     plan = cluster.plan(d, [f"{d}.contact_id={c}.id"])
     with pytest.raises(kumo_job.ScoreRefused, match="is not unique, 21 rows hold 20"):
         score.check_unique(plan, cluster.sql)
+
+
+def test_unrelated_namesakes_and_a_matching_input_survive(cluster):
+    """Namesakes the system did not make are refused by setup and left by `--delete`.
+
+    An unmarked `<name>_scores`, an unmarked `kumo-score-<name>` job, and an input named
+    like an output.
+    """
+    deals, contacts, _, _ = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    base = (
+        "--target",
+        "won",
+        "--positive",
+        "1",
+        "--link",
+        f"{d}.contact_id={c}.id",
+    )
+    job_api = cluster.project.get_job_api()
+
+    # An unrelated <name>_scores.
+    name = f"own{cluster.tag}"
+    foreign = cluster.fs.create_feature_group(
+        f"{name}_scores", version=1, primary_key=["id"], statistics_config=False
+    )
+    foreign.insert(deals[["id"]], wait=True)
+    cluster.groups.append(foreign)
+    refused = _hops("score", name, "--entity", d, *base)
+    assert refused.returncode != 0
+    assert f"{name}_scores v1 exists without the marker" in _out(refused)
+    assert job_api.get_job(f"kumo-score-{name}") is None
+    _hops("score", name, "--delete", "--yes")
+    assert cluster.fs.get_feature_group(f"{name}_scores", version=1) is not None
+
+    # An unrelated kumo-score-<name> job.
+    name2 = f"own2{cluster.tag}"
+    dataset = cluster.project.get_dataset_api()
+    script = os.path.join(os.path.dirname(__file__), "__init__.py")
+    path = dataset.upload(script, "Resources", overwrite=True)
+    config = job_api.get_configuration("PYTHON")
+    config["appPath"] = path
+    other = job_api.create_job(f"kumo-score-{name2}", config)
+    try:
+        refused = _hops("score", name2, "--entity", d, *base)
+        assert refused.returncode != 0
+        assert f"job kumo-score-{name2} exists and was not made" in _out(refused)
+        rerun = _hops("score", name2)
+        assert f"job kumo-score-{name2} exists and was not made" in _out(rerun)
+        _hops("score", name2, "--delete", "--yes")
+        kept = job_api.get_job(f"kumo-score-{name2}")
+        assert kept is not None and kept.config["appPath"] == config["appPath"]
+    finally:
+        other.delete()
+
+    # An input named like an output of the system.
+    name3 = f"own3{cluster.tag}"
+    inp = f"{name3}_scores"
+    made = cluster.fs.create_feature_group(
+        inp, version=1, primary_key=["id"], statistics_config=False
+    )
+    made.insert(deals, wait=True)
+    cluster.groups.append(made)
+    refused = _hops(
+        "score", name3, "--entity", inp, "--target", "won", "--positive", "1"
+    )
+    assert refused.returncode != 0
+    assert "is an input" in _out(refused)
+    assert job_api.get_job(f"kumo-score-{name3}") is None
+    _hops("score", name3, "--delete", "--yes")
+    assert cluster.fs.get_feature_group(inp, version=1) is not None

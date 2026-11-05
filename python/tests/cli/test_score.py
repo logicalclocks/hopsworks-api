@@ -489,3 +489,128 @@ def test_zero_query_rows_writes_only_the_run_row():
         lambda msg: None,
     )
     assert calls == ["run"]
+
+
+# region: ownership
+
+
+@pytest.fixture
+def python_engine(monkeypatch):
+    """FeatureGroup objects need the engine type the connection would set."""
+    import hopsworks_common.connection
+
+    monkeypatch.setattr(hopsworks_common.connection, "_hsfs_engine_type", "python")
+
+
+def _group(name, description):
+    from hsfs.feature import Feature
+    from hsfs.feature_group import FeatureGroup
+
+    return FeatureGroup(
+        name=name,
+        version=1,
+        featurestore_id=1,
+        description=description,
+        primary_key=["id"],
+        features=[Feature("id", "bigint")],
+        partition_key=[],
+        time_travel_format="DELTA",
+    )
+
+
+def _job(name, app_path, default_args):
+    return Job.from_response_json(
+        {
+            "id": 1,
+            "name": name,
+            "creationTime": 0,
+            "jobType": "PYTHON",
+            "creator": {},
+            "config": {
+                "type": "pythonJobConfiguration",
+                "appPath": app_path,
+                "defaultArgs": default_args,
+            },
+        }
+    )
+
+
+APP = "hdfs:///Projects/p/Resources/hops-score/sales/kumo_job.py"
+ARGS = "--system sales --config '{}'"
+
+
+def test_only_marked_resources_are_deleted(python_engine):
+    mine = _group("sales_scores", "hops-score:sales Scores of sales.")
+    other = _group("sales_score_runs", "Runs of the sales team, by hand.")
+    owned, foreign = score.owned_resources(
+        "sales", _job("kumo-score-sales", APP, ARGS), [mine, other]
+    )
+    assert [obj for _, obj in owned][1:] == [mine]
+    assert owned[0][0] == "job kumo-score-sales and its schedule"
+    assert foreign == ["feature group sales_score_runs v1"]
+
+
+@pytest.mark.parametrize(
+    ("app_path", "args"),
+    [
+        ("hdfs:///Projects/p/Resources/jobs/kumo-score-sales/kumo_job.py", ARGS),
+        (APP, "--config '{}'"),
+        (APP, "--system sales2 --config '{}'"),
+        ("hdfs:///Projects/p/Resources/hops-score/sales2/kumo_job.py", ARGS),
+        ("hdfs:///Projects/p/Resources/hops-score/sales/other.py", ARGS),
+        (APP, "--system 'unclosed"),
+    ],
+)
+def test_an_unrelated_job_of_the_same_name_survives(app_path, args):
+    job = _job("kumo-score-sales", app_path, args)
+    owned, foreign = score.owned_resources("sales", job, [])
+    assert owned == [] and foreign == ["job kumo-score-sales"]
+    with pytest.raises(ScoreRefused, match="job kumo-score-sales exists and was not"):
+        score.check_job(job, "sales")
+    score.check_job(_job("kumo-score-sales", APP, ARGS), "sales")
+    score.check_job(None, "sales")
+
+
+@pytest.mark.parametrize(
+    "description",
+    [None, "", "Scores of sales.", "hops-score:sales2 Scores", "xhops-score:sales"],
+)
+def test_an_unrelated_output_group_is_neither_adopted_nor_deleted(
+    python_engine, description
+):
+    fg = _group("sales_scores", description)
+    owned, foreign = score.owned_resources("sales", None, [fg])
+    assert owned == [] and foreign == ["feature group sales_scores v1"]
+    with pytest.raises(ScoreRefused, match="sales_scores v1 exists without the marker"):
+        kumo_job.check_output_group(fg, "sales")
+    kumo_job.check_output_group(_group("sales_scores", "hops-score:sales x"), "sales")
+    kumo_job.check_output_group(None, "sales")
+
+
+@pytest.mark.parametrize(
+    ("entity", "links"),
+    [
+        ("pipe_scores", []),
+        ("deals", ["deals.contact_id=pipe_score_runs.id"]),
+    ],
+)
+def test_an_input_named_like_an_output_is_refused_before_anything(crm, entity, links):
+    crm[entity] = crm.pop("deals") if entity != "deals" else crm["deals"]
+    crm[entity].name = entity
+    if links:
+        crm["pipe_score_runs"] = crm.pop("contacts")
+    with pytest.raises(ScoreRefused, match="is an input, and `hops score pipe` writes"):
+        score.build_plan(
+            "pipe", entity, crm, [score.parse_link(x) for x in links], "won"
+        )
+
+
+def test_the_job_writes_the_marker_it_is_checked_by():
+    assert kumo_job.group_marked(
+        f"{kumo_job.owner_marker('sales')} Scores of sales.", "sales"
+    )
+    assert kumo_job.job_marked(
+        {"appPath": "Resources/hops-score/sales/kumo_job.py", "defaultArgs": ARGS},
+        "sales",
+        score.SCRIPT.name,
+    )

@@ -192,6 +192,7 @@ def build_plan(
     `infos` holds the entity group and every group a link, `--time` or `--cutoff` names.
     Raises ScoreRefused with the reason; nothing is read.
     """
+    kumo_job.check_inputs_are_not_outputs(name, infos)
     if entity not in infos:
         raise ScoreRefused(f"{entity} is not among the feature groups given.")
     ent = infos[entity]
@@ -642,29 +643,76 @@ def _show(ctx: click.Context, name: str, top: int) -> None:
     )
 
 
+def _get_job(api: Any, job_name: str) -> Any:
+    """The job, or None when there is none; any other failure stops the verb."""
+    try:
+        return api.get_job(job_name)
+    except Exception as exc:  # noqa: BLE001
+        if versions.not_found(exc):
+            return None
+        raise click.ClickException(f"Could not check job '{job_name}': {exc}") from exc
+
+
+def check_job(job: Any, name: str) -> None:
+    """Refuse an existing job `hops score <name>` did not make."""
+    if job is not None and not kumo_job.job_marked(job.config, name, SCRIPT.name):
+        raise ScoreRefused(
+            f"job {_job_name(name)} exists and was not made by `hops score {name}`: it does "
+            f"not run {kumo_job.APP_DIR}/{name}/{SCRIPT.name} with --system {name}. "
+            "It is left alone. Choose another system name."
+        )
+
+
+def owned_resources(
+    name: str, job: Any, groups: list[Any]
+) -> tuple[list[tuple[str, Any]], list[str]]:
+    """What `--delete` removes, and what it leaves because the system did not make it.
+
+    `job` is the job named for the system or None; `groups` its output groups that exist.
+    """
+    owned: list[tuple[str, Any]] = []
+    foreign: list[str] = []
+    if job is not None:
+        label = f"job {_job_name(name)}"
+        if kumo_job.job_marked(job.config, name, SCRIPT.name):
+            owned.append((f"{label} and its schedule", job))
+        else:
+            foreign.append(label)
+    for fg in groups:
+        label = f"feature group {fg.name} v{fg.version}"
+        if kumo_job.group_marked(fg.description, name):
+            owned.append((label, fg))
+        else:
+            foreign.append(label)
+    return owned, foreign
+
+
+def _outputs(fs: Any, name: str) -> list[Any]:
+    found = [versions.feature_group(fs, g, 1) for g in kumo_job.output_groups(name)]
+    return [fg for fg in found if fg is not None]
+
+
 def _delete(ctx: click.Context, name: str, yes: bool) -> None:
     project = session.get_project(ctx)
     fs = session.get_feature_store(ctx)
-    found: list[tuple[str, Any]] = []
-    try:
-        job = project.get_job_api().get_job(_job_name(name))
-    except Exception:  # noqa: BLE001 - absent
-        job = None
-    if job is not None:
-        found.append((f"job {_job_name(name)} and its schedule", job))
-    for group in (f"{name}_scores", f"{name}_score_runs"):
-        fg = versions.feature_group(fs, group, 1)
-        if fg is not None:
-            found.append((f"feature group {group} v1", fg))
-    if not found:
+    job = _get_job(project.get_job_api(), _job_name(name))
+    owned, foreign = owned_resources(name, job, _outputs(fs, name))
+    for label in foreign:
+        output.warn(
+            "Not deleting %s: it lacks the %s marker, so `hops score %s` did not make it.",
+            label,
+            kumo_job.owner_marker(name),
+            name,
+        )
+    if not owned:
         raise click.ClickException(f"Nothing of {name} to delete.")
     output.info(
         "Deleting: %s. The input feature groups stay.",
-        "; ".join(label for label, _ in found),
+        "; ".join(label for label, _ in owned),
     )
     if not yes:
         output.confirm(f"Delete the scoring system '{name}'?")
-    for label, obj in found:
+    for label, obj in owned:
         try:
             obj.delete()
         except Exception as exc:  # noqa: BLE001
@@ -718,14 +766,8 @@ def _score(
     project = session.get_project(ctx)
     api = project.get_job_api()
     job_name = _job_name(name)
-    try:
-        job = api.get_job(job_name)
-    except Exception as exc:  # noqa: BLE001
-        if not versions.not_found(exc):
-            raise click.ClickException(
-                f"Could not check job '{job_name}': {exc}"
-            ) from exc
-        job = None
+    job = _get_job(api, job_name)
+    check_job(job, name)
 
     if at_hour is not None and schedule is None:
         raise click.UsageError("--at goes with --schedule daily.")
@@ -757,6 +799,8 @@ def _score(
         context_rows,
         query_rows,
     )
+    for fg in _outputs(session.get_feature_store(ctx), name):
+        kumo_job.check_output_group(fg, name)
     sql = _sql(ctx)
     reader = kumo_job.Reader(sql, lambda msg: output.info("%s", msg))
     kumo_job.admit(plan, reader)
@@ -771,7 +815,7 @@ def _score(
         )
 
     dataset = project.get_dataset_api()
-    dest = f"Resources/jobs/{job_name}"
+    dest = f"{kumo_job.APP_DIR}/{name}"
     from hopsworks.cli.commands.files import makedirs  # noqa: PLC0415
 
     try:
@@ -785,7 +829,9 @@ def _score(
     config["appPath"] = uploaded or f"{dest}/{SCRIPT.name}"
     config["environmentName"] = ENVIRONMENT
     config[MAX_CONCURRENT] = 1
-    config["defaultArgs"] = f"--config {shlex.quote(plan.to_json())}"
+    config["defaultArgs"] = (
+        f"--system {shlex.quote(name)} --config {shlex.quote(plan.to_json())}"
+    )
     config["resourceConfig"] = {
         **config.get("resourceConfig", {}),
         "cores": JOB_CORES,

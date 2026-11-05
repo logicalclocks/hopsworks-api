@@ -7,7 +7,7 @@ against a labelled context, writes ``<name>_scores`` in one insert and publishes
 run by writing its ``<name>_score_runs`` row last. This file imports nothing from the
 rest of ``hopsworks``, so the CLI uploads it as it is.
 
-Usage: ``kumo_job.py --config '<plan json>'``.
+Usage: ``kumo_job.py --system <name> --config '<plan json>'``.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import argparse
 import contextlib
 import json
 import os
+import shlex
 import sys
 import time
 import uuid
@@ -46,6 +47,55 @@ CONST = "const"
 
 class ScoreRefused(Exception):
     """The run does not start: an input is over a cap or does not fit the plan."""
+
+
+# region: ownership -------------------------------------------------------
+
+APP_DIR = "Resources/hops-score"
+
+
+def owner_marker(name: str) -> str:
+    """The token in the description of every feature group `hops score <name>` makes."""
+    return f"hops-score:{name}"
+
+
+def output_groups(name: str) -> tuple[str, str]:
+    return f"{name}_scores", f"{name}_score_runs"
+
+
+def group_marked(description: str | None, name: str) -> bool:
+    return owner_marker(name) in (description or "").split()
+
+
+def job_marked(config: dict, name: str, script: str) -> bool:
+    """The job runs `script` from the system's folder with `--system <name>` in its arguments."""
+    try:
+        args = shlex.split(str(config.get("defaultArgs") or ""))
+    except ValueError:
+        return False
+    flagged = any(args[i : i + 2] == ["--system", name] for i in range(len(args)))
+    app = "/" + str(config.get("appPath") or "")
+    return flagged and app.endswith(f"/{APP_DIR}/{name}/{script}")
+
+
+def check_inputs_are_not_outputs(name: str, groups: Any) -> None:
+    """Refuse an input group named like an output of the system: teardown would delete it."""
+    clash = sorted(set(groups) & set(output_groups(name)))
+    if clash:
+        raise ScoreRefused(
+            f"{', '.join(clash)} is an input, and `hops score {name}` writes and deletes a "
+            "group of that name. Choose another system name."
+        )
+
+
+def check_output_group(fg: Any, name: str) -> None:
+    """Refuse an existing output group that `hops score <name>` did not make."""
+    if fg is not None and not group_marked(getattr(fg, "description", None), name):
+        raise ScoreRefused(
+            f"feature group {fg.name} v{fg.version} exists without the marker "
+            f"{owner_marker(name)} in its description: `hops score {name}` did not make it "
+            "and leaves it alone. Choose another system name."
+        )
 
 
 @dataclass
@@ -102,11 +152,11 @@ class Plan:
 
     @property
     def scores_name(self) -> str:
-        return f"{self.name}_scores"
+        return output_groups(self.name)[0]
 
     @property
     def runs_name(self) -> str:
-        return f"{self.name}_score_runs"
+        return output_groups(self.name)[1]
 
 
 # region: SQL -------------------------------------------------------------
@@ -736,6 +786,7 @@ class TrinoSql:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--system", required=True, help="The system name.")
     parser.add_argument("--config", required=True, help="The plan, as JSON.")
     args = parser.parse_args(argv)
     plan = Plan.from_json(args.config)
@@ -752,21 +803,32 @@ def main(argv: list[str] | None = None) -> int:
     project = hopsworks.login()
     fs = project.get_feature_store()
     reader = Reader(TrinoSql(project, fs.name), log)
-    scores_fg = fs.get_or_create_feature_group(
-        name=plan.scores_name,
-        version=1,
-        primary_key=[*plan.keys, "run_id"],
-        event_time="scored_at",
-        description=f"Scores of {plan.name}, one insert per run. Model {model_version()}.",
-    )
-    runs_fg = fs.get_or_create_feature_group(
-        name=plan.runs_name,
-        version=1,
-        primary_key=["run_id"],
-        event_time="completed_at",
-        description=f"Completed runs of {plan.name}: a run is current once its row is here.",
-    )
+    marker = owner_marker(plan.name)
     try:
+        if args.system != plan.name:
+            raise ScoreRefused(
+                f"--system {args.system} does not match the plan's system {plan.name}."
+            )
+        scores_fg = fs.get_or_create_feature_group(
+            name=plan.scores_name,
+            version=1,
+            primary_key=[*plan.keys, "run_id"],
+            event_time="scored_at",
+            description=f"{marker} Scores of {plan.name}, one insert per run. "
+            f"Model {model_version()}.",
+        )
+        runs_fg = fs.get_or_create_feature_group(
+            name=plan.runs_name,
+            version=1,
+            primary_key=["run_id"],
+            event_time="completed_at",
+            description=f"{marker} Completed runs of {plan.name}: a run is current "
+            "once its row is here.",
+        )
+        check_inputs_are_not_outputs(plan.name, plan.groups)
+        # get_or_create returns a group of that name whoever made it: write only to ours.
+        check_output_group(scores_fg, plan.name)
+        check_output_group(runs_fg, plan.name)
         run_plan(
             plan,
             reader,
