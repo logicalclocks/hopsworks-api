@@ -1274,10 +1274,11 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
             output.print_json({"statistics": None})
             return
         output.info(
-            "No statistics for %s v%s yet; compute them with `hops fg stats %s --compute`.",
+            "No statistics for %s v%s yet; compute them with `hops fg stats %s --version %s --compute`.",
             fg.name,
             fg.version,
             fg.name,
+            fg.version,
         )
         return
 
