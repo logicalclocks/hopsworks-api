@@ -6,16 +6,18 @@ Nothing here executes SQL. The SQL runs against the cluster's Trino in tests/liv
 from __future__ import annotations
 
 import json
+import types
 
 import click
 import pandas as pd
 import pytest
 import requests
+from hopsworks.cli import waits
 from hopsworks.cli.commands import score
 from hopsworks.cli.commands.score import GroupInfo
 from hopsworks.score import kumo_job
 from hopsworks.score.kumo_job import Link, ScoreRefused
-from hopsworks_common import util
+from hopsworks_common import client, util
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.job import Job
 
@@ -399,6 +401,90 @@ def test_other_failures_of_the_execution_start_pass_through():
         score._run_and_report(
             None, _Job(_response(500, {"errorMsg": "boom"})), "deals", 20, 60, None
         )
+
+
+class _Client:
+    """The HTTP client of the SDK; records every request the CLI sends."""
+
+    def __init__(self, states):
+        self.requests = []
+        self.states = list(states)
+        self._project_id = 1
+
+    def _send_request(self, method, path, **kw):
+        self.requests.append((method, path))
+        state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
+        return {"id": 7, "state": state, "jobType": "PYTHON"}
+
+
+class _StartedJob:
+    config = {score.MAX_CONCURRENT: 1}
+    name = "kumo-score-deals"
+    job_type = "PYTHON"
+
+    def run(self, **_):
+        return types.SimpleNamespace(id=7, state="INITIALIZING")
+
+
+class _Clock:
+    """A clock the sleeps advance, so a deadline is reached without waiting."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+@pytest.fixture
+def http(monkeypatch):
+    fake = _Client(["RUNNING"])
+    monkeypatch.setattr(client, "_get_instance", lambda: fake)
+    return fake
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    fake = _Clock()
+    monkeypatch.setattr(score, "time", fake)
+    monkeypatch.setattr(waits, "time", fake)
+    return fake
+
+
+def test_the_default_run_starts_one_execution_and_makes_no_status_call(http, clock):
+    score._run_and_report(None, _StartedJob(), "deals", 20, 60, None)
+    assert http.requests == []
+    assert clock.sleeps == []
+
+
+def test_wait_stops_at_the_deadline_and_says_how_to_read_the_run(http, clock):
+    with pytest.raises(click.ClickException, match="still RUNNING after 35 s") as err:
+        score._run_and_report(
+            None, _StartedJob(), "deals", 20, 60, None, wait=True, timeout=35
+        )
+    assert "hops score deals --show" in err.value.message
+    assert http.requests
+    assert clock.now >= 35
+    assert clock.now < 35 + 12
+
+
+def test_wait_polls_every_ten_to_twelve_seconds(http, clock):
+    with pytest.raises(click.ClickException):
+        score._run_and_report(
+            None, _StartedJob(), "deals", 20, 60, None, wait=True, timeout=120
+        )
+    assert len(clock.sleeps) >= 5
+    assert all(10 <= x <= 12 for x in clock.sleeps)
+    assert len(set(clock.sleeps)) > 1
+
+
+def test_the_poll_interval_stays_within_ten_to_twelve_seconds():
+    assert all(10 <= score.poll_interval() <= 12 for _ in range(1000))
 
 
 def test_the_sdk_carries_max_concurrent_executions_in_the_job_config():

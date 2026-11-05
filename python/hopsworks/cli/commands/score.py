@@ -8,14 +8,16 @@ Scores land in ``<name>_scores``; a run is current once its row is in ``<name>_s
 from __future__ import annotations
 
 import hashlib
+import random
 import re
 import shlex
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import output, session, versions
+from hopsworks.cli import output, session, versions, waits
 from hopsworks.score import kumo_job
 from hopsworks.score.kumo_job import Group, Link, Plan, ScoreRefused
 
@@ -24,6 +26,9 @@ ENVIRONMENT = "scoring-pipeline"
 JOB_CORES = 4
 JOB_MEMORY_MB = 6144
 MAX_CONCURRENT = "maxConcurrentExecutions"
+POLL_SECONDS = 10.0
+POLL_JITTER_SECONDS = 2.0
+WAIT_TIMEOUT = 3600
 SCRIPT = Path(kumo_job.__file__)
 DEFAULT_TOP = 20
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -500,11 +505,23 @@ def _sql(ctx: click.Context) -> Any:
 )
 @click.option("--yes", is_flag=True, help="Skip the confirmation of --delete.")
 @click.option(
+    "--wait/--no-wait",
+    default=False,
+    help="For humans: poll the execution every 10 s (plus up to 2 s of jitter) until it ends, then print the current run.",
+)
+@click.option(
+    "--timeout",
+    type=int,
+    default=3600,
+    show_default=True,
+    help="Seconds --wait polls before it gives up.",
+)
+@click.option(
     "--start-timeout",
     type=int,
     default=600,
     show_default=True,
-    help="Seconds to wait for the execution to reach RUNNING.",
+    help="Seconds --wait allows for the execution to reach RUNNING.",
 )
 @click.pass_context
 def score_cmd(
@@ -525,6 +542,8 @@ def score_cmd(
     top: int,
     delete: bool,
     yes: bool,
+    wait: bool,
+    timeout: int,
     start_timeout: int,
 ) -> None:
     """Rank rows by their chance of a label.
@@ -532,7 +551,8 @@ def score_cmd(
     `hops score deals --entity deals --target won --link deals.contact_id=contacts.id`
     ranks the open deals (target null) against the closed ones with Kumo-Relational,
     on CPU, as the job kumo-score-deals. Scores go to deals_scores; `--show` prints the
-    current run. `hops score deals` again re-runs the job.
+    current run. `hops score deals` again re-runs the job. The verb starts one execution
+    and returns; `--wait` polls until it ends.
 
     \f
     Args:
@@ -553,7 +573,9 @@ def score_cmd(
         top: Rows `--show` prints.
         delete: Delete the system.
         yes: Skip the confirmation.
-        start_timeout: Seconds to wait for RUNNING.
+        wait: Poll the execution until it ends, then print the current run.
+        timeout: Seconds `--wait` polls.
+        start_timeout: Seconds `--wait` allows for RUNNING.
     """
     try:
         if delete:
@@ -577,6 +599,8 @@ def score_cmd(
                 schedule,
                 top,
                 start_timeout,
+                wait,
+                timeout,
             )
     except ScoreRefused as exc:
         raise _fail(exc) from exc
@@ -684,6 +708,8 @@ def _score(
     schedule,
     top,
     start_timeout,
+    wait=False,
+    timeout=WAIT_TIMEOUT,
 ) -> None:
     project = session.get_project(ctx)
     api = project.get_job_api()
@@ -701,7 +727,7 @@ def _score(
     if entity is None:
         if job is None:
             raise click.UsageError(f"No system {name} yet: pass --entity and --target.")
-        _run_and_report(ctx, job, name, top, start_timeout, cron, update=True)
+        _run_and_report(ctx, job, name, top, start_timeout, cron, True, wait, timeout)
         return
     if not target:
         raise click.UsageError("--target is required with --entity.")
@@ -764,10 +790,22 @@ def _score(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not deploy job '{job_name}': {exc}") from exc
     output.success("✓ Deployed job %s on %s", job_name, ENVIRONMENT)
-    _run_and_report(ctx, job, name, top, start_timeout, cron)
+    _run_and_report(
+        ctx, job, name, top, start_timeout, cron, wait=wait, timeout=timeout
+    )
 
 
-def _run_and_report(ctx, job, name, top, start_timeout, cron, update=False) -> None:
+def _run_and_report(
+    ctx,
+    job,
+    name,
+    top,
+    start_timeout,
+    cron,
+    update=False,
+    wait=False,
+    timeout=WAIT_TIMEOUT,
+) -> None:
     from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
 
     job_name = _job_name(name)
@@ -787,12 +825,45 @@ def _run_and_report(ctx, job, name, top, start_timeout, cron, update=False) -> N
                 f"Could not schedule job '{job_name}': {exc}"
             ) from exc
         output.success("✓ Scheduled %s (%s)", job_name, cron)
-    # The wait is `hops job run --wait`: bounded by the start timeout, failures print the log tails.
     try:
-        job_cmd._run(job, job_name, True, "run", start_timeout=start_timeout)
+        execution = job_cmd._run(job, job_name, False, "run")
     except click.ClickException as exc:
         refusal = run_refusal(exc, name)
         if refusal is None:
             raise
         raise _fail(refusal) from exc
+    if execution is None:
+        return
+    if wait:
+        _wait_and_show(ctx, job, name, execution, top, start_timeout, timeout)
+        return
+    output.info("Read the scores once the run has ended: hops score %s --show", name)
+
+
+class _JitteredWatch(waits.Watch):
+    """A Watch that sleeps POLL_SECONDS plus random jitter, so waiting clients do not poll in step."""
+
+    def sleep(self) -> None:
+        time.sleep(poll_interval())
+
+
+def poll_interval() -> float:
+    return POLL_SECONDS + random.uniform(0, POLL_JITTER_SECONDS)  # noqa: S311 - jitter, not security
+
+
+def _wait_and_show(ctx, job, name, execution, top, start_timeout, timeout) -> None:
+    from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
+
+    job_name = _job_name(name)
+    watch = _JitteredWatch(
+        f"{job_name}: execution #{execution.id}", start_timeout, POLL_SECONDS
+    )
+    final = job_cmd._follow(job, job_name, execution.id, watch, timeout)
+    if final.success is False:
+        job_cmd._failed(job_name, final, "", watch.last_reason)
+    if final.success is None:
+        raise click.ClickException(
+            f"{job_name}: execution #{final.id} still {final.state} after {timeout} s. "
+            f"It keeps running: read it with `hops score {name} --show` when it ends."
+        )
     _show(ctx, name, top)
