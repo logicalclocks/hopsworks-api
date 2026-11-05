@@ -1,5 +1,6 @@
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 from hopsworks_agents.eval import agent_source as src
@@ -373,3 +374,122 @@ def test_another_agents_folder_is_not_shown_because_it_mentions_a_tool():
     ]
     assert "travel_concierge/agent.py" not in shown
     assert "financial_advisor/notes.py" in shown
+
+
+class TestHopsfsTree:
+    """``DatasetApi.list`` gives project-relative paths, one listing per directory."""
+
+    class _Api:
+        """Paths come in as ``Projects/p/...``, children go out project-relative."""
+
+        def __init__(self, files):
+            self.files = files  # project-relative path -> text
+            self.downloaded = []
+
+        @staticmethod
+        def _relative(path):
+            return path.strip("/").removeprefix("Projects/p/")
+
+        def list(self, path, offset=0, limit=1000):  # noqa: ARG002
+            # What DatasetApi.list returns: project-relative, with a leading slash.
+            prefix = self._relative(path) + "/"
+            children = set()
+            for f in self.files:
+                if f.startswith(prefix):
+                    children.add("/" + prefix + f[len(prefix) :].split("/", 1)[0])
+            return sorted(children)
+
+        def _get(self, path):
+            path = self._relative(path)
+            if path in self.files:
+                return {"attributes": {"dir": False, "size": len(self.files[path])}}
+            if any(f.startswith(path + "/") for f in self.files):
+                return {"attributes": {"dir": True, "size": 0}}
+            raise RuntimeError("not found")
+
+        def download(self, path, local, overwrite=True):  # noqa: ARG002
+            os.makedirs(os.path.dirname(local), exist_ok=True)
+            Path(local).write_text(self.files[self._relative(path)])
+            self.downloaded.append(path)
+
+    def test_a_directory_is_copied_with_its_layout(self, tmp_path):
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_tree
+
+        api = self._Api(
+            {
+                "Resources/pkg/__init__.py": "a",
+                "Resources/pkg/helpers.py": "bb",
+                "Resources/pkg/__pycache__/x.pyc": "zzz",
+                "Resources/pkg/sub/deep.py": "ccc",
+            }
+        )
+        copied = _download_hopsfs_tree(
+            api, "/Projects/p/Resources/pkg", str(tmp_path / "pkg"), project_name="p"
+        )
+        assert copied == 3
+        assert (tmp_path / "pkg" / "sub" / "deep.py").read_text() == "ccc"
+        assert not (tmp_path / "pkg" / "__pycache__").exists()
+
+    def test_the_caps_refuse_half_a_tree(self, tmp_path):
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_tree
+
+        api = self._Api({f"Resources/pkg/f{i}.py": "x" for i in range(5)})
+        with pytest.raises(RuntimeError, match="too many"):
+            _download_hopsfs_tree(
+                api,
+                "/Projects/p/Resources/pkg",
+                str(tmp_path / "pkg"),
+                project_name="p",
+                max_files=3,
+                too_large=lambda: RuntimeError("too many"),
+            )
+
+    def test_the_model_download_reads_the_list_shape(self, tmp_path):
+        """It read the listing as ``{"items": ...}``, which ``list`` never returns."""
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_directory
+
+        api = self._Api({"Models/a/1/agent.py": "print(1)", "Models/a/1/big.bin": "b"})
+        root = _download_hopsfs_directory(api, "/Projects/p/Models/a/1", str(tmp_path))
+        assert (Path(root) / "agent.py").read_text() == "print(1)"
+        assert not (Path(root) / "big.bin").exists()
+
+    def test_the_model_download_keeps_nested_directories(self, tmp_path):
+        """A child of a subfolder was placed under the root by its basename."""
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_directory
+
+        api = self._Api(
+            {
+                "Models/a/1/agent.py": "print(1)",
+                "Models/a/1/tools/search.py": "def search(): ...",
+                "Models/a/1/tools/deep/x.py": "x = 1",
+            }
+        )
+        root = _download_hopsfs_directory(api, "/Projects/p/Models/a/1", str(tmp_path))
+        assert (Path(root) / "tools" / "search.py").read_text() == "def search(): ..."
+        assert (Path(root) / "tools" / "deep" / "x.py").read_text() == "x = 1"
+        assert not (Path(root) / "search.py").exists()
+
+    def test_a_flat_agent_is_downloaded_from_the_real_listing_shape(self, tmp_path):
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_directory
+
+        api = self._Api(
+            {"Models/a/1/agent.py": "print(1)", "Models/a/1/tools/search.py": "s"}
+        )
+        root = _download_hopsfs_directory(api, "/Projects/p/Models/a/1", str(tmp_path))
+        assert (Path(root) / "agent.py").read_text() == "print(1)"
+        assert (Path(root) / "tools" / "search.py").read_text() == "s"
+        assert not (Path(root) / "ch.py").exists()
+
+    @pytest.mark.parametrize("location", ["Models/a/1", "/Models/a/1"])
+    def test_a_location_relative_to_the_project_keeps_its_layout(
+        self, tmp_path, location
+    ):
+        """No project is known, so a listed path is already project-relative."""
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_directory
+
+        api = self._Api(
+            {"Models/a/1/agent.py": "print(1)", "Models/a/1/tools/search.py": "s"}
+        )
+        root = _download_hopsfs_directory(api, location, str(tmp_path))
+        assert (Path(root) / "agent.py").read_text() == "print(1)"
+        assert (Path(root) / "tools" / "search.py").read_text() == "s"
