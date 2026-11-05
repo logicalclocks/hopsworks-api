@@ -467,7 +467,7 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def from_response_json(cls, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized = _decamelize_servings(json_dict)
         if isinstance(json_decamelized, list):
             if len(json_decamelized) == 0:
                 return []
@@ -600,7 +600,7 @@ class Predictor(DeployableComponent):
         return kwargs
 
     def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized = _decamelize_servings(json_dict)
         self.__init__(**self.extract_fields_from_json(json_decamelized))
         self._set_state(PredictorState.from_response_json(json_decamelized))
         return self
@@ -1647,3 +1647,32 @@ def _calls_run_kserve_wrapper(node: ast.AST) -> bool:
 
 
 # endregion
+
+
+def _decamelize_servings(json_dict):
+    """Decamelize a serving response, leaving the agent's own keys in its chat contract alone.
+
+    The keys under a contract's `extraBody` and `extraQuery` are the field names the agent reads, so a blanket decamelize would turn `conversationId` into `conversation_id`, and the next save would store that.
+    Only the contract's own field names are converted.
+    """
+
+    def one(serving):
+        if not isinstance(serving, dict) or not isinstance(
+            serving.get("chatConfig"), dict
+        ):
+            return humps.decamelize(serving)
+        serving = dict(serving)
+        contract = serving.pop("chatConfig")
+        decamelized = humps.decamelize(serving)
+        decamelized["chat_config"] = {
+            humps.decamelize(k): v for k, v in contract.items()
+        }
+        return decamelized
+
+    if isinstance(json_dict, list):
+        return [one(serving) for serving in json_dict]
+    if isinstance(json_dict, dict) and isinstance(json_dict.get("items"), list):
+        items = json_dict["items"]
+        rest = humps.decamelize({k: v for k, v in json_dict.items() if k != "items"})
+        return {**rest, "items": [one(serving) for serving in items]}
+    return one(json_dict)

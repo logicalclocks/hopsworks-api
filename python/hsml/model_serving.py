@@ -742,7 +742,7 @@ class ModelServing:
             framework:
                 Framework the agent is built with: `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`.
                 It picks the tracing instrumentation, the model provider of the agent's failure analysis, and whether the agent may receive the Claude login.
-                When omitted, it is read from the `framework=` of the `AgentApp(...)` in a local entry, and otherwise kept from the existing deployment.
+                When omitted, it is read from the `framework=` literal of the `AgentApp(...)` in a local entry, a name outside those five being recorded as `custom`, and otherwise kept from the existing deployment.
             chat_config:
                 Chat contract of the agent, telling the chat panel and chat clients how to talk to it.
                 A protocol name (`"hopsworks"`, `"openai"`) or a dict with `protocol` and, for a custom endpoint (`simple`/`generic`), `path`, `message_field_in` and `message_field_name`.
@@ -767,7 +767,9 @@ class ModelServing:
 
         framework = _trim_to_none(framework)
         if framework is not None:
-            framework = framework.lower()
+            # Aliases resolved; a name the backend does not accept is left for it to refuse,
+            # since the caller asked for it by name.
+            framework = _normalize_agent_framework(framework)
         if isinstance(chat_config, str):
             chat_config = {"protocol": chat_config.strip()}
 
@@ -1288,27 +1290,78 @@ def _read_package_name(package_dir: str) -> str:
     return pkg_name
 
 
+#: The frameworks the backend accepts, and the spellings the agent SDK reads as one of them.
+#: Mirrors `hopsworks_agents.protocol.tracing`, which hsml must not import.
+_AGENT_FRAMEWORKS = (
+    "langgraph",
+    "llamaindex",
+    "openai_agents",
+    "claude_agents",
+    "custom",
+)
+_AGENT_FRAMEWORK_ALIASES = {
+    "openai-agents": "openai_agents",
+    "openaiagents": "openai_agents",
+    "claude-agents": "claude_agents",
+    "claudeagents": "claude_agents",
+    "claude-agent-sdk": "claude_agents",
+    "claude_agent_sdk": "claude_agents",
+}
+#: Directories of a package whose `AgentApp(...)` calls are not the agent that is deployed.
+_AGENT_SCAN_SKIPPED_DIRS = frozenset(
+    {
+        "build",
+        "dist",
+        "node_modules",
+        "__pycache__",
+        "venv",
+        "env",
+        "test",
+        "tests",
+        "example",
+        "examples",
+        "docs",
+    }
+)
+
+
+def _normalize_agent_framework(framework: str) -> str:
+    """The spelling the backend stores for a framework name, aliases resolved."""
+    value = framework.strip().lower()
+    return _AGENT_FRAMEWORK_ALIASES.get(value, value)
+
+
+def _agent_source_files(entry_abs: str) -> list[str]:
+    """The Python files of a local agent source that make up the deployed agent.
+
+    A script is itself; a package is every module outside hidden, build, test, example and docs directories and outside virtual environments, which carry a `pyvenv.cfg` whatever they are called.
+    """
+    if os.path.isfile(entry_abs):
+        return [entry_abs]
+    paths = []
+    for root, dirs, files in os.walk(entry_abs):
+        dirs[:] = [
+            d
+            for d in dirs
+            if not d.startswith(".")
+            and d.lower() not in _AGENT_SCAN_SKIPPED_DIRS
+            and not d.endswith(".egg-info")
+            and not os.path.isfile(os.path.join(root, d, "pyvenv.cfg"))
+        ]
+        paths.extend(os.path.join(root, f) for f in files if f.endswith(".py"))
+    return sorted(paths)
+
+
 def _detect_agent_app(entry_abs: str) -> tuple[bool, str | None]:
     """Whether a local agent source builds an `AgentApp`, and the framework it names.
 
-    Reads the script, or every module of a package, without importing it.
-    The framework is found only when it is a string literal in the `AgentApp(...)` call.
+    Reads the source without importing it.
+    The framework is found only when it is a string literal in an `AgentApp(...)` call; a name the backend does not accept is recorded as `custom`, which is what the agent SDK runs it as.
+    When the calls name different frameworks, none is detected rather than one picked.
     """
-    if os.path.isfile(entry_abs):
-        paths = [entry_abs]
-    else:
-        paths = []
-        for root, dirs, files in os.walk(entry_abs):
-            dirs[:] = [
-                d
-                for d in dirs
-                if not d.startswith(".")
-                and d not in ("build", "dist", "node_modules", "__pycache__")
-                and not d.endswith(".egg-info")
-            ]
-            paths.extend(os.path.join(root, f) for f in files if f.endswith(".py"))
     uses_agent_app = False
-    for path in sorted(paths):
+    frameworks = set()
+    for path in _agent_source_files(entry_abs):
         try:
             with open(path, encoding="utf-8") as f:
                 tree = ast.parse(f.read(), filename=path)
@@ -1335,7 +1388,12 @@ def _detect_agent_app(entry_abs: str) -> tuple[bool, str | None]:
                     and isinstance(keyword.value.value, str)
                     and keyword.value.value.strip()
                 ):
-                    return True, keyword.value.value.strip().lower()
+                    framework = _normalize_agent_framework(keyword.value.value)
+                    if framework not in _AGENT_FRAMEWORKS:
+                        framework = "custom"
+                    frameworks.add(framework)
+    if len(frameworks) == 1:
+        return uses_agent_app, frameworks.pop()
     return uses_agent_app, None
 
 

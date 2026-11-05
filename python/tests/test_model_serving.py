@@ -1234,3 +1234,85 @@ class TestDeployAgentFrameworkAndChatConfig:
         # Assert
         assert predictor._agent_framework is None
         assert predictor._chat_config is None
+
+    @pytest.mark.parametrize(
+        ("literal", "stored"),
+        [
+            ("claude-agent-sdk", "claude_agents"),
+            ("OpenAI-Agents", "openai_agents"),
+            # AgentApp runs an unknown name as custom, and the backend refuses it.
+            ("crewai", "custom"),
+        ],
+    )
+    def test_a_literal_is_recorded_as_the_backend_spells_it(
+        self, ms, mocker, stub_apis, tmp_path, literal, stored
+    ):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text(self.AGENT_APP.format(framework=literal))
+
+        # Act
+        predictor = self._deploy(ms, mocker, script)
+
+        # Assert
+        assert predictor._agent_framework == stored
+
+    def test_an_explicit_alias_is_resolved(self, ms, mocker, stub_apis, tmp_path):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("print('hi')")
+
+        # Act
+        predictor = self._deploy(ms, mocker, script, framework="Claude-Agents")
+
+        # Assert
+        assert predictor._agent_framework == "claude_agents"
+
+    def _package(self, tmp_path, mocker, files):
+        (tmp_path / "pyproject.toml").write_text("[project]\nname='p'\n")
+        for relpath, framework in files.items():
+            path = tmp_path / relpath
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(self.AGENT_APP.format(framework=framework))
+        mocker.patch(
+            "hsml.model_serving._build_and_install_package", return_value="w.py"
+        )
+
+    def test_package_scan_skips_examples_tests_and_venvs(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # Arrange: examples/ sorts before src/ and must not decide the framework.
+        self._package(
+            tmp_path,
+            mocker,
+            {
+                "examples/demo.py": "langgraph",
+                "tests/test_app.py": "llamaindex",
+                "myenv/lib/site.py": "openai_agents",
+                "src/p/app.py": "claude_agents",
+            },
+        )
+        (tmp_path / "myenv" / "pyvenv.cfg").write_text("home = /usr\n")
+
+        # Act
+        predictor = self._deploy(ms, mocker, tmp_path)
+
+        # Assert
+        assert predictor._agent_framework == "claude_agents"
+
+    def test_package_with_disagreeing_literals_records_none(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # Arrange
+        self._package(
+            tmp_path,
+            mocker,
+            {"src/p/a.py": "langgraph", "src/p/b.py": "claude_agents"},
+        )
+
+        # Act
+        predictor = self._deploy(ms, mocker, tmp_path)
+
+        # Assert
+        assert predictor._agent_framework is None
+        assert predictor._chat_config == {"protocol": "hopsworks"}

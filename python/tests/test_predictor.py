@@ -104,12 +104,14 @@ class TestPredictor:
             backend_fixtures["predictor"]["get_deployments_singleton"]["response"]
         )
         json["items"][0]["agent_framework"] = "langgraph"
-        json["items"][0]["chat_config"] = {
+        # The backend sends the contract camelCase; the keys under extraBody are the agent's own.
+        json["items"][0]["chatConfig"] = {
             "protocol": "simple",
             "path": "/chat",
-            "message_field_in": "body",
-            "message_field_name": "message",
-            "extra_body": {"session_id": "$SESSION"},
+            "messageFieldIn": "body",
+            "messageFieldName": "message",
+            "extraBody": {"conversationId": "$SESSION", "user_tag": "x"},
+            "extraQuery": {"apiVersion": "2"},
         }
 
         # Act
@@ -124,7 +126,13 @@ class TestPredictor:
             "path": "/chat",
             "messageFieldIn": "body",
             "messageFieldName": "message",
-            "extraBody": {"session_id": "$SESSION"},
+            "extraBody": {"conversationId": "$SESSION", "user_tag": "x"},
+            "extraQuery": {"apiVersion": "2"},
+        }
+        assert pred.chat_config["message_field_in"] == "body"
+        assert pred.chat_config["extra_body"] == {
+            "conversationId": "$SESSION",
+            "user_tag": "x",
         }
 
     def test_to_dict_omits_unset_agent_fields(self, mocker):
