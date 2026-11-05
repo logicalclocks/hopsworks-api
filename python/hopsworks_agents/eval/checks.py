@@ -1331,12 +1331,14 @@ def _import_path_locked(
             pulled = sys.modules.get(name)
             file = _comparable(getattr(pulled, "__file__", None) or "")
             # A namespace package (a folder without __init__.py) has no file but
-            # a path; one that lives under the source is the source's too.
+            # a path. One this import created with any portion under the source
+            # is the source's: on Windows `lib` also picks up the interpreter's
+            # own `Lib` folder, as file names there ignore case.
             portions = [
                 _comparable(str(p)) for p in getattr(pulled, "__path__", None) or []
             ]
             if (file and file.startswith(prefix)) or (
-                not file and portions and all(p.startswith(prefix) for p in portions)
+                not file and any(p.startswith(prefix) for p in portions)
             ):
                 held[name] = sys.modules.pop(name)
         with contextlib.suppress(ValueError):
