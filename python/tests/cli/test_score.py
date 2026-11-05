@@ -134,8 +134,8 @@ def test_composite_key_link_is_kept_whole():
     }
     p = plan(infos, ["deals.a+deals.b=snap.a+snap.b"])
     assert p.links[0].left_cols == ["a", "b"] and p.keys == ["a", "b"]
-    sql = kumo_job.related_sql(p, "snap", ["a", "b"], [(1, "x"), (2, "y'z")])
-    assert "(\"a\", \"b\") IN ((1, 'x'), (2, 'y''z'))" in sql
+    sql = kumo_job.related_sql(p, "snap")
+    assert 'WHERE s."a" = t."a" AND s."b" = t."b"' in sql
 
 
 def test_link_checks_columns_and_types(crm):
@@ -242,7 +242,7 @@ def test_reach_sql_counts_only_rows_reachable_from_the_selected_rows(crm):
     assert "LIMIT 2))" in sql
     # Each related group is filtered by the keys of the group it is reached from.
     assert (
-        'r0 AS (SELECT "id", "region", "created_at" FROM "contacts_1" t '
+        'p0 AS (SELECT "id", "region", "created_at" FROM "contacts_1" t '
         'WHERE EXISTS (SELECT 1 FROM sel s WHERE s."contact_id" = t."id"))'
     ) in sql
     assert 'FROM "activities_1" t WHERE EXISTS' in sql
@@ -257,7 +257,7 @@ def test_reach_sql_follows_two_hops_from_the_previous_group(crm):
     p = plan(crm, ["deals.contact_id=contacts.id", "contacts.account_id=accounts.id"])
     sql = kumo_job.reach_sql(p)
     assert 'FROM sel s WHERE s."contact_id" = t."id"' in sql
-    assert 'FROM r0 s WHERE s."account_id" = t."id"' in sql
+    assert 'FROM p0 s WHERE s."account_id" = t."id"' in sql
 
 
 def test_reach_sql_matches_composite_keys_on_every_column(crm):
@@ -266,6 +266,61 @@ def test_reach_sql_matches_composite_keys_on_every_column(crm):
     p = plan(crm, ["deals.contact_id+deals.region=contacts.id+contacts.region"])
     sql = kumo_job.reach_sql(p)
     assert 's."contact_id" = t."id" AND s."region" = t."region"' in sql
+
+
+THREE_LINKS = [
+    "deals.contact_id=contacts.id",
+    "contacts.account_id=accounts.id",
+    "deals.account_id=accounts.id",
+]
+
+
+def _three_links(crm, links):
+    _accounts(crm)
+    crm["deals"].columns["account_id"] = "bigint"
+    return plan(crm, links, cutoff="deals.closed_at")
+
+
+def test_a_group_reached_two_ways_is_the_union_of_both_paths(crm):
+    p = _three_links(crm, THREE_LINKS)
+    sql = kumo_job.related_sql(p, "accounts")
+    # The deal's own account, directly; and the accounts of the deal's contact.
+    assert (
+        'p0 AS (SELECT "id", "plan" FROM "accounts_1" t '
+        'WHERE EXISTS (SELECT 1 FROM sel s WHERE s."account_id" = t."id"))'
+    ) in sql
+    assert (
+        'p3 AS (SELECT "id", "plan" FROM "accounts_1" t '
+        'WHERE EXISTS (SELECT 1 FROM p1 s WHERE s."account_id" = t."id"))'
+    ) in sql
+    assert sql.endswith(
+        'SELECT "id", "plan" FROM (SELECT "id", "plan", row_number() OVER '
+        '(PARTITION BY "id") AS "__n" FROM (SELECT "id", "plan" FROM p0 UNION ALL '
+        'SELECT "id", "plan" FROM p3)) WHERE "__n" = 1'
+    )
+    # Contacts of the deal, and the contacts of the deal's account.
+    contacts = kumo_job.related_sql(p, "contacts")
+    assert "FROM p1 UNION ALL" in contacts and "FROM p2)" in contacts
+    assert 'FROM p0 s WHERE s."id" = t."account_id"' in contacts
+
+
+@pytest.mark.parametrize("order", [[0, 1, 2], [2, 1, 0], [1, 2, 0]])
+def test_the_order_of_the_links_changes_nothing(crm, order):
+    first = _three_links(crm, THREE_LINKS)
+    other = plan(crm, [THREE_LINKS[i] for i in order], cutoff="deals.closed_at")
+    for group in ("contacts", "accounts"):
+        assert kumo_job.related_sql(other, group) == kumo_job.related_sql(first, group)
+    assert kumo_job.reach_sql(other) == kumo_job.reach_sql(first)
+
+
+def test_admission_counts_the_rows_the_reads_take(crm):
+    p = _three_links(crm, THREE_LINKS)
+    reach = kumo_job.reach_sql(p)
+    for group in ("contacts", "accounts"):
+        read = kumo_job.related_sql(p, group)
+        body = read.split(" SELECT ", 1)[0].removeprefix("WITH ")
+        assert reach.startswith(f"WITH {body}")
+        assert read[len(body) + len("WITH ") :].strip() in reach
 
 
 def test_reach_sql_is_none_without_related_groups(crm):
@@ -288,7 +343,9 @@ def test_a_third_hop_is_refused_by_the_reach_chain(crm):
             Link("accounts", ["org_id"], "orgs", ["id"]),
         ],
     )
-    with pytest.raises(ScoreRefused, match="more than 2 hops"):
+    with pytest.raises(
+        ScoreRefused, match="orgs not reachable from deals within 2 hops"
+    ):
         kumo_job.reach_sql(p)
 
 
@@ -403,7 +460,7 @@ def _refusal(status, body, headers=None):
 
 
 def test_a_429_says_nothing_started_and_when_to_retry():
-    body = {"errorCode": 130030, "usrMsg": "Scoring class is full."}
+    body = {"usrMsg": "Scoring class is full."}
     message = str(_refusal(429, body, {"Retry-After": "120"}))
     assert message.startswith("No run of kumo-score-deals started")
     assert "Retry in 120 s with `hops score deals`." in message

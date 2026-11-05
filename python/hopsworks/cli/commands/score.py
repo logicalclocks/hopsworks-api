@@ -306,7 +306,10 @@ def build_plan(
             raise ScoreRefused(
                 f"{group} is {hops} hops from {entity}; the most is {kumo_job.MAX_DEPTH}."
             )
-    groups = {g: Group(infos[g].version, _projection(infos[g])) for g in depth}
+    groups = {
+        g: Group(infos[g].version, _projection(infos[g]), list(infos[g].primary_key))
+        for g in depth
+    }
     return Plan(
         name=name,
         entity=entity,

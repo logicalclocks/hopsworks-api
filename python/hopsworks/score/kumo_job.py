@@ -31,7 +31,6 @@ DEFAULT_REVISION = "v1.0.1"
 NUM_NEIGHBORS = (16, 16)
 BATCH = 1_000
 MAX_DEPTH = 2
-IN_CHUNK = 2_000
 SEED = "kumo-score-1"
 
 CONTEXT_ROWS_MAX = 1_000
@@ -127,6 +126,7 @@ class Link:
 class Group:
     version: int
     columns: list[list[str]]  # [name, type] of the projected columns
+    primary_key: list[str] = field(default_factory=list)
 
     @property
     def names(self) -> list[str]:
@@ -211,11 +211,15 @@ def admission_sql(plan: Plan, group: str) -> str:
 
 
 def _order(plan: Plan) -> str:
-    """Most recent by the cutoff column, else a seeded pseudo-random order."""
+    """Most recent by the cutoff column, else a seeded pseudo-random order; ties by key.
+
+    The order is total, so the selection the reach counts and the rows read are the same.
+    """
+    keys = ", ".join(ident(k) for k in plan.keys)
     if plan.cutoff:
-        return f"{ident(plan.cutoff)} DESC"
+        return f"{ident(plan.cutoff)} DESC, {keys}"
     parts = ", '|', ".join(f"cast({ident(k)} as varchar)" for k in plan.keys)
-    return f"md5(to_utf8(concat('{SEED}', '|', {parts})))"
+    return f"md5(to_utf8(concat('{SEED}', '|', {parts}))), {keys}"
 
 
 def _columns(plan: Plan, group: str) -> str:
@@ -244,96 +248,107 @@ def context_sql(plan: Plan, columns: str | None = None) -> str:
     )
 
 
-def related_sql(plan: Plan, group: str, cols: list[str], keys: list[tuple]) -> str:
-    """The rows of `group` whose `cols` hold one of `keys`."""
-    if len(cols) == 1:
-        match = f"{ident(cols[0])} IN ({', '.join(literal(k[0]) for k in keys)})"
-    else:
-        names = ", ".join(ident(c) for c in cols)
-        rows = ", ".join("(" + ", ".join(literal(v) for v in k) + ")" for k in keys)
-        match = f"({names}) IN ({rows})"
-    return f"SELECT {_columns(plan, group)} FROM {table(plan, group)} WHERE {match}"
+Hop = tuple[
+    str, tuple[str, ...], str, tuple[str, ...]
+]  # from, its columns, to, its columns
 
 
-Step = tuple[
-    str, list[str], str, list[str]
-]  # source group, its columns, target group, its columns
+def paths(plan: Plan) -> list[tuple[Hop, ...]]:
+    """Every path from the entity through the links, MAX_DEPTH hops at most, no group twice.
 
+    A link is walked both ways. The list is sorted, so the order of the links changes nothing.
+    """
+    edges = set()
+    for link in plan.links:
+        left, right = tuple(link.left_cols), tuple(link.right_cols)
+        edges.add((link.left, left, link.right, right))
+        edges.add((link.right, right, link.left, left))
+    out: list[tuple[Hop, ...]] = []
 
-def steps(plan: Plan) -> list[Step]:
-    """The order the related groups are reached from the entity through the links, 2 hops at most."""
-    depth = {plan.entity: 0}
-    pending = list(plan.links)
-    out: list[Step] = []
-    progressed = True
-    while pending and progressed:
-        progressed = False
-        for link in list(pending):
-            if link.left in depth and link.right not in depth:
-                src, src_cols, dst, dst_cols = (
-                    link.left,
-                    link.left_cols,
-                    link.right,
-                    link.right_cols,
-                )
-            elif link.right in depth and link.left not in depth:
-                src, src_cols, dst, dst_cols = (
-                    link.right,
-                    link.right_cols,
-                    link.left,
-                    link.left_cols,
-                )
-            else:
-                if link.left in depth and link.right in depth:
-                    pending.remove(link)
-                continue
-            if depth[src] + 1 > MAX_DEPTH:
-                raise ScoreRefused(
-                    f"{dst} is more than {MAX_DEPTH} hops from {plan.entity}."
-                )
-            depth[dst] = depth[src] + 1
-            out.append((src, src_cols, dst, dst_cols))
-            pending.remove(link)
-            progressed = True
-    unreached = [g for g in plan.related if g not in depth]
+    def extend(path: tuple[Hop, ...], seen: frozenset[str]) -> None:
+        here = path[-1][2] if path else plan.entity
+        for edge in sorted(edges):
+            if edge[0] == here and edge[2] not in seen:
+                longer = (*path, edge)
+                out.append(longer)
+                if len(longer) < MAX_DEPTH:
+                    extend(longer, seen | {edge[2]})
+
+    extend((), frozenset([plan.entity]))
+    reached = {p[-1][2] for p in out}
+    unreached = [g for g in plan.related if g not in reached]
     if unreached:
         raise ScoreRefused(
-            f"{', '.join(unreached)} not reachable from {plan.entity} through the links."
+            f"{', '.join(unreached)} not reachable from {plan.entity} within "
+            f"{MAX_DEPTH} hops through the links."
         )
-    return out
+    return sorted(out, key=lambda p: (len(p), p))
 
 
-def reach_sql(plan: Plan) -> str | None:
-    """Rows and bytes of the related rows reachable from the selected context and query rows.
+def _reach_ctes(plan: Plan) -> tuple[list[str], dict[str, list[str]]]:
+    """CTEs of the rows each path reaches from the selected entity rows, and each group's CTEs.
 
-    The same IN-filter the reads use, as a chain of semi-joins from the selected entity keys,
-    one row per related group: (group, rows, bytes). None when the plan has no related group.
+    `sel` is the selection: the query and the context rows, as the reads choose them. Each
+    path's CTE holds the rows of its last group that match the rows of the path one hop
+    shorter on the link's columns.
     """
-    chain = steps(plan)
-    if not chain:
-        return None
-    keys = list(
-        dict.fromkeys(
-            c for src, cols, _, _ in chain if src == plan.entity for c in cols
-        )
-    )
+    found = paths(plan)
+    keys = sorted({c for p in found if p[0][0] == plan.entity for c in p[0][1]})
     cols = ", ".join(ident(c) for c in keys)
     ctes = [f"sel AS (({query_sql(plan, cols)}) UNION ({context_sql(plan, cols)}))"]
-    alias = {plan.entity: "sel"}
-    counts = []
-    for i, (src, src_cols, dst, dst_cols) in enumerate(chain):
-        name = f"r{i}"
+    alias: dict[tuple[Hop, ...], str] = {(): "sel"}
+    by_group: dict[str, list[str]] = {}
+    for i, path in enumerate(found):
+        src, src_cols, dst, dst_cols = path[-1]
+        name = f"p{i}"
         match = " AND ".join(
             f"s.{ident(sc)} = t.{ident(dc)}"
             for sc, dc in zip(src_cols, dst_cols, strict=True)
         )
         ctes.append(
             f"{name} AS (SELECT {_columns(plan, dst)} FROM {table(plan, dst)} t "
-            f"WHERE EXISTS (SELECT 1 FROM {alias[src]} s WHERE {match}))"
+            f"WHERE EXISTS (SELECT 1 FROM {alias[path[:-1]]} s WHERE {match}))"
         )
-        alias[dst] = name
+        alias[path] = name
+        by_group.setdefault(dst, []).append(name)
+    return ctes, by_group
+
+
+def _reached(plan: Plan, group: str, ctes: list[str]) -> str:
+    """The union of the rows every path reaches in `group`, one row per primary key."""
+    cols = _columns(plan, group)
+    union = " UNION ALL ".join(f"SELECT {cols} FROM {c}" for c in ctes)
+    pk = plan.groups[group].primary_key
+    if not pk:
+        return " UNION ".join(f"SELECT {cols} FROM {c}" for c in ctes)
+    part = ", ".join(ident(k) for k in pk)
+    return (
+        f"SELECT {cols} FROM (SELECT {cols}, row_number() OVER (PARTITION BY {part}) "
+        f'AS "__n" FROM ({union})) WHERE "__n" = 1'
+    )
+
+
+def related_sql(plan: Plan, group: str) -> str:
+    """The rows of `group` reachable from the selected entity rows: what the job reads."""
+    ctes, by_group = _reach_ctes(plan)
+    return f"WITH {', '.join(ctes)} {_reached(plan, group, by_group[group])}"
+
+
+def reach_sql(plan: Plan) -> str | None:
+    """Rows and bytes of each related group's reachable rows: (group, rows, bytes) per group.
+
+    The same rows related_sql reads. None when the plan has no related group.
+    """
+    if not plan.related:
+        return None
+    ctes, by_group = _reach_ctes(plan)
+    counts = []
+    for i, group in enumerate(sorted(by_group)):
+        name = f"g{i}"
+        ctes.append(f"{name} AS ({_reached(plan, group, by_group[group])})")
         counts.append(
-            f"SELECT {literal(dst)}, count(*), coalesce(sum({_sizes(plan, dst)}), 0) FROM {name}"
+            f"SELECT {literal(group)}, count(*), coalesce(sum({_sizes(plan, group)}), 0) "
+            f"FROM {name}"
         )
     return f"WITH {', '.join(ctes)} " + " UNION ALL ".join(counts)
 
@@ -440,39 +455,19 @@ def admit(plan: Plan, reader: Reader) -> dict[str, dict[str, int]]:
     return stats
 
 
-def _key_tuples(frame: Any, cols: list[str]) -> list[tuple]:
-    keys = frame[cols].dropna().drop_duplicates()
-    return [tuple(row) for row in keys.itertuples(index=False, name=None)]
-
-
-def read_related(plan: Plan, reader: Reader, entity_rows: Any) -> dict[str, Any]:
-    """Related rows reachable from the entity rows through the links, in-filtered, 2 hops."""
-    import pandas as pd  # noqa: PLC0415
-
-    frames = {plan.entity: entity_rows}
+def read_related(plan: Plan, reader: Reader) -> dict[str, Any]:
+    """The related rows reachable from the selected entity rows, as admission counted them."""
+    frames = {}
     total = 0
-    for src, src_cols, dst, dst_cols in steps(plan):
-        keys = _key_tuples(frames[src], src_cols)
-        parts = [
-            reader.read(dst, related_sql(plan, dst, dst_cols, keys[i : i + IN_CHUNK]))
-            for i in range(0, len(keys), IN_CHUNK)
-        ]
-        frame = (
-            pd.concat(parts, ignore_index=True).drop_duplicates()
-            if parts
-            else reader.read(dst, _empty_sql(plan, dst))
-        )
+    for group in sorted(plan.related):
+        frame = reader.read(group, related_sql(plan, group))
         total += len(frame)
         if total > RELATED_ROWS_MAX:
             raise ScoreRefused(
                 f"related rows reached {total}, over the cap of {RELATED_ROWS_MAX}."
             )
-        frames[dst] = frame
-    return {g: f for g, f in frames.items() if g != plan.entity}
-
-
-def _empty_sql(plan: Plan, group: str) -> str:
-    return f"SELECT {_columns(plan, group)} FROM {table(plan, group)} WHERE false"
+        frames[group] = frame
+    return frames
 
 
 @dataclass
@@ -484,17 +479,12 @@ class Inputs:
 
 def load_inputs(plan: Plan, reader: Reader) -> Inputs:
     """Admission, then the bounded reads. A query with no rows reads nothing else."""
-    import pandas as pd  # noqa: PLC0415
-
     admit(plan, reader)
     query = reader.read(plan.entity, query_sql(plan))
     if query.empty:
         return Inputs(query, query.iloc[0:0], {})
     context = reader.read(plan.entity, context_sql(plan))
-    entity_rows = pd.concat([context, query], ignore_index=True).drop_duplicates(
-        subset=plan.keys
-    )
-    return Inputs(query, context, read_related(plan, reader, entity_rows))
+    return Inputs(query, context, read_related(plan, reader))
 
 
 # region: model -----------------------------------------------------------

@@ -475,3 +475,49 @@ def test_a_view_on_contacts_v1_reads_v1_when_v2_exists(cluster):
     finally:
         _hops("score", name, "--delete", "--yes")
         fv.delete()
+
+
+def test_a_group_reached_two_ways_reads_the_union_in_any_link_order(cluster):
+    """A deal's own account is read even when its contact has another account.
+
+    Links deals->contacts, contacts->accounts and deals->accounts, in two orders.
+    """
+    from hopsworks.score import kumo_job
+
+    deals, contacts, accounts, _ = _crm_frames()
+    deals["account_id"] = (deals["id"] + 1) % 5  # never the contact's account
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    a = cluster.make("accounts", accounts, ["id"])
+    links = [
+        f"{d}.contact_id={c}.id",
+        f"{c}.account_id={a}.id",
+        f"{d}.account_id={a}.id",
+    ]
+    closed = deals[deals["won"].notna()].sort_values(
+        ["closed_at", "id"], ascending=[False, True]
+    )
+    chosen = deals[
+        deals["id"].isin(
+            deals[deals["won"].isna()]["id"].tolist() + closed["id"].head(2).tolist()
+        )
+    ]
+    picked_contacts = contacts[contacts["id"].isin(chosen["contact_id"])]
+    want = {
+        c: set(picked_contacts["id"])
+        | set(contacts[contacts["account_id"].isin(chosen["account_id"])]["id"]),
+        a: set(chosen["account_id"]) | set(picked_contacts["account_id"]),
+    }
+    assert set(chosen["account_id"]) - set(picked_contacts["account_id"])
+
+    for order in (links, links[::-1]):
+        plan = cluster.plan(
+            d, order, cutoff=f"{d}.closed_at", context_rows=2, query_rows=10
+        )
+        reader = kumo_job.Reader(cluster.sql)
+        stats = kumo_job.admit(plan, reader)
+        frames = kumo_job.read_related(plan, reader)
+        assert {g: set(f["id"]) for g, f in frames.items()} == want
+        assert {g: len(f) for g, f in frames.items()} == {
+            g: s["rows"] for g, s in stats.items() if g != d
+        }
