@@ -1269,6 +1269,18 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not read stats: {exc}") from exc
 
+    if stats is None:
+        if output.JSON_MODE:
+            output.print_json({"statistics": None})
+            return
+        output.info(
+            "No statistics for %s v%s yet; compute them with `hops fg stats %s --compute`.",
+            fg.name,
+            fg.version,
+            fg.name,
+        )
+        return
+
     if output.JSON_MODE:
         to_dict = getattr(stats, "to_dict", None)
         output.print_json(to_dict() if callable(to_dict) else {"stats": str(stats)})
