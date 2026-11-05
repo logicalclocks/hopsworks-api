@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import ast
 import os
 import posixpath
 import re
@@ -677,6 +678,8 @@ class ModelServing:
         knative_mode: bool | None = None,
         # Appended rather than inserted, for the reason create_endpoint gives.
         memory: DeploymentMemoryConfig | dict | None = None,
+        framework: str | None = None,
+        chat_config: dict[str, Any] | str | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -736,6 +739,14 @@ class ModelServing:
                 its own code; see [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
                 The agent SDK applies it only when the agent passed no memory store of its
                 own, so code always wins over it.
+            framework:
+                Framework the agent is built with: `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`.
+                It picks the tracing instrumentation, the model provider of the agent's failure analysis, and whether the agent may receive the Claude login.
+                When omitted, it is read from the `framework=` literal of the `AgentApp(...)` in a local entry, a name outside those five being recorded as `custom`, and otherwise kept from the existing deployment.
+            chat_config:
+                Chat contract of the agent, telling the chat panel and chat clients how to talk to it.
+                A protocol name (`"hopsworks"`, `"openai"`) or a dict with `protocol` and, for a custom endpoint (`simple`/`generic`), `path`, `message_field_in` and `message_field_name`.
+                When omitted, a new agent whose local entry builds an `AgentApp` gets `"hopsworks"`, and an existing agent keeps its contract.
 
         Returns:
             The deployment metadata object.
@@ -754,10 +765,19 @@ class ModelServing:
         git_branch = _trim_to_none(git_branch)
         git_backed = git_url is not None
 
+        framework = _trim_to_none(framework)
+        if framework is not None:
+            # Aliases resolved; a name the backend does not accept is left for it to refuse,
+            # since the caller asked for it by name.
+            framework = _normalize_agent_framework(framework)
+        if isinstance(chat_config, str):
+            chat_config = {"protocol": chat_config.strip()}
+
         if not git_backed and git_auto_redeploy:
             # Mirrors ServingUtil: the backend rejects the flag without a git source.
             raise ValueError("git_auto_redeploy requires git_url.")
 
+        uses_agent_app = False
         if git_backed:
             _validate_git_agent_source(entry, git_url, git_provider, git_branch)
             is_script = True
@@ -775,6 +795,11 @@ class ModelServing:
                 )
 
             script_file = None
+            # The deployment records what the code says, so an agent deployed from the SDK is
+            # labelled like one created in the UI without the caller repeating it.
+            uses_agent_app, detected_framework = _detect_agent_app(entry_abs)
+            if framework is None:
+                framework = detected_framework
 
         if name is None:
             default_name_source = entry
@@ -844,6 +869,10 @@ class ModelServing:
         )
 
         existing = self.get_deployment(name)
+        if chat_config is None and existing is None and uses_agent_app:
+            chat_config = {"protocol": "hopsworks"}
+        predictor._agent_framework = framework
+        predictor._chat_config = chat_config
         if existing is not None:
             # Preserve identity and server-assigned version so save() updates the
             # existing record instead of creating a new one.
@@ -856,6 +885,10 @@ class ModelServing:
             # that had been configured in the UI or on the first deploy.
             if memory is None and existing.predictor.memory is not None:
                 predictor._memory = existing.predictor.memory
+            # Same for the framework, which the backend also overwrites; a null chat contract is
+            # already preserved by the backend.
+            if framework is None:
+                predictor._agent_framework = existing.predictor.agent_framework
             existing.predictor = predictor
             existing.description = description
             existing.save()
@@ -1255,6 +1288,113 @@ def _read_package_name(package_dir: str) -> str:
             f"Cannot read [project].name as a static string from {package_dir}/pyproject.toml"
         )
     return pkg_name
+
+
+#: The frameworks the backend accepts, and the spellings the agent SDK reads as one of them.
+#: Mirrors `hopsworks_agents.protocol.tracing`, which hsml must not import.
+_AGENT_FRAMEWORKS = (
+    "langgraph",
+    "llamaindex",
+    "openai_agents",
+    "claude_agents",
+    "custom",
+)
+_AGENT_FRAMEWORK_ALIASES = {
+    "openai-agents": "openai_agents",
+    "openaiagents": "openai_agents",
+    "claude-agents": "claude_agents",
+    "claudeagents": "claude_agents",
+    "claude-agent-sdk": "claude_agents",
+    "claude_agent_sdk": "claude_agents",
+}
+#: Directories of a package whose `AgentApp(...)` calls are not the agent that is deployed.
+_AGENT_SCAN_SKIPPED_DIRS = frozenset(
+    {
+        "build",
+        "dist",
+        "node_modules",
+        "__pycache__",
+        "venv",
+        "env",
+        "test",
+        "tests",
+        "example",
+        "examples",
+        "docs",
+    }
+)
+
+
+def _normalize_agent_framework(framework: str) -> str:
+    """The spelling the backend stores for a framework name, aliases resolved."""
+    value = framework.strip().lower()
+    return _AGENT_FRAMEWORK_ALIASES.get(value, value)
+
+
+def _agent_source_files(entry_abs: str) -> list[str]:
+    """The Python files of a local agent source that make up the deployed agent.
+
+    A script is itself; a package is every module outside hidden, build, test, example and docs directories and outside virtual environments, which carry a `pyvenv.cfg` whatever they are called.
+    """
+    if os.path.isfile(entry_abs):
+        return [entry_abs]
+    paths = []
+    for root, dirs, files in os.walk(entry_abs):
+        dirs[:] = [
+            d
+            for d in dirs
+            if not d.startswith(".")
+            and d.lower() not in _AGENT_SCAN_SKIPPED_DIRS
+            and not d.endswith(".egg-info")
+            and not os.path.isfile(os.path.join(root, d, "pyvenv.cfg"))
+        ]
+        paths.extend(os.path.join(root, f) for f in files if f.endswith(".py"))
+    return sorted(paths)
+
+
+def _detect_agent_app(entry_abs: str) -> tuple[bool, str | None]:
+    """Whether a local agent source builds an `AgentApp`, and the framework it names.
+
+    Reads the source without importing it.
+    The framework is found only when it is a string literal in an `AgentApp(...)` call; a name the backend does not accept is recorded as `custom`, which is what the agent SDK runs it as.
+    When the calls name different frameworks, none is detected rather than one picked.
+    """
+    uses_agent_app = False
+    frameworks = set()
+    for path in _agent_source_files(entry_abs):
+        try:
+            with open(path, encoding="utf-8") as f:
+                tree = ast.parse(f.read(), filename=path)
+        except (OSError, SyntaxError, ValueError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            func_name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
+                else None
+            )
+            if func_name != "AgentApp":
+                continue
+            uses_agent_app = True
+            for keyword in node.keywords:
+                if (
+                    keyword.arg == "framework"
+                    and isinstance(keyword.value, ast.Constant)
+                    and isinstance(keyword.value.value, str)
+                    and keyword.value.value.strip()
+                ):
+                    framework = _normalize_agent_framework(keyword.value.value)
+                    if framework not in _AGENT_FRAMEWORKS:
+                        framework = "custom"
+                    frameworks.add(framework)
+    if len(frameworks) == 1:
+        return uses_agent_app, frameworks.pop()
+    return uses_agent_app, None
 
 
 def _trim_to_none(value: str | None) -> str | None:

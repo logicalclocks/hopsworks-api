@@ -115,6 +115,10 @@ class Predictor(DeployableComponent):
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
         llm_gateway: bool | None = None,
+        # Appended rather than inserted, so a caller passing the arguments above by
+        # position keeps its bindings.
+        agent_framework: str | None = None,
+        chat_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -181,6 +185,8 @@ class Predictor(DeployableComponent):
         self._env_vars = env_vars
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
         self._memory = util._get_obj_from_json(memory, DeploymentMemoryConfig)
+        self._agent_framework = agent_framework
+        self._chat_config = chat_config
         self._feature_logging = util._get_obj_from_json(
             feature_logging, DeploymentLoggingConfig
         )
@@ -463,7 +469,7 @@ class Predictor(DeployableComponent):
 
     @classmethod
     def from_response_json(cls, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized = _decamelize_servings(json_dict)
         if isinstance(json_decamelized, list):
             if len(json_decamelized) == 0:
                 return []
@@ -529,6 +535,12 @@ class Predictor(DeployableComponent):
             ["memory", "memory_config"],
             as_instance_of=DeploymentMemoryConfig,
         )
+        kwargs["agent_framework"] = util._extract_field_from_json(
+            json_decamelized, "agent_framework"
+        )
+        kwargs["chat_config"] = util._extract_field_from_json(
+            json_decamelized, "chat_config"
+        )
         kwargs["feature_logging"] = util._extract_field_from_json(
             json_decamelized,
             ["feature_logging", "feature_logging_config"],
@@ -590,7 +602,7 @@ class Predictor(DeployableComponent):
         return kwargs
 
     def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
+        json_decamelized = _decamelize_servings(json_dict)
         self.__init__(**self.extract_fields_from_json(json_decamelized))
         self._set_state(PredictorState.from_response_json(json_decamelized))
         return self
@@ -665,6 +677,17 @@ class Predictor(DeployableComponent):
             predictor_dict = {
                 **predictor_dict,
                 "memoryConfig": self._memory.to_dict(),
+            }
+        if self._agent_framework is not None:
+            predictor_dict = {**predictor_dict, "agentFramework": self._agent_framework}
+        if self._chat_config is not None:
+            # Only the contract's own field names are camelized; the keys inside extraQuery and
+            # extraBody are the agent's and go out as given.
+            predictor_dict = {
+                **predictor_dict,
+                "chatConfig": {
+                    humps.camelize(k): v for k, v in self._chat_config.items()
+                },
             }
         if self._feature_logging is not None:
             predictor_dict = {
@@ -883,6 +906,34 @@ class Predictor(DeployableComponent):
     @memory.setter
     def memory(self, memory: DeploymentMemoryConfig | dict | Default | None):
         self._memory = util._get_obj_from_json(memory, DeploymentMemoryConfig)
+
+    @public
+    @property
+    def agent_framework(self):
+        """Framework an agent is built with, which picks its tracing instrumentation.
+
+        One of `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`; `None` when the deployment names none.
+        It is injected into the agent's container as `AGENT_FRAMEWORK`, and it also selects the model provider of the agent's failure analysis and whether the agent may receive the Claude login.
+        """
+        return self._agent_framework
+
+    @agent_framework.setter
+    def agent_framework(self, agent_framework: str | None):
+        self._agent_framework = agent_framework
+
+    @public
+    @property
+    def chat_config(self):
+        """Chat contract of an agent: how the chat panel and chat clients talk to it.
+
+        A dict whose `protocol` is `hopsworks` (the Hopsworks agent protocol), `openai` (OpenAI-compatible), or `simple`/`generic` (a custom endpoint, with `path`, `message_field_in` and `message_field_name`).
+        `None` means the chat panel detects the contract from the running agent.
+        """
+        return self._chat_config
+
+    @chat_config.setter
+    def chat_config(self, chat_config: dict[str, Any] | None):
+        self._chat_config = chat_config
 
     @public
     @property
@@ -1598,3 +1649,32 @@ def _calls_run_kserve_wrapper(node: ast.AST) -> bool:
 
 
 # endregion
+
+
+def _decamelize_servings(json_dict):
+    """Decamelize a serving response, leaving the agent's own keys in its chat contract alone.
+
+    The keys under a contract's `extraBody` and `extraQuery` are the field names the agent reads, so a blanket decamelize would turn `conversationId` into `conversation_id`, and the next save would store that.
+    Only the contract's own field names are converted.
+    """
+
+    def one(serving):
+        if not isinstance(serving, dict) or not isinstance(
+            serving.get("chatConfig"), dict
+        ):
+            return humps.decamelize(serving)
+        serving = dict(serving)
+        contract = serving.pop("chatConfig")
+        decamelized = humps.decamelize(serving)
+        decamelized["chat_config"] = {
+            humps.decamelize(k): v for k, v in contract.items()
+        }
+        return decamelized
+
+    if isinstance(json_dict, list):
+        return [one(serving) for serving in json_dict]
+    if isinstance(json_dict, dict) and isinstance(json_dict.get("items"), list):
+        items = json_dict["items"]
+        rest = humps.decamelize({k: v for k, v in json_dict.items() if k != "items"})
+        return {**rest, "items": [one(serving) for serving in items]}
+    return one(json_dict)
