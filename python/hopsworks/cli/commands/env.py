@@ -1,7 +1,7 @@
 """``hops env`` — manage the project's Python environments.
 
-Wraps ``project.get_environment_api()``. Lists existing environments,
-clones from a base environment (the SDK's ``create_environment`` call —
+Wraps ``project.get_environment_api()``. Lists existing environments and
+the libraries of one (``--diff`` against the Python running the command), clones from a base environment (the SDK's ``create_environment`` call —
 the API uses "create from base" rather than a dedicated "clone"), and
 installs a requirements.txt into a target environment. Every command
 that triggers a backend installation step blocks until it finishes
@@ -21,7 +21,7 @@ from hopsworks.cli import output, session
 
 @click.group("env")
 def env_group() -> None:
-    """Python environment commands (list, clone, install)."""
+    """Python environment commands (list, libraries, clone, install)."""
 
 
 def _api(ctx: click.Context) -> Any:
@@ -55,6 +55,75 @@ def env_list(ctx: click.Context) -> None:
             [r["name"] or "", r["python_version"] or "", r["description"] or ""]
             for r in rows
         ],
+    )
+
+
+def _canonical(name: str) -> str:
+    return name.lower().replace("_", "-").replace(".", "-")
+
+
+@env_group.command("libraries")
+@click.argument("env_name")
+@click.option(
+    "--diff",
+    is_flag=True,
+    help="Only the libraries whose version differs from this Python's, or that it lacks.",
+)
+@click.pass_context
+def env_libraries(ctx: click.Context, env_name: str, diff: bool) -> None:
+    """List the Python libraries installed in ENV_NAME, with their versions.
+
+    ``--diff`` compares them with the Python running this command (the Terminal's), so a
+    program can be run here instead of as a job when the libraries it imports match.
+
+    Args:
+        ctx: Click context.
+        env_name: Environment to list.
+        diff: Only print the libraries that differ from this Python's.
+    """
+    from importlib import metadata  # noqa: PLC0415 - keeps `hops --help` light
+
+    from hopsworks_common import client  # noqa: PLC0415
+
+    session.get_project(ctx)
+    rest = client._get_instance()
+    try:
+        payload = rest._send_request(
+            "GET",
+            [
+                "project",
+                rest._project_id,
+                "python",
+                "environments",
+                env_name,
+                "libraries",
+            ],
+            query_params={"limit": 10000},
+        )
+    except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
+        raise click.ClickException(f"Could not list '{env_name}': {exc}") from exc
+    local = {
+        _canonical(d.metadata["Name"]): d.version
+        for d in metadata.distributions()
+        if d.metadata["Name"]
+    }
+    rows = [
+        {
+            "library": item["library"],
+            "version": item.get("version"),
+            "local": local.get(_canonical(item["library"])),
+        }
+        for item in payload.get("items") or []
+    ]
+    if diff:
+        rows = [r for r in rows if r["version"] != r["local"]]
+    rows.sort(key=lambda r: _canonical(r["library"]))
+    if output.JSON_MODE:
+        output.print_json(rows)
+        return
+    output.print_table(
+        ["LIBRARY", "VERSION", "HERE"],
+        [[r["library"], r["version"] or "", r["local"] or "missing"] for r in rows],
     )
 
 

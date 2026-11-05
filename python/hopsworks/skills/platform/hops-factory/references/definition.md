@@ -7,7 +7,7 @@ The cluster refuses a definition that breaks a rule below, and `hops factory val
 
 | key | required | rule |
 | --- | --- | --- |
-| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-streaming`, `ml-agent`, `analytics-bronze`, `analytics-silver`, `analytics-gold`, `analytics-pipeline`, `analytics-ingestion`) |
+| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-streaming`, `ml-agent`, `ml-finetune`, `ml-rag`, `analytics-bronze`, `analytics-silver`, `analytics-gold`, `analytics-pipeline`, `analytics-ingestion`, `custom-factory`) |
 | `title` | yes | text, at most 255 |
 | `description` | no | text |
 | `chat` | no | text: what the requirements chat beside the form asks about and suggests, in prose; it is added to the chat's instructions and takes precedence over them |
@@ -46,6 +46,7 @@ Every field has a unique `id`, a `type` and a `label`, and may have `help`, `req
 | `multichoice` | some of `options` | list of strings |
 | `feature_group` | one of the project's feature groups; `filter: {layer: [bronze, silver, gold], hide_logging: true}` | `{name, version}` |
 | `feature_groups` | several of them, with the same `filter` | list of `{name, version}` |
+| `directories` | directories of the project, each picked in a file browser | list of project-relative paths, such as `Resources/docs` |
 | `list` | entries added and removed by the user, each asking its own `fields`; `item_label`, `min_items` | list of objects |
 | `account_env` | an input (`secret: true` hides it) saved as the user's account variable `env`; not inside a list | nothing: it never reaches the answers |
 | `secrets` | rows of a name (`[A-Z][A-Z0-9_]*`, at most 63) and a hidden value, each value saved as the user's private account variable of that name; a row left without a value keeps the account's variable; not inside a list | list of the names, never the values |
@@ -62,6 +63,7 @@ The build writes each phase's `status` (`pending`, `running`, `met`, `unmet`), `
 
 - `instructions`: what Claude Code does, in prose. It runs as `/hops-factory-<name> <slug>` in the system's directory, wrapped in the rules every factory shares: resume from `system.yaml`, record phases, record `outputs`, keep the code in a `hops-<slug>` GitHub repository.
 - `skills`: skills to load before the instructions.
+- `answers`: constants every system gets in `requirements`. `system_type` also places a project's factory in the Factory page's New menu: `analytics`, `pipeline` or `ingestion` (or a `builtin` starting with `analytics`) lists it under Analytics, anything else under ML System.
 - `builtin: mlsystem | analytics-bronze | analytics-silver | analytics-gold`: build with that built-in instead. `answers` are constants every system gets (`{system_type: batch}`); the answers that built-in reads go to it, the others to `requirements.extra`, and `instructions` to `factory.instructions`, which the built-in build follows too.
 
 ## List columns

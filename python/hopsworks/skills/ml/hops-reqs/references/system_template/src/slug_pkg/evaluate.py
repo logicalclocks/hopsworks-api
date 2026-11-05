@@ -150,7 +150,7 @@ def split_boundaries(
 
     Rows younger than `label_maturity` at `end` have no final label and fall in
     no part, so the usable range ends at the label cutoff. The keys are the
-    arguments of `FeatureView.create_train_validation_test_split`, plus
+    arguments of `FeatureView.train_validation_test_split`, plus
     `label_cutoff` for the YAML.
     """
     if not 0 < validation_fraction < 1 or not 0 < test_fraction < 1:
@@ -192,8 +192,8 @@ def grouped_part(entity: Any, validation_fraction: float, test_fraction: float) 
 def read_parts(fv: Any, training: dict, requirements: dict) -> dict[str, tuple]:
     """Read (X, y) for every part from the frozen training dataset version.
 
-    A temporal or random split was materialized as three parts by the feature
-    view; a grouped split is one training dataset partitioned here by entity.
+    A temporal or random split is three parts of the feature view's version; a
+    grouped split is one training dataset partitioned here by entity.
     """
     version = training["harness"]["training_dataset_version"]
     split = training["split"]

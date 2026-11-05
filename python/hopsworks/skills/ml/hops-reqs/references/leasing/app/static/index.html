@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leasing decisions</title>
+  <script>
+    // Relative URLs resolve against the proxy mount only with a trailing slash.
+    if (!location.pathname.endsWith("/")) location.replace(location.pathname + "/" + location.search);
+  </script>
+  <link rel="stylesheet" href="static/app.css">
+  <script type="module" src="static/app.js"></script>
+</head>
+<body>
+  <header class="band">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M17 8C8 10 5.9 16.2 3.8 21.3l1.9.7 1-2.3c.5.2 1 .3 1.3.3C19 20 22 3 22 3c-1 2-8 2.3-13 3.3S2 11.5 2 13.5s1.8 3.8 1.8 3.8C7 8 17 8 17 8Z"/></svg>
+    </div>
+    <div class="title">
+      <h1>Leasing decisions</h1>
+      <div class="sub">Gardening machines: XGBoost and NVIDIA Kumo Tabular decide from the feature view's transformed features</div>
+    </div>
+    <div class="status" aria-label="Models">
+      <span class="chip" id="chip-xgb"><i></i>XGBoost</span>
+      <span class="chip" id="chip-kumo"><i></i>Kumo Tabular</span>
+      <span class="chip" id="chip-job"><i></i>Training job</span>
+    </div>
+  </header>
+
+  <main>
+    <p class="banner" id="banner" hidden></p>
+
+    <section class="card" aria-labelledby="decide-title">
+      <div class="head"><h2 id="decide-title">Decide one lease</h2><span class="muted" id="decide-time"></span></div>
+      <form id="decide" class="order">
+        <label>Customer
+          <input id="customer" list="customers" autocomplete="off" placeholder="Name or id" required>
+          <datalist id="customers"></datalist>
+        </label>
+        <label>Machine
+          <select id="equipment" required></select>
+        </label>
+        <label>Lease
+          <select id="months"></select>
+        </label>
+        <button type="submit" id="decide-button">Decide</button>
+      </form>
+      <div id="decision" aria-live="polite"><p class="empty">Choose a customer, a machine and a lease length.</p></div>
+    </section>
+
+    <section class="card" aria-labelledby="batch-title">
+      <div class="head">
+        <h2 id="batch-title">Batch of random orders</h2>
+        <div class="actions">
+          <button type="button" class="ghost" data-n="100">Score 100</button>
+          <button type="button" class="ghost" data-n="1000">Score 1,000</button>
+        </div>
+      </div>
+      <p class="muted">Random customers, machines and lease lengths, scored by both models and logged to the feature view's logging feature group.</p>
+      <div class="tiles" id="batch-tiles" hidden>
+        <div class="stat"><div class="label">Orders</div><div class="value" id="b-orders">–</div><div class="hint" id="b-time"></div></div>
+        <div class="stat"><div class="label">XGBoost leases</div><div class="value" id="b-xgb">–</div></div>
+        <div class="stat"><div class="label">Kumo leases</div><div class="value" id="b-kumo">–</div></div>
+        <div class="stat"><div class="label">Models agree</div><div class="value" id="b-agree">–</div></div>
+      </div>
+      <div class="scroll" id="batch-table" hidden>
+        <table aria-label="Scored orders">
+          <thead><tr><th>Customer</th><th>Machine</th><th class="num">Months</th><th>XGBoost</th><th>Kumo</th></tr></thead>
+          <tbody id="batch-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="loop-title">
+      <div class="head"><h2 id="loop-title">Learn from what happened</h2></div>
+      <div class="loop">
+        <div>
+          <button type="button" id="simulate">Simulate leasing outcomes</button>
+          <p class="muted">Reads the logged decisions not simulated yet, lets an underwriter decide each order and plays the lease out (paid, paid late, damaged, defaulted or declined), and writes the orders and outcomes to leasing_orders and leasing_outcomes.</p>
+          <div id="simulated" aria-live="polite"></div>
+        </div>
+        <div>
+          <button type="button" id="retrain">Retrain XGBoost</button>
+          <p class="muted">Runs the training job, the system's own training pipeline, on every order so far. The app switches to the new model when it is registered.</p>
+          <div id="retrained" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

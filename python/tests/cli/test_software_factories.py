@@ -180,6 +180,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
         "gis-example": "GIS military infrastructure finder: outlines aircraft, ships and harbours on a map of Sweden with a pretrained YOLO model (real-time)",
         "helpdesk-example": "Help desk agent: answers support questions from your documents and the customer's recent events (agentic)",
         "run-example": "Hops Run with Kumo Tabular: a racing game flown by NVIDIA's pretrained in-context classifier, served as a deployment (real-time)",
+        "leasing-example": "Gardening machine leasing: XGBoost and NVIDIA Kumo Tabular decide from a feature view's custom transformations, retrained on simulated outcomes (real-time)",
     }
     for slug in labels:
         assert f"`{slug}`" in text
@@ -220,6 +221,7 @@ def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
         "helpdesk-example",
         "gis-example",
         "run-example",
+        "leasing-example",
     ],
 )
 def test_every_example_creates_a_valid_system(tmp_path, example):
@@ -674,6 +676,13 @@ def test_set_records_interview_answers_and_refuses_an_invalid_one(tmp_path):
     assert "system_type" in refused.stderr
     assert (target / "system.yaml").read_text(encoding="utf-8") == written
     assert not list(target.glob(".system.yaml.*"))
+    indexed = _set(target, "requirements.data_sources[0].status=needs_generation")
+    assert indexed.returncode == 0, indexed.stderr
+    doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
+    assert doc["requirements"]["data_sources"][0]["status"] == "needs_generation"
+    assert "data_sources[0]" not in doc["requirements"]
+    missing = _set(target, "requirements.data_sources[3].status=present")
+    assert missing.returncode != 0 and "no item 3" in missing.stderr
 
 
 # endregion
@@ -1159,6 +1168,34 @@ def test_the_ranker_learns_from_earlier_purchases_and_labels_the_latest():
     assert metrics["precision"] == 1.0
     assert metrics["recall"] == 0.5
     assert all(type(v) is float for v in metrics.values())
+
+
+@needs_cluster_python
+def test_the_deployment_serves_requests_at_once():
+    import asyncio
+    import threading
+    import time
+
+    predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
+    serving = predictor.Predict.__new__(predictor.Predict)
+    serving._local = threading.local()
+    serving.pool = predictor.ThreadPoolExecutor(4)
+
+    def recommend(customer_id, k, recent):
+        time.sleep(0.2)  # waiting on the online store
+        return {"customer_id": customer_id, "generator": id(serving.rng)}
+
+    serving.recommend = recommend
+
+    async def four():
+        requests = [{"instances": [{"customer_id": str(i)}]} for i in range(4)]
+        return await asyncio.gather(*(serving.predict(r) for r in requests))
+
+    started = time.monotonic()
+    replies = asyncio.run(four())
+    assert time.monotonic() - started < 0.6
+    assert [r["predictions"][0]["customer_id"] for r in replies] == ["0", "1", "2", "3"]
+    assert len({r["predictions"][0]["generator"] for r in replies}) == 4
 
 
 @needs_cluster_python

@@ -51,7 +51,11 @@ embedded in a JavaScript map app; no data, features, training or deployment, and
 code: the build writes every file from the requirements), and Hops Run with
 Kumo Tabular, the `run-example`, as [references/kumo-run.md](references/kumo-run.md) says (a
 racing game flown by NVIDIA's pretrained in-context tabular classifier, registered from Hugging
-Face and served as a deployment; no data, features or training). Other `ranking` and `anomaly` systems, `agentic` tasks, and other agent
+Face and served as a deployment; no data, features or training), and the gardening machine
+leasing decisions of the `leasing-example` as [references/leasing.md](references/leasing.md) says
+(synthetic orders, outcomes, credit reports and machines written with no feature engineering,
+custom model-dependent transformations on the feature view, XGBoost and Kumo Tabular medium side
+by side in a JavaScript console that logs, simulates outcomes and retrains). Other `ranking` and `anomaly` systems, `agentic` tasks, and other agent
 systems, are captured in full at `reqs` and stop there. The autonomous
 path runs only against `system.target.stage: development`.
 

@@ -192,6 +192,35 @@ INGESTION = {
 }
 
 
+def test_the_inventory_of_a_recommender_takes_its_views_models_and_embeddings():
+    from hopsworks.cli import teardown
+
+    recs = {
+        "training": {
+            "models": [
+                {
+                    "name": "query_model",
+                    "writes": {"feature_group": "candidate_embeddings", "version": 1},
+                },
+                {"name": "ranking_model"},
+            ],
+            "feature_views": [
+                {"name": "retrieval", "version": 1},
+                {"name": "customers", "version": 1},
+            ],
+        }
+    }
+    plan = [str(a) for a in teardown.inventory(recs, "recs-example")]
+    assert plan.index("feature view retrieval") < plan.index(
+        "feature group candidate_embeddings v1"
+    )
+    assert {
+        "model query_model",
+        "model ranking_model",
+        "feature view customers",
+    } <= set(plan)
+
+
 def test_the_inventory_of_an_ingestion_keeps_the_data_sources_it_reused():
     from hopsworks.cli import teardown
 
@@ -386,6 +415,54 @@ def test_prefixed_jobs_leave_a_longer_slug_alone():
     assert deleted == ["churn-example-eda"]
 
 
+def test_a_monitoring_job_goes_with_its_configuration():
+    from hopsworks.cli import teardown
+
+    deleted = []
+    config = SimpleNamespace(
+        name="calls_30d_drift", delete=lambda: deleted.append("config")
+    )
+
+    def view(name, version):
+        assert (name, version) == ("churn_example_fv", 1)
+        return SimpleNamespace(
+            get_feature_monitoring_configs=lambda name: (
+                config if name == "calls_30d_drift" else None
+            )
+        )
+
+    fs = SimpleNamespace(get_feature_view=view, get_feature_group=view)
+    project = SimpleNamespace(
+        get_feature_store=lambda: fs,
+        get_job_api=lambda: pytest.fail("a monitoring job is never deleted directly"),
+    )
+    deleter = teardown.Deleter(project)
+    job = teardown.Asset("job", "churn_example_fv_1_run_fm_calls_30d_drift")
+    assert deleter.delete(job) == "deleted"
+    assert deleted == ["config"]
+    other = teardown.Asset("job", "churn_example_fv_1_run_fm_gone_drift")
+    assert deleter.delete(other) == "gone"
+
+
+def test_a_feature_groups_monitoring_job_goes_with_its_configuration():
+    from hopsworks.cli import teardown
+
+    deleted = []
+    config = SimpleNamespace(
+        name="amount_psi_hourly", delete=lambda: deleted.append("config")
+    )
+    group = SimpleNamespace(get_feature_monitoring_configs=lambda name: config)
+    # The feature view lookup of a group's name finds nothing and returns None.
+    fs = SimpleNamespace(
+        get_feature_view=lambda name, version: None,
+        get_feature_group=lambda name, version: group,
+    )
+    deleter = teardown.Deleter(SimpleNamespace(get_feature_store=lambda: fs))
+    job = teardown.Asset("job", "credit_card_transactions_1_run_fm_amount_psi_hourly")
+    assert deleter.delete(job) == "deleted"
+    assert deleted == ["config"]
+
+
 def test_delete_removes_the_code_last_and_a_retry_after_it_finishes(
     monkeypatch, logged_in, system_dir
 ):
@@ -542,3 +619,34 @@ def test_a_path_that_is_not_the_systems_directory_is_refused(
     )
     assert done.exit_code != 0 and "not the directory of" in done.output
     assert removed == [] and other.exists()
+
+
+def test_a_logging_job_goes_with_its_feature_view():
+    from hopsworks.cli import teardown
+
+    deleted = []
+    job = SimpleNamespace(unschedule=lambda: None, delete=lambda: deleted.append("job"))
+    views = {}
+    fs = SimpleNamespace(
+        get_feature_view=lambda name, version: views.get((name, version))
+    )
+    project = SimpleNamespace(
+        get_feature_store=lambda: fs,
+        get_job_api=lambda: SimpleNamespace(get_job=lambda name: job),
+    )
+    deleter = teardown.Deleter(project)
+    asset = teardown.Asset(
+        "job",
+        "cc_fraud_fv_1_log_1_offline_fg_materialization",
+        owned_by="fraud-example",
+    )
+    views[("cc_fraud_fv", 1)] = SimpleNamespace(description="the card fraud features")
+    assert deleter.delete(asset).startswith("kept")
+    views[("cc_fraud_fv", 1)] = SimpleNamespace(
+        description="fraud-example: card features"
+    )
+    assert deleter.delete(asset) == "deleted"
+    # Its feature view is gone, so the job is nobody's.
+    views.clear()
+    assert deleter.delete(asset) == "deleted"
+    assert deleted == ["job", "job"]

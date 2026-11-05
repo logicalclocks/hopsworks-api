@@ -8,6 +8,7 @@ changes before it is frozen; the loop never edits evaluate.py afterwards.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -37,6 +38,30 @@ def test_grouped_split_keeps_every_entity_in_one_part():
     shares = {p: sum(1 for v in parts.values() if v == p) / 5000 for p in evaluate.PARTS}
     assert abs(shares["test"] - 0.15) < 0.03
     assert abs(shares["validation"] - 0.15) < 0.03
+
+
+@pytest.mark.parametrize(
+    ("kind", "materialized"), [("temporal", False), ("grouped", False), ("random", True)]
+)
+def test_only_a_random_split_materializes_its_training_dataset(kind, materialized):
+    fv = mock.MagicMock()
+    fv.get_last_accessed_training_dataset.return_value = 4
+    fv.create_train_validation_test_split.return_value = (5, None)
+    system = {
+        "training": {
+            "split": {
+                "kind": kind,
+                "start": "2025-01-01T00:00:00",
+                "validation_fraction": 0.15,
+                "test_fraction": 0.15,
+            }
+        },
+        "requirements": {"problem": {"label_maturity": "30d"}},
+    }
+    version = training_pipeline._new_training_dataset(fv, system, evaluate)
+    assert version == (5 if materialized else 4)
+    assert fv.create_train_validation_test_split.called == materialized
+    assert not fv.create_training_data.called
 
 
 def test_metrics_match_hand_computed_values():
@@ -119,3 +144,19 @@ def test_charts_are_written_under_images_for_the_task(tmp_path, task, expected):
     written = charts.save_charts(tmp_path, task, Model(), ["a", "b"], y, scored)
     assert set(written) == expected | {"feature_importance.png"}
     assert all((tmp_path / "images" / name).stat().st_size > 0 for name in written)
+
+
+def test_the_baseline_scales_and_charts_its_coefficients(tmp_path):
+    pytest.importorskip("matplotlib")
+    pytest.importorskip("sklearn")
+    rng = np.random.default_rng(0)
+    # One feature in the thousands: unscaled, lbfgs needs far more iterations.
+    x = np.c_[rng.normal(size=500), rng.normal(size=500) * 5000]
+    y = (x[:, 0] + x[:, 1] / 5000 + rng.normal(size=500) > 0).astype(int)
+    system = {"requirements": {"problem": {"task": "classification"}}}
+    model = training_pipeline.train(x, y, system, deadline=float("inf"))
+    assert model.steps[0][0] == "standardscaler"
+    written = charts.save_charts(
+        tmp_path, "classification", model, ["a", "b"], y, model.predict_proba(x)[:, 1]
+    )
+    assert "feature_importance.png" in written
