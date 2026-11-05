@@ -492,7 +492,9 @@ def _info(fg: Any) -> GroupInfo:
 
 def _sql(ctx: click.Context) -> Any:
     return kumo_job.TrinoSql(
-        session.get_project(ctx), session.get_feature_store(ctx).name
+        session.get_project(ctx),
+        session.get_feature_store(ctx).name,
+        session.trino_verify(ctx),
     )
 
 

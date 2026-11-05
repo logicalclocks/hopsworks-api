@@ -840,8 +840,10 @@ def run_plan(
 class TrinoSql:
     """The project's Trino, on the delta catalog and the feature store's schema."""
 
-    def __init__(self, project: Any, schema: str) -> None:
-        self.conn = project.get_trino_api().connect(catalog="delta", schema=schema)
+    def __init__(self, project: Any, schema: str, verify: bool = True) -> None:
+        self.conn = project.get_trino_api().connect(
+            catalog="delta", schema=schema, verify=verify
+        )
 
     def _run(self, sql: str) -> tuple[list[str], list[tuple]]:
         cur = self.conn.cursor()

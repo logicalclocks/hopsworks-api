@@ -262,7 +262,9 @@ class _Cluster:
         self.fs = self.project.get_feature_store()
         self.tag = uuid.uuid4().hex[:6]
         self.groups = []
-        self.sql = kumo_job.TrinoSql(self.project, self.fs.name)
+        from hopsworks.cli import session
+
+        self.sql = kumo_job.TrinoSql(self.project, self.fs.name, session.trino_verify())
 
     def make(self, stem, frame, pk):
         fg = self.fs.create_feature_group(

@@ -35,6 +35,25 @@ def get_config(ctx: click.Context) -> config.HopsConfig:
     return cfg
 
 
+def trino_verify(ctx: click.Context | None = None) -> bool:
+    """Whether a Trino connection verifies the coordinator's TLS certificate.
+
+    Trino verifies by default, unlike the REST login. An explicit `--verify/--no-verify`,
+    `HOPSWORKS_HOSTNAME_VERIFICATION` or saved setting wins, so a cluster whose Trino load
+    balancer serves a certificate for another name (an IP outside its SAN) stays reachable.
+    The SDK never forwards the login's setting to Trino on its own.
+
+    Args:
+        ctx: Click context; the current one when omitted.
+
+    Returns:
+        The verify value for `project.get_trino_api().connect`.
+    """
+    ctx = ctx or click.get_current_context(silent=True)
+    cfg = get_config(ctx) if ctx else config.load()
+    return cfg.hostname_verification if cfg.hostname_verification_explicit else True
+
+
 def require_auth(ctx: click.Context) -> config.HopsConfig:
     """Return the resolved config or raise a clear error if unauthenticated.
 
