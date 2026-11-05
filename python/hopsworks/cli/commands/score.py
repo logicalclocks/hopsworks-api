@@ -238,13 +238,13 @@ def build_plan(
         mentioned.add(cutoff_group)
     else:
         cutoff_col = None
-    for group, col in {
-        **time_map,
-        **({entity: cutoff_col} if cutoff_col else {}),
-    }.items():
+    checks = [("--time", g, c) for g, c in time_map.items()]
+    if cutoff_col:
+        checks.append(("--cutoff", entity, cutoff_col))
+    for flag, group, col in checks:
         if group not in infos:
             raise ScoreRefused(
-                f"{group} (in --time or --cutoff) is not a feature group of this project."
+                f"{group} (in {flag}) is not a feature group of this project."
             )
         if col not in infos[group].columns:
             raise ScoreRefused(

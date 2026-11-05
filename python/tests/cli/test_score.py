@@ -196,6 +196,22 @@ def test_time_and_cutoff_must_be_timestamps_of_the_right_group(crm):
     assert p.time == {"deals": "created_at"} and p.cutoff == "closed_at"
 
 
+@pytest.mark.parametrize(
+    ("time", "cutoff", "message"),
+    [
+        ("deals.nope", "deals.closed_at", "deals has no column nope"),
+        ("deals.won", "deals.closed_at", "deals.won is boolean, not a timestamp"),
+        ("deals.created_at", "deals.nope", "deals has no column nope"),
+        ("deals.created_at", "deals.won", "deals.won is boolean, not a timestamp"),
+    ],
+)
+def test_time_and_cutoff_on_different_entity_columns_are_both_checked(
+    crm, time, cutoff, message
+):
+    with pytest.raises(ScoreRefused, match=message):
+        plan(crm, [], time=[time], cutoff=cutoff)
+
+
 # region: caps and admission
 
 
