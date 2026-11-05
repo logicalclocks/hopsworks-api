@@ -21,6 +21,7 @@ Tabular answers are CSV, cut at `MAX_RESPONSE_CHARS` characters, as dbt-mcp does
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -126,6 +127,30 @@ def _build(sp: semantic_layer.SemanticProject) -> SemanticBuild:
     )
 
 
+def _semantic_projects() -> list[SemanticProject]:
+    result = []
+    for sp in hopsworks.get_current_project().get_semantic_layer_api().get_projects():
+        entry = SemanticProject(
+            name=sp.name, root_path=sp.root_path, deployment_mode=sp.deployment_mode
+        )
+        try:
+            serving = sp.serving()
+            entry.serving_build_id = serving.build_id
+            entry.stale = serving.stale
+        except SemanticLayerException as exc:
+            entry.not_serving = exc.error_msg or str(exc)
+        result.append(entry)
+    return result
+
+
+def _query_csv(semantic_project: str, metrics: list[str], **kwargs: Any) -> str:
+    df = _semantic_project(semantic_project).query(
+        metrics, dataframe_type="pandas", **kwargs
+    )
+    rows = df.astype(object).where(df.notna(), None)
+    return _csv(list(df.columns), rows.itertuples(index=False, name=None))
+
+
 class SemanticLayerTools:
     """Tools for the semantic layer: governed metrics over feature groups, discovered and queried by dimension and time grain."""
 
@@ -164,22 +189,9 @@ class SemanticLayerTools:
         Returns:
             The semantic projects; `not_serving` says why one answers no queries yet.
         """
-        project = hopsworks.get_current_project()
         if ctx:
-            await ctx.info(f"Listing the semantic projects of {project.name}...")
-        result = []
-        for sp in project.get_semantic_layer_api().get_projects():
-            entry = SemanticProject(
-                name=sp.name, root_path=sp.root_path, deployment_mode=sp.deployment_mode
-            )
-            try:
-                serving = sp.serving()
-                entry.serving_build_id = serving.build_id
-                entry.stale = serving.stale
-            except SemanticLayerException as exc:
-                entry.not_serving = exc.error_msg or str(exc)
-            result.append(entry)
-        return result
+            await ctx.info("Listing the semantic projects...")
+        return await asyncio.to_thread(_semantic_projects)
 
     async def list_metrics(
         self,
@@ -199,7 +211,9 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Listing the metrics of {semantic_project}...")
-        metrics = _semantic_project(semantic_project).list_metrics(tag=tag)
+        metrics = await asyncio.to_thread(
+            lambda: _semantic_project(semantic_project).list_metrics(tag=tag)
+        )
         return _csv(
             ["name", "type", "label", "description", "tags"],
             [[m.name, m.type, m.label, m.description, m.tags] for m in metrics],
@@ -225,7 +239,9 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Listing the dimensions of {', '.join(metrics)}...")
-        dimensions = _semantic_project(semantic_project).dimensions(metrics=metrics)
+        dimensions = await asyncio.to_thread(
+            lambda: _semantic_project(semantic_project).dimensions(metrics=metrics)
+        )
         return _csv(
             ["name", "type", "granularities", "entity_path", "description"],
             [
@@ -258,7 +274,9 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Listing the entities of {semantic_project}...")
-        entities = _semantic_project(semantic_project).entities(metrics=metrics)
+        entities = await asyncio.to_thread(
+            lambda: _semantic_project(semantic_project).entities(metrics=metrics)
+        )
         return _csv(
             ["name", "entity_path", "description"],
             [[e.name, "__".join(e.entity_path or []), e.description] for e in entities],
@@ -286,8 +304,10 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Reading the values of {dimension}...")
-        values = _semantic_project(semantic_project).dimension_values(
-            dimension, metrics=metrics, limit=limit
+        values = await asyncio.to_thread(
+            lambda: _semantic_project(semantic_project).dimension_values(
+                dimension, metrics=metrics, limit=limit
+            )
         )
         return _csv([dimension], [[value] for value in values])
 
@@ -319,16 +339,15 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Querying {', '.join(metrics)} on {semantic_project}...")
-        df = _semantic_project(semantic_project).query(
+        return await asyncio.to_thread(
+            _query_csv,
+            semantic_project,
             metrics,
             group_by=group_by,
             where=where,
             order_by=order_by,
             limit=limit,
-            dataframe_type="pandas",
         )
-        rows = df.astype(object).where(df.notna(), None)
-        return _csv(list(df.columns), rows.itertuples(index=False, name=None))
 
     async def get_metrics_compiled_sql(
         self,
@@ -358,8 +377,10 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Compiling the SQL of {', '.join(metrics)}...")
-        return _semantic_project(semantic_project).sql(
-            metrics, group_by=group_by, where=where, order_by=order_by, limit=limit
+        return await asyncio.to_thread(
+            lambda: _semantic_project(semantic_project).sql(
+                metrics, group_by=group_by, where=where, order_by=order_by, limit=limit
+            )
         )
 
     async def get_semantic_project_tags(
@@ -378,7 +399,9 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Reading the tags of {semantic_project}...")
-        tags = _semantic_project(semantic_project).get_tags()
+        tags = await asyncio.to_thread(
+            lambda: _semantic_project(semantic_project).get_tags()
+        )
         return [Tag(name=name, value=value) for name, value in tags.items()]
 
     async def validate_semantic_project(
@@ -397,7 +420,9 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Validating {semantic_project}...")
-        return _build(_semantic_project(semantic_project))
+        return await asyncio.to_thread(
+            lambda: _build(_semantic_project(semantic_project))
+        )
 
     async def compile_semantic_project(
         self, semantic_project: str, ctx: Context | None = None
@@ -415,4 +440,6 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Compiling {semantic_project}...")
-        return _build(_semantic_project(semantic_project))
+        return await asyncio.to_thread(
+            lambda: _build(_semantic_project(semantic_project))
+        )

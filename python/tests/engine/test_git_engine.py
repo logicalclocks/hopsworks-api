@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+import requests
 from hopsworks_common.client.exceptions import GitException
 from hopsworks_common.engine.git_engine import GitEngine
 
@@ -58,6 +59,23 @@ def test_a_timeout_ends_the_wait_on_an_operation_still_running(engine, mocker):
         engine._execute_op_blocking(_op(None), "CLONE", timeout=10)
 
     assert engine._git_op_execution_api._get_execution.call_count == 1
+
+
+def test_each_status_request_gets_the_remaining_budget(engine, mocker):
+    engine._git_op_execution_api._get_execution.side_effect = (
+        requests.exceptions.Timeout()
+    )
+    mocker.patch(
+        "hopsworks_common.engine.git_engine.time.monotonic",
+        side_effect=[0.0, 4.0],
+    )
+
+    with pytest.raises(GitException, match="CLONE has not finished after 10 seconds"):
+        engine._execute_op_blocking(_op(None), "CLONE", timeout=10)
+
+    assert engine._git_op_execution_api._get_execution.call_args.kwargs == {
+        "timeout": 6.0
+    }
 
 
 def test_a_failed_operation_raises_its_message(engine):

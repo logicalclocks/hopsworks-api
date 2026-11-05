@@ -221,14 +221,20 @@ hops semantic dimensions sales --metrics revenue  # what they can be grouped by
 hops semantic sql sales --metrics revenue,orders --group-by metric_time__month,customer__country
 ```
 
+In a dashboard program (§7), list the query in `METRIC_DATASETS`; the program
+compiles its SQL with `SemanticProject.sql` on every run, writes it into the
+dataset (creating it the first time, refreshing its columns after), and a chart
+names the entry as its `dataset`:
+
 ```python
-sales = project.get_semantic_layer_api().get_project("sales")
-sql = sales.sql(
-    metrics=["revenue", "orders"],
-    group_by=["metric_time__month", "customer__country"],
-)
-dataset_id = ensure_dataset(api, trino_db_id, schema, "sales_revenue_by_month", sql)
-api.update_dataset(dataset_id, sql=sql)  # a reused dataset takes the current build's SQL
+METRIC_DATASETS = [
+    {
+        "name": "sales_revenue_by_month",
+        "semantic_project": "sales",
+        "metrics": ["revenue", "orders"],
+        "group_by": ["metric_time__month", "customer__country"],
+    }
+]
 ```
 
 - One dataset per metric query: its columns are the group-bys and the metrics,
