@@ -211,6 +211,13 @@ def test_publication_current_run_kill_window_and_delete(cluster):
         _hops("score", name, "--delete", "--yes")
 
 
+def test_show_of_a_system_that_never_ran_says_so(cluster):
+    done = _hops("score", f"never{cluster.tag}", "--show")
+    assert done.returncode != 0
+    assert f"never{cluster.tag} has no completed run" in _out(done)
+    assert "Traceback" not in _out(done)
+
+
 def test_a_scheduled_system_is_torn_down_whole(cluster):
     deals, contacts, _, _ = _crm_frames()
     d = cluster.make("deals", deals, ["id"])

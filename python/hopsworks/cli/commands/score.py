@@ -690,11 +690,18 @@ def score_cmd(
 
 
 def _show(ctx: click.Context, name: str, top: int) -> None:
-    run, frame = current_ranking(_sql(ctx), name, top)
+    never = click.ClickException(
+        f"{name} has no completed run: run `hops score {name}`."
+    )
+    try:
+        run, frame = current_ranking(_sql(ctx), name, top)
+    except Exception as exc:
+        # A system that never ran has no runs table yet.
+        if getattr(exc, "error_name", None) == "TABLE_NOT_FOUND":
+            raise never from exc
+        raise
     if run is None:
-        raise click.ClickException(
-            f"{name} has no completed run: run `hops score {name}`."
-        )
+        raise never
     if output.JSON_MODE:
         rows = [] if frame is None else frame.to_dict(orient="records")
         output.print_json({"run": run, "scores": rows})
