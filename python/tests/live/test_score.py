@@ -558,47 +558,78 @@ def test_a_rerun_writes_the_admission_fields_reads_them_back_and_starts(cluster)
         _hops("score", name, "--delete", "--yes")
 
 
-@pytest.mark.skipif(
-    os.environ.get("HOPS_EE_SCORING_CLASS") is None,
-    reason="needs the hopsworks-ee per-class admission (platformClass scoring) on the "
-    "cluster; HOPS_EE_SCORING_CLASS holds that class's execution ceiling",
-)
-def test_a_full_scoring_class_answers_429_and_nothing_starts(cluster):
-    """Start one more system than the class admits: the last start is refused with 429."""
-    ceiling = int(os.environ["HOPS_EE_SCORING_CLASS"])
+MAX_HELD_SYSTEMS = 4
+
+
+def test_a_start_the_platform_refuses_says_429_and_starts_nothing(cluster):
+    """Hold executions until the platform admission refuses a start, then read the CLI's words.
+
+    Needs the hopsworks-ee platform admission on the cluster (platformClass and its per-creator
+    limit). The limit's value is not assumed: held executions are added, one system each, until
+    a start is refused. A backend that keeps no platformClass, or refuses nothing within
+    MAX_HELD_SYSTEMS held executions, skips with that reason.
+    """
+    from hopsworks_common.client.exceptions import RestAPIError
+
     deals, contacts, _, _ = _crm_frames()
     d = cluster.make("deals", deals, ["id"])
     c = cluster.make("contacts", contacts, ["id"])
-    names = [f"cls{i}{cluster.tag}" for i in range(ceiling + 1)]
+    project = cluster.project
+    api = project.get_job_api()
+    names = [f"cap{i}{cluster.tag}" for i in range(MAX_HELD_SYSTEMS)]
+    held = []
+    refused_name = None
     try:
-        outs = [
-            _hops(
-                "score",
-                n,
-                "--entity",
-                d,
-                "--target",
-                "won",
-                "--positive",
-                "1",
-                "--link",
-                f"{d}.contact_id={c}.id",
+        for i, name in enumerate(names):
+            job_name = f"kumo-score-{name}"
+            setup = _hops(
+                "score", name, "--entity", d, "--target", "won", "--positive", "1",
+                "--link", f"{d}.contact_id={c}.id",
+            )  # fmt: skip
+            if i == 0 and NOT_ENFORCED in _out(setup):
+                pytest.skip(
+                    "needs the hopsworks-ee platform admission: this backend does not "
+                    f"keep platformClass ({_out(setup).strip()})"
+                )
+            if setup.returncode != 0:
+                refused_name = name
+                break
+            assert _await(project, job_name, _started(setup)).success is True
+            job = api.get_job(job_name)
+            try:
+                execution = job.run(
+                    args=f"{job.config['defaultArgs']} --hold-before-publish 900",
+                    await_termination=False,
+                )
+            except RestAPIError as err:
+                assert err.response.status_code == 429, str(err)
+                refused_name = name
+                break
+            held.append((job_name, execution))
+
+        if refused_name is None:
+            pytest.skip(
+                f"the platform admission refused no start within {MAX_HELD_SYSTEMS} held "
+                "executions: it is not enforced on this cluster"
             )
-            for n in names
-        ]
-        assert all(o.returncode == 0 for o in outs[:-1]), [_out(o) for o in outs]
-        last = outs[-1]
-        assert last.returncode != 0
-        assert f"No run of kumo-score-{names[-1]} started" in _out(last)
-        assert "Retry in " in _out(last)
-        assert (
-            not cluster.project.get_job_api()
-            .get_job(f"kumo-score-{names[-1]}")
-            .get_executions()
+        assert held, (
+            "the first start was refused: no held execution to read the limit from"
         )
+        for job_name, execution in held:
+            assert _execution(project, job_name, execution.id).success is None
+        job_name = f"kumo-score-{refused_name}"
+        before = [e.id for e in api.get_job(job_name).get_executions()]
+        again = _hops("score", refused_name)
+        assert again.returncode != 0
+        assert f"No run of {job_name} started" in _out(again)
+        assert "Retry in " in _out(again)
+        assert [e.id for e in api.get_job(job_name).get_executions()] == before
     finally:
-        for n in names:
-            _hops("score", n, "--delete", "--yes")
+        for _, execution in held:
+            with contextlib.suppress(Exception):
+                execution.stop()
+        for name in names:
+            _hops("score", name, "--delete", "--yes")
 
 
 def test_a_view_on_contacts_v1_reads_v1_when_v2_exists(cluster):
