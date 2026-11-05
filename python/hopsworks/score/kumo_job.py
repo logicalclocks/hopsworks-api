@@ -7,7 +7,7 @@ against a labelled context, writes ``<name>_scores`` in one insert and publishes
 run by writing its ``<name>_score_runs`` row last. This file imports nothing from the
 rest of ``hopsworks``, so the CLI uploads it as it is.
 
-Usage: ``kumo_job.py --system <name> --config '<plan json>'``.
+Usage: ``kumo_job.py --system <name> --config <Plan.to_arg(): base64url plan JSON>``.
 """
 
 from __future__ import annotations
