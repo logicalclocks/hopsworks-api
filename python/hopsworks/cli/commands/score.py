@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import random
 import re
-import shlex
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +31,7 @@ WAIT_TIMEOUT = 3600
 SCRIPT = Path(kumo_job.__file__)
 DEFAULT_TOP = 20
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_SYSTEM = re.compile(r"[a-z][a-z0-9_]*")
 _COMPLEX_TYPES = ("array", "struct", "map", "binary")
 _TIME_TYPES = ("timestamp", "date")
 
@@ -324,6 +324,11 @@ def build_plan(
         context_rows=context_rows,
         query_rows=query_rows,
     )
+
+
+def job_args(name: str, plan: Plan) -> str:
+    """The job's arguments, safe for the Python job launcher's unquoted expansion."""
+    return f"--system {name} --config {plan.to_arg()}"
 
 
 def unique_sql(plan: Plan, link: Link) -> str:
@@ -640,6 +645,12 @@ def score_cmd(
         timeout: Seconds `--wait` polls.
         start_timeout: Seconds `--wait` allows for RUNNING.
     """
+    if not _SYSTEM.fullmatch(name):
+        raise click.BadParameter(
+            "use lowercase letters, digits and underscores, starting with a letter: it "
+            "names the job, its feature groups and its arguments.",
+            param_hint="NAME",
+        )
     try:
         if delete:
             _delete(ctx, name, yes)
@@ -911,9 +922,7 @@ def _score(
     config["environmentName"] = ENVIRONMENT
     config[MAX_CONCURRENT] = 1
     config[kumo_job.PLATFORM_CLASS_KEY] = kumo_job.PLATFORM_CLASS
-    config["defaultArgs"] = (
-        f"--system {shlex.quote(name)} --config {shlex.quote(plan.to_json())}"
-    )
+    config["defaultArgs"] = job_args(name, plan)
     config["resourceConfig"] = {
         **config.get("resourceConfig", {}),
         "cores": JOB_CORES,

@@ -635,7 +635,6 @@ def test_a_start_the_platform_refuses_says_429_and_starts_nothing(cluster):
 
 
 def test_a_view_on_contacts_v1_reads_v1_when_v2_exists(cluster):
-    import json
     import shlex
 
     deals, contacts, _, _ = _crm_frames()
@@ -671,9 +670,11 @@ def test_a_view_on_contacts_v1_reads_v1_when_v2_exists(cluster):
         assert done.returncode == 0, _out(done)
         job = cluster.project.get_job_api().get_job(f"kumo-score-{name}")
         args = shlex.split(job.config["defaultArgs"])
-        plan = json.loads(args[args.index("--config") + 1])
-        assert plan["groups"][c]["version"] == 1
-        assert plan["groups"][d]["version"] == 1
+        from hopsworks.score import kumo_job
+
+        plan = kumo_job.Plan.from_arg(args[args.index("--config") + 1])
+        assert plan.groups[c].version == 1
+        assert plan.groups[d].version == 1
 
         # A --link naming contacts reads its latest, v2: refused against the view's v1.
         refused = _hops(

@@ -13,6 +13,7 @@ Usage: ``kumo_job.py --system <name> --config '<plan json>'``.
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import json
 import os
@@ -155,6 +156,18 @@ class Plan:
         raw["groups"] = {g: Group(**v) for g, v in raw["groups"].items()}
         raw["links"] = [Link(**v) for v in raw["links"]]
         return cls(**raw)
+
+    def to_arg(self) -> str:
+        """The plan as one job argument: base64url JSON, no space, quote or glob character.
+
+        The Python job launcher expands its arguments unquoted, so a quoted JSON argument
+        reaches the job with its quotes and split at every space.
+        """
+        return base64.urlsafe_b64encode(self.to_json().encode()).decode()
+
+    @classmethod
+    def from_arg(cls, text: str) -> Plan:
+        return cls.from_json(base64.urlsafe_b64decode(text.encode()).decode())
 
     @property
     def related(self) -> list[str]:
@@ -883,13 +896,15 @@ class TrinoSql:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--system", required=True, help="The system name.")
-    parser.add_argument("--config", required=True, help="The plan, as JSON.")
+    parser.add_argument(
+        "--config", required=True, help="The plan, as base64url JSON (Plan.to_arg)."
+    )
     # Test hook: tests/live/test_score.py stops a run between the scores and its run row.
     parser.add_argument(
         "--hold-before-publish", type=float, default=0, help=argparse.SUPPRESS
     )
     args = parser.parse_args(argv)
-    plan = Plan.from_json(args.config)
+    plan = Plan.from_arg(args.config)
     t_start = time.perf_counter()
 
     def log(msg: str) -> None:

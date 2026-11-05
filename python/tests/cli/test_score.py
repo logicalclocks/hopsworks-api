@@ -436,6 +436,34 @@ def test_the_schedule_option_offers_daily_and_hourly_only():
     assert "'daily', 'hourly'" in result.output
 
 
+def test_the_plan_survives_the_job_launchers_unquoted_expansion(crm):
+    """The image's start_python_job_with_hopsfsmount.sh runs the script with ${APP_ARGS} unquoted."""
+    import subprocess
+
+    p = plan(
+        crm, ["deals.contact_id=contacts.id"], where="stage = 'won it' AND id > 0 * 2"
+    )
+    launched = subprocess.run(
+        ["sh", "-c", 'printf "%s\\0" ${APP_ARGS}'],
+        env={"APP_ARGS": score.job_args("pipe", p)},
+        capture_output=True,
+        check=True,
+    )
+    argv = launched.stdout.decode().split("\0")[:-1]
+    assert argv[:3] == ["--system", "pipe", "--config"]
+    assert len(argv) == 4
+    assert kumo_job.Plan.from_arg(argv[3]) == p
+
+
+@pytest.mark.parametrize("name", ["Sales", "my sales", "s'x", "1sales", "sales-1"])
+def test_a_system_name_the_job_cannot_carry_is_refused(name):
+    from click.testing import CliRunner
+
+    result = CliRunner().invoke(score.score_cmd, [name, "--show"])
+    assert result.exit_code == 2
+    assert "lowercase letters, digits and underscores" in result.output
+
+
 # region: one run per system, kept by the server
 
 
