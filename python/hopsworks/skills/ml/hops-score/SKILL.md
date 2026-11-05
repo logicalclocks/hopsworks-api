@@ -50,9 +50,10 @@ and 6144 MB. A project without the `scoring-pipeline` environment is refused.
 prints the execution id and returns. It does not poll. `hops score <name>` again re-runs it.
 The agent never passes `--wait` (a human flag that polls every 10 s until the run ends): it
 starts the run, tells the user the scores will show in the panel, and reads
-`hops score <name> --show` once, on a later step. One run per system: the job is created with
-`maxConcurrentExecutions: 1`, so Hopsworks refuses a second execution (HTTP 409) while one
-runs, and the verb prints that refusal with the stop command. The job is in the `scoring`
+`hops score <name> --show` once, on a later step. One run per system: before every start or schedule the verb writes
+`maxConcurrentExecutions: 1` and the platform class into the job and reads both back; a
+Hopsworks that does not keep them is refused and nothing starts. Hopsworks then refuses a
+second execution (HTTP 409) while one runs, and the verb prints that refusal with the stop command. The job is in the `scoring`
 platform class (`platformClass` in its config); when that class is full, Hopsworks answers
 HTTP 429 and nothing starts: the verb says so with the retry time and exits non-zero. Do not
 retry in a loop: tell the user, and run it again after that time. `--schedule daily` or

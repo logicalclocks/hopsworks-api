@@ -839,3 +839,103 @@ def test_the_byte_cap_counts_utf8_octets_in_sql_and_in_the_read(crm):
     assert size == 160
     with pytest.raises(ScoreRefused, match=r"160 bytes \(UTF-8\), over what is left"):
         kumo_job.check_read("contacts", len(chunk), size, 100, 100)
+
+
+class _Backend:
+    """The server's side of one job: stores the config it is given, minus what it drops."""
+
+    def __init__(self, config, drops=()):
+        self.config = dict(config)
+        self.drops = set(drops)
+        self.saves = 0
+
+    def job(self):
+        return Job.from_response_json(
+            {
+                "id": 1,
+                "name": "kumo-score-sales",
+                "creationTime": 0,
+                "jobType": "PYTHON",
+                "creator": {},
+                "config": dict(self.config),
+            }
+        )
+
+    def get_job(self, name):
+        assert name == "kumo-score-sales"
+        return self.job()
+
+    def update(self, name, config):
+        self.saves += 1
+        self.config = {k: v for k, v in config.items() if k not in self.drops}
+        return self.job()
+
+
+def _stored(monkeypatch, **extra):
+    from hopsworks_common.core.job_api import JobApi
+
+    drops = extra.pop("drops", ())
+    config = {"type": "pythonJobConfiguration", "appPath": APP, "defaultArgs": ARGS}
+    backend = _Backend({**config, **extra}, drops)
+    monkeypatch.setattr(
+        JobApi, "_update_job", lambda _api, name, config: backend.update(name, config)
+    )
+    return backend
+
+
+def test_a_stored_job_without_the_admission_fields_gets_them_and_is_read_back(
+    monkeypatch,
+):
+    backend = _stored(monkeypatch)
+    stored = score.admit_job(backend, backend.job(), "sales")
+    assert backend.saves == 1
+    assert stored.config[score.MAX_CONCURRENT] == 1
+    assert stored.config["platformClass"] == "scoring"
+
+
+def test_a_job_that_has_them_is_not_written_again(monkeypatch):
+    backend = _stored(monkeypatch, maxConcurrentExecutions=1, platformClass="scoring")
+    score.admit_job(backend, backend.job(), "sales")
+    assert backend.saves == 0
+
+
+@pytest.mark.parametrize(
+    "drops",
+    [
+        ("maxConcurrentExecutions", "platformClass"),
+        ("platformClass",),
+        ("maxConcurrentExecutions",),
+    ],
+)
+def test_a_backend_that_does_not_keep_the_fields_is_refused(monkeypatch, drops):
+    backend = _stored(monkeypatch, drops=drops)
+    with pytest.raises(
+        ScoreRefused,
+        match="does not enforce one scoring run per system or the scoring platform class",
+    ):
+        score.admit_job(backend, backend.job(), "sales")
+
+
+def test_a_raised_limit_or_other_class_is_written_back(monkeypatch):
+    backend = _stored(monkeypatch, maxConcurrentExecutions=5, platformClass="embedding")
+    stored = score.admit_job(backend, backend.job(), "sales")
+    assert (
+        stored.config["maxConcurrentExecutions"],
+        stored.config["platformClass"],
+    ) == (
+        1,
+        "scoring",
+    )
+
+
+def test_a_refused_admission_starts_and_schedules_nothing(monkeypatch):
+    backend = _stored(monkeypatch, drops=("platformClass",))
+    job = backend.job()
+    calls = []
+    monkeypatch.setattr(job, "schedule", lambda **kw: calls.append("schedule"))
+    from hopsworks.cli.commands import job as job_cmd
+
+    monkeypatch.setattr(job_cmd, "_run", lambda *a: calls.append("run"))
+    with pytest.raises(ScoreRefused):
+        score._run_and_report(None, backend, job, "sales", 5, 60, "0 0 * * * ?")
+    assert calls == []

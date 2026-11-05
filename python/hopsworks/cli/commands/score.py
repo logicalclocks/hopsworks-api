@@ -854,7 +854,7 @@ def _score(
     if entity is None:
         if job is None:
             raise click.UsageError(f"No system {name} yet: pass --entity and --target.")
-        _run_and_report(ctx, job, name, top, start_timeout, cron, wait, timeout)
+        _run_and_report(ctx, api, job, name, top, start_timeout, cron, wait, timeout)
         return
     if not target:
         raise click.UsageError("--target is required with --entity.")
@@ -923,12 +923,41 @@ def _score(
         raise click.ClickException(f"Could not deploy job '{job_name}': {exc}") from exc
     output.success("✓ Deployed job %s on %s", job_name, ENVIRONMENT)
     _run_and_report(
-        ctx, job, name, top, start_timeout, cron, wait=wait, timeout=timeout
+        ctx, api, job, name, top, start_timeout, cron, wait=wait, timeout=timeout
     )
+
+
+def admit_job(api, job, name):
+    """Make the job carry one run at a time in the scoring class, and read that back.
+
+    Writes the two fields when the stored job lacks them, then reads the job from the server
+    and refuses unless both are stored: a backend that drops them enforces neither limit.
+    Returns the job as stored.
+    """
+    job_name = _job_name(name)
+    want = {MAX_CONCURRENT: 1, kumo_job.PLATFORM_CLASS_KEY: kumo_job.PLATFORM_CLASS}
+    if any(job.config.get(k) != v for k, v in want.items()):
+        job.config.update(want)
+        try:
+            job.save()
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not update job '{job_name}': {exc}"
+            ) from exc
+    stored = _get_job(api, job_name)
+    if stored is None or any(stored.config.get(k) != v for k, v in want.items()):
+        raise ScoreRefused(
+            "This Hopsworks does not enforce one scoring run per system or the scoring "
+            f"platform class: job {job_name} did not keep {MAX_CONCURRENT} and "
+            f"{kumo_job.PLATFORM_CLASS_KEY}. `hops score` will not start. Nothing was "
+            "started or scheduled."
+        )
+    return stored
 
 
 def _run_and_report(
     ctx,
+    api,
     job,
     name,
     top,
@@ -940,6 +969,7 @@ def _run_and_report(
     from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
 
     job_name = _job_name(name)
+    job = admit_job(api, job, name)
     if cron:
         try:
             job.schedule(cron_expression=cron, max_active_runs=1)

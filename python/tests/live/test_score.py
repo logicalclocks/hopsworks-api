@@ -505,6 +505,59 @@ def test_unrelated_namesakes_and_a_matching_input_survive(cluster):
     assert cluster.fs.get_feature_group(inp, version=1) is not None
 
 
+NOT_ENFORCED = (
+    "does not enforce one scoring run per system or the scoring platform class"
+)
+
+
+def _admission(job) -> tuple:
+    return (job.config.get("maxConcurrentExecutions"), job.config.get("platformClass"))
+
+
+def test_a_rerun_writes_the_admission_fields_reads_them_back_and_starts(cluster):
+    deals, contacts, _, _ = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    name = f"adm{cluster.tag}"
+    job_name = f"kumo-score-{name}"
+    project = cluster.project
+    api = project.get_job_api()
+    try:
+        setup = _hops(
+            "score", name, "--entity", d, "--target", "won", "--positive", "1",
+            "--link", f"{d}.contact_id={c}.id",
+        )  # fmt: skip
+        job = api.get_job(job_name)
+        if NOT_ENFORCED in _out(setup):
+            # A backend that drops the fields: nothing starts.
+            assert setup.returncode != 0
+            assert not job.get_executions()
+            assert _admission(job) != (1, "scoring")
+            return
+        first = _started(setup)
+        assert _await(project, job_name, first).success is True
+
+        # The job as an older hops score left it: without the fields.
+        job = api.get_job(job_name)
+        for key in ("maxConcurrentExecutions", "platformClass"):
+            job.config.pop(key, None)
+        job.save()
+
+        rerun = _hops("score", name)
+        stored = api.get_job(job_name)
+        if NOT_ENFORCED in _out(rerun):
+            assert rerun.returncode != 0
+            assert _admission(stored) != (1, "scoring")
+            assert [e.id for e in stored.get_executions()] == [first]
+            return
+        second = _started(rerun)
+        assert second != first
+        assert _admission(stored) == (1, "scoring")
+        assert _await(project, job_name, second).success is True
+    finally:
+        _hops("score", name, "--delete", "--yes")
+
+
 @pytest.mark.skipif(
     os.environ.get("HOPS_EE_SCORING_CLASS") is None,
     reason="needs the hopsworks-ee per-class admission (platformClass scoring) on the "
