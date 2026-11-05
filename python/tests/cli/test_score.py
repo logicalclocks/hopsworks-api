@@ -1,23 +1,22 @@
 """Unit tests for ``hops score``: links, refusals, the generated SQL text, caps, schedule, publication.
 
-Nothing here executes SQL. The SQL runs against the cluster's Trino in tests/live/test_score.py.
+Nothing here executes SQL or calls a service. The SQL, the job start, the 409 of a second start
+and the --wait polling run against the cluster in tests/live/test_score.py.
 """
 
 from __future__ import annotations
 
 import json
-import types
 
 import click
 import pandas as pd
 import pytest
 import requests
-from hopsworks.cli import waits
 from hopsworks.cli.commands import score
 from hopsworks.cli.commands.score import GroupInfo
 from hopsworks.score import kumo_job
 from hopsworks.score.kumo_job import Link, ScoreRefused
-from hopsworks_common import client, util
+from hopsworks_common import util
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.job import Job
 
@@ -380,9 +379,6 @@ def test_the_schedule_option_offers_daily_and_hourly_only():
     assert "'daily', 'hourly'" in result.output
 
 
-# region: one run per system
-
-
 # region: one run per system, kept by the server
 
 
@@ -394,126 +390,23 @@ def _response(status, body):
     return response
 
 
-class _Job:
-    """A job whose run the server refuses, with a real response."""
-
-    def __init__(self, response):
-        self.response = response
-        self.config = {score.MAX_CONCURRENT: 1}
-
-    def run(self, **_):
-        raise RestAPIError("http://hopsworks/jobs/executions", self.response)
+def _refusal(status, body):
+    err = RestAPIError("http://hopsworks/jobs/executions", _response(status, body))
+    return score.run_refusal(err, "deals")
 
 
-def test_the_servers_409_on_the_execution_start_is_a_clear_refusal():
-    body = {
-        "errorCode": 130010,
-        "errorMsg": "Job kumo-score-deals has execution #7 running.",
-        "usrMsg": "Execution #7 is running.",
-    }
-    with pytest.raises(click.ClickException) as raised:
-        score._run_and_report(None, _Job(_response(409, body)), "deals", 20, 60, None)
-    message = raised.value.message
+def test_the_409_wording_prefers_the_user_message_then_the_error_message():
+    both = {"usrMsg": "Execution #7 is running.", "errorMsg": "Job has #7."}
+    message = str(_refusal(409, both))
     assert (
         "job kumo-score-deals is already running: Execution #7 is running." in message
     )
     assert "hops job stop kumo-score-deals" in message
-
-
-def test_the_409_message_falls_back_to_the_error_message():
-    err = RestAPIError(
-        "http://hopsworks/jobs/executions",
-        _response(409, {"errorMsg": "Execution #9 is running."}),
+    assert "Execution #9 is running." in str(
+        _refusal(409, {"errorMsg": "Execution #9 is running."})
     )
-    assert "Execution #9 is running." in str(score.run_refusal(err, "deals"))
+    assert _refusal(500, both) is None
     assert score.run_refusal(click.ClickException("x"), "deals") is None
-
-
-def test_other_failures_of_the_execution_start_pass_through():
-    with pytest.raises(click.ClickException, match="Could not run job"):
-        score._run_and_report(
-            None, _Job(_response(500, {"errorMsg": "boom"})), "deals", 20, 60, None
-        )
-
-
-class _Client:
-    """The HTTP client of the SDK; records every request the CLI sends."""
-
-    def __init__(self, states):
-        self.requests = []
-        self.states = list(states)
-        self._project_id = 1
-
-    def _send_request(self, method, path, **kw):
-        self.requests.append((method, path))
-        state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
-        return {"id": 7, "state": state, "jobType": "PYTHON"}
-
-
-class _StartedJob:
-    config = {score.MAX_CONCURRENT: 1}
-    name = "kumo-score-deals"
-    job_type = "PYTHON"
-
-    def run(self, **_):
-        return types.SimpleNamespace(id=7, state="INITIALIZING")
-
-
-class _Clock:
-    """A clock the sleeps advance, so a deadline is reached without waiting."""
-
-    def __init__(self):
-        self.now = 0.0
-        self.sleeps = []
-
-    def monotonic(self):
-        return self.now
-
-    def sleep(self, seconds):
-        self.sleeps.append(seconds)
-        self.now += seconds
-
-
-@pytest.fixture
-def http(monkeypatch):
-    fake = _Client(["RUNNING"])
-    monkeypatch.setattr(client, "_get_instance", lambda: fake)
-    return fake
-
-
-@pytest.fixture
-def clock(monkeypatch):
-    fake = _Clock()
-    monkeypatch.setattr(score, "time", fake)
-    monkeypatch.setattr(waits, "time", fake)
-    return fake
-
-
-def test_the_default_run_starts_one_execution_and_makes_no_status_call(http, clock):
-    score._run_and_report(None, _StartedJob(), "deals", 20, 60, None)
-    assert http.requests == []
-    assert clock.sleeps == []
-
-
-def test_wait_stops_at_the_deadline_and_says_how_to_read_the_run(http, clock):
-    with pytest.raises(click.ClickException, match="still RUNNING after 35 s") as err:
-        score._run_and_report(
-            None, _StartedJob(), "deals", 20, 60, None, wait=True, timeout=35
-        )
-    assert "hops score deals --show" in err.value.message
-    assert http.requests
-    assert clock.now >= 35
-    assert clock.now < 35 + 12
-
-
-def test_wait_polls_every_ten_to_twelve_seconds(http, clock):
-    with pytest.raises(click.ClickException):
-        score._run_and_report(
-            None, _StartedJob(), "deals", 20, 60, None, wait=True, timeout=120
-        )
-    assert len(clock.sleeps) >= 5
-    assert all(10 <= x <= 12 for x in clock.sleeps)
-    assert len(set(clock.sleeps)) > 1
 
 
 def test_the_poll_interval_stays_within_ten_to_twelve_seconds():
