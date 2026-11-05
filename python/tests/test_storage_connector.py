@@ -21,7 +21,9 @@ from pathlib import WindowsPath
 
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.tag import Tag
 from hsfs import engine, storage_connector
+from hsfs.core import storage_connector_api
 from hsfs.engine import python, spark
 from hsfs.storage_connector import BigQueryConnector
 
@@ -2576,7 +2578,7 @@ class TestSqlConnectorProvidedCredentials:
 
         sc.save()
 
-        create.assert_called_once_with(sc)
+        create.assert_called_once_with(sc, None)
 
     def test_an_update_never_sends_the_credentials_filled_in_on_read(
         self, backend_fixtures, mocker
@@ -3292,7 +3294,7 @@ class TestStorageConnectorSave:
 
         result = sc.save()
 
-        mock_create.assert_called_once_with(sc)
+        mock_create.assert_called_once_with(sc, None)
         assert result.id == 42
 
     def test_update_calls_api_update(self, mocker):
@@ -4423,3 +4425,100 @@ class TestStorageConnectorTags:
 
         with pytest.raises(RestAPIError):
             self._connector(backend_fixtures).get_tags()
+
+
+class TestStorageConnectorMandatoryTags:
+    @staticmethod
+    def _client(mocker, response=None):
+        client_mock = mocker.Mock()
+        client_mock._project_id = 119
+        client_mock._send_request.return_value = response
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        return client_mock
+
+    @staticmethod
+    def _s3_json(backend_fixtures, **extra):
+        return {**backend_fixtures["storage_connector"]["get_s3"]["response"], **extra}
+
+    @pytest.mark.parametrize(
+        "tags",
+        [
+            {"name": "owner", "value": {"team": "risk"}},
+            [{"name": "owner", "value": {"team": "risk"}}],
+            Tag("owner", {"team": "risk"}),
+            [Tag("owner", {"team": "risk"})],
+        ],
+    )
+    def test_save_sends_tags_as_feature_group_create_does(
+        self, mocker, backend_fixtures, tags
+    ):
+        client = self._client(mocker, self._s3_json(backend_fixtures))
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save(tags=tags)
+
+        call = client._send_request.call_args
+        assert call.args == (
+            "POST",
+            ["project", 119, "featurestores", 67, "storageconnectors"],
+        )
+        assert json.loads(call.kwargs["data"])["tags"] == {
+            "count": 1,
+            "items": [{"name": "owner", "value": '{"team": "risk"}'}],
+        }
+
+    def test_save_without_tags_sends_no_tags_key(self, mocker, backend_fixtures):
+        client = self._client(mocker, self._s3_json(backend_fixtures))
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save()
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert "tags" not in body
+        assert body["name"] == "test_s3"
+
+    def test_missing_mandatory_tags_read_from_the_response(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(
+                backend_fixtures,
+                missingMandatoryTags=[{"name": "owner", "dataSourceSpecific": True}],
+            )
+        )
+
+        assert sc.missing_mandatory_tags == [
+            {"name": "owner", "data_source_specific": True}
+        ]
+
+    def test_missing_mandatory_tags_default_to_empty(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        assert sc.missing_mandatory_tags == []
+
+    def test_refetch_refreshes_missing_mandatory_tags(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures, missingMandatoryTags=[{"name": "owner"}])
+        )
+
+        sc.update_from_response_json(self._s3_json(backend_fixtures))
+
+        assert sc.missing_mandatory_tags == []
+
+    def test_get_asks_for_missing_mandatory_tags(self, mocker, backend_fixtures):
+        client = self._client(mocker, self._s3_json(backend_fixtures))
+
+        storage_connector_api.StorageConnectorApi()._get(67, "test_s3")
+
+        assert client._send_request.call_args.args == (
+            "GET",
+            ["project", 119, "featurestores", 67, "storageconnectors", "test_s3"],
+        )
+        assert client._send_request.call_args.kwargs["query_params"] == {
+            "temporaryCredentials": True,
+            "expand": "mandatorytags",
+        }

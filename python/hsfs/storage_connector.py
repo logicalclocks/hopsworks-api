@@ -151,6 +151,9 @@ class StorageConnector(ABC):
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
         self._trino_catalog_api = trino_catalog_api.TrinoCatalogApi()
         self._data_source_api = data_source_api.DataSourceApi()
+        # Set by from_response_json and update_from_response_json: the subclasses call this constructor without
+        # their **kwargs, so the response key would not reach it.
+        self._missing_mandatory_tags: list[dict[str, Any]] = []
 
     @classmethod
     def from_response_json(
@@ -185,7 +188,11 @@ class StorageConnector(ABC):
         for subcls in cls.__subclasses__():
             if subcls.type == sc_type:
                 _ = json_decamelized.pop("storage_connector_type")
-                return subcls(**json_decamelized)
+                connector = subcls(**json_decamelized)
+                connector._missing_mandatory_tags = (
+                    json_decamelized.get("missing_mandatory_tags") or []
+                )
+                return connector
         raise ValueError(
             f"Unknown storage_connector_type {sc_type!r}; expected one of "
             f"{sorted({s.type for s in cls.__subclasses__() if isinstance(s.type, str)})}."
@@ -246,6 +253,9 @@ class StorageConnector(ABC):
         if self.type == json_decamelized["storage_connector_type"]:
             _ = json_decamelized.pop("storage_connector_type")
             self.__init__(**json_decamelized)
+            self._missing_mandatory_tags = (
+                json_decamelized.get("missing_mandatory_tags") or []
+            )
         else:
             raise ValueError("Failed to update storage connector information.")
         return self
@@ -269,7 +279,10 @@ class StorageConnector(ABC):
         }
 
     @public
-    def save(self) -> StorageConnector:
+    def save(
+        self,
+        tags: Tag | dict[str, Any] | list[Tag | dict[str, Any]] | None = None,
+    ) -> StorageConnector:
         """Persist this storage connector to the feature store.
 
         Example:
@@ -286,17 +299,24 @@ class StorageConnector(ABC):
                 bucket="my-bucket",
                 region="eu-north-1",
             )
-            sc.save()
+            sc.save(tags=[{"name": "data_owner", "value": "email@hopsworks.ai"}])
             ```
+
+        Parameters:
+            tags:
+                Tags to attach to the data source as it is created, in the same request.
+                Tags can be provided as a single [`Tag`][hopsworks.tag.Tag], a dictionary with `name` and `value` keys, or a list of either.
+                Tags that are mandatory for data sources must be passed here, since the data source is not created without them.
 
         Returns:
             The saved storage connector with its assigned id.
 
         Raises:
             ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
+            hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
         self._check_new()
-        return self._storage_connector_api._create(self)
+        return self._storage_connector_api._create(self, tags)
 
     @public
     def update(self) -> StorageConnector:
@@ -316,6 +336,9 @@ class StorageConnector(ABC):
 
         Returns:
             The updated storage connector.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the data source lacks a tag that is mandatory for data sources, which has to be added with [`add_tag`][hsfs.storage_connector.StorageConnector.add_tag] first, or if the backend encounters another error when handling the request.
         """
         return self._storage_connector_api._update(self)
 
@@ -453,6 +476,14 @@ class StorageConnector(ABC):
     def description(self) -> str | None:
         """User provided description of the storage connector."""
         return self._description
+
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags this data source does not carry, as reported when it was last fetched.
+
+        Adding a tag does not update this list on the object in hand; fetch the data source again to see the change.
+        """
+        return self._missing_mandatory_tags
 
     @public
     @abstractmethod

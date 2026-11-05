@@ -41,22 +41,28 @@ class StorageConnectorApi:
             "storageconnectors",
             name,
         ]
-        query_params = {"temporaryCredentials": True}
+        query_params = {"temporaryCredentials": True, "expand": "mandatorytags"}
 
         return _client._send_request("GET", path_params, query_params=query_params)
 
     def _create(
         self,
         storage_connector_instance: storage_connector.StorageConnector,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> storage_connector.StorageConnector:
         """Create a new storage connector in the feature store.
 
         Parameters:
             storage_connector_instance: The storage connector to create.
+            tags: Tags to attach in the same request: a tag, a dictionary with `name` and `value`, or a list of either.
 
         Returns:
             The created storage connector with its assigned id.
         """
+        body = storage_connector_instance.to_dict()
+        tags_dict = tag.Tag._tags_to_dict(tag.Tag._normalize(tags))
+        if tags_dict:
+            body["tags"] = tags_dict
         _client = client._get_instance()
         path_params = [
             "project",
@@ -71,7 +77,7 @@ class StorageConnectorApi:
                 "POST",
                 path_params,
                 headers=headers,
-                data=json.dumps(storage_connector_instance, cls=util.Encoder),
+                data=json.dumps(body, cls=util.Encoder),
             )
         )
 
