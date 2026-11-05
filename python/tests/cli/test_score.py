@@ -334,33 +334,50 @@ def test_missing_weights_are_refused_clearly(monkeypatch):
 
 
 def test_scheduled_time_is_stable_and_differs_between_names():
-    a = score.resolve_schedule("auto", 119, "deals")
-    assert a == score.resolve_schedule("auto", 119, "deals")
-    others = {score.resolve_schedule("auto", 119, f"sys{i}") for i in range(20)}
-    assert score.resolve_schedule("auto", 119, "leads") != a
+    a = score.schedule_cron("daily", 119, "deals")
+    assert a == score.schedule_cron("daily", 119, "deals")
+    assert score.schedule_cron("daily", 119, "leads") != a
+    assert score.schedule_cron("daily", 120, "deals") != a
+    others = {score.schedule_cron("daily", 119, f"sys{i}") for i in range(20)}
     assert len(others) > 10
-    assert score.resolve_schedule("auto", 120, "deals") != a
 
 
-def test_explicit_cron_is_kept_as_given():
-    assert score.resolve_schedule("0 30 2 * * ?", 1, "x") == "0 30 2 * * ?"
-    assert score.resolve_schedule("@daily", 1, "x") == "0 0 0 * * ?"
-    assert score.resolve_schedule("@hourly", 1, "x") == "0 0 * * * ?"
+def test_daily_and_hourly_share_the_hashed_minute():
+    daily = score.schedule_cron("daily", 119, "deals").split()
+    hourly = score.schedule_cron("hourly", 119, "deals").split()
+    assert daily[0] == hourly[0] == "0"
+    assert daily[1] == hourly[1] and 0 <= int(daily[1]) <= 59
+    assert 0 <= int(daily[2]) <= 23 and daily[3:] == ["*", "*", "?"]
+    assert hourly[2:] == ["*", "*", "*", "?"]
+
+
+def test_at_sets_the_hour_of_a_daily_run_and_keeps_the_minute():
+    hashed = score.schedule_cron("daily", 119, "deals").split()
+    at = score.schedule_cron("daily", 119, "deals", at_hour=6).split()
+    assert at[1] == hashed[1] and at[2] == "6"
 
 
 @pytest.mark.parametrize(
-    "cron", ["0 */5 * * * ?", "0 * * * * ?", "*/10 0 * * * ?", "0 0,30 * * * ?"]
+    ("every", "at", "message"),
+    [
+        ("hourly", 6, "--at goes with --schedule daily only"),
+        ("daily", 24, "--at takes an hour from 0 to 23"),
+        ("0 30 2 * * ?", None, "--schedule takes daily or hourly"),
+        ("@daily", None, "--schedule takes daily or hourly"),
+    ],
 )
-def test_cron_faster_than_hourly_is_refused_with_the_floor(cron):
-    with pytest.raises(
-        ScoreRefused, match="more often than hourly. The floor is one run per hour"
-    ):
-        score.resolve_schedule(cron, 1, "x")
+def test_schedule_takes_no_raw_cron_and_at_only_for_daily(every, at, message):
+    with pytest.raises(ScoreRefused, match=message):
+        score.schedule_cron(every, 1, "x", at)
 
 
-def test_cron_that_is_not_quartz_is_refused():
-    with pytest.raises(ScoreRefused, match="not a Quartz cron"):
-        score.resolve_schedule("30 2 * * *", 1, "x")
+def test_the_schedule_option_offers_daily_and_hourly_only():
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    result = runner.invoke(score.score_cmd, ["x", "--schedule", "0 30 2 * * ?"])
+    assert result.exit_code == 2
+    assert "'daily', 'hourly'" in result.output
 
 
 # region: one run per system

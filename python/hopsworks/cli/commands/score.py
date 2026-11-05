@@ -312,33 +312,29 @@ def check_unique(plan: Plan, sql: Any) -> None:
 
 # region: schedule --------------------------------------------------------
 
-_MIN_PERIOD = "one run per hour"
+SCHEDULES = ("daily", "hourly")
 
 
-def daily_cron(project_id: Any, name: str) -> str:
-    """A daily Quartz cron whose minute and hour follow a stable hash of the project and system."""
+def schedule_cron(
+    every: str, project_id: Any, name: str, at_hour: int | None = None
+) -> str:
+    """The Quartz cron of `--schedule daily|hourly`.
+
+    The minute, and the hour of a daily run without `--at`, come from a stable hash of the
+    project and system, so the systems of a cluster do not all fire at once.
+    """
+    if every not in SCHEDULES:
+        raise ScoreRefused(f"--schedule takes daily or hourly, not '{every}'.")
     digest = hashlib.sha256(f"{project_id}/{name}".encode()).digest()
-    return f"0 {digest[0] % 60} {digest[1] % 24} * * ?"
-
-
-def resolve_schedule(value: str, project_id: Any, name: str) -> str:
-    """The cron to set: the hashed daily one for `auto`, else the user's, kept as given."""
-    from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
-
-    if value == "auto":
-        return daily_cron(project_id, name)
-    cron = job_cmd._expand_cron_alias(value)
-    fields = cron.split()
-    if len(fields) not in (6, 7):
-        raise ScoreRefused(
-            f"'{value}' is not a Quartz cron (6 or 7 fields, such as `0 30 2 * * ?`)."
-        )
-    if not (re.fullmatch(r"\d+", fields[0]) and re.fullmatch(r"\d+", fields[1])):
-        raise ScoreRefused(
-            f"'{value}' fires more often than hourly. The floor is {_MIN_PERIOD}: "
-            "give one second and one minute, such as `0 30 * * * ?`."
-        )
-    return cron
+    minute = digest[0] % 60
+    if every == "hourly":
+        if at_hour is not None:
+            raise ScoreRefused("--at goes with --schedule daily only.")
+        return f"0 {minute} * * * ?"
+    hour = digest[1] % 24 if at_hour is None else at_hour
+    if not 0 <= hour <= 23:
+        raise ScoreRefused(f"--at takes an hour from 0 to 23, not {hour}.")
+    return f"0 {minute} {hour} * * ?"
 
 
 # region: current run -----------------------------------------------------
@@ -488,10 +484,14 @@ def _sql(ctx: click.Context) -> Any:
 )
 @click.option(
     "--schedule",
-    "schedule",
-    is_flag=False,
-    flag_value="auto",
-    help="Run on a cron: bare, daily at a time hashed from the project and name; or a Quartz cron, at most hourly.",
+    type=click.Choice(SCHEDULES),
+    help="Run daily or hourly; the minute (and the hour without --at) comes from the project and name.",
+)
+@click.option(
+    "--at",
+    "at_hour",
+    type=click.IntRange(0, 23),
+    help="Hour (0-23) of a daily run.",
 )
 @click.option("--show", is_flag=True, help="Print the current ranking.")
 @click.option(
@@ -538,6 +538,7 @@ def score_cmd(
     context_rows: int,
     query_rows: int,
     schedule: str | None,
+    at_hour: int | None,
     show: bool,
     top: int,
     delete: bool,
@@ -568,7 +569,8 @@ def score_cmd(
         where: SQL filter choosing the rows to score.
         context_rows: Labelled rows used as examples.
         query_rows: Rows scored per run.
-        schedule: Cron, or bare for the hashed daily one.
+        schedule: daily or hourly.
+        at_hour: Hour of a daily run.
         show: Print the current ranking and stop.
         top: Rows `--show` prints.
         delete: Delete the system.
@@ -597,6 +599,7 @@ def score_cmd(
                 context_rows,
                 query_rows,
                 schedule,
+                at_hour,
                 top,
                 start_timeout,
                 wait,
@@ -706,6 +709,7 @@ def _score(
     context_rows,
     query_rows,
     schedule,
+    at_hour,
     top,
     start_timeout,
     wait=False,
@@ -723,7 +727,9 @@ def _score(
             ) from exc
         job = None
 
-    cron = resolve_schedule(schedule, project.id, name) if schedule else None
+    if at_hour is not None and schedule is None:
+        raise click.UsageError("--at goes with --schedule daily.")
+    cron = schedule_cron(schedule, project.id, name, at_hour) if schedule else None
     if entity is None:
         if job is None:
             raise click.UsageError(f"No system {name} yet: pass --entity and --target.")

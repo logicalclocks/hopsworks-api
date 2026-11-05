@@ -22,7 +22,7 @@ feature group. Use a trained model (hops-train, hops-batch-inference) when the u
 ```bash
 hops score deals --entity deals --target won \
   --link deals.contact_id=contacts.id --link activities.deal_id=deals.id \
-  --time deals.created_at --time activities.occurred_at --cutoff deals.closed_at --schedule
+  --time deals.created_at --time activities.occurred_at --cutoff deals.closed_at --schedule daily
 ```
 
 ## Caps
@@ -48,9 +48,11 @@ The agent never passes `--wait` (a human flag that polls every 10 s until the ru
 starts the run, tells the user the scores will show in the panel, and reads
 `hops score <name> --show` once, on a later step. One run per system: the job is created with
 `maxConcurrentExecutions: 1`, so Hopsworks refuses a second execution (HTTP 409) while one
-runs, and the verb prints that refusal with the stop command. `--schedule` alone runs daily at a time
-derived from the project and the name; `--schedule "<quartz cron>"` is kept as given and must
-not fire more often than hourly. 
+runs, and the verb prints that refusal with the stop command. `--schedule daily` or
+`--schedule hourly` sets the job's schedule; the minute comes from the project and the name, so
+systems do not all fire at once. A daily run's hour comes from them too, or from `--at <0-23>`.
+No cron expression is accepted.
+
 ## Reading the current run
 
 Each run writes all its rows to `<name>_scores` in one insert (the entity key, `run_id`,
