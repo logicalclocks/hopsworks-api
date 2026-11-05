@@ -249,6 +249,49 @@ class LoadingConfig:
         return humps.decamelize(self.to_dict())
 
 
+def _file_columns_to_dict(
+    file_columns: Sequence[str | dict] | None, files_directory: str | None
+) -> dict | None:
+    """The `fileColumns` of a SQL Server ingestion, or None when neither argument is set.
+
+    A column given by name stores its path in the feature of its lower-case name and its size in `<feature>_size`, as the table data read creates them.
+    """
+    if not file_columns and files_directory is None:
+        return None
+    columns = []
+    for entry in file_columns or []:
+        spec = humps.decamelize(
+            {"source_column": entry} if isinstance(entry, str) else dict(entry)
+        )
+        source = spec.get("source_column")
+        if not source:
+            raise ValueError("Each file_columns entry must name a source_column.")
+        path = spec.get("path_feature") or source.lower()
+        columns.append(
+            {
+                "sourceColumn": source,
+                "pathFeature": path,
+                "sizeFeature": spec.get("size_feature") or f"{path}_size",
+            }
+        )
+    return {"directory": files_directory, "columns": columns}
+
+
+def _file_columns_from_dict(value: dict | None) -> tuple[list[dict] | None, str | None]:
+    if not value:
+        return None, None
+    spec = humps.decamelize(value)
+    columns = [
+        {
+            "source_column": c.get("source_column"),
+            "path_feature": c.get("path_feature"),
+            "size_feature": c.get("size_feature"),
+        }
+        for c in spec.get("columns") or []
+    ]
+    return columns or None, spec.get("directory")
+
+
 @public("hopsworks.core.SinkJobConfiguration")
 class SinkJobConfiguration:
     DTO_TYPE = "ingestionJobConfiguration"
@@ -272,6 +315,8 @@ class SinkJobConfiguration:
         schedule_config: JobSchedule | dict | None = None,
         targets: Sequence[TableIngestionTarget] | None = None,
         table_parallelism: int | None = 1,
+        file_columns: Sequence[str | dict] | None = None,
+        files_directory: str | None = None,
     ):
         self._name = name
         self._environment_name = environment_name
@@ -307,10 +352,19 @@ class SinkJobConfiguration:
         # pod per table, up to table_parallelism tables at a time
         self._targets = list(targets) if targets else None
         self._table_parallelism = table_parallelism
+        self._file_columns = list(file_columns) if file_columns else None
+        self._files_directory = files_directory
 
     def to_dict(self):
         if self._targets:
             return self._to_multi_table_dict()
+        result = self._single_table_dict()
+        file_columns = _file_columns_to_dict(self._file_columns, self._files_directory)
+        if file_columns is not None:
+            result["fileColumns"] = file_columns
+        return result
+
+    def _single_table_dict(self):
         return {
             "type": self.DTO_TYPE,
             "name": self._name,
@@ -397,6 +451,34 @@ class SinkJobConfiguration:
     def table_parallelism(self, table_parallelism: int | None) -> None:
         self._table_parallelism = table_parallelism
 
+    @public
+    @property
+    def file_columns(self) -> list[str | dict] | None:
+        """SQL Server `varbinary(max)` or `image` columns stored as files in HopsFS, besides the FILESTREAM columns.
+
+        Each entry is a column name, or a dict with `source_column` and optionally `path_feature` and `size_feature`.
+        The feature group holds each file's full path in the path feature and its length in bytes in the size feature.
+        Incremental ingestion with file columns needs the `MERGE` write mode.
+        """
+        return self._file_columns
+
+    @file_columns.setter
+    def file_columns(self, file_columns: Sequence[str | dict] | None) -> None:
+        self._file_columns = list(file_columns) if file_columns else None
+
+    @public
+    @property
+    def files_directory(self) -> str | None:
+        """The project directory the files of the file columns are written to.
+
+        Defaults to `Resources/<data source>/<database>/<schema>/<table>`.
+        """
+        return self._files_directory
+
+    @files_directory.setter
+    def files_directory(self, files_directory: str | None) -> None:
+        self._files_directory = files_directory
+
     @staticmethod
     def _normalize_column_mapping(mapping):
         if isinstance(mapping, FeatureColumnMapping):
@@ -449,6 +531,9 @@ class SinkJobConfiguration:
         ]
         job_schedule = json_decamelized.get("job_schedule", None)
         endpoint_config = json_dict.get("endpointConfig", None)
+        file_columns, files_directory = _file_columns_from_dict(
+            json_dict.get("fileColumns")
+        )
         return SinkJobConfiguration(
             environment_name=json_decamelized.get(
                 "environment_name", cls.DEFAULT_ENVIRONMENT_NAME
@@ -478,6 +563,8 @@ class SinkJobConfiguration:
             schedule_config=(
                 JobSchedule.from_response_json(job_schedule) if job_schedule else None
             ),
+            file_columns=file_columns,
+            files_directory=files_directory,
         )
 
     def _set_extra_params(self, **kwargs) -> None:
@@ -669,6 +756,8 @@ class TableIngestionTarget:
         resource_config: Per-target worker pod resources, e.g.
             `{"cores": 2, "memory": 4096}`.
         endpoint_config: Per-target REST endpoint configuration.
+        file_columns: SQL Server `varbinary(max)` or `image` columns of this table stored as files, besides its FILESTREAM columns; see `SinkJobConfiguration.file_columns`.
+        files_directory: The project directory this table's files are written to.
     """
 
     def __init__(
@@ -689,6 +778,8 @@ class TableIngestionTarget:
         data_processing_workers: int | None = None,
         resource_config: dict | None = None,
         endpoint_config: dict | RestEndpointConfig | None = None,
+        file_columns: Sequence[str | dict] | None = None,
+        files_directory: str | None = None,
     ):
         resolved_id = feature_group_id
         if feature_group is not None:
@@ -725,6 +816,8 @@ class TableIngestionTarget:
             if isinstance(endpoint_config, dict)
             else endpoint_config
         )
+        self._file_columns = list(file_columns) if file_columns else None
+        self._files_directory = files_directory
 
     def to_dict(self):
         target = {
@@ -762,6 +855,9 @@ class TableIngestionTarget:
                 if hasattr(self._endpoint_config, "to_dict")
                 else self._endpoint_config
             )
+        file_columns = _file_columns_to_dict(self._file_columns, self._files_directory)
+        if file_columns is not None:
+            target["fileColumns"] = file_columns
         return target
 
     def json(self):
@@ -771,6 +867,9 @@ class TableIngestionTarget:
     def from_response_json(cls, json_dict):
         json_decamelized = humps.decamelize(json_dict)
         loading_config = json_decamelized.get("loading_config")
+        file_columns, files_directory = _file_columns_from_dict(
+            json_dict.get("fileColumns")
+        )
         return cls(
             feature_group_id=json_decamelized.get("featuregroup_id"),
             enabled=json_decamelized.get("enabled", True),
@@ -796,4 +895,6 @@ class TableIngestionTarget:
             data_processing_workers=json_decamelized.get("data_processing_workers"),
             resource_config=json_decamelized.get("resource_config"),
             endpoint_config=json_decamelized.get("endpoint_config"),
+            file_columns=file_columns,
+            files_directory=files_directory,
         )

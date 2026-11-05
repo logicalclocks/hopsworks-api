@@ -175,7 +175,10 @@ class StorageConnectorApi:
         ]
         return _client._send_request("GET", path_params)
 
-    def _gmail_path(self, feature_store_id: int, name: str, *rest: str) -> list:
+    def _mail_path(
+        self, feature_store_id: int, name: str, service: str, *rest: str
+    ) -> list:
+        """REST path of a mail data source's resources; `service` is `gmail` or `outlook`."""
         _client = client._get_instance()
         return [
             "project",
@@ -184,53 +187,66 @@ class StorageConnectorApi:
             feature_store_id,
             "storageconnectors",
             name,
-            "gmail",
+            service,
             *rest,
         ]
 
-    def _get_gmail_access_token(
-        self, feature_store_id: int, name: str
+    def _get_mail_access_token(
+        self, feature_store_id: int, name: str, service: str
     ) -> dict[str, Any]:
         return client._get_instance()._send_request(
-            "POST", self._gmail_path(feature_store_id, name, "token")
+            "POST", self._mail_path(feature_store_id, name, service, "token")
         )
 
     def _get_gmail_labels(
         self, feature_store_id: int, name: str
     ) -> list[dict[str, Any]]:
         return client._get_instance()._send_request(
-            "GET", self._gmail_path(feature_store_id, name, "labels")
+            "GET", self._mail_path(feature_store_id, name, "gmail", "labels")
         )
 
-    def _put_gmail_sync_job(
-        self, feature_store_id: int, name: str, job_name: str, sync_job: dict[str, Any]
+    def _get_outlook_folders(
+        self, feature_store_id: int, name: str
+    ) -> list[dict[str, Any]]:
+        return client._get_instance()._send_request(
+            "GET", self._mail_path(feature_store_id, name, "outlook", "folders")
+        )
+
+    def _put_mail_sync_job(
+        self,
+        feature_store_id: int,
+        name: str,
+        service: str,
+        job_name: str,
+        sync_job: dict[str, Any],
     ) -> dict[str, Any]:
         return client._get_instance()._send_request(
             "PUT",
-            self._gmail_path(feature_store_id, name, "sync", job_name),
+            self._mail_path(feature_store_id, name, service, "sync", job_name),
             headers={"content-type": "application/json"},
             data=json.dumps(sync_job),
         )
 
-    def _get_gmail_sync_jobs(
-        self, feature_store_id: int, name: str
+    def _get_mail_sync_jobs(
+        self, feature_store_id: int, name: str, service: str
     ) -> list[dict[str, Any]]:
         return client._get_instance()._send_request(
-            "GET", self._gmail_path(feature_store_id, name, "sync")
+            "GET", self._mail_path(feature_store_id, name, service, "sync")
         )
 
-    def _get_gmail_sync_job(
-        self, feature_store_id: int, name: str, job_name: str
+    def _get_mail_sync_job(
+        self, feature_store_id: int, name: str, service: str, job_name: str
     ) -> dict[str, Any]:
         return client._get_instance()._send_request(
-            "GET", self._gmail_path(feature_store_id, name, "sync", job_name)
+            "GET", self._mail_path(feature_store_id, name, service, "sync", job_name)
         )
 
-    def _delete_gmail_sync_job(
-        self, feature_store_id: int, name: str, job_name: str
+    def _delete_mail_sync_job(
+        self, feature_store_id: int, name: str, service: str, job_name: str
     ) -> None:
         client._get_instance()._send_request(
-            "DELETE", self._gmail_path(feature_store_id, name, "sync", job_name)
+            "DELETE",
+            self._mail_path(feature_store_id, name, service, "sync", job_name),
         )
 
     def _get_online_connector(

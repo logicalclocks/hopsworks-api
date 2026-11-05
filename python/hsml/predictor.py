@@ -114,6 +114,7 @@ class Predictor(DeployableComponent):
         schema: DeploymentSchema | dict | None = None,
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
+        llm_gateway: bool | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -193,6 +194,7 @@ class Predictor(DeployableComponent):
         self._vllm_image_tag = vllm_image_tag
         self._triton_image_tag = triton_image_tag
         self._knative_mode = knative_mode
+        self._llm_gateway = llm_gateway
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -582,6 +584,9 @@ class Predictor(DeployableComponent):
         kwargs["knative_mode"] = util._extract_field_from_json(
             json_decamelized, "knative_mode"
         )
+        kwargs["llm_gateway"] = util._extract_field_from_json(
+            json_decamelized, "llm_gateway"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -683,6 +688,11 @@ class Predictor(DeployableComponent):
             predictor_dict = {**predictor_dict, **self._scaling_configuration.to_dict()}
         if self._knative_mode is not None:
             predictor_dict = {**predictor_dict, "knativeMode": self._knative_mode}
+        if self._llm_gateway is not None:
+            predictor_dict = {
+                **predictor_dict,
+                "llmGateway": self._llm_gateway,
+            }
         tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             predictor_dict = {**predictor_dict, "tags": tags_dict}
@@ -1133,6 +1143,22 @@ class Predictor(DeployableComponent):
         self._knative_mode = knative_mode
 
     @public
+    @property
+    def llm_gateway(self) -> bool:
+        """The LLM gateway switch of this deployment, as stored by the backend.
+
+        The LLM gateway is the OpenAI-compatible URL shared by the vLLM deployments of a project.
+        Only Standard-mode vLLM deployments are served by it; for other deployments the value has no effect.
+        The switch is on by default and while the backend does not report the field.
+        Setting it before a save call sends the value with the deployment.
+        """
+        return True if self._llm_gateway is None else self._llm_gateway
+
+    @llm_gateway.setter
+    def llm_gateway(self, llm_gateway: bool):
+        self._llm_gateway = llm_gateway
+
+    @public
     def get_endpoint_url(self) -> str | None:
         """Get the base endpoint URL for this predictor.
 
@@ -1176,7 +1202,7 @@ class Predictor(DeployableComponent):
 
         Examples:
             ```python
-            url = predictor.get_openai_compatible_url()
+            url = predictor.get_openai_url()
             # url = "https://host:port/v1/project/name/v1"
             # Then use: url + "/chat/completions"
             ```

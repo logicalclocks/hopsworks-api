@@ -66,7 +66,7 @@ Supported frameworks:
 | Python (custom) | PYTHON | **Yes** | Custom pickle/joblib/any model |
 | PyTorch | PYTHON | **Yes** | Custom script required |
 | TensorFlow | TF_SERVING | No | Script not supported |
-| LLM (vLLM) | VLLM | Optional | OpenAI-compatible endpoint |
+| LLM (vLLM) | VLLM | Optional | OpenAI-compatible endpoint, see [OpenAI-compatible clients](#openai-compatible-clients) |
 | Triton (`mr.triton`) | TRITON | No | Opt-in per cluster (`ms.get_triton_image_tags()` empty means not enabled); `config.pbtxt` + numeric version folders, no `name` in `config.pbtxt`; Open Inference Protocol v2 tensors over REST and gRPC; no script, transformer or inference logging |
 
 ---
@@ -154,6 +154,7 @@ deployment.get_state().status
 deployment.get_logs(component="predictor", tail=50)   # prints; read_logs(...) returns the string
 deployment.get_endpoint_url()                          # base URL
 deployment.get_inference_url()                         # with :predict suffix
+deployment.get_openai_url()                            # vLLM only: this deployment's OpenAI-compatible URL
 deployment.stop(await_stopped=120)
 deployment.delete()
 
@@ -165,6 +166,22 @@ deployment.rollback(1)                                 # reactivate version 1; r
 
 A version holds the predictor, transformer and model artifact settings.
 API protocol, request batching, inference logging, scheduling and Knative mode are not versioned and are kept by a rollback.
+
+## OpenAI-compatible clients
+
+A vLLM deployment serves the OpenAI API.
+The LLM gateway serves the Standard-mode vLLM deployments of the project whose LLM gateway switch is on and that do not scale to zero, through one URL, and the `model` field of the request is the deployment name.
+Knative-mode, scale-to-zero (minimum 0) and switched-off deployments are not served; use `deployment.get_openai_client()` for them.
+It answers 404 until a vLLM deployment of the project is running and the cluster has the LLM gateway enabled; the per-deployment client keeps working meanwhile.
+The client needs `pip install "hopsworks[openai]"`.
+
+```python
+ms = project.get_model_serving()
+client = ms.get_openai_client()                       # LLM gateway, ms.get_openai_url()
+client.chat.completions.create(model="my_llm_deployment", messages=[{"role": "user", "content": "Hello"}])
+
+client = deployment.get_openai_client()               # this deployment only, deployment.get_openai_url()
+```
 
 ## Robustness and latency
 
