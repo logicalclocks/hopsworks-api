@@ -15,10 +15,11 @@
 #
 """`hops score` against a real project with the scoring-pipeline environment.
 
-Makes feature groups of deals and contacts, then checks: a first run, a deal scored on run A
-and closed before run B (absent from the current ranking), the all-closed run (the current run
-is empty and named), scores of a run with no run row never current, and `--delete` leaving no job,
-schedule or scores group. The admission and link checks run against the cluster's Trino: an
+Makes feature groups of deals and contacts, then checks, awaiting each execution: the default
+start returns before its run ends and a second start gets the 409; run A's rows; a run stopped
+between its scores insert and its run row is never current; a deal closed before run B is absent
+from the current ranking; the all-closed run is empty and named; `--delete` leaves no job,
+schedule or scores group, also for a scheduled system. The admission and link checks run against the cluster's Trino: an
 oversized entity group refused before any read, the related caps counted on the rows reachable
 from the selection, a non-unique link refused. Not covered here: the CRM path with
 `hops fg ingest` and the external group refusal, which need data sources. Runs only with HOPS_LIVE=1 and a cluster login in HOPSWORKS_HOST,
@@ -28,9 +29,12 @@ HOPSWORKS_API_KEY and HOPSWORKS_PROJECT; the project needs the scoring-pipeline 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
+import re
 import subprocess
 import sys
+import time
 import uuid
 
 import pytest
@@ -51,100 +55,200 @@ def _out(done: subprocess.CompletedProcess) -> str:
     return done.stdout + done.stderr
 
 
-def test_scores_current_run_and_delete():
-    import hopsworks
+RUN_DEADLINE = 1200
+POLL_SECONDS = 10
+
+
+def _started(done: subprocess.CompletedProcess) -> int:
+    """The execution id the default start printed; it says started, never finished."""
+    assert done.returncode == 0, _out(done)
+    match = re.search(r"started: execution #(\d+)", _out(done))
+    assert match, _out(done)
+    assert "Read the scores once the run has ended" in _out(done)
+    return int(match.group(1))
+
+
+def _execution(project, job_name: str, execution_id: int):
+    job = project.get_job_api().get_job(job_name)
+    return next((e for e in job.get_executions() if e.id == execution_id), None)
+
+
+def _await(project, job_name: str, execution_id: int, deadline: float = RUN_DEADLINE):
+    """That execution once it is final, within `deadline` seconds."""
+    end = time.monotonic() + deadline
+    while time.monotonic() < end:
+        execution = _execution(project, job_name, execution_id)
+        if execution is not None and execution.success is not None:
+            return execution
+        time.sleep(POLL_SECONDS)
+    pytest.fail(f"{job_name} execution #{execution_id} not final after {deadline} s")
+
+
+def _show(name: str) -> dict:
+    done = _hops("score", name, "--show", "--top", "50", "--json")
+    assert done.returncode == 0, _out(done)
+    return json.loads(done.stdout)
+
+
+def _run_ids(sql, table: str) -> set:
+    return {r[0] for r in sql.rows(f'SELECT DISTINCT run_id FROM "{table}"')}
+
+
+def test_publication_current_run_kill_window_and_delete(cluster):
     import numpy as np
     import pandas as pd
 
-    tag = uuid.uuid4().hex[:6]
-    name, deals, contacts = f"sc{tag}", f"deals_{tag}", f"contacts_{tag}"
-    fs = hopsworks.login().get_feature_store()
     rng = np.random.default_rng(0)
     n = 300
-    closed = pd.Timestamp("2026-06-01") + pd.to_timedelta(
-        rng.integers(0, 120, n), unit="D"
-    )
-    frame = pd.DataFrame(
+    deals = pd.DataFrame(
         {
             "id": np.arange(n),
             "contact_id": np.arange(n) % 50,
             "amount": rng.uniform(1, 100, n),
             "won": rng.integers(0, 2, n).astype(object),
-            "closed_at": closed,
+            "closed_at": pd.Timestamp("2026-06-01")
+            + pd.to_timedelta(rng.integers(0, 120, n), unit="D"),
         }
     )
-    frame.loc[:4, ["won", "closed_at"]] = None  # five open deals
-    created = []
+    deals.loc[:4, ["won", "closed_at"]] = None  # five open deals
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make(
+        "contacts",
+        pd.DataFrame({"id": np.arange(50), "region": list("abcde") * 10}),
+        ["id"],
+    )
+    name = f"sc{cluster.tag}"
+    job_name = f"kumo-score-{name}"
+    project = cluster.project
+    args = (
+        "score",
+        name,
+        "--entity",
+        d,
+        "--target",
+        "won",
+        "--positive",
+        "1",
+        "--link",
+        f"{d}.contact_id={c}.id",
+        "--cutoff",
+        f"{d}.closed_at",
+        "--time",
+        f"{d}.closed_at",
+    )
     try:
-        for fg_name, df, pk in (
-            (deals, frame, ["id"]),
-            (
-                contacts,
-                pd.DataFrame({"id": np.arange(50), "region": list("abcde") * 10}),
-                ["id"],
-            ),
-        ):
-            fg = fs.create_feature_group(
-                fg_name, version=1, primary_key=pk, statistics_config=False
-            )
-            fg.insert(df, wait=True)
-            created.append(fg)
-        args = (
+        # The default start returns while the execution has not ended.
+        started = time.monotonic()
+        first = _started(_hops(*args))
+        assert time.monotonic() - started < RUN_DEADLINE
+        assert _execution(project, job_name, first).success is None
+
+        # A second start while it runs: Hopsworks answers 409 and the verb says so.
+        again = _hops("score", name)
+        assert again.returncode != 0
+        assert f"job {job_name} is already running" in _out(again)
+
+        assert _await(project, job_name, first).success is True
+        run_a = _show(name)
+        assert run_a["run"]["scored_rows"] == run_a["run"]["query_rows"] == 5
+        assert {r["id"] for r in run_a["scores"]} == set(range(5))
+        assert all(0 <= r["score"] <= 1 for r in run_a["scores"])
+        assert {r["run_id"] for r in run_a["scores"]} == {run_a["run"]["run_id"]}
+
+        # Killed after its scores insert, before its run row: never current.
+        job = project.get_job_api().get_job(job_name)
+        held = job.run(
+            args=f"{job.config['defaultArgs']} --hold-before-publish 900",
+            await_termination=False,
+        )
+        scores_table, runs_table = f"{name}_scores_1", f"{name}_score_runs_1"
+        end = time.monotonic() + RUN_DEADLINE
+        new: set = set()
+        while not new and time.monotonic() < end:
+            time.sleep(POLL_SECONDS)
+            new = _run_ids(cluster.sql, scores_table) - {run_a["run"]["run_id"]}
+        assert len(new) == 1, "the held run wrote no scores within the deadline"
+        held.stop()
+        assert _await(project, job_name, held.id).success is False
+        (killed,) = new
+        rows = cluster.sql.rows(
+            f"SELECT count(*) FROM \"{scores_table}\" WHERE run_id = '{killed}'"
+        )
+        assert rows[0][0] == 5
+        assert killed not in _run_ids(cluster.sql, runs_table)
+        assert _show(name)["run"]["run_id"] == run_a["run"]["run_id"]
+
+        # Close deal 0 and score again: it has no current score after run B.
+        fg = cluster.fs.get_feature_group(d, version=1)
+        row = deals.iloc[[0]].copy()
+        row["won"], row["closed_at"] = 1, pd.Timestamp("2026-10-01")
+        fg.insert(row, wait=True)
+        second = _started(_hops("score", name))
+        assert _await(project, job_name, second).success is True
+        run_b = _show(name)
+        assert run_b["run"]["run_id"] not in (run_a["run"]["run_id"], killed)
+        assert {r["id"] for r in run_b["scores"]} == {1, 2, 3, 4}
+        assert run_b["run"]["scored_rows"] == 4
+
+        # Close the rest: the current run scored none and says so; --wait polls to the end.
+        rest = deals.iloc[1:5].copy()
+        rest["won"], rest["closed_at"] = 0, pd.Timestamp("2026-10-02")
+        fg.insert(rest, wait=True)
+        waited = _hops("score", name, "--wait", "--timeout", str(RUN_DEADLINE))
+        assert waited.returncode == 0, _out(waited)
+        assert "scored none" in _out(waited)
+        run_c = _show(name)
+        assert run_c["run"]["run_id"] != run_b["run"]["run_id"]
+        assert run_c["run"]["scored_rows"] == 0 and run_c["scores"] == []
+        assert "scored none" in _out(_hops("score", name, "--show"))
+
+        deleted = _hops("score", name, "--delete", "--yes")
+        assert deleted.returncode == 0, _out(deleted)
+        assert cluster.fs.get_feature_group(f"{name}_scores", version=1) is None
+        assert cluster.fs.get_feature_group(f"{name}_score_runs", version=1) is None
+        assert project.get_job_api().get_job(job_name) is None
+    finally:
+        _hops("score", name, "--delete", "--yes")
+
+
+def test_a_scheduled_system_is_torn_down_whole(cluster):
+    deals, contacts, _, _ = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    name = f"sch{cluster.tag}"
+    job_name = f"kumo-score-{name}"
+    api = cluster.project.get_job_api()
+    try:
+        done = _hops(
             "score",
             name,
             "--entity",
-            deals,
+            d,
             "--target",
             "won",
             "--positive",
             "1",
             "--link",
-            f"{deals}.contact_id={contacts}.id",
-            "--cutoff",
-            f"{deals}.closed_at",
-            "--time",
-            f"{deals}.closed_at",
+            f"{d}.contact_id={c}.id",
+            "--schedule",
+            "daily",
+            "--at",
+            "3",
         )
-        first = _hops(*args)
-        assert first.returncode == 0, _out(first)
-        shown = _hops("score", name, "--show")
-        assert "5 of 5 query rows scored" in _out(shown) or "scored_rows" in _out(shown)
-
-        # A run killed after its scores insert and before its run row is never current.
-        scores_fg = fs.get_feature_group(f"{name}_scores", version=1)
-        orphan = scores_fg.read().head(2)
-        orphan["run_id"] = "orphan"
-        orphan["scored_at"] = pd.Timestamp("2099-01-01")
-        scores_fg.insert(orphan, wait=True)
-        assert "orphan" not in _out(_hops("score", name, "--show", "--json"))
-
-        # Close deal 0 and score again: it has no current score after run B.
-        fg = fs.get_feature_group(deals, version=1)
-        row = frame.iloc[[0]].copy()
-        row["won"], row["closed_at"] = 1, pd.Timestamp("2026-10-01")
-        fg.insert(row, wait=True)
-        second = _hops("score", name)
-        assert second.returncode == 0, _out(second)
-        ranking = _hops("score", name, "--show", "--top", "50", "--json")
-        assert '"id": 0,' not in _out(ranking)
-
-        # Close the rest: the current run scored none and says so.
-        rest = frame.iloc[1:5].copy()
-        rest["won"], rest["closed_at"] = 0, pd.Timestamp("2026-10-02")
-        fg.insert(rest, wait=True)
-        empty = _hops("score", name)
-        assert empty.returncode == 0, _out(empty)
-        assert "scored none" in _out(_hops("score", name, "--show"))
+        execution = _started(done)
+        assert "Scheduled" in _out(done)
+        schedule = api.get_job(job_name).job_schedule
+        assert schedule is not None
+        assert schedule.cron_expression.split()[2] == "3"
+        assert _await(cluster.project, job_name, execution).success is True
 
         deleted = _hops("score", name, "--delete", "--yes")
         assert deleted.returncode == 0, _out(deleted)
-        assert fs.get_feature_group(f"{name}_scores", version=1) is None
-        assert fs.get_feature_group(f"{name}_score_runs", version=1) is None
-        assert "not found" in _out(_hops("job", "info", f"kumo-score-{name}")).lower()
+        assert api.get_job(job_name) is None
+        for group in (f"{name}_scores", f"{name}_score_runs"):
+            assert cluster.fs.get_feature_group(group, version=1) is None
     finally:
         _hops("score", name, "--delete", "--yes")
-        for fg in created:
-            fg.delete()
 
 
 class _Cluster:

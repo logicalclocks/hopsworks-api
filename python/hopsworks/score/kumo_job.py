@@ -766,18 +766,34 @@ def score(plan: Plan, inputs: Inputs, started: Any, log: Any) -> Any:
 
 
 def publish(
-    scores: Any, run: Any, insert_scores: Any, insert_run: Any, log: Any
+    scores: Any,
+    run: Any,
+    insert_scores: Any,
+    insert_run: Any,
+    log: Any,
+    hold: float = 0,
 ) -> None:
-    """Write the scores in one insert, then the run row. The run row is the publication."""
+    """Write the scores in one insert, then the run row. The run row is the publication.
+
+    `hold` seconds between the two: the live test stops a run in that window.
+    """
     if len(scores):
         insert_scores(scores)
         log(f"scores insert done: {len(scores)} rows")
+    if hold:
+        log(f"holding {hold:.0f}s before publishing")
+        time.sleep(hold)
     insert_run(run)
     log(f"run {run['run_id'].iloc[0]} published")
 
 
 def run_plan(
-    plan: Plan, reader: Reader, insert_scores: Any, insert_run: Any, log: Any
+    plan: Plan,
+    reader: Reader,
+    insert_scores: Any,
+    insert_run: Any,
+    log: Any,
+    hold: float = 0,
 ) -> str:
     """One run: read, score, publish. Returns the run id."""
     import pandas as pd  # noqa: PLC0415
@@ -819,7 +835,7 @@ def run_plan(
             }
         ]
     )
-    publish(scored, run, insert_scores, insert_run, log)
+    publish(scored, run, insert_scores, insert_run, log, hold)
     return run_id
 
 
@@ -871,6 +887,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--system", required=True, help="The system name.")
     parser.add_argument("--config", required=True, help="The plan, as JSON.")
+    # Test hook: tests/live/test_score.py stops a run between the scores and its run row.
+    parser.add_argument(
+        "--hold-before-publish", type=float, default=0, help=argparse.SUPPRESS
+    )
     args = parser.parse_args(argv)
     plan = Plan.from_json(args.config)
     t_start = time.perf_counter()
@@ -918,6 +938,7 @@ def main(argv: list[str] | None = None) -> int:
             lambda df: scores_fg.insert(df, wait=True),
             lambda df: runs_fg.insert(df, wait=True),
             log,
+            args.hold_before_publish,
         )
     except ScoreRefused as exc:
         log(f"refused: {exc}")
