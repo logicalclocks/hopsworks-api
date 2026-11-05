@@ -691,11 +691,11 @@ def test_an_input_named_like_an_output_is_refused_before_anything(crm, entity, l
         {"maxConcurrentExecutions": None},
     ],
 )
-def test_a_job_outside_the_scoring_class_or_one_run_is_not_the_systems(extra):
+def test_the_run_limit_and_class_are_not_the_marker(extra):
+    # A backend without these fields drops them from the stored config; the job is still
+    # the system's, and hops score sets them again on the next run.
     job = _job("kumo-score-sales", APP, ARGS, **extra)
-    assert score.owned_resources("sales", job, [])[1] == ["job kumo-score-sales"]
-    with pytest.raises(ScoreRefused, match="exists and was not made"):
-        score.check_job(job, "sales")
+    score.check_job(job, "sales")
 
 
 def test_the_job_writes_the_marker_it_is_checked_by():

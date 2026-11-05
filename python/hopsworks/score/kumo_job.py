@@ -71,16 +71,11 @@ def group_marked(description: str | None, name: str) -> bool:
 
 
 def job_marked(config: dict, name: str, script: str) -> bool:
-    """Whether the job is the system's.
+    """Whether the job runs `script` from the system's folder with `--system <name>`.
 
-    It runs `script` from the system's folder with `--system <name>` in its arguments, one
-    execution at a time, in the scoring platform class.
+    The run limit and platform class are not part of the marker: a backend without them drops
+    them from the stored config, and `hops score` sets them again on every run.
     """
-    if (
-        config.get(MAX_CONCURRENT) != 1
-        or config.get(PLATFORM_CLASS_KEY) != PLATFORM_CLASS
-    ):
-        return False
     try:
         args = shlex.split(str(config.get("defaultArgs") or ""))
     except ValueError:

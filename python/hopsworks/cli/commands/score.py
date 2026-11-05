@@ -716,8 +716,7 @@ def check_job(job: Any, name: str) -> None:
     if job is not None and not kumo_job.job_marked(job.config, name, SCRIPT.name):
         raise ScoreRefused(
             f"job {_job_name(name)} exists and was not made by `hops score {name}`: it does "
-            f"not run {kumo_job.APP_DIR}/{name}/{SCRIPT.name} with --system {name}, one "
-            f"execution at a time, in platform class {kumo_job.PLATFORM_CLASS}. "
+            f"not run {kumo_job.APP_DIR}/{name}/{SCRIPT.name} with --system {name}. "
             "It is left alone. Choose another system name."
         )
 
