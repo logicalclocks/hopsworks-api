@@ -87,20 +87,59 @@ def _name(feature: Any) -> str:
     return getattr(feature, "name", feature)
 
 
-def links_from_query(query: Any) -> list[Link]:
-    """The joins a feature view recorded, as links from the left group to each right group."""
-    left = query._left_feature_group.name
-    out = []
-    for join in query.joins:
-        right_query = join.query
-        on = [_name(f) for f in join._on or []]
-        left_on = [_name(f) for f in join._left_on or []] or on
-        right_on = [_name(f) for f in join._right_on or []] or on
-        if not left_on:
-            raise ScoreRefused(f"a join of {left} in the feature view names no key.")
-        out.append(Link(left, left_on, right_query._left_feature_group.name, right_on))
-        out.extend(links_from_query(right_query))
-    return out
+def links_from_query(query: Any) -> tuple[list[Link], dict[str, int]]:
+    """The joins a feature view recorded, as links, and the version of each group it reads.
+
+    Refuses a view that reads one group at two versions.
+    """
+    pins: dict[str, int] = {}
+    links: list[Link] = []
+
+    def pin(fg: Any) -> str:
+        known = pins.setdefault(fg.name, fg.version)
+        if known != fg.version:
+            raise ScoreRefused(
+                f"the feature view reads {fg.name} at versions {known} and {fg.version}: "
+                "one version per group."
+            )
+        return fg.name
+
+    def walk(q: Any) -> None:
+        left = pin(q._left_feature_group)
+        for join in q.joins:
+            right_query = join.query
+            on = [_name(f) for f in join._on or []]
+            left_on = [_name(f) for f in join._left_on or []] or on
+            right_on = [_name(f) for f in join._right_on or []] or on
+            if not left_on:
+                raise ScoreRefused(
+                    f"a join of {left} in the feature view names no key."
+                )
+            links.append(
+                Link(left, left_on, pin(right_query._left_feature_group), right_on)
+            )
+            walk(right_query)
+
+    walk(query)
+    return links, pins
+
+
+def check_link_pins(
+    links: list[Link], pins: dict[str, int], latest: dict[str, int]
+) -> None:
+    """Refuse a --link naming a group the view reads at another version than its latest.
+
+    A --link names a group without a version, which reads the latest; the view's group is
+    read at its recorded version. `latest` is the latest version of each such group.
+    """
+    for link in links:
+        for group in (link.left, link.right):
+            if group in pins and latest.get(group, pins[group]) != pins[group]:
+                raise ScoreRefused(
+                    f"--link {link} names {group}, whose latest version is "
+                    f"{latest[group]}, while the feature view reads {group} v{pins[group]}. "
+                    "Recreate the view on the version meant, or drop the --link."
+                )
 
 
 def _pair(link: Link) -> frozenset[str]:
@@ -745,19 +784,40 @@ def _gather(
     times: tuple[str, ...],
     cutoff: str | None,
 ) -> tuple[list[Link], dict[str, GroupInfo]]:
+    """The links and the groups they name; a group of the view at the version it records."""
     from hopsworks.cli.commands import fg as fg_cmd  # noqa: PLC0415 - fg imports job
 
-    links = [parse_link(text) for text in links_in]
+    fs = session.get_feature_store(ctx)
+    explicit = [parse_link(text) for text in links_in]
+    links, pins = list(explicit), {}
     if feature_view:
-        fv = versions.feature_view(session.get_feature_store(ctx), feature_view, None)
+        fv = versions.feature_view(fs, feature_view, None)
         if fv is None:
             raise ScoreRefused(f"Feature view '{feature_view}' not found.")
-        links = links_from_query(fv.query) + links
+        recorded, pins = links_from_query(fv.query)
+        links = recorded + explicit
     names = {entity, *(g for lk in links for g in (lk.left, lk.right))}
     names |= {parse_ref(t)[0] for t in times}
     if cutoff:
         names.add(parse_ref(cutoff)[0])
-    return links, {n: _info(fg_cmd._get_fg(ctx, n, None)) for n in sorted(names)}
+    named = {g for lk in explicit for g in (lk.left, lk.right) if g in pins}
+    latest = {}
+    for group in named:
+        fg = versions.feature_group(fs, group, None)
+        latest[group] = fg.version if fg is not None else pins[group]
+    check_link_pins(explicit, pins, latest)
+    infos = {}
+    for n in sorted(names):
+        if n in pins:
+            fg = fs.get_feature_group(n, version=pins[n])
+            if fg is None:
+                raise ScoreRefused(
+                    f"the feature view reads {n} v{pins[n]}, which no longer exists."
+                )
+        else:
+            fg = fg_cmd._get_fg(ctx, n, None)
+        infos[n] = _info(fg)
+    return links, infos
 
 
 def _score(

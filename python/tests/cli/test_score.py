@@ -655,3 +655,72 @@ def test_the_job_writes_the_marker_it_is_checked_by():
         "sales",
         score.SCRIPT.name,
     )
+
+
+# region: feature view versions
+
+
+def _fg(name, version, cols):
+    from hsfs.feature import Feature
+    from hsfs.feature_group import FeatureGroup
+
+    return FeatureGroup(
+        name=name,
+        version=version,
+        featurestore_id=1,
+        primary_key=["id"],
+        partition_key=[],
+        features=[Feature(c, "bigint") for c in cols],
+        time_travel_format="DELTA",
+    )
+
+
+def test_the_view_carries_each_groups_recorded_version(python_engine):
+    deals = _fg("deals", 1, ["id", "contact_id"])
+    contacts = _fg("contacts", 1, ["id", "account_id"])
+    accounts = _fg("accounts", 3, ["id"])
+    query = deals.select_all().join(
+        contacts.select_all().join(
+            accounts.select_all(), left_on=["account_id"], right_on=["id"]
+        ),
+        left_on=["contact_id"],
+        right_on=["id"],
+    )
+    links, pins = score.links_from_query(query)
+    assert pins == {"deals": 1, "contacts": 1, "accounts": 3}
+    assert [str(x) for x in links] == [
+        "deals.contact_id=contacts.id",
+        "contacts.account_id=accounts.id",
+    ]
+
+
+def test_a_view_reading_one_group_at_two_versions_is_refused(python_engine):
+    deals = _fg("deals", 1, ["id", "contact_id", "owner_id"])
+    query = (
+        deals.select_all()
+        .join(
+            _fg("contacts", 1, ["id"]).select_all(),
+            left_on=["contact_id"],
+            right_on=["id"],
+        )
+        .join(
+            _fg("contacts", 2, ["id"]).select_all(),
+            left_on=["owner_id"],
+            right_on=["id"],
+            prefix="o_",
+        )
+    )
+    with pytest.raises(ScoreRefused, match="reads contacts at versions 1 and 2"):
+        score.links_from_query(query)
+
+
+def test_a_link_naming_a_view_group_with_a_newer_version_is_refused():
+    link = score.parse_link("activities.contact_id=contacts.id")
+    pins = {"deals": 1, "contacts": 1}
+    with pytest.raises(
+        ScoreRefused,
+        match="latest version is 2, while the feature view reads contacts v1",
+    ):
+        score.check_link_pins([link], pins, {"contacts": 2})
+    score.check_link_pins([link], pins, {"contacts": 1})
+    score.check_link_pins([score.parse_link("activities.deal_id=x.id")], pins, {})

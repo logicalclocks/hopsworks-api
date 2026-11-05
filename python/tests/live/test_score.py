@@ -412,3 +412,66 @@ def test_a_full_scoring_class_answers_429_and_nothing_starts(cluster):
     finally:
         for n in names:
             _hops("score", n, "--delete", "--yes")
+
+
+def test_a_view_on_contacts_v1_reads_v1_when_v2_exists(cluster):
+    import json
+    import shlex
+
+    deals, contacts, _, _ = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    v1 = cluster.fs.get_feature_group(c, version=1)
+    v2 = cluster.fs.create_feature_group(
+        c, version=2, primary_key=["id"], statistics_config=False
+    )
+    v2.insert(contacts.assign(id=contacts["id"] + 1000), wait=True)
+    cluster.groups.append(v2)
+    fv = cluster.fs.create_feature_view(
+        f"view_{cluster.tag}",
+        version=1,
+        query=cluster.fs.get_feature_group(d, version=1)
+        .select_all()
+        .join(v1.select_all(), left_on=["contact_id"], right_on=["id"], prefix="c_"),
+    )
+    name = f"fv{cluster.tag}"
+    try:
+        done = _hops(
+            "score",
+            name,
+            "--entity",
+            d,
+            "--target",
+            "won",
+            "--positive",
+            "1",
+            "--fv",
+            fv.name,
+        )
+        assert done.returncode == 0, _out(done)
+        job = cluster.project.get_job_api().get_job(f"kumo-score-{name}")
+        args = shlex.split(job.config["defaultArgs"])
+        plan = json.loads(args[args.index("--config") + 1])
+        assert plan["groups"][c]["version"] == 1
+        assert plan["groups"][d]["version"] == 1
+
+        # A --link naming contacts reads its latest, v2: refused against the view's v1.
+        refused = _hops(
+            "score",
+            name,
+            "--entity",
+            d,
+            "--target",
+            "won",
+            "--positive",
+            "1",
+            "--fv",
+            fv.name,
+            "--link",
+            f"{d}.contact_id={c}.id",
+        )
+        assert refused.returncode != 0
+        assert f"while the feature view reads {c} v1" in _out(refused)
+    finally:
+        _hops("score", name, "--delete", "--yes")
+        fv.delete()
