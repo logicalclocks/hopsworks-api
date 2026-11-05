@@ -70,7 +70,12 @@ is the whole dispatch:
 1. **The goal.** Write down the pieces the request names, each with its asset name. Add a piece
    one of them needs only when that need's exit check fails: "a model on the deals" with no
    feature view makes the view inside the model piece; "score the deals daily with the best
-   model" when a model exists is the inference piece alone.
+   model" when a model exists is the inference piece alone. A model whose request names more tables
+   than the one holding the label adds a features piece first when one of them holds several rows
+   per key of the label table: its primary key is that key plus another column (`customer_id,week`),
+   or it has its own key and carries that key as a column (`ticket_id` with `customer_id`). The
+   features piece turns each such table into one row per key (counts, averages, last values, a
+   trend); the model piece then trains on a view joining the label table to it.
 2. **Run what is missing, in needs order.** For each piece, run its exit check. Passing: the piece
    exists; say so in one line and go on. Failing: spawn its builder with the Agent tool and its
    prompt below, then run the exit check again. Failing again: stop and say which check failed
