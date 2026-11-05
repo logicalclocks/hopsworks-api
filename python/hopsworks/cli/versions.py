@@ -16,6 +16,23 @@ from typing import Any
 import click
 
 
+# hopsworks-ee RESTCodes.DatasetErrorCode.PATH_NOT_FOUND: a missing HopsFS path is a 400.
+PATH_NOT_FOUND = 110018
+
+
+def not_found(exc: BaseException) -> bool:
+    """The thing asked for does not exist.
+
+    A REST 404 or a missing HopsFS path; anything else is a failed read.
+    """
+    from hopsworks_common.client.exceptions import RestAPIError
+
+    if not isinstance(exc, RestAPIError):
+        return False
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status == 404 or str(getattr(exc, "error_code", "")) == str(PATH_NOT_FOUND)
+
+
 class AmbiguousVersionError(click.ClickException):
     """More than one version exists and the command needs `--version`."""
 
