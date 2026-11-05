@@ -1316,14 +1316,12 @@ def _import_path_locked(
                 sys.modules.pop(name, None)
         raise
     finally:
-        with contextlib.suppress(ValueError):
-            sys.meta_path.remove(finder)
-        if added_path:
-            with contextlib.suppress(ValueError):
-                sys.path.remove(parent)
         held: dict[str, ModuleType] = {}
         submodules: dict[str, ModuleType] = {}
-        prefix = parent.rstrip(os.sep) + os.sep
+        prefix = _comparable(parent).rstrip(os.sep) + os.sep
+        # Sorted out before the source's folder leaves sys.path: a namespace
+        # package's __path__ recomputes itself from sys.path once it changes,
+        # and would no longer name the folder it came from.
         for name in set(sys.modules) - before:
             if name == unique:
                 continue
@@ -1331,18 +1329,25 @@ def _import_path_locked(
                 submodules[name] = sys.modules.pop(name)
                 continue
             pulled = sys.modules.get(name)
-            file = getattr(pulled, "__file__", None) or ""
+            file = _comparable(getattr(pulled, "__file__", None) or "")
             # A namespace package (a folder without __init__.py) has no file but
             # a path; one that lives under the source is the source's too.
-            portions = [str(p) for p in getattr(pulled, "__path__", None) or []]
-            if file.startswith(prefix) or (
+            portions = [
+                _comparable(str(p)) for p in getattr(pulled, "__path__", None) or []
+            ]
+            if (file and file.startswith(prefix)) or (
                 not file and portions and all(p.startswith(prefix) for p in portions)
             ):
                 held[name] = sys.modules.pop(name)
+        with contextlib.suppress(ValueError):
+            sys.meta_path.remove(finder)
+        if added_path:
+            with contextlib.suppress(ValueError):
+                sys.path.remove(parent)
     digest = hashlib.sha256()
     files = []
     for path in sorted(record):
-        relative = os.path.relpath(path, parent)
+        relative = _relative(path, parent)
         files.append(relative)
         digest.update(relative.encode())
         digest.update(b"\0")
@@ -1352,8 +1357,18 @@ def _import_path_locked(
     for pulled in held.values():
         file = getattr(pulled, "__file__", None) or ""
         if file and os.path.abspath(file) not in record:
-            files.append(f"{os.path.relpath(file, parent)} (not hashed)")
+            files.append(f"{_relative(file, parent)} (not hashed)")
     return module, held, submodules, _Imported(digest.hexdigest(), tuple(files))
+
+
+def _relative(path: str, base: str) -> str:
+    """A path relative to ``base`` with ``/`` between its parts, so a hash and a file list read the same on every platform."""
+    return os.path.relpath(path, base).replace(os.sep, "/")
+
+
+def _comparable(path: str) -> str:
+    """A path in the one spelling two names of the same file share: absolute, and case-folded where the file system ignores case."""
+    return os.path.normcase(os.path.abspath(path)) if path else ""
 
 
 def _submodules_of(package: str) -> dict[str, ModuleType]:
@@ -1389,7 +1404,7 @@ def _digest_of(local: str, root: str | None = None) -> str:
         files = []
     digest = hashlib.sha256()
     for file in files:
-        digest.update(os.path.relpath(file, base).encode())
+        digest.update(_relative(str(file), str(base)).encode())
         digest.update(b"\0")
         digest.update(file.read_bytes())
     return digest.hexdigest()

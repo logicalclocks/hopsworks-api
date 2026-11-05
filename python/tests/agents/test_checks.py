@@ -778,7 +778,7 @@ class _FakeDatasetApi:
 
     def download(self, path, local, overwrite=True):  # noqa: ARG002
         os.makedirs(os.path.dirname(local), exist_ok=True)
-        Path(local).write_text(self.files["/" + path.lstrip("/")])
+        Path(local).write_bytes(self.files["/" + path.lstrip("/")].encode())
         return local
 
     def mkdir(self, path):
@@ -2014,22 +2014,22 @@ class TestRoundSix:
     def test_a_plain_folder_named_like_the_standard_library_does_not_shadow_it(
         self, tmp_path
     ):
-        sys.modules.pop("tomllib", None)
-        (tmp_path / "tomllib").mkdir()
-        (tmp_path / "tomllib" / "notes.txt").write_text("not a module")
+        sys.modules.pop("statistics", None)
+        (tmp_path / "statistics").mkdir()
+        (tmp_path / "statistics" / "notes.txt").write_text("not a module")
         path = _write(
             tmp_path,
             "c.py",
             """
-            import tomllib
+            import statistics
 
             @check(needs_trace=False)
             def v(ctx):
-                return tomllib.loads('a = 1')['a'] == 1
+                return statistics.mean([1, 3]) == 2
             """,
         )
         assert _rows([_file_evaluator(path, "c")])["v"].passed is True
-        assert getattr(sys.modules["tomllib"], "__file__", None)
+        assert getattr(sys.modules["statistics"], "__file__", None)
 
     def test_a_checks_own_skipped_does_not_make_the_trial_a_harness_error(
         self, tmp_path

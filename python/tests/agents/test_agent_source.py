@@ -479,3 +479,17 @@ class TestHopsfsTree:
         assert (Path(root) / "agent.py").read_text() == "print(1)"
         assert (Path(root) / "tools" / "search.py").read_text() == "s"
         assert not (Path(root) / "ch.py").exists()
+
+    @pytest.mark.parametrize("location", ["Models/a/1", "/Models/a/1"])
+    def test_a_location_relative_to_the_project_keeps_its_layout(
+        self, tmp_path, location
+    ):
+        """No project is known, so a listed path is already project-relative."""
+        from hopsworks_agents.eval.agent_source import _download_hopsfs_directory
+
+        api = self._Api(
+            {"Models/a/1/agent.py": "print(1)", "Models/a/1/tools/search.py": "s"}
+        )
+        root = _download_hopsfs_directory(api, location, str(tmp_path))
+        assert (Path(root) / "agent.py").read_text() == "print(1)"
+        assert (Path(root) / "tools" / "search.py").read_text() == "s"

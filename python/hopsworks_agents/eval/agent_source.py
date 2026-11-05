@@ -394,7 +394,9 @@ def _absolute_hopsfs_path(child: str, root: str, project_name: str) -> str:
     ``DatasetApi.list`` returns paths relative to the project with a leading
     slash (``/Models/a/1/agent.py``, from ``util._convert_to_project_rel_path``),
     so a child is placed under ``/Projects/<project>`` unless it already is
-    there; with no project known it is placed under the root by its name.
+    there. With no project known the root was given relative to the project
+    too (``Models/a/1``), so a listed path already has its shape and is kept;
+    only a bare name is placed under the root.
     """
     if child.startswith("/Projects/"):
         return child
@@ -402,7 +404,9 @@ def _absolute_hopsfs_path(child: str, root: str, project_name: str) -> str:
         return "/" + child
     if project_name:
         return f"/Projects/{project_name}/{child.lstrip('/')}"
-    return f"{root}/{child.rstrip('/').split('/')[-1]}"
+    if "/" in child.strip("/"):
+        return "/" + child.strip("/")
+    return f"{root}/{child.strip('/')}"
 
 
 #: "scheme://user:token@" anywhere in a piece of text. The credential has to end before the
