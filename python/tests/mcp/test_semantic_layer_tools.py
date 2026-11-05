@@ -228,6 +228,30 @@ def test_a_long_answer_is_cut_at_a_line_and_says_so(tools, sl, sales, monkeypatc
     assert "cut at 30 characters" in note
 
 
+def test_a_cut_answer_with_multiline_cells_is_still_csv(tools, sl, sales, monkeypatch):
+    monkeypatch.setattr(semantic_layer, "MAX_RESPONSE_CHARS", 60)
+    sales.query.return_value = pd.DataFrame(
+        {"note": [f"line one {i}\nline two" for i in range(20)], "n": range(20)}
+    )
+
+    text = _call(tools.query_metrics("sales", ["orders"], limit=None))
+
+    data, note = text[: text.rindex("... cut")], text[text.rindex("... cut") :]
+    rows = list(csv.reader(io.StringIO(data), strict=True))
+    assert rows[0] == ["note", "n"]
+    assert all(len(row) == 2 for row in rows)
+    assert len(data) <= 60
+    assert note.startswith("... cut at 60 characters")
+
+
+def test_missing_values_are_empty_cells(tools, sl, sales):
+    sales.query.return_value = pd.DataFrame({"country": ["SE", None], "n": [1.0, None]})
+
+    text = _call(tools.query_metrics("sales", ["orders"], limit=None))
+
+    assert text.splitlines() == ["country,n", "SE,1.0", ","]
+
+
 def test_get_metrics_compiled_sql_passes_the_query(tools, sl, sales):
     sales.sql.return_value = "SELECT 1"
 

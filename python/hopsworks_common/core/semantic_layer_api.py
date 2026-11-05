@@ -322,6 +322,22 @@ class SemanticLayerApi:
         response = _client._send_request("GET", self._path(sp.id, "tags", name))
         return {t.name: t.value for t in tag.Tag.from_response_json(response)}.get(name)
 
+    def _mandatory_tags(self) -> set[str]:
+        """Names of the tags a semantic project of this Hopsworks project must carry, by cluster or project rule."""
+        _client = client._get_instance()
+        names: set[str] = set()
+        for path in (
+            ["mandatorytags"],
+            ["project", self._project_id, "mandatorytags", "project"],
+        ):
+            response = _client._send_request("GET", path) or {}
+            names.update(
+                item["name"]
+                for item in response.get("items") or []
+                if item.get("semanticProjectSpecific")
+            )
+        return names
+
     # endregion
 
     # region Gateway

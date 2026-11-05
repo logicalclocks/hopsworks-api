@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -438,6 +439,13 @@ def init_cmd(
         raise click.ClickException(
             f"Semantic project '{name}' already exists; `hops semantic show {name}` shows it."
         )
+    # Checked before anything is created, so a refused registration leaves no files, clone or repository.
+    missing = sorted(api._mandatory_tags() - set(tags or {}))
+    if missing:
+        raise click.ClickException(
+            f"Semantic projects here must carry the tags {', '.join(missing)}; pass each with "
+            "--tag NAME=VALUE."
+        )
     fmt = (fmt or ("AUTO" if existing else "DBT")).upper()
     url = repo if existing else None
     git_repository_id = None
@@ -468,14 +476,25 @@ def init_cmd(
             path = _write_scaffold(ctx, root_path or f"{_SEMANTIC_DIR}/{name}", files)
         else:
             path, git_repository_id, url = _new_repo(ctx, name, files, yes)
-    sp = api.create_project(
-        name,
-        path,
-        git_repository_id=git_repository_id,
-        format=fmt,
-        deployment_mode=mode.upper(),
-        **({"tags": tags} if tags else {}),
-    )
+    try:
+        sp = api.create_project(
+            name,
+            path,
+            git_repository_id=git_repository_id,
+            format=fmt,
+            deployment_mode=mode.upper(),
+            **({"tags": tags} if tags else {}),
+        )
+    except Exception as exc:
+        tag_args = "".join(
+            f" --tag {shlex.quote(f'{k}={json.dumps(v) if not isinstance(v, str) else v}')}"
+            for k, v in (tags or {}).items()
+        )
+        raise click.ClickException(
+            f"Registering {name} failed: {exc}. The definitions are in {path}; once the cause is "
+            f"fixed, register them with `hops semantic create {name} --path {shlex.quote(path)}"
+            f" --format {fmt}{tag_args}`."
+        ) from exc
     build = None
     # A scaffold without feature groups has no semantic model yet, which no compile accepts.
     if existing or from_fg:

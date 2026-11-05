@@ -63,22 +63,36 @@ def _cell(value: Any) -> Any:
     return value
 
 
-def _capped(text: str) -> str:
-    if len(text) <= MAX_RESPONSE_CHARS:
-        return text
-    cut = text.rfind("\n", 0, MAX_RESPONSE_CHARS) + 1
+def _cut_notice() -> str:
     return (
-        text[:cut]
-        + f"... cut at {MAX_RESPONSE_CHARS} characters: ask for fewer rows with a limit, filters or fewer group-bys.\n"
+        f"... cut at {MAX_RESPONSE_CHARS} characters: "
+        "ask for fewer rows with a limit, filters or fewer group-bys.\n"
     )
 
 
+def _capped(text: str) -> str:
+    """``text`` cut at the last line within MAX_RESPONSE_CHARS, then a line saying so, when it is longer."""
+    if len(text) <= MAX_RESPONSE_CHARS:
+        return text
+    cut = text.rfind("\n", 0, MAX_RESPONSE_CHARS) + 1
+    return text[:cut] + _cut_notice()
+
+
 def _csv(header: Sequence[str], rows: Iterable[Sequence[Any]]) -> str:
+    """CSV of the whole rows within MAX_RESPONSE_CHARS, then a line saying so when some were left out.
+
+    A quoted cell can hold newlines, so the cut falls between rows, never at a line inside one.
+    """
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(header)
-    writer.writerows([_cell(value) for value in row] for row in rows)
-    return _capped(buffer.getvalue())
+    for row in rows:
+        line = io.StringIO()
+        csv.writer(line, lineterminator="\n").writerow([_cell(value) for value in row])
+        if buffer.tell() + len(line.getvalue()) > MAX_RESPONSE_CHARS:
+            return buffer.getvalue() + _cut_notice()
+        buffer.write(line.getvalue())
+    return buffer.getvalue()
 
 
 def _semantic_project(name: str) -> semantic_layer.SemanticProject:
@@ -301,7 +315,7 @@ class SemanticLayerTools:
             ctx: The MCP context, provided automatically.
 
         Returns:
-            The rows as CSV, one column per group-by and metric, cut at MAX_RESPONSE_CHARS characters.
+            The rows as CSV, one column per group-by and metric: the whole rows within MAX_RESPONSE_CHARS characters, then a line saying so when some were left out.
         """
         if ctx:
             await ctx.info(f"Querying {', '.join(metrics)} on {semantic_project}...")
@@ -313,7 +327,8 @@ class SemanticLayerTools:
             limit=limit,
             dataframe_type="pandas",
         )
-        return _capped(df.to_csv(index=False))
+        rows = df.astype(object).where(df.notna(), None)
+        return _csv(list(df.columns), rows.itertuples(index=False, name=None))
 
     async def get_metrics_compiled_sql(
         self,
@@ -371,7 +386,7 @@ class SemanticLayerTools:
     ) -> SemanticBuild:
         """Check a semantic project's definitions, as they are in HopsFS now, and report every error and warning at its file and line.
 
-        It compiles: definitions that changed become a new build, which in FOLLOW mode answers queries once VALID; unchanged ones reuse their build, so a check changes nothing.
+        It compiles, as compile_semantic_project does: definitions that changed become a new build, and unchanged ones reuse theirs. In FOLLOW mode a VALID build then answers queries, which undoes a promote of an older build; PINNED mode serves only promoted builds.
 
         Parameters:
             semantic_project: Name of the semantic project.

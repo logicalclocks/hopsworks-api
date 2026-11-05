@@ -294,6 +294,7 @@ class TestScaffold:
 def sl(mock_project):
     api = mock.MagicMock(name="SemanticLayerApi")
     api.get_project.return_value = None
+    api._mandatory_tags.return_value = set()
     api._absolute_path.side_effect = lambda path: (
         path if path.startswith("/") else f"/Projects/demo/{path}"
     )
@@ -375,6 +376,34 @@ class TestInitInAFolder:
         sl.create_project.return_value.compile.assert_called_once_with(wait=True)
         assert "Build 1: VALID" in result.output
         assert "Uncomment the metrics" in result.output
+
+    def test_a_missing_mandatory_tag_is_refused_before_anything_is_written(
+        self, sl, datasets, feature_groups
+    ):
+        sl._mandatory_tags.return_value = {"owner", "domain"}
+
+        result = _run("sales", "--from-fg", "orders", "--tag", "domain=sales")
+
+        assert result.exit_code == 1
+        assert "owner" in result.output
+        assert "--tag NAME=VALUE" in result.output
+        datasets.mkdir.assert_not_called()
+        assert datasets.uploaded == {}
+        sl.create_project.assert_not_called()
+
+    def test_a_refused_registration_says_how_to_register_the_files(
+        self, sl, datasets, feature_groups
+    ):
+        sl.create_project.side_effect = RuntimeError("the backend refused it")
+
+        result = _run("sales", "--from-fg", "orders", "--tag", 'quality={"tier": 1}')
+
+        assert result.exit_code == 1
+        assert "the backend refused it" in result.output
+        assert (
+            "hops semantic create sales --path /Projects/demo/Resources/semantic/sales"
+            " --format DBT --tag 'quality={\"tier\": 1}'"
+        ) in result.output.replace("\n", " ")
 
     def test_path_mode_and_tags_reach_the_registration(
         self, sl, datasets, feature_groups

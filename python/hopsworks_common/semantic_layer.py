@@ -302,6 +302,7 @@ class SemanticProject:
         creator: str | None = None,
         created: str | None = None,
         missing_mandatory_tags: list[dict[str, Any] | str] | None = None,
+        tags: list[dict[str, Any]] | None = None,
         semantic_layer_api: SemanticLayerApi | None = None,
         **kwargs,
     ) -> None:
@@ -325,6 +326,8 @@ class SemanticProject:
             tag["name"] if isinstance(tag, dict) else tag
             for tag in missing_mandatory_tags or []
         ]
+        # Present only when the response was expanded with its tags; get_tags() reads them otherwise.
+        self._tags = None if tags is None else {t["name"]: t.get("value") for t in tags}
         self._semantic_layer_api = semantic_layer_api
 
     @classmethod
@@ -361,6 +364,7 @@ class SemanticProject:
             "creator": self._creator,
             "created": self._created,
             "missing_mandatory_tags": self._missing_mandatory_tags,
+            **({"tags": self._tags} if self._tags is not None else {}),
         }
 
     def json(self) -> str:
