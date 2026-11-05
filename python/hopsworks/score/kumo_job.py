@@ -52,6 +52,9 @@ class ScoreRefused(Exception):
 # region: ownership -------------------------------------------------------
 
 APP_DIR = "Resources/hops-score"
+MAX_CONCURRENT = "maxConcurrentExecutions"
+PLATFORM_CLASS_KEY = "platformClass"
+PLATFORM_CLASS = "scoring"
 
 
 def owner_marker(name: str) -> str:
@@ -68,7 +71,16 @@ def group_marked(description: str | None, name: str) -> bool:
 
 
 def job_marked(config: dict, name: str, script: str) -> bool:
-    """The job runs `script` from the system's folder with `--system <name>` in its arguments."""
+    """Whether the job is the system's.
+
+    It runs `script` from the system's folder with `--system <name>` in its arguments, one
+    execution at a time, in the scoring platform class.
+    """
+    if (
+        config.get(MAX_CONCURRENT) != 1
+        or config.get(PLATFORM_CLASS_KEY) != PLATFORM_CLASS
+    ):
+        return False
     try:
         args = shlex.split(str(config.get("defaultArgs") or ""))
     except ValueError:

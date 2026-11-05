@@ -369,3 +369,46 @@ def test_unrelated_namesakes_and_a_matching_input_survive(cluster):
     assert job_api.get_job(f"kumo-score-{name3}") is None
     _hops("score", name3, "--delete", "--yes")
     assert cluster.fs.get_feature_group(inp, version=1) is not None
+
+
+@pytest.mark.skipif(
+    os.environ.get("HOPS_EE_SCORING_CLASS") is None,
+    reason="needs the hopsworks-ee per-class admission (platformClass scoring) on the "
+    "cluster; HOPS_EE_SCORING_CLASS holds that class's execution ceiling",
+)
+def test_a_full_scoring_class_answers_429_and_nothing_starts(cluster):
+    """Start one more system than the class admits: the last start is refused with 429."""
+    ceiling = int(os.environ["HOPS_EE_SCORING_CLASS"])
+    deals, contacts, _, _ = _crm_frames()
+    d = cluster.make("deals", deals, ["id"])
+    c = cluster.make("contacts", contacts, ["id"])
+    names = [f"cls{i}{cluster.tag}" for i in range(ceiling + 1)]
+    try:
+        outs = [
+            _hops(
+                "score",
+                n,
+                "--entity",
+                d,
+                "--target",
+                "won",
+                "--positive",
+                "1",
+                "--link",
+                f"{d}.contact_id={c}.id",
+            )
+            for n in names
+        ]
+        assert all(o.returncode == 0 for o in outs[:-1]), [_out(o) for o in outs]
+        last = outs[-1]
+        assert last.returncode != 0
+        assert f"No run of kumo-score-{names[-1]} started" in _out(last)
+        assert "Retry in " in _out(last)
+        assert (
+            not cluster.project.get_job_api()
+            .get_job(f"kumo-score-{names[-1]}")
+            .get_executions()
+        )
+    finally:
+        for n in names:
+            _hops("score", n, "--delete", "--yes")

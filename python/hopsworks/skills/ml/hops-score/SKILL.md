@@ -48,7 +48,10 @@ The agent never passes `--wait` (a human flag that polls every 10 s until the ru
 starts the run, tells the user the scores will show in the panel, and reads
 `hops score <name> --show` once, on a later step. One run per system: the job is created with
 `maxConcurrentExecutions: 1`, so Hopsworks refuses a second execution (HTTP 409) while one
-runs, and the verb prints that refusal with the stop command. `--schedule daily` or
+runs, and the verb prints that refusal with the stop command. The job is in the `scoring`
+platform class (`platformClass` in its config); when that class is full, Hopsworks answers
+HTTP 429 and nothing starts: the verb says so with the retry time and exits non-zero. Do not
+retry in a loop: tell the user, and run it again after that time. `--schedule daily` or
 `--schedule hourly` sets the job's schedule; the minute comes from the project and the name, so
 systems do not all fire at once. A daily run's hour comes from them too, or from `--at <0-23>`.
 No cron expression is accepted.
@@ -74,7 +77,8 @@ that failed after its insert stay in the group as history and are never current.
 listing them. The input groups and the environment stay.
 
 Ownership: the groups the verb makes carry `hops-score:<name>` in their description, and its
-job runs `Resources/hops-score/<name>/kumo_job.py` with `--system <name>`. A group or job of
+job runs `Resources/hops-score/<name>/kumo_job.py` with `--system <name>`, one execution at a
+time, in the `scoring` platform class. A group or job of
 the same name without that marker is never adopted, updated or deleted: setup refuses and
 names it, `--delete` leaves it. An input group named `<name>_scores` or `<name>_score_runs` is
 refused.

@@ -382,17 +382,34 @@ def test_the_schedule_option_offers_daily_and_hourly_only():
 # region: one run per system, kept by the server
 
 
-def _response(status, body):
+def _response(status, body, headers=None):
     response = requests.Response()
     response.status_code = status
-    response.reason = "Conflict" if status == 409 else "Error"
+    response.reason = {409: "Conflict", 429: "Too Many Requests"}.get(status, "Error")
+    response.headers.update(headers or {})
     response._content = json.dumps(body).encode()
     return response
 
 
-def _refusal(status, body):
-    err = RestAPIError("http://hopsworks/jobs/executions", _response(status, body))
-    return score.run_refusal(err, "deals")
+def _refusal(status, body, headers=None):
+    err = RestAPIError(
+        "http://hopsworks/jobs/executions", _response(status, body, headers)
+    )
+    # The CLI sees the SDK's error as the cause of job_cmd._run's ClickException.
+    try:
+        raise click.ClickException("Could not run job") from err
+    except click.ClickException as wrapped:
+        return score.run_refusal(wrapped, "deals")
+
+
+def test_a_429_says_nothing_started_and_when_to_retry():
+    body = {"errorCode": 130030, "usrMsg": "Scoring class is full."}
+    message = str(_refusal(429, body, {"Retry-After": "120"}))
+    assert message.startswith("No run of kumo-score-deals started")
+    assert "Retry in 120 s with `hops score deals`." in message
+    assert "already running" not in message
+    assert "Retry later" in str(_refusal(429, body))
+    assert "Retry later" in str(_refusal(429, body, {"Retry-After": "soon"}))
 
 
 def test_the_409_wording_prefers_the_user_message_then_the_error_message():
@@ -518,7 +535,7 @@ def _group(name, description):
     )
 
 
-def _job(name, app_path, default_args):
+def _job(name, app_path, default_args, **extra):
     return Job.from_response_json(
         {
             "id": 1,
@@ -530,6 +547,9 @@ def _job(name, app_path, default_args):
                 "type": "pythonJobConfiguration",
                 "appPath": app_path,
                 "defaultArgs": default_args,
+                "maxConcurrentExecutions": 1,
+                "platformClass": "scoring",
+                **extra,
             },
         }
     )
@@ -605,12 +625,33 @@ def test_an_input_named_like_an_output_is_refused_before_anything(crm, entity, l
         )
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"platformClass": None},
+        {"platformClass": "embedding"},
+        {"maxConcurrentExecutions": 2},
+        {"maxConcurrentExecutions": None},
+    ],
+)
+def test_a_job_outside_the_scoring_class_or_one_run_is_not_the_systems(extra):
+    job = _job("kumo-score-sales", APP, ARGS, **extra)
+    assert score.owned_resources("sales", job, [])[1] == ["job kumo-score-sales"]
+    with pytest.raises(ScoreRefused, match="exists and was not made"):
+        score.check_job(job, "sales")
+
+
 def test_the_job_writes_the_marker_it_is_checked_by():
     assert kumo_job.group_marked(
         f"{kumo_job.owner_marker('sales')} Scores of sales.", "sales"
     )
     assert kumo_job.job_marked(
-        {"appPath": "Resources/hops-score/sales/kumo_job.py", "defaultArgs": ARGS},
+        {
+            "appPath": "Resources/hops-score/sales/kumo_job.py",
+            "defaultArgs": ARGS,
+            "maxConcurrentExecutions": 1,
+            "platformClass": "scoring",
+        },
         "sales",
         score.SCRIPT.name,
     )

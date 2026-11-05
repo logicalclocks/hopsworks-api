@@ -25,7 +25,7 @@ from hopsworks.score.kumo_job import Group, Link, Plan, ScoreRefused
 ENVIRONMENT = "scoring-pipeline"
 JOB_CORES = 4
 JOB_MEMORY_MB = 6144
-MAX_CONCURRENT = "maxConcurrentExecutions"
+MAX_CONCURRENT = kumo_job.MAX_CONCURRENT
 POLL_SECONDS = 10.0
 POLL_JITTER_SECONDS = 2.0
 WAIT_TIMEOUT = 3600
@@ -393,7 +393,11 @@ def _job_name(name: str) -> str:
 
 
 def run_refusal(exc: BaseException, name: str) -> ScoreRefused | None:
-    """The refusal of a second run: the server's HTTP 409 on the execution start, with its message."""
+    """The refusal of a start, from the server's answer.
+
+    409: an execution of the job runs. 429: the scoring class is full and nothing started;
+    Retry-After gives the seconds to wait. None for any other failure.
+    """
     from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
         RestAPIError,
     )
@@ -401,14 +405,26 @@ def run_refusal(exc: BaseException, name: str) -> ScoreRefused | None:
     cause = exc
     while cause is not None and not isinstance(cause, RestAPIError):
         cause = cause.__cause__
-    if cause is None or cause.response.status_code != RestAPIError.STATUS_CODE_CONFLICT:
+    if cause is None:
+        return None
+    status = cause.response.status_code
+    if status not in (RestAPIError.STATUS_CODE_CONFLICT, 429):
         return None
     try:
         body = cause.response.json()
     except ValueError:
         body = {}
-    reason = body.get("usrMsg") or body.get("errorMsg") or "an execution is running"
+    if not isinstance(body, dict):
+        body = {}
     job_name = _job_name(name)
+    if status == 429:
+        after = (cause.response.headers.get("Retry-After") or "").strip()
+        when = f"in {after} s" if after.isdigit() else "later"
+        return ScoreRefused(
+            f"No run of {job_name} started: the platform's scoring capacity is full. "
+            f"Retry {when} with `hops score {name}`."
+        )
+    reason = body.get("usrMsg") or body.get("errorMsg") or "an execution is running"
     return ScoreRefused(
         f"job {job_name} is already running: {reason} "
         f"One run per system: wait for it to end, or stop it with `hops job stop {job_name}`."
@@ -658,7 +674,8 @@ def check_job(job: Any, name: str) -> None:
     if job is not None and not kumo_job.job_marked(job.config, name, SCRIPT.name):
         raise ScoreRefused(
             f"job {_job_name(name)} exists and was not made by `hops score {name}`: it does "
-            f"not run {kumo_job.APP_DIR}/{name}/{SCRIPT.name} with --system {name}. "
+            f"not run {kumo_job.APP_DIR}/{name}/{SCRIPT.name} with --system {name}, one "
+            f"execution at a time, in platform class {kumo_job.PLATFORM_CLASS}. "
             "It is left alone. Choose another system name."
         )
 
@@ -775,7 +792,7 @@ def _score(
     if entity is None:
         if job is None:
             raise click.UsageError(f"No system {name} yet: pass --entity and --target.")
-        _run_and_report(ctx, job, name, top, start_timeout, cron, True, wait, timeout)
+        _run_and_report(ctx, job, name, top, start_timeout, cron, wait, timeout)
         return
     if not target:
         raise click.UsageError("--target is required with --entity.")
@@ -829,6 +846,7 @@ def _score(
     config["appPath"] = uploaded or f"{dest}/{SCRIPT.name}"
     config["environmentName"] = ENVIRONMENT
     config[MAX_CONCURRENT] = 1
+    config[kumo_job.PLATFORM_CLASS_KEY] = kumo_job.PLATFORM_CLASS
     config["defaultArgs"] = (
         f"--system {shlex.quote(name)} --config {shlex.quote(plan.to_json())}"
     )
@@ -854,21 +872,12 @@ def _run_and_report(
     top,
     start_timeout,
     cron,
-    update=False,
     wait=False,
     timeout=WAIT_TIMEOUT,
 ) -> None:
     from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
 
     job_name = _job_name(name)
-    if update and job.config.get(MAX_CONCURRENT) != 1:
-        job.config[MAX_CONCURRENT] = 1
-        try:
-            job = job.save()
-        except Exception as exc:  # noqa: BLE001
-            raise click.ClickException(
-                f"Could not update job '{job_name}': {exc}"
-            ) from exc
     if cron:
         try:
             job.schedule(cron_expression=cron, max_active_runs=1)
