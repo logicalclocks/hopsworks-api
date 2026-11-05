@@ -97,6 +97,52 @@ class TestPredictor:
         assert p.artifact_path == p.artifact_files_path
         assert p.artifact_path.endswith("/Deployments/my_model/5")
 
+    def test_agent_framework_and_chat_config_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"]
+        )
+        json["items"][0]["agent_framework"] = "langgraph"
+        json["items"][0]["chat_config"] = {
+            "protocol": "simple",
+            "path": "/chat",
+            "message_field_in": "body",
+            "message_field_name": "message",
+            "extra_body": {"session_id": "$SESSION"},
+        }
+
+        # Act
+        pred = predictor.Predictor.from_response_json(json)[0]
+        d = pred.to_dict()
+
+        # Assert
+        assert pred.agent_framework == "langgraph"
+        assert d["agentFramework"] == "langgraph"
+        assert d["chatConfig"] == {
+            "protocol": "simple",
+            "path": "/chat",
+            "messageFieldIn": "body",
+            "messageFieldName": "message",
+            "extraBody": {"session_id": "$SESSION"},
+        }
+
+    def test_to_dict_omits_unset_agent_fields(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_agent",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="/Projects/p/Resources/agents/my_agent/agent.py",
+        )
+
+        # Act
+        d = p.to_dict()
+
+        # Assert
+        assert "agentFramework" not in d
+        assert "chatConfig" not in d
+
     def test_to_dict_sends_both_environment_fields(self, mocker):
         # predictorEnvironment for a current backend, environmentDTO so an older one
         # still applies it.

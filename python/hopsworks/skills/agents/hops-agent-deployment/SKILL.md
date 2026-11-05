@@ -23,7 +23,7 @@ hops agent logs my_agent         # startup and request errors land here
 ```
 
 ## Ask the user (only when state is ambiguous)
-- **Framework.** `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`: picks the tracing instrumentation.
+- **Framework.** `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`: picks the tracing instrumentation. It goes in two places: `AgentApp(framework=...)` in the code and the deployment's config (see **Framework and chat contract** below).
 - **Memory.** Working memory only, plus a short-term rolling summary, plus long-term memory across conversations (the summary needs a summariser key; long-term memory needs the *client* to say who the user is — see **Who long-term memory belongs to**).
 - **Source.** A local script uploaded to HopsFS, or a Git repository (branch, and whether to auto-redeploy on push).
 - **Evaluation.** Whether the agent will be evaluated against a sandboxed suite while serving customers (`eval_per_request=True` and tools that check `in_evaluation()`), or in a deployment of its own (`EVAL_MODE=true`).
@@ -123,7 +123,8 @@ Streaming, multimodal content, memory tiers, progress events and the structure g
 
 ```bash
 hops agent create my_agent.py --name my_agent \
-  --requirements requirements.txt --environment my_agent [--memory 3072]
+  --requirements requirements.txt --environment my_agent \
+  --framework langgraph --chat-contract hopsworks [--memory 3072]
 hops agent start my_agent                       # waits for RUNNING
 hops agent info my_agent                        # status + URL
 hops agent logs my_agent                        # follow startup / errors
@@ -210,11 +211,22 @@ agent = agents.deploy_agent(
     name="my_agent",
     requirements="requirements.txt",
     environment="my_agent",
+    framework="langgraph",               # same value as AgentApp(framework=...)
+    chat_config="hopsworks",             # AgentApp speaks the Hopsworks agent protocol
     tracing={"enabled": True},           # spans for evals, feedback and failure analysis
 )
 agent.start(await_running=600)
 # After editing the code: deploy_agent again, then agent.restart()
 ```
+
+### Framework and chat contract
+
+Every agent deployment carries both in its config, the same fields as the **Agent framework** and **Chat contract** of the UI's deployment form. Always set them:
+
+- **`framework`** is injected as `AGENT_FRAMEWORK`. It also picks the model provider of the agent's failure analysis (OpenAI for `openai_agents`, Anthropic for `claude_agents`) and keeps the Claude login token away from agents that are not built on the Claude SDK. A deployment without one shows as **Custom** in the UI.
+- **`chat_config`** tells the chat panel and chat clients how to talk to the agent: `"hopsworks"` for an `AgentApp` agent, `"openai"` for an OpenAI-compatible server, or a dict `{"protocol": "simple", "path": "/chat", "message_field_in": "body", "message_field_name": "message"}` for a custom endpoint. Without one, the panel detects the contract from the running agent.
+
+From a local script or package, `deploy_agent` reads both from the code when you omit them: the framework from a string literal in `AgentApp(framework="...")`, and `"hopsworks"` for a new agent that builds an `AgentApp`. **A git-backed agent is not read, so pass both explicitly.** On a redeploy, omitting them keeps what the deployment already has. Check with `hops agent info my_agent` (the **Framework** and **Chat contract** rows) or `agent.deployment.predictor.agent_framework` / `.chat_config`.
 
 `deploy_agent` here is model serving's call (`project.get_model_serving().deploy_agent(...)` takes the same arguments) returning an `Agent`. `agent.deployment` is the `hsml` deployment for resources, scaling and describe.
 
@@ -233,6 +245,8 @@ agent = agents.deploy_agent(
     git_branch="main",
     git_auto_redeploy=True,              # roll to branch HEAD on every new commit
     environment="my_agent",
+    framework="langgraph",               # not read from a git source: always pass it
+    chat_config="hopsworks",
 )
 ```
 
