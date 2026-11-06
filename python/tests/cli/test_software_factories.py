@@ -1526,7 +1526,7 @@ def test_a_metric_dataset_takes_the_sql_the_semantic_layer_compiles_on_every_run
     metric_dataset = next(
         i
         for i, d in api.datasets.items()
-        if d["table_name"] == "customers_overview__revenue_by_month"
+        if d["table_name"] == program.metric_dataset_name(program.METRIC_DATASETS[0])
     )
     assert api.datasets[metric_dataset]["sql"] == "SELECT revenue FROM build_1"
     assert next(iter(api.charts.values()))["datasource_id"] == metric_dataset
@@ -1556,8 +1556,18 @@ def test_two_dashboards_with_the_same_metric_dataset_name_keep_their_own():
     second.build(api, "p", semantic)
 
     sql = {d["table_name"]: d["sql"] for d in api.datasets.values()}
-    assert sql["customers_overview__revenue_by_month"] == "SELECT revenue FROM build_1"
-    assert sql["finance__revenue_by_month"] == "SELECT other FROM build_2"
+    assert sql[first.metric_dataset_name(entry)] == "SELECT revenue FROM build_1"
+    assert sql[second.metric_dataset_name(entry)] == "SELECT other FROM build_2"
+
+
+def test_titles_that_differ_only_in_punctuation_name_different_datasets():
+    first, second = _dashboard_program(), _dashboard_program()
+    first.TITLE, second.TITLE = "Sales Overview", "Sales-Overview"
+    entry = {"name": "revenue_by_month"}
+
+    names = {first.metric_dataset_name(entry), second.metric_dataset_name(entry)}
+    assert len(names) == 2
+    assert all(name.startswith("sales_overview_") for name in names)
 
 
 def test_a_metric_dataset_on_an_unknown_semantic_project_fails_the_run():

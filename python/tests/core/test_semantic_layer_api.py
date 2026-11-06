@@ -105,6 +105,37 @@ def _gateway_call(http, index=-1):
 
 
 class TestControlPlane:
+    def test_mandatory_tags_join_cluster_and_project_rules_for_semantic_projects(
+        self, http
+    ):
+        rules = {
+            "mandatorytags": {
+                "items": [
+                    {"name": "owner", "semanticProjectSpecific": True},
+                    {"name": "pii", "featureGroupSpecific": True},
+                ]
+            },
+            "project": {
+                "items": [
+                    {"name": "domain", "semanticProjectSpecific": True},
+                    {"name": "owner", "semanticProjectSpecific": True},
+                    {"name": "certified", "semanticMetricSpecific": True},
+                ]
+            },
+        }
+        http._send_request.side_effect = lambda method, path: rules[path[0]]
+
+        assert SemanticLayerApi()._mandatory_tags() == {"owner", "domain"}
+        assert [c.args[1] for c in http._send_request.call_args_list] == [
+            ["mandatorytags"],
+            ["project", 119, "mandatorytags", "project"],
+        ]
+
+    def test_no_mandatory_tags_when_no_rule_has_items(self, http):
+        http._send_request.side_effect = [{"count": 0}, None]
+
+        assert SemanticLayerApi()._mandatory_tags() == set()
+
     def test_get_projects_lists_the_project_scope(self, http):
         projects = SemanticLayerApi().get_projects()
 

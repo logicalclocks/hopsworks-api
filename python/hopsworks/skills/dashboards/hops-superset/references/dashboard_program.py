@@ -27,6 +27,7 @@ datasets it created that no other chart still uses, and nothing else.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -133,7 +134,10 @@ def ensure_dataset(api, database_id: int, schema: str, fg: dict) -> int:
 
 def metric_dataset_name(entry: dict) -> str:
     """The Superset dataset of a METRIC_DATASETS entry, prefixed by this dashboard, so programs never share one."""
-    return f"{re.sub(r'[^a-z0-9]+', '_', TITLE.lower()).strip('_')}__{entry['name']}"
+    slug = re.sub(r"[^a-z0-9]+", "_", TITLE.lower()).strip("_")
+    # Titles that differ only in punctuation or case share a slug; the digest of the exact title tells them apart.
+    digest = hashlib.sha256(TITLE.encode()).hexdigest()[:8]
+    return f"{slug}_{digest}__{entry['name']}"
 
 
 def ensure_metric_dataset(api, database_id: int, schema: str, semantic, entry: dict) -> int:
