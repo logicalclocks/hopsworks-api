@@ -31,7 +31,7 @@ class Tag:
     """Represents a tag in Hopsworks.
 
     Each tag is a name-value pair, where the name is a string and the value is a JSON-serializable object of the tag's schema.
-    Tags are used to attach metadata to various entities in Hopsworks; namely feature groups, feature views, training datasets, and models.
+    Tags are used to attach metadata to various entities in Hopsworks; namely feature groups, feature views, training datasets, models, deployments, jobs, datasets, and data sources.
     """
 
     NOT_FOUND_ERROR_CODE = 370002

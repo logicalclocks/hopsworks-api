@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common import client, util
+from hopsworks_common import client, tag, util
 from hsfs import decorators, storage_connector
 
 
@@ -41,22 +41,28 @@ class StorageConnectorApi:
             "storageconnectors",
             name,
         ]
-        query_params = {"temporaryCredentials": True}
+        query_params = {"temporaryCredentials": True, "expand": "mandatorytags"}
 
         return _client._send_request("GET", path_params, query_params=query_params)
 
     def _create(
         self,
         storage_connector_instance: storage_connector.StorageConnector,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> storage_connector.StorageConnector:
         """Create a new storage connector in the feature store.
 
         Parameters:
             storage_connector_instance: The storage connector to create.
+            tags: Tags to attach in the same request, each naming its tag schema and carrying a value that the schema validates.
 
         Returns:
             The created storage connector with its assigned id.
         """
+        body = storage_connector_instance.to_dict()
+        tags_dict = tag.Tag._tags_to_dict(tag.Tag._normalize(tags))
+        if tags_dict:
+            body["tags"] = tags_dict
         _client = client._get_instance()
         path_params = [
             "project",
@@ -71,7 +77,7 @@ class StorageConnectorApi:
                 "POST",
                 path_params,
                 headers=headers,
-                data=json.dumps(storage_connector_instance, cls=util.Encoder),
+                data=json.dumps(body, cls=util.Encoder),
             )
         )
 
@@ -363,3 +369,62 @@ class StorageConnectorApi:
             explicit_provenance.Links.Direction.DOWNSTREAM,
             explicit_provenance.Links.Type.TRAINING_DATASET,
         )
+
+    def _tags_path(
+        self, storage_connector_instance: storage_connector.StorageConnector, *rest: str
+    ) -> list:
+        _client = client._get_instance()
+        return [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector_instance._featurestore_id,
+            "storageconnectors",
+            storage_connector_instance.name,
+            "tags",
+            *rest,
+        ]
+
+    def _add_tag(
+        self,
+        storage_connector_instance: storage_connector.StorageConnector,
+        name: str,
+        value: Any,
+    ) -> None:
+        client._get_instance()._send_request(
+            "PUT",
+            self._tags_path(storage_connector_instance, name),
+            headers={"content-type": "application/json"},
+            data=json.dumps(value),
+            timeout=60,
+        )
+
+    def _delete_tag(
+        self, storage_connector_instance: storage_connector.StorageConnector, name: str
+    ) -> None:
+        client._get_instance()._send_request(
+            "DELETE", self._tags_path(storage_connector_instance, name), timeout=60
+        )
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags_metadata(
+        self,
+        storage_connector_instance: storage_connector.StorageConnector,
+        name: str | None = None,
+    ) -> dict[str, tag.Tag]:
+        """Get the tags attached to a storage connector, or the one named `name`.
+
+        Returns:
+            Dict of tag name to Tag object; empty when the named tag is not attached.
+        """
+        path_params = (
+            self._tags_path(storage_connector_instance)
+            if name is None
+            else self._tags_path(storage_connector_instance, name)
+        )
+        return {
+            t.name: t
+            for t in tag.Tag.from_response_json(
+                client._get_instance()._send_request("GET", path_params, timeout=60)
+            )
+        }
