@@ -23,6 +23,7 @@ import requests
 from hopsworks_apigen import also_available_as
 from hopsworks_common import client, command, environment, library
 from hopsworks_common.client.exceptions import EnvironmentException, RestAPIError
+from hopsworks_common.core import environment_api
 
 
 _logger = logging.getLogger(__name__)
@@ -72,6 +73,18 @@ class EnvironmentEngine:
             timeout,
         )
 
+    def _await_custom_command(
+        self, environment_name: str, command_id: int, timeout: float | None = None
+    ):
+        api = environment_api.EnvironmentApi()
+        self._await_command(
+            lambda request_timeout: api._get_command(
+                environment_name, command_id, request_timeout
+            ),
+            f"custom command {command_id} in environment '{environment_name}'",
+            timeout,
+        )
+
     def _await_command(self, poll, description, timeout: float | None = None):
         """Poll until the command reaches a final status, the artifact is gone, or time runs out.
 
@@ -106,7 +119,10 @@ class EnvironmentEngine:
                 )
                 continue
             # Both Library and Environment leave _commands as None when the response carries none, which len() cannot take.
-            commands = [] if artifact is None else artifact._commands or []
+            if isinstance(artifact, command.Command):
+                commands = [artifact]
+            else:
+                commands = [] if artifact is None else artifact._commands or []
 
     def _is_final_status(self, command):
         if command.status == "FAILED":

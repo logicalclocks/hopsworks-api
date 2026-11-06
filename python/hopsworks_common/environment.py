@@ -199,6 +199,87 @@ class Environment:
 
     @public
     @usage._method_logger
+    def run_custom_commands(
+        self,
+        path: str,
+        artifacts: list[str] | None = None,
+        env_vars: dict[str, str] | None = None,
+        await_completion: bool = True,
+        timeout: float | None = None,
+    ) -> None:
+        """Build the environment by running an uploaded Bash script.
+
+        The script must have a `.sh` extension and start with `#!/bin/bash`.
+        It runs as the image's `yarnapp` user, with passwordless `sudo` for package installation.
+        Uploaded artifacts are available beside the script in its working directory.
+        This modifies a cloned environment; base environments cannot be modified.
+
+        ```python
+        import hopsworks
+
+        project = hopsworks.login()
+        env = project.get_environment_api().create_environment("custom_env")
+        path = project.get_dataset_api().upload("setup.sh", "Resources")
+        env.run_custom_commands(path, env_vars={"BUILD_MODE": "release"})
+        ```
+
+        Parameters:
+            path: Project-relative or absolute Hopsworks path to the uploaded script.
+            artifacts: Hopsworks paths to additional files needed by the script.
+            env_vars: Build environment variables.
+                Literal values persist in the image; use `secret:<name>` to read a Hopsworks secret only during the script's build step.
+                `HOPSWORKS_BUILD_CACHE` can name declared build caches, such as `ccache,maven`.
+            await_completion: Whether to wait for this custom-command build to finish.
+            timeout: Seconds to wait before raising an error.
+                Applies separately to the existing environment operation and this build.
+                The preflight wait applies even when `await_completion` is `False`.
+
+        Raises:
+            ValueError: If paths or environment variables have invalid types or empty paths.
+            hopsworks.client.exceptions.EnvironmentException: If the build fails or a wait times out.
+            hopsworks.client.exceptions.RestAPIError: If the backend rejects the request.
+        """
+        if not isinstance(path, str) or not path:
+            raise ValueError("path must be a nonempty Hopsworks file path.")
+        if artifacts is not None and (
+            not isinstance(artifacts, list)
+            or any(
+                not isinstance(item, str) or not item or "," in item
+                for item in artifacts
+            )
+        ):
+            raise ValueError(
+                "artifacts must be a list of nonempty paths without commas."
+            )
+        if env_vars is not None and (
+            not isinstance(env_vars, dict)
+            or any(
+                not isinstance(key, str) or not isinstance(value, str)
+                for key, value in env_vars.items()
+            )
+        ):
+            raise ValueError("env_vars must map variable names to string values.")
+
+        _client = client._get_instance()
+        request = {
+            "commandsFile": util._convert_to_abs(path, _client._project_name),
+            "artifacts": ",".join(
+                util._convert_to_abs(item, _client._project_name)
+                for item in artifacts or []
+            ),
+            "envVars": [
+                {"name": key, "value": value} for key, value in (env_vars or {}).items()
+            ],
+        }
+        self._environment_engine._await_environment_command(self.name, timeout)
+        command_id = self._environment_api._run_custom_commands(self.name, request)
+        if await_completion:
+            self._environment_engine._await_custom_command(
+                self.name, command_id, timeout
+            )
+
+    @public
+    @usage._method_logger
     def install_npm(
         self,
         packages: str | list[str | tuple[str, str] | dict],
