@@ -19,7 +19,7 @@ import json
 import pytest
 import requests
 from hopsworks_common import environment
-from hopsworks_common.client.exceptions import EnvironmentException
+from hopsworks_common.client.exceptions import EnvironmentException, RestAPIError
 from hopsworks_common.engine import environment_engine
 
 
@@ -33,6 +33,15 @@ def custom_env(mocker):
     return env, connection
 
 
+def _rest_error(status=400, code=300008):
+    response = requests.Response()
+    response.status_code = status
+    response._content = json.dumps(
+        {"errorCode": code, "errorMsg": "Command not found"}
+    ).encode()
+    return RestAPIError("commands/42", response)
+
+
 def test_custom_commands_send_paths_and_variables_and_wait_for_the_submitted_id(
     custom_env,
 ):
@@ -41,7 +50,7 @@ def test_custom_commands_send_paths_and_variables_and_wait_for_the_submitted_id(
         {"id": 42, "status": "NEW"},
         {"id": 42, "status": "NEW"},
         {"id": 42, "status": "ONGOING"},
-        {"id": 42, "status": "SUCCESS"},
+        _rest_error(),
     ]
     artifacts = ["Resources/data.txt", "/Projects/my_project/Resources/config.json"]
     variables = {"BUILD_MODE": "release build", "TOKEN": "secret:build-token"}
@@ -104,7 +113,7 @@ def test_custom_commands_default_wait_uses_the_engine_timeout(custom_env):
     env, connection = custom_env
     connection._send_request.side_effect = [
         {"id": 42, "status": "NEW"},
-        {"id": 42, "status": "SUCCESS"},
+        _rest_error(),
     ]
 
     env.run_custom_commands("Resources/setup.sh")
@@ -143,7 +152,7 @@ def test_custom_commands_poll_retries_request_timeouts(custom_env):
     connection._send_request.side_effect = [
         {"id": 42, "status": "NEW"},
         requests.exceptions.Timeout(),
-        {"id": 42, "status": "SUCCESS"},
+        _rest_error(),
     ]
 
     env.run_custom_commands("Resources/setup.sh")
@@ -164,6 +173,94 @@ def test_custom_commands_do_not_submit_when_preflight_fails(custom_env):
 
 
 @pytest.mark.parametrize(
+    "status,code",
+    [
+        (400, 300000),
+        (400, None),
+        (401, 300008),
+        (403, 300008),
+        (404, 300008),
+        (404, 300000),
+        (500, 300008),
+    ],
+)
+def test_custom_commands_do_not_hide_other_poll_errors(custom_env, status, code):
+    env, connection = custom_env
+    error = _rest_error(status, code)
+    connection._send_request.side_effect = [{"id": 42, "status": "NEW"}, error]
+
+    with pytest.raises(RestAPIError) as raised:
+        env.run_custom_commands("Resources/setup.sh")
+
+    assert raised.value is error
+
+
+def test_custom_commands_do_not_hide_submission_errors(custom_env):
+    env, connection = custom_env
+    error = _rest_error()
+    connection._send_request.side_effect = error
+
+    with pytest.raises(RestAPIError) as raised:
+        env.run_custom_commands("Resources/setup.sh")
+
+    assert raised.value is error
+
+
+def test_custom_commands_do_not_hide_errors_without_a_code(custom_env):
+    env, connection = custom_env
+    response = requests.Response()
+    response.status_code = 400
+    response._content = b"{}"
+    error = RestAPIError("commands/42", response)
+    connection._send_request.side_effect = [{"id": 42, "status": "NEW"}, error]
+
+    with pytest.raises(RestAPIError) as raised:
+        env.run_custom_commands("Resources/setup.sh")
+
+    assert raised.value is error
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "Resources/setup.sh",
+        "/Projects/my_project/Resources/setup.sh",
+        "/Projects/shared/Resources/setup.sh",
+    ],
+)
+def test_custom_commands_preserve_absolute_paths(custom_env, script):
+    env, connection = custom_env
+    connection._send_request.return_value = {"id": 42, "status": "NEW"}
+    artifacts = [
+        "Resources/local.txt",
+        "/Projects/my_project/Resources/local.txt",
+        "/Projects/shared/Resources/remote.txt",
+    ]
+
+    env.run_custom_commands(script, artifacts=artifacts, await_completion=False)
+
+    request = json.loads(connection._send_request.call_args.kwargs["data"])
+    assert request["commandsFile"] == (
+        script if script.startswith("/") else "/Projects/my_project/" + script
+    )
+    assert (
+        request["artifacts"]
+        == "/Projects/my_project/Resources/local.txt,/Projects/my_project/Resources/local.txt,/Projects/shared/Resources/remote.txt"
+    )
+
+
+def test_custom_commands_preserve_server_path_permission_errors(custom_env):
+    env, connection = custom_env
+    error = _rest_error(403, 150001)
+    connection._send_request.side_effect = error
+
+    with pytest.raises(RestAPIError) as raised:
+        env.run_custom_commands("/Projects/private_project/Resources/setup.sh")
+
+    assert raised.value is error
+
+
+@pytest.mark.parametrize(
     "arguments",
     [
         {"path": ""},
@@ -175,6 +272,10 @@ def test_custom_commands_do_not_submit_when_preflight_fails(custom_env):
         {"env_vars": ["KEY=value"]},
         {"env_vars": {"KEY": 123}},
         {"env_vars": {123: "value"}},
+        {"env_vars": {"KEY": "one\ntwo"}},
+        {"env_vars": {"KEY": "one\rtwo"}},
+        {"env_vars": {"KEY": "one\0two"}},
+        {"env_vars": {"KEY\nOTHER": "value"}},
     ],
 )
 def test_custom_commands_reject_invalid_arguments_before_waiting(custom_env, arguments):
