@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import json
 
+import humps
 from hopsworks_apigen import public
-from hopsworks_common import client, decorators, environment, usage
+from hopsworks_common import client, command, decorators, environment, usage
 from hopsworks_common.engine import environment_engine
 
 
@@ -158,6 +159,46 @@ class EnvironmentApi:
                 "GET", path_params, query_params=query_params, headers=headers
             )
         )
+
+    def _run_custom_commands(self, name: str, request: dict) -> int:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "python",
+            "environments",
+            name,
+            "commands",
+            "custom",
+        ]
+        response = _client._send_request(
+            "POST",
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps(request),
+        )
+        return response["id"]
+
+    def _get_command(
+        self, name: str, command_id: int, request_timeout: float | None = None
+    ) -> command.Command:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "python",
+            "environments",
+            name,
+            "commands",
+            command_id,
+        ]
+        response = _client._send_request(
+            "GET",
+            path_params,
+            headers={"content-type": "application/json"},
+            timeout=request_timeout,
+        )
+        return command.Command(**humps.decamelize(response))
 
     def _delete(self, name):
         """Delete the Python environment.
