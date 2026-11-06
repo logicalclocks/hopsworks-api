@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 
 TITLE = "Customers Overview"
 FEATURE_GROUPS = [{"name": "customers", "version": 1, "format": "delta"}]
-# Datasets over metric queries (hops-superset §2, Metrics from the semantic layer), such as
+# Datasets over metric queries on Superset 6 (hops-superset/references/semantic_layer.md), such as
 # {"name": "revenue_by_month", "semantic_project": "sales", "metrics": ["revenue"],
 #  "group_by": ["metric_time__month"]}; a chart names one as its dataset like a feature group.
 METRIC_DATASETS: list[dict] = []
@@ -283,6 +283,16 @@ def ensure_dashboard(api, existing: int | None, chart_ids: list[int]) -> int:
     return dashboard_id
 
 
+def dashboard_url(api, project_url: str, dashboard_id: int) -> str:
+    """The dashboard's URL through Hopsworks, on the path Superset reports for it.
+
+    Superset 7.0 serves a dashboard at /dashboard/<id>/, and Superset 6 at /superset/dashboard/<id>/.
+    """
+    host = urlparse(project_url)
+    path = api.get_dashboard(dashboard_id)["result"]["url"]
+    return f"{host.scheme}://{host.netloc}/hopsworks-api/superset{path}"
+
+
 def build(api, project_name: str, semantic=None) -> int:
     """Create or update the datasets, charts and dashboard; return the dashboard id.
 
@@ -353,10 +363,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     semantic = project.get_semantic_layer_api() if METRIC_DATASETS else None
     dashboard_id = build(api, project.name, semantic)
-    host = urlparse(project.get_url())
-    print(
-        f"{host.scheme}://{host.netloc}/hopsworks-api/superset/superset/dashboard/{dashboard_id}/"
-    )
+    print(dashboard_url(api, project.get_url(), dashboard_id))
     return 0
 
 

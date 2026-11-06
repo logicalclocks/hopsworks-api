@@ -957,11 +957,13 @@ class SemanticProject:
             title: Title of the dashboard; without one, the semantic project's name followed by the metric labels.
 
         Returns:
-            The dashboard's Superset `id`, its `title`, and the `url` that opens it through Hopsworks.
+            The dashboard's Superset `id`, its `title`, and the `url` that opens it through Hopsworks, such as `https://<host>/hopsworks-api/superset/dashboard/12/?projectId=119`.
 
         Raises:
             hopsworks.client.exceptions.SemanticLayerException:
-                With status 400 for an unknown metric or group-by or metrics with no time dimension in common, 409 when the project has no valid build, and 503 when Superset, its semantic dashboards or the project's Superset service are off or Superset did not answer.
+                With status 400 for an unknown metric or group-by or metrics with no time dimension in common, and 409 when the project has no valid build.
+                With status 503 and `error_code` 590014 (`SEMANTIC_LAYER_DASHBOARDS_DISABLED`) when semantic dashboards are not available: Superset 6, or Superset, its semantic dashboards or the project's Superset service off.
+                With status 503 and `error_code` 590015 (`SEMANTIC_LAYER_SUPERSET_ERROR`) when Superset did not answer.
         """
         request: dict[str, Any] = {
             "metrics": _as_list(metrics),

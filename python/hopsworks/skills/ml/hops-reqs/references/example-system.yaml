@@ -181,7 +181,7 @@ app:
   kind: dashboard
   name: telco-churn-dashboard
   program: dashboards/telco-churn.py
-  url: https://hopsworks.acme.internal/hopsworks-api/superset/superset/dashboard/7/
+  url: https://hopsworks.acme.internal/hopsworks-api/superset/dashboard/7/
   started: 2026-09-22T11:42Z
   finished: 2026-09-22T11:50Z
   status: met

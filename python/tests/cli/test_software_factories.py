@@ -1343,6 +1343,8 @@ class FakeSuperset:
         # Superset's combined list of datasets and semantic views.
         self.datasources = {}
         self.refreshed = []
+        # Superset 6 served dashboards under /superset/dashboard/.
+        self.dashboard_route = "/dashboard/"
 
     def _id(self) -> int:
         self.next_id += 1
@@ -1418,6 +1420,14 @@ class FakeSuperset:
             "position_json": position_json,
         }
         return {"id": i}
+
+    def get_dashboard(self, dashboard_id):
+        return {
+            "result": {
+                **self.dashboards[dashboard_id],
+                "url": f"{self.dashboard_route}{dashboard_id}/",
+            }
+        }
 
     def update_dashboard(self, dashboard_id, **fields):
         self.dashboards[dashboard_id].update(fields)
@@ -1627,6 +1637,21 @@ def test_a_missing_semantic_view_fails_before_the_dashboard_changes():
 
     assert set(api.charts) == charts
     assert set(api.dashboards) == {dashboard}
+
+
+@pytest.mark.parametrize(
+    ("route", "path"),
+    [("/dashboard/", "dashboard"), ("/superset/dashboard/", "superset/dashboard")],
+    ids=["superset-7", "superset-6"],
+)
+def test_the_printed_url_follows_the_route_superset_reports(route, path):
+    program, api = _dashboard_program(), FakeSuperset()
+    api.dashboard_route = route
+    dashboard = program.build(api, "p")
+
+    url = program.dashboard_url(api, "https://h.example/p/119", dashboard)
+
+    assert url == f"https://h.example/hopsworks-api/superset/{path}/{dashboard}/"
 
 
 # endregion

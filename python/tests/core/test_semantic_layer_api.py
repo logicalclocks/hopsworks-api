@@ -732,7 +732,7 @@ class TestSuperset:
     DASHBOARD = {
         "dashboardId": 12,
         "title": "Sales overview",
-        "url": "https://h/hopsworks-api/superset/superset/dashboard/12/?projectId=119",
+        "url": "https://h/hopsworks-api/superset/dashboard/12/?projectId=119",
     }
 
     def test_create_dashboard_posts_the_request_and_returns_id_title_and_url(
@@ -797,9 +797,14 @@ class TestSuperset:
                 lambda sp: sp.explore_url("revenue"),
                 503,
                 {
-                    "errorCode": 590012,
-                    "errorMsg": "Semantic dashboards are not enabled",
+                    "errorCode": 590014,
+                    "errorMsg": "Superset dashboards from the semantic layer are not enabled",
                 },
+            ),
+            (
+                lambda sp: sp.create_dashboard(["revenue"]),
+                503,
+                {"errorCode": 590015, "errorMsg": "Superset did not answer"},
             ),
         ],
     )
