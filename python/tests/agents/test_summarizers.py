@@ -290,3 +290,166 @@ def test_all_three_summarizers_are_exported():
     import hopsworks_agents.protocol as protocol
 
     assert callable(protocol.hopsworks_summarizer)
+
+
+def _fake_claude_code(monkeypatch, reply="folded", error=None):
+    """A stand-in ``claude_agent_sdk`` recording the options and the prompt of a run."""
+    calls = {}
+
+    class ClaudeAgentOptions:
+        def __init__(self, **kwargs):
+            calls["options"] = kwargs
+
+    class TextBlock:
+        def __init__(self, text):
+            self.text = text
+
+    class AssistantMessage:
+        def __init__(self, content, error=None):
+            self.content = content
+            self.error = error
+
+    class ResultMessage:
+        def __init__(self, result, is_error=False):
+            self.result = result
+            self.is_error = is_error
+
+    async def query(prompt, options):
+        calls["prompt"] = prompt
+        if error:
+            yield AssistantMessage([TextBlock(error)], error="authentication_failed")
+            raise Exception("Claude Code returned an error result: success")
+        yield AssistantMessage([TextBlock(reply)])
+        yield ResultMessage(reply)
+
+    module = types.ModuleType("claude_agent_sdk")
+    module.ClaudeAgentOptions = ClaudeAgentOptions
+    module.TextBlock = TextBlock
+    module.AssistantMessage = AssistantMessage
+    module.ResultMessage = ResultMessage
+    module.query = query
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", module)
+    return calls
+
+
+class TestClaudeAgentsSummarizer:
+    def test_one_claude_code_session_with_no_tools_and_the_same_prompt(
+        self, monkeypatch
+    ):
+        from hopsworks_agents.protocol.summarizers import (
+            SYSTEM_PROMPT,
+            claude_agents_summarizer,
+        )
+
+        calls = _fake_claude_code(monkeypatch)
+        assert asyncio.run(claude_agents_summarizer()(None, TURNS)) == "folded"
+        options = calls["options"]
+        # the alias, so the bundled Claude Code resolves its own current Haiku
+        assert options["model"] == "haiku"
+        assert options["tools"] == [] and options["setting_sources"] == []
+        assert options["max_turns"] == 1
+        assert options["system_prompt"] == SYSTEM_PROMPT
+        assert "effort" not in options
+        assert "user: I live in Oslo" in calls["prompt"]
+
+    def test_effort_and_model_are_passed_when_given(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import claude_agents_summarizer
+
+        calls = _fake_claude_code(monkeypatch)
+        asyncio.run(claude_agents_summarizer("sonnet", effort="low")(None, TURNS))
+        assert calls["options"]["model"] == "sonnet"
+        assert calls["options"]["effort"] == "low"
+
+    def test_a_run_that_cannot_reach_the_model_raises_claude_codes_reason(
+        self, monkeypatch
+    ):
+        # the SDK's own line names the result's subtype ("success"); the cause is
+        # the synthetic assistant message before it
+        from hopsworks_agents.protocol.summarizers import claude_agents_summarizer
+
+        _fake_claude_code(
+            monkeypatch, error="API Error: 401 OAuth access token is invalid."
+        )
+        with pytest.raises(RuntimeError, match="401 OAuth access token is invalid"):
+            asyncio.run(claude_agents_summarizer()(None, TURNS))
+
+    def test_missing_sdk_is_named(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import claude_agents_summarizer
+
+        monkeypatch.setitem(sys.modules, "claude_agent_sdk", None)
+        with pytest.raises(ImportError, match="claude-agent-sdk"):
+            claude_agents_summarizer()
+
+
+class TestAnthropicSummarizerOnAClaudeCodeLogin:
+    """A deployment on the login the user connected has no key, and must still fold.
+
+    And it must never put the login on the API client: Claude Code alone honours it.
+    """
+
+    def _no_anthropic_client(self, monkeypatch):
+        class AsyncAnthropic:
+            def __init__(self, **kwargs):
+                raise AssertionError("the Anthropic client was built")
+
+        module = types.ModuleType("anthropic")
+        module.AsyncAnthropic = AsyncAnthropic
+        monkeypatch.setitem(sys.modules, "anthropic", module)
+
+    def test_with_only_the_login_it_summarizes_through_claude_code(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+        self._no_anthropic_client(monkeypatch)
+        calls = _fake_claude_code(monkeypatch)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY_SECRET_NAME", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+
+        summarize = anthropic_summarizer()
+        assert asyncio.run(summarize("older", TURNS)) == "folded"
+        # the default model id becomes the alias the login's Claude Code resolves
+        assert calls["options"]["model"] == "haiku"
+        assert "older" in calls["prompt"]
+        # decided once: the second fold goes the same way
+        assert asyncio.run(summarize("newer", TURNS)) == "folded"
+
+    def test_an_explicit_model_is_kept_on_the_login(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+        self._no_anthropic_client(monkeypatch)
+        calls = _fake_claude_code(monkeypatch)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        asyncio.run(anthropic_summarizer(model="claude-sonnet-5")(None, TURNS))
+        assert calls["options"]["model"] == "claude-sonnet-5"
+
+    def test_a_key_still_wins_over_the_login(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import anthropic_summarizer
+
+        built = {}
+
+        class AsyncAnthropic:
+            def __init__(self, **kwargs):
+                built.update(kwargs)
+                self.messages = types.SimpleNamespace(create=self._create)
+
+            async def _create(self, **kwargs):
+                return types.SimpleNamespace(
+                    content=[types.SimpleNamespace(type="text", text="api")]
+                )
+
+        module = types.ModuleType("anthropic")
+        module.AsyncAnthropic = AsyncAnthropic
+        monkeypatch.setitem(sys.modules, "anthropic", module)
+        calls = _fake_claude_code(monkeypatch)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        assert asyncio.run(anthropic_summarizer()(None, TURNS)) == "api"
+        assert built["api_key"] == "sk-env"
+        assert "prompt" not in calls
+
+
+def test_the_claude_code_summarizer_is_exported():
+    import hopsworks_agents.protocol as protocol
+
+    assert callable(protocol.claude_agents_summarizer)
