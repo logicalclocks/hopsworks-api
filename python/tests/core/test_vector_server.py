@@ -497,12 +497,32 @@ class TestNativeAsyncLookup:
         assert asyncio.run(server._get_feature_vector_async()) == {"a": 1}
         sql._get_single_feature_vector.assert_not_called()
 
-    def test_the_return_type_defaults_to_a_list_as_in_the_blocking_call(self):
-        import inspect
+    def test_the_return_type_defaults_to_a_list_as_in_the_blocking_call(self, mocker):
+        import asyncio
 
-        signature = inspect.signature(VectorServer._feature_vector_steps)
+        server, sql = self._server(mocker)
 
-        assert signature.parameters["return_type"].default == "list"
+        async def awaited(entry, **kwargs):
+            return {"a": 1}
+
+        sql._get_single_feature_vector_async = awaited
+        for name, value in {
+            "_which_client_and_ensure_initialised": "sql",
+            "_validate_entry": {"pk": 1},
+            "_prepared_rest_projection": None,
+            "_single_lookup_arguments": False,
+            "_raise_transformation_warnings": None,
+            "_assemble_feature_vector": [1],
+        }.items():
+            mocker.patch.object(VectorServer, name, return_value=value)
+        handle = mocker.patch.object(
+            VectorServer, "_handle_feature_vector_return_type", return_value=[1]
+        )
+        server._feature_view_logging_enabled = False
+
+        asyncio.run(server._get_feature_vector_async(entry={"pk": 1}))
+
+        assert handle.call_args.kwargs["return_type"] == "list"
 
     def test_the_options_come_from_the_body_not_the_call(self, mocker):
         # The body already has allow_missing and logging_data bound, so the drivers take
@@ -1116,7 +1136,12 @@ class TestSqlClientLifecycle:
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine._get_type", return_value="python")
         fg = feature_group.FeatureGroup(
-            name="fg", version=1, featurestore_id=99, primary_key=[], partition_key=[]
+            name="fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            time_travel_format="HUDI",
         )
         fv = feature_view.FeatureView(
             name="fv", query=fg.select_all(), featurestore_id=99, labels=[]
@@ -1132,6 +1157,17 @@ class TestSqlClientLifecycle:
         while _FakePool.open_pools and time.monotonic() < deadline:
             time.sleep(0.01)
         assert _FakePool.open_pools == []
+
+    def test_a_second_setup_closes_the_client_it_replaces(self, mocker):
+        server = self._server()
+        self._setup(server, mocker)
+        first = server.sql_client
+
+        self._setup(server, mocker)
+
+        assert server.sql_client is not first
+        assert len(_FakePool.open_pools) == 1
+        server._close()
 
     def test_an_explicitly_closed_server_is_not_closed_again_when_collected(
         self, mocker

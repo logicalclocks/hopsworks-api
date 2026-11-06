@@ -471,6 +471,8 @@ class VectorServer:
             # The task thread may already be running with its pool open.
             sql_client._close()
             raise
+        # An overlapping init_serving would otherwise leave the first client's pool open until this server is collected.
+        self._release_sql_client()
         self._sql_client = sql_client
         self._sql_client_finalizer = weakref.finalize(
             self, _close_sql_client_off_thread, sql_client

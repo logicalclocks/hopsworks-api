@@ -520,6 +520,9 @@ class FeatureView:
     ) -> None:
         """Initialise feature view to retrieve feature vector from online and offline feature store.
 
+        Calling this again replaces the clients and closes the previous SQL client.
+        Do not call it while other threads are reading feature vectors from this feature view, because their in-flight reads fail.
+
         Example:
             ```python
             # get feature store instance
