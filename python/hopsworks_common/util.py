@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
+import decimal
 import inspect
 import itertools
 import json
@@ -95,7 +96,7 @@ class NumpyEncoder(json.JSONEncoder):
 
         if isinstance(obj, np.ndarray):
             if obj.dtype == np.object_:
-                return [self._convert(x)[0] for x in obj.tolist()]
+                return [self._convert(x)[0] for x in obj.tolist()], True
             if obj.dtype == np.bytes_:
                 return np.vectorize(encode_binary)(obj), True
             return obj.tolist(), True
@@ -105,6 +106,10 @@ class NumpyEncoder(json.JSONEncoder):
             pd is not None and isinstance(obj, pd.Timestamp)
         ):
             return obj.isoformat(), True
+        if isinstance(obj, date):
+            return obj.isoformat(), True
+        if isinstance(obj, decimal.Decimal):
+            return float(obj), True
         if isinstance(obj, (bytes, bytearray)):
             return encode_binary(obj), True
         if isinstance(obj, np.generic):
