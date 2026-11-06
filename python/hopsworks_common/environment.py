@@ -227,6 +227,7 @@ class Environment:
             path: Project-relative or absolute Hopsworks path to the uploaded script.
             artifacts: Hopsworks paths to additional files needed by the script.
             env_vars: Build environment variables.
+                Names and values must be single-line strings without NUL characters.
                 Literal values persist in the image; use `secret:<name>` to read a Hopsworks secret only during the script's build step.
                 `HOPSWORKS_BUILD_CACHE` can name declared build caches, such as `ccache,maven`.
             await_completion: Whether to wait for this custom-command build to finish.
@@ -235,7 +236,7 @@ class Environment:
                 The preflight wait applies even when `await_completion` is `False`.
 
         Raises:
-            ValueError: If paths or environment variables have invalid types or empty paths.
+            ValueError: If arguments have invalid types, empty paths, or unsupported control characters.
             hopsworks.client.exceptions.EnvironmentException: If the build fails or a wait times out.
             hopsworks.client.exceptions.RestAPIError: If the backend rejects the request.
         """
@@ -259,12 +260,22 @@ class Environment:
             )
         ):
             raise ValueError("env_vars must map variable names to string values.")
+        if any(
+            any(character in text for character in "\n\r\0")
+            for pair in (env_vars or {}).items()
+            for text in pair
+        ):
+            raise ValueError("env_vars cannot contain newlines or NUL characters.")
 
         _client = client._get_instance()
         request = {
-            "commandsFile": util._convert_to_abs(path, _client._project_name),
+            "commandsFile": path
+            if path.startswith("/")
+            else util._convert_to_abs(path, _client._project_name),
             "artifacts": ",".join(
-                util._convert_to_abs(item, _client._project_name)
+                item
+                if item.startswith("/")
+                else util._convert_to_abs(item, _client._project_name)
                 for item in artifacts or []
             ),
             "envVars": [

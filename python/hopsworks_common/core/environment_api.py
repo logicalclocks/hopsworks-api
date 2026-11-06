@@ -20,6 +20,7 @@ import json
 import humps
 from hopsworks_apigen import public
 from hopsworks_common import client, command, decorators, environment, usage
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.engine import environment_engine
 
 
@@ -181,7 +182,7 @@ class EnvironmentApi:
 
     def _get_command(
         self, name: str, command_id: int, request_timeout: float | None = None
-    ) -> command.Command:
+    ) -> command.Command | None:
         _client = client._get_instance()
         path_params = [
             "project",
@@ -192,12 +193,21 @@ class EnvironmentApi:
             "commands",
             command_id,
         ]
-        response = _client._send_request(
-            "GET",
-            path_params,
-            headers={"content-type": "application/json"},
-            timeout=request_timeout,
-        )
+        try:
+            response = _client._send_request(
+                "GET",
+                path_params,
+                headers={"content-type": "application/json"},
+                timeout=request_timeout,
+            )
+        except RestAPIError as error:
+            # Successful commands are deleted; queued/running commands cannot be deleted and failures remain.
+            if (
+                error.response.status_code == 400
+                and getattr(error, "error_code", None) == 300008
+            ):
+                return None
+            raise
         return command.Command(**humps.decamelize(response))
 
     def _delete(self, name):
