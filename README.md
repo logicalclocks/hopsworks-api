@@ -201,7 +201,7 @@
 | python/hopsworks\_common/core/execution\_pod\_log.py                             |       41 |        2 |     95% |   81, 102 |
 | python/hopsworks\_common/core/factory\_api.py                                    |       21 |       10 |     52% |29-30, 35, 40-41, 46-47, 58, 64, 74 |
 | python/hopsworks\_common/core/feature\_logging\_arrow.py                         |      197 |       27 |     86% |60, 81, 122, 130, 149, 169, 172, 183, 198, 202, 207, 209-210, 267, 269, 273, 276, 279, 333, 341-344, 349, 372, 374-381 |
-| python/hopsworks\_common/core/feature\_logging\_async.py                         |       97 |       13 |     87% |66-69, 78, 97-98, 115, 120, 147-152 |
+| python/hopsworks\_common/core/feature\_logging\_async.py                         |       97 |       15 |     85% |66-69, 78, 97-98, 115, 120, 127-128, 147-152 |
 | python/hopsworks\_common/core/feature\_logging\_buffer.py                        |       50 |        2 |     96% |     30-31 |
 | python/hopsworks\_common/core/feature\_logging\_file.py                          |      683 |       93 |     86% |46-47, 116-119, 142, 153-154, 160, 178-179, 210-216, 257, 266, 302-304, 312-314, 338-356, 429-430, 451-452, 560, 602-603, 612, 664-665, 689, 695-696, 701-703, 735-736, 744, 815-820, 826-827, 845, 855, 884, 899-913, 918-923, 935, 938-944, 967-969, 980, 984-985, 1003-1004, 1010, 1113-1114, 1156 |
 | python/hopsworks\_common/core/git\_api.py                                        |      177 |      130 |     27% |87-122, 135-142, 157, 176, 208-211, 228-254, 257-265, 268-291, 294-316, 321-344, 347-380, 383-410, 413-440, 443-470, 473-499, 502-529, 532-556, 559-572, 578-584 |
@@ -222,7 +222,7 @@
 | python/hopsworks\_common/core/opensearch.py                                      |      271 |       57 |     79% |62, 93-108, 171, 288-291, 295-301, 306-313, 377-379, 388, 465-500, 543-546, 551-563, 604 |
 | python/hopsworks\_common/core/opensearch\_api.py                                 |       54 |       15 |     72% |62-73, 86-87, 113-114, 135-140 |
 | python/hopsworks\_common/core/project\_api.py                                    |       67 |       31 |     54% |39-43, 54-64, 76-79, 90-94, 108-115, 192-198, 201-204 |
-| python/hopsworks\_common/core/project\_members\_api.py                           |       57 |        1 |     98% |        86 |
+| python/hopsworks\_common/core/project\_members\_api.py                           |       62 |        1 |     98% |        86 |
 | python/hopsworks\_common/core/rest.py                                            |       18 |        1 |     94% |        63 |
 | python/hopsworks\_common/core/rest\_endpoint.py                                  |      236 |       59 |     75% |48-51, 60, 63, 68, 102, 106-109, 115, 124, 130, 141, 144-146, 152, 157, 167, 182-183, 186, 201-203, 206, 271-277, 280, 305-310, 313, 325, 333, 366, 382, 385, 410-413, 418, 429-433, 440, 450 |
 | python/hopsworks\_common/core/search\_api.py                                     |      133 |       82 |     38% |54-56, 62, 68, 74, 78, 81, 93-112, 119, 124, 128, 131, 143-147, 246, 308-317, 371-380, 434-443, 494-503, 519-534, 552-571, 585-633 |
@@ -259,7 +259,7 @@
 | python/hopsworks\_common/kafka\_schema.py                                        |       51 |       22 |     57% |36-41, 45-50, 53-55, 61, 67, 73, 79, 92, 95, 98, 101 |
 | python/hopsworks\_common/kafka\_topic.py                                         |      106 |       17 |     84% |70, 97-99, 118-120, 130, 136, 146, 152, 162, 168, 183, 186, 198, 201 |
 | python/hopsworks\_common/library.py                                              |       19 |        0 |    100% |           |
-| python/hopsworks\_common/project.py                                              |      181 |       41 |     77% |111, 123, 129, 135, 141, 252-255, 264-267, 276, 294, 299, 308, 317, 362, 371, 501, 510-512, 535-537, 546-548, 560, 572, 602, 645, 650, 653, 656-658, 663-664 |
+| python/hopsworks\_common/project.py                                              |      192 |       40 |     79% |116, 128, 140, 146, 257-260, 269-272, 281, 299, 304, 313, 322, 367, 376, 539, 548-550, 573-575, 584-586, 598, 610, 640, 683, 688, 691, 694-696, 701-702 |
 | python/hopsworks\_common/project\_member.py                                      |       67 |        9 |     87% |55, 76, 82, 88, 100, 166, 169, 175, 178 |
 | python/hopsworks\_common/request\_metrics.py                                     |      110 |       14 |     87% |113, 151-164 |
 | python/hopsworks\_common/search\_results.py                                      |      299 |       41 |     86% |61, 110, 116, 122, 156-172, 199, 253-262, 448, 454, 460, 466, 496, 508, 514, 532, 538, 544, 550, 589 |
@@ -536,7 +536,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **58728** | **13521** | **77%** |           |
+| **TOTAL**                                                                        | **58744** | **13522** | **77%** |           |
 
 
 ## Setup coverage badge
