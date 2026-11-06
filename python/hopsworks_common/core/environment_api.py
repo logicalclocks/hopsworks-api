@@ -210,9 +210,7 @@ class EnvironmentApi:
             )
         )
 
-    def _run_custom_commands(
-        self, name: str, request: dict, request_timeout: float
-    ) -> int:
+    def _run_custom_commands(self, name: str, request: dict, deadline: float) -> int:
         _client = client._get_instance()
         path_params = [
             "project",
@@ -228,8 +226,8 @@ class EnvironmentApi:
             path_params,
             headers={"content-type": "application/json"},
             data=json.dumps(request),
-            timeout=request_timeout,
-            deadline=time.monotonic() + request_timeout,
+            timeout=max(0, deadline - time.monotonic()),
+            deadline=deadline,
         )
         return response["id"]
 
