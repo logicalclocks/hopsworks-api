@@ -104,3 +104,25 @@ def test_a_cancelled_switch_gives_the_lock_back_once_the_sdk_work_ends():
 
     assert order == []
     assert not sdk.connection_lock.locked()
+
+
+def test_a_project_switch_reads_the_connection_under_the_lock():
+    order = []
+    tools, patches = _tools_and_patches(order)
+    conn = SimpleNamespace(host="h", port=443, api_key_value="k", _engine="python")
+
+    def current_connection():
+        # A login queued ahead of the switch would have replaced the connection by now.
+        assert sdk.connection_lock.locked()
+        return conn
+
+    with (
+        patches[1],
+        mock.patch(
+            "hopsworks.mcp.tools.project.client._get_connection",
+            side_effect=current_connection,
+        ),
+    ):
+        asyncio.run(tools.use_project("p2"))
+
+    assert order == ["login"]
