@@ -95,3 +95,24 @@ class TestTagSchemasApiArchive:
         with pytest.raises(ValueError):
             TagSchemasApi().create(bad, SCHEMA, archive=True)
         c._send_request.assert_not_called()
+
+
+class TestTagSchemasApiUsage:
+    def test_usage_reads_the_usage_resource(self, mocker):
+        # Arrange
+        c = _patch_client(mocker)
+
+        # Act
+        TagSchemasApi().usage("ownership")
+
+        # Assert
+        assert c._send_request.call_args.args == ("GET", ["tags", "ownership", "usage"])
+
+    def test_usage_refuses_an_empty_name(self, mocker):
+        # Arrange
+        c = _patch_client(mocker)
+
+        # Act, Assert
+        with pytest.raises(ValueError):
+            TagSchemasApi().usage("")
+        c._send_request.assert_not_called()
