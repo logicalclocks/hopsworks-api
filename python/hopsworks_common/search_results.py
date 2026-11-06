@@ -382,9 +382,62 @@ class MetricSearchResult(SearchResultItem):
         }
 
 
+@public("hopsworks.core.search_api.SemanticProjectSearchResult")
+class SemanticProjectSearchResult(SearchResultItem):
+    """Search result for a semantic project of the semantic layer.
+
+    Get the semantic project itself by its `name`, with [`SemanticLayerApi.get_project`][hopsworks.core.semantic_layer_api.SemanticLayerApi.get_project].
+    """
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self._root_path = data.get("rootPath")
+        self._format = data.get("format")
+        self._deployment_mode = data.get("deploymentMode")
+        self._semantic_project_id = data.get("semanticProjectId")
+
+    @public
+    @property
+    def root_path(self) -> str | None:
+        """HopsFS directory the semantic project reads its definitions from."""
+        return self._root_path
+
+    @public
+    @property
+    def format(self) -> str | None:
+        """Format of the definitions: `AUTO`, `DBT`, `NATIVE` or `MANIFEST_JSON`."""
+        return self._format
+
+    @public
+    @property
+    def deployment_mode(self) -> str | None:
+        """`FOLLOW` when every new valid build serves, `PINNED` when a promoted build serves."""
+        return self._deployment_mode
+
+    @public
+    @property
+    def semantic_project_id(self) -> int | None:
+        """ID of the semantic project."""
+        return self._semantic_project_id
+
+    def json(self) -> dict:
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            A dictionary representation of the semantic project search result.
+        """
+        return {
+            **super().json(),
+            "root_path": self._root_path,
+            "format": self._format,
+            "deployment_mode": self._deployment_mode,
+            "semantic_project_id": self._semantic_project_id,
+        }
+
+
 @public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
-    """Every bucket of a search: feature store entities, jobs, apps, models, deployments, agents, datasets and metrics."""
+    """Every bucket of a search: feature store entities, jobs, apps, models, deployments, agents, datasets, metrics and semantic projects."""
 
     def __init__(self, response_data: dict):
         self._log = logging.getLogger(__name__)
@@ -419,6 +472,10 @@ class FeaturestoreSearchResult:
         self._metrics = [
             MetricSearchResult(m) for m in response_data.get("metrics", [])
         ]
+        self._semantic_projects = [
+            SemanticProjectSearchResult(sp)
+            for sp in response_data.get("semanticProjects", [])
+        ]
 
         # Store metadata about result counts
         self._feature_groups_offset = response_data.get("featuregroupsFrom", 0)
@@ -443,6 +500,8 @@ class FeaturestoreSearchResult:
         self._datasets_total = response_data.get("datasetsTotal", 0)
         self._metrics_offset = response_data.get("metricsFrom", 0)
         self._metrics_total = response_data.get("metricsTotal", 0)
+        self._semantic_projects_offset = response_data.get("semanticProjectsFrom", 0)
+        self._semantic_projects_total = response_data.get("semanticProjectsTotal", 0)
 
     @public
     @property
@@ -509,6 +568,12 @@ class FeaturestoreSearchResult:
     def metrics(self) -> list[MetricSearchResult]:
         """List of semantic layer Metric search results."""
         return self._metrics
+
+    @public
+    @property
+    def semantic_projects(self) -> list[SemanticProjectSearchResult]:
+        """List of semantic layer Semantic Project search results."""
+        return self._semantic_projects
 
     @public
     @property
@@ -642,6 +707,18 @@ class FeaturestoreSearchResult:
         """Total number of Metrics matching the search."""
         return self._metrics_total
 
+    @public
+    @property
+    def semantic_projects_offset(self) -> int:
+        """Total offset for the return list of semantic projects within the whole result."""
+        return self._semantic_projects_offset
+
+    @public
+    @property
+    def semantic_projects_total(self) -> int:
+        """Total number of Semantic Projects matching the search."""
+        return self._semantic_projects_total
+
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary.
 
@@ -682,6 +759,9 @@ class FeaturestoreSearchResult:
             "metrics": [i.json() for i in self._metrics],
             "metricsFrom": self._metrics_offset,
             "metricsTotal": self._metrics_total,
+            "semanticProjects": [i.json() for i in self._semantic_projects],
+            "semanticProjectsFrom": self._semantic_projects_offset,
+            "semanticProjectsTotal": self._semantic_projects_total,
         }
 
     def __repr__(self):

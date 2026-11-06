@@ -31,6 +31,16 @@ Superset is reachable only inside the cluster.
 
   Pass `--args "--delete"` or `--args "--list"` the same way.
 
+## Metrics
+
+A chart of a business metric (revenue, orders, conversion) reads that metric's governed definition when
+one exists: look in `hops semantic list` and `hops search <term> --type metric`, and load
+**hops-semantic** for its group-bys. Build such a chart's dataset from the metric query's SQL
+(`hops semantic sql <project> --metrics ... --group-by ...`, or `SemanticProject.sql` in the program),
+as hops-superset's "Metrics from the semantic layer" says, rather than `SELECT *` over the feature
+group; record it in `METRIC_DATASETS` and the docstring names the semantic project and its metrics.
+A metric no semantic project defines is computed from the feature group as before.
+
 ## Actions
 
 - **create:** fill the skeleton: the docstring (title, feature groups, charts), `TITLE`,

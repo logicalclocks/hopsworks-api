@@ -307,3 +307,50 @@ class TestSearchResults:
         assert result.metrics == []
         assert result.datasets_total == 0
         assert result.metrics_total == 0
+
+    def test_search_result_parses_semantic_projects(self):
+        result = search_results.FeaturestoreSearchResult(
+            {
+                "semanticProjects": [
+                    {
+                        "hopsworksId": "semproj7",
+                        "name": "sales",
+                        "rootPath": "/Projects/test_project/Resources/semantic/sales",
+                        "format": "DBT",
+                        "deploymentMode": "FOLLOW",
+                        "semanticProjectId": 7,
+                        "tags": [{"key": "domain", "value": "sales"}],
+                        "parentProjectId": 1,
+                        "parentProjectName": "test_project",
+                        "href": "project/1/semantic/projects/7",
+                        "highlights": {"name": "<em>sales</em>"},
+                    }
+                ],
+                "semanticProjectsFrom": 0,
+                "semanticProjectsTotal": 1,
+            }
+        )
+
+        sp = result.semantic_projects[0]
+        assert isinstance(sp, search_results.SemanticProjectSearchResult)
+        assert sp.name == "sales"
+        assert sp.root_path == "/Projects/test_project/Resources/semantic/sales"
+        assert sp.format == "DBT"
+        assert sp.deployment_mode == "FOLLOW"
+        assert sp.semantic_project_id == 7
+        assert sp.href == "project/1/semantic/projects/7"
+        assert sp.project.name == "test_project"
+        assert sp.raw_data["tags"] == [{"key": "domain", "value": "sales"}]
+        assert result.semantic_projects_offset == 0
+        assert result.semantic_projects_total == 1
+
+        as_json = result.json()
+        assert as_json["semanticProjects"][0]["root_path"] == sp.root_path
+        assert as_json["semanticProjects"][0]["semantic_project_id"] == 7
+        assert as_json["semanticProjectsTotal"] == 1
+
+    def test_search_result_without_a_semantic_project_bucket(self):
+        result = search_results.FeaturestoreSearchResult({})
+
+        assert result.semantic_projects == []
+        assert result.semantic_projects_total == 0

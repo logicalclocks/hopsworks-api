@@ -24,10 +24,12 @@ import pytest
 import requests
 from hopsworks_common.client import auth
 from hopsworks_common.client.exceptions import (
+    RestAPIError,
     SemanticBuildException,
     SemanticLayerException,
 )
 from hopsworks_common.core.semantic_layer_api import SemanticLayerApi
+from hopsworks_common.tag import Tag
 
 
 SP_JSON = {
@@ -103,6 +105,37 @@ def _gateway_call(http, index=-1):
 
 
 class TestControlPlane:
+    def test_mandatory_tags_join_cluster_and_project_rules_for_semantic_projects(
+        self, http
+    ):
+        rules = {
+            "mandatorytags": {
+                "items": [
+                    {"name": "owner", "semanticProjectSpecific": True},
+                    {"name": "pii", "featureGroupSpecific": True},
+                ]
+            },
+            "project": {
+                "items": [
+                    {"name": "domain", "semanticProjectSpecific": True},
+                    {"name": "owner", "semanticProjectSpecific": True},
+                    {"name": "certified", "semanticMetricSpecific": True},
+                ]
+            },
+        }
+        http._send_request.side_effect = lambda method, path: rules[path[0]]
+
+        assert SemanticLayerApi()._mandatory_tags() == {"owner", "domain"}
+        assert [c.args[1] for c in http._send_request.call_args_list] == [
+            ["mandatorytags"],
+            ["project", 119, "mandatorytags", "project"],
+        ]
+
+    def test_no_mandatory_tags_when_no_rule_has_items(self, http):
+        http._send_request.side_effect = [{"count": 0}, None]
+
+        assert SemanticLayerApi()._mandatory_tags() == set()
+
     def test_get_projects_lists_the_project_scope(self, http):
         projects = SemanticLayerApi().get_projects()
 
@@ -133,6 +166,30 @@ class TestControlPlane:
             "format": "DBT",
             "deploymentMode": "FOLLOW",
         }
+
+    def test_create_sends_tags_as_json_text_in_the_same_request(self, http):
+        http._send_request.return_value = SP_JSON
+
+        SemanticLayerApi().create_project(
+            "sales",
+            "Jupyter/repo/dbt",
+            tags={"ownership": {"owner": "finance"}, "domain": "sales", "tier": 1},
+        )
+
+        body = json.loads(http._send_request.call_args.kwargs["data"])
+        assert body["tags"] == [
+            {"name": "ownership", "value": '{"owner": "finance"}'},
+            {"name": "domain", "value": '"sales"'},
+            {"name": "tier", "value": "1"},
+        ]
+        assert http._send_request.call_count == 1
+
+    def test_create_without_tags_sends_none(self, http):
+        http._send_request.return_value = SP_JSON
+
+        SemanticLayerApi().create_project("sales", "Jupyter/repo/dbt", tags={})
+
+        assert "tags" not in json.loads(http._send_request.call_args.kwargs["data"])
 
     @pytest.mark.parametrize(
         "root_path",
@@ -221,6 +278,64 @@ def _control_plane(*builds):
         return remaining.pop(0)
 
     return answer
+
+
+class TestTags:
+    def test_add_tag_puts_the_value_as_json_under_the_project(self, http, sales):
+        sales.add_tag("ownership", {"owner": "finance", "certified": True})
+
+        call = http._send_request.call_args
+        assert call.args == (
+            "PUT",
+            ["project", 119, "semantic", "projects", 7, "tags", "ownership"],
+        )
+        assert json.loads(call.kwargs["data"]) == {
+            "owner": "finance",
+            "certified": True,
+        }
+
+    def test_get_tags_decodes_each_value(self, http, sales):
+        http._send_request.return_value = {
+            "count": 2,
+            "items": [
+                {"name": "ownership", "value": '{"owner": "finance"}'},
+                {"name": "domain", "value": '"sales"'},
+            ],
+        }
+
+        assert sales.get_tags() == {
+            "ownership": {"owner": "finance"},
+            "domain": "sales",
+        }
+        assert http._send_request.call_args.args == (
+            "GET",
+            ["project", 119, "semantic", "projects", 7, "tags"],
+        )
+
+    def test_get_tag_reads_one_tag(self, http, sales):
+        http._send_request.return_value = {"name": "domain", "value": '"sales"'}
+
+        assert sales.get_tag("domain") == "sales"
+        assert http._send_request.call_args.args[1][-2:] == ["tags", "domain"]
+
+    def test_a_missing_tag_is_none_and_a_project_without_tags_is_empty(
+        self, http, sales
+    ):
+        not_found = RestAPIError(
+            "url", _response(404, body={"errorCode": Tag.NOT_FOUND_ERROR_CODE})
+        )
+        http._send_request.side_effect = not_found
+
+        assert sales.get_tag("domain") is None
+        assert sales.get_tags() == {}
+
+    def test_delete_tag(self, http, sales):
+        sales.delete_tag("domain")
+
+        assert http._send_request.call_args.args == (
+            "DELETE",
+            ["project", 119, "semantic", "projects", 7, "tags", "domain"],
+        )
 
 
 class TestCompile:
@@ -447,6 +562,33 @@ class TestGateway:
         assert url.endswith(f"/projects/7/{resource}")
         assert kwargs["params"] == {"metrics": "revenue,order_count"}
         assert group_bys[0].queryable_granularities == ["DAY", "MONTH"]
+
+    def test_list_metrics_filters_by_every_tag_and_reads_their_tags(self, http, sales):
+        http._session.request.return_value = _response(
+            body={
+                "metrics": [
+                    {"name": "revenue", "type": "SIMPLE", "tags": {"domain": "sales"}},
+                ]
+            }
+        )
+
+        metrics = sales.list_metrics(tag=["domain", "ownership"])
+
+        _, url, kwargs = _gateway_call(http)
+        assert url.endswith("/projects/7/metrics")
+        assert kwargs["params"] == {"tag": ["domain", "ownership"]}
+        assert metrics[0].tags == {"domain": "sales"}
+
+    def test_list_metrics_takes_one_tag_and_sends_no_filter_without_one(
+        self, http, sales
+    ):
+        http._session.request.return_value = _response(body={"metrics": []})
+
+        sales.list_metrics(tag="domain")
+        assert _gateway_call(http)[2]["params"] == {"tag": ["domain"]}
+
+        sales.list_metrics()
+        assert _gateway_call(http)[2]["params"] is None
 
     def test_discovery_without_metrics_sends_no_filter(self, http, sales):
         http._session.request.return_value = _response(body={"dimensions": []})

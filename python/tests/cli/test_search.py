@@ -105,6 +105,32 @@ def test_dataset_and_metric_hits_are_listed_with_the_semantic_project(mock_proje
     assert "in EUR" not in result.output
 
 
+def test_semantic_project_hits_show_their_root_path(mock_project):
+    _search_api(
+        mock_project,
+        {
+            "semanticProjects": [
+                _item(
+                    "sales",
+                    rootPath="/Projects/demo/Resources/semantic/sales",
+                    semanticProjectId=7,
+                )
+            ],
+        },
+    )
+
+    result = CliRunner().invoke(cli, ["search", "sales", "--type", "semantic_project"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[2].split() == [
+        "semantic_project",
+        "sales",
+        "-",
+        "demo",
+        "/Projects/demo/Resources/semantic/sales",
+    ]
+
+
 def test_type_option_maps_to_the_backend_doc_type(mock_project):
     api = _search_api(mock_project)
 
@@ -114,6 +140,7 @@ def test_type_option_maps_to_the_backend_doc_type(mock_project):
         ("Agent", "AGENT"),
         ("dataset", "DATASET"),
         ("metric", "METRIC"),
+        ("semantic_project", "SEMANTIC_PROJECT"),
     ):
         CliRunner().invoke(cli, ["search", "x", "--type", spelling])
         assert api._search.call_args.kwargs["doc_type"] == doc_type

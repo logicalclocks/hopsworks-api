@@ -27,12 +27,18 @@ datasets it created that no other chart still uses, and nothing else.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import sys
 from urllib.parse import urlparse
 
 TITLE = "Customers Overview"
 FEATURE_GROUPS = [{"name": "customers", "version": 1, "format": "delta"}]
+# Datasets over metric queries (hops-superset §2, Metrics from the semantic layer), such as
+# {"name": "revenue_by_month", "semantic_project": "sales", "metrics": ["revenue"],
+#  "group_by": ["metric_time__month"]}; a chart names one as its dataset like a feature group.
+METRIC_DATASETS: list[dict] = []
 
 COUNT = {
     "expressionType": "SQL",
@@ -42,7 +48,7 @@ COUNT = {
     "hasCustomLabel": True,
 }
 
-# One entry per chart: the dataset it reads (a feature group above) and the
+# One entry per chart: the dataset it reads (a feature group or a metric dataset above) and the
 # viz-type specific params from hops-superset/references/chart_params.md.
 CHARTS = [
     {
@@ -124,6 +130,31 @@ def ensure_dataset(api, database_id: int, schema: str, fg: dict) -> int:
     return api.create_dataset(database_id=database_id, table_name=name, schema=schema, sql=sql)[
         "id"
     ]
+
+
+def metric_dataset_name(entry: dict) -> str:
+    """The Superset dataset of a METRIC_DATASETS entry, prefixed by this dashboard, so programs never share one."""
+    slug = re.sub(r"[^a-z0-9]+", "_", TITLE.lower()).strip("_")
+    # Titles that differ only in punctuation or case share a slug; the digest of the exact title tells them apart.
+    digest = hashlib.sha256(TITLE.encode()).hexdigest()[:8]
+    return f"{slug}_{digest}__{entry['name']}"
+
+
+def ensure_metric_dataset(api, database_id: int, schema: str, semantic, entry: dict) -> int:
+    """Write the SQL the semantic layer compiles now into the metric query's dataset, creating it if needed."""
+    semantic_project = semantic.get_project(entry["semantic_project"])
+    if semantic_project is None:
+        raise RuntimeError(f"No semantic project named {entry['semantic_project']}")
+    sql = semantic_project.sql(entry["metrics"], group_by=entry.get("group_by"))
+    for ds in list_all(api, "dataset"):
+        if ds.get("table_name") == metric_dataset_name(entry) and ds.get("schema") == schema:
+            api.update_dataset(ds["id"], sql=sql)
+            # A changed group-by changes the columns, which Superset reads only on a refresh.
+            api._request("PUT", f"/api/v1/dataset/{ds['id']}/refresh")
+            return ds["id"]
+    return api.create_dataset(
+        database_id=database_id, table_name=metric_dataset_name(entry), schema=schema, sql=sql
+    )["id"]
 
 
 def find_dashboard(api) -> int | None:
@@ -237,11 +268,16 @@ def ensure_dashboard(api, existing: int | None, chart_ids: list[int]) -> int:
     return dashboard_id
 
 
-def build(api, project_name: str) -> int:
-    """Create or update the datasets, charts and dashboard; return the dashboard id."""
+def build(api, project_name: str, semantic=None) -> int:
+    """Create or update the datasets, charts and dashboard; return the dashboard id.
+
+    `semantic` is the project's semantic layer API, needed only when METRIC_DATASETS is set.
+    """
     schema = f"{project_name.lower()}_featurestore"
     database_id = find_trino_db_id(api)
     datasets = {fg["name"]: ensure_dataset(api, database_id, schema, fg) for fg in FEATURE_GROUPS}
+    for entry in METRIC_DATASETS:
+        datasets[entry["name"]] = ensure_metric_dataset(api, database_id, schema, semantic, entry)
     existing = find_dashboard(api)
     # Replace every chart this dashboard had, so a chart dropped from CHARTS goes too.
     for chart_id in owned_charts(api, existing):
@@ -262,7 +298,9 @@ def delete(api, project_name: str) -> dict[str, list]:
         api.delete_chart(chart_id)
         removed["charts"].append(chart_id)
     schema = f"{project_name.lower()}_featurestore"
-    ours = {dataset_name(fg) for fg in FEATURE_GROUPS}
+    ours = {dataset_name(fg) for fg in FEATURE_GROUPS} | {
+        metric_dataset_name(e) for e in METRIC_DATASETS
+    }
     in_use = {c.get("datasource_id") for c in list_all(api, "chart")}
     for ds in list_all(api, "dataset"):
         if ds.get("table_name") in ours and ds.get("schema") == schema and ds["id"] not in in_use:
@@ -295,7 +333,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.delete:
         print(json.dumps(delete(api, project.name)))
         return 0
-    dashboard_id = build(api, project.name)
+    semantic = project.get_semantic_layer_api() if METRIC_DATASETS else None
+    dashboard_id = build(api, project.name, semantic)
     host = urlparse(project.get_url())
     print(
         f"{host.scheme}://{host.netloc}/hopsworks-api/superset/superset/dashboard/{dashboard_id}/"
