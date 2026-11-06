@@ -28,7 +28,7 @@ from tests.util import changes_environ
 
 
 class TestBaseClient:
-    @pytest.mark.parametrize("status", [200, 401])
+    @pytest.mark.parametrize("status", [401])
     def test_request_deadline_includes_http_and_retries(self, mocker, status):
         client = self._init_test_client()
         client._base_url = "https://example.test"
@@ -59,6 +59,30 @@ class TestBaseClient:
 
         assert now[0] == 2
         mocked_send.assert_called_once()
+
+    def test_success_completed_at_the_deadline_is_returned(self, mocker):
+        client = self._init_test_client()
+        client._base_url = "https://example.test"
+        now = [0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: now[0]
+        )
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b'{"id": 42}'
+
+        def send(*args, **kwargs):
+            now[0] += kwargs["timeout"].total
+            return response
+
+        mocker.patch("requests.sessions.Session.send", side_effect=send)
+
+        result = client._send_request(
+            "POST", ["commands", "custom"], timeout=60, deadline=2
+        )
+
+        assert result == {"id": 42}
+        assert now[0] == 2
 
     def test_token_refresh_uses_only_the_remaining_request_budget(self, mocker):
         client = self._init_test_client()

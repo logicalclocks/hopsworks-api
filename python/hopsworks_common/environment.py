@@ -231,7 +231,7 @@ class Environment:
             artifacts: Hopsworks paths to additional files needed by the script.
             env_vars: Build environment variables.
                 Names and values must be single-line strings without NUL characters.
-                Literal values persist in the image; use `secret:<name>` to read a Hopsworks secret only during the script's build step.
+                Other values become Dockerfile `ENV` instructions and persist in the image; use `secret:<name>` to read a Hopsworks secret only during the script's build step.
                 `HOPSWORKS_BUILD_CACHE` can name declared build caches, such as `ccache,maven`.
             await_completion: Whether to wait for this custom-command build to finish.
             timeout: Seconds to wait before raising an error.
