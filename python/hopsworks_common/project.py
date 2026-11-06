@@ -34,6 +34,7 @@ from hopsworks_common.core import (
     opensearch_api,
     project_members_api,
     search_api,
+    semantic_layer_api,
     superset_api,
     trino_api,
     trino_catalog_api,
@@ -107,6 +108,7 @@ class Project:
         self._trino_api = None
         self._trino_catalog_api = None
         self._superset_api = None
+        self._semantic_layer_api = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -584,6 +586,28 @@ class Project:
         if self._superset_api is None:
             self._superset_api = superset_api.SupersetApi(project=self)
         return self._superset_api
+
+    @public
+    def get_semantic_layer_api(self) -> semantic_layer_api.SemanticLayerApi:
+        """Get the Semantic Layer API for the project, to register semantic projects and query their metrics.
+
+        It works from outside the cluster too, since the semantic gateway is reached through the Hopsworks host.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            sales = project.get_semantic_layer_api().get_project("sales")
+            df = sales.query(metrics=["revenue"], group_by=["metric_time__month"])
+            ```
+
+        Returns:
+            The Semantic Layer API handle.
+        """
+        if self._semantic_layer_api is None:
+            self._semantic_layer_api = semantic_layer_api.SemanticLayerApi(project=self)
+        return self._semantic_layer_api
 
     @public
     def get_alerts(self) -> list[alert.ProjectAlert]:
