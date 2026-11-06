@@ -18,12 +18,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from typing import TYPE_CHECKING, Any, TypeVar
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncIterator, Callable
 
 
 T = TypeVar("T")
@@ -45,3 +46,30 @@ async def run_sdk(fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
             return fn(*args, **kwargs)
 
     return await asyncio.to_thread(call)
+
+
+@contextlib.asynccontextmanager
+async def connection_change() -> AsyncIterator[None]:
+    """Hold the connection lock for a login or project switch, run on the event loop.
+
+    The wait happens in a worker thread, so the event loop serves other requests meanwhile; the
+    switch itself stays on the loop, where the tools that call the SDK synchronously cannot
+    interleave with it.
+    """
+    acquiring = asyncio.ensure_future(asyncio.to_thread(connection_lock.acquire))
+    try:
+        await asyncio.shield(acquiring)
+    except asyncio.CancelledError:
+        # The thread still takes the lock once the running SDK call returns, so give it back then.
+        acquiring.add_done_callback(
+            lambda done: (
+                connection_lock.release()
+                if not done.cancelled() and done.exception() is None
+                else None
+            )
+        )
+        raise
+    try:
+        yield
+    finally:
+        connection_lock.release()

@@ -23,7 +23,7 @@ from fastmcp import (
     Context,  # noqa: TC002
 )
 from hopsworks.mcp.models.project import Project, Projects
-from hopsworks.mcp.utils.sdk import connection_lock, run_sdk
+from hopsworks.mcp.utils.sdk import connection_change, run_sdk
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
 
@@ -80,7 +80,7 @@ class ProjectTools:
         if conn is None:
             raise ConnectionError("Not connected to Hopsworks.")
 
-        with connection_lock:
+        async with connection_change():
             project = hopsworks.login(
                 host=conn.host,
                 port=conn.port,

@@ -24,7 +24,7 @@ from fastmcp import (
 )
 from hopsworks.mcp.models.project import Project
 from hopsworks.mcp.utils.auth import login as hw_login
-from hopsworks.mcp.utils.sdk import connection_lock
+from hopsworks.mcp.utils.sdk import connection_change
 from hopsworks.mcp.utils.tags import TAGS
 
 
@@ -81,7 +81,7 @@ class AuthTools:
                 f"Connecting to Hopsworks at {host or 'hopsworks.ai'} using {engine} engine..."
             )
 
-        with connection_lock:
+        async with connection_change():
             project = hw_login(
                 host=host,
                 port=port,
