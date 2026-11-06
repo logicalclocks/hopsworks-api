@@ -222,7 +222,8 @@ hops datasource list
 hops datasource info <name>
 hops datasource databases <name>
 hops datasource tables <name> --database X
-hops datasource preview <name>
+hops datasource preview <name> --table T --database X   # table sources
+hops datasource preview <name> --path p/ --data-format parquet   # S3, ADLS, GCS
 hops datasource delete <name> --yes
 ```
 
