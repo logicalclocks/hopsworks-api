@@ -70,6 +70,8 @@ class GitEngine:
                     git_op.repository.id, git_op.id, timeout=left
                 )
             except requests.exceptions.Timeout as e:
+                if deadline is None:
+                    raise
                 raise expired() from e
             if git_op.success is not None:
                 break

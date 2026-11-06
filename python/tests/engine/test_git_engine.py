@@ -78,6 +78,15 @@ def test_each_status_request_gets_the_remaining_budget(engine, mocker):
     }
 
 
+def test_a_request_timeout_without_a_budget_is_raised_as_it_is(engine):
+    engine._git_op_execution_api._get_execution.side_effect = (
+        requests.exceptions.Timeout()
+    )
+
+    with pytest.raises(requests.exceptions.Timeout):
+        engine._execute_op_blocking(_op(None), "CLONE")
+
+
 def test_a_failed_operation_raises_its_message(engine):
     with pytest.raises(GitException, match="boom"):
         engine._execute_op_blocking(_op(False), "CLONE")

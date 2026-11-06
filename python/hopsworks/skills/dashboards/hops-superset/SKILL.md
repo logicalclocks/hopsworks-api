@@ -224,7 +224,9 @@ hops semantic sql sales --metrics revenue,orders --group-by metric_time__month,c
 In a dashboard program (§7), list the query in `METRIC_DATASETS`; the program
 compiles its SQL with `SemanticProject.sql` on every run, writes it into the
 dataset (creating it the first time, refreshing its columns after), and a chart
-names the entry as its `dataset`:
+names the entry as its `dataset`. The dataset in Superset is named after the
+dashboard and the entry (`<title slug>__<name>`), so two programs never write
+the same one:
 
 ```python
 METRIC_DATASETS = [

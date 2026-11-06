@@ -21,7 +21,6 @@ Tabular answers are CSV, cut at `MAX_RESPONSE_CHARS` characters, as dbt-mcp does
 
 from __future__ import annotations
 
-import asyncio
 import csv
 import io
 import json
@@ -37,6 +36,7 @@ from hopsworks.mcp.models.semantic_layer import (
     SemanticProject,
     Tag,
 )
+from hopsworks.mcp.utils.sdk import run_sdk
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common.client.exceptions import (
     SemanticBuildException,
@@ -191,7 +191,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info("Listing the semantic projects...")
-        return await asyncio.to_thread(_semantic_projects)
+        return await run_sdk(_semantic_projects)
 
     async def list_metrics(
         self,
@@ -211,7 +211,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Listing the metrics of {semantic_project}...")
-        metrics = await asyncio.to_thread(
+        metrics = await run_sdk(
             lambda: _semantic_project(semantic_project).list_metrics(tag=tag)
         )
         return _csv(
@@ -239,7 +239,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Listing the dimensions of {', '.join(metrics)}...")
-        dimensions = await asyncio.to_thread(
+        dimensions = await run_sdk(
             lambda: _semantic_project(semantic_project).dimensions(metrics=metrics)
         )
         return _csv(
@@ -274,7 +274,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Listing the entities of {semantic_project}...")
-        entities = await asyncio.to_thread(
+        entities = await run_sdk(
             lambda: _semantic_project(semantic_project).entities(metrics=metrics)
         )
         return _csv(
@@ -304,7 +304,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Reading the values of {dimension}...")
-        values = await asyncio.to_thread(
+        values = await run_sdk(
             lambda: _semantic_project(semantic_project).dimension_values(
                 dimension, metrics=metrics, limit=limit
             )
@@ -339,7 +339,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Querying {', '.join(metrics)} on {semantic_project}...")
-        return await asyncio.to_thread(
+        return await run_sdk(
             _query_csv,
             semantic_project,
             metrics,
@@ -377,7 +377,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Compiling the SQL of {', '.join(metrics)}...")
-        return await asyncio.to_thread(
+        return await run_sdk(
             lambda: _semantic_project(semantic_project).sql(
                 metrics, group_by=group_by, where=where, order_by=order_by, limit=limit
             )
@@ -399,9 +399,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Reading the tags of {semantic_project}...")
-        tags = await asyncio.to_thread(
-            lambda: _semantic_project(semantic_project).get_tags()
-        )
+        tags = await run_sdk(lambda: _semantic_project(semantic_project).get_tags())
         return [Tag(name=name, value=value) for name, value in tags.items()]
 
     async def validate_semantic_project(
@@ -420,9 +418,7 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Validating {semantic_project}...")
-        return await asyncio.to_thread(
-            lambda: _build(_semantic_project(semantic_project))
-        )
+        return await run_sdk(lambda: _build(_semantic_project(semantic_project)))
 
     async def compile_semantic_project(
         self, semantic_project: str, ctx: Context | None = None
@@ -440,6 +436,4 @@ class SemanticLayerTools:
         """
         if ctx:
             await ctx.info(f"Compiling {semantic_project}...")
-        return await asyncio.to_thread(
-            lambda: _build(_semantic_project(semantic_project))
-        )
+        return await run_sdk(lambda: _build(_semantic_project(semantic_project)))

@@ -23,6 +23,7 @@ from fastmcp import (
     Context,  # noqa: TC002
 )
 from hopsworks.mcp.models.project import Project, Projects
+from hopsworks.mcp.utils.sdk import connection_lock, run_sdk
 from hopsworks.mcp.utils.tags import TAGS
 from hopsworks_common import client
 
@@ -60,8 +61,7 @@ class ProjectTools:
     async def _create_project(
         self, conn, name: str = None, description: str = None
     ) -> dict:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, conn._create_project, name, description)
+        return await run_sdk(conn._create_project, name, description)
 
     async def use_project(self, name: str, ctx: Context | None = None) -> Project:
         """Use a specific project.
@@ -80,13 +80,14 @@ class ProjectTools:
         if conn is None:
             raise ConnectionError("Not connected to Hopsworks.")
 
-        project = hopsworks.login(
-            host=conn.host,
-            port=conn.port,
-            project=name,
-            api_key_value=conn.api_key_value,
-            engine=conn._engine,
-        )
+        with connection_lock:
+            project = hopsworks.login(
+                host=conn.host,
+                port=conn.port,
+                project=name,
+                api_key_value=conn.api_key_value,
+                engine=conn._engine,
+            )
         return Project(
             name=project.name,
             id=project.id,

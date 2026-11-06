@@ -24,6 +24,7 @@ from fastmcp import (
 )
 from hopsworks.mcp.models.project import Project
 from hopsworks.mcp.utils.auth import login as hw_login
+from hopsworks.mcp.utils.sdk import connection_lock
 from hopsworks.mcp.utils.tags import TAGS
 
 
@@ -80,17 +81,17 @@ class AuthTools:
                 f"Connecting to Hopsworks at {host or 'hopsworks.ai'} using {engine} engine..."
             )
 
-        # Perform actual login with the Hopsworks API
-        project = hw_login(
-            host=host,
-            port=port,
-            project=project,
-            api_key_value=api_key_value,
-            api_key_file=api_key_file,
-            hostname_verification=hostname_verification,
-            trust_store_path=trust_store_path,
-            engine=engine,
-        )
+        with connection_lock:
+            project = hw_login(
+                host=host,
+                port=port,
+                project=project,
+                api_key_value=api_key_value,
+                api_key_file=api_key_file,
+                hostname_verification=hostname_verification,
+                trust_store_path=trust_store_path,
+                engine=engine,
+            )
 
         return Project(
             name=project.name,

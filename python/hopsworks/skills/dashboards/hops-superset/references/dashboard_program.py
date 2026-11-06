@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from urllib.parse import urlparse
 
@@ -130,6 +131,11 @@ def ensure_dataset(api, database_id: int, schema: str, fg: dict) -> int:
     ]
 
 
+def metric_dataset_name(entry: dict) -> str:
+    """The Superset dataset of a METRIC_DATASETS entry, prefixed by this dashboard, so programs never share one."""
+    return f"{re.sub(r'[^a-z0-9]+', '_', TITLE.lower()).strip('_')}__{entry['name']}"
+
+
 def ensure_metric_dataset(api, database_id: int, schema: str, semantic, entry: dict) -> int:
     """Write the SQL the semantic layer compiles now into the metric query's dataset, creating it if needed."""
     semantic_project = semantic.get_project(entry["semantic_project"])
@@ -137,13 +143,13 @@ def ensure_metric_dataset(api, database_id: int, schema: str, semantic, entry: d
         raise RuntimeError(f"No semantic project named {entry['semantic_project']}")
     sql = semantic_project.sql(entry["metrics"], group_by=entry.get("group_by"))
     for ds in list_all(api, "dataset"):
-        if ds.get("table_name") == entry["name"] and ds.get("schema") == schema:
+        if ds.get("table_name") == metric_dataset_name(entry) and ds.get("schema") == schema:
             api.update_dataset(ds["id"], sql=sql)
             # A changed group-by changes the columns, which Superset reads only on a refresh.
             api._request("PUT", f"/api/v1/dataset/{ds['id']}/refresh")
             return ds["id"]
     return api.create_dataset(
-        database_id=database_id, table_name=entry["name"], schema=schema, sql=sql
+        database_id=database_id, table_name=metric_dataset_name(entry), schema=schema, sql=sql
     )["id"]
 
 
@@ -288,7 +294,9 @@ def delete(api, project_name: str) -> dict[str, list]:
         api.delete_chart(chart_id)
         removed["charts"].append(chart_id)
     schema = f"{project_name.lower()}_featurestore"
-    ours = {dataset_name(fg) for fg in FEATURE_GROUPS} | {e["name"] for e in METRIC_DATASETS}
+    ours = {dataset_name(fg) for fg in FEATURE_GROUPS} | {
+        metric_dataset_name(e) for e in METRIC_DATASETS
+    }
     in_use = {c.get("datasource_id") for c in list_all(api, "chart")}
     for ds in list_all(api, "dataset"):
         if ds.get("table_name") in ours and ds.get("schema") == schema and ds["id"] not in in_use:
