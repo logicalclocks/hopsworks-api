@@ -25,6 +25,10 @@ _logger = logging.getLogger(__name__)
 LOGIN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
 #: The levels Claude Code accepts for ``effort``.
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
+#: How long one call may take, start to finish, in seconds: the Anthropic client's own
+#: default. A Claude Code session that stalls would otherwise hold the judge's worker,
+#: or the turn waiting on its summary, for ever: ``max_turns`` bounds turns, not time.
+TIMEOUT_S = 600.0
 
 
 def _login() -> str:
@@ -63,37 +67,53 @@ async def _reply(
     model: str,
     system_prompt: str | None = None,
     effort: str | None = None,
+    timeout_s: float = TIMEOUT_S,
 ) -> str:
-    """The text Claude Code answers ``prompt`` with.
+    """The text Claude Code answers ``prompt`` with, within ``timeout_s`` seconds.
 
     A call that cannot reach the model ends with the SDK raising "Claude Code returned an
     error result: success", the result's subtype rather than the cause.
     The cause arrives one message earlier as a synthetic assistant message carrying
     ``error`` ("Failed to authenticate. API Error: 401 ..."), so it is kept and raised in
     the SDK line's place.
+
+    The deadline is an anyio cancel scope rather than ``asyncio.wait_for``: the SDK
+    shields the transport's close from anyio cancellation, so the Claude Code process
+    is terminated on the way out, where a raw asyncio cancellation would skip that and
+    leave it running until the pod exits.
+    The stream is closed on every exit so the same holds for an error raised mid-run.
     """
+    import anyio
     from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, query
 
     options = _options(system_prompt=system_prompt, model=model, effort=effort)
     final = ""
     last = ""
     failure = ""
+    stream = query(prompt=prompt, options=options)
     try:
-        async for message in query(prompt=prompt, options=options):
-            if isinstance(message, AssistantMessage):
-                text = "".join(
-                    block.text
-                    for block in message.content
-                    if isinstance(block, TextBlock)
-                ).strip()
-                if getattr(message, "error", None):
-                    failure = text or str(message.error)
-                elif text:
-                    last = text
-            elif isinstance(message, ResultMessage) and not message.is_error:
-                final = str(message.result or "")
+        with anyio.fail_after(timeout_s):
+            async for message in stream:
+                if isinstance(message, AssistantMessage):
+                    text = "".join(
+                        block.text
+                        for block in message.content
+                        if isinstance(block, TextBlock)
+                    ).strip()
+                    if getattr(message, "error", None):
+                        failure = text or str(message.error)
+                    elif text:
+                        last = text
+                elif isinstance(message, ResultMessage) and not message.is_error:
+                    final = str(message.result or "")
+    except TimeoutError as err:
+        raise RuntimeError(
+            f"Claude Code did not answer within {timeout_s:g}s; the call was stopped"
+        ) from err
     except Exception as err:
         raise RuntimeError(failure or str(err)) from err
+    finally:
+        await stream.aclose()
     return (final or last).strip()
 
 
@@ -102,6 +122,9 @@ def _reply_sync(prompt: str, **call: Any) -> str:
 
     Run on the current thread when no event loop is running there, and on a worker
     thread with a loop of its own otherwise: ``asyncio.run`` refuses to nest.
+    The deadline is :func:`_reply`'s, inside the loop, so the worker ends with it and
+    the wait here ends with the worker; a deadline on the wait alone would leave the
+    worker, and the Claude Code process under it, running.
     """
     try:
         asyncio.get_running_loop()

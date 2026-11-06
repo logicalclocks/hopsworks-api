@@ -1241,3 +1241,94 @@ class TestTheJudgeOnAClaudeCodeLogin:
         )
         assert complete("grade this") == "{}"
         assert built["api_key"] == "sk-ant-oat01-other"
+
+
+class TestARoutedJudgeNeverRunsOnTheLogin:
+    """A judge on its own endpoint or headers is a route Claude Code cannot follow.
+
+    Falling back to the login for it would send the grading prompt through
+    Claude Code's own endpoint, past the gateway or tenant the judge was
+    configured with.
+    """
+
+    def config(self, **route):
+        from hopsworks_agents.eval.judge_config import JudgeConfig
+
+        return JudgeConfig(provider="anthropic", **route)
+
+    @pytest.mark.parametrize(
+        "route",
+        [
+            {"base_url": "https://judge-gateway.invalid/v1"},
+            {"headers": {"X-Route": "restricted"}},
+        ],
+        ids=["base_url", "headers"],
+    )
+    def test_the_login_is_not_handed_to_it_and_the_log_says_why(
+        self, monkeypatch, caplog, route
+    ):
+        from hopsworks_agents.eval.judge_config import _api_key_for
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        with caplog.at_level("WARNING", logger="hopsworks_agents.eval.judge_config"):
+            assert _api_key_for(self.config(**route)) is None
+        assert "Claude Code cannot honour" in caplog.text
+        assert "ANTHROPIC_API_KEY" in caplog.text
+
+    @pytest.mark.parametrize(
+        "route",
+        [
+            {"base_url": "https://judge-gateway.invalid/v1"},
+            {"headers": {"X-Route": "restricted"}},
+        ],
+        ids=["base_url", "headers"],
+    )
+    def test_a_key_given_by_hand_that_is_the_login_is_refused_not_rerouted(
+        self, monkeypatch, route
+    ):
+        from hopsworks_agents.eval.judge_config import JudgeConfigError, _completer_for
+
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        with pytest.raises(JudgeConfigError, match="base_url or headers"):
+            _completer_for(self.config(**route), "sk-ant-oat01-x")
+
+    def test_a_routed_judge_with_a_key_goes_through_its_route(self, monkeypatch):
+        import sys
+        import types
+
+        from hopsworks_agents.eval.judge_config import _completer_for
+
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        built = {}
+
+        class Anthropic:
+            def __init__(self, **kwargs):
+                built.update(kwargs)
+                self.messages = types.SimpleNamespace(create=self._create)
+
+            def _create(self, **kwargs):
+                return types.SimpleNamespace(
+                    content=[types.SimpleNamespace(type="text", text="{}")],
+                    stop_reason="end_turn",
+                )
+
+        anthropic = types.ModuleType("anthropic")
+        anthropic.Anthropic = Anthropic
+        monkeypatch.setitem(sys.modules, "anthropic", anthropic)
+        config = self.config(
+            base_url="https://judge-gateway.invalid/v1",
+            headers={"X-Route": "restricted"},
+        )
+        assert _completer_for(config, "real-key")("grade") == "{}"
+        assert built["base_url"] == "https://judge-gateway.invalid/v1"
+        assert built["default_headers"] == {"X-Route": "restricted"}
+        assert built["api_key"] == "real-key"
+
+    def test_the_login_is_not_named_as_a_place_to_look_for_it(self):
+        from hopsworks_agents.eval.judge_config import _api_key_source
+
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in _api_key_source(
+            self.config(base_url="https://judge-gateway.invalid/v1")
+        )
+        assert "CLAUDE_CODE_OAUTH_TOKEN" in _api_key_source(self.config())

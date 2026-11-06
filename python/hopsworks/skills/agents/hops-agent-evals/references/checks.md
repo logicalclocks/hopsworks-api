@@ -78,6 +78,7 @@ Every judge check and the analysis job take the same keys:
 - `reasoning_effort`: for models that take one.
 
 Without `api_key_env` the provider's conventional variable is read (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...); set it for a job by adding it to your account's environment variables.
+An `anthropic` judge with no key runs on the Claude Code login the user connected (`CLAUDE_CODE_OAUTH_TOKEN`, handed to the job by the platform), unless it names `api_key_env`, `base_url` or `headers`: Claude Code calls its own endpoint, so a routed judge needs a key.
 
 ## Built-in judge templates
 
