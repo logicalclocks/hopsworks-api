@@ -20,6 +20,7 @@ import pytest
 import requests
 from hopsworks_common import environment
 from hopsworks_common.client.exceptions import EnvironmentException, RestAPIError
+from hopsworks_common.core.environment_api import _build_custom_commands_request
 from hopsworks_common.engine import environment_engine
 
 
@@ -30,6 +31,7 @@ def custom_env(mocker):
     mocker.patch("hopsworks_common.client._get_instance", return_value=connection)
     mocker.patch.object(env._environment_engine, "_await_environment_command")
     mocker.patch.object(environment_engine.time, "sleep")
+    mocker.patch.object(environment_engine.time, "monotonic", return_value=0)
     return env, connection
 
 
@@ -40,6 +42,28 @@ def _rest_error(status=400, code=300008):
         {"errorCode": code, "errorMsg": "Command not found"}
     ).encode()
     return RestAPIError("commands/42", response)
+
+
+def test_custom_command_request_builder_is_pure(mocker):
+    connection = mocker.patch(
+        "hopsworks_common.client._get_instance",
+        side_effect=AssertionError("HTTP client accessed"),
+    )
+    artifacts = ["Resources/local.txt", "/Projects/owner/Shared/data.txt"]
+    variables = {"MODE": "a=b # $HOME"}
+
+    request = _build_custom_commands_request(
+        "consumer", "Resources/setup.sh", artifacts, variables
+    )
+
+    assert request == {
+        "commandsFile": "/Projects/consumer/Resources/setup.sh",
+        "artifacts": "/Projects/consumer/Resources/local.txt,/Projects/owner/Shared/data.txt",
+        "envVars": [{"name": "MODE", "value": "a=b # $HOME"}],
+    }
+    assert artifacts == ["Resources/local.txt", "/Projects/owner/Shared/data.txt"]
+    assert variables == {"MODE": "a=b # $HOME"}
+    connection.assert_not_called()
 
 
 def test_custom_commands_send_paths_and_variables_and_wait_for_the_submitted_id(
@@ -82,10 +106,9 @@ def test_custom_commands_send_paths_and_variables_and_wait_for_the_submitted_id(
             "GET",
             ["project", 1, "python", "environments", "custom_env", "commands", 42],
         )
-        assert (
-            poll.kwargs["timeout"]
-            == environment_engine.EnvironmentEngine.POLL_REQUEST_TIMEOUT
-        )
+        assert poll.kwargs["timeout"] == 42
+        assert poll.kwargs["deadline"] == 42
+    assert submit.kwargs["timeout"] == 42
     assert artifacts[0] == "Resources/data.txt"
     assert variables["TOKEN"] == "secret:build-token"
 
@@ -137,14 +160,65 @@ def test_custom_commands_raise_the_build_failure(custom_env):
 
 def test_custom_commands_wait_is_bounded(custom_env, mocker):
     env, connection = custom_env
-    connection._send_request.side_effect = [
-        {"id": 42, "status": "NEW"},
-        {"id": 42, "status": "ONGOING"},
-    ]
-    mocker.patch.object(environment_engine.time, "monotonic", side_effect=[0, 0, 10])
+    clock = [0]
+    mocker.patch.object(
+        environment_engine.time, "monotonic", side_effect=lambda: clock[0]
+    )
+    connection._send_request.return_value = {"id": 42, "status": "NEW"}
+    mocker.patch.object(
+        environment_engine.time,
+        "sleep",
+        side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
 
     with pytest.raises(EnvironmentException, match="custom command 42.*custom_env"):
         env.run_custom_commands("Resources/setup.sh", timeout=7)
+
+    assert clock[0] == 7
+    assert connection._send_request.call_count == 2
+
+
+def test_submission_time_is_deducted_from_polling_budget(custom_env, mocker):
+    env, connection = custom_env
+    clock = [0]
+    mocker.patch.object(
+        environment_engine.time, "monotonic", side_effect=lambda: clock[0]
+    )
+
+    def send(method, *args, **kwargs):
+        if method == "POST":
+            clock[0] += 6
+            return {"id": 42}
+        assert kwargs["timeout"] == 4
+        return {"id": 42, "status": "SUCCESS"}
+
+    connection._send_request.side_effect = send
+    env.run_custom_commands("Resources/setup.sh", timeout=10)
+
+
+def test_submission_timeout_is_not_retried(custom_env):
+    env, connection = custom_env
+    connection._send_request.side_effect = requests.exceptions.ReadTimeout()
+
+    with pytest.raises(EnvironmentException, match="may have been submitted"):
+        env.run_custom_commands("Resources/setup.sh", timeout=1, await_completion=False)
+
+    connection._send_request.assert_called_once()
+    assert connection._send_request.call_args.kwargs["timeout"] == 1
+
+
+def test_custom_commands_reuse_the_existing_api(custom_env, mocker):
+    env, connection = custom_env
+    constructor = mocker.patch.object(
+        environment.environment_api,
+        "EnvironmentApi",
+        side_effect=AssertionError("extra API"),
+    )
+    connection._send_request.side_effect = [{"id": 42}, _rest_error()]
+
+    env.run_custom_commands("Resources/setup.sh")
+
+    constructor.assert_not_called()
 
 
 def test_custom_commands_poll_retries_request_timeouts(custom_env):

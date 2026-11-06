@@ -28,6 +28,68 @@ from tests.util import changes_environ
 
 
 class TestBaseClient:
+    @pytest.mark.parametrize("status", [200, 401])
+    def test_request_deadline_includes_http_and_retries(self, mocker, status):
+        client = self._init_test_client()
+        client._base_url = "https://example.test"
+        now = [0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: now[0]
+        )
+        mocker.patch(
+            "hopsworks_common.client.base.time.sleep",
+            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        )
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
+        mocker.patch.object(client, "_read_jwt", return_value="new-token")
+        client.TOKEN_EXPIRED_RETRY_INTERVAL = 1
+        response = requests.Response()
+        response.status_code = status
+        response.raw = mocker.Mock()
+
+        def send(*args, **kwargs):
+            budget = kwargs["timeout"].total
+            assert 0 < budget <= 2 - now[0]
+            now[0] += budget
+            return response
+
+        mocked_send = mocker.patch("requests.sessions.Session.send", side_effect=send)
+        with pytest.raises(requests.exceptions.Timeout):
+            client._send_request("POST", ["commands", "custom"], timeout=60, deadline=2)
+
+        assert now[0] == 2
+        mocked_send.assert_called_once()
+
+    def test_token_refresh_uses_only_the_remaining_request_budget(self, mocker):
+        client = self._init_test_client()
+        client._base_url = "https://example.test"
+        client.TOKEN_EXPIRED_RETRY_INTERVAL = 1
+        mocker.patch.dict(os.environ, {Client.REST_ENDPOINT: "True"})
+        mocker.patch.object(client, "_read_jwt", return_value="new-token")
+        now = [0]
+        mocker.patch(
+            "hopsworks_common.client.base.time.monotonic", side_effect=lambda: now[0]
+        )
+        mocker.patch(
+            "hopsworks_common.client.base.time.sleep",
+            side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        )
+        budgets = []
+
+        def send(*args, **kwargs):
+            budgets.append(kwargs["timeout"].total)
+            now[0] += 1
+            response = requests.Response()
+            response.status_code = 401 if len(budgets) == 1 else 200
+            response._content = b""
+            return response
+
+        mocker.patch("requests.sessions.Session.send", side_effect=send)
+        client._send_request("GET", ["commands"], timeout=60, deadline=4)
+
+        assert budgets == [4, 2]
+        assert now[0] == 3
+
     @changes_environ
     def test_valid_token_no_retires(self, mocker):
         # Arrange
