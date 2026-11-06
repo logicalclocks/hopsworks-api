@@ -255,7 +255,7 @@ class Environment:
         deadline = time.monotonic() + build_timeout
         try:
             command_id = self._environment_api._run_custom_commands(
-                self.name, request, build_timeout
+                self.name, request, deadline=deadline
             )
         except requests.exceptions.Timeout as error:
             raise EnvironmentException(

@@ -207,6 +207,28 @@ def test_submission_timeout_is_not_retried(custom_env):
     assert connection._send_request.call_args.kwargs["timeout"] == 1
 
 
+def test_submission_preparation_does_not_restart_the_deadline(custom_env, mocker):
+    env, connection = custom_env
+    now = [0]
+    mocker.patch.object(
+        environment_engine.time, "monotonic", side_effect=lambda: now[0]
+    )
+    calls = []
+
+    def get_client():
+        calls.append(None)
+        if len(calls) == 2:
+            now[0] = 2
+        return connection
+
+    mocker.patch("hopsworks_common.client._get_instance", side_effect=get_client)
+    connection._send_request.return_value = {"id": 42}
+    env.run_custom_commands("Resources/setup.sh", timeout=7, await_completion=False)
+
+    assert connection._send_request.call_args.kwargs["timeout"] == 5
+    assert connection._send_request.call_args.kwargs["deadline"] == 7
+
+
 def test_custom_commands_reuse_the_existing_api(custom_env, mocker):
     env, connection = custom_env
     constructor = mocker.patch.object(
