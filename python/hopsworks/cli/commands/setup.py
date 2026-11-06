@@ -595,6 +595,7 @@ def _scaffold_here(*, internal: bool, project: str | None, skip: bool) -> None:
         files = scaffold.build_files(internal=internal, project=project)
         result = scaffold.scaffold(root, files)
         changed = scaffold.ensure_permission(root / ".claude/settings.local.json")
+        docs_mcp_added = scaffold.ensure_docs_mcp(root / ".mcp.json")
     except (OSError, ValueError) as exc:
         output.warn("Could not write agent instruction files: %s", _reason(exc))
         return
@@ -610,6 +611,10 @@ def _scaffold_here(*, internal: bool, project: str | None, skip: bool) -> None:
     if changed:
         output.success(
             "✓ Allowed %s in .claude/settings.local.json", scaffold.HOPS_PERMISSION
+        )
+    if docs_mcp_added:
+        output.success(
+            "✓ Registered the %s MCP server in .mcp.json", scaffold.DOCS_MCP_NAME
         )
     if not internal:
         _suggest_skills_install(root)
