@@ -24,6 +24,7 @@ from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
 from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
+from hsml.core.openai_client import _build_openai_client
 from hsml.deployment_tracing_config import DeploymentTracingConfig
 from hsml.engine import serving_engine
 
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from datetime import date, datetime
 
+    import openai
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_logging_config import DeploymentLoggingConfig
@@ -198,7 +200,7 @@ class Deployment:
     def set_tracing(
         self,
         active: bool | None = None,
-        sampling_percentage: int | None = None,
+        sampling_percentage: float | None = None,
         duration_days: int | None = None,
     ) -> None:
         """Switch tracing on or off, or change the share of requests it traces or how long it stays on, without restarting the deployment.
@@ -219,7 +221,7 @@ class Deployment:
 
         Parameters:
             active: Whether to record traces and transformation metrics; `None` keeps the current value.
-            sampling_percentage: Percentage of requests to trace, from 0 to 100; `None` keeps the current value.
+            sampling_percentage: Percentage of requests to trace, from 0 to 100, for example `0.1` for one in 1,000; `None` keeps the current value.
             duration_days: Days tracing stays on, from 1; `None` keeps the current value.
 
         Raises:
@@ -241,10 +243,11 @@ class Deployment:
         until_datetime: str | datetime | date | int | None = None,
         batch_size: int = 1000,
     ) -> int:
-        """Delete the deployment's traces: its spans, events and their attributes.
+        """Delete the deployment's traces before they expire.
 
-        Each request deletes at most `batch_size` rows from each trace table in one transaction, since the online feature store caps the rows one transaction can hold; the method repeats it until no rows are left.
-        Traces older than the cluster's retention (`serving_tracing_retention_days`, 7 days by default) are already deleted every 5 minutes.
+        A model or feature view deployment's traces are kept online for the time to live of the project's `serving_traces` feature group (`serving_tracing_online_ttl_hours`, 36 hours by default) and then expire on their own.
+        Each request deletes at most `batch_size` of their rows in one transaction, since the online feature store caps the rows one transaction can hold; the method repeats it until no rows are left.
+        An agent's traces are in the agent trace tables, and each request deletes at most `batch_size` rows from each of them.
 
         ```python
         deployment.delete_traces()
@@ -252,9 +255,10 @@ class Deployment:
         ```
 
         Parameters:
-            until_datetime: Delete the traces created before this time, as a datetime, a date, a string such as `"2026-10-28 12:00:00"` or epoch milliseconds; a time without a timezone is taken as UTC.
+            until_datetime: Delete the traces started before this time (for an agent, written before it), as a datetime, a date, a string such as `"2026-10-28 12:00:00"` or epoch milliseconds; a time without a timezone is taken as UTC.
+                A model or feature view deployment's trace is deleted whole, with the spans it recorded after this time.
                 `None` deletes all of them.
-            batch_size: Rows to delete per table per transaction, from 1 to 10000.
+            batch_size: Rows to delete per transaction (for an agent, per table), from 1 to 10000.
 
         Returns:
             The number of rows deleted.
@@ -1131,6 +1135,46 @@ class Deployment:
         return self._predictor.get_openai_url()
 
     @public
+    def get_openai_client(self, **kwargs: Any) -> openai.OpenAI:
+        """Get an OpenAI client that talks to this vLLM deployment only.
+
+        The client authenticates with the Hopsworks token of the current connection.
+        Pass the deployment name as `model` in each request.
+        Requires the `openai` package, installed with `pip install "hopsworks[openai]"`.
+        Keyword arguments are passed to `openai.OpenAI`, for example `timeout`, `max_retries` or `http_client`.
+        `default_headers` are merged over the authorization header set by Hopsworks.
+        `base_url` and `api_key` are set by Hopsworks and cannot be passed.
+        Without an `http_client`, certificates are verified as the main Hopsworks connection does.
+        With `hostname_verification=True`, the certificate of the inference endpoint must cover its host; otherwise pass an `http_client` with a matching CA, or one with `verify=False`.
+
+        Returns:
+            The configured OpenAI client.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment is not a vLLM deployment, or no endpoint URL is available.
+            ValueError: If `base_url` or `api_key` is passed.
+            ModuleNotFoundError: If the `openai` package is not installed.
+
+        Example: Chat with this deployment
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            openai_client = deployment.get_openai_client()
+            response = openai_client.chat.completions.create(
+                model=deployment.name,
+                messages=[{"role": "user", "content": "Hello"}],
+            )
+            ```
+        """
+        url = self.get_openai_url()
+        if url is None:
+            raise ModelServingException(
+                f"Deployment '{self.name}' has no OpenAI-compatible URL. "
+                "Only vLLM deployments serve one, and it requires the Istio client, "
+                "which is not set up when KServe is not installed or the Istio ingress gateway has no load balancer address."
+            )
+        return _build_openai_client(url, **kwargs)
+
+    @public
     def get_inference_url(self) -> str | None:
         """Get the KServe inference URL for standard model deployments.
 
@@ -1510,6 +1554,44 @@ class Deployment:
     @knative_mode.setter
     def knative_mode(self, knative_mode: bool | None):
         self._predictor.knative_mode = knative_mode
+
+    @public
+    @property
+    def llm_gateway(self) -> bool:
+        """The LLM gateway switch of this deployment, as stored by the backend.
+
+        It does not tell whether the deployment is served by the LLM gateway.
+        See [`Predictor.llm_gateway`][hsml.predictor.Predictor.llm_gateway].
+        Setting it only changes the local object; use [`set_llm_gateway`][hsml.deployment.Deployment.set_llm_gateway] to change an existing deployment.
+        """
+        return self._predictor.llm_gateway
+
+    @llm_gateway.setter
+    def llm_gateway(self, llm_gateway: bool):
+        self._predictor.llm_gateway = llm_gateway
+
+    @public
+    def set_llm_gateway(self, enabled: bool):
+        """Switch an existing deployment on or off the LLM gateway.
+
+        The change does not restart the deployment.
+        Requires the data owner role in the project.
+        When the backend stores the switch but cannot apply it yet, it applies it within a minute and the call logs this at INFO level.
+
+        Parameters:
+            enabled: Whether the LLM gateway serves this deployment.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Take a deployment off the LLM gateway
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            deployment.set_llm_gateway(False)
+            ```
+        """
+        self._serving_api._set_deployment_llm_gateway(self, enabled)
+        self._predictor.llm_gateway = enabled
 
     @public
     @property

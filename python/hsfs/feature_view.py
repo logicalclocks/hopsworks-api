@@ -15,6 +15,8 @@
 #
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
 import os
@@ -128,6 +130,39 @@ DeprecatedSpineTypes = (
 
 
 _logger = logging.getLogger(__name__)
+
+
+def _timed_stage(kind: str):
+    """Time a feature view method as stage `kind` of the current request, named by this feature view, while tracing is on.
+
+    Only a call inside a request is timed: the default predictor's log worker calls `log` after the response, on its own thread.
+    Inside the default predictor's stage of the same kind the method is not timed again.
+    """
+
+    def decorate(method):
+        # The class-level @typechecked finds no annotations on the wrapper, so the method is checked here.
+        method = typechecked(method)
+        if inspect.iscoroutinefunction(method):
+
+            @functools.wraps(method)
+            async def timed_async(self, *args, **kwargs):
+                if not tracing._enabled or tracing._request_stages_ns.get() is None:
+                    return await method(self, *args, **kwargs)
+                with tracing._stage(kind, f"{self.name}:{self.version}"):
+                    return await method(self, *args, **kwargs)
+
+            return timed_async
+
+        @functools.wraps(method)
+        def timed(self, *args, **kwargs):
+            if not tracing._enabled or tracing._request_stages_ns.get() is None:
+                return method(self, *args, **kwargs)
+            with tracing._stage(kind, f"{self.name}:{self.version}"):
+                return method(self, *args, **kwargs)
+
+        return timed
+
+    return decorate
 
 
 @public
@@ -858,6 +893,7 @@ class FeatureView:
             )
 
     @public
+    @_timed_stage("feature_lookup")
     def get_feature_vector(
         self,
         serving_keys: dict[str, Any] | None = None,
@@ -870,7 +906,7 @@ class FeatureView:
         transform: bool | None = True,
         on_demand_features: bool | None = True,
         request_parameters: dict[str, Any] | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         n_processes: int | None = None,
         timeout: float | None = None,
@@ -1052,6 +1088,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     async def get_feature_vector_async(self, **kwargs: Any) -> Any:
         """Awaitable [`get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector].
 
@@ -1093,6 +1130,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     async def get_feature_vectors_async(self, **kwargs: Any) -> Any:
         """Awaitable [`get_feature_vectors`][hsfs.feature_view.FeatureView.get_feature_vectors].
 
@@ -1128,6 +1166,7 @@ class FeatureView:
         )
 
     @public
+    @_timed_stage("feature_lookup")
     def get_feature_vectors(
         self,
         serving_keys: list[dict[str, Any]] | None = None,
@@ -1140,7 +1179,7 @@ class FeatureView:
         transform: bool | None = True,
         on_demand_features: bool | None = True,
         request_parameters: list[dict[str, Any]] | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         n_processes: int | None = None,
         timeout: float | None = None,
@@ -1610,7 +1649,7 @@ class FeatureView:
             "default", "spark", "pandas", "polars", "numpy", "python"
         ] = "default",
         transformed: bool | None = True,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         logging_data: bool = False,
         extra_filter: filter.Filter | filter.Logic | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2127,7 +2166,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2396,7 +2435,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -2724,7 +2763,7 @@ class FeatureView:
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
@@ -3033,7 +3072,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: DeprecatedSpineTypes | None = None,
         spine_df: SpineDataFrameTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
     ) -> job.Job:
         """Recreate a training dataset.
 
@@ -3139,7 +3178,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3334,7 +3373,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3566,7 +3605,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -3822,7 +3861,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
@@ -3915,7 +3954,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str | None = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
@@ -4005,7 +4044,7 @@ class FeatureView:
         event_time: bool = False,
         training_helper_columns: bool = False,
         dataframe_type: str = "default",
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
@@ -5596,6 +5635,7 @@ class FeatureView:
             self._feature_logger = None
 
     @public
+    @_timed_stage("feature_log")
     def log(
         self,
         logging_data: pd.DataFrame

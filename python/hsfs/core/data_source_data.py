@@ -41,6 +41,7 @@ class DataSourceData:
         schema_fetch_in_progress: bool = False,
         schema_fetch_logs: str = "",
         supported_resources: list[str] | None = None,
+        column_metadata: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
         # The backend returns features as raw JSON dicts and from_response_json passes
@@ -61,6 +62,7 @@ class DataSourceData:
         self._schema_fetch_in_progress = schema_fetch_in_progress
         self._schema_fetch_logs = schema_fetch_logs
         self._supported_resources = supported_resources if supported_resources else []
+        self._column_metadata = column_metadata if column_metadata else []
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> DataSourceData:
@@ -112,3 +114,9 @@ class DataSourceData:
     def supported_resources(self) -> list[str]:
         """The list of supported resources."""
         return self._supported_resources
+
+    @public
+    @property
+    def column_metadata(self) -> list[dict[str, Any]]:
+        """SQL Server tables only: each source column with its `name`, `source_type`, and whether it is a FILESTREAM column (`file_stream`), can be stored as files (`file_candidate`) and is stored as files in this read (`file`)."""
+        return self._column_metadata

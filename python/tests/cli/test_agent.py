@@ -293,3 +293,78 @@ class TestInfoShowsTheStatus:
             status = "Stopped"
 
         assert _deployment_status(Legacy()) == "Stopped"
+
+
+def test_agent_create_passes_framework_and_chat_contract(mock_project, tmp_path):
+    ms = mock.MagicMock()
+    ms.deploy_agent.return_value = _agent_mock("entry")
+    mock_project.get_model_serving.return_value = ms
+    entry = tmp_path / "entry.py"
+    entry.write_text("")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "agent",
+            "create",
+            str(entry),
+            "--framework",
+            "openai_agents",
+            "--chat-contract",
+            "openai",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert ms.deploy_agent.call_args.kwargs["framework"] == "openai_agents"
+    assert ms.deploy_agent.call_args.kwargs["chat_config"] == "openai"
+
+
+def test_agent_create_leaves_framework_and_chat_contract_to_the_sdk(
+    mock_project, tmp_path
+):
+    # Omitted flags reach the SDK as None, so it reads the code or keeps what is stored.
+    ms = mock.MagicMock()
+    ms.deploy_agent.return_value = _agent_mock("entry")
+    mock_project.get_model_serving.return_value = ms
+    entry = tmp_path / "entry.py"
+    entry.write_text("")
+    result = CliRunner().invoke(cli, ["agent", "create", str(entry)])
+    assert result.exit_code == 0, result.output
+    assert ms.deploy_agent.call_args.kwargs["framework"] is None
+    assert ms.deploy_agent.call_args.kwargs["chat_config"] is None
+
+
+def test_agent_create_rejects_an_unknown_framework(mock_project, tmp_path):
+    entry = tmp_path / "entry.py"
+    entry.write_text("")
+    result = CliRunner().invoke(
+        cli, ["agent", "create", str(entry), "--framework", "crewai"]
+    )
+    assert result.exit_code != 0
+    assert "crewai" in result.output
+
+
+def test_agent_info_shows_framework_and_chat_contract(mock_project):
+    agent = _agent_mock("my-agent")
+    agent.predictor.agent_framework = "langgraph"
+    agent.predictor.chat_config = {"protocol": "hopsworks"}
+    ms = mock.MagicMock()
+    ms.get_deployment.return_value = agent
+    mock_project.get_model_serving.return_value = ms
+
+    result = CliRunner().invoke(cli, ["agent", "info", "my-agent"])
+    assert result.exit_code == 0, result.output
+    assert "langgraph" in result.output
+    assert "hopsworks" in result.output
+
+
+def test_agent_info_shows_an_unset_chat_contract_as_auto_detect(mock_project):
+    agent = _agent_mock("my-agent")
+    agent.predictor.agent_framework = None
+    agent.predictor.chat_config = None
+    ms = mock.MagicMock()
+    ms.get_deployment.return_value = agent
+    mock_project.get_model_serving.return_value = ms
+
+    result = CliRunner().invoke(cli, ["agent", "info", "my-agent"])
+    assert result.exit_code == 0, result.output
+    assert "auto-detect" in result.output

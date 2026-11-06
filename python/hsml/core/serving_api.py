@@ -264,6 +264,69 @@ class ServingApi:
         path_params = ["project", _client._project_id, "serving", "tritonImageTags"]
         return _client._send_request("GET", path_params)
 
+    def _get_llm_gateway(self) -> dict[str, Any]:
+        """Get the LLM gateway switch and whether the cluster publishes the endpoint.
+
+        Returns:
+            A dict with the keys `enabled` and `available`.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "llmGateway"]
+        return _client._send_request("GET", path_params)
+
+    def _set_llm_gateway(self, enabled: bool) -> dict[str, Any]:
+        """Switch the LLM gateway on or off for the whole project.
+
+        Parameters:
+            enabled: Whether the LLM gateway serves the project's deployments.
+
+        Returns:
+            A dict with the keys `enabled` and `available`.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "llmGateway"]
+        return self._send_llm_gateway_switch("PUT", path_params, enabled)
+
+    def _set_deployment_llm_gateway(
+        self, deployment_instance: deployment.Deployment, enabled: bool
+    ):
+        """Switch one deployment on or off the LLM gateway.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+            enabled: Whether the LLM gateway serves the deployment.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "llmGateway",
+        ]
+        return self._send_llm_gateway_switch("POST", path_params, enabled)
+
+    def _send_llm_gateway_switch(
+        self, method: str, path_params: list, enabled: bool
+    ) -> dict[str, Any] | None:
+        """Send an LLM gateway switch and return the response body, if any.
+
+        The backend answers 202 when it stored the switch but could not apply it to the LLM gateway yet; it retries on its own.
+        """
+        _client = client._get_instance()
+        response = _client._send_request(
+            method,
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps({"enabled": enabled}),
+            stream=True,
+        )
+        if response.status_code == 202:
+            _logger.info(
+                "The LLM gateway switch is saved; the LLM gateway applies it within a minute."
+            )
+        return response.json() if response.content else None
+
     def _get_schema(
         self,
         deployment_id: int,
@@ -432,7 +495,7 @@ class ServingApi:
         self,
         deployment_instance: deployment.Deployment,
         active: bool | None,
-        sampling_percentage: int | None,
+        sampling_percentage: float | None,
         duration_days: int | None = None,
     ) -> dict[str, Any]:
         """Switch a running deployment's tracing without redeploying it, returning the stored tracing config."""
@@ -464,7 +527,7 @@ class ServingApi:
         until_ms: int | None,
         batch_size: int,
     ) -> int:
-        """Delete one batch of the deployment's trace rows from each trace table, returning the rows deleted."""
+        """Delete one batch of the deployment's trace rows, returning the rows deleted."""
         _client = client._get_instance()
         path_params = [
             "project",
@@ -864,6 +927,17 @@ class ServingApi:
             "models",
             deployment_instance.name + ":predict",
         ]
+
+    def _get_istio_project_openai_path(self, project_namespace: str) -> list[str]:
+        """Get the Istio path of the project-wide OpenAI-compatible endpoint.
+
+        Parameters:
+            project_namespace: Kubernetes namespace of the project.
+
+        Returns:
+            List of path segments.
+        """
+        return ["v1", project_namespace, "v1"]
 
     def _get_istio_inference_path(
         self, deployment_instance, base_only: bool = False

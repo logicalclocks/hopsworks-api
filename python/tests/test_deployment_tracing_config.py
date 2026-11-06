@@ -66,7 +66,14 @@ class TestDeploymentTracingConfig:
 
         assert restored.sampling_percentage == 25
 
-    @pytest.mark.parametrize("percentage", [-1, 101])
+    def test_round_trip_with_a_fractional_sampling_percentage(self):
+        config = DeploymentTracingConfig(enabled=True, sampling_percentage=0.01)
+
+        restored = DeploymentTracingConfig.from_response_json(config.to_dict())
+
+        assert restored.sampling_percentage == 0.01
+
+    @pytest.mark.parametrize("percentage", [-1, 101, float("nan")])
     def test_rejects_sampling_percentage_out_of_range(self, percentage):
         with pytest.raises(ValueError, match="between 0 and 100"):
             DeploymentTracingConfig(sampling_percentage=percentage)
