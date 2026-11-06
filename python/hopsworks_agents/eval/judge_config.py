@@ -34,6 +34,8 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import TYPE_CHECKING, Any
 
+from .. import _claude_code
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -668,6 +670,19 @@ def _completer_for(config: JudgeConfig, api_key: str) -> Callable[[str], str]:
             return parameters._send(call)
 
         return complete_openai
+
+    if _claude_code._is_login(api_key):
+        # Claude Code's own credential: one Claude Code session per grading, with
+        # no tools and nothing read from the pod. Temperature and the token limit
+        # are Claude Code's to set; the reasoning effort is passed when it is one
+        # of its levels.
+        chosen = model or "claude-sonnet-5"
+        effort = config.reasoning_effort
+
+        def complete_claude_code(prompt: str) -> str:
+            return _claude_code._reply_sync(prompt, model=chosen, effort=effort)
+
+        return complete_claude_code
 
     parameters = _AnthropicMessagesParameters(
         model, config.temperature, config.max_tokens, config.reasoning_effort
@@ -1711,8 +1726,29 @@ def _api_key_for(config: JudgeConfig) -> str | None:
     if named:
         return os.environ.get(named) or None
 
-    env_var = PROVIDERS.get(config.provider, {}).get("env_var") or ""
-    return (os.environ.get(env_var) or None) if env_var else None
+    registry = PROVIDERS.get(config.provider, {})
+    env_var = registry.get("env_var") or ""
+    key = (os.environ.get(env_var) or None) if env_var else None
+    if key is None and _runs_on_claude_code(config):
+        # The Claude Code login the user connected, which the platform hands the
+        # job as it hands it an agent deployment. It is Claude Code's credential,
+        # not the API's: _completer_for sends the judge's prompt through Claude
+        # Code when it sees this value, never through the Anthropic client.
+        return _claude_code._login() or None
+    return key
+
+
+def _runs_on_claude_code(config: JudgeConfig) -> bool:
+    """Whether a judge with no API key of its own may run on the Claude Code login.
+
+    Only the Anthropic judge, the one Claude Code can stand in for; naming a
+    variable is a choice, and is not replaced by the login any more than by the
+    ambient key.
+    """
+    named = getattr(config, "api_key_env", "") or ""
+    return not named and (
+        PROVIDERS.get(config.provider, {}).get("adapter") == "anthropic"
+    )
 
 
 def _api_key_source(config: JudgeConfig) -> str:
@@ -1722,8 +1758,14 @@ def _api_key_source(config: JudgeConfig) -> str:
         return f"the environment variable {named}"
     env_var = PROVIDERS.get(config.provider, {}).get("env_var") or ""
     if env_var:
-        return (
+        source = (
             f"the environment variable {env_var}, which is set for a job by adding "
             "it to your account's environment variables"
         )
+        if PROVIDERS[config.provider]["adapter"] == "anthropic":
+            source += (
+                f", or {_claude_code.LOGIN_ENV}, which a Claude Code login connected "
+                "to your account sets"
+            )
+        return source
     return "nowhere: an OpenAI-compatible endpoint must name its own variable"
