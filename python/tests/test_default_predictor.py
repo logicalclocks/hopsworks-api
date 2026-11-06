@@ -940,6 +940,36 @@ class TestNoLookup:
         assert list(kwargs["untransformed_features"].columns) == ["cc_num", "amount"]
         assert "amount_scaled" in kwargs["transformed_features"].columns
 
+    def test_feature_view_without_model_dependent_transformation(self, pod_env):
+        # transform() hands back its input when there is nothing to apply.
+        fv = FakeFeatureView(logging_enabled=True)
+        fv.transform = lambda frame, **kwargs: frame
+        schema = _schema(
+            serving_keys=[],
+            passed_features=[
+                {"name": "cc_num", "type": "bigint"},
+                {"name": "amount", "type": "double"},
+            ],
+        )
+        signature = {
+            "input_schema": {
+                "columnar_schema": [
+                    {"name": "cc_num", "type": "int64"},
+                    {"name": "amount", "type": "float64"},
+                ]
+            }
+        }
+        predictor = dp.DefaultPredict(
+            FakeDeployment(schema, fv, FakeModel(signature)), async_logger=object()
+        )
+
+        assert predictor.predict_blocking([{"cc_num": 1, "amount": 2.0}]) == [1]
+        assert predictor._log_worker._wait(5)
+        args, kwargs = fv.log_calls[0]
+        assert list(args[0].columns) == ["cc_num", "amount"]
+        assert kwargs["untransformed_features"] is None
+        assert kwargs["transformed_features"] is None
+
     def test_model_without_feature_view_predicts_on_passed_features(self, pod_env):
         schema = DeploymentSchema(
             passed_features=[
