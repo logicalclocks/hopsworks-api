@@ -54,7 +54,7 @@ class StorageConnectorApi:
 
         Parameters:
             storage_connector_instance: The storage connector to create.
-            tags: Tags to attach in the same request: a tag, a dictionary with `name` and `value`, or a list of either.
+            tags: Tags to attach in the same request, each naming its tag schema and carrying a value that the schema validates.
 
         Returns:
             The created storage connector with its assigned id.

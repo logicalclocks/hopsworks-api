@@ -305,7 +305,7 @@ class StorageConnector(ABC):
         Parameters:
             tags:
                 Tags to attach to the data source as it is created, in the same request.
-                Tags can be provided as a single [`Tag`][hopsworks.tag.Tag], a dictionary with `name` and `value` keys, or a list of either.
+                Each tag names its tag schema and carries a value that the schema validates.
                 Tags that are mandatory for data sources must be passed here, since the data source is not created without them.
 
         Returns:
