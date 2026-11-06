@@ -1145,7 +1145,7 @@ class Deployment:
         Returns:
             The Anthropic-compatible base URL (the OpenAI-compatible URL without the trailing "/v1"), or `None` if not a LLM deployment.
 
-        Examples:
+        Example:
             ```python
             deployment = ms.get_deployment("my_llm_deployment")
             url = deployment.get_anthropic_url()
