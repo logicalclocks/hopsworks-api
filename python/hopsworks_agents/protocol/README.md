@@ -38,7 +38,7 @@ async def chat(request):
     )
 ```
 
-Run it like any FastAPI app (`uvicorn my_agent:agent_app`). Deploy it as a Hopsworks agent deployment and the UI chat panel works with zero configuration.
+Run it like any FastAPI app (`uvicorn my_agent:agent_app`). Deploy it as a Hopsworks agent deployment and the UI chat panel works with zero configuration: the deployment runs the script, then serves its one module-level `AgentApp` on port 8080 (`hopsworks_agents.run`). A script that serves in its own main block keeps doing so.
 
 Notes:
 

@@ -1240,10 +1240,19 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
 
         runner_local = os.path.join(build_dir, "runner.py")
         with open(runner_local, "w") as f:
-            f.write(
-                f"import runpy\nrunpy.run_module({module_name!r}, run_name='__main__')\n"
-            )
+            f.write(_package_runner_source(module_name))
         return ds_api.upload(runner_local, agent_dir, overwrite=True)
+
+
+def _package_runner_source(module_name: str) -> str:
+    """The runner script of a package agent: runs the package as `__main__`.
+
+    The package's globals land in the runner's, so `hopsworks_agents.run` finds its AgentApp.
+    """
+    return (
+        "import runpy\n"
+        f"globals().update(runpy.run_module({module_name!r}, run_name='__main__'))\n"
+    )
 
 
 def _find_runnable_module(wheel_path: str) -> str:
