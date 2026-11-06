@@ -1,4 +1,4 @@
-"""``hops semantic``: Semantic Layer projects, builds, tags, discovery, metric queries and tests.
+"""``hops semantic``: Semantic Layer projects, builds, tags, discovery, metric queries, tests and Superset dashboards.
 
 Wraps ``project.get_semantic_layer_api()``. The query verbs follow MetricFlow's
 ``mf`` CLI: metrics and group-bys are comma-separated, ``--where`` repeats,
@@ -1129,6 +1129,65 @@ def query_cmd(
                 for row in df.itertuples(index=False)
             ],
         )
+
+
+# endregion
+
+# region Superset
+
+
+@semantic_group.command("dashboard")
+@click.argument("name")
+@click.option(
+    "--metrics",
+    multiple=True,
+    required=True,
+    callback=_split,
+    help="Metrics to chart, one to eight, comma-separated: --metrics revenue,orders.",
+)
+@click.option(
+    "--group-by",
+    "group_by",
+    multiple=True,
+    callback=_split,
+    help="Dimensions for the breakdown table and the native filters, comma-separated; "
+    "default the first categorical dimension the metrics share.",
+)
+@click.option(
+    "--title",
+    help="Dashboard title; default the semantic project's name and the metric labels. "
+    "A dashboard of yours with this title is updated in place.",
+)
+@click.pass_context
+def dashboard_cmd(
+    ctx: click.Context,
+    name: str,
+    metrics: list[str],
+    group_by: list[str] | None,
+    title: str | None,
+) -> None:
+    """Build a Superset dashboard of metrics over the semantic project's view, and print its URL.
+
+    Needs Superset 7.0 with semantic dashboards on. The dashboard has a line chart per
+    metric over metric_time, a big number for the first metric, a breakdown table and
+    native filters, and you own it.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        metrics: Metric names.
+        group_by: Dimensions for the breakdown table and the filters.
+        title: Dashboard title.
+    """
+    dashboard = _semantic_project(ctx, name).create_dashboard(
+        metrics, group_by=group_by, title=title
+    )
+    if output.JSON_MODE:
+        output.print_json(dashboard)
+        return
+    click.echo(
+        f'Created dashboard {dashboard["id"]} "{dashboard["title"]}": {dashboard["url"]}'
+    )
 
 
 # endregion

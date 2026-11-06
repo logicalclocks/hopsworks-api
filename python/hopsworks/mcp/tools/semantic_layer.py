@@ -31,6 +31,7 @@ from fastmcp import (
     Context,  # noqa: TC002
 )
 from hopsworks.mcp.models.semantic_layer import (
+    Dashboard,
     SemanticBuild,
     SemanticIssue,
     SemanticProject,
@@ -172,7 +173,11 @@ class SemanticLayerTools:
             self.get_semantic_project_tags,
         ):
             self.mcp.tool(tags=[TAGS.SEMANTIC_LAYER, TAGS.READ, TAGS.STATEFUL])(tool)
-        for tool in (self.validate_semantic_project, self.compile_semantic_project):
+        for tool in (
+            self.validate_semantic_project,
+            self.compile_semantic_project,
+            self.create_dashboard_from_metrics,
+        ):
             self.mcp.tool(tags=[TAGS.SEMANTIC_LAYER, TAGS.WRITE, TAGS.STATEFUL])(tool)
 
     async def list_semantic_projects(
@@ -437,3 +442,36 @@ class SemanticLayerTools:
         if ctx:
             await ctx.info(f"Compiling {semantic_project}...")
         return await run_sdk(lambda: _build(_semantic_project(semantic_project)))
+
+    async def create_dashboard_from_metrics(
+        self,
+        semantic_project: str,
+        metrics: list[str],
+        group_by: list[str] | None = None,
+        title: str | None = None,
+        ctx: Context | None = None,
+    ) -> Dashboard:
+        """Build a Superset dashboard of the metrics, owned by the logged-in user, and return its URL.
+
+        It needs Superset 7.0 with semantic dashboards on. The charts read the metric definitions through the semantic project's view: a line chart per metric over metric_time, a big number for the first metric, a breakdown table and native filters. A dashboard of the same title the user owns is updated in place, keeping its id and URL.
+
+        Parameters:
+            semantic_project: Name of the semantic project.
+            metrics: Metric names, one to eight.
+            group_by: Dimensions for the breakdown table and the native filters, such as `customer__country`; by default the first categorical dimension the metrics share.
+            title: Title of the dashboard; by default the semantic project's name and the metric labels.
+            ctx: The MCP context, provided automatically.
+
+        Returns:
+            The dashboard's id, title and URL.
+        """
+        if ctx:
+            await ctx.info(
+                f"Building a dashboard of {', '.join(metrics)} on {semantic_project}..."
+            )
+        dashboard = await run_sdk(
+            lambda: _semantic_project(semantic_project).create_dashboard(
+                metrics, group_by=group_by, title=title
+            )
+        )
+        return Dashboard(**dashboard)

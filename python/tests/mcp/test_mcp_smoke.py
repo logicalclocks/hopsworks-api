@@ -44,6 +44,7 @@ _SEMANTIC_LAYER_TOOLS = (
     "get_semantic_project_tags",
     "validate_semantic_project",
     "compile_semantic_project",
+    "create_dashboard_from_metrics",
 )
 
 

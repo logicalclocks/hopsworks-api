@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 from hopsworks_apigen import public
 from hopsworks_common import client, decorators, semantic_layer, tag, usage
 from hopsworks_common.client import auth
-from hopsworks_common.client.exceptions import SemanticLayerException
+from hopsworks_common.client.exceptions import RestAPIError, SemanticLayerException
 from hopsworks_common.core.variable_api import VariableApi
 from hopsworks_common.decorators import _uses_pyarrow
 
@@ -340,6 +340,39 @@ class SemanticLayerApi:
 
     # endregion
 
+    # region Superset
+
+    def _create_dashboard(
+        self, sp: semantic_layer.SemanticProject, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._superset_request(
+            sp,
+            "POST",
+            "dashboards",
+            headers={"content-type": _JSON},
+            data=json.dumps(request),
+        )
+
+    def _explore_url(self, sp: semantic_layer.SemanticProject, metric: str) -> str:
+        return self._superset_request(
+            sp, "GET", "explore", query_params={"metric": metric}
+        )["url"]
+
+    def _superset_request(
+        self,
+        sp: semantic_layer.SemanticProject,
+        method: str,
+        resource: str,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        _client = client._get_instance()
+        try:
+            return _client._send_request(method, self._path(sp.id, resource), **kwargs)
+        except RestAPIError as err:
+            raise _semantic_layer_error(sp, err.response) from err
+
+    # endregion
+
     # region Gateway
 
     def _gateway_base_url(self) -> str:
@@ -409,7 +442,7 @@ class SemanticLayerApi:
             _client._auth = auth.BearerAuth(_client._read_jwt())
             response = send()
         if response.status_code // 100 != 2:
-            raise _gateway_error(sp, response)
+            raise _semantic_layer_error(sp, response)
         return response
 
     def _gateway_json(
@@ -532,7 +565,7 @@ def _warn_if_stale(
         )
 
 
-def _gateway_error(
+def _semantic_layer_error(
     sp: semantic_layer.SemanticProject, response: requests.Response
 ) -> SemanticLayerException:
     try:

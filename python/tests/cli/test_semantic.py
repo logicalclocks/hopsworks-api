@@ -188,6 +188,73 @@ class TestQueryOutput:
         assert "Traceback" not in result.output
 
 
+class TestDashboard:
+    DASHBOARD = {
+        "id": 12,
+        "title": "Sales overview",
+        "url": "https://h/hopsworks-api/superset/superset/dashboard/12/?projectId=119",
+    }
+
+    def test_dashboard_flattens_metrics_and_prints_the_url(self, sales):
+        sales.create_dashboard.return_value = self.DASHBOARD
+
+        result = _run(
+            "dashboard",
+            "sales",
+            "--metrics",
+            "revenue,orders",
+            "--metrics",
+            "average_order_value",
+            "--group-by",
+            "customer__country",
+            "--title",
+            "Sales overview",
+        )
+
+        assert result.exit_code == 0, result.output
+        sales.create_dashboard.assert_called_once_with(
+            ["revenue", "orders", "average_order_value"],
+            group_by=["customer__country"],
+            title="Sales overview",
+        )
+        assert result.output.strip() == (
+            'Created dashboard 12 "Sales overview": '
+            "https://h/hopsworks-api/superset/superset/dashboard/12/?projectId=119"
+        )
+
+    def test_dashboard_in_json_is_id_title_and_url(self, sales):
+        sales.create_dashboard.return_value = self.DASHBOARD
+
+        result = _run("dashboard", "sales", "--metrics", "revenue", "--json")
+
+        assert result.exit_code == 0, result.output
+        sales.create_dashboard.assert_called_once_with(
+            ["revenue"], group_by=None, title=None
+        )
+        assert json.loads(result.output) == self.DASHBOARD
+
+    def test_dashboard_needs_metrics(self, sales):
+        result = _run("dashboard", "sales")
+
+        assert result.exit_code == 2
+        assert "--metrics" in result.output
+        sales.create_dashboard.assert_not_called()
+
+    def test_a_refused_dashboard_prints_one_line(self, sales):
+        sales.create_dashboard.side_effect = SemanticLayerException(
+            "Semantic layer request on 'sales' failed (HTTP 503, 590012): "
+            "Semantic dashboards are not enabled",
+            status_code=503,
+            error_code=590012,
+        )
+
+        result = _run("dashboard", "sales", "--metrics", "revenue")
+
+        assert result.exit_code == 1
+        assert "Semantic dashboards are not enabled" in result.output
+        assert "Traceback" not in result.output
+
+
 class TestCompile:
     def test_without_wait_does_not_block(self, sales):
         sales.compile.return_value = SemanticBuild(id=13, status="COMPILING")

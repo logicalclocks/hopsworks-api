@@ -728,6 +728,100 @@ class TestErrors:
         assert err.value.error_msg == "Service Unavailable"
 
 
+class TestSuperset:
+    DASHBOARD = {
+        "dashboardId": 12,
+        "title": "Sales overview",
+        "url": "https://h/hopsworks-api/superset/superset/dashboard/12/?projectId=119",
+    }
+
+    def test_create_dashboard_posts_the_request_and_returns_id_title_and_url(
+        self, http, sales
+    ):
+        http._send_request.return_value = self.DASHBOARD
+
+        dashboard = sales.create_dashboard(
+            ["revenue", "orders"], group_by="customer__country", title="Sales overview"
+        )
+
+        call = http._send_request.call_args
+        assert call.args == (
+            "POST",
+            ["project", 119, "semantic", "projects", 7, "dashboards"],
+        )
+        assert json.loads(call.kwargs["data"]) == {
+            "metrics": ["revenue", "orders"],
+            "groupBy": ["customer__country"],
+            "title": "Sales overview",
+        }
+        assert dashboard == {
+            "id": 12,
+            "title": "Sales overview",
+            "url": self.DASHBOARD["url"],
+        }
+
+    def test_create_dashboard_leaves_out_what_is_not_given(self, http, sales):
+        http._send_request.return_value = self.DASHBOARD
+
+        sales.create_dashboard("revenue")
+
+        assert json.loads(http._send_request.call_args.kwargs["data"]) == {
+            "metrics": ["revenue"]
+        }
+
+    def test_explore_url_names_the_metric(self, http, sales):
+        http._send_request.return_value = {"url": "https://h/explore/?form_data=x"}
+
+        assert sales.explore_url("revenue") == "https://h/explore/?form_data=x"
+
+        call = http._send_request.call_args
+        assert call.args == (
+            "GET",
+            ["project", 119, "semantic", "projects", 7, "explore"],
+        )
+        assert call.kwargs["query_params"] == {"metric": "revenue"}
+
+    @pytest.mark.parametrize(
+        ("call", "status", "body"),
+        [
+            (
+                lambda sp: sp.create_dashboard(["revnue"]),
+                400,
+                {
+                    "errorCode": 590004,
+                    "errorMsg": "Illegal argument provided",
+                    "usrMsg": "unknown metric 'revnue'",
+                },
+            ),
+            (
+                lambda sp: sp.explore_url("revenue"),
+                503,
+                {
+                    "errorCode": 590012,
+                    "errorMsg": "Semantic dashboards are not enabled",
+                },
+            ),
+        ],
+    )
+    def test_a_refusal_raises_a_semantic_layer_exception(
+        self, http, sales, call, status, body
+    ):
+        http._send_request.side_effect = RestAPIError(
+            "https://h/hopsworks-api/api/project/119/semantic/projects/7",
+            _response(status=status, body=body),
+        )
+
+        with pytest.raises(SemanticLayerException) as err:
+            call(sales)
+
+        assert err.value.status_code == status
+        assert err.value.error_code == body["errorCode"]
+        assert err.value.error_msg == body["errorMsg"]
+        assert f"HTTP {status}, {body['errorCode']}" in str(err.value)
+        assert body.get("usrMsg", body["errorMsg"]) in str(err.value)
+        assert isinstance(err.value.__cause__, RestAPIError)
+
+
 class TestQuery:
     JSON_RESULT = {
         "columns": [

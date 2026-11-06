@@ -273,6 +273,7 @@ hops semantic entities <name> [--metrics a,b]
 hops semantic dimension-values <name> <dimension> [--metrics a,b] [--limit N]
 hops semantic sql <name> --metrics a,b [--group-by metric_time__month,customer__country] [--where "..."] [--order-by -a] [--limit N]
 hops semantic query <name> --metrics a,b [...same flags] [--output table|json|csv] [--explain]   # --explain prints the SQL
+hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset 7.0 dashboard over the semantic view; prints its URL
 hops semantic delete <name> --yes
 hops semantic tag list <name>                               # schematised tags on the semantic project
 hops semantic tag set <name> <schema> '<json value>'

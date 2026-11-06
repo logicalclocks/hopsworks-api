@@ -933,6 +933,68 @@ class SemanticProject:
 
     # endregion
 
+    # region Superset
+
+    @public
+    @usage._method_logger
+    def create_dashboard(
+        self,
+        metrics: str | Sequence[str],
+        group_by: str | Sequence[str] | None = None,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        """Build a Superset dashboard of the metrics, owned by the caller, over this semantic project's view in Superset 7.0.
+
+        The charts read the metric definitions through the view, so they show the numbers [`query`][hopsworks_common.semantic_layer.SemanticProject.query] returns.
+        The dashboard has a line chart of each metric over `metric_time`, a big number with a trendline for the first metric, a table broken down by a dimension, and native filters.
+        A dashboard of the same title that the caller owns is updated in place, keeping its id and URL, so calling this again does not duplicate it.
+
+        Parameters:
+            metrics: Metric names, one to eight.
+            group_by: Dimensions for the breakdown table and the native filters, such as `customer__country`; without them, the first categorical dimension the metrics share.
+            title: Title of the dashboard; without one, the semantic project's name followed by the metric labels.
+
+        Returns:
+            The dashboard's Superset `id`, its `title`, and the `url` that opens it through Hopsworks.
+
+        Raises:
+            hopsworks.client.exceptions.SemanticLayerException:
+                With status 400 for an unknown metric or group-by or metrics with no time dimension in common, 409 when the project has no valid build, and 503 when Superset, its semantic dashboards or the project's Superset service are off or Superset did not answer.
+        """
+        request: dict[str, Any] = {
+            "metrics": _as_list(metrics),
+            "groupBy": _as_list(group_by),
+            "title": title,
+        }
+        response = self._semantic_layer_api._create_dashboard(
+            self, {key: value for key, value in request.items() if value is not None}
+        )
+        return {
+            "id": response["dashboardId"],
+            "title": response.get("title"),
+            "url": response["url"],
+        }
+
+    @public
+    @usage._method_logger
+    def explore_url(self, metric: str) -> str:
+        """A link that opens the metric in Superset's Explore view as a line chart over `metric_time`, read through this semantic project's view.
+
+        Nothing is saved in Superset until the chart is saved there.
+
+        Parameters:
+            metric: Name of the metric.
+
+        Returns:
+            The URL, through Hopsworks.
+
+        Raises:
+            hopsworks.client.exceptions.SemanticLayerException: For the same causes as [`create_dashboard`][hopsworks_common.semantic_layer.SemanticProject.create_dashboard].
+        """
+        return self._semantic_layer_api._explore_url(self, metric)
+
+    # endregion
+
 
 # region Request building
 
