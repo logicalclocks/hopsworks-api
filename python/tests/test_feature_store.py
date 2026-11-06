@@ -585,7 +585,12 @@ class TestFeatureStoreDataSourceMandatoryTags:
         fs = self._fs(mocker, backend_fixtures)
         mocker.patch.object(fs._storage_connector_api, "_get", return_value=None)
 
-        assert fs.get_data_source("missing").storage_connector is None
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            data_source = fs.get_data_source("missing")
+
+        assert data_source.storage_connector is None
+        assert len(caught) == 0
 
     def test_create_data_source_passes_tags(self, mocker, backend_fixtures):
         fs = self._fs(mocker, backend_fixtures)

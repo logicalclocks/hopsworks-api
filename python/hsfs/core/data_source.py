@@ -736,7 +736,6 @@ class DataSource:
         """Delete a tag attached to the data source's storage connector.
 
         The tag belongs to the storage connector, so it is removed from every data source that uses that connector, whatever table, query or path it names.
-        Attaching it again needs the value again.
         Only a data owner of the project that owns the feature store can delete tags.
 
         Parameters:
@@ -809,6 +808,18 @@ class DataSource:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._connector_to_tag().get_tags_metadata()
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags the data source's storage connector does not carry, as reported when it was last fetched.
+
+        Adding a tag does not update this list on the object in hand; fetch the data source again to see the change.
+        The list is empty when the data source has no storage connector.
+        """
+        if self._storage_connector is None:
+            return []
+        return self._storage_connector.missing_mandatory_tags
 
     @public
     @property

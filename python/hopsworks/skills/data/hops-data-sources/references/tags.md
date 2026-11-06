@@ -26,6 +26,7 @@ sc.save(tags=[{"name": "data_owner", "value": {"team": "risk"}}])
 ```
 
 `fs.create_data_source(sc, tags=[...])` takes the same `tags`, in place of `save()`.
+`hops datasource create` cannot attach tags, so it fails while a tag is mandatory; create such a data source from Python.
 
 A data source created before the tag became mandatory reports it in `missing_mandatory_tags`, and fetching it warns.
 Updating such a data source is refused until the tag is added with `add_tag`.

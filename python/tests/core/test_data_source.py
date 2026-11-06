@@ -674,3 +674,15 @@ class TestDataSourceTags:
 
         with pytest.raises(ValueError, match="no storage connector"):
             getattr(ds, method)(*args)
+
+    def test_missing_mandatory_tags_delegates_to_connector(self):
+        sc = storage_connector.S3Connector(1, "test_s3", 67)
+        sc._missing_mandatory_tags = [{"name": "owner"}]
+        ds = data_source.DataSource(storage_connector=sc)
+
+        assert ds.missing_mandatory_tags == [{"name": "owner"}]
+
+    def test_missing_mandatory_tags_without_connector_is_empty(self):
+        ds = data_source.DataSource(table="t")
+
+        assert ds.missing_mandatory_tags == []

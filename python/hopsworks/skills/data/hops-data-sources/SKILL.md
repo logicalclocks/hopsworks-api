@@ -144,7 +144,9 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 ## Tag a data source
 
-Schematized tags classify a data source (owner, source system, sensitivity) and make it findable in search; tags that an admin made mandatory must be passed when the data source is created.
+Schematized tags classify a data source (owner, source system, sensitivity) and make it findable in search.
+A tag that an admin made mandatory for data sources must be passed when the data source is created.
+`hops datasource create` cannot attach tags, so it fails while a tag is mandatory; create the data source from Python with `sc.save(tags=[...])` or `fs.create_data_source(sc, tags=[...])` instead.
 The SDK calls, mandatory tags and search are in [references/tags.md](references/tags.md).
 
 ## Provided credentials (Oracle)

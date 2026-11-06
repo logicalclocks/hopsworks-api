@@ -28,6 +28,15 @@ from hsfs.engine import python, spark
 from hsfs.storage_connector import BigQueryConnector
 
 
+def _client(mocker, response=None, side_effect=None):
+    client_mock = mocker.Mock()
+    client_mock._project_id = 119
+    client_mock._send_request.return_value = response
+    client_mock._send_request.side_effect = side_effect
+    mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+    return client_mock
+
+
 class TestHopsfsConnector:
     def test_from_response_json(self, backend_fixtures):
         # Arrange
@@ -3938,14 +3947,6 @@ class TestSharePointConnector:
     ]
 
     @staticmethod
-    def _client(mocker, response=None):
-        client_mock = mocker.Mock()
-        client_mock._project_id = 119
-        client_mock._send_request.return_value = response
-        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
-        return client_mock
-
-    @staticmethod
     def _connector(backend_fixtures):
         return storage_connector.StorageConnector.from_response_json(
             backend_fixtures["storage_connector"]["get_sharepoint"]["response"]
@@ -4027,7 +4028,7 @@ class TestSharePointConnector:
 
     def test_list_drives(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(
+        client = _client(
             mocker,
             {
                 "count": 1,
@@ -4042,7 +4043,7 @@ class TestSharePointConnector:
 
     def test_list_folders(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(
+        client = _client(
             mocker,
             {
                 "count": 1,
@@ -4059,9 +4060,7 @@ class TestSharePointConnector:
 
     def test_create_sync_posts_the_sync_dto(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(
-            mocker, {"id": 5, "datasetName": "reports", "state": "IDLE"}
-        )
+        client = _client(mocker, {"id": 5, "datasetName": "reports", "state": "IDLE"})
 
         sync = sc.create_sync(
             drive_id="b!1",
@@ -4099,7 +4098,7 @@ class TestSharePointConnector:
         self, mocker, backend_fixtures
     ):
         sc = self._connector(backend_fixtures)
-        client = self._client(mocker, {"id": 5})
+        client = _client(mocker, {"id": 5})
 
         sc.create_sync(drive_id="b!1", schedule=None)
 
@@ -4109,7 +4108,7 @@ class TestSharePointConnector:
 
     def test_copy_folder_is_an_unscheduled_copy_run_now(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(mocker, {"id": 6})
+        client = _client(mocker, {"id": 6})
 
         sc.copy_folder(drive_id="b!1", folder_path="Reports/2026")
 
@@ -4122,7 +4121,7 @@ class TestSharePointConnector:
 
     def test_get_syncs(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(
+        client = _client(
             mocker, {"count": 2, "items": [{"id": 1}, {"id": 2, "paused": True}]}
         )
 
@@ -4134,7 +4133,7 @@ class TestSharePointConnector:
 
     def test_get_sync(self, mocker, backend_fixtures):
         sc = self._connector(backend_fixtures)
-        client = self._client(mocker, {"id": 3, "auditPath": "/Projects/p/a"})
+        client = _client(mocker, {"id": 3, "auditPath": "/Projects/p/a"})
 
         sync = sc.get_sync(3)
 
@@ -4151,7 +4150,7 @@ class TestSharePointConnector:
             "currentTemplateVersion": 2,
         }
         sc = self._connector(backend_fixtures)
-        client = self._client(mocker, response)
+        client = _client(mocker, response)
 
         sc.reset_script()
 
@@ -4313,15 +4312,6 @@ class TestStorageConnectorTags:
     ]
 
     @staticmethod
-    def _client(mocker, response=None, side_effect=None):
-        client_mock = mocker.Mock()
-        client_mock._project_id = 119
-        client_mock._send_request.return_value = response
-        client_mock._send_request.side_effect = side_effect
-        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
-        return client_mock
-
-    @staticmethod
     def _connector(backend_fixtures):
         return storage_connector.StorageConnector.from_response_json(
             backend_fixtures["storage_connector"]["get_s3"]["response"]
@@ -4341,7 +4331,7 @@ class TestStorageConnectorTags:
     def test_add_tag_puts_json_value_under_connector_name(
         self, mocker, backend_fixtures
     ):
-        client = self._client(mocker)
+        client = _client(mocker)
 
         self._connector(backend_fixtures).add_tag("owner", {"team": "risk"})
 
@@ -4352,7 +4342,7 @@ class TestStorageConnectorTags:
         assert call.kwargs["timeout"] == 60
 
     def test_delete_tag_path(self, mocker, backend_fixtures):
-        client = self._client(mocker)
+        client = _client(mocker)
 
         self._connector(backend_fixtures).delete_tag("owner")
 
@@ -4363,7 +4353,7 @@ class TestStorageConnectorTags:
         assert client._send_request.call_args.kwargs["timeout"] == 60
 
     def test_get_tags_returns_values(self, mocker, backend_fixtures):
-        client = self._client(
+        client = _client(
             mocker,
             self._tags(
                 {"name": "owner", "value": '{"team": "risk"}'},
@@ -4378,7 +4368,7 @@ class TestStorageConnectorTags:
         assert client._send_request.call_args.kwargs["timeout"] == 60
 
     def test_get_tag_reads_the_named_tag(self, mocker, backend_fixtures):
-        client = self._client(
+        client = _client(
             mocker, self._tags({"name": "owner", "value": '{"team": "risk"}'})
         )
 
@@ -4388,7 +4378,7 @@ class TestStorageConnectorTags:
         assert client._send_request.call_args.args == ("GET", [*self._BASE, "owner"])
 
     def test_get_tag_missing_returns_none(self, mocker, backend_fixtures):
-        self._client(mocker, side_effect=self._error(mocker, 404, 370002))
+        _client(mocker, side_effect=self._error(mocker, 404, 370002))
         sc = self._connector(backend_fixtures)
 
         assert sc.get_tag("owner") is None
@@ -4399,7 +4389,7 @@ class TestStorageConnectorTags:
     def test_a_missing_tags_result_is_not_shared_between_calls(
         self, mocker, backend_fixtures
     ):
-        self._client(mocker, side_effect=self._error(mocker, 404, 370002))
+        _client(mocker, side_effect=self._error(mocker, 404, 370002))
         sc = self._connector(backend_fixtures)
 
         sc.get_tags_metadata()["owner"] = "added by the caller"
@@ -4407,7 +4397,7 @@ class TestStorageConnectorTags:
         assert sc.get_tags_metadata() == {}
 
     def test_get_tags_metadata_keeps_created_on(self, mocker, backend_fixtures):
-        self._client(
+        _client(
             mocker,
             self._tags(
                 {"name": "owner", "value": '"risk"', "createdOn": 1700000000000}
@@ -4421,21 +4411,13 @@ class TestStorageConnectorTags:
         assert attached.created_on.timestamp() == 1700000000
 
     def test_connector_not_found_is_not_swallowed(self, mocker, backend_fixtures):
-        self._client(mocker, side_effect=self._error(mocker, 404, 270042))
+        _client(mocker, side_effect=self._error(mocker, 404, 270042))
 
         with pytest.raises(RestAPIError):
             self._connector(backend_fixtures).get_tags()
 
 
 class TestStorageConnectorMandatoryTags:
-    @staticmethod
-    def _client(mocker, response=None):
-        client_mock = mocker.Mock()
-        client_mock._project_id = 119
-        client_mock._send_request.return_value = response
-        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
-        return client_mock
-
     @staticmethod
     def _s3_json(backend_fixtures, **extra):
         return {**backend_fixtures["storage_connector"]["get_s3"]["response"], **extra}
@@ -4452,7 +4434,7 @@ class TestStorageConnectorMandatoryTags:
     def test_save_sends_tags_as_feature_group_create_does(
         self, mocker, backend_fixtures, tags
     ):
-        client = self._client(mocker, self._s3_json(backend_fixtures))
+        client = _client(mocker, self._s3_json(backend_fixtures))
         sc = storage_connector.StorageConnector.from_response_json(
             self._s3_json(backend_fixtures)
         )
@@ -4470,7 +4452,7 @@ class TestStorageConnectorMandatoryTags:
         }
 
     def test_save_without_tags_sends_no_tags_key(self, mocker, backend_fixtures):
-        client = self._client(mocker, self._s3_json(backend_fixtures))
+        client = _client(mocker, self._s3_json(backend_fixtures))
         sc = storage_connector.StorageConnector.from_response_json(
             self._s3_json(backend_fixtures)
         )
@@ -4510,7 +4492,7 @@ class TestStorageConnectorMandatoryTags:
         assert sc.missing_mandatory_tags == []
 
     def test_get_asks_for_missing_mandatory_tags(self, mocker, backend_fixtures):
-        client = self._client(mocker, self._s3_json(backend_fixtures))
+        client = _client(mocker, self._s3_json(backend_fixtures))
 
         storage_connector_api.StorageConnectorApi()._get(67, "test_s3")
 

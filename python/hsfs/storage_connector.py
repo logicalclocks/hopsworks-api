@@ -713,7 +713,6 @@ class StorageConnector(ABC):
         """Delete a tag attached to the storage connector.
 
         The tag is removed for every data source that uses this connector, not only for this object.
-        Attaching it again needs the value again.
         Only a data owner of the project that owns the feature store can delete tags.
 
         Parameters:
