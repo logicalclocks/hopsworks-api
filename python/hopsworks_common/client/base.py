@@ -153,7 +153,8 @@ class Client:
             with_base_path_params: Whether to include the base path parameters (hopsworks-api/api) in the request URL.
             timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
                 Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
-            deadline: Absolute monotonic deadline, including token refreshes and rate-limit retries.
+            deadline: Monotonic time after which no request, token refresh or rate-limit retry starts.
+                Each socket wait is clipped to the time left, so a response can finish after it; a successful one is returned.
 
         Returns:
             Response json
@@ -221,7 +222,11 @@ class Client:
                 break
             rate_limited = True
 
-        if deadline is not None and time.monotonic() >= deadline:
+        if (
+            deadline is not None
+            and time.monotonic() >= deadline
+            and response.status_code // 100 != 2
+        ):
             response.close()
             raise requests.exceptions.Timeout("HTTP request exceeded its deadline")
         if response.status_code // 100 != 2:
