@@ -234,7 +234,9 @@ class FeatureGroupBaseEngine:
                 new_features.append(feature)
         return new_features + updated_features
 
-    def _verify_schema_compatibility(self, feature_group_features, dataframe_features):
+    def _verify_schema_compatibility(
+        self, feature_group_features, dataframe_features, decimals_cast=False
+    ):
         err = []
         feature_df_dict = {
             util._autofix_feature_name(feat.name): feat.type
@@ -253,6 +255,13 @@ class FeatureGroupBaseEngine:
                 if fg_type != df_type:
                     # don't check structs for exact match
                     if fg_type.startswith("struct") and df_type.startswith("struct"):
+                        continue
+                    # The delta-rs write casts decimals to the table's type and raises on overflow or a fraction.
+                    if (
+                        decimals_cast
+                        and fg_type.startswith("decimal")
+                        and df_type.startswith("decimal")
+                    ):
                         continue
 
                     err += [
