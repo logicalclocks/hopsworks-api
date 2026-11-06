@@ -361,7 +361,7 @@ class DeltaEngine:
                     delta_options[key] = read_options[key]
 
         _logger.debug(
-            f"Delta read options for feature group {self._feature_group.name} v{self._feature_group.version}: {delta_options}"
+            f"Delta read options for feature group {self._feature_group.name} v{self._feature_group.version}: {sorted(delta_options)}"
         )
 
         return delta_options
