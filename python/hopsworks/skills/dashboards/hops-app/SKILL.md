@@ -43,7 +43,7 @@ installed in the environment (see [hops-environments](../../platform/hops-enviro
 
 ```bash
 hops app list                 # apps + state; verify RUNNING/serving after
-hops app info <name>          # detail (id, type, source, monitoring state and routes)
+hops app info <name>          # detail (id, type, source, monitoring state and routes, public link on/off)
 hops app url <name>           # the app URL
 hops app start <name> / stop <name>
 hops app logs <name>          # tail logs (a running app is directed to the live logs in the UI)
