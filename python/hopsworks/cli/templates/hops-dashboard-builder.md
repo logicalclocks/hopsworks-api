@@ -36,14 +36,17 @@ Superset is reachable only inside the cluster.
 A chart of a business metric (revenue, orders, conversion) reads that metric's governed definition when
 one exists: look in `hops semantic list` and `hops search <term> --type metric`, and load
 **hops-semantic** for its group-bys. How it reads the definition depends on the Superset version, which
-hops-superset's "Metrics from the semantic layer" checks through `/api/v1/semantic_layer/types`
-(from an external client, a 503 from `hops semantic dashboard` means no semantic views):
+hops-superset's `references/semantic_layer.md` checks through `/api/v1/semantic_layer/types`. Only an
+answer that semantic views are unsupported selects Superset 6: that endpoint's 404 or a type list
+without the Hopsworks layer, or, from an external client, `hops semantic dashboard` failing with code
+590014 (`SEMANTIC_LAYER_DASHBOARDS_DISABLED`). Any other failure, an authentication error, a 5xx or
+590015 (`SEMANTIC_LAYER_SUPERSET_ERROR`), ends the run with that error.
 
 - **Superset 7.0 with semantic views:** a dashboard that shows only metrics needs no program.
   `hops semantic dashboard <project> --metrics ... [--group-by ...] --title <title>` builds it, and
   edits it when run again with the same title; return the URL it prints. Any other chart of a metric
-  names `"semantic_view": "<project>"` in `CHARTS` and follows that section's rules for charts over
-  a view.
+  names `"semantic_view": "<project>"` in `CHARTS` and follows that file's rules for charts over a
+  view.
 - **Superset 6:** build the chart's dataset from the metric query's SQL (`hops semantic sql`, or
   `SemanticProject.sql` in the program) rather than `SELECT *` over the feature group, and record it in
   `METRIC_DATASETS`.

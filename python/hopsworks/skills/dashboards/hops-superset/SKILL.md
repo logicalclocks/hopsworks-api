@@ -212,101 +212,10 @@ When a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md))
 defines the metric a chart shows, chart it from the semantic layer instead of deriving it
 again from the feature group: the definition holds the joins, filters and
 aggregation its owners agreed on, so every dashboard shows the same number.
-
-```bash
-hops semantic metrics sales                       # the metrics, and the tag schemas each sets
-hops semantic dimensions sales --metrics revenue  # what they can be grouped by
-```
-
-How a chart reads a metric depends on the Superset version. Superset 7.0 lists
-the Hopsworks semantic layer type in `/api/v1/semantic_layer/types`; Superset 6
-has no such endpoint:
-
-```python
-import requests
-
-def semantic_views_available(api) -> bool:
-    try:
-        types = api._request("GET", "/api/v1/semantic_layer/types").get("result", [])
-    except requests.HTTPError:
-        return False
-    return any(t.get("id") == "extensions.hopsworks.semantic-layer.hopsworks" for t in types)
-```
-
-#### Superset 7.0: semantic views
-
-Hopsworks keeps one semantic view per semantic project, named after it, which
-every project member with a Superset account can read.
-
-- **A dashboard of metrics:** let Hopsworks build it. It needs no Superset
-  client, so it also works from an external client:
-
-  ```bash
-  hops semantic dashboard sales --metrics revenue,orders --group-by customer__country --title "Sales overview"
-  ```
-
-  ```python
-  sales = project.get_semantic_layer_api().get_project("sales")
-  sales.create_dashboard(["revenue", "orders"], group_by=["customer__country"], title="Sales overview")
-  # {"id": 12, "title": "Sales overview", "url": "https://<host>/hopsworks-api/superset/superset/dashboard/12/?projectId=119"}
-  sales.explore_url("revenue")   # Explore, the metric over metric_time, nothing saved
-  ```
-
-  It holds a line chart per metric over `metric_time`, a big number for the
-  first metric, a table broken down by the group-by and native filters. The
-  caller owns it, and a rerun with the same title updates it in place. A 503
-  means Superset, its semantic dashboards or the project's Superset service are off.
-- **Other charts** go in a dashboard program (§7), whose chart names
-  `"semantic_view": "<semantic project>"` instead of a `dataset`. A chart over a view:
-  - is created with `datasource_type="semantic_view"` and the view's integer id,
-    from `GET /api/v1/datasource/` (entries with `kind: semantic_view`,
-    `table_name` the semantic project);
-  - names metrics and dimensions as the view lists them: `"metrics": ["revenue"]`,
-    `"groupby": ["customer__country"]`, and time as `"x_axis": "metric_time"` with
-    `"time_grain_sqla": "P1M"`;
-  - filters on dimensions only: SQL `WHERE`/`HAVING` extras are refused with 400,
-    and a filter on a metric is dropped;
-  - in a `query_context` stored with the chart, gives the BASE_AXIS column
-    `"isColumnReference": true`, or its data request fails with 500
-    `Adhoc dimensions are not supported in Semantic Views.`
-
-#### Superset 6: datasets over metric SQL
-
-A chart reads a virtual dataset over the SQL of a metric query:
-
-```bash
-hops semantic sql sales --metrics revenue,orders --group-by metric_time__month,customer__country
-```
-
-In a dashboard program (§7), list the query in `METRIC_DATASETS`; the program
-compiles its SQL with `SemanticProject.sql` on every run, writes it into the
-dataset (creating it the first time, refreshing its columns after), and a chart
-names the entry as its `dataset`. The dataset in Superset is named after the
-dashboard and the entry (`<title slug>_<title digest>__<name>`), so two
-programs never write the same one:
-
-```python
-METRIC_DATASETS = [
-    {
-        "name": "sales_revenue_by_month",
-        "semantic_project": "sales",
-        "metrics": ["revenue", "orders"],
-        "group_by": ["metric_time__month", "customer__country"],
-    }
-]
-```
-
-- One dataset per metric query: its columns are the group-bys and the metrics,
-  one row per group. Group in the query by what the charts group by. A chart
-  then reads a metric column without aggregating it again (`MAX(revenue)` at the
-  dataset's grain); only an additive metric, a simple `sum` or `count`, may be
-  summed when a chart groups coarser. A ratio or a distinct count summed again
-  is wrong.
-- Leave out `--limit` and `--order-by`; Superset applies its own.
-- The SQL is fixed when the dataset is written. A dashboard program writes it
-  again on every run, so rerun the program after the definitions change.
-- The SQL names its tables in full (`"delta"."<project>_featurestore"."<fg>_<version>"`),
-  so the Trino connection's default catalog does not matter.
+On Superset 7.0, `hops semantic dashboard` builds a dashboard of metrics and other
+charts read the project's semantic view; on Superset 6, a chart reads a dataset over
+the metric's SQL. Which Superset answers, and the rules for each, are in
+[references/semantic_layer.md](references/semantic_layer.md).
 
 ---
 
@@ -422,9 +331,9 @@ def ensure_dashboard(api, title, chart_ids, chart_slices):
     return dashboard_id
 ```
 
-Dashboard URL:
+Dashboard URL on Superset 7.0 (Superset 6 has `/superset` before `/dashboard`):
 ```
-https://<hopsworks-host>/hopsworks-api/superset/superset/dashboard/<id>/
+https://<hopsworks-host>/hopsworks-api/superset/dashboard/<id>/
 ```
 
 ---
@@ -531,12 +440,9 @@ only metrics needs no program: `hops semantic dashboard` builds it (§2).
   name on another dashboard is left alone.
 - An ML system's dashboard (the app phase of `/hops-build`) keeps its program in
   the system's repository, under `<slug>/dashboards/`, instead of the user's home.
-- **Metric charts** (§2, Metrics from the semantic layer): on Superset 7.0 a
-  chart names `"semantic_view": "<semantic project>"` and reads the view. On
-  Superset 6, a dataset over a metric query is a `METRIC_DATASETS` entry,
-  `{"name", "semantic_project", "metrics", "group_by"}`, whose SQL the program
-  gets from `SemanticProject.sql` on every run; a chart names it as its `dataset`
-  like a feature group's.
+- **Metric charts** ([references/semantic_layer.md](references/semantic_layer.md)):
+  on Superset 7.0 a chart names `"semantic_view": "<semantic project>"` and reads
+  the view; on Superset 6 it names a `METRIC_DATASETS` entry as its `dataset`.
 
 ```bash
 python ~/dashboards/customers-overview.py            # create or update, prints the URL
@@ -567,7 +473,7 @@ a chart that still fails is dropped from `CHARTS` with a line saying why.
 | Bars come out unsorted | `x_axis_sort` doesn't match a metric label | Make `x_axis_sort` equal to the metric's `label` field |
 | Time-series bar shows one bar | X axis is a string but `x_axis_force_categorical` missing | Add `x_axis_force_categorical: true` |
 | Auth error from `api._request` | Session expired across long runs | Re-fetch `project.get_superset_api()` |
-| 500 `Adhoc dimensions are not supported in Semantic Views.` | A BASE_AXIS column of a semantic view chart's `query_context` lacks `isColumnReference` | Add `"isColumnReference": true` to it |
+| 500 `Adhoc dimensions are not supported in Semantic Views.` | A semantic view chart's BASE_AXIS column lacks `isColumnReference` | Add `"isColumnReference": true` to it |
 
 ---
 

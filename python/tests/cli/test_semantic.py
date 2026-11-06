@@ -192,7 +192,7 @@ class TestDashboard:
     DASHBOARD = {
         "id": 12,
         "title": "Sales overview",
-        "url": "https://h/hopsworks-api/superset/superset/dashboard/12/?projectId=119",
+        "url": "https://h/hopsworks-api/superset/dashboard/12/?projectId=119",
     }
 
     def test_dashboard_flattens_metrics_and_prints_the_url(self, sales):
@@ -219,7 +219,7 @@ class TestDashboard:
         )
         assert result.output.strip() == (
             'Created dashboard 12 "Sales overview": '
-            "https://h/hopsworks-api/superset/superset/dashboard/12/?projectId=119"
+            "https://h/hopsworks-api/superset/dashboard/12/?projectId=119"
         )
 
     def test_dashboard_in_json_is_id_title_and_url(self, sales):
@@ -242,16 +242,19 @@ class TestDashboard:
 
     def test_a_refused_dashboard_prints_one_line(self, sales):
         sales.create_dashboard.side_effect = SemanticLayerException(
-            "Semantic layer request on 'sales' failed (HTTP 503, 590012): "
-            "Semantic dashboards are not enabled",
+            "Semantic layer request on 'sales' failed (HTTP 503, 590014): "
+            "Superset dashboards from the semantic layer are not enabled",
             status_code=503,
-            error_code=590012,
+            error_code=590014,
         )
 
         result = _run("dashboard", "sales", "--metrics", "revenue")
 
         assert result.exit_code == 1
-        assert "Semantic dashboards are not enabled" in result.output
+        assert (
+            "Superset dashboards from the semantic layer are not enabled"
+            in result.output
+        )
         assert "Traceback" not in result.output
 
 

@@ -454,6 +454,7 @@ class SemanticLayerTools:
         """Build a Superset dashboard of the metrics, owned by the logged-in user, and return its URL.
 
         It needs Superset 7.0 with semantic dashboards on. The charts read the metric definitions through the semantic project's view: a line chart per metric over metric_time, a big number for the first metric, a breakdown table and native filters. A dashboard of the same title the user owns is updated in place, keeping its id and URL.
+        Only a failure with code 590014 (SEMANTIC_LAYER_DASHBOARDS_DISABLED) means semantic dashboards are not available here, as on Superset 6; report any other failure, 590015 (Superset did not answer) included, as an error.
 
         Parameters:
             semantic_project: Name of the semantic project.
@@ -463,7 +464,7 @@ class SemanticLayerTools:
             ctx: The MCP context, provided automatically.
 
         Returns:
-            The dashboard's id, title and URL.
+            The dashboard's id, title and URL, such as `https://<host>/hopsworks-api/superset/dashboard/12/?projectId=119`.
         """
         if ctx:
             await ctx.info(
