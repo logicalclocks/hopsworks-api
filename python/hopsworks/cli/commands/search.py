@@ -1,6 +1,6 @@
 """``hops search``: search the project's OpenSearch index, or every project's.
 
-One REST call against the ``featurestore`` index returns matching feature groups, feature views, training datasets, features, datasets, semantic layer metrics, jobs, apps, models, deployments and agents.
+One REST call against the ``featurestore`` index returns matching feature groups, feature views, training datasets, features, datasets, semantic layer metrics and semantic projects, jobs, apps, models, deployments and agents.
 Project scope is the default; ``--global`` searches every project the caller belongs to.
 """
 
@@ -23,6 +23,7 @@ _DOC_TYPES = {
     "feature": "FEATURE",
     "dataset": "DATASET",
     "metric": "METRIC",
+    "semantic_project": "SEMANTIC_PROJECT",
     "job": "JOB",
     "app": "APP",
     "model": "MODEL",
@@ -38,6 +39,7 @@ _BUCKETS = [
     ("features", "feature"),
     ("datasets", "dataset"),
     ("metrics", "metric"),
+    ("semantic_projects", "semantic_project"),
     ("jobs", "job"),
     ("apps", "app"),
     ("models", "model"),
@@ -54,6 +56,7 @@ Examples:
   hops search "credit card" --global   the same across every project you belong to
   hops search --type model minilm      only models; also job, app, deployment, agent, feature, ...
   hops search --type metric revenue    semantic layer metrics, with their semantic project
+  hops search --type semantic_project sales   semantic projects, with their root path
   hops search --keyword pii            entities carrying the keyword
   hops search --tag quality:owner=risk entities whose tag "quality" has key owner = risk
   hops search --tag gdpr:pii=true --keyword finance   filters combine
@@ -154,7 +157,7 @@ def search_cmd(
 def _row(kind: str, item: Any) -> list[Any]:
     """Flatten a search result item into a fixed-width table row.
 
-    Features, jobs, datasets and metrics have no version; models and jobs have no description, so DETAIL falls back to the type-specific field the index carries for them (metric label, framework, job type, serving tool).
+    Features, jobs, datasets, metrics and semantic projects have no version; models, jobs and semantic projects have no description, so DETAIL falls back to the type-specific field the index carries for them (metric label, framework, job type, serving tool, root path).
     A metric's DETAIL leads with its semantic project, the scope its name is unique in and the name ``hops semantic`` queries it by.
     Text is cut to one line of 60 chars.
     """
@@ -169,6 +172,7 @@ def _row(kind: str, item: Any) -> list[Any]:
         or raw.get("framework")
         or raw.get("jobType")
         or raw.get("servingTool")
+        or raw.get("rootPath")
         or ""
     )
     first_line = detail.splitlines()[0] if detail else ""

@@ -1340,12 +1340,18 @@ class FakeSuperset:
         self.next_id = 100
         self.databases = [{"id": 3, "database_name": "Trino"}]
         self.datasets, self.charts, self.dashboards = {}, {}, {}
+        self.refreshed = []
 
     def _id(self) -> int:
         self.next_id += 1
         return self.next_id
 
     def _request(self, method, path):
+        if method == "PUT":
+            self.refreshed.append(
+                int(re.match(r"/api/v1/dataset/(\d+)/refresh", path)[1])
+            )
+            return {}
         resource, page = re.match(r"/api/v1/(\w+)/\?q=\(page:(\d+)", path).groups()
         store = {
             "dataset": self.datasets,
@@ -1367,6 +1373,9 @@ class FakeSuperset:
             "sql": sql,
         }
         return {"id": i}
+
+    def update_dataset(self, dataset_id, sql):
+        self.datasets[dataset_id]["sql"] = sql
 
     def delete_dataset(self, dataset_id):
         del self.datasets[dataset_id]
@@ -1481,6 +1490,93 @@ def test_delete_keeps_a_dataset_another_chart_still_reads():
     )
     program.delete(api, "p")
     assert dataset in api.datasets
+
+
+class FakeSemanticLayer:
+    def __init__(self):
+        self.compiled = "SELECT revenue FROM build_1"
+        self.calls = []
+
+    def get_project(self, name):
+        if name != "sales":
+            return None
+        layer = self
+
+        class Project:
+            def sql(self, metrics, group_by=None):
+                layer.calls.append((metrics, group_by))
+                return layer.compiled
+
+        return Project()
+
+
+def test_a_metric_dataset_takes_the_sql_the_semantic_layer_compiles_on_every_run():
+    program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    program.METRIC_DATASETS = [
+        {
+            "name": "revenue_by_month",
+            "semantic_project": "sales",
+            "metrics": ["revenue"],
+            "group_by": ["metric_time__month"],
+        }
+    ]
+    program.CHARTS = [{**program.CHARTS[0], "dataset": "revenue_by_month"}]
+
+    program.build(api, "p", semantic)
+    metric_dataset = next(
+        i
+        for i, d in api.datasets.items()
+        if d["table_name"] == program.metric_dataset_name(program.METRIC_DATASETS[0])
+    )
+    assert api.datasets[metric_dataset]["sql"] == "SELECT revenue FROM build_1"
+    assert next(iter(api.charts.values()))["datasource_id"] == metric_dataset
+    assert semantic.calls == [(["revenue"], ["metric_time__month"])]
+
+    semantic.compiled = "SELECT revenue FROM build_2"
+    program.build(api, "p", semantic)
+    assert api.datasets[metric_dataset]["sql"] == "SELECT revenue FROM build_2"
+    assert api.refreshed == [metric_dataset]
+
+    program.delete(api, "p")
+    assert metric_dataset not in api.datasets
+
+
+def test_two_dashboards_with_the_same_metric_dataset_name_keep_their_own():
+    first, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    entry = {"name": "revenue_by_month", "semantic_project": "sales", "metrics": ["r"]}
+    first.METRIC_DATASETS = [entry]
+    first.CHARTS = [{**first.CHARTS[0], "dataset": "revenue_by_month"}]
+    second = _dashboard_program()
+    second.TITLE = "Finance"
+    second.METRIC_DATASETS = [entry]
+    second.CHARTS = [{**second.CHARTS[0], "dataset": "revenue_by_month"}]
+
+    first.build(api, "p", semantic)
+    semantic.compiled = "SELECT other FROM build_2"
+    second.build(api, "p", semantic)
+
+    sql = {d["table_name"]: d["sql"] for d in api.datasets.values()}
+    assert sql[first.metric_dataset_name(entry)] == "SELECT revenue FROM build_1"
+    assert sql[second.metric_dataset_name(entry)] == "SELECT other FROM build_2"
+
+
+def test_titles_that_differ_only_in_punctuation_name_different_datasets():
+    first, second = _dashboard_program(), _dashboard_program()
+    first.TITLE, second.TITLE = "Sales Overview", "Sales-Overview"
+    entry = {"name": "revenue_by_month"}
+
+    names = {first.metric_dataset_name(entry), second.metric_dataset_name(entry)}
+    assert len(names) == 2
+    assert all(name.startswith("sales_overview_") for name in names)
+
+
+def test_a_metric_dataset_on_an_unknown_semantic_project_fails_the_run():
+    program, api = _dashboard_program(), FakeSuperset()
+    program.METRIC_DATASETS = [
+        {"name": "x", "semantic_project": "missing", "metrics": ["m"]}
+    ]
+    with pytest.raises(RuntimeError, match="No semantic project named missing"):
+        program.build(api, "p", FakeSemanticLayer())
 
 
 # endregion

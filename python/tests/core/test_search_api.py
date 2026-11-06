@@ -33,13 +33,19 @@ def _patch_client(mocker, response) -> MagicMock:
 
 class TestSearchApiDocTypes:
     @pytest.mark.parametrize(
-        ("doc_type", "bucket"), [("DATASET", "datasets"), ("METRIC", "metrics")]
+        ("doc_type", "bucket"),
+        [
+            ("DATASET", "datasets"),
+            ("METRIC", "metrics"),
+            ("SEMANTIC_PROJECT", "semantic_projects"),
+        ],
     )
     def test_dataset_and_metric_doc_types_reach_the_backend(
         self, mocker, doc_type, bucket
     ):
         # Arrange
-        c = _patch_client(mocker, {bucket: [{"name": "hit"}], f"{bucket}Total": 1})
+        key = "semanticProjects" if bucket == "semantic_projects" else bucket
+        c = _patch_client(mocker, {key: [{"name": "hit"}], f"{key}Total": 1})
 
         # Act
         result = SearchApi()._search(doc_type=doc_type, search_term="hit")

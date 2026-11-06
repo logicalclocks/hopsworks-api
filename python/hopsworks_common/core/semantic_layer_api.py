@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlparse
 
 from hopsworks_apigen import public
-from hopsworks_common import client, semantic_layer, usage
+from hopsworks_common import client, decorators, semantic_layer, tag, usage
 from hopsworks_common.client import auth
 from hopsworks_common.client.exceptions import SemanticLayerException
 from hopsworks_common.core.variable_api import VariableApi
@@ -141,6 +141,7 @@ class SemanticLayerApi:
         git_repository_id: int | None = None,
         format: Literal["AUTO", "DBT", "NATIVE", "MANIFEST_JSON"] = "AUTO",
         deployment_mode: Literal["FOLLOW", "PINNED"] = "FOLLOW",
+        tags: dict[str, Any] | None = None,
     ) -> semantic_layer.SemanticProject:
         """Register a directory of semantic definitions, which starts its first compile in the background.
 
@@ -152,12 +153,15 @@ class SemanticLayerApi:
             git_repository_id: Hopsworks git repository holding `root_path`, or `None` to detect it from the path.
             format: `DBT` for dbt project YAML, `NATIVE` for MetricFlow YAML, `MANIFEST_JSON` for a `semantic_manifest.json`, or `AUTO` to detect it from the files.
             deployment_mode: `FOLLOW` to serve every new valid build, or `PINNED` to serve a build until another is promoted.
+            tags:
+                Schematised tags to attach in the same request, tag schema name to value, such as `{"ownership": {"owner": "finance"}}`.
+                A cluster with mandatory semantic project tags refuses a project without them, so pass them here.
 
         Returns:
             The semantic project.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the name is taken or invalid, the path is outside the project, or the backend encounters another error.
+            hopsworks.client.exceptions.RestAPIError: If the name is taken or invalid, the path is outside the project, a tag is unknown, invalid or a missing mandatory one, or the backend encounters another error.
         """
         body: dict[str, Any] = {
             "name": name,
@@ -167,6 +171,12 @@ class SemanticLayerApi:
         }
         if git_repository_id is not None:
             body["gitRepositoryId"] = git_repository_id
+        if tags:
+            # Each value is sent as JSON text, as the single-tag PUT sends it, so it reads back the same.
+            body["tags"] = [
+                {"name": name, "value": json.dumps(value)}
+                for name, value in tags.items()
+            ]
         _client = client._get_instance()
         response = _client._send_request(
             "POST",
@@ -285,6 +295,49 @@ class SemanticLayerApi:
             "POST", self._path(sp.id, "builds", build_id, "promote")
         )
 
+    def _add_tag(
+        self, sp: semantic_layer.SemanticProject, name: str, value: Any
+    ) -> None:
+        _client = client._get_instance()
+        _client._send_request(
+            "PUT",
+            self._path(sp.id, "tags", name),
+            headers={"content-type": _JSON},
+            data=json.dumps(value),
+        )
+
+    def _delete_tag(self, sp: semantic_layer.SemanticProject, name: str) -> None:
+        _client = client._get_instance()
+        _client._send_request("DELETE", self._path(sp.id, "tags", name))
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags(self, sp: semantic_layer.SemanticProject) -> dict[str, Any]:
+        _client = client._get_instance()
+        response = _client._send_request("GET", self._path(sp.id, "tags"))
+        return {t.name: t.value for t in tag.Tag.from_response_json(response)}
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
+    def _get_tag(self, sp: semantic_layer.SemanticProject, name: str) -> Any | None:
+        _client = client._get_instance()
+        response = _client._send_request("GET", self._path(sp.id, "tags", name))
+        return {t.name: t.value for t in tag.Tag.from_response_json(response)}.get(name)
+
+    def _mandatory_tags(self) -> set[str]:
+        """Names of the tags a semantic project of this Hopsworks project must carry, by cluster or project rule."""
+        _client = client._get_instance()
+        names: set[str] = set()
+        for path in (
+            ["mandatorytags"],
+            ["project", self._project_id, "mandatorytags", "project"],
+        ):
+            response = _client._send_request("GET", path) or {}
+            names.update(
+                item["name"]
+                for item in response.get("items") or []
+                if item.get("semanticProjectSpecific")
+            )
+        return names
+
     # endregion
 
     # region Gateway
@@ -379,9 +432,10 @@ class SemanticLayerApi:
         )
 
     def _metrics(
-        self, sp: semantic_layer.SemanticProject
+        self, sp: semantic_layer.SemanticProject, tags: list[str] | None = None
     ) -> list[semantic_layer.SemanticMetric]:
-        result = self._gateway_json("GET", sp, "metrics")
+        params = {"tag": tags} if tags else None
+        result = self._gateway_json("GET", sp, "metrics", params=params)
         return [
             semantic_layer.SemanticMetric.from_response_json(metric)
             for metric in result.get("metrics") or []

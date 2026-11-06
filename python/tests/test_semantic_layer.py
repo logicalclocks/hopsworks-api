@@ -172,7 +172,16 @@ class TestModels:
         )
         assert sp.to_dict()["latest_build"]["git_commit"] == "a1b2c3d"
         assert sp.current_build_id is None
+        assert sp.missing_mandatory_tags == []
         assert SemanticProject.from_response_json(None) is None
+
+    def test_missing_mandatory_tags_are_their_names(self):
+        sp = SemanticProject.from_response_json(
+            {"id": 7, "name": "sales", "missingMandatoryTags": [{"name": "owner"}]}
+        )
+
+        assert sp.missing_mandatory_tags == ["owner"]
+        assert sp.to_dict()["missing_mandatory_tags"] == ["owner"]
 
     def test_build_with_issues(self):
         build = SemanticBuild.from_response_json(
@@ -224,6 +233,24 @@ class TestModels:
         assert metric.to_dict()["agg"] is None
         assert group_by.entity_path == ["listing"]
         assert group_by.date_parts_supported is False
+
+    def test_metric_tags_keep_the_case_of_schema_names_and_value_keys(self):
+        metric = SemanticMetric.from_response_json(
+            {
+                "name": "revenue",
+                "type": "SIMPLE",
+                "tags": {"dataOwnership": {"ownerTeam": "finance", "certified": True}},
+            }
+        )
+
+        assert metric.tags == {
+            "dataOwnership": {"ownerTeam": "finance", "certified": True}
+        }
+        assert metric.to_dict()["tags"] == metric.tags
+
+    def test_a_metric_without_tags_has_an_empty_mapping(self):
+        assert SemanticMetric.from_response_json({"name": "orders"}).tags == {}
+        assert SemanticMetric(name="orders").tags == {}
 
 
 def test_polars_conversion_of_a_json_result():
