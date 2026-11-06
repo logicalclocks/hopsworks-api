@@ -32,6 +32,12 @@ if TYPE_CHECKING:
     from hopsworks_common.execution import Execution
 
 
+# The longest wait for an execution's log files to be aggregated.
+_LOG_AGGREGATION_SECONDS = 6 * 60.0
+# Once they appear, the time it takes them to flush to the filesystem.
+_LOG_FLUSH_SECONDS = 5
+
+
 @also_available_as("hopsworks.engine.execution_engine.ExecutionEngine")
 class ExecutionEngine:
     def __init__(self):
@@ -192,31 +198,71 @@ class ExecutionEngine:
                     )
             execution_state = updated_execution.state
 
-        # wait for log files to be aggregated, max 6 minutes
-        await_time = 6 * 60.0
-        log_aggregation_files_exist = self._dataset_api.exists(
-            updated_execution.stdout_path
-        ) and self._dataset_api.exists(updated_execution.stderr_path)
-        log_aggregation_files_exist_already = log_aggregation_files_exist
-        self._log.info("Waiting for log aggregation to finish.")
-        while not log_aggregation_files_exist and await_time >= 0:
-            if timeout and timeout <= passed() + MAX_LAG:
-                break
-            await_time -= MAX_LAG
-            time.sleep(MAX_LAG)
-            updated_execution = self._execution_api._get(job, execution.id)
+        from hopsworks_common import constants
 
+        # Waiting on a type that writes its logs first would only wait for a file a killed pod
+        # never writes, such as the stdout.log of an OOM-killed job.
+        job_type = (job.job_type or "").upper()
+        logs_written = job_type in constants.JOBS.LOGS_BEFORE_FINAL_STATE
+        is_final = updated_execution.state in constants.JOBS.FINAL_STATES
+        # A YARN start failure never aggregates: YarnJob writes no log on INITIALIZATION_FAILED,
+        # only stderr on APP_MASTER_START_FAILED.
+        start_failed = (
+            updated_execution.state in constants.JOBS.FAILED_WITHOUT_FINAL_STATUS
+        )
+        # A deadline, as the HTTP calls of each pass take time too.
+        deadline = time.monotonic() + _LOG_AGGREGATION_SECONDS
+
+        def warn_logs_incomplete():
+            self._log.warning(
+                f"Log aggregation did not finish within {_LOG_AGGREGATION_SECONDS:.0f} s "
+                f"(state {updated_execution.state}); the logs may be incomplete."
+            )
+
+        skip = start_failed or (logs_written and is_final)
+        if not skip and job_type in constants.JOBS.FINAL_STATE_AFTER_LOGS:
+            # Once the final state is set, the logs that will ever exist do, even when none was
+            # written, as after an operator start failure.
+            if updated_execution.state not in constants.JOBS.FINAL_STATES:
+                self._log.info("Waiting for log aggregation to finish.")
+            while (
+                updated_execution.state not in constants.JOBS.FINAL_STATES
+                and time.monotonic() <= deadline
+            ):
+                if timeout and timeout <= passed() + MAX_LAG:
+                    break
+                time.sleep(MAX_LAG)
+                updated_execution = self._execution_api._get(job, execution.id)
+            if (
+                updated_execution.state not in constants.JOBS.FINAL_STATES
+                and time.monotonic() > deadline
+            ):
+                warn_logs_incomplete()
+        elif not skip:
             log_aggregation_files_exist = self._dataset_api.exists(
                 updated_execution.stdout_path
             ) and self._dataset_api.exists(updated_execution.stderr_path)
+            log_aggregation_files_exist_already = log_aggregation_files_exist
+            self._log.info("Waiting for log aggregation to finish.")
+            while not log_aggregation_files_exist and time.monotonic() <= deadline:
+                if timeout and timeout <= passed() + MAX_LAG:
+                    break
+                time.sleep(MAX_LAG)
+                updated_execution = self._execution_api._get(job, execution.id)
 
-        if not log_aggregation_files_exist_already and (
-            not timeout or timeout > passed() + 5
-        ):
-            time.sleep(5)  # Helps for log aggregation to flush to filesystem
+                log_aggregation_files_exist = self._dataset_api.exists(
+                    updated_execution.stdout_path
+                ) and self._dataset_api.exists(updated_execution.stderr_path)
+            if not log_aggregation_files_exist and time.monotonic() > deadline:
+                warn_logs_incomplete()
+
+            if not log_aggregation_files_exist_already and (
+                not timeout or timeout > passed() + _LOG_FLUSH_SECONDS
+            ):
+                time.sleep(_LOG_FLUSH_SECONDS)
 
         if updated_execution.success is False:
-            if is_yarn_job:
+            if is_yarn_job and updated_execution.final_status != "UNDEFINED":
                 status = updated_execution.final_status
             else:
                 status = updated_execution.state
