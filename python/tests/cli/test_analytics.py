@@ -873,6 +873,7 @@ def test_the_system_commands_are_the_same_for_every_factory():
         "dir",
         "lease",
         "list",
+        "plan",
         "register",
         "remove",
         "status",

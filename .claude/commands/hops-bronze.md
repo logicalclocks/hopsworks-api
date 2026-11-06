@@ -26,6 +26,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 
 ## Rules
 
+- **The project is the truth.** Before you resume, run `hops factory system plan <slug>`: a table or job it lists as missing was deleted after the phase that recorded it was `done`, so set that phase back to `pending` and resume from it. A phase is never redone for a table or job that exists and is current.
 - **Change requests.** A `changes` entry with `status: pending` in `system.yaml` is a change the Factory recorded: before anything else, carry out each, oldest first, following its `instructions` with its `answers`, then set its `status: done` and `finished` (UTC), or `status: failed` with a `reason`, and commit `[<slug>] <label>`. Delete a job or a feature group only with `hops factory system delete-assets <slug> --job <name> --table <name>:<version>`, before removing it from `system.yaml`: it refuses what the system reads, what another system names, and anything neither in this `system.yaml` nor carrying the slug.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end; set each phase's `status`, `started` and `finished` (UTC, from `date -u`) as it runs, and `progress.now` to one line on what you are doing. The Factory reads it every few seconds.
 - **The generator is given.** `generator.program` was copied from the hops-analytics references and its tests are in `tests/`. Run it as it is; change it only to fix a failure, recording the fix and why in `decisions`.
