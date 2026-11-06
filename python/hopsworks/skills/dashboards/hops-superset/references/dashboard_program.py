@@ -16,7 +16,7 @@ Superset is reachable only inside the cluster, so the program runs in a
 Hopsworks terminal, or from an external client as a Hopsworks job:
 
     hops job deploy customers-overview-dashboard dashboards/customers-overview.py \
-        --env python-feature-pipeline --upload-dir Users/<user>/dashboards --overwrite --run --wait
+        --env python-feature-pipeline --overwrite --run --wait
     hops job logs customers-overview-dashboard --stdout
 
 Every step is idempotent, so a re-run updates the charts and the layout instead
