@@ -48,8 +48,9 @@ COUNT = {
     "hasCustomLabel": True,
 }
 
-# One entry per chart: the dataset it reads (a feature group or a metric dataset above) and the
-# viz-type specific params from hops-superset/references/chart_params.md.
+# One entry per chart: the dataset it reads (a feature group or a metric dataset above), or on
+# Superset 7.0 "semantic_view": <semantic project> instead, and the viz-type specific params from
+# hops-superset/references/chart_params.md.
 CHARTS = [
     {
         "slice_name": "Total Customers",
@@ -157,6 +158,16 @@ def ensure_metric_dataset(api, database_id: int, schema: str, semantic, entry: d
     )["id"]
 
 
+def find_semantic_view(api, semantic_project: str) -> int:
+    """The integer id of the semantic view Hopsworks keeps for a semantic project in Superset 7.0."""
+    for ds in list_all(api, "datasource"):
+        if ds.get("kind") == "semantic_view" and ds.get("table_name") == semantic_project:
+            return ds["id"]
+    raise RuntimeError(
+        f"No semantic view named {semantic_project}; semantic views need Superset 7.0"
+    )
+
+
 def find_dashboard(api) -> int | None:
     """This program's dashboard, found by its title."""
     return next(
@@ -186,14 +197,18 @@ def owned_charts(api, dashboard_id: int | None) -> list[int]:
     return owned
 
 
-def create_chart(api, chart: dict, datasource_id: int) -> int:
-    """Create one chart from its entry in CHARTS."""
+def create_chart(api, chart: dict, datasets: dict[str, int], views: dict[str, int]) -> int:
+    """Create one chart from its entry in CHARTS, over its dataset or its semantic view."""
+    if "semantic_view" in chart:
+        source = {"datasource_id": views[chart["semantic_view"]], "datasource_type": "semantic_view"}
+    else:
+        source = {"datasource_id": datasets[chart["dataset"]], "datasource_type": "table"}
     params = {"viz_type": chart["viz_type"], **chart["params"]}
     return api.create_chart(
         slice_name=chart["slice_name"],
         viz_type=chart["viz_type"],
-        datasource_id=datasource_id,
         params=json.dumps(params),
+        **source,
     )["id"]
 
 
@@ -278,11 +293,14 @@ def build(api, project_name: str, semantic=None) -> int:
     datasets = {fg["name"]: ensure_dataset(api, database_id, schema, fg) for fg in FEATURE_GROUPS}
     for entry in METRIC_DATASETS:
         datasets[entry["name"]] = ensure_metric_dataset(api, database_id, schema, semantic, entry)
+    # Looked up before the old charts go, so a missing view leaves the dashboard as it was.
+    view_names = {chart["semantic_view"] for chart in CHARTS if "semantic_view" in chart}
+    views = {name: find_semantic_view(api, name) for name in view_names}
     existing = find_dashboard(api)
     # Replace every chart this dashboard had, so a chart dropped from CHARTS goes too.
     for chart_id in owned_charts(api, existing):
         api.delete_chart(chart_id)
-    chart_ids = [create_chart(api, chart, datasets[chart["dataset"]]) for chart in CHARTS]
+    chart_ids = [create_chart(api, chart, datasets, views) for chart in CHARTS]
     return ensure_dashboard(api, existing, chart_ids)
 
 

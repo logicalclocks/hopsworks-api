@@ -329,7 +329,7 @@ class SemanticLayerException(Exception):
     """A Hopsworks Semantic Layer request was refused, or named a semantic project that does not exist.
 
     `status_code` is the HTTP status, and `None` when the client raised the error itself.
-    `error_code` is the gateway's code, such as `SEMANTIC_LAYER_NO_VALID_BUILD` or `SEMANTIC_LAYER_INVALID_QUERY`.
+    `error_code` is the gateway's code, such as `SEMANTIC_LAYER_NO_VALID_BUILD` or `SEMANTIC_LAYER_INVALID_QUERY`, or the Hopsworks REST API's numeric code for a dashboard or Explore request it refused.
     `error_msg` names what was wrong, for example the unknown metric or group-by of an invalid query.
     `usr_msg` carries the query engine's own message when execution failed.
     """
@@ -338,7 +338,7 @@ class SemanticLayerException(Exception):
         self,
         message: str,
         status_code: int | None = None,
-        error_code: str | None = None,
+        error_code: str | int | None = None,
         error_msg: str | None = None,
         usr_msg: str | None = None,
     ) -> None:

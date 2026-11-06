@@ -1,6 +1,6 @@
 ---
 name: hops-semantic
-description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Scaffold a semantic project from feature groups with `hops semantic init` (in HopsFS or a new private GitHub repository), author semantic YAML (semantic_models, measures, dimensions, entities, metrics) next to a dbt project, map semantic models to feature groups, compile and validate with `hops semantic compile`, test every metric on Trino with `hops semantic test`, tag semantic projects and metrics with schematised tags, list metrics, dimensions, entities and dimension values, and get SQL or rows for a metric query, from the CLI, the SDK or the MCP agent tools. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input feature groups or a dbt project over them; output a compiled semantic project and metric query results.
+description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Scaffold a semantic project from feature groups with `hops semantic init` (in HopsFS or a new private GitHub repository), author semantic YAML (semantic_models, measures, dimensions, entities, metrics) next to a dbt project, map semantic models to feature groups, compile and validate with `hops semantic compile`, test every metric on Trino with `hops semantic test`, tag semantic projects and metrics with schematised tags, list metrics, dimensions, entities and dimension values, get SQL or rows for a metric query, and build a Superset dashboard of metrics with `hops semantic dashboard`, from the CLI, the SDK or the MCP agent tools. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input feature groups or a dbt project over them; output a compiled semantic project and metric query results.
 ---
 
 # Semantic Layer on Hopsworks
@@ -257,6 +257,26 @@ metrics:
 - Mandatory tags for semantic projects are checked on create: pass them with `--tag` or `tags=`.
 - Only metrics take tags in the YAML; semantic models, dimensions and entities do not.
 
+## Dashboards
+
+On Superset 7.0, Hopsworks keeps a semantic view per semantic project in Superset, so charts read the metric definitions themselves.
+
+```bash
+hops semantic dashboard sales --metrics revenue,orders --group-by customer__country --title "Sales overview"
+# Created dashboard 12 "Sales overview": https://<host>/hopsworks-api/superset/superset/dashboard/12/?projectId=119
+```
+
+```python
+dashboard = sales.create_dashboard(["revenue", "orders"], group_by=["customer__country"], title="Sales overview")
+dashboard["url"]
+sales.explore_url("revenue")   # the metric over metric_time in Superset's Explore view, unsaved
+```
+
+- The dashboard has a line chart per metric over `metric_time`, a big number for the first metric, a table broken down by the group-by (by default the first categorical dimension the metrics share) and native filters.
+- The caller owns it, and a second run with the same title updates it in place, keeping its id and URL.
+- It works from an external client too, since Hopsworks builds it.
+- A 503 means Superset, its semantic dashboards or the project's Superset service are off; on Superset 6, build the charts as [hops-superset](../../dashboards/hops-superset/SKILL.md)'s "Metrics from the semantic layer" says.
+
 ## Agent tools
 
 The Hopsworks MCP server (`hopsworks-mcp`) serves the semantic layer to agents with dbt-mcp's tool names, so an agent written for dbt finds them; they act on the logged-in project.
@@ -271,6 +291,7 @@ The Hopsworks MCP server (`hopsworks-mcp`) serves the semantic layer to agents w
 | `get_metrics_compiled_sql` | the SQL, for a dashboard dataset or an explanation |
 | `get_semantic_project_tags` | the project's tags |
 | `validate_semantic_project`, `compile_semantic_project` | compile, and the build's status and issues (tagged `write`) |
+| `create_dashboard_from_metrics` | a Superset 7.0 dashboard of the metrics: its id, title and URL (tagged `write`) |
 
 Answer metric questions with these tools rather than SQL over feature groups: the definitions hold the joins, filters and aggregations the metric owners agreed on.
 
@@ -287,7 +308,7 @@ Answer metric questions with these tools rather than SQL over feature groups: th
 
 ## Related skills
 - [hops-dbt](../hops-dbt/SKILL.md): the dbt project the semantic YAML lives in, and the models that write the feature groups.
-- [hops-superset](../../dashboards/hops-superset/SKILL.md): dashboards whose datasets are metric SQL from `hops semantic sql`.
+- [hops-superset](../../dashboards/hops-superset/SKILL.md): custom dashboards over the semantic view on Superset 7.0, or over metric SQL from `hops semantic sql` on Superset 6.
 - [hops-analytics](../hops-analytics/SKILL.md): the Factory's silver and gold layers, which register their dbt projects as semantic projects.
 - [hops-trino-sql](../hops-trino-sql/SKILL.md): table naming and ad-hoc SQL over the same feature groups.
 - [hops-fg](../../ml/hops-fg/SKILL.md): primary keys and event time, which the semantic models' entities and time dimensions should match.

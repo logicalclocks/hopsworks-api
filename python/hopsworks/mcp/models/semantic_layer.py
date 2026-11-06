@@ -58,3 +58,11 @@ class SemanticBuild(BaseModel):
     error_count: int | None = None
     warning_count: int | None = None
     issues: list[SemanticIssue] = []
+
+
+class Dashboard(BaseModel):
+    """A Superset dashboard: its id, its title, and the URL that opens it through Hopsworks."""
+
+    id: int
+    title: str | None = None
+    url: str

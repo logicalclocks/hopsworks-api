@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import threading
 from unittest import mock
 
 import pandas as pd
@@ -81,9 +82,12 @@ def test_every_tool_registers_with_the_semantic_layer_tag():
     SemanticLayerTools(mcp)
 
     tags = [call.kwargs["tags"] for call in mcp.tool.call_args_list]
-    assert len(tags) == 10
+    assert len(tags) == 11
     assert all("semantic_layer" in t for t in tags)
-    assert sum("write" in t for t in tags) == 2
+    assert sum("write" in t for t in tags) == 3
+    tools = [call.args[0].__name__ for call in mcp.tool.return_value.call_args_list]
+    registered = dict(zip(tools, tags, strict=True))
+    assert {"write", "stateful"} <= set(registered["create_dashboard_from_metrics"])
 
 
 def test_list_semantic_projects_reports_what_each_serves(tools, sl, sales):
@@ -320,6 +324,34 @@ def test_compile_fetches_the_warnings_of_a_valid_build(tools, sl, sales):
     sales.get_build.assert_called_once_with(14)
     assert result.status == "VALID"
     assert [i.level for i in result.issues] == ["WARNING"]
+
+
+def test_create_dashboard_from_metrics_returns_id_title_and_url_off_the_event_loop(
+    tools, sl, sales
+):
+    callers = []
+
+    def create_dashboard(*args, **kwargs):
+        callers.append(threading.current_thread())
+        return {"id": 12, "title": "Sales overview", "url": "https://h/d/12/"}
+
+    sales.create_dashboard.side_effect = create_dashboard
+
+    dashboard = _call(
+        tools.create_dashboard_from_metrics(
+            "sales", ["revenue", "orders"], group_by=["customer__country"]
+        )
+    )
+
+    sales.create_dashboard.assert_called_once_with(
+        ["revenue", "orders"], group_by=["customer__country"], title=None
+    )
+    assert dashboard.model_dump() == {
+        "id": 12,
+        "title": "Sales overview",
+        "url": "https://h/d/12/",
+    }
+    assert callers[0] is not threading.main_thread()
 
 
 def test_an_unknown_semantic_project_names_the_list_tool(tools, sl):

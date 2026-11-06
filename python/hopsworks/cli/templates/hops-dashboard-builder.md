@@ -35,11 +35,21 @@ Superset is reachable only inside the cluster.
 
 A chart of a business metric (revenue, orders, conversion) reads that metric's governed definition when
 one exists: look in `hops semantic list` and `hops search <term> --type metric`, and load
-**hops-semantic** for its group-bys. Build such a chart's dataset from the metric query's SQL
-(`hops semantic sql <project> --metrics ... --group-by ...`, or `SemanticProject.sql` in the program),
-as hops-superset's "Metrics from the semantic layer" says, rather than `SELECT *` over the feature
-group; record it in `METRIC_DATASETS` and the docstring names the semantic project and its metrics.
-A metric no semantic project defines is computed from the feature group as before.
+**hops-semantic** for its group-bys. How it reads the definition depends on the Superset version, which
+hops-superset's "Metrics from the semantic layer" checks through `/api/v1/semantic_layer/types`
+(from an external client, a 503 from `hops semantic dashboard` means no semantic views):
+
+- **Superset 7.0 with semantic views:** a dashboard that shows only metrics needs no program.
+  `hops semantic dashboard <project> --metrics ... [--group-by ...] --title <title>` builds it, and
+  edits it when run again with the same title; return the URL it prints. Any other chart of a metric
+  names `"semantic_view": "<project>"` in `CHARTS` and follows that section's rules for charts over
+  a view.
+- **Superset 6:** build the chart's dataset from the metric query's SQL (`hops semantic sql`, or
+  `SemanticProject.sql` in the program) rather than `SELECT *` over the feature group, and record it in
+  `METRIC_DATASETS`.
+
+The docstring names the semantic project and its metrics. A metric no semantic project defines is
+computed from the feature group as before.
 
 ## Actions
 
