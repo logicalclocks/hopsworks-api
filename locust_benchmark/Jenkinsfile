@@ -13,6 +13,7 @@ node("local") {
       withEnv(["VERSION=${version.trim()}"]) {
 
         def builder = new ImageBuilder(this)
+        builder.immutable = version.trim() != "master"
         m = readFile "${env.WORKSPACE}/locust_benchmark/build-manifest.json"
         builder.run(m)
      }
