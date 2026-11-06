@@ -49,7 +49,7 @@ dependencies = [
     "avro==1.12.0",
     "PyMySQL[rsa]",
     "tzlocal",
-    "fsspec<2025.12.0",
+    "fsspec!=2025.12.0,!=2026.1.0",
     "retrying",
     "hopsworks_aiomysql[sa]==0.2.4",
     "opensearch-py>=1.1.0,<4",
