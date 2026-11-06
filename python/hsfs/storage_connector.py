@@ -3327,10 +3327,12 @@ class BigQueryConnector(StorageConnector):
         query_project: str | None = None,
         materialization_dataset: str | None = None,
         arguments: dict[str, Any] | None = None,
+        impersonate_sa: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
         self._key_path = key_path
+        self._impersonate_sa = impersonate_sa
         self._parent_project = parent_project
         self._dataset = dataset
         self._query_table = query_table
@@ -3382,6 +3384,12 @@ class BigQueryConnector(StorageConnector):
         """Additional spark options."""
         return self._arguments
 
+    @public
+    @property
+    def impersonate_sa(self) -> str | None:
+        """Email of the service account Hopsworks made for this data source and reads through, instead of a key file."""
+        return self._impersonate_sa
+
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
         payload.update(
@@ -3411,6 +3419,12 @@ class BigQueryConnector(StorageConnector):
         }
 
     def spark_options(self) -> dict[str, Any]:
+        if self._impersonate_sa and not self._key_path:
+            # Same text as the backend's refusal of a Spark or ingest job on this source.
+            raise FeatureStoreException(
+                "This BigQuery data source reads through a service account Hopsworks impersonates,"
+                " which only the query service uses; Spark and ingest jobs need a key file"
+            )
         properties = self._arguments
         properties[self.BIGQ_PARENT_PROJECT] = self._parent_project
 
