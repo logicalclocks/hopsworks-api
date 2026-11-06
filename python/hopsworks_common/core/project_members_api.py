@@ -241,3 +241,30 @@ class ProjectMembersApi:
         if new_file_owner is not None:
             query_params["newFileOwner"] = new_file_owner
         _client._send_request("DELETE", path_params, query_params=query_params)
+
+    @public
+    def transfer_ownership(self, email: str) -> None:
+        """Hand the project over to another data owner of the project.
+
+        Only the current owner can do this.
+        The previous owner stays a data owner, so they can afterwards be removed like any other member.
+        This also works in projects whose members are managed by group mapping, since no membership changes.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.get_members_api().transfer_ownership("carol@example.com")
+            ```
+
+        Parameters:
+            email: Email address of the data owner who becomes the project owner.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller does not own the project or the new owner is not a data owner of it.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "projectMembers", email, "owner"]
+        _client._send_request("PUT", path_params)

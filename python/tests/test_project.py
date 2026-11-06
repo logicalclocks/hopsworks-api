@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import pytest
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.project import Project
 
 
@@ -137,6 +139,45 @@ class TestProject:
             delete_home_dir=False,
             new_file_owner="carol@example.com",
         )
+
+    def test_transfer_ownership_delegates_and_updates_the_owner(self, mocker):
+        project = Project(project_name="my_project", owner="alice@example.com")
+        project._project_members_api = mocker.MagicMock()
+
+        project.transfer_ownership("carol@example.com")
+
+        project._project_members_api.transfer_ownership.assert_called_once_with(
+            "carol@example.com"
+        )
+        assert project.owner == "carol@example.com"
+
+    def test_transfer_ownership_keeps_the_owner_when_the_request_fails(self, mocker):
+        project = Project(project_name="my_project", owner="alice@example.com")
+        project._project_members_api = mocker.MagicMock()
+        project._project_members_api.transfer_ownership.side_effect = RuntimeError(
+            "refused"
+        )
+
+        with pytest.raises(RuntimeError):
+            project.transfer_ownership("carol@example.com")
+
+        assert project.owner == "alice@example.com"
+
+    def test_transfer_ownership_names_the_new_owner_when_only_a_follow_up_failed(
+        self, mocker
+    ):
+        project = Project(project_name="my_project", owner="alice@example.com")
+        project._project_members_api = mocker.MagicMock()
+        response = mocker.MagicMock()
+        response.json.return_value = {"errorCode": 150127, "errorMsg": "incomplete"}
+        project._project_members_api.transfer_ownership.side_effect = RestAPIError(
+            "url", response
+        )
+
+        with pytest.raises(RestAPIError):
+            project.transfer_ownership("carol@example.com")
+
+        assert project.owner == "carol@example.com"
 
     def test_get_members_api_returns_the_members_api(self, mocker):
         project = Project(project_name="my_project")

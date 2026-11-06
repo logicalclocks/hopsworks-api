@@ -215,6 +215,16 @@ class TestProjectMembersApi:
             ]
         )
 
+    def test_transfer_ownership_puts_to_the_new_owners_owner_path(self, mocker):
+        api = ProjectMembersApi()
+        client_instance = _patch_client(mocker, None)
+
+        api.transfer_ownership("carol@example.com")
+
+        client_instance._send_request.assert_called_once_with(
+            "PUT", ["project", 119, "projectMembers", "carol@example.com", "owner"]
+        )
+
 
 class TestProjectMember:
     def test_update_role_delegates_to_api_and_updates_local_state(self, mocker):
