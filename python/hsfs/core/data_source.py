@@ -27,6 +27,7 @@ from hsfs import storage_connector as sc
 
 
 if TYPE_CHECKING:
+    from hopsworks_common.job import Job
     from hopsworks_common.job_schedule import JobSchedule
     from hsfs import feature_group as fg
     from hsfs.core import data_source_data as dsd
@@ -273,6 +274,31 @@ class DataSource:
         self._storage_connector = storage_connector
 
     @public
+    def sync(self, **kwargs: Any) -> Job:
+        """Copy a Gmail or Outlook data source into a Delta feature group with a job.
+
+        Takes the arguments of [`GmailConnector.sync`][hsfs.storage_connector.GmailConnector.sync] or [`OutlookConnector.sync`][hsfs.storage_connector.OutlookConnector.sync].
+
+        Example:
+            ```python
+            job = fs.get_data_source("support_inbox").sync(schedule="daily")
+            ```
+
+        Returns:
+            The sync job.
+
+        Raises:
+            ValueError: If the data source is not a Gmail or Outlook data source.
+        """
+        if not isinstance(
+            self._storage_connector, (sc.GmailConnector, sc.OutlookConnector)
+        ):
+            raise ValueError(
+                "Only Gmail and Outlook data sources can be synced into a feature group."
+            )
+        return self._storage_connector.sync(**kwargs)
+
+    @public
     def get_databases(self) -> list[str]:
         """Retrieve the list of available databases.
 
@@ -331,7 +357,9 @@ class DataSource:
         return None
 
     @public
-    def get_data(self, use_cached: bool = True) -> dsd.DataSourceData | None:
+    def get_data(
+        self, use_cached: bool = True, file_columns: list[str] | None = None
+    ) -> dsd.DataSourceData | None:
         """Retrieve the data from the data source.
 
         Example:
@@ -349,6 +377,10 @@ class DataSource:
                 Whether to use cached data if available.
                 Only supported for CRM, Google Sheets, and REST connectors.
                 Defaults to `True`.
+            file_columns:
+                SQL Server only: `varbinary(max)` or `image` columns to store as files, besides the FILESTREAM columns; `[]` for the FILESTREAM columns alone.
+                Leave it `None` to read the source schema, as for an external feature group.
+                Each file column is returned as a string path feature and a bigint `<column>_size` feature, and the preview shows its size instead of the bytes.
 
         Returns:
             An object containing the data retrieved from the data source, or `None` when the backend answered with an empty body.
@@ -356,7 +388,9 @@ class DataSource:
         Raises:
             hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source.
         """
-        return self._storage_connector.get_data(self, use_cached=use_cached)
+        return self._storage_connector.get_data(
+            self, use_cached=use_cached, file_columns=file_columns
+        )
 
     @public
     def get_metadata(self) -> dict:
