@@ -1930,7 +1930,7 @@ class FeatureStore:
             location:
                 Path to complement the sink storage connector with, e.g., if the storage connector points to an S3 bucket, this path can be used to define a sub-directory inside the bucket to place the training dataset.
                 Defaults to `""`, saving the training dataset at the root defined by the storage connector. **[DEPRECATED: Use `data_source` instead.]**
-            seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
+            seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducibility.
             statistics_config:
                 A configuration object, or a dictionary with keys:
                 - `"enabled"` to generally enable descriptive statistics computation for this feature group,

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import warnings
 
-from hsfs import engine, training_dataset_feature
+from hsfs import engine, training_dataset_feature, training_dataset_split
 from hsfs.constructor import query
 from hsfs.core import (
     tags_api,
@@ -65,6 +65,7 @@ class TrainingDatasetEngine:
                 stacklevel=1,
             )
 
+        training_dataset_split._set_split_method(training_dataset)
         updated_instance = self._training_dataset_api._post(training_dataset)
         td_job = engine._get_instance()._write_training_dataset(
             training_dataset, features, user_write_options, self.OVERWRITE

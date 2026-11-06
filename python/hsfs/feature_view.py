@@ -2308,7 +2308,7 @@ class FeatureView:
                 Where it applies, the training dataset data will be coalesced into a
                 single partition before writing, and the resulting training dataset
                 will be a single file per split.
-            seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
+            seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducibility.
             statistics_config:
                 A configuration object, or a dictionary with keys:
 
@@ -2628,7 +2628,7 @@ class FeatureView:
                 single partition before writing, and the resulting training dataset
                 will be a single file per split. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
-                to guarantee reproducability, defaults to `None`.
+                to guarantee reproducibility, defaults to `None`.
             statistics_config: A configuration object, or a dictionary with keys
                 "`enabled`" to generally enable descriptive statistics computation for
                 this feature group, `"correlations`" to turn on feature correlation
@@ -2941,7 +2941,7 @@ class FeatureView:
                 single partition before writing, and the resulting training dataset
                 will be a single file per split. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
-                to guarantee reproducability, defaults to `None`.
+                to guarantee reproducibility, defaults to `None`.
             statistics_config: A configuration object, or a dictionary with keys
                 "`enabled`" to generally enable descriptive statistics computation for
                 this feature group, `"correlations`" to turn on feature correlation
@@ -3180,6 +3180,7 @@ class FeatureView:
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         spine_df: SpineDataFrameTypes | None = None,
+        seed: int | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3307,6 +3308,8 @@ class FeatureView:
                 recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
+            seed: Optionally, define a seed to create the random splits with, in order
+                to guarantee reproducibility, defaults to `None`.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
@@ -3330,6 +3333,7 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
             tags=normalized_tags,
+            seed=seed,
         )
         td, df = self._feature_view_engine._get_training_data(
             self,
@@ -3375,6 +3379,7 @@ class FeatureView:
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         spine_df: SpineDataFrameTypes | None = None,
+        seed: int | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3514,6 +3519,9 @@ class FeatureView:
                 recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
+            seed: Optionally, define a seed to create the random splits with, in order
+                to guarantee reproducibility, defaults to `None`.
+                Without one, a seed is generated and stored with the training dataset.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -3545,6 +3553,7 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
             tags=normalized_tags,
+            seed=seed,
         )
         td, df = self._feature_view_engine._get_training_data(
             self,
@@ -3607,6 +3616,7 @@ class FeatureView:
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         spine_df: SpineDataFrameTypes | None = None,
+        seed: int | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3761,6 +3771,9 @@ class FeatureView:
                 recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
+            seed: Optionally, define a seed to create the random splits with, in order
+                to guarantee reproducibility, defaults to `None`.
+                Without one, a seed is generated and stored with the training dataset.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -3800,6 +3813,7 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
             tags=normalized_tags,
+            seed=seed,
         )
         td, df = self._feature_view_engine._get_training_data(
             self,
