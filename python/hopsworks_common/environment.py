@@ -16,10 +16,13 @@
 from __future__ import annotations
 
 import os
+import time
 
 import humps
+import requests
 from hopsworks_apigen import public
 from hopsworks_common import client, command, library, usage, util
+from hopsworks_common.client.exceptions import EnvironmentException
 from hopsworks_common.core import environment_api, library_api
 from hopsworks_common.engine import environment_engine
 
@@ -232,7 +235,7 @@ class Environment:
                 `HOPSWORKS_BUILD_CACHE` can name declared build caches, such as `ccache,maven`.
             await_completion: Whether to wait for this custom-command build to finish.
             timeout: Seconds to wait before raising an error.
-                Applies separately to the existing environment operation and this build.
+                Applies separately to the existing environment operation and to submission plus completion of this build.
                 The preflight wait applies even when `await_completion` is `False`.
 
         Raises:
@@ -240,53 +243,33 @@ class Environment:
             hopsworks.client.exceptions.EnvironmentException: If the build fails or a wait times out.
             hopsworks.client.exceptions.RestAPIError: If the backend rejects the request.
         """
-        if not isinstance(path, str) or not path:
-            raise ValueError("path must be a nonempty Hopsworks file path.")
-        if artifacts is not None and (
-            not isinstance(artifacts, list)
-            or any(
-                not isinstance(item, str) or not item or "," in item
-                for item in artifacts
-            )
-        ):
-            raise ValueError(
-                "artifacts must be a list of nonempty paths without commas."
-            )
-        if env_vars is not None and (
-            not isinstance(env_vars, dict)
-            or any(
-                not isinstance(key, str) or not isinstance(value, str)
-                for key, value in env_vars.items()
-            )
-        ):
-            raise ValueError("env_vars must map variable names to string values.")
-        if any(
-            any(character in text for character in "\n\r\0")
-            for pair in (env_vars or {}).items()
-            for text in pair
-        ):
-            raise ValueError("env_vars cannot contain newlines or NUL characters.")
-
-        _client = client._get_instance()
-        request = {
-            "commandsFile": path
-            if path.startswith("/")
-            else util._convert_to_abs(path, _client._project_name),
-            "artifacts": ",".join(
-                item
-                if item.startswith("/")
-                else util._convert_to_abs(item, _client._project_name)
-                for item in artifacts or []
-            ),
-            "envVars": [
-                {"name": key, "value": value} for key, value in (env_vars or {}).items()
-            ],
-        }
+        request = environment_api._build_custom_commands_request(
+            client._get_instance()._project_name, path, artifacts, env_vars
+        )
         self._environment_engine._await_environment_command(self.name, timeout)
-        command_id = self._environment_api._run_custom_commands(self.name, request)
+        build_timeout = (
+            self._environment_engine.AWAIT_COMMAND_TIMEOUT
+            if timeout is None
+            else timeout
+        )
+        deadline = time.monotonic() + build_timeout
+        try:
+            command_id = self._environment_api._run_custom_commands(
+                self.name, request, build_timeout
+            )
+        except requests.exceptions.Timeout as error:
+            raise EnvironmentException(
+                f"Timed out submitting custom commands in environment '{self.name}'. "
+                "The build may have been submitted; check the environment page before retrying."
+            ) from error
         if await_completion:
             self._environment_engine._await_custom_command(
-                self.name, command_id, timeout
+                self.name,
+                command_id,
+                lambda remaining: self._environment_api._get_command(
+                    self.name, command_id, remaining
+                ),
+                max(0, deadline - time.monotonic()),
             )
 
     @public

@@ -23,7 +23,6 @@ import requests
 from hopsworks_apigen import also_available_as
 from hopsworks_common import client, command, environment, library
 from hopsworks_common.client.exceptions import EnvironmentException, RestAPIError
-from hopsworks_common.core import environment_api
 
 
 _logger = logging.getLogger(__name__)
@@ -74,13 +73,10 @@ class EnvironmentEngine:
         )
 
     def _await_custom_command(
-        self, environment_name: str, command_id: int, timeout: float | None = None
+        self, environment_name: str, command_id: int, poll, timeout: float | None = None
     ):
-        api = environment_api.EnvironmentApi()
         self._await_command(
-            lambda request_timeout: api._get_command(
-                environment_name, command_id, request_timeout
-            ),
+            poll,
             f"custom command {command_id} in environment '{environment_name}'",
             timeout,
         )
@@ -95,27 +91,34 @@ class EnvironmentEngine:
         timeout = self.AWAIT_COMMAND_TIMEOUT if timeout is None else timeout
         deadline = time.monotonic() + timeout
         commands = [command.Command(status="ONGOING")]
-        while len(commands) > 0 and not self._is_final_status(commands[0]):
+        last_status = commands[0].status
+        while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 # Name the last status seen.
                 # "Still ONGOING" and "no command at all" are very different problems, and the caller cannot tell them apart from a bare timeout.
                 raise EnvironmentException(
                     f"Timed out after {timeout:g}s waiting for {description}. "
-                    f"The last observed command status was {commands[0].status}. The command may still be "
+                    f"The last observed command status was {last_status}. The command may still be "
                     "running, or it may have stopped without reporting a final status: check "
                     "the environment page in the UI, where the command and its state are shown."
                 )
+            if not commands or self._is_final_status(commands[0]):
+                return
             time.sleep(min(self.POLL_INTERVAL, remaining))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                continue
+            request_timeout = min(self.POLL_REQUEST_TIMEOUT, remaining)
             try:
-                artifact = poll(self.POLL_REQUEST_TIMEOUT)
+                artifact = poll(request_timeout)
             except requests.exceptions.Timeout:
                 # A poll that never came back is not an answer, but it is not a failure either.
                 # Keep the last known status and let the deadline decide when to give up.
                 _logger.debug(
                     "Polling %s timed out after %ss, retrying until the deadline.",
                     description,
-                    self.POLL_REQUEST_TIMEOUT,
+                    request_timeout,
                 )
                 continue
             # Both Library and Environment leave _commands as None when the response carries none, which len() cannot take.
@@ -123,6 +126,8 @@ class EnvironmentEngine:
                 commands = [artifact]
             else:
                 commands = [] if artifact is None else artifact._commands or []
+            if commands:
+                last_status = commands[0].status
 
     def _is_final_status(self, command):
         if command.status == "FAILED":
@@ -164,6 +169,9 @@ class EnvironmentEngine:
                     headers=headers,
                     query_params=query_params,
                     timeout=request_timeout,
+                    deadline=time.monotonic() + request_timeout
+                    if request_timeout is not None
+                    else None,
                 ),
             )
         except RestAPIError as e:
@@ -200,5 +208,8 @@ class EnvironmentEngine:
                 headers=headers,
                 query_params=query_params,
                 timeout=request_timeout,
+                deadline=time.monotonic() + request_timeout
+                if request_timeout is not None
+                else None,
             ),
         )
