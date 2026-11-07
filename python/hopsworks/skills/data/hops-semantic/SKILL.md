@@ -264,6 +264,7 @@ Answer metric questions with these tools rather than SQL over feature groups: th
 | `METRIC_TAG_*` build issue | A metric's tag names no schema, does not match it, or a mandatory metric tag is missing | Fix `config.meta.hopsworks.tags` on that metric |
 
 ## Related skills
+- [hops-semantic-views](../hops-semantic-views/SKILL.md): what goes in one semantic project, and keeping it under 100k tokens for agents.
 - [hops-dbt](../hops-dbt/SKILL.md): the dbt project the semantic YAML lives in, and the models that write the feature groups.
 - [hops-superset](../../dashboards/hops-superset/SKILL.md): charts and dashboards of the metrics, on Superset 7.0 or 6.
 - [hops-analytics](../hops-analytics/SKILL.md): the Factory's silver and gold layers, which register their dbt projects as semantic projects.

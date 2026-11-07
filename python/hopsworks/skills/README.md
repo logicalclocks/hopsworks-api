@@ -18,6 +18,7 @@ into bucket folders:
 - [hops-analytics](data/hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.
 - [hops-dbt](data/hops-dbt/SKILL.md) — dbt models over feature groups in Trino, with tests and an execution graph.
 - [hops-semantic](data/hops-semantic/SKILL.md): metrics in YAML over feature groups, scaffolded, compiled, tagged, discovered and queried.
+- [hops-semantic-views](data/hops-semantic-views/SKILL.md): scope a semantic view to one domain and keep it under 100k tokens so agents can read it whole.
 - [hops-spark](data/hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta).
 - [hops-synthetic-data](data/hops-synthetic-data/SKILL.md) — seeded synthetic batch tables or event streams into feature groups.
 - [hops-table-maintenance](data/hops-table-maintenance/SKILL.md) — Table layout maintenance for offline feature groups.
