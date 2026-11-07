@@ -52,6 +52,8 @@ hops superset chart generate --dataset 12 --type pie --dimension category --metr
 - `--y` and `--metric`: `SUM(col)` (also COUNT, AVG, MIN, MAX, COUNT_DISTINCT, MEDIAN) aggregates a column, a bare name is a saved metric of the dataset, anything else (`COUNT(*)`) is a SQL expression.
 - `--preview` leaves the chart unsaved and prints an Explore link; without it the chart is saved and its ID and link printed.
 - A rejected config fails with Superset's message, such as the column it could not find; fix the flag and rerun.
+- Superset runs the chart's query before saving it, so a saved chart is one whose query worked.
+- Superset 7.0.0rc2 saves a generated chart without a query context: it renders in Explore and on dashboards, but `GET /api/v1/chart/{id}/data/` answers 400 `Chart has no query context saved` until the chart is opened and saved once in Superset.
 
 `hops superset dashboard update ID` changes only the fields given and leaves the rest:
 
