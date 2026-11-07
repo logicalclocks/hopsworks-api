@@ -737,6 +737,7 @@ class SemanticProject:
             filters:
                 Structured filters, each a dict `{"group_by", "op", "value"}` or a tuple `(group_by, op, value)`.
                 `op` is one of `=`, `!=`, `<`, `<=`, `>`, `>=`, `IN`, `NOT IN`, `IS NULL`, `IS NOT NULL` and `LIKE`; values are bound as literals, never parsed as SQL.
+                A date or datetime value is sent as ISO-8601; a timezone-aware one is compared in UTC.
             having: Filters on metric values, each a dict `{"metric", "op", "value"}` or a tuple `(metric, op, value)`.
             order_by:
                 Metric or group-by column names; a leading `-`, as in `"-revenue"`, sorts descending.
@@ -745,6 +746,7 @@ class SemanticProject:
             offset: Number of rows to skip.
             time_range:
                 A `(start, end)` tuple or a `{"start", "end"}` dict of ISO-8601 strings, dates or datetimes, either of which may be `None`.
+                A timezone-aware datetime, or a string with an offset, is converted to UTC; one without is taken as UTC.
                 It keeps `metric_time` from `start` through `end`, both inclusive, each truncated to the query's time grain: a monthly query ending `2026-02-01` includes all of February.
             group_limit: Keep only the top groups, as a dict `{"group_by", "top", "metric", "descending"}`, for example the five countries with the most revenue.
 
@@ -891,7 +893,9 @@ def _filter(value: dict[str, Any] | tuple) -> dict[str, Any]:
     result = {"groupBy": _group_by_ref(group_by), "op": op.upper()}
     if operand is not None:
         result["value"] = (
-            list(operand) if isinstance(operand, (tuple, set)) else operand
+            [_instant(v) for v in operand]
+            if isinstance(operand, (list, tuple, set))
+            else _instant(operand)
         )
     return result
 
@@ -903,8 +907,9 @@ def _having(value: dict[str, Any] | tuple) -> dict[str, Any]:
     return {"metric": metric, "op": op, "value": operand}
 
 
-def _instant(value: str | datetime.date | None) -> str | None:
-    if isinstance(value, (datetime.date, datetime.datetime)):
+def _instant(value: Any) -> Any:
+    """A date or datetime as ISO-8601; any other value unchanged."""
+    if isinstance(value, datetime.date):
         return value.isoformat()
     return value
 

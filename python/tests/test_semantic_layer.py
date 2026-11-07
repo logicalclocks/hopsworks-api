@@ -15,6 +15,7 @@
 #
 
 import datetime
+import json
 
 import pytest
 from hopsworks_common import semantic_layer
@@ -149,6 +150,33 @@ class TestQueryRequest:
         assert _query_request(["m"], time_range=(None, "2026-02-01"))["timeRange"] == {
             "end": "2026-02-01"
         }
+
+    def test_timezone_aware_datetimes_keep_their_offset(self):
+        utc = datetime.datetime(
+            2026, 1, 1, 0, 0, 0, 123456, tzinfo=datetime.timezone.utc
+        )
+        cet = datetime.datetime(
+            2026, 1, 1, 1, tzinfo=datetime.timezone(datetime.timedelta(hours=1))
+        )
+
+        request = _query_request(
+            ["m"],
+            filters=[
+                ("order__order_ts__microsecond", "=", utc),
+                ("order__order_ts__hour", "IN", [cet, "2026-01-02T00:00:00Z"]),
+            ],
+            time_range=(utc, cet),
+        )
+
+        assert request["timeRange"] == {
+            "start": "2026-01-01T00:00:00.123456+00:00",
+            "end": "2026-01-01T01:00:00+01:00",
+        }
+        assert [f["value"] for f in request["filters"]] == [
+            "2026-01-01T00:00:00.123456+00:00",
+            ["2026-01-01T01:00:00+01:00", "2026-01-02T00:00:00Z"],
+        ]
+        json.dumps(request)
 
 
 class TestModels:
