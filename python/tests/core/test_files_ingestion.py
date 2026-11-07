@@ -98,6 +98,18 @@ def _server_job(config=None, schedule=None, name="handbook_files"):
     )
 
 
+def _create_capturing(api, created):
+    """Make the mocked JobApi.create record the body as it is sent, before save() refreshes the server config from the response."""
+    bodies = []
+
+    def create(name, conf):
+        bodies.append(json.loads(conf.json()))
+        return created
+
+    api.create.side_effect = create
+    return bodies
+
+
 def _client(mocker, response=None):
     client_mock = Mock()
     client_mock._project_id = 119
@@ -115,8 +127,8 @@ class TestConfiguration:
         job = files_ingestion.FilesIngestionJob(_connector(), "Acme Docs")
 
         body = job.to_dict()
-        assert job.name == "my_s3_acme_docs_files"
-        assert body["appName"] == "my_s3_acme_docs_files"
+        assert job.name == "my_s3_Acme_Docs_files"
+        assert body["appName"] == "my_s3_Acme_Docs_files"
         assert body["filesConfig"] == {
             "storageConnectorId": 12,
             "prefix": "",
@@ -139,7 +151,8 @@ class TestConfiguration:
     def test_default_job_name_is_sanitized(self):
         sc = storage_connector.S3Connector(12, "My-S3 Bucket", 67)
         job = files_ingestion.FilesIngestionJob(sc, "Acme.Docs/2026")
-        assert job.name == "my_s3_bucket_acme_docs_2026_files"
+        # one rule shared with the UI: no lowercasing, [^A-Za-z0-9_] -> "_"
+        assert job.name == "My_S3_Bucket_Acme_Docs_2026_files"
 
     def test_index_true_uses_the_default_name(self):
         job = _job_builder(index=True)
@@ -257,6 +270,49 @@ class TestFromJob:
         with pytest.raises(ValueError, match="not a files ingestion job"):
             files_ingestion.FilesIngestionJob.from_job(_server_job(config))
 
+    def test_refuses_a_files_job_without_a_dataset(self):
+        config = json.loads(json.dumps(_CONTRACT_BODY))
+        del config["filesConfig"]["datasetName"]
+        with pytest.raises(ValueError, match="without a datasetName"):
+            files_ingestion.FilesIngestionJob.from_job(_server_job(config))
+
+    def test_save_keeps_the_fields_the_sdk_does_not_model(self):
+        config = json.loads(json.dumps(_CONTRACT_BODY))
+        config["description"] = "handbook copy"
+        config["defaultArgs"] = "-v"
+        config["envVars"] = {"LOG_LEVEL": "DEBUG"}
+        config["filesConfig"]["listingTimeoutSeconds"] = 3600
+        job = files_ingestion.FilesIngestionJob.from_job(_server_job(config))
+
+        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
+            api = MockJobApi.return_value
+            api.create.return_value = _server_job(config)
+            job.update(prefix="handbook/2027/", mirror_deletions=True)
+            body = json.loads(api.create.call_args[0][1].json())
+
+        assert body["description"] == "handbook copy"
+        assert body["defaultArgs"] == "-v"
+        assert body["envVars"] == {"LOG_LEVEL": "DEBUG"}
+        assert body["resourceConfig"] == {"cores": 1, "memory": 2048, "gpus": 0}
+        assert body["environmentName"] == "dlthub-ingestion-pipeline"
+        assert body["filesConfig"]["listingTimeoutSeconds"] == 3600
+        assert body["filesConfig"]["prefix"] == "handbook/2027/"
+        assert body["filesConfig"]["mirrorDeletions"] is True
+
+    def test_save_refreshes_the_server_config(self):
+        job = _job_builder()
+        server = json.loads(json.dumps(_CONTRACT_BODY))
+        server["description"] = "set by the server"
+        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
+            api = MockJobApi.return_value
+            api.create.return_value = _server_job(server)
+            job.save()
+            job.update(include=["**/*.md"])
+            body = json.loads(api.create.call_args[0][1].json())
+
+        assert body["description"] == "set by the server"
+        assert body["filesConfig"]["include"] == ["**/*.md"]
+
 
 class TestSave:
     def test_save_puts_the_contract_body_and_no_schedule(self):
@@ -315,6 +371,39 @@ class TestSave:
         api.delete_schedule_job.assert_called_once_with("handbook_files")
         assert job.schedule is None
 
+    def test_update_keeps_a_paused_schedule_paused(self):
+        existing = {
+            "id": 3,
+            "startDateTime": 1700000000000,
+            "enabled": False,
+            "cronExpression": "0 0 2 ? * *",
+        }
+        job = files_ingestion.FilesIngestionJob.from_job(_server_job(schedule=existing))
+        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
+            api = MockJobApi.return_value
+            api.create.return_value = _server_job(schedule=existing)
+            job.update(schedule="0 0 4 ? * *")
+            _, schedule = api.create_or_update_schedule_job.call_args[0]
+
+        assert schedule.enabled is False
+        assert schedule.cron_expression == "0 0 4 ? * *"
+
+    def test_update_skips_the_schedule_when_the_cron_is_unchanged(self):
+        existing = {
+            "id": 3,
+            "startDateTime": 1700000000000,
+            "enabled": True,
+            "cronExpression": "0 0 2 ? * *",
+        }
+        job = files_ingestion.FilesIngestionJob.from_job(_server_job(schedule=existing))
+        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
+            api = MockJobApi.return_value
+            api.create.return_value = _server_job(schedule=existing)
+            job.update(prefix="handbook/2027/")
+
+        api.create_or_update_schedule_job.assert_not_called()
+        api.delete_schedule_job.assert_not_called()
+
     def test_update_refuses_fixed_fields(self):
         job = _job_builder()
         with pytest.raises(ValueError, match="Cannot update dataset, name"):
@@ -324,7 +413,7 @@ class TestSave:
         job = _job_builder()
         with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
             api = MockJobApi.return_value
-            api.create.return_value = _server_job()
+            bodies = _create_capturing(api, _server_job())
 
             result = job.update(
                 include=["**/*.md"],
@@ -337,7 +426,7 @@ class TestSave:
                 resources={"cores": 2, "memory": 4096, "gpus": 0},
                 environment_name=None,
             )
-            body = json.loads(api.create.call_args[0][1].json())
+            body = bodies[0]
 
         assert result is job
         assert body["filesConfig"]["include"] == ["**/*.md"]
@@ -368,9 +457,53 @@ class TestSave:
         created = MagicMock()
         job = _job_builder(job=created)
         with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
-            job.run(await_termination=True)
+            job.run()
             MockJobApi.return_value.create.assert_not_called()
-        created.run.assert_called_once_with(await_termination=True)
+        created.run.assert_called_once_with(await_termination=False)
+
+    def test_run_awaits_and_returns_a_finished_execution(self):
+        created = MagicMock()
+        started = MagicMock(id=4711)
+        created.run.return_value = started
+        job = _job_builder(job=created)
+        finished = MagicMock()
+        with patch(
+            "hopsworks_common.engine.execution_engine.ExecutionEngine"
+        ) as MockEngine:
+            MockEngine.return_value._wait_until_finished.return_value = finished
+
+            result = job.run(await_termination=True)
+
+            MockEngine.return_value._wait_until_finished.assert_called_once_with(
+                created, started
+            )
+        created.run.assert_called_once_with(await_termination=False)
+        assert result is finished
+
+    def test_run_awaits_and_returns_a_partial_run_instead_of_raising(self):
+        from hopsworks_common.client.exceptions import JobExecutionException
+
+        created = MagicMock()
+        started = MagicMock(id=4711)
+        created.run.return_value = started
+        job = _job_builder(job=created)
+        failed = MagicMock(files_progress={"status": "partial", "failed": 1})
+        with (
+            patch(
+                "hopsworks_common.engine.execution_engine.ExecutionEngine"
+            ) as MockEngine,
+            patch("hopsworks_common.core.execution_api.ExecutionApi") as MockApi,
+        ):
+            MockEngine.return_value._wait_until_finished.side_effect = (
+                JobExecutionException("The Hopsworks Job failed")
+            )
+            MockApi.return_value._get.return_value = failed
+
+            result = job.run(await_termination=True)
+
+            MockApi.return_value._get.assert_called_once_with(created, 4711)
+        assert result is failed
+        assert result.files_progress["status"] == "partial"
 
 
 class TestDelete:
@@ -433,13 +566,30 @@ class TestLastStats:
         _client(mocker, {"id": 4711, "state": "RUNNING"})
         assert _job_builder(job=_server_job()).last_stats is None
 
+    def test_none_when_the_backend_sends_only_the_stub(self, mocker):
+        # the backend always attaches the job's dataset, prefix and connector; the
+        # result keys appear only once the run has written its stats file
+        _client(
+            mocker,
+            {
+                "id": 4711,
+                "state": "RUNNING",
+                "filesProgress": {
+                    "datasetName": "acme_docs_handbook",
+                    "prefix": "handbook/2026/",
+                    "connectorName": "my_s3",
+                },
+            },
+        )
+        assert _job_builder(job=_server_job()).last_stats is None
+
 
 class TestStorageConnector:
     def test_ingest_files_saves_and_returns_the_job(self):
         sc = _connector("GCS")
         with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
             api = MockJobApi.return_value
-            api.create.return_value = _server_job()
+            bodies = _create_capturing(api, _server_job())
 
             job = sc.ingest_files(
                 dataset="acme_docs_handbook",
@@ -449,12 +599,12 @@ class TestStorageConnector:
                 resources={"cores": 1, "memory": 2048, "gpus": 0},
                 name="handbook_files",
             )
-            posted_name, conf = api.create.call_args[0]
+            posted_name = api.create.call_args[0][0]
 
         assert isinstance(job, files_ingestion.FilesIngestionJob)
         assert posted_name == "handbook_files"
         expected = {k: v for k, v in _CONTRACT_BODY.items() if k != "environmentName"}
-        assert json.loads(conf.json()) == expected
+        assert bodies == [expected]
         assert job.job is not None
 
     @pytest.mark.parametrize("connector_type", ["S3", "GCS", "ADLS"])
@@ -538,5 +688,20 @@ class TestExecutionFilesProgress:
     def test_none_for_other_jobs(self):
         execution = Execution.from_response_json(
             {"id": 1, "state": "FINISHED", "ingestionTargets": []}, job=Mock()
+        )
+        assert execution.files_progress is None
+
+    def test_none_for_the_stub_without_a_result(self):
+        execution = Execution.from_response_json(
+            {
+                "id": 1,
+                "state": "RUNNING",
+                "filesProgress": {
+                    "datasetName": "d",
+                    "prefix": "",
+                    "connectorName": "c",
+                },
+            },
+            job=Mock(),
         )
         assert execution.files_progress is None

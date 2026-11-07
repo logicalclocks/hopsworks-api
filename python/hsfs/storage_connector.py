@@ -486,7 +486,7 @@ class StorageConnector(ABC):
             max_file_size_mb: Files larger than this are skipped and counted as oversized; `None` or `0` copies any size.
             schedule: Quartz cron expression in UTC, seconds first, e.g. `"0 0 2 ? * *"` for daily at 02:00; `None` creates no schedule.
             resources: Pod resources of a run, e.g. `{"cores": 1, "memory": 2048, "gpus": 0}`.
-            name: Job name; `<connector>_<dataset>_files`, lowercased with `_` for other characters, when `None`.
+            name: Job name; `<connector>_<dataset>_files` with `_` for every character outside letters, digits and `_`, when `None`.
             fail_on_first_error: Stop a run at the first file that fails instead of copying the rest.
             files_per_page: Number of files listed per request to the source.
 

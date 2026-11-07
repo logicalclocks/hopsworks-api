@@ -196,7 +196,27 @@ class TestExecutionPerTable:
         ex = Execution(id=1, state="RUNNING", job=mock.Mock())
 
         ex.update_from_response_json(
-            {"id": 1, "state": "FINISHED", "filesProgress": {"copied": 2}}
+            {
+                "id": 1,
+                "state": "FINISHED",
+                "filesProgress": {"status": "ok", "copied": 2},
+            }
         )
 
-        assert ex.files_progress == {"copied": 2}
+        assert ex.files_progress == {"status": "ok", "copied": 2}
+
+    def test_files_progress_none_for_the_stub_without_a_result(self):
+        ex = execution.Execution.from_response_json(
+            {
+                "id": 1,
+                "state": "RUNNING",
+                "filesProgress": {
+                    "datasetName": "d",
+                    "prefix": "p/",
+                    "connectorName": "c",
+                },
+            },
+            job=mock.Mock(),
+        )
+
+        assert ex.files_progress is None

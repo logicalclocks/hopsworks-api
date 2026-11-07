@@ -216,11 +216,17 @@ class Execution:
     @public
     @property
     def files_progress(self) -> dict | None:
-        """Result of a files ingestion run, or `None` for other jobs and runs still listing.
+        """Result of a files ingestion run, or `None` for other jobs and for a run that has not written its result yet.
 
+        The backend attaches `datasetName`, `prefix` and `connectorName` to every execution of a files job; that stub alone, without `status` or `executionId`, is reported as `None`.
         Keys as the backend reports them: `executionId`, `status` (`ok`, `partial` or `failed`), `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `bytesCopied`, `listingComplete`, `deletionsSkipped`, `indexed`, `error`, `failedFiles` (`relativePath` and `error` of up to 100 files), `auditFile` (the run's audit CSV, relative to the job's state directory, or `None`), `auditPath` (the same file as an absolute HopsFS path, or `None`), `datasetName`, `connectorName`, `prefix`, `startedAt` and `finishedAt`.
         """
-        return self._files_progress
+        progress = self._files_progress
+        if not isinstance(progress, dict) or not (
+            "status" in progress or "executionId" in progress
+        ):
+            return None
+        return progress
 
     @public
     @property

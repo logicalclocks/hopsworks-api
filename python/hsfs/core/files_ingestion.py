@@ -15,12 +15,14 @@
 #
 from __future__ import annotations
 
+import copy
 import json
 import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
+from hopsworks_common.client.exceptions import JobExecutionException
 
 
 if TYPE_CHECKING:
@@ -32,7 +34,8 @@ if TYPE_CHECKING:
 DTO_TYPE = "ingestionJobConfiguration"
 MODE_FILES = "FILES"
 DEFAULT_FILES_PER_PAGE = 100
-_NAME_PATTERN = re.compile(r"[^a-z0-9_]")
+_JOB_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_]")
+_INDEX_NAME_PATTERN = re.compile(r"[^a-z0-9_]")
 _MAX_INDEX_NAME = 63
 
 # Settings that `update` may change; everything else is fixed at creation.
@@ -51,18 +54,14 @@ _EDITABLE = (
 )
 
 
-def _sanitize_name(raw: str) -> str:
-    return _NAME_PATTERN.sub("_", raw.lower())
-
-
 def _default_job_name(connector_name: str, dataset: str) -> str:
-    """The job name `ingest_files` uses when none is given: `<connector>_<dataset>_files`, lowercased, with every character outside `[a-z0-9_]` replaced by `_`."""
-    return _sanitize_name(f"{connector_name}_{dataset}_files")
+    """The job name `ingest_files` and the UI use when none is given: `<connector>_<dataset>_files` with every character outside `[A-Za-z0-9_]` replaced by `_`."""
+    return _JOB_NAME_PATTERN.sub("_", f"{connector_name}_{dataset}_files")
 
 
 def _default_index_name(dataset: str) -> str:
     """The index feature group name the backend applies when none is given: `files_<dataset>`, lowercased, with every character outside `[a-z0-9_]` replaced by `_`, at most 63 characters."""
-    return _sanitize_name(f"files_{dataset}")[:_MAX_INDEX_NAME]
+    return _INDEX_NAME_PATTERN.sub("_", f"files_{dataset}".lower())[:_MAX_INDEX_NAME]
 
 
 def _validate_dataset(dataset: Any) -> str:
@@ -219,6 +218,16 @@ class FilesIngestionJob:
             raise ValueError("name must be a non-empty job name.")
         self._name = name.strip()
         self._job = job
+        # The job's configuration as the server holds it, so a save keeps the fields
+        # this class does not model (description, envVars, defaultArgs, ...).
+        self._server_config: dict[str, Any] | None = None
+        self._remember_server_config()
+
+    def _remember_server_config(self) -> None:
+        config = self._job.config if self._job is not None else None
+        self._server_config = (
+            copy.deepcopy(config) if isinstance(config, dict) else None
+        )
 
     @public
     @classmethod
@@ -244,6 +253,10 @@ class FilesIngestionJob:
                 f"Job '{job.name}' is not a files ingestion job (mode FILES)."
             )
         files = config["filesConfig"]
+        if not files.get("datasetName"):
+            raise ValueError(
+                f"Job '{job.name}' is a files ingestion job without a datasetName."
+            )
         index_name = files.get("indexFeatureGroupName")
         index: bool | str = (
             index_name if (files.get("indexFiles") and index_name) else False
@@ -274,9 +287,24 @@ class FilesIngestionJob:
     def to_dict(self) -> dict[str, Any]:
         """Serialize the job as the `ingestionJobConfiguration` body of a FILES-mode job.
 
+        The settings this class models are laid over the configuration the server holds, key by key inside `filesConfig`, so fields it does not model survive a save.
+
         Returns:
             The request body sent to the jobs endpoint.
         """
+        body = self._modelled_config()
+        if self._server_config is None:
+            return body
+        merged = copy.deepcopy(self._server_config)
+        server_files = merged.get("filesConfig")
+        merged.update({k: v for k, v in body.items() if k != "filesConfig"})
+        merged["filesConfig"] = {
+            **(server_files if isinstance(server_files, dict) else {}),
+            **body["filesConfig"],
+        }
+        return merged
+
+    def _modelled_config(self) -> dict[str, Any]:
         index_files = self._index is not False
         body: dict[str, Any] = {
             "type": DTO_TYPE,
@@ -402,6 +430,7 @@ class FilesIngestionJob:
 
         job_api = JobApi()
         self._job = job_api.create(self._name, self)
+        self._remember_server_config()
         self._apply_schedule(job_api)
         return self._job
 
@@ -414,6 +443,8 @@ class FilesIngestionJob:
                 job_api.delete_schedule_job(self._name)
                 self._job._job_schedule = None
             return
+        if existing is not None and existing.cron_expression == self._schedule:
+            return
         job_schedule = JobSchedule(
             id=existing.id if existing is not None else None,
             start_date_time=(
@@ -421,7 +452,8 @@ class FilesIngestionJob:
                 if existing is not None and existing.start_date_time
                 else datetime.now(tz=timezone.utc)
             ),
-            enabled=True,
+            # a paused schedule stays paused when its expression changes
+            enabled=existing.enabled if existing is not None else True,
             cron_expression=self._schedule,
         )
         self._job._job_schedule = job_api.create_or_update_schedule_job(
@@ -432,22 +464,38 @@ class FilesIngestionJob:
     def run(self, await_termination: bool = False) -> Execution:
         """Start a run of the job, creating the job first if it has not been saved.
 
+        A run in which some files failed to copy ends as `FAILED` by design, with the successful copies kept; when awaiting, such a run is returned like any other instead of raising, so its
+        [`files_progress`][hopsworks.execution.Execution.files_progress]
+        can be read for the counters and the failed files.
+
         Parameters:
             await_termination: Whether to block until the run finishes.
 
         Returns:
-            The started execution; its
-            [`files_progress`][hopsworks.execution.Execution.files_progress]
-            carries the copy counters once the run has finished.
+            The started execution, or the finished one when awaiting; its `files_progress` carries the copy counters once the run has finished.
         """
+        from hopsworks_common.core import execution_api
+        from hopsworks_common.engine import execution_engine
+
         if self._job is None:
             self.save()
-        return self._job.run(await_termination=await_termination)
+        execution = self._job.run(await_termination=False)
+        if not await_termination or execution is None:
+            return execution
+        try:
+            finished = execution_engine.ExecutionEngine()._wait_until_finished(
+                self._job, execution
+            )
+        except JobExecutionException:
+            finished = None
+        if finished is None:
+            finished = execution_api.ExecutionApi()._get(self._job, execution.id)
+        return finished
 
     @public
     @property
     def last_stats(self) -> dict[str, Any] | None:
-        """The `filesProgress` of the most recent execution, as [`Execution.files_progress`][hopsworks.execution.Execution.files_progress] describes it: `status`, `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `bytesCopied`, `failedFiles`, `auditFile`, `auditPath` and more; `None` before the first run."""
+        """The `filesProgress` of the most recent execution, as [`Execution.files_progress`][hopsworks.execution.Execution.files_progress] describes it: `status`, `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `bytesCopied`, `failedFiles`, `auditFile`, `auditPath` and more; `None` before the first run and while the latest run has not written its result yet."""
         if self._job is None:
             return None
         from hopsworks_common.core.job_api import JobApi
