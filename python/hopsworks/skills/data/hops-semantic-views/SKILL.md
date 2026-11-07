@@ -1,6 +1,6 @@
 ---
 name: hops-semantic-views
-description: Use when creating or reshaping a semantic view on Hopsworks, the semantic project that agents and Superset 7.0 users read to answer questions with metrics. Scope it to one business domain and the questions it answers, scaffold it from only the feature groups those need, keep it under 100k tokens so it does not swamp an agent's context window, measure it, and split one that grew too large. Auto-invoke for a semantic view, a metric view, a semantic project meant for agents, or metric and dimension lists that come back cut. Input the questions and the feature groups that hold the data; output a compiled semantic project sized for agents.
+description: Use when creating or reshaping a semantic view on Hopsworks, the semantic project that agents and Superset 7.0 users read to answer questions with metrics. Scope it to one business domain and the questions it answers, compose it from semantic models joined through entities, metrics built on metrics (ratio, derived, nested derived, across models) and saved queries, scaffold it from only the feature groups those need, keep it under 100k tokens so it does not swamp an agent's context window, measure it, and split one that grew too large. Auto-invoke for a semantic view, a metric view, a semantic project meant for agents, model, metric or query composition, joins across semantic models, or metric and dimension lists that come back cut. Input the questions and the feature groups that hold the data; output a compiled semantic project sized for agents.
 ---
 
 # Semantic Views on Hopsworks
@@ -49,6 +49,26 @@ Add the YAML and the four lists, and divide by 3.
 The `--json` lists are larger than the CSV the MCP tools return, so the estimate errs on the safe side.
 Measure again after every change that adds metrics, models or dimensions.
 
+## Composition
+
+A view composes at three levels; YAML and the rules for each: [references/composition.md](references/composition.md).
+- **Models:** semantic models join through shared entities into one graph, automatically, at most two hops, never fanning out.
+- **Metrics:** ratio and derived metrics combine metrics from any models; derived metrics nest and take time offsets.
+- **Queries:** one query takes metrics from several models, filters on another metric's value per entity, or runs a saved query refined with its own group-bys and filters.
+
+| Capability | On Hopsworks |
+| --- | --- |
+| Derived metrics from existing metrics | Yes |
+| Derived metrics across logical tables | Yes, across semantic models |
+| Derived metrics referencing other derived metrics | Yes |
+| Relationships between entities | Yes, through `primary`, `unique`, `foreign` and `natural` entities |
+| Automatic joins across semantic models | Yes, across the semantic graph, at most two hops |
+| Semantic view built directly on another semantic view | No; semantic models form a graph within one view, and a model can be repeated in several views |
+| Query multiple semantic models together | Yes |
+| Reuse semantic query results as input | Yes, through SQL from `hops semantic sql` in a dbt model, or a feature group written from a query |
+
+Composition keeps a view small: one shared `customers` model reached through the `customer` entity serves every fact model, and a derived metric replaces a second copy of the data it is computed from.
+
 ## Scope a view
 
 - **One view per business domain or team** (sales, finance, support), named after it, rather than one per warehouse or data source.
@@ -73,6 +93,7 @@ Measure again after every change that adds metrics, models or dimensions.
 1. Write down the questions and pick the domain.
 2. `hops semantic init <domain> --from-fg <fg> ...` with only the feature groups the questions need.
 3. Prune the scaffold: dimensions, entities; uncomment only the metrics needed and give them labels and one-sentence descriptions.
+   Compose the rest from them: ratio and derived metrics across models rather than new measures ([references/composition.md](references/composition.md)).
 4. Add saved queries for the top questions ([hops-semantic](../hops-semantic/SKILL.md) has the format).
 5. `hops semantic compile <name> --wait`, then `hops semantic test <name>`.
 6. Measure; prune or split until the view is under 100k tokens and each list under 50,000 characters.
