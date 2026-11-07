@@ -1488,7 +1488,7 @@ class TestExportJob:
             headers={"X-Semantic-Max-Rows": "1000000"},
             reports=[],
             started=[],
-            fg=MagicMock(name="FeatureGroup", id=None, version=1),
+            fg=MagicMock(name="FeatureGroup", id=None, version=1, description=None),
         )
 
         def control_plane(method, path, **kwargs):
@@ -1565,7 +1565,7 @@ class TestExportJob:
         job.fs.get_or_create_feature_group.assert_called_once_with(
             name="revenue_daily",
             version=1,
-            description="Daily revenue per country",
+            description="Daily revenue per country [semantic export 7/revenue_daily]",
             primary_key=["customer__country"],
             event_time="metric_time__day",
             time_travel_format="DELTA",
@@ -1676,6 +1676,26 @@ class TestExportJob:
         job.fg.insert.assert_not_called()
         assert job.reports[0]["status"] == "TARGET_EXISTS"
         assert job.reports[0]["featureGroupId"] == recorded
+
+    def test_a_feature_group_a_first_run_created_but_did_not_report_is_taken_over(
+        self, job
+    ):
+        job.fg.id = 501
+        job.fg.description = (
+            "Daily revenue per country [semantic export 7/revenue_daily]"
+        )
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert job.write_options == {"replace": True}
+        assert (report["status"], report["featureGroupId"]) == ("SUCCEEDED", 501)
+
+    def test_another_exports_marker_does_not_take_a_feature_group_over(self, job):
+        job.fg.id = 501
+        job.fg.description = "[semantic export 7/revenue_weekly]"
+
+        with pytest.raises(SemanticLayerException, match="did not create it"):
+            semantic_layer_api._run_export(7, "revenue_daily", 3)
 
     def test_a_failure_is_reported_and_raised(self, job):
         job.fg.insert.side_effect = RuntimeError("HopsFS is down")

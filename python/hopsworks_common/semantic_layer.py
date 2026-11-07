@@ -1166,7 +1166,7 @@ class SemanticProject:
     def run_export(self, name: str, wait: bool = False) -> Execution:
         """Run an export now, outside its schedule, through its job.
 
-        The job runs as the semantic project's creator and records its outcome in the export's `last_status`; runs of one export never overlap, so a run started while another is going waits for it.
+        The job runs as the semantic project's creator and records its outcome in the export's `last_status`; runs of one export never overlap, so starting a run while another is going is refused.
         Only a Data Owner of the project can start one.
 
         Parameters:

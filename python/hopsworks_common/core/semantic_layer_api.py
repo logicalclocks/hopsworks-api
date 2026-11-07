@@ -865,18 +865,24 @@ def _write_export(
             f"Export '{export.name}' has a lookback, which needs the saved query to group by metric_time."
         )
     fs = client._get_connection()._get_feature_store(api._project_name)
+    # Lets a later run recognise a feature group a first run created but could not report.
+    marker = f"[semantic export {sp.id}/{export.name}]"
+    description = (
+        saved_query.description
+        or f"Export {export.name} of saved query {saved_query.name} of semantic project {sp.name}."
+    )
     fg = fs.get_or_create_feature_group(
         name=export.feature_group,
         version=export.version or 1,
-        description=saved_query.description
-        or f"Export {export.name} of saved query {saved_query.name} of semantic project {sp.name}.",
+        description=f"{description} {marker}",
         primary_key=[c for c in group_bys if c != event_time] or group_bys,
         event_time=event_time,
         time_travel_format="DELTA",
         online_enabled=False,
         statistics_config=False,
     )
-    if fg.id is not None and fg.id != export.feature_group_id:
+    unreported = export.feature_group_id is None and marker in (fg.description or "")
+    if fg.id is not None and fg.id != export.feature_group_id and not unreported:
         raise SemanticLayerException(
             f"Feature group {export.feature_group} version {fg.version} exists and export "
             f"'{export.name}' did not create it, so nothing was written. Delete it, or give "
