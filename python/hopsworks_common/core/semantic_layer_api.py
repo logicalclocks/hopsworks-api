@@ -821,6 +821,7 @@ def _run_export(
         "featureGroupId": export.feature_group_id,
         "rows": None,
     }
+    api._report_export(sp, export_name, {**report, "status": "RUNNING"})
     try:
         _write_export(api, sp, export, logical_time, report)
     except Exception as err:

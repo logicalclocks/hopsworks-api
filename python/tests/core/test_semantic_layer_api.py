@@ -1487,6 +1487,7 @@ class TestExportJob:
             rows=self.ROWS,
             headers={"X-Semantic-Max-Rows": "1000000"},
             reports=[],
+            started=[],
             fg=MagicMock(name="FeatureGroup", id=None, version=1),
         )
 
@@ -1494,7 +1495,10 @@ class TestExportJob:
             if path[-1] == "exports":
                 return {"items": [state.export]}
             if path[-1] == "status":
-                state.reports.append(json.loads(kwargs["data"]))
+                body = json.loads(kwargs["data"])
+                (
+                    state.started if body["status"] == "RUNNING" else state.reports
+                ).append(body)
                 return None
             return SP_JSON
 
@@ -1517,6 +1521,7 @@ class TestExportJob:
         state.fs.get_or_create_feature_group.return_value = state.fg
 
         def insert(frame, write_options):
+            state.started_before_write = len(state.started)
             state.written = frame
             state.write_options = write_options
             if state.fg.id is None:
@@ -1531,6 +1536,13 @@ class TestExportJob:
         semantic_layer_api._run_export(7, "revenue_daily", 3)
 
         assert job.reports[-1]["parentFeatureGroupIds"] == [11, 12]
+
+    def test_a_run_reports_running_before_it_writes(self, http, job):
+        semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert job.started_before_write == 1
+        assert job.started[0]["status"] == "RUNNING"
+        assert (job.started[0]["generation"], job.started[0]["executionId"]) == (3, 77)
 
     def test_a_query_that_read_no_feature_group_reports_no_parents(self, http, job):
         semantic_layer_api._run_export(7, "revenue_daily", 3)
