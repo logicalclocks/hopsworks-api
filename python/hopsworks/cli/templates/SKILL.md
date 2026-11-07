@@ -245,11 +245,16 @@ hops superset dataset list
 hops superset dataset create --database-id N --table-name T [--schema S] [--sql "SELECT ..."]
 
 hops superset chart list
-hops superset chart create --name X --viz-type bar --datasource-id N --params '{"metrics":["count"]}'
+hops superset chart types [TYPE]               # chart types; one type's config schema
+hops superset chart generate --dataset N --type xy --x event_time --y 'SUM(amount)' [--group-by c] [--time-grain P1D] [--name X] [--preview]
+hops superset chart generate --dataset N --config @chart.json
 
 hops superset dashboard list
 hops superset dashboard create "My Dashboard" [--published]
+hops superset dashboard update N [--title T] [--published] [--refresh 300] [--metadata '{...}'] [--css @f]
 ```
+
+`chart generate` and `dashboard update` go through Superset 7.0's MCP service: Superset validates the config against the dataset, and `dashboard update` changes only the fields given.
 
 ## Semantic Layer
 

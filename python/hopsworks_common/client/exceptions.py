@@ -324,6 +324,14 @@ class TrinoException(Exception):
     """Generic Trino exception."""
 
 
+@public("hopsworks.client.exceptions.SupersetException")
+class SupersetException(Exception):
+    """Superset refused or failed a chart or dashboard request made through its MCP service.
+
+    The message is Superset's own, such as a column the dataset lacks or a dashboard the user may not edit.
+    """
+
+
 @public("hopsworks.client.exceptions.SemanticLayerException")
 class SemanticLayerException(Exception):
     """A Hopsworks Semantic Layer request was refused, or named a semantic project that does not exist.

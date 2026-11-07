@@ -31,6 +31,39 @@ The `hops superset {dataset,chart,dashboard} {list,info,create,delete}` CLI is t
 quickest path to list/inspect/clean up (delete takes `--yes`). Re-run
 `hops superset dashboard list` after building to verify the result.
 
+## Charts and dashboard edits without Python
+
+On Superset 7.0, `hops superset chart generate` creates a chart from a short typed config.
+Superset's MCP service compiles it into the viz params and checks every column and metric against the dataset before it saves anything, so no `params` JSON (§4) is needed.
+Prefer it to `create_chart` and to `chart create --params`.
+
+```bash
+hops superset chart types                    # chart types and their required fields
+hops superset chart types xy                 # one type's full config schema, with examples
+hops superset chart generate --dataset 12 --type xy --x event_time \
+  --y 'SUM(amount)' --group-by category --time-grain P1D --name 'Spend per day'
+hops superset chart generate --dataset 12 --type big_number --metric 'COUNT(*)'
+hops superset chart generate --dataset 12 --type table --columns 'category,SUM(amount)' \
+  --filter 'country IN SE,NO' --filter 'amount > 100'
+hops superset chart generate --dataset 12 --config @chart.json   # any type, full schema
+hops superset chart generate --dataset 12 --type pie --dimension category --metric 'SUM(amount)' --preview
+```
+
+- `--y` and `--metric`: `SUM(col)` (also COUNT, AVG, MIN, MAX, COUNT_DISTINCT, MEDIAN) aggregates a column, a bare name is a saved metric of the dataset, anything else (`COUNT(*)`) is a SQL expression.
+- `--preview` leaves the chart unsaved and prints an Explore link; without it the chart is saved and its ID and link printed.
+- A rejected config fails with Superset's message, such as the column it could not find; fix the flag and rerun.
+
+`hops superset dashboard update ID` changes only the fields given and leaves the rest:
+
+```bash
+hops superset dashboard update 7 --title 'Fraud overview' --published --refresh 300
+hops superset dashboard update 7 --metadata '{"color_scheme": "supersetColors"}'   # merged into json_metadata
+hops superset dashboard update 7 --css @print.css --filter-bar horizontal --cross-filters
+```
+
+Put a generated chart on a dashboard with `api.update_chart(chart_id, dashboards=[dashboard_id])` (§1), then lay it out as §5 describes.
+Both commands run only inside the cluster (a Hopsworks terminal or job), like the rest of `hops superset`.
+
 ## Ask the user (only when state is ambiguous)
 
 - Which feature group (and version) to chart.
@@ -74,7 +107,9 @@ Methods available on `api`:
 | Databases | `list_databases()` |
 | Datasets | `create_dataset`, `get_dataset`, `list_datasets`, `update_dataset`, `delete_dataset` |
 | Charts | `create_chart`, `get_chart`, `list_charts`, `update_chart`, `delete_chart` |
+| Charts, typed (Superset 7.0 MCP) | `generate_chart(dataset_id, config, name=None, save=True)`, `chart_type_schema(chart_type)` |
 | Dashboards | `create_dashboard`, `get_dashboard`, `list_dashboards`, `update_dashboard`, `delete_dashboard` |
+| Dashboards, partial (Superset 7.0 MCP) | `patch_dashboard(dashboard_id, **fields)`: only the given fields, `json_metadata_overrides` merged |
 
 Signatures (from the Hopsworks SDK):
 
