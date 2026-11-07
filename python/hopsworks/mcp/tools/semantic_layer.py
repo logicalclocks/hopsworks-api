@@ -144,10 +144,8 @@ def _semantic_projects() -> list[SemanticProject]:
     return result
 
 
-def _query_csv(semantic_project: str, metrics: list[str], **kwargs: Any) -> str:
-    df = _semantic_project(semantic_project).query(
-        metrics, dataframe_type="pandas", **kwargs
-    )
+def _query_csv(semantic_project: str, **kwargs: Any) -> str:
+    df = _semantic_project(semantic_project).query(dataframe_type="pandas", **kwargs)
     rows = df.astype(object).where(df.notna(), None)
     return _csv(list(df.columns), rows.itertuples(index=False, name=None))
 
@@ -165,10 +163,12 @@ class SemanticLayerTools:
         for tool in (
             self.list_semantic_projects,
             self.list_metrics,
+            self.list_saved_queries,
             self.get_dimensions,
             self.get_entities,
             self.get_dimension_values,
             self.query_metrics,
+            self.query_saved_query,
             self.get_metrics_compiled_sql,
             self.get_semantic_project_tags,
         ):
@@ -222,6 +222,31 @@ class SemanticLayerTools:
         return _csv(
             ["name", "type", "label", "description", "tags"],
             [[m.name, m.type, m.label, m.description, m.tags] for m in metrics],
+        )
+
+    async def list_saved_queries(
+        self, semantic_project: str, ctx: Context | None = None
+    ) -> str:
+        """List the saved queries a semantic project defines, as CSV: named metric queries its owners agreed on, run with query_saved_query.
+
+        Parameters:
+            semantic_project: Name of the semantic project.
+            ctx: The MCP context, provided automatically.
+
+        Returns:
+            CSV with the columns name, label, description, metrics and group_by, the last two space-separated.
+        """
+        if ctx:
+            await ctx.info(f"Listing the saved queries of {semantic_project}...")
+        saved_queries = await run_sdk(
+            lambda: _semantic_project(semantic_project).list_saved_queries()
+        )
+        return _csv(
+            ["name", "label", "description", "metrics", "group_by"],
+            [
+                [q.name, q.label, q.description, q.metrics, q.group_by]
+                for q in saved_queries
+            ],
         )
 
     async def get_dimensions(
@@ -347,10 +372,45 @@ class SemanticLayerTools:
         return await run_sdk(
             _query_csv,
             semantic_project,
-            metrics,
+            metrics=metrics,
             group_by=group_by,
             where=where,
             order_by=order_by,
+            limit=limit,
+        )
+
+    async def query_saved_query(
+        self,
+        semantic_project: str,
+        name: str,
+        group_by: list[str] | None = None,
+        where: list[str] | None = None,
+        limit: int | None = 100,
+        ctx: Context | None = None,
+    ) -> str:
+        """Run a saved query on Trino as the logged-in user and return its rows as CSV.
+
+        Prefer a saved query that answers the question to composing one with query_metrics: its metrics, group-bys and filters are the ones its owners agreed on.
+
+        Parameters:
+            semantic_project: Name of the semantic project.
+            name: Name of the saved query, from list_saved_queries.
+            group_by: Qualified group-bys that replace the saved query's own, such as `metric_time__month`.
+            where: Filters in MetricFlow's syntax, added to the saved query's own with AND.
+            limit: Maximum number of rows; it replaces the saved query's own limit.
+            ctx: The MCP context, provided automatically.
+
+        Returns:
+            The rows as CSV, one column per group-by and metric: the whole rows within MAX_RESPONSE_CHARS characters, then a line saying so when some were left out.
+        """
+        if ctx:
+            await ctx.info(f"Running the saved query {name} on {semantic_project}...")
+        return await run_sdk(
+            _query_csv,
+            semantic_project,
+            saved_query=name,
+            group_by=group_by,
+            where=where,
             limit=limit,
         )
 

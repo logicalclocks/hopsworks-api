@@ -34,6 +34,7 @@ from hopsworks_common.semantic_layer import (
     SemanticGroupBy,
     SemanticIssue,
     SemanticMetric,
+    SemanticSavedQuery,
     SemanticServing,
 )
 
@@ -82,12 +83,14 @@ def test_every_tool_registers_with_the_semantic_layer_tag():
     SemanticLayerTools(mcp)
 
     tags = [call.kwargs["tags"] for call in mcp.tool.call_args_list]
-    assert len(tags) == 11
+    assert len(tags) == 13
     assert all("semantic_layer" in t for t in tags)
     assert sum("write" in t for t in tags) == 3
     tools = [call.args[0].__name__ for call in mcp.tool.return_value.call_args_list]
     registered = dict(zip(tools, tags, strict=True))
     assert {"write", "stateful"} <= set(registered["create_dashboard_from_metrics"])
+    for tool in ("list_saved_queries", "query_saved_query"):
+        assert set(registered[tool]) == {"semantic_layer", "read", "stateful"}
 
 
 def test_list_semantic_projects_reports_what_each_serves(tools, sl, sales):
@@ -209,13 +212,82 @@ def test_query_metrics_returns_the_rows_as_csv(tools, sl, sales):
 
     assert _rows(text) == [["metric_time__month", "revenue"], ["2026-01-01", "100.5"]]
     sales.query.assert_called_once_with(
-        ["revenue"],
+        metrics=["revenue"],
         group_by=["metric_time__month"],
         where=["{{ Dimension('customer__country') }} = 'SE'"],
         order_by=["-revenue"],
         limit=100,
         dataframe_type="pandas",
     )
+
+
+def test_list_saved_queries_is_csv_with_space_separated_lists(tools, sl, sales):
+    sales.list_saved_queries.return_value = [
+        SemanticSavedQuery(
+            name="revenue_by_country",
+            label="Revenue by country",
+            description="Monthly, per country",
+            metrics=["revenue", "orders"],
+            group_by=["metric_time__month", "customer__country"],
+        ),
+        SemanticSavedQuery(name="all_revenue", metrics=["revenue"]),
+    ]
+    ctx = mock.AsyncMock()
+
+    rows = _rows(_call(tools.list_saved_queries("sales", ctx=ctx)))
+
+    assert rows == [
+        ["name", "label", "description", "metrics", "group_by"],
+        [
+            "revenue_by_country",
+            "Revenue by country",
+            "Monthly, per country",
+            "revenue orders",
+            "metric_time__month customer__country",
+        ],
+        ["all_revenue", "", "", "revenue", ""],
+    ]
+    ctx.info.assert_awaited()
+
+
+def test_query_saved_query_runs_it_off_the_event_loop_and_returns_csv(tools, sl, sales):
+    callers = []
+
+    def query(**kwargs):
+        callers.append(threading.current_thread())
+        return pd.DataFrame({"customer__country": ["SE"], "revenue": [10.0]})
+
+    sales.query.side_effect = query
+
+    text = _call(
+        tools.query_saved_query(
+            "sales",
+            "revenue_by_country",
+            where=["{{ Dimension('customer__country') }} = 'SE'"],
+        )
+    )
+
+    assert _rows(text) == [["customer__country", "revenue"], ["SE", "10.0"]]
+    sales.query.assert_called_once_with(
+        saved_query="revenue_by_country",
+        group_by=None,
+        where=["{{ Dimension('customer__country') }} = 'SE'"],
+        limit=100,
+        dataframe_type="pandas",
+    )
+    assert callers[0] is not threading.main_thread()
+
+
+def test_an_unknown_saved_query_raises_the_gateway_error(tools, sl, sales):
+    sales.query.side_effect = SemanticLayerException(
+        "not found",
+        status_code=404,
+        error_code="SEMANTIC_LAYER_NOT_FOUND",
+        error_msg="no saved query named 'nope'",
+    )
+
+    with pytest.raises(SemanticLayerException, match="not found"):
+        _call(tools.query_saved_query("sales", "nope"))
 
 
 def test_a_long_answer_is_cut_at_a_line_and_says_so(tools, sl, sales, monkeypatch):

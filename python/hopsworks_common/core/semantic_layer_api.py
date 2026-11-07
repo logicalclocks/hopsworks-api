@@ -36,9 +36,14 @@ from hopsworks_common.decorators import _uses_pyarrow
 
 
 if TYPE_CHECKING:
+    import datetime
+    from collections.abc import Callable, Mapping
+
+    import pandas as pd
     import pyarrow as pa
     import requests
     from hopsworks_common import project
+    from hsfs.feature_group import FeatureGroup
 
 
 _logger = logging.getLogger(__name__)
@@ -63,6 +68,8 @@ _HINTS = {
     "SEMANTIC_LAYER_NO_VALID_BUILD": "Compile the semantic project and fix its errors: queries need one valid build.",
     "SEMANTIC_LAYER_FORBIDDEN": "The caller must be a member of the project, with an API key that has the FEATURESTORE and TRINO scopes.",
 }
+_SPINE_GRAINS = ("second", "minute", "hour", "day", "week", "month", "quarter", "year")
+_SUB_DAY_GRAINS = frozenset({"second", "minute", "hour"})
 
 
 @public("hopsworks.core.semantic_layer_api.SemanticLayerApi")
@@ -206,6 +213,71 @@ class SemanticLayerApi:
             )
         _client = client._get_instance()
         _client._send_request("DELETE", self._path(sp.id))
+
+    # endregion
+
+    # region Time spines
+
+    @public
+    @usage._method_logger
+    def create_time_spine(
+        self,
+        start: str | datetime.date,
+        end: str | datetime.date,
+        granularity: Literal[
+            "second", "minute", "hour", "day", "week", "month", "quarter", "year"
+        ] = "day",
+        custom_granularities: Mapping[str, str | Callable[[Any], Any]] | None = None,
+    ) -> FeatureGroup:
+        """Write the time spine that cumulative metrics, offsets, `join_to_timespine` and custom granularities join to.
+
+        The spine is the offline feature group `time_spine_<granularity>`, version 1, with one row per period from `start` through `end`.
+        Its primary key `date_<granularity>` holds the start of each period: a date for a day or a coarser grain, a timestamp below a day.
+        A semantic project's time spine model at that grain binds the feature group by this name, unless its `config.meta.hopsworks.feature_group` names another.
+        When the feature group exists the rows are inserted into it, so a wider range extends the spine, as long as the custom granularities are the ones it already has.
+        The spine holds one row per period, so a fine grain over a long range is large: ten years are 3,653 days but 315 million seconds.
+
+        Example: A daily spine with a fiscal quarter and a fiscal year
+            ```python
+            sl = project.get_semantic_layer_api()
+            sl.create_time_spine(
+                "2020-01-01",
+                "2030-12-31",
+                custom_granularities={
+                    "fiscal_quarter": "Q-JAN",
+                    "fiscal_year": lambda day: f"FY{day.year + (day.month > 1)}",
+                },
+            )
+            ```
+
+        Parameters:
+            start: First day or instant of the spine, as an ISO-8601 string, a date or a datetime; it is moved back to the start of its period.
+            end: Last day or instant of the spine, included.
+            granularity: Grain of the spine; weeks start on Monday.
+            custom_granularities:
+                One column per custom granularity the time spine model declares, column name to definition.
+                A string is a pandas period frequency, such as `"Q-JAN"` for the quarters of a fiscal year that ends in January, and each row holds the start of its period at that frequency, typed like `date_<granularity>`.
+                A callable takes each row's `date_<granularity>` value and returns that row's value of the column.
+
+        Returns:
+            The feature group, with the rows written.
+
+        Raises:
+            ValueError: For a granularity not listed, a `start` or `end` that is not a date, an `end` before `start`, or a string that is not a pandas period frequency.
+            hopsworks.client.exceptions.RestAPIError: If the backend fails to create or write the feature group, for example when an existing spine has other columns.
+        """
+        df = _time_spine_frame(start, end, granularity, custom_granularities or {})
+        fs = client._get_connection()._get_feature_store(self._project_name)
+        fg = fs.get_or_create_feature_group(
+            name=f"time_spine_{granularity}",
+            version=1,
+            description=f"Time spine, one row per {granularity}, for the semantic layer.",
+            primary_key=[f"date_{granularity}"],
+            online_enabled=False,
+            statistics_config=False,
+        )
+        fg.insert(df, wait=True)
+        return fg
 
     # endregion
 
@@ -474,6 +546,20 @@ class SemanticLayerApi:
             for metric in result.get("metrics") or []
         ]
 
+    def _saved_queries(
+        self, sp: semantic_layer.SemanticProject
+    ) -> list[semantic_layer.SemanticSavedQuery]:
+        result = self._gateway_request("GET", sp, "saved-queries").json() or []
+        # The contract's body is the bare list; take it also wrapped as the other discovery answers
+        # are, with the build and its staleness.
+        if isinstance(result, dict):
+            _warn_if_stale(sp, result.get("stale"), result.get("buildId"))
+            result = result.get("savedQueries") or []
+        return [
+            semantic_layer.SemanticSavedQuery.from_response_json(saved_query)
+            for saved_query in result
+        ]
+
     def _group_bys(
         self,
         sp: semantic_layer.SemanticProject,
@@ -589,6 +675,59 @@ def _semantic_layer_error(
         error_msg=error_msg,
         usr_msg=usr_msg,
     )
+
+
+def _time_spine_frame(
+    start: str | datetime.date,
+    end: str | datetime.date,
+    granularity: str,
+    custom_granularities: Mapping[str, str | Callable[[Any], Any]],
+) -> pd.DataFrame:
+    import pandas as pd
+
+    # Offsets, not frequency strings, since the strings differ between pandas 1 and 2.
+    periods = {
+        "second": pd.offsets.Second(),
+        "minute": pd.offsets.Minute(),
+        "hour": pd.offsets.Hour(),
+        "day": pd.offsets.Day(),
+        # Weeks ending on Sunday start on Monday, as MetricFlow's do.
+        "week": pd.offsets.Week(weekday=6),
+        "month": pd.offsets.MonthEnd(),
+        "quarter": pd.offsets.QuarterEnd(startingMonth=12),
+        "year": pd.offsets.YearEnd(),
+    }
+    if granularity not in periods:
+        raise ValueError(
+            f"Granularity {granularity!r} is not one of {', '.join(_SPINE_GRAINS)}."
+        )
+    starts = pd.Series(
+        pd.period_range(
+            pd.Timestamp(start), pd.Timestamp(end), freq=periods[granularity]
+        ).start_time
+    )
+    if starts.empty:
+        raise ValueError(
+            f"The end of the time spine, {end}, is before its start, {start}."
+        )
+
+    def typed(instants: pd.Series) -> pd.Series:
+        return instants if granularity in _SUB_DAY_GRAINS else instants.dt.date
+
+    column = f"date_{granularity}"
+    df = pd.DataFrame({column: typed(starts)})
+    for name, definition in custom_granularities.items():
+        if callable(definition):
+            df[name] = df[column].map(definition)
+            continue
+        try:
+            df[name] = typed(starts.dt.to_period(definition).dt.start_time)
+        except ValueError as err:
+            raise ValueError(
+                f"Custom granularity '{name}': {definition!r} is not a pandas period "
+                "frequency, such as 'Q-JAN'."
+            ) from err
+    return df
 
 
 @_uses_pyarrow

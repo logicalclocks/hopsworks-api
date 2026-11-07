@@ -1,6 +1,6 @@
 ---
 name: hops-semantic
-description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Scaffold a semantic project from feature groups with `hops semantic init` (in HopsFS or a new private GitHub repository), author semantic YAML (semantic_models, measures, dimensions, entities, metrics) next to a dbt project, map semantic models to feature groups, compile and validate with `hops semantic compile`, test every metric on Trino with `hops semantic test`, tag semantic projects and metrics with schematised tags, list metrics, dimensions, entities and dimension values, get SQL or rows for a metric query, and build Superset dashboards of metrics, from the CLI, the SDK or the MCP agent tools. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input feature groups or a dbt project over them; output a compiled semantic project and metric query results.
+description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Scaffold a semantic project from feature groups with `hops semantic init` (in HopsFS or a new private GitHub repository), author semantic YAML (semantic_models, measures, dimensions, entities, simple, ratio, derived, cumulative and conversion metrics, saved queries) next to a dbt project, write the time spine with `hops semantic time-spine create`, map semantic models to feature groups, compile and validate with `hops semantic compile`, test every metric on Trino with `hops semantic test`, tag semantic projects and metrics with schematised tags, list metrics, dimensions, entities and dimension values, get SQL or rows for a metric query or a saved query, and build Superset dashboards of metrics, from the CLI, the SDK or the MCP agent tools. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input feature groups or a dbt project over them; output a compiled semantic project and metric query results.
 ---
 
 # Semantic Layer on Hopsworks
@@ -39,11 +39,8 @@ hops semantic init sales --from-fg orders --repo new               # a new priva
 hops semantic init sales --repo https://github.com/acme/metrics.git   # an existing repository, cloned and registered as it is
 ```
 
-- Each feature group becomes a semantic model pinned to its version (`config.meta.hopsworks.feature_group` and `version`): its primary key is the primary entity, a column named like another model's single-column key a foreign entity, its `event_time` the time dimension (day grain) behind `metric_time`, each string feature a categorical dimension, and a row count and a sum per numeric feature its measures.
 - One simple metric per measure is written commented out: uncomment the ones to serve, give them labels and descriptions, then `hops semantic compile <name> --wait`.
-- A feature group without an `event_time` gets dimensions but no measures, since every measure needs a time dimension; it still serves as a dimension table that other models join to.
-- `--repo new` needs `gh auth status` to pass (`github-login` in a Hopsworks terminal). It creates `hops-semantic-<name>`, or the next free name, pushes the scaffold, clones it into `Resources/semantic/<repository>`, and registers the clone, so a pull recompiles and each build records its commit. Hopsworks clones with the GitHub token in your account (`hops git provider list`); when there is none, init registers `gh auth token` after asking. `--yes` answers both questions.
-- `--path` moves the scaffold; `--mode PINNED` and `--tag NAME=VALUE` work as on `hops semantic create`.
+- How feature groups map to entities, dimensions and measures, `--repo new` and the other flags: [references/init.md](references/init.md).
 
 ## Semantic models are feature groups
 
@@ -140,10 +137,10 @@ Rules that keep a compile valid:
 - **Names** are unique, and lower-cased on compile; a group-by is addressed as `<entity>__<dimension>` (`order__status`, `customer__country`), and every metric's time axis as `metric_time`.
 - **Joins** follow entities, at most two hops, and never fan out: `orders` reaches `customer__country` through the `customer` entity because `customers` has it as its primary entity.
 - **Time dimensions** need `type_params.time_granularity`; every measure needs an `agg_time_dimension`, from `defaults` or its own.
-- **Supported now:** simple, ratio and derived metrics, metric `filter:`, `create_metric: true`, and the aggregations `sum`, `count`, `count_distinct`, `min`, `max`, `average`, `sum_boolean` and `percentile` with `agg_params: {percentile: <0..1>, use_approximate_percentile: true}`; Trino has only approximate continuous percentiles, so an exact or discrete one is a `METRIC` compile error.
+- **Metric types:** simple, ratio, derived, cumulative (`window`, `grain_to_date`) and conversion metrics, derived inputs with `offset_window`/`offset_to_grain`, `fill_nulls_with`, `join_to_timespine`, custom granularities, semi-additive measures, SCD type II dimensions, `Metric(...)` in a filter, and `saved_queries:`. YAML for each: [references/metric-types.md](references/metric-types.md).
+- **Time spine:** cumulative metrics, offsets, `join_to_timespine` and custom granularities need the feature group `time_spine_day`, written once with `hops semantic time-spine create --start 2020-01-01 --end 2030-12-31` and declared as a dbt time spine model; without it such a metric fails the compile with `TIME_SPINE`.
+- **Aggregations:** `sum`, `count`, `count_distinct`, `min`, `max`, `average`, `sum_boolean` and `percentile` with `agg_params: {percentile: <0..1>, use_approximate_percentile: true}`; Trino has only approximate continuous percentiles, so an exact or discrete one is a `METRIC` compile error.
 - **Median:** `agg: median` compiles to an exact percentile and so fails on Trino; write it as `agg: percentile` with `agg_params: {percentile: 0.5, use_approximate_percentile: true}`.
-- **Not yet:** cumulative and conversion metrics, `offset_window`/`offset_to_grain`, time spines, `fill_nulls_with`, `join_to_timespine`, SCD dimensions, semi-additive measures, and `Metric(...)` inside a filter. They compile to an error that says so.
-- **Saved queries** (`saved_queries:`) are ignored, with a `PHASE` warning, until a later release.
 
 ## Compile and deploy
 
@@ -152,7 +149,7 @@ hops semantic create sales --path Jupyter/analytics/dbt        # register; the f
 hops semantic create sales --path Jupyter/analytics/dbt --tag ownership='{"owner": "finance"}'   # with the mandatory tags
 hops semantic compile sales --wait                             # see errors and warnings now
 hops semantic compile sales --fail-on-error                    # CI: exit 1 on an INVALID or FAILED build
-hops semantic test sales                                       # CI: compile, then run every metric once on Trino; exit 1 on any failure
+hops semantic test sales                                       # CI: compile, then run every metric once on Trino (by metric_time if it requires it); exit 1 on any failure
 hops semantic test sales --no-compile                          # PINNED: test the promoted build; a plain test exits 1 on an unpromoted build
 hops semantic builds sales                                     # * marks the build answering queries
 hops semantic build sales 13                                   # one build's errors and warnings at file:line
@@ -216,46 +213,25 @@ df = sales.query(
 sql = sales.sql(metrics=["revenue"], group_by=["metric_time__month"])
 ```
 
+A saved query is a named query from the YAML; `--group-by`, `--order-by` and `--limit` replace its own, and `--where` adds to its filters:
+
+```bash
+hops semantic saved-queries sales                                        # NAME, LABEL, METRICS, GROUP-BYS
+hops semantic query sales --saved-query revenue_by_country --group-by metric_time__quarter
+```
+
+```python
+df = sales.query(saved_query="revenue_by_country", limit=10)   # its own metrics; metrics= as well raises ValueError
+```
+
+- A metric with `requires_metric_time` (`hops semantic metrics <name> --json`), a cumulative metric with a window or grain-to-date or a derived metric with an offset, must be grouped by `metric_time`.
 - Queries run on Trino as the caller's own `<project>__<user>` principal, so they see exactly what that member can read.
 - The gateway caps a result at 1,000,000 rows by default; add a `limit` or narrow the query.
 - It works from outside the cluster with an API key, through the same host as `hopsworks.login()`.
 
 ## Tags
 
-Semantic projects and metrics carry schematised tags, as feature groups and jobs do; an administrator defines the tag schemas, and Hopsworks Enterprise is needed.
-
-```bash
-hops semantic tag set sales ownership '{"owner": "finance", "certified": true}'
-hops semantic tag list sales
-hops semantic tag get sales ownership
-hops semantic tag delete sales ownership
-hops search --type metric --tag ownership:owner=finance        # tag filters work on metrics and semantic projects
-```
-
-```python
-sales.add_tag("ownership", {"owner": "finance"})
-sales.get_tags()                                   # {"ownership": {"owner": "finance"}}
-sl.create_project("sales", "Resources/semantic/sales", tags={"ownership": {"owner": "finance"}})
-```
-
-A metric's tags live in its definition, under `config.meta.hopsworks.tags`, tag schema name to value, so they change with the YAML and its git history:
-
-```yaml
-metrics:
-  - name: revenue
-    type: simple
-    type_params: {measure: revenue}
-    config:
-      meta:
-        hopsworks:
-          tags:
-            ownership: {"owner": "finance", "certified": true}
-            domain: "sales"
-```
-
-- A compile checks every metric's tags against the tag schemas; an unknown schema (`METRIC_TAG_UNKNOWN_SCHEMA`), a value that does not match it (`METRIC_TAG_INVALID_VALUE`) or a missing mandatory metric tag (`METRIC_TAG_MANDATORY_MISSING`) is an error at the metric's file, so the build is `INVALID` and the last valid build keeps serving.
-- Mandatory tags for semantic projects are checked on create: pass them with `--tag` or `tags=`.
-- Only metrics take tags in the YAML; semantic models, dimensions and entities do not.
+Semantic projects and metrics carry schematised tags (`hops semantic tag set|list|get|delete`, `add_tag`), and a metric's tags live in its YAML under `config.meta.hopsworks.tags`, checked on every compile: [references/tags.md](references/tags.md).
 
 ## Dashboards
 
@@ -263,6 +239,7 @@ On Superset 7.0, Hopsworks builds a dashboard of metrics over the semantic proje
 
 ```bash
 hops semantic dashboard sales --metrics revenue,orders --group-by customer__country --title "Sales overview"   # prints its URL
+hops semantic dashboard sales --saved-query revenue_by_country   # over the saved query's view, sales.revenue_by_country
 ```
 
 The SDK's `create_dashboard` and `explore_url`, the charts, the errors that mean Superset 6, and other charts of metrics: [hops-superset/references/semantic_layer.md](../../dashboards/hops-superset/references/semantic_layer.md).
@@ -277,10 +254,12 @@ Answer metric questions with these tools rather than SQL over feature groups: th
 | Error | Meaning | Fix |
 |---|---|---|
 | `SEMANTIC_LAYER_NO_VALID_BUILD` (409) | No build has compiled valid yet | `hops semantic compile <name> --wait`, fix the issues |
-| `SEMANTIC_LAYER_INVALID_QUERY` (400) | Unknown metric, group-by or filter, or a group-by the metrics cannot reach | `hops semantic dimensions <name> --metrics ...` |
+| `SEMANTIC_LAYER_INVALID_QUERY` (400) | Unknown metric, group-by or filter, a group-by the metrics cannot reach, or a cumulative or offset metric without `metric_time` | `hops semantic dimensions <name> --metrics ...` |
+| `SEMANTIC_LAYER_NOT_FOUND` (404) | Unknown saved query | `hops semantic saved-queries <name>` |
 | `SEMANTIC_LAYER_EXECUTION_FAILED` (502) | Trino rejected the generated SQL; its message follows | Check the FG data and column types; `hops semantic sql` shows the SQL |
 | `SEMANTIC_LAYER_FORBIDDEN` (403) | Not a project member, or the API key lacks `FEATURESTORE` or `TRINO` | Add the scope or the member |
 | `SemanticBuildException` | `compile(wait=True)` ended `INVALID` or `FAILED` | Read `err.issues` (file, line, rule, message) |
+| `TIME_SPINE` build issue | A metric needs a time spine and none is bound | `hops semantic time-spine create`, then a time spine model ([references/metric-types.md](references/metric-types.md)) |
 | `METRIC_TAG_*` build issue | A metric's tag names no schema, does not match it, or a mandatory metric tag is missing | Fix `config.meta.hopsworks.tags` on that metric |
 
 ## Related skills

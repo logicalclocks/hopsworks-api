@@ -2,9 +2,11 @@
 
 Wraps ``project.get_semantic_layer_api()``. The query verbs follow MetricFlow's
 ``mf`` CLI: metrics and group-bys are comma-separated, ``--where`` repeats,
-``--order-by`` (alias ``--order``) sorts descending on a leading ``-``, and
-``query --explain`` prints the SQL instead of running it.
+``--order-by`` (alias ``--order``) sorts descending on a leading ``-``,
+``query --explain`` prints the SQL instead of running it, and ``--saved-query``
+runs a saved query instead of ``--metrics``.
 ``init`` scaffolds a dbt project over feature groups, optionally in a new private GitHub repository cloned through Hopsworks git.
+``time-spine create`` writes the time spine feature group that cumulative metrics and offsets join to.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from hopsworks_common.client.exceptions import (
     SemanticBuildException,
     SemanticLayerException,
 )
+from hopsworks_common.core.semantic_layer_api import _SPINE_GRAINS
 
 
 if TYPE_CHECKING:
@@ -834,6 +837,34 @@ def metrics_cmd(
     )
 
 
+@semantic_group.command("saved-queries")
+@click.argument("name")
+@click.pass_context
+def saved_queries_cmd(ctx: click.Context, name: str) -> None:
+    """List the saved queries of a semantic project's current build; run one with --saved-query on query or sql.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+    """
+    saved_queries = _semantic_project(ctx, name).list_saved_queries()
+    if output.JSON_MODE:
+        output.print_json([q.to_dict() for q in saved_queries])
+        return
+    output.print_table(
+        ["NAME", "LABEL", "METRICS", "GROUP-BYS"],
+        [
+            [
+                q.name,
+                q.label or "-",
+                ",".join(q.metrics) or "-",
+                ",".join(q.group_by) or "-",
+            ]
+            for q in saved_queries
+        ],
+    )
+
+
 @semantic_group.command("dimensions")
 @click.argument("name")
 @click.option(
@@ -946,9 +977,15 @@ def _query_options(fn: Callable) -> Callable:
         click.option(
             "--metrics",
             multiple=True,
-            required=True,
             callback=_split,
-            help="Metrics, comma-separated: --metrics revenue,order_count.",
+            help="Metrics, comma-separated: --metrics revenue,order_count. "
+            "Required unless --saved-query is given.",
+        ),
+        click.option(
+            "--saved-query",
+            "saved_query",
+            help="Run a saved query (hops semantic saved-queries) instead of --metrics; "
+            "--group-by, --order-by and --limit replace its own, --where adds to its filters.",
         ),
         click.option(
             "--group-by",
@@ -991,8 +1028,23 @@ def _query_options(fn: Callable) -> Callable:
     return fn
 
 
+def _metrics_or_saved_query(
+    metrics: list[str] | None, saved_query: str | None
+) -> dict[str, Any]:
+    if metrics and saved_query:
+        raise click.UsageError(
+            "Give --metrics or --saved-query, not both: a saved query names its own metrics."
+        )
+    if saved_query:
+        return {"saved_query": saved_query}
+    if not metrics:
+        raise click.UsageError("Give --metrics, or --saved-query to run a saved query.")
+    return {"metrics": metrics}
+
+
 def _query_kwargs(
-    metrics: list[str],
+    metrics: list[str] | None,
+    saved_query: str | None,
     group_by: list[str] | None,
     where: tuple[str, ...],
     order_by: list[str] | None,
@@ -1001,7 +1053,7 @@ def _query_kwargs(
     end_time: str | None,
 ) -> dict[str, Any]:
     return {
-        "metrics": metrics,
+        **_metrics_or_saved_query(metrics, saved_query),
         "group_by": group_by,
         "where": list(where) or None,
         "order_by": order_by,
@@ -1017,7 +1069,8 @@ def _query_kwargs(
 def sql_cmd(
     ctx: click.Context,
     name: str,
-    metrics: list[str],
+    metrics: list[str] | None,
+    saved_query: str | None,
     group_by: list[str] | None,
     where: tuple[str, ...],
     order_by: list[str] | None,
@@ -1025,12 +1078,13 @@ def sql_cmd(
     start_time: str | None,
     end_time: str | None,
 ) -> None:
-    """Print the SQL a metric query compiles to, without running it.
+    """Print the SQL a metric query or a saved query compiles to, without running it.
 
     Args:
         ctx: Click context.
         name: Semantic project name.
         metrics: Metric names.
+        saved_query: Saved query name, instead of metrics.
         group_by: Group-by names.
         where: Text filters.
         order_by: Sort columns.
@@ -1038,9 +1092,10 @@ def sql_cmd(
         start_time: Earliest metric_time, inclusive.
         end_time: Latest metric_time, inclusive.
     """
-    sql = _semantic_project(ctx, name).sql(
-        **_query_kwargs(metrics, group_by, where, order_by, limit, start_time, end_time)
+    kwargs = _query_kwargs(
+        metrics, saved_query, group_by, where, order_by, limit, start_time, end_time
     )
+    sql = _semantic_project(ctx, name).sql(**kwargs)
     if output.JSON_MODE:
         output.print_json({"sql": sql})
         return
@@ -1068,7 +1123,8 @@ def sql_cmd(
 def query_cmd(
     ctx: click.Context,
     name: str,
-    metrics: list[str],
+    metrics: list[str] | None,
+    saved_query: str | None,
     group_by: list[str] | None,
     where: tuple[str, ...],
     order_by: list[str] | None,
@@ -1078,12 +1134,13 @@ def query_cmd(
     fmt: str,
     explain: bool,
 ) -> None:
-    """Run a metric query as you on the query engine and print the rows.
+    """Run a metric query or a saved query as you on the query engine and print the rows.
 
     Args:
         ctx: Click context.
         name: Semantic project name.
         metrics: Metric names.
+        saved_query: Saved query name, instead of metrics.
         group_by: Group-by names.
         where: Text filters.
         order_by: Sort columns.
@@ -1098,6 +1155,7 @@ def query_cmd(
             sql_cmd,
             name=name,
             metrics=metrics,
+            saved_query=saved_query,
             group_by=group_by,
             where=where,
             order_by=order_by,
@@ -1108,12 +1166,10 @@ def query_cmd(
         return
     import pandas as pd
 
-    df = _semantic_project(ctx, name).query(
-        **_query_kwargs(
-            metrics, group_by, where, order_by, limit, start_time, end_time
-        ),
-        dataframe_type="pandas",
+    kwargs = _query_kwargs(
+        metrics, saved_query, group_by, where, order_by, limit, start_time, end_time
     )
+    df = _semantic_project(ctx, name).query(**kwargs, dataframe_type="pandas")
     if output.JSON_MODE or fmt == "json":
         # NaN is not JSON; a missing value prints as null.
         output.print_json(
@@ -1141,9 +1197,9 @@ def query_cmd(
 @click.option(
     "--metrics",
     multiple=True,
-    required=True,
     callback=_split,
-    help="Metrics to chart, one to eight, comma-separated: --metrics revenue,orders.",
+    help="Metrics to chart, one to eight, comma-separated: --metrics revenue,orders. "
+    "Required unless --saved-query is given.",
 )
 @click.option(
     "--group-by",
@@ -1154,6 +1210,12 @@ def query_cmd(
     "default the first categorical dimension the metrics share.",
 )
 @click.option(
+    "--saved-query",
+    "saved_query",
+    help="Chart a saved query's metrics and group-bys, over its own view, instead of "
+    "--metrics and --group-by.",
+)
+@click.option(
     "--title",
     help="Dashboard title; default the semantic project's name and the metric labels. "
     "A dashboard of yours with this title is updated in place.",
@@ -1162,11 +1224,12 @@ def query_cmd(
 def dashboard_cmd(
     ctx: click.Context,
     name: str,
-    metrics: list[str],
+    metrics: list[str] | None,
     group_by: list[str] | None,
+    saved_query: str | None,
     title: str | None,
 ) -> None:
-    """Build a Superset dashboard of metrics over the semantic project's view, and print its URL.
+    """Build a Superset dashboard of metrics, or of a saved query, over the semantic project's view, and print its URL.
 
     Needs Superset 7.0 with semantic dashboards on. The dashboard has a line chart per
     metric over metric_time, a big number for the first metric, a breakdown table and
@@ -1177,11 +1240,19 @@ def dashboard_cmd(
         name: Semantic project name.
         metrics: Metric names.
         group_by: Dimensions for the breakdown table and the filters.
+        saved_query: Saved query name, instead of metrics and group-bys.
         title: Dashboard title.
     """
-    dashboard = _semantic_project(ctx, name).create_dashboard(
-        metrics, group_by=group_by, title=title
-    )
+    _metrics_or_saved_query(metrics, saved_query)
+    if saved_query and group_by:
+        raise click.UsageError(
+            "--group-by does not combine with --saved-query, which names its own group-bys."
+        )
+    sp = _semantic_project(ctx, name)
+    if saved_query:
+        dashboard = sp.create_dashboard(saved_query=saved_query, title=title)
+    else:
+        dashboard = sp.create_dashboard(metrics, group_by=group_by, title=title)
     if output.JSON_MODE:
         output.print_json(dashboard)
         return
@@ -1227,7 +1298,9 @@ def test_cmd(
     A compile checks the definitions against the feature groups; running each metric's
     SQL as you also catches what only the query engine sees, such as a type it cannot
     aggregate or a feature group you cannot read. Each metric runs ungrouped, so it reads
-    its whole feature groups once: narrow it with --metrics on large data.
+    its whole feature groups once: narrow it with --metrics on large data. A metric that
+    requires metric_time, such as a cumulative metric with a window or a derived metric
+    with an offset, runs grouped by metric_time at its default grain instead.
     The metrics run on the build just compiled, so the command exits 1 when that build does not answer queries: a PINNED project before its promote, or a gateway still serving the previous build.
     --no-compile tests the build that answers queries now.
 
@@ -1266,11 +1339,16 @@ def test_cmd(
                 _SERVING_WAIT_SECONDS,
             )
             ctx.exit(1)
-    names = metrics or [m.name for m in sp.list_metrics()]
+    defined = sp.list_metrics()
+    names = metrics or [m.name for m in defined]
+    by_time = {m.name for m in defined if m.requires_metric_time}
     results = []
     for metric in names:
+        group_by = ["metric_time"] if metric in by_time else None
         try:
-            rows = sp.query([metric], limit=1, dataframe_type="python")
+            rows = sp.query(
+                [metric], group_by=group_by, limit=1, dataframe_type="python"
+            )
             results.append({"metric": metric, "status": "PASS", "rows": len(rows)})
         except SemanticLayerException as exc:
             results.append(
@@ -1298,6 +1376,113 @@ def test_cmd(
             output.success(summary)
     if failed:
         ctx.exit(1)
+
+
+# endregion
+
+# region Time spines
+
+
+@semantic_group.group("time-spine")
+def time_spine_group() -> None:
+    """Time spine feature groups, which cumulative metrics, offsets and custom granularities join to."""
+
+
+def _parse_custom(
+    _ctx: click.Context, _param: click.Parameter, values: tuple[str, ...]
+) -> dict[str, str] | None:
+    """Read repeated ``NAME=FREQ`` options into custom granularities."""
+    custom = {}
+    for value in values:
+        name, sep, freq = value.partition("=")
+        if not sep or not name.strip() or not freq.strip():
+            raise click.BadParameter(
+                f"expected NAME=FREQ, got {value!r}", param_hint="--custom"
+            )
+        custom[name.strip()] = freq.strip()
+    return custom or None
+
+
+@time_spine_group.command(
+    "create",
+    epilog="""\b
+Examples:
+  hops semantic time-spine create --start 2020-01-01 --end 2030-12-31
+      feature group time_spine_day, version 1, column date_day
+  hops semantic time-spine create --start 2020-01-01 --end 2030-12-31 \\
+      --custom fiscal_quarter=Q-JAN --custom fiscal_year=Y-JAN
+      adds the start of each row's fiscal quarter and year, for a year ending in January
+""",
+)
+@click.option(
+    "--start",
+    required=True,
+    help="First day of the spine, ISO-8601; it moves back to the start of its period.",
+)
+@click.option("--end", required=True, help="Last day of the spine, ISO-8601, included.")
+@click.option(
+    "--grain",
+    type=click.Choice(_SPINE_GRAINS),
+    default="day",
+    show_default=True,
+    help="One row per period of this grain; weeks start on Monday.",
+)
+@click.option(
+    "--custom",
+    multiple=True,
+    callback=_parse_custom,
+    metavar="NAME=FREQ",
+    help="A custom granularity column, repeatable: FREQ is a pandas period frequency "
+    "such as Q-JAN, and each row holds the start of its period at that frequency.",
+)
+@click.pass_context
+def time_spine_create_cmd(
+    ctx: click.Context,
+    start: str,
+    end: str,
+    grain: str,
+    custom: dict[str, str] | None,
+) -> None:
+    """Write the time spine feature group time_spine_<grain>, version 1: one row per period from --start through --end.
+
+    A semantic project's time spine model at that grain binds it by name. On an
+    existing spine the rows are inserted, so a wider range extends it.
+
+    Args:
+        ctx: Click context.
+        start: First day of the spine.
+        end: Last day of the spine.
+        grain: Grain of the spine.
+        custom: Custom granularity names to pandas period frequencies.
+    """
+    try:
+        fg = _api(ctx).create_time_spine(
+            start, end, granularity=grain, custom_granularities=custom
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    columns = [feature.name for feature in fg.features or []]
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                "feature_group": fg.name,
+                "version": fg.version,
+                "granularity": grain,
+                "start": start,
+                "end": end,
+                "columns": columns,
+            }
+        )
+        return
+    output.success(
+        "Wrote the %s time spine from %s to %s to feature group %s version %s (%s).",
+        grain,
+        start,
+        end,
+        fg.name,
+        fg.version,
+        ", ".join(columns),
+    )
 
 
 # endregion

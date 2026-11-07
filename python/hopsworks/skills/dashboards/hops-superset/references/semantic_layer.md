@@ -34,6 +34,7 @@ def semantic_views_available(api) -> bool:
 ## Superset 7.0: semantic views
 
 Hopsworks keeps one semantic view per semantic project, named after it, which every project member with a Superset account can read.
+Each saved query gets a view too, `<semantic project>.<saved query>`, which offers only its metrics and group-bys and runs every chart as that saved query.
 
 ### A dashboard of metrics
 
@@ -49,6 +50,7 @@ hops semantic dashboard sales --metrics revenue,orders --group-by customer__coun
 sales = project.get_semantic_layer_api().get_project("sales")
 sales.create_dashboard(["revenue", "orders"], group_by=["customer__country"], title="Sales overview")
 # {"id": 12, "title": "Sales overview", "url": "https://<host>/hopsworks-api/superset/dashboard/12/?projectId=119"}
+sales.create_dashboard(saved_query="revenue_by_country")   # on the saved query's view; also hops semantic dashboard sales --saved-query revenue_by_country
 sales.explore_url("revenue")   # Explore, the metric over metric_time, nothing saved
 ```
 

@@ -25,6 +25,7 @@ from hopsworks_common.semantic_layer import (
     SemanticIssue,
     SemanticMetric,
     SemanticProject,
+    SemanticSavedQuery,
     _query_request,
 )
 
@@ -179,6 +180,46 @@ class TestQueryRequest:
         json.dumps(request)
 
 
+class TestSavedQueryRequest:
+    def test_a_saved_query_is_sent_without_metrics(self):
+        request = _query_request(
+            None,
+            saved_query="revenue_by_country",
+            group_by="metric_time__month",
+            where="{{ Dimension('customer__country') }} = 'SE'",
+            filters=[("order__status", "=", "paid")],
+            order_by="-revenue",
+            limit=10,
+        )
+
+        assert request == {
+            "savedQuery": "revenue_by_country",
+            "groupBy": [{"name": "metric_time", "grain": "month"}],
+            "where": ["{{ Dimension('customer__country') }} = 'SE'"],
+            "filters": [
+                {"groupBy": {"name": "order__status"}, "op": "=", "value": "paid"}
+            ],
+            "orderBy": [{"name": "revenue", "descending": True}],
+            "limit": 10,
+        }
+
+    def test_a_saved_query_alone_sends_only_its_name(self):
+        assert _query_request(None, saved_query="revenue_by_country") == {
+            "savedQuery": "revenue_by_country"
+        }
+
+    @pytest.mark.parametrize("metrics", [["revenue"], "revenue", []])
+    def test_metrics_with_a_saved_query_are_refused(self, metrics):
+        with pytest.raises(ValueError, match="leave out metrics"):
+            _query_request(metrics, saved_query="revenue_by_country")
+
+    def test_without_metrics_or_a_saved_query_the_metrics_are_empty(self):
+        assert _query_request(None, group_by="customer__country") == {
+            "metrics": [],
+            "groupBy": [{"name": "customer__country"}],
+        }
+
+
 class TestModels:
     def test_project_round_trip(self):
         sp = SemanticProject.from_response_json(
@@ -279,6 +320,51 @@ class TestModels:
     def test_a_metric_without_tags_has_an_empty_mapping(self):
         assert SemanticMetric.from_response_json({"name": "orders"}).tags == {}
         assert SemanticMetric(name="orders").tags == {}
+
+
+class TestSavedQuery:
+    JSON = {
+        "name": "revenue_by_country",
+        "label": "Revenue by country",
+        "description": "Monthly revenue per country",
+        "metrics": ["revenue", "orders"],
+        "groupBy": ["metric_time__month", "customer__country"],
+        "where": ["{{ Dimension('customer__country') }} != 'XX'"],
+        "orderBy": [{"name": "metric_time__month"}],
+        "limit": None,
+        "tags": {"dataOwner": {"ownerTeam": "finance"}},
+        "exports": [{"name": "ignored"}],
+    }
+
+    def test_from_the_gateway_answer(self):
+        saved_query = SemanticSavedQuery.from_response_json(self.JSON)
+
+        assert saved_query == SemanticSavedQuery(
+            name="revenue_by_country",
+            label="Revenue by country",
+            description="Monthly revenue per country",
+            metrics=["revenue", "orders"],
+            group_by=["metric_time__month", "customer__country"],
+            where=["{{ Dimension('customer__country') }} != 'XX'"],
+            order_by=[{"name": "metric_time__month"}],
+            limit=None,
+            tags={"dataOwner": {"ownerTeam": "finance"}},
+        )
+        assert saved_query.to_dict()["group_by"] == [
+            "metric_time__month",
+            "customer__country",
+        ]
+
+    def test_missing_and_null_lists_are_empty(self):
+        saved_query = SemanticSavedQuery.from_response_json(
+            {"name": "q", "metrics": ["revenue"], "groupBy": None}
+        )
+
+        assert saved_query.group_by == []
+        assert saved_query.where == []
+        assert saved_query.order_by == []
+        assert saved_query.tags == {}
+        assert SemanticSavedQuery.from_response_json(None) is None
 
 
 def test_polars_conversion_of_a_json_result():

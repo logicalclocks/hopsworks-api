@@ -171,10 +171,10 @@ class SemanticBuild:
 class SemanticMetric:
     """A metric a semantic project serves.
 
-    `type` is `SIMPLE`, `RATIO` or `DERIVED`.
-    `agg` is the aggregation of a simple metric, such as `SUM` or `COUNT_DISTINCT`, and `None` for ratio and derived metrics.
+    `type` is `SIMPLE`, `RATIO`, `DERIVED`, `CUMULATIVE` or `CONVERSION`.
+    `agg` is the aggregation of a simple metric, such as `SUM` or `COUNT_DISTINCT`, and `None` for the other types.
     `queryable_granularities` are the grains `metric_time` can be grouped by for this metric.
-    `requires_metric_time` is set when every query of the metric must group by `metric_time`.
+    `requires_metric_time` is set when every query of the metric must group by `metric_time`, because its value is defined per period: a cumulative metric with a window or grain-to-date, or a derived metric with an offset input.
     `filter` is the metric's own filter, applied to every query of it.
     `tags` are the schematised tags its definition sets in `config.meta.hopsworks.tags`, tag schema name to value, checked against the tag schemas when the project compiles.
     """
@@ -196,6 +196,45 @@ class SemanticMetric:
         if not json_dict:
             return None
         fields = _known_fields(cls, humps.decamelize(json_dict))
+        # Tag schema names and the keys inside tag values are the user's, so they keep their case.
+        fields["tags"] = json_dict.get("tags") or {}
+        return cls(**fields)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@public("hopsworks.semantic_layer.SemanticSavedQuery")
+@dataclass
+class SemanticSavedQuery:
+    """A named metric query a semantic project defines under `saved_queries:` in its YAML, run by name with `saved_query=`.
+
+    Run it with [`SemanticProject.query`][hopsworks_common.semantic_layer.SemanticProject.query] or [`SemanticProject.sql`][hopsworks_common.semantic_layer.SemanticProject.sql], which can refine it.
+    `metrics` and `group_by` are what it queries, with group-bys as qualified names such as `metric_time__month`.
+    `where` holds its filters in MetricFlow's call syntax, combined with `AND`.
+    `order_by` is its sort, each entry a dict with the column `name` and `descending`, and `limit` its row limit, `None` for no limit.
+    `tags` are the schematised tags its definition sets in `config.meta.hopsworks.tags`, tag schema name to value.
+    """
+
+    name: str | None = None
+    label: str | None = None
+    description: str | None = None
+    metrics: list[str] = field(default_factory=list)
+    group_by: list[str] = field(default_factory=list)
+    where: list[str] = field(default_factory=list)
+    order_by: list[dict[str, Any]] = field(default_factory=list)
+    limit: int | None = None
+    tags: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_response_json(
+        cls, json_dict: dict[str, Any] | None
+    ) -> SemanticSavedQuery | None:
+        if not json_dict:
+            return None
+        fields = _known_fields(cls, humps.decamelize(json_dict))
+        for name in ("metrics", "group_by", "where", "order_by"):
+            fields[name] = fields.get(name) or []
         # Tag schema names and the keys inside tag values are the user's, so they keep their case.
         fields["tags"] = json_dict.get("tags") or {}
         return cls(**fields)
@@ -688,6 +727,21 @@ class SemanticProject:
 
     @public
     @usage._method_logger
+    def list_saved_queries(self) -> list[SemanticSavedQuery]:
+        """Every saved query of the current build, as its YAML defines it.
+
+        Run one by name with `saved_query=` on [`query`][hopsworks_common.semantic_layer.SemanticProject.query], [`sql`][hopsworks_common.semantic_layer.SemanticProject.sql] or [`create_dashboard`][hopsworks_common.semantic_layer.SemanticProject.create_dashboard].
+
+        Returns:
+            The saved queries.
+
+        Raises:
+            hopsworks.client.exceptions.SemanticLayerException: If the gateway refuses the request, for example because no build is valid yet.
+        """
+        return self._semantic_layer_api._saved_queries(self)
+
+    @public
+    @usage._method_logger
     def serving(self) -> SemanticServing:
         """The build the gateway answers this project's queries from, and whether a newer compile is pending or invalid.
 
@@ -811,7 +865,7 @@ class SemanticProject:
     @usage._method_logger
     def sql(
         self,
-        metrics: str | Sequence[str],
+        metrics: str | Sequence[str] | None = None,
         group_by: str | dict[str, Any] | Sequence[str | dict[str, Any]] | None = None,
         where: str | Sequence[str] | None = None,
         filters: Sequence[dict[str, Any] | tuple] | None = None,
@@ -821,11 +875,20 @@ class SemanticProject:
         offset: int | None = None,
         time_range: tuple | dict[str, Any] | None = None,
         group_limit: dict[str, Any] | None = None,
+        saved_query: str | None = None,
     ) -> str:
         """The SQL a metric query compiles to, without running it.
 
+        A query names its metrics, or runs a saved query by name and takes the metrics from it.
+        On a saved query, `group_by`, `order_by` and `limit` replace its own when given, and `where` and `filters` are added to its filters.
+
+        Example: Run a saved query by month instead of its own grain
+            ```python
+            sql = sales.sql(saved_query="revenue_by_country", group_by=["metric_time__month"])
+            ```
+
         Parameters:
-            metrics: Metric names.
+            metrics: Metric names; leave them out with `saved_query`.
             group_by: Group-bys, as qualified names or dicts.
             where:
                 Text filters in MetricFlow's call syntax, such as `"{{ Dimension('listing__country_latest') }} = 'us'"`.
@@ -845,12 +908,14 @@ class SemanticProject:
                 A timezone-aware datetime, or a string with an offset, is converted to UTC; one without is taken as UTC.
                 It keeps `metric_time` from `start` through `end`, both inclusive, each truncated to the query's time grain: a monthly query ending `2026-02-01` includes all of February.
             group_limit: Keep only the top groups, as a dict `{"group_by", "top", "metric", "descending"}`, for example the five countries with the most revenue.
+            saved_query: Name of a saved query to run, from [`list_saved_queries`][hopsworks_common.semantic_layer.SemanticProject.list_saved_queries].
 
         Returns:
             The SQL statement.
 
         Raises:
-            hopsworks.client.exceptions.SemanticLayerException: If the gateway refuses the query, for example for an unknown metric or group-by.
+            ValueError: If both `metrics` and `saved_query` are given.
+            hopsworks.client.exceptions.SemanticLayerException: If the gateway refuses the query, for example for an unknown metric, group-by or saved query.
         """
         return self._semantic_layer_api._sql(
             self,
@@ -865,6 +930,7 @@ class SemanticProject:
                 offset=offset,
                 time_range=time_range,
                 group_limit=group_limit,
+                saved_query=saved_query,
             ),
         )
 
@@ -872,7 +938,7 @@ class SemanticProject:
     @usage._method_logger
     def query(
         self,
-        metrics: str | Sequence[str],
+        metrics: str | Sequence[str] | None = None,
         group_by: str | dict[str, Any] | Sequence[str | dict[str, Any]] | None = None,
         where: str | Sequence[str] | None = None,
         filters: Sequence[dict[str, Any] | tuple] | None = None,
@@ -883,15 +949,24 @@ class SemanticProject:
         time_range: tuple | dict[str, Any] | None = None,
         group_limit: dict[str, Any] | None = None,
         dataframe_type: Literal["pandas", "polars", "pyarrow", "python"] = "pandas",
+        saved_query: str | None = None,
     ) -> pd.DataFrame | pl.DataFrame | pa.Table | list[dict[str, Any]]:
         """Run a metric query on the query engine, as the caller, and return its rows.
 
-        The arguments are those of [`sql`][hopsworks_common.semantic_layer.SemanticProject.sql].
+        The arguments are those of [`sql`][hopsworks_common.semantic_layer.SemanticProject.sql], including how they refine a saved query.
         Results come back as an Arrow stream when `pyarrow` is installed, which keeps column types, and as JSON otherwise.
         The gateway caps the number of rows it returns, and a result that may have been cut by the cap logs a warning.
 
+        Example: Run a saved query, only for one country
+            ```python
+            df = sales.query(
+                saved_query="revenue_by_country",
+                where=["{{ Dimension('customer__country') }} = 'SE'"],
+            )
+            ```
+
         Parameters:
-            metrics: Metric names.
+            metrics: Metric names; leave them out with `saved_query`.
             group_by: Group-bys, as qualified names or dicts.
             where: Text filters in MetricFlow's call syntax.
             filters: Structured filters, each a dict `{"group_by", "op", "value"}` or a tuple `(group_by, op, value)`.
@@ -902,12 +977,13 @@ class SemanticProject:
             time_range: A `(start, end)` tuple or a `{"start", "end"}` dict bounding `metric_time`, both ends inclusive and truncated to the query's time grain.
             group_limit: Keep only the top groups, as a dict `{"group_by", "top", "metric", "descending"}`.
             dataframe_type: `pandas`, `polars`, `pyarrow`, or `python` for a list of rows, each a dict keyed by column name.
+            saved_query: Name of a saved query to run, from [`list_saved_queries`][hopsworks_common.semantic_layer.SemanticProject.list_saved_queries].
 
         Returns:
             The rows, one column per group-by and metric.
 
         Raises:
-            ValueError: For an unknown `dataframe_type`.
+            ValueError: For an unknown `dataframe_type`, or if both `metrics` and `saved_query` are given.
             ModuleNotFoundError: When `dataframe_type` is `polars` or `pyarrow` and that package is not installed.
             hopsworks.client.exceptions.SemanticLayerException: If the gateway refuses the query or the query engine fails to run it.
         """
@@ -928,6 +1004,7 @@ class SemanticProject:
                 offset=offset,
                 time_range=time_range,
                 group_limit=group_limit,
+                saved_query=saved_query,
             ),
             arrow=HAS_PYARROW,
         )
@@ -941,35 +1018,49 @@ class SemanticProject:
     @usage._method_logger
     def create_dashboard(
         self,
-        metrics: str | Sequence[str],
+        metrics: str | Sequence[str] | None = None,
         group_by: str | Sequence[str] | None = None,
         title: str | None = None,
+        saved_query: str | None = None,
     ) -> dict[str, Any]:
         """Build a Superset dashboard of the metrics, owned by the caller, over this semantic project's view in Superset 7.0.
 
         The charts read the metric definitions through the view, so they show the numbers [`query`][hopsworks_common.semantic_layer.SemanticProject.query] returns.
         The dashboard has a line chart of each metric over `metric_time`, a big number with a trendline for the first metric, a table broken down by a dimension, and native filters.
         A dashboard of the same title that the caller owns is updated in place, keeping its id and URL, so calling this again does not duplicate it.
+        A dashboard from a saved query is built on the saved query's own view, `<semantic project>.<saved query>`, with its metrics and group-bys.
 
         Parameters:
-            metrics: Metric names, one to eight.
+            metrics: Metric names, one to eight; leave them out with `saved_query`.
             group_by: Dimensions for the breakdown table and the native filters, such as `customer__country`; without them, the first categorical dimension the metrics share.
             title: Title of the dashboard; without one, the semantic project's name followed by the metric labels.
+            saved_query: Name of a saved query whose metrics and group-bys the dashboard shows, instead of `metrics` and `group_by`.
 
         Returns:
             The dashboard's Superset `id`, its `title`, and the `url` that opens it through Hopsworks, such as `https://<host>/hopsworks-api/superset/dashboard/12/?projectId=119`.
 
         Raises:
+            ValueError: If neither `metrics` nor `saved_query` is given, or `saved_query` is given with `metrics` or `group_by`.
             hopsworks.client.exceptions.SemanticLayerException:
                 With status 400 for an unknown metric or group-by or metrics with no time dimension in common, and 409 when the project has no valid build.
                 With status 503 and `error_code` 590014 (`SEMANTIC_LAYER_DASHBOARDS_DISABLED`) when semantic dashboards are not available: Superset 6, or Superset, its semantic dashboards or the project's Superset service off.
                 With status 503 and `error_code` 590015 (`SEMANTIC_LAYER_SUPERSET_ERROR`) when Superset did not answer.
         """
-        request: dict[str, Any] = {
-            "metrics": _as_list(metrics),
-            "groupBy": _as_list(group_by),
-            "title": title,
-        }
+        if saved_query is not None:
+            if metrics is not None or group_by is not None:
+                raise ValueError(
+                    "A dashboard from a saved query takes its metrics and group-bys "
+                    "from it: leave out metrics and group_by."
+                )
+            request: dict[str, Any] = {"savedQuery": saved_query, "title": title}
+        elif metrics is None:
+            raise ValueError("Give metrics or saved_query.")
+        else:
+            request = {
+                "metrics": _as_list(metrics),
+                "groupBy": _as_list(group_by),
+                "title": title,
+            }
         response = self._semantic_layer_api._create_dashboard(
             self, {key: value for key, value in request.items() if value is not None}
         )
@@ -1093,7 +1184,7 @@ def _group_limit(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _query_request(
-    metrics: str | Sequence[str],
+    metrics: str | Sequence[str] | None,
     group_by: str | dict[str, Any] | Sequence[str | dict[str, Any]] | None = None,
     where: str | Sequence[str] | None = None,
     filters: Sequence[dict[str, Any] | tuple] | None = None,
@@ -1103,10 +1194,16 @@ def _query_request(
     offset: int | None = None,
     time_range: tuple | dict[str, Any] | None = None,
     group_limit: dict[str, Any] | None = None,
+    saved_query: str | None = None,
 ) -> dict[str, Any]:
     """Build the gateway's `Query` body, leaving out every argument that is `None`."""
+    if saved_query is not None and metrics is not None:
+        raise ValueError(
+            f"Saved query '{saved_query}' names its own metrics: leave out metrics."
+        )
     request: dict[str, Any] = {
-        "metrics": _as_list(metrics) or [],
+        "metrics": None if saved_query is not None else _as_list(metrics) or [],
+        "savedQuery": saved_query,
         "groupBy": None
         if group_by is None
         else [_group_by_ref(ref) for ref in _as_list(group_by)],

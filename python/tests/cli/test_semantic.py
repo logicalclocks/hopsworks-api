@@ -18,6 +18,7 @@ from hopsworks_common.semantic_layer import (
     SemanticIssue,
     SemanticMetric,
     SemanticProject,
+    SemanticSavedQuery,
 )
 
 
@@ -662,3 +663,270 @@ class TestExplainAndTest:
         assert result.exit_code == 1
         sales.query.assert_not_called()
         assert "UNIQUE_NAMES" in result.output
+
+
+class TestSavedQueries:
+    def test_saved_queries_table(self, sales):
+        sales.list_saved_queries.return_value = [
+            SemanticSavedQuery(
+                name="revenue_by_country",
+                label="Revenue by country",
+                metrics=["revenue", "orders"],
+                group_by=["metric_time__month", "customer__country"],
+            ),
+            SemanticSavedQuery(name="all_revenue", metrics=["revenue"]),
+        ]
+
+        result = _run("saved-queries", "sales")
+
+        assert result.exit_code == 0, result.output
+        lines = result.output.splitlines()
+        assert lines[0].split() == ["NAME", "LABEL", "METRICS", "GROUP-BYS"]
+        assert lines[2].split() == [
+            "revenue_by_country",
+            "Revenue",
+            "by",
+            "country",
+            "revenue,orders",
+            "metric_time__month,customer__country",
+        ]
+        assert lines[3].split() == ["all_revenue", "-", "revenue", "-"]
+
+    def test_saved_queries_in_json(self, sales):
+        sales.list_saved_queries.return_value = [
+            SemanticSavedQuery(name="all_revenue", metrics=["revenue"], limit=10)
+        ]
+
+        result = _run("saved-queries", "sales", "--json")
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)[0] == {
+            "name": "all_revenue",
+            "label": None,
+            "description": None,
+            "metrics": ["revenue"],
+            "group_by": [],
+            "where": [],
+            "order_by": [],
+            "limit": 10,
+            "tags": {},
+        }
+
+    def test_query_runs_a_saved_query_with_its_refinements(self, sales):
+        sales.query.return_value = pd.DataFrame({"revenue": [1.0]})
+
+        result = _run(
+            "query",
+            "sales",
+            "--saved-query",
+            "revenue_by_country",
+            "--group-by",
+            "metric_time__month",
+            "--where",
+            "{{ Dimension('customer__country') }} = 'SE'",
+            "--limit",
+            "5",
+            "-o",
+            "csv",
+        )
+
+        assert result.exit_code == 0, result.output
+        sales.query.assert_called_once_with(
+            saved_query="revenue_by_country",
+            group_by=["metric_time__month"],
+            where=["{{ Dimension('customer__country') }} = 'SE'"],
+            order_by=None,
+            limit=5,
+            time_range=None,
+            dataframe_type="pandas",
+        )
+        assert result.output.splitlines() == ["revenue", "1.0"]
+
+    @pytest.mark.parametrize("command", [["sql"], ["query", "--explain"]])
+    def test_sql_of_a_saved_query(self, sales, command):
+        sales.sql.return_value = "SELECT 1"
+
+        result = _run(*command, "sales", "--saved-query", "revenue_by_country")
+
+        assert result.exit_code == 0, result.output
+        assert result.output.strip() == "SELECT 1"
+        sales.sql.assert_called_once_with(
+            saved_query="revenue_by_country",
+            group_by=None,
+            where=None,
+            order_by=None,
+            limit=None,
+            time_range=None,
+        )
+
+    @pytest.mark.parametrize("command", ["sql", "query", "dashboard"])
+    def test_metrics_and_a_saved_query_do_not_combine(self, sales, command):
+        result = _run(command, "sales", "--metrics", "revenue", "--saved-query", "q")
+
+        assert result.exit_code == 2
+        assert "not both" in result.output
+        sales.sql.assert_not_called()
+        sales.query.assert_not_called()
+        sales.create_dashboard.assert_not_called()
+
+    def test_dashboard_of_a_saved_query(self, sales):
+        sales.create_dashboard.return_value = TestDashboard.DASHBOARD
+
+        result = _run(
+            "dashboard", "sales", "--saved-query", "revenue_by_country", "--title", "R"
+        )
+
+        assert result.exit_code == 0, result.output
+        sales.create_dashboard.assert_called_once_with(
+            saved_query="revenue_by_country", title="R"
+        )
+
+    def test_dashboard_of_a_saved_query_takes_no_group_by(self, sales):
+        result = _run(
+            "dashboard",
+            "sales",
+            "--saved-query",
+            "revenue_by_country",
+            "--group-by",
+            "customer__country",
+        )
+
+        assert result.exit_code == 2
+        assert "names its own group-bys" in result.output
+        sales.create_dashboard.assert_not_called()
+
+
+class TestTimeSpine:
+    @pytest.fixture
+    def spine(self, sl):
+        fg = mock.MagicMock(name="FeatureGroup")
+        fg.name = "time_spine_day"
+        fg.version = 1
+        features = []
+        for column in ("date_day", "fiscal_quarter"):
+            feature = mock.MagicMock()
+            feature.name = column
+            features.append(feature)
+        fg.features = features
+        sl.create_time_spine.return_value = fg
+        return fg
+
+    def test_create_passes_the_range_grain_and_custom_granularities(self, sl, spine):
+        result = _run(
+            "time-spine",
+            "create",
+            "--start",
+            "2020-01-01",
+            "--end",
+            "2030-12-31",
+            "--custom",
+            "fiscal_quarter=Q-JAN",
+            "--custom",
+            "fiscal_year = Y-JAN",
+        )
+
+        assert result.exit_code == 0, result.output
+        sl.create_time_spine.assert_called_once_with(
+            "2020-01-01",
+            "2030-12-31",
+            granularity="day",
+            custom_granularities={"fiscal_quarter": "Q-JAN", "fiscal_year": "Y-JAN"},
+        )
+        assert "feature group time_spine_day version 1" in result.output
+        assert "date_day, fiscal_quarter" in result.output
+
+    def test_create_in_json(self, sl, spine):
+        result = _run(
+            "--json",
+            "time-spine",
+            "create",
+            "--start",
+            "2020-01-01",
+            "--end",
+            "2020-12-31",
+            "--grain",
+            "week",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert sl.create_time_spine.call_args.kwargs == {
+            "granularity": "week",
+            "custom_granularities": None,
+        }
+        assert json.loads(result.output) == {
+            "feature_group": "time_spine_day",
+            "version": 1,
+            "granularity": "week",
+            "start": "2020-01-01",
+            "end": "2020-12-31",
+            "columns": ["date_day", "fiscal_quarter"],
+        }
+
+    @pytest.mark.parametrize(
+        ("flags", "message"),
+        [
+            (["--custom", "fiscal_quarter"], "expected NAME=FREQ"),
+            (["--grain", "fortnight"], "'fortnight' is not one of"),
+        ],
+    )
+    def test_bad_flags_exit_two(self, sl, flags, message):
+        result = _run(
+            "time-spine",
+            "create",
+            "--start",
+            "2020-01-01",
+            "--end",
+            "2020-12-31",
+            *flags,
+        )
+
+        assert result.exit_code == 2
+        assert message in result.output
+        sl.create_time_spine.assert_not_called()
+
+    def test_a_refused_range_prints_one_line(self, sl):
+        sl.create_time_spine.side_effect = ValueError(
+            "The end of the time spine, 2020-01-01, is before its start, 2020-12-31."
+        )
+
+        result = _run(
+            "time-spine", "create", "--start", "2020-12-31", "--end", "2020-01-01"
+        )
+
+        assert result.exit_code == 1
+        assert "is before its start" in result.output
+        assert "Traceback" not in result.output
+
+
+class TestTestGroupsByMetricTimeWhenRequired:
+    def test_a_metric_that_requires_metric_time_runs_grouped_by_it(self, sales):
+        sales.list_metrics.return_value = [
+            SemanticMetric(name="revenue", type="SIMPLE"),
+            SemanticMetric(
+                name="revenue_mtd", type="CUMULATIVE", requires_metric_time=True
+            ),
+        ]
+        sales.query.return_value = [{"x": 1}]
+
+        result = _run("test", "sales", "--no-compile")
+
+        assert result.exit_code == 0, result.output
+        assert [
+            (c.args[0], c.kwargs["group_by"]) for c in sales.query.call_args_list
+        ] == [(["revenue"], None), (["revenue_mtd"], ["metric_time"])]
+        assert all(c.kwargs["limit"] == 1 for c in sales.query.call_args_list)
+
+    def test_the_named_metrics_are_looked_up_too(self, sales):
+        sales.list_metrics.return_value = [
+            SemanticMetric(
+                name="revenue_mtd", type="CUMULATIVE", requires_metric_time=True
+            ),
+        ]
+        sales.query.return_value = []
+
+        result = _run("test", "sales", "--no-compile", "--metrics", "revenue_mtd,nope")
+
+        assert result.exit_code == 0, result.output
+        assert [
+            (c.args[0], c.kwargs["group_by"]) for c in sales.query.call_args_list
+        ] == [(["revenue_mtd"], ["metric_time"]), (["nope"], None)]

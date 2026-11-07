@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import datetime
 import json
 import logging
 from unittest.mock import MagicMock
@@ -28,7 +29,11 @@ from hopsworks_common.client.exceptions import (
     SemanticBuildException,
     SemanticLayerException,
 )
-from hopsworks_common.core.semantic_layer_api import SemanticLayerApi
+from hopsworks_common.core.semantic_layer_api import (
+    SemanticLayerApi,
+    _time_spine_frame,
+)
+from hopsworks_common.semantic_layer import SemanticSavedQuery
 from hopsworks_common.tag import Tag
 
 
@@ -676,6 +681,127 @@ class TestGateway:
         assert caplog.text == ""
 
 
+class TestSavedQueries:
+    SAVED_QUERY = {
+        "name": "revenue_by_country",
+        "label": "Revenue by country",
+        "description": "...",
+        "metrics": ["revenue", "orders"],
+        "groupBy": ["metric_time__month", "customer__country"],
+        "where": ["{{ Dimension('customer__country') }} != 'XX'"],
+        "orderBy": [{"name": "metric_time__month"}],
+        "limit": None,
+        "tags": {"owner": {"team": "finance"}},
+    }
+
+    def test_list_saved_queries_reads_the_list_the_gateway_returns(self, http, sales):
+        http._session.request.return_value = _response(body=[self.SAVED_QUERY])
+
+        saved_queries = sales.list_saved_queries()
+
+        method, url, kwargs = _gateway_call(http)
+        assert method == "GET"
+        assert url.endswith("/semantic-layer/v1/projects/7/saved-queries")
+        assert kwargs["data"] is None
+        assert saved_queries == [
+            SemanticSavedQuery(
+                name="revenue_by_country",
+                label="Revenue by country",
+                description="...",
+                metrics=["revenue", "orders"],
+                group_by=["metric_time__month", "customer__country"],
+                where=["{{ Dimension('customer__country') }} != 'XX'"],
+                order_by=[{"name": "metric_time__month"}],
+                tags={"owner": {"team": "finance"}},
+            )
+        ]
+
+    def test_a_wrapped_answer_is_read_and_warns_when_stale(self, http, sales, caplog):
+        http._session.request.return_value = _response(
+            body={"savedQueries": [self.SAVED_QUERY], "buildId": 11, "stale": True}
+        )
+
+        with caplog.at_level(logging.WARNING):
+            saved_queries = sales.list_saved_queries()
+
+        assert [q.name for q in saved_queries] == ["revenue_by_country"]
+        assert "answered from build 11" in caplog.text
+
+    def test_no_saved_queries(self, http, sales):
+        http._session.request.return_value = _response(body=[])
+
+        assert sales.list_saved_queries() == []
+
+    def test_query_sends_the_saved_query_with_its_refinements_and_no_metrics(
+        self, http, sales
+    ):
+        table = pa.table({"metric_time__month": ["2026-01-01"], "revenue": [10.5]})
+        http._session.request.return_value = _response(
+            content=_arrow_stream(table),
+            content_type="application/vnd.apache.arrow.stream",
+        )
+
+        df = sales.query(
+            saved_query="revenue_by_country",
+            group_by=["metric_time__month"],
+            where=["{{ Dimension('customer__country') }} = 'SE'"],
+            limit=5,
+        )
+
+        method, url, kwargs = _gateway_call(http)
+        assert (method, url.rsplit("/", 1)[1]) == ("POST", "query")
+        assert json.loads(kwargs["data"]) == {
+            "savedQuery": "revenue_by_country",
+            "groupBy": [{"name": "metric_time", "grain": "month"}],
+            "where": ["{{ Dimension('customer__country') }} = 'SE'"],
+            "limit": 5,
+        }
+        assert df["revenue"].tolist() == [10.5]
+
+    def test_sql_of_a_saved_query(self, http, sales):
+        http._session.request.return_value = _response(
+            body={"sql": "SELECT 1", "buildId": 12, "stale": False}
+        )
+
+        assert sales.sql(saved_query="revenue_by_country") == "SELECT 1"
+
+        method, url, kwargs = _gateway_call(http)
+        assert (method, url.rsplit("/", 1)[1]) == ("POST", "sql")
+        assert json.loads(kwargs["data"]) == {"savedQuery": "revenue_by_country"}
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda sp: sp.query("revenue", saved_query="revenue_by_country"),
+            lambda sp: sp.sql(["revenue"], saved_query="revenue_by_country"),
+        ],
+    )
+    def test_metrics_and_a_saved_query_together_fail_before_any_request(
+        self, http, sales, call
+    ):
+        with pytest.raises(ValueError, match="names its own metrics"):
+            call(sales)
+
+        http._session.request.assert_not_called()
+
+    def test_an_unknown_saved_query_raises_not_found(self, http, sales):
+        http._session.request.return_value = _response(
+            status=404,
+            reason="Not Found",
+            body={
+                "errorCode": "SEMANTIC_LAYER_NOT_FOUND",
+                "errorMsg": "no saved query named 'nope'",
+            },
+        )
+
+        with pytest.raises(SemanticLayerException) as err:
+            sales.query(saved_query="nope")
+
+        assert err.value.status_code == 404
+        assert err.value.error_code == "SEMANTIC_LAYER_NOT_FOUND"
+        assert "no saved query named 'nope'" in str(err.value)
+
+
 class TestErrors:
     def test_gateway_error_body_maps_to_the_exception(self, http, sales):
         http._session.request.return_value = _response(
@@ -768,6 +894,45 @@ class TestSuperset:
         assert json.loads(http._send_request.call_args.kwargs["data"]) == {
             "metrics": ["revenue"]
         }
+
+    @pytest.mark.parametrize(
+        ("title", "body"),
+        [
+            ("Revenue", {"savedQuery": "revenue_by_country", "title": "Revenue"}),
+            (None, {"savedQuery": "revenue_by_country"}),
+        ],
+    )
+    def test_create_dashboard_from_a_saved_query_sends_its_name_and_the_title(
+        self, http, sales, title, body
+    ):
+        http._send_request.return_value = self.DASHBOARD
+
+        dashboard = sales.create_dashboard(
+            saved_query="revenue_by_country", title=title
+        )
+
+        call = http._send_request.call_args
+        assert call.args[1][-1] == "dashboards"
+        assert json.loads(call.kwargs["data"]) == body
+        assert dashboard["id"] == 12
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"metrics": "revenue", "saved_query": "q"}, "leave out metrics"),
+            ({"group_by": "customer__country", "saved_query": "q"}, "group_by"),
+            ({}, "Give metrics or saved_query"),
+        ],
+    )
+    def test_create_dashboard_needs_metrics_or_a_saved_query_alone(
+        self, http, sales, kwargs, message
+    ):
+        requests_before = http._send_request.call_count
+
+        with pytest.raises(ValueError, match=message):
+            sales.create_dashboard(**kwargs)
+
+        assert http._send_request.call_count == requests_before
 
     def test_explore_url_names_the_metric(self, http, sales):
         http._send_request.return_value = {"url": "https://h/explore/?form_data=x"}
@@ -954,3 +1119,141 @@ class TestQuery:
             sales.query(["revenue"], dataframe_type="spark")
 
         http._session.request.assert_not_called()
+
+
+class TestTimeSpine:
+    @pytest.fixture
+    def connection(self, http, mocker):
+        connection = MagicMock(name="Connection")
+        mocker.patch("hopsworks_common.client._get_connection", return_value=connection)
+        return connection
+
+    @pytest.fixture
+    def fs(self, connection):
+        return connection._get_feature_store.return_value
+
+    def test_create_writes_the_spine_feature_group_in_the_projects_feature_store(
+        self, connection, fs
+    ):
+        fg = fs.get_or_create_feature_group.return_value
+
+        result = SemanticLayerApi().create_time_spine(
+            "2026-01-30",
+            datetime.date(2026, 2, 2),
+            custom_granularities={
+                "fiscal_quarter": "Q-JAN",
+                "fiscal_year": lambda day: f"FY{day.year + (day.month > 1)}",
+            },
+        )
+
+        assert result is fg
+        connection._get_feature_store.assert_called_once_with("demo")
+        fs.get_or_create_feature_group.assert_called_once_with(
+            name="time_spine_day",
+            version=1,
+            description="Time spine, one row per day, for the semantic layer.",
+            primary_key=["date_day"],
+            online_enabled=False,
+            statistics_config=False,
+        )
+        df = fg.insert.call_args.args[0]
+        assert fg.insert.call_args.kwargs == {"wait": True}
+        assert df.to_dict(orient="list") == {
+            "date_day": [
+                datetime.date(2026, 1, 30),
+                datetime.date(2026, 1, 31),
+                datetime.date(2026, 2, 1),
+                datetime.date(2026, 2, 2),
+            ],
+            "fiscal_quarter": [datetime.date(2025, 11, 1)] * 2
+            + [datetime.date(2026, 2, 1)] * 2,
+            "fiscal_year": ["FY2026", "FY2026", "FY2027", "FY2027"],
+        }
+
+    def test_the_feature_group_and_its_key_are_named_after_the_grain(self, fs):
+        SemanticLayerApi().create_time_spine(
+            "2026-01-01", "2026-01-01", granularity="month"
+        )
+
+        kwargs = fs.get_or_create_feature_group.call_args.kwargs
+        assert (kwargs["name"], kwargs["primary_key"]) == (
+            "time_spine_month",
+            ["date_month"],
+        )
+
+    @pytest.mark.parametrize(
+        ("granularity", "start", "end", "expected"),
+        [
+            (
+                "week",
+                "2026-01-01",
+                "2026-01-12",
+                [
+                    datetime.date(2025, 12, 29),
+                    datetime.date(2026, 1, 5),
+                    datetime.date(2026, 1, 12),
+                ],
+            ),
+            (
+                "month",
+                "2026-01-15",
+                "2026-03-01",
+                [
+                    datetime.date(2026, 1, 1),
+                    datetime.date(2026, 2, 1),
+                    datetime.date(2026, 3, 1),
+                ],
+            ),
+            (
+                "quarter",
+                "2026-05-05",
+                "2026-07-01",
+                [datetime.date(2026, 4, 1), datetime.date(2026, 7, 1)],
+            ),
+            ("year", "2026-05-05", "2026-12-31", [datetime.date(2026, 1, 1)]),
+        ],
+    )
+    def test_each_row_is_the_start_of_a_period_from_the_one_holding_start(
+        self, granularity, start, end, expected
+    ):
+        df = _time_spine_frame(start, end, granularity, {})
+
+        assert list(df.columns) == [f"date_{granularity}"]
+        assert df[f"date_{granularity}"].tolist() == expected
+
+    def test_a_spine_below_a_day_holds_timestamps(self):
+        df = _time_spine_frame(
+            "2026-01-31 22:30", "2026-02-01 00:10", "hour", {"fiscal_month": "M"}
+        )
+
+        assert df["date_hour"].tolist() == [
+            pd.Timestamp("2026-01-31 22:00"),
+            pd.Timestamp("2026-01-31 23:00"),
+            pd.Timestamp("2026-02-01 00:00"),
+        ]
+        assert df["fiscal_month"].tolist() == [
+            pd.Timestamp("2026-01-01"),
+            pd.Timestamp("2026-01-01"),
+            pd.Timestamp("2026-02-01"),
+        ]
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            (("2026-01-01", "2026-12-31", "fortnight", {}), "not one of second"),
+            (("2026-02-01", "2026-01-01", "day", {}), "is before its start"),
+            (
+                ("2026-01-01", "2026-01-31", "day", {"fq": "quarterly"}),
+                "Custom granularity 'fq': 'quarterly' is not a pandas period frequency",
+            ),
+        ],
+    )
+    def test_bad_arguments_fail_before_the_feature_group_is_touched(
+        self, fs, args, message
+    ):
+        start, end, granularity, custom = args
+
+        with pytest.raises(ValueError, match=message):
+            SemanticLayerApi().create_time_spine(start, end, granularity, custom)
+
+        fs.get_or_create_feature_group.assert_not_called()

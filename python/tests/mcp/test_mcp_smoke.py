@@ -36,10 +36,12 @@ _SHELL_TOOLS = {"start_session", "add_input", "get_output"}
 _SEMANTIC_LAYER_TOOLS = (
     "list_semantic_projects",
     "list_metrics",
+    "list_saved_queries",
     "get_dimensions",
     "get_entities",
     "get_dimension_values",
     "query_metrics",
+    "query_saved_query",
     "get_metrics_compiled_sql",
     "get_semantic_project_tags",
     "validate_semantic_project",
