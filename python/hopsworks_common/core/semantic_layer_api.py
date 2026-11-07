@@ -549,15 +549,10 @@ class SemanticLayerApi:
     def _saved_queries(
         self, sp: semantic_layer.SemanticProject
     ) -> list[semantic_layer.SemanticSavedQuery]:
-        result = self._gateway_request("GET", sp, "saved-queries").json() or []
-        # The contract's body is the bare list; take it also wrapped as the other discovery answers
-        # are, with the build and its staleness.
-        if isinstance(result, dict):
-            _warn_if_stale(sp, result.get("stale"), result.get("buildId"))
-            result = result.get("savedQueries") or []
+        result = self._gateway_json("GET", sp, "saved-queries")
         return [
             semantic_layer.SemanticSavedQuery.from_response_json(saved_query)
-            for saved_query in result
+            for saved_query in result.get("savedQueries") or []
         ]
 
     def _group_bys(

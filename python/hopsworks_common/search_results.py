@@ -437,7 +437,7 @@ class SemanticProjectSearchResult(SearchResultItem):
 
 @public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
-    """Every bucket of a search: feature store entities, jobs, apps, models, deployments, agents, datasets, metrics and semantic projects."""
+    """Every bucket of a search: feature store entities, jobs, apps, models, deployments, agents, datasets, metrics, semantic projects and saved queries."""
 
     def __init__(self, response_data: dict):
         self._log = logging.getLogger(__name__)
@@ -476,6 +476,10 @@ class FeaturestoreSearchResult:
             SemanticProjectSearchResult(sp)
             for sp in response_data.get("semanticProjects", [])
         ]
+        # A saved query hit carries a metric hit's fields.
+        self._saved_queries = [
+            MetricSearchResult(q) for q in response_data.get("savedQueries", [])
+        ]
 
         # Store metadata about result counts
         self._feature_groups_offset = response_data.get("featuregroupsFrom", 0)
@@ -502,6 +506,8 @@ class FeaturestoreSearchResult:
         self._metrics_total = response_data.get("metricsTotal", 0)
         self._semantic_projects_offset = response_data.get("semanticProjectsFrom", 0)
         self._semantic_projects_total = response_data.get("semanticProjectsTotal", 0)
+        self._saved_queries_offset = response_data.get("savedQueriesFrom", 0)
+        self._saved_queries_total = response_data.get("savedQueriesTotal", 0)
 
     @public
     @property
@@ -574,6 +580,12 @@ class FeaturestoreSearchResult:
     def semantic_projects(self) -> list[SemanticProjectSearchResult]:
         """List of semantic layer Semantic Project search results."""
         return self._semantic_projects
+
+    @public
+    @property
+    def saved_queries(self) -> list[MetricSearchResult]:
+        """List of semantic layer saved query search results, each with its label and semantic project as a metric result has."""
+        return self._saved_queries
 
     @public
     @property
@@ -719,6 +731,18 @@ class FeaturestoreSearchResult:
         """Total number of Semantic Projects matching the search."""
         return self._semantic_projects_total
 
+    @public
+    @property
+    def saved_queries_offset(self) -> int:
+        """Total offset for the return list of saved queries within the whole result."""
+        return self._saved_queries_offset
+
+    @public
+    @property
+    def saved_queries_total(self) -> int:
+        """Total number of saved queries matching the search."""
+        return self._saved_queries_total
+
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary.
 
@@ -762,6 +786,9 @@ class FeaturestoreSearchResult:
             "semanticProjects": [i.json() for i in self._semantic_projects],
             "semanticProjectsFrom": self._semantic_projects_offset,
             "semanticProjectsTotal": self._semantic_projects_total,
+            "savedQueries": [i.json() for i in self._saved_queries],
+            "savedQueriesFrom": self._saved_queries_offset,
+            "savedQueriesTotal": self._saved_queries_total,
         }
 
     def __repr__(self):

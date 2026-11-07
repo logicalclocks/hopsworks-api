@@ -38,13 +38,17 @@ class TestSearchApiDocTypes:
             ("DATASET", "datasets"),
             ("METRIC", "metrics"),
             ("SEMANTIC_PROJECT", "semantic_projects"),
+            ("SAVED_QUERY", "saved_queries"),
         ],
     )
     def test_dataset_and_metric_doc_types_reach_the_backend(
         self, mocker, doc_type, bucket
     ):
         # Arrange
-        key = "semanticProjects" if bucket == "semantic_projects" else bucket
+        key = {
+            "semantic_projects": "semanticProjects",
+            "saved_queries": "savedQueries",
+        }.get(bucket, bucket)
         c = _patch_client(mocker, {key: [{"name": "hit"}], f"{key}Total": 1})
 
         # Act

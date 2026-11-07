@@ -212,7 +212,7 @@ class SemanticSavedQuery:
     Run it with [`SemanticProject.query`][hopsworks_common.semantic_layer.SemanticProject.query] or [`SemanticProject.sql`][hopsworks_common.semantic_layer.SemanticProject.sql], which can refine it.
     `metrics` and `group_by` are what it queries, with group-bys as qualified names such as `metric_time__month`.
     `where` holds its filters in MetricFlow's call syntax, combined with `AND`.
-    `order_by` is its sort, each entry a dict with the column `name` and `descending`, and `limit` its row limit, `None` for no limit.
+    `order_by` is its sort, each entry a dict with the column `name` and the bool `descending`, and `limit` its row limit, `None` for no limit.
     `tags` are the schematised tags its definition sets in `config.meta.hopsworks.tags`, tag schema name to value.
     """
 
@@ -235,6 +235,8 @@ class SemanticSavedQuery:
         fields = _known_fields(cls, humps.decamelize(json_dict))
         for name in ("metrics", "group_by", "where", "order_by"):
             fields[name] = fields.get(name) or []
+        # The gateway leaves out `descending` when it is false.
+        fields["order_by"] = [_order_by(entry) for entry in fields["order_by"]]
         # Tag schema names and the keys inside tag values are the user's, so they keep their case.
         fields["tags"] = json_dict.get("tags") or {}
         return cls(**fields)
@@ -881,6 +883,8 @@ class SemanticProject:
 
         A query names its metrics, or runs a saved query by name and takes the metrics from it.
         On a saved query, `group_by`, `order_by` and `limit` replace its own when given, and `where` and `filters` are added to its filters.
+        An empty `group_by` replaces its group-bys too, asking for its totals, and an empty `order_by` drops its sort.
+        Its own order-bys by a group-by that a given `group_by` leaves out are dropped.
 
         Example: Run a saved query by month instead of its own grain
             ```python
@@ -1033,7 +1037,7 @@ class SemanticProject:
         Parameters:
             metrics: Metric names, one to eight; leave them out with `saved_query`.
             group_by: Dimensions for the breakdown table and the native filters, such as `customer__country`; without them, the first categorical dimension the metrics share.
-            title: Title of the dashboard; without one, the semantic project's name followed by the metric labels.
+            title: Title of the dashboard; without one, `<semantic project>: <metric labels>`, or `<semantic project>: <saved query label>` for a saved query.
             saved_query: Name of a saved query whose metrics and group-bys the dashboard shows, instead of `metrics` and `group_by`.
 
         Returns:
@@ -1043,11 +1047,12 @@ class SemanticProject:
             ValueError: If neither `metrics` nor `saved_query` is given, or `saved_query` is given with `metrics` or `group_by`.
             hopsworks.client.exceptions.SemanticLayerException:
                 With status 400 for an unknown metric or group-by or metrics with no time dimension in common, and 409 when the project has no valid build.
+                With status 404 and `error_code` 590001 (`SEMANTIC_LAYER_NOT_FOUND`) for an unknown saved query.
                 With status 503 and `error_code` 590014 (`SEMANTIC_LAYER_DASHBOARDS_DISABLED`) when semantic dashboards are not available: Superset 6, or Superset, its semantic dashboards or the project's Superset service off.
                 With status 503 and `error_code` 590015 (`SEMANTIC_LAYER_SUPERSET_ERROR`) when Superset did not answer.
         """
         if saved_query is not None:
-            if metrics is not None or group_by is not None:
+            if _as_list(metrics) or _as_list(group_by):
                 raise ValueError(
                     "A dashboard from a saved query takes its metrics and group-bys "
                     "from it: leave out metrics and group_by."
@@ -1197,7 +1202,7 @@ def _query_request(
     saved_query: str | None = None,
 ) -> dict[str, Any]:
     """Build the gateway's `Query` body, leaving out every argument that is `None`."""
-    if saved_query is not None and metrics is not None:
+    if saved_query is not None and _as_list(metrics):
         raise ValueError(
             f"Saved query '{saved_query}' names its own metrics: leave out metrics."
         )

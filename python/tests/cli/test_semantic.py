@@ -742,6 +742,32 @@ class TestSavedQueries:
         )
         assert result.output.splitlines() == ["revenue", "1.0"]
 
+    def test_an_empty_group_by_asks_for_the_totals_and_an_empty_order_by_drops_the_sort(
+        self, sales
+    ):
+        sales.sql.return_value = "SELECT 1"
+
+        result = _run(
+            "sql",
+            "sales",
+            "--saved-query",
+            "revenue_by_country",
+            "--group-by",
+            "",
+            "--order-by",
+            "",
+        )
+
+        assert result.exit_code == 0, result.output
+        sales.sql.assert_called_once_with(
+            saved_query="revenue_by_country",
+            group_by=[],
+            where=None,
+            order_by=[],
+            limit=None,
+            time_range=None,
+        )
+
     @pytest.mark.parametrize("command", [["sql"], ["query", "--explain"]])
     def test_sql_of_a_saved_query(self, sales, command):
         sales.sql.return_value = "SELECT 1"

@@ -105,6 +105,40 @@ def test_dataset_and_metric_hits_are_listed_with_the_semantic_project(mock_proje
     assert "in EUR" not in result.output
 
 
+def test_saved_query_hits_are_listed_after_semantic_projects_with_theirs(
+    mock_project,
+):
+    semantic_project = {"semanticProjectId": 4, "semanticProjectName": "sales"}
+    _search_api(
+        mock_project,
+        {
+            "savedQueries": [
+                _item(
+                    "revenue_by_country", label="Revenue by country", **semantic_project
+                )
+            ],
+            "semanticProjects": [_item("sales", rootPath="/Projects/demo/sales")],
+            "metrics": [_item("revenue", label="Revenue", **semantic_project)],
+        },
+    )
+
+    result = CliRunner().invoke(cli, ["search", "revenue"])
+
+    assert result.exit_code == 0, result.output
+    rows = [line.split() for line in result.output.splitlines()[2:]]
+    assert [row[0] for row in rows] == ["metric", "semantic_project", "saved_query"]
+    assert rows[2] == [
+        "saved_query",
+        "revenue_by_country",
+        "-",
+        "demo",
+        "sales:",
+        "Revenue",
+        "by",
+        "country",
+    ]
+
+
 def test_semantic_project_hits_show_their_root_path(mock_project):
     _search_api(
         mock_project,
@@ -141,6 +175,7 @@ def test_type_option_maps_to_the_backend_doc_type(mock_project):
         ("dataset", "DATASET"),
         ("metric", "METRIC"),
         ("semantic_project", "SEMANTIC_PROJECT"),
+        ("saved_query", "SAVED_QUERY"),
     ):
         CliRunner().invoke(cli, ["search", "x", "--type", spelling])
         assert api._search.call_args.kwargs["doc_type"] == doc_type

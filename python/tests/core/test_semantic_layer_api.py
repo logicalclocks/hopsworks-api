@@ -689,13 +689,18 @@ class TestSavedQueries:
         "metrics": ["revenue", "orders"],
         "groupBy": ["metric_time__month", "customer__country"],
         "where": ["{{ Dimension('customer__country') }} != 'XX'"],
-        "orderBy": [{"name": "metric_time__month"}],
+        "orderBy": [
+            {"name": "metric_time__month"},
+            {"name": "revenue", "descending": True},
+        ],
         "limit": None,
         "tags": {"owner": {"team": "finance"}},
     }
 
-    def test_list_saved_queries_reads_the_list_the_gateway_returns(self, http, sales):
-        http._session.request.return_value = _response(body=[self.SAVED_QUERY])
+    def test_list_saved_queries_reads_the_gateway_answer(self, http, sales, caplog):
+        http._session.request.return_value = _response(
+            body={"savedQueries": [self.SAVED_QUERY], "buildId": 11, "stale": False}
+        )
 
         saved_queries = sales.list_saved_queries()
 
@@ -711,12 +716,16 @@ class TestSavedQueries:
                 metrics=["revenue", "orders"],
                 group_by=["metric_time__month", "customer__country"],
                 where=["{{ Dimension('customer__country') }} != 'XX'"],
-                order_by=[{"name": "metric_time__month"}],
+                order_by=[
+                    {"name": "metric_time__month", "descending": False},
+                    {"name": "revenue", "descending": True},
+                ],
                 tags={"owner": {"team": "finance"}},
             )
         ]
+        assert caplog.text == ""
 
-    def test_a_wrapped_answer_is_read_and_warns_when_stale(self, http, sales, caplog):
+    def test_a_stale_answer_warns(self, http, sales, caplog):
         http._session.request.return_value = _response(
             body={"savedQueries": [self.SAVED_QUERY], "buildId": 11, "stale": True}
         )
@@ -728,7 +737,9 @@ class TestSavedQueries:
         assert "answered from build 11" in caplog.text
 
     def test_no_saved_queries(self, http, sales):
-        http._session.request.return_value = _response(body=[])
+        http._session.request.return_value = _response(
+            body={"savedQueries": [], "buildId": 11, "stale": False}
+        )
 
         assert sales.list_saved_queries() == []
 
@@ -757,6 +768,25 @@ class TestSavedQueries:
             "limit": 5,
         }
         assert df["revenue"].tolist() == [10.5]
+
+    @pytest.mark.parametrize(
+        ("kwargs", "body"),
+        [
+            ({"group_by": []}, {"savedQuery": "revenue_by_country", "groupBy": []}),
+            ({"order_by": []}, {"savedQuery": "revenue_by_country", "orderBy": []}),
+            ({"metrics": []}, {"savedQuery": "revenue_by_country"}),
+        ],
+    )
+    def test_an_empty_group_by_or_order_by_replaces_the_saved_one(
+        self, http, sales, kwargs, body
+    ):
+        http._session.request.return_value = _response(
+            body={"sql": "SELECT 1", "buildId": 12, "stale": False}
+        )
+
+        sales.sql(saved_query="revenue_by_country", **kwargs)
+
+        assert json.loads(_gateway_call(http)[2]["data"]) == body
 
     def test_sql_of_a_saved_query(self, http, sales):
         http._session.request.return_value = _response(
@@ -916,6 +946,15 @@ class TestSuperset:
         assert json.loads(call.kwargs["data"]) == body
         assert dashboard["id"] == 12
 
+    def test_empty_metrics_and_group_bys_go_with_a_saved_query(self, http, sales):
+        http._send_request.return_value = self.DASHBOARD
+
+        sales.create_dashboard([], group_by=[], saved_query="revenue_by_country")
+
+        assert json.loads(http._send_request.call_args.kwargs["data"]) == {
+            "savedQuery": "revenue_by_country"
+        }
+
     @pytest.mark.parametrize(
         ("kwargs", "message"),
         [
@@ -970,6 +1009,15 @@ class TestSuperset:
                 lambda sp: sp.create_dashboard(["revenue"]),
                 503,
                 {"errorCode": 590015, "errorMsg": "Superset did not answer"},
+            ),
+            (
+                lambda sp: sp.create_dashboard(saved_query="nope"),
+                404,
+                {
+                    "errorCode": 590001,
+                    "errorMsg": "Semantic project not found",
+                    "usrMsg": "Semantic project sales has no saved query nope.",
+                },
             ),
         ],
     )

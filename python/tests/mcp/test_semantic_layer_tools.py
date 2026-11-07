@@ -278,6 +278,14 @@ def test_query_saved_query_runs_it_off_the_event_loop_and_returns_csv(tools, sl,
     assert callers[0] is not threading.main_thread()
 
 
+def test_an_empty_group_by_asks_for_the_saved_query_totals(tools, sl, sales):
+    sales.query.return_value = pd.DataFrame({"revenue": [10.0]})
+
+    _call(tools.query_saved_query("sales", "revenue_by_country", group_by=[]))
+
+    assert sales.query.call_args.kwargs["group_by"] == []
+
+
 def test_an_unknown_saved_query_raises_the_gateway_error(tools, sl, sales):
     sales.query.side_effect = SemanticLayerException(
         "not found",

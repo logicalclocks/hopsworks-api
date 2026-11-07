@@ -134,7 +134,7 @@ metrics:
 ```
 
 Rules that keep a compile valid:
-- **Names** are unique, and lower-cased on compile; a group-by is addressed as `<entity>__<dimension>` (`order__status`, `customer__country`), and every metric's time axis as `metric_time`.
+- **Names** are unique, lower snake case of at least two characters, never a time grain, `metric_time` or an SQL keyword ([references/naming.md](references/naming.md)); a group-by is addressed as `<entity>__<dimension>` (`order__status`, `customer__country`), and every metric's time axis as `metric_time`.
 - **Joins** follow entities, at most two hops, and never fan out: `orders` reaches `customer__country` through the `customer` entity because `customers` has it as its primary entity.
 - **Time dimensions** need `type_params.time_granularity`; every measure needs an `agg_time_dimension`, from `defaults` or its own.
 - **Metric types:** simple, ratio, derived, cumulative (`window`, `grain_to_date`) and conversion metrics, derived inputs with `offset_window`/`offset_to_grain`, `fill_nulls_with`, `join_to_timespine`, custom granularities, semi-additive measures, SCD type II dimensions, `Metric(...)` in a filter, and `saved_queries:`. YAML for each: [references/metric-types.md](references/metric-types.md).
@@ -168,6 +168,7 @@ hops semantic update sales --path Jupyter/analytics/dbt_v2     # a new root path
 ```bash
 hops search revenue --type metric      # metrics in every semantic project; DETAIL names the semantic project
 hops search sales --type semantic_project            # semantic projects, with their root path
+hops search revenue --type saved_query               # saved queries; DETAIL names the semantic project
 hops semantic metrics sales                          # TAGS lists the tag schemas each metric sets
 hops semantic metrics sales --tag certified          # only metrics whose definitions set every --tag
 hops semantic dimensions sales --metrics revenue,average_order_value   # only what every listed metric supports
@@ -213,7 +214,7 @@ df = sales.query(
 sql = sales.sql(metrics=["revenue"], group_by=["metric_time__month"])
 ```
 
-A saved query is a named query from the YAML; `--group-by`, `--order-by` and `--limit` replace its own, and `--where` adds to its filters:
+A saved query is a named query from the YAML; `--group-by`, `--order-by` and `--limit` replace its own (`--group-by ""` for its totals), and `--where` adds to its filters:
 
 ```bash
 hops semantic saved-queries sales                                        # NAME, LABEL, METRICS, GROUP-BYS

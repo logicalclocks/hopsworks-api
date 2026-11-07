@@ -395,7 +395,7 @@ class SemanticLayerTools:
         Parameters:
             semantic_project: Name of the semantic project.
             name: Name of the saved query, from list_saved_queries.
-            group_by: Qualified group-bys that replace the saved query's own, such as `metric_time__month`.
+            group_by: Qualified group-bys that replace the saved query's own, such as `metric_time__month`; an empty list asks for its totals, and none keeps its own.
             where: Filters in MetricFlow's syntax, added to the saved query's own with AND.
             limit: Maximum number of rows; it replaces the saved query's own limit.
             ctx: The MCP context, provided automatically.

@@ -305,8 +305,40 @@ class TestSearchResults:
 
         assert result.datasets == []
         assert result.metrics == []
+        assert result.saved_queries == []
         assert result.datasets_total == 0
         assert result.metrics_total == 0
+        assert result.saved_queries_total == 0
+
+    def test_search_result_parses_saved_queries_as_metric_hits(self):
+        result = search_results.FeaturestoreSearchResult(
+            {
+                "savedQueries": [
+                    {
+                        "hopsworksId": "savedquery3-1",
+                        "name": "revenue_by_country",
+                        "label": "Revenue by country",
+                        "semanticProjectId": 4,
+                        "semanticProjectName": "sales",
+                        "parentProjectId": 1,
+                        "parentProjectName": "test_project",
+                    }
+                ],
+                "savedQueriesFrom": 0,
+                "savedQueriesTotal": 1,
+            }
+        )
+
+        saved_query = result.saved_queries[0]
+        assert isinstance(saved_query, search_results.MetricSearchResult)
+        assert saved_query.name == "revenue_by_country"
+        assert saved_query.label == "Revenue by country"
+        assert saved_query.semantic_project_name == "sales"
+        assert result.saved_queries_offset == 0
+        assert result.saved_queries_total == 1
+        as_json = result.json()
+        assert as_json["savedQueries"][0]["semantic_project_name"] == "sales"
+        assert as_json["savedQueriesTotal"] == 1
 
     def test_search_result_parses_semantic_projects(self):
         result = search_results.FeaturestoreSearchResult(

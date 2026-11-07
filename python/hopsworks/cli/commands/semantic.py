@@ -33,6 +33,7 @@ from hopsworks_common.client.exceptions import (
     SemanticLayerException,
 )
 from hopsworks_common.core.semantic_layer_api import _SPINE_GRAINS
+from hopsworks_common.semantic_layer import _GRAINS
 
 
 if TYPE_CHECKING:
@@ -65,6 +66,15 @@ def _split(
     """Flatten a repeatable, comma-separated option into one list."""
     items = [item.strip() for value in values for item in value.split(",")]
     return [item for item in items if item] or None
+
+
+def _split_given(
+    _ctx: click.Context, _param: click.Parameter, values: tuple[str, ...]
+) -> list[str] | None:
+    """As ``_split``, but an option given only empty, as ``--group-by ""``, is an empty list rather than ``None``."""
+    if not values:
+        return None
+    return _split(_ctx, _param, values) or []
 
 
 def _build_label(build: SemanticBuild | None) -> str:
@@ -985,13 +995,14 @@ def _query_options(fn: Callable) -> Callable:
             "--saved-query",
             "saved_query",
             help="Run a saved query (hops semantic saved-queries) instead of --metrics; "
-            "--group-by, --order-by and --limit replace its own, --where adds to its filters.",
+            "--group-by, --order-by and --limit replace its own, --where adds to its filters. "
+            '--group-by "" asks for its totals and --order-by "" drops its sort.',
         ),
         click.option(
             "--group-by",
             "group_by",
             multiple=True,
-            callback=_split,
+            callback=_split_given,
             help="Group-bys, comma-separated: --group-by metric_time__month,"
             "customer__country. Suffix a time dimension with a grain (__day ... "
             "__year) or a date part (__extract_dow).",
@@ -1007,7 +1018,7 @@ def _query_options(fn: Callable) -> Callable:
             "--order",
             "order_by",
             multiple=True,
-            callback=_split,
+            callback=_split_given,
             help="Columns to sort by, comma-separated; a leading - sorts "
             "descending: --order-by -revenue,metric_time__month.",
         ),
@@ -1217,7 +1228,8 @@ def query_cmd(
 )
 @click.option(
     "--title",
-    help="Dashboard title; default the semantic project's name and the metric labels. "
+    help="Dashboard title; default '<semantic project>: <metric labels>', or "
+    "'<semantic project>: <saved query label>' with --saved-query. "
     "A dashboard of yours with this title is updated in place.",
 )
 @click.pass_context
@@ -1555,6 +1567,15 @@ _SQL_KEYWORDS = frozenset(
     without year
     """.split()  # noqa: SIM905 - one word per line would take 368 lines
 )
+# The compiler's NAMING rule refuses these names and the time grains, and its RESERVED_KEYWORD rule these
+# words as entity, dimension and measure names (hopsworks-semantic validate/Validator.java).
+_RESERVED_NAMES = frozenset({"metric_time", "mf_internal_uuid"}) | _GRAINS
+_ELEMENT_KEYWORDS = frozenset(
+    """
+    and as create distinct for from full having in inner into is join left like natural not
+    null on or right select union using where with
+    """.split()  # noqa: SIM905
+)
 
 
 def _fg_ref(ref: str) -> tuple[str, int | None]:
@@ -1572,10 +1593,23 @@ def _base_type(hive_type: str | None) -> str:
     return re.split(r"[(<]", (hive_type or "").lower(), maxsplit=1)[0].strip()
 
 
-def _element_name(raw: str) -> str:
-    """A semantic element name: lowercase letters, digits and single underscores, starting with a letter."""
+def _snake(raw: str) -> str:
+    """``raw`` in lower snake case, starting with a letter and ending with a letter or digit, with no ``__``."""
     name = re.sub(r"[^a-z0-9]+", "_", raw.lower()).strip("_")
-    return name if name[:1].isalpha() else f"f_{name}"
+    return name if name[:1].isalpha() else f"f_{name}".rstrip("_")
+
+
+def _valid_name(name: str) -> bool:
+    """Whether a ``_snake`` name passes the compiler's NAMING and RESERVED_KEYWORD rules."""
+    return (
+        len(name) > 1 and name not in _RESERVED_NAMES and name not in _ELEMENT_KEYWORDS
+    )
+
+
+def _element_name(raw: str) -> str:
+    """``raw`` as a name the compiler accepts, suffixed ``_value`` when it is too short, reserved or an SQL keyword."""
+    name = _snake(raw)
+    return name if _valid_name(name) else f"{name}_value"
 
 
 def _column(raw: str) -> str:
@@ -1586,20 +1620,21 @@ def _column(raw: str) -> str:
     return "'" + quoted.replace("'", "''") + "'"
 
 
-def _claim(name: str, taken: set[str], prefix: str) -> str:
-    """``name``, or ``<prefix>_<name>`` when taken, numbered when that is taken too; recorded in ``taken``."""
+def _claim(name: str, prefix: str, free: Callable[[str], bool]) -> str:
+    """``name``, or ``<prefix>_<name>`` when it is not free, numbered when that is not free either."""
     candidate, n = name, 1
-    while candidate in taken:
+    while not free(candidate):
         candidate = f"{prefix}_{name}" if n == 1 else f"{prefix}_{name}_{n}"
         n += 1
-    taken.add(candidate)
     return candidate
 
 
 def _entity_name(column: str, model: str) -> str:
+    """``customer`` for a key ``customer_id``, the model for ``id``; the whole column when the stem is not a valid name."""
     if column == "id":
         return model
-    return _element_name(column[:-3] if column.endswith("_id") else column)
+    stem = _snake(column[:-3]) if column.endswith("_id") else ""
+    return stem if _valid_name(stem) else _element_name(column)
 
 
 def _label(name: str) -> str:
@@ -1616,6 +1651,8 @@ def _scaffold(
     A ``timestamp`` or ``date`` event time is the time dimension, with day grain; without one the model has no measures, since every measure needs a time dimension.
     String features are categorical dimensions; the measures are a row count and a sum per other numeric feature.
     One simple metric per measure is written commented out, for the author to choose, name and describe.
+    Element names are the column names in lower snake case, suffixed ``_value`` when the compiler refuses the name itself (one character, a time grain, ``metric_time`` or an SQL keyword).
+    A name another element already has, here or as another kind of element in another model, or a dimension name another model with the same primary entity has, is prefixed with the model's name.
 
     Args:
         name: The dbt project's name.
@@ -1630,7 +1667,7 @@ def _scaffold(
     for fg in feature_groups:
         model = _element_name(fg.name)
         if model in names:
-            model = _claim(f"{model}_v{fg.version}", names, model)
+            model = _claim(f"{model}_v{fg.version}", model, lambda c: c not in names)
         names.add(model)
         models.append((fg, model))
     join_keys = {
@@ -1638,7 +1675,9 @@ def _scaffold(
         for fg, model in models
         if len(fg.primary_key or []) == 1
     }
-    measures: set[str] = set()
+    # Reserved first, so a dimension or measure of an earlier model cannot take a name a join needs.
+    kinds = dict.fromkeys(join_keys.values(), "entity")
+    pairs: set[tuple[str, str]] = set()
     metrics: list[str] = []
     lines = ["version: 2", ""]
     if not models:
@@ -1650,7 +1689,7 @@ def _scaffold(
         lines.append("semantic_models:")
     for fg, model in models:
         lines += _semantic_model(
-            fg, model, join_keys, measures, metrics, own_feature_store
+            fg, model, join_keys, kinds, pairs, metrics, own_feature_store
         )
     if metrics:
         lines += [
@@ -1671,39 +1710,54 @@ def _semantic_model(
     fg: Any,
     model: str,
     join_keys: dict[str, str],
-    measure_names: set[str],
+    kinds: dict[str, str],
+    pairs: set[tuple[str, str]],
     metrics: list[str],
     own_feature_store: str | None,
 ) -> list[str]:
+    """The YAML lines of one semantic model; ``kinds`` and ``pairs``, every model's element names and (primary entity, dimension) pairs, gain this model's."""
     types = {f.name: _base_type(f.type) for f in fg.features}
     descriptions = {f.name: f.description for f in fg.features if f.description}
     primary_key = list(fg.primary_key or [])
     event_time = fg.event_time if types.get(fg.event_time) in _TIME_TYPES else None
     taken: set[str] = set()
+    primary = model
+
+    def claim(name: str, kind: str) -> str:
+        def free(candidate: str) -> bool:
+            other = kinds.get(candidate)
+            return (
+                candidate not in taken
+                and (other is None or (other == kind and kind != "measure"))
+                and (
+                    kind not in ("time", "categorical")
+                    or (primary, candidate) not in pairs
+                )
+            )
+
+        claimed = _claim(name, model, free)
+        taken.add(claimed)
+        kinds[claimed] = kind
+        if kind in ("time", "categorical"):
+            pairs.add((primary, claimed))
+        return claimed
 
     entities = []
     primary_entity = None
     if len(primary_key) == 1:
-        entities.append(
-            (
-                _claim(_entity_name(primary_key[0], model), taken, model),
-                "primary",
-                primary_key[0],
-            )
-        )
+        primary = claim(_entity_name(primary_key[0], model), "entity")
+        entities.append((primary, "primary", primary_key[0]))
     else:
-        primary_entity = _claim(model, taken, model)
+        primary_entity = primary = claim(model, "entity")
     entities += [
-        (_claim(join_keys[column], taken, model), "foreign", column)
+        (claim(join_keys[column], "entity"), "foreign", column)
         for column in types
         if column in join_keys and primary_key != [column]
     ]
     keys = set(primary_key) | {column for _, _, column in entities}
-    time_dimension = (
-        _claim(_element_name(event_time), taken, model) if event_time else None
-    )
+    time_dimension = claim(_element_name(event_time), "time") if event_time else None
     dimensions = [
-        (_claim(_element_name(column), taken, model), column)
+        (claim(_element_name(column), "categorical"), column)
         for column, kind in types.items()
         if kind in _STRING_TYPES and column not in keys
     ]
@@ -1778,9 +1832,7 @@ def _semantic_model(
     ]
     lines.append("    measures:")
     for measure, agg, column, description in measures:
-        claimed = _claim(measure, taken | measure_names, model)
-        taken.add(claimed)
-        measure_names.add(claimed)
+        claimed = claim(measure, "measure")
         lines += [
             f"      - name: {claimed}",
             f"        agg: {agg}",

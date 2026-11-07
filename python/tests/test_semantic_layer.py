@@ -208,10 +208,22 @@ class TestSavedQueryRequest:
             "savedQuery": "revenue_by_country"
         }
 
-    @pytest.mark.parametrize("metrics", [["revenue"], "revenue", []])
+    @pytest.mark.parametrize("metrics", [["revenue"], "revenue"])
     def test_metrics_with_a_saved_query_are_refused(self, metrics):
         with pytest.raises(ValueError, match="leave out metrics"):
             _query_request(metrics, saved_query="revenue_by_country")
+
+    def test_empty_metrics_go_with_a_saved_query(self):
+        assert _query_request([], saved_query="revenue_by_country") == {
+            "savedQuery": "revenue_by_country"
+        }
+
+    def test_an_empty_group_by_asks_for_totals_and_an_empty_order_by_drops_the_sort(
+        self,
+    ):
+        assert _query_request(
+            None, saved_query="revenue_by_country", group_by=[], order_by=[]
+        ) == {"savedQuery": "revenue_by_country", "groupBy": [], "orderBy": []}
 
     def test_without_metrics_or_a_saved_query_the_metrics_are_empty(self):
         assert _query_request(None, group_by="customer__country") == {
@@ -330,8 +342,11 @@ class TestSavedQuery:
         "metrics": ["revenue", "orders"],
         "groupBy": ["metric_time__month", "customer__country"],
         "where": ["{{ Dimension('customer__country') }} != 'XX'"],
-        "orderBy": [{"name": "metric_time__month"}],
-        "limit": None,
+        "orderBy": [
+            {"name": "metric_time__month"},
+            {"name": "revenue", "descending": True},
+        ],
+        "limit": 10,
         "tags": {"dataOwner": {"ownerTeam": "finance"}},
         "exports": [{"name": "ignored"}],
     }
@@ -346,8 +361,11 @@ class TestSavedQuery:
             metrics=["revenue", "orders"],
             group_by=["metric_time__month", "customer__country"],
             where=["{{ Dimension('customer__country') }} != 'XX'"],
-            order_by=[{"name": "metric_time__month"}],
-            limit=None,
+            order_by=[
+                {"name": "metric_time__month", "descending": False},
+                {"name": "revenue", "descending": True},
+            ],
+            limit=10,
             tags={"dataOwner": {"ownerTeam": "finance"}},
         )
         assert saved_query.to_dict()["group_by"] == [

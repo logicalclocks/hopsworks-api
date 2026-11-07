@@ -11,7 +11,7 @@ They act on the logged-in project; the parent skill's "Agent tools" section says
 | `get_dimensions`, `get_entities` | CSV of what the metrics can be grouped by |
 | `get_dimension_values` | CSV of one dimension's values |
 | `query_metrics` | CSV rows, `limit` 100 by default, cut at 50,000 characters |
-| `query_saved_query` | CSV rows of a saved query by name; `group_by` and `limit` replace its own, `where` adds to its filters |
+| `query_saved_query` | CSV rows of a saved query by name; `group_by` and `limit` replace its own (`group_by=[]` for its totals), `where` adds to its filters |
 | `get_metrics_compiled_sql` | the SQL, for a dashboard dataset or an explanation |
 | `get_semantic_project_tags` | the project's tags |
 | `validate_semantic_project`, `compile_semantic_project` | compile, and the build's status and issues (tagged `write`) |

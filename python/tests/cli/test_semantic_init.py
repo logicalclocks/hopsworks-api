@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -288,6 +289,245 @@ class TestScaffold:
 
         assert _semantic(files) == {"version": 2}
         assert "hops-semantic skill" in files["models/semantic.yml"]
+
+
+# hopsworks-semantic validate/Validator.java: NAME, RESERVED_NAMES, TimeGranularity and SQL_KEYWORDS.
+_VALID_NAME = re.compile(r"^[a-z]((?!__)[a-z0-9_])*[a-z0-9]$")
+_RESERVED = {
+    "metric_time",
+    "mf_internal_uuid",
+    "nanosecond",
+    "microsecond",
+    "millisecond",
+    "second",
+    "minute",
+    "hour",
+    "day",
+    "week",
+    "month",
+    "quarter",
+    "year",
+}
+_KEYWORDS = set(
+    """
+    and as create distinct for from full having in inner into is join left like
+    natural not null on or right select union using where with
+    """.split()  # noqa: SIM905
+)
+
+
+def _assert_compilable_names(files):
+    """Every name in the scaffold passes the compiler's name rules."""
+    models = _semantic(files)["semantic_models"]
+    kinds = {}
+    measure_owner = {}
+    pairs = {}
+    for model in models:
+        assert _VALID_NAME.match(model["name"]) and model["name"] not in _RESERVED
+        elements = [(e["name"], "entity") for e in model.get("entities", [])]
+        elements += [(d["name"], d["type"]) for d in model.get("dimensions", [])]
+        elements += [(m["name"], "measure") for m in model.get("measures", [])]
+        names = [name for name, _ in elements]
+        assert len(names) == len(set(names)), names
+        for name, kind in elements:
+            assert _VALID_NAME.match(name), name
+            assert name not in _RESERVED, name
+            assert name not in _KEYWORDS, name
+            # ELEMENT_CONSISTENCY and DIMENSION_CONSISTENCY across models.
+            assert kinds.setdefault(name, kind) == kind, name
+        for name, kind in elements:
+            if kind == "measure":
+                assert measure_owner.setdefault(name, model["name"]) == model["name"]
+        primary = model.get("primary_entity") or next(
+            e["name"] for e in model["entities"] if e["type"] == "primary"
+        )
+        for name, kind in elements:
+            if kind in ("time", "categorical"):
+                assert pairs.setdefault((primary, name), model["name"]) == model["name"]
+    if "# metrics:" in files["models/semantic.yml"]:
+        for metric in _uncommented_metrics(files):
+            assert _VALID_NAME.match(metric["name"]) and metric["name"] not in _RESERVED
+
+
+class TestScaffoldNames:
+    @pytest.mark.parametrize(
+        ("raw", "name"),
+        [
+            ("amount", "amount"),
+            ("Order Total", "order_total"),
+            ("a__b", "a_b"),
+            ("amount_", "amount"),
+            ("1st_visit", "f_1st_visit"),
+            ("x", "x_value"),
+            ("_", "f_value"),
+            ("day", "day_value"),
+            ("week", "week_value"),
+            ("month", "month_value"),
+            ("quarter", "quarter_value"),
+            ("year", "year_value"),
+            ("hour", "hour_value"),
+            ("metric_time", "metric_time_value"),
+            ("mf_internal_uuid", "mf_internal_uuid_value"),
+            ("select", "select_value"),
+            ("FROM", "from_value"),
+            ("date", "date"),
+        ],
+    )
+    def test_element_names_pass_the_compiler(self, raw, name):
+        assert semantic._element_name(raw) == name
+
+    @pytest.mark.parametrize(
+        ("column", "entity"),
+        [
+            ("customer_id", "customer"),
+            ("id", "readings"),
+            ("x_id", "x_id"),
+            ("day_id", "day_id"),
+            ("in_id", "in_id"),
+            ("month", "month_value"),
+        ],
+    )
+    def test_an_entity_keeps_the_key_column_when_its_stem_is_refused(
+        self, column, entity
+    ):
+        assert semantic._entity_name(column, "readings") == entity
+
+    def test_reserved_and_short_features_get_a_value_suffix(self):
+        fg = _fg(
+            "d",
+            1,
+            [
+                ("id", "bigint"),
+                ("day", "date"),
+                ("x", "string"),
+                ("year", "string"),
+                ("select", "string"),
+                ("metric_time", "string"),
+                ("q", "double"),
+                ("week", "int"),
+            ],
+            ["id"],
+            "day",
+        )
+
+        files = semantic._scaffold("calendar", [fg])
+        model = _semantic(files)["semantic_models"][0]
+
+        assert model["name"] == "d_value"
+        assert model["entities"] == [
+            {"name": "d_value", "type": "primary", "expr": "id"}
+        ]
+        assert model["defaults"] == {"agg_time_dimension": "day_value"}
+        assert {d["name"]: d["expr"] for d in model["dimensions"]} == {
+            "day_value": '"day"',
+            "x_value": "x",
+            "year_value": '"year"',
+            "select_value": '"select"',
+            "metric_time_value": "metric_time",
+        }
+        assert {m["name"]: m["expr"] for m in model["measures"]} == {
+            "d_value_count": "id",
+            "q_value": "q",
+            "week_value": "week",
+        }
+        assert [m["name"] for m in _uncommented_metrics(files)] == [
+            "d_value_count",
+            "q_value",
+            "week_value",
+        ]
+        _assert_compilable_names(files)
+
+    def test_a_suffixed_name_that_is_taken_gets_the_model_prefix(self):
+        fg = _fg(
+            "events",
+            1,
+            [
+                ("id", "bigint"),
+                ("ts", "timestamp"),
+                ("x", "string"),
+                ("x_value", "string"),
+            ],
+            ["id"],
+            "ts",
+        )
+
+        model = _semantic(semantic._scaffold("web", [fg]))["semantic_models"][0]
+
+        assert {d["name"]: d["expr"] for d in model["dimensions"]} == {
+            "ts": "ts",
+            "x_value": "x",
+            "events_x_value": "x_value",
+        }
+
+    def test_a_name_is_one_kind_of_element_across_models(self):
+        # customer is the customers model's entity, so the visits model's string
+        # feature customer, written first, cannot be a dimension of that name.
+        visits = _fg(
+            "visits",
+            1,
+            [
+                ("visit_id", "bigint"),
+                ("ts", "timestamp"),
+                ("customer", "string"),
+                ("amount", "string"),
+            ],
+            ["visit_id"],
+            "ts",
+        )
+        customers = _fg(
+            "customers",
+            1,
+            [("customer_id", "bigint"), ("since", "date"), ("amount", "double")],
+            ["customer_id"],
+            "since",
+        )
+
+        files = semantic._scaffold("crm", [visits, customers])
+        models = _by_name(_semantic(files)["semantic_models"])
+
+        assert "visits_customer" in _by_name(models["visits"]["dimensions"])
+        assert models["customers"]["entities"] == [
+            {"name": "customer", "type": "primary", "expr": "customer_id"}
+        ]
+        assert "amount" in _by_name(models["visits"]["dimensions"])
+        assert "customers_amount" in _by_name(models["customers"]["measures"])
+        _assert_compilable_names(files)
+
+    def test_models_with_one_primary_entity_do_not_share_a_dimension_name(self):
+        orders_v2 = _fg(
+            "orders",
+            2,
+            [("order_id", "bigint"), ("order_ts", "timestamp"), ("status", "string")],
+            ["order_id"],
+            "order_ts",
+        )
+
+        files = semantic._scaffold("sales", [ORDERS, orders_v2])
+        models = _by_name(_semantic(files)["semantic_models"])
+
+        assert models["orders_v2"]["entities"][0]["name"] == "order"
+        assert models["orders_v2"]["defaults"] == {
+            "agg_time_dimension": "orders_v2_order_ts"
+        }
+        assert set(_by_name(models["orders_v2"]["dimensions"])) == {
+            "orders_v2_order_ts",
+            "orders_v2_status",
+        }
+        _assert_compilable_names(files)
+
+    def test_the_scaffold_is_the_same_on_every_run(self):
+        feature_groups = [ORDERS, CUSTOMERS]
+
+        assert semantic._scaffold("sales", feature_groups) == semantic._scaffold(
+            "sales", feature_groups
+        )
+
+    @pytest.mark.parametrize(
+        "feature_groups",
+        [[ORDERS], [ORDERS, CUSTOMERS], [CUSTOMERS, ORDERS]],
+    )
+    def test_the_existing_scaffolds_pass_the_name_rules(self, feature_groups):
+        _assert_compilable_names(semantic._scaffold("sales", feature_groups))
 
 
 @pytest.fixture
