@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
@@ -31,6 +32,7 @@ from hopsworks_common.client.exceptions import (
     SemanticBuildException,
     SemanticLayerException,
 )
+from hopsworks_common.constants import _temp_dir
 from hopsworks_common.core.constants import HAS_PYARROW
 from hopsworks_common.decorators import _uses_polars, _uses_pyarrow
 
@@ -42,6 +44,7 @@ if TYPE_CHECKING:
     import polars as pl
     import pyarrow as pa
     from hopsworks_common.core.semantic_layer_api import SemanticLayerApi
+    from hopsworks_common.execution import Execution
 
 
 # MetricFlow's TimeGranularity values; a group-by name ending in `__<grain>` selects that grain.
@@ -240,6 +243,52 @@ class SemanticSavedQuery:
         # Tag schema names and the keys inside tag values are the user's, so they keep their case.
         fields["tags"] = json_dict.get("tags") or {}
         return cls(**fields)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@public("hopsworks.semantic_layer.SemanticExport")
+@dataclass
+class SemanticExport:
+    """A saved query's export: a feature group that a job fills with the saved query's rows, on a schedule or on demand.
+
+    An export is defined in the YAML, under a saved query's `exports:` with `export_as: table`; its schedule, version, lookback and whether it is enabled are under the saved query's `config.meta.hopsworks.exports.<export name>`.
+    `feature_group` and `version` name the Delta feature group it writes, the export's `alias` or else its name.
+    `feature_group_id` is the feature group its first run created, `None` before that run; later runs write that feature group and no other, so a feature group of that name the export did not create fails the run with `TARGET_EXISTS`.
+    Every group-by except `metric_time` is the feature group's primary key, and `metric_time` its event time.
+    `schedule` is a Quartz cron expression, `None` to run only through [`SemanticProject.run_export`][hopsworks_common.semantic_layer.SemanticProject.run_export].
+    `lookback`, such as `7 days`, makes each run replace only the rows whose `metric_time` is at or after the run's logical time minus the lookback, truncated to the `metric_time` grain; without it a run replaces every row.
+    Either way the run computes the whole saved query and replaces the rows in one commit, keeping the feature group and its id.
+    `last_status` is `NEVER_RUN`, `RUNNING`, `SUCCEEDED`, `FAILED`, `TRUNCATED` (the result reached the gateway's row cap, so it may be incomplete and nothing was written), `TARGET_EXISTS`, `OWNER_NOT_DATA_OWNER` (the semantic project's creator is not a Data Owner, so the export has no job), `JOB_ERROR` or `DISABLED`, and `last_message` says more.
+    `last_rows` is the number of rows the last run wrote.
+    """
+
+    name: str | None = None
+    saved_query: str | None = None
+    export_as: str | None = None
+    feature_group: str | None = None
+    feature_group_id: int | None = None
+    version: int | None = None
+    schedule: str | None = None
+    lookback: str | None = None
+    enabled: bool | None = None
+    job_name: str | None = None
+    last_status: str | None = None
+    last_run: str | None = None
+    last_rows: int | None = None
+    last_message: str | None = None
+
+    @classmethod
+    def from_response_json(
+        cls, json_dict: dict[str, Any] | None
+    ) -> SemanticExport | None:
+        if not json_dict:
+            return None
+        json_decamelized = humps.decamelize(json_dict)
+        # The control plane's listing names it `rows`.
+        json_decamelized.setdefault("last_rows", json_decamelized.get("rows"))
+        return cls(**_known_fields(cls, json_decamelized))
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -954,12 +1003,14 @@ class SemanticProject:
         group_limit: dict[str, Any] | None = None,
         dataframe_type: Literal["pandas", "polars", "pyarrow", "python"] = "pandas",
         saved_query: str | None = None,
+        read_cache: bool = True,
     ) -> pd.DataFrame | pl.DataFrame | pa.Table | list[dict[str, Any]]:
         """Run a metric query on the query engine, as the caller, and return its rows.
 
         The arguments are those of [`sql`][hopsworks_common.semantic_layer.SemanticProject.sql], including how they refine a saved query.
         Results come back as an Arrow stream when `pyarrow` is installed, which keeps column types, and as JSON otherwise.
         The gateway caps the number of rows it returns, and a result that may have been cut by the cap logs a warning.
+        The gateway may answer a repeated query from its result cache, which drops a result once a feature group the query reads has a new commit; a change of the caller's access reaches the cache within a minute.
 
         Example: Run a saved query, only for one country
             ```python
@@ -982,6 +1033,7 @@ class SemanticProject:
             group_limit: Keep only the top groups, as a dict `{"group_by", "top", "metric", "descending"}`.
             dataframe_type: `pandas`, `polars`, `pyarrow`, or `python` for a list of rows, each a dict keyed by column name.
             saved_query: Name of a saved query to run, from [`list_saved_queries`][hopsworks_common.semantic_layer.SemanticProject.list_saved_queries].
+            read_cache: Whether the gateway may answer from its result cache; `False` always runs the query on the engine.
 
         Returns:
             The rows, one column per group-by and metric.
@@ -995,23 +1047,22 @@ class SemanticProject:
             raise ValueError(
                 f"dataframe_type {dataframe_type!r} is not one of {', '.join(_DATAFRAME_TYPES)}."
             )
-        result = self._semantic_layer_api._query(
-            self,
-            _query_request(
-                metrics,
-                group_by=group_by,
-                where=where,
-                filters=filters,
-                having=having,
-                order_by=order_by,
-                limit=limit,
-                offset=offset,
-                time_range=time_range,
-                group_limit=group_limit,
-                saved_query=saved_query,
-            ),
-            arrow=HAS_PYARROW,
+        request = _query_request(
+            metrics,
+            group_by=group_by,
+            where=where,
+            filters=filters,
+            having=having,
+            order_by=order_by,
+            limit=limit,
+            offset=offset,
+            time_range=time_range,
+            group_limit=group_limit,
+            saved_query=saved_query,
         )
+        if not read_cache:
+            request["cache"] = False
+        result = self._semantic_layer_api._query(self, request, arrow=HAS_PYARROW)
         return _to_dataframe(result, dataframe_type)
 
     # endregion
@@ -1092,6 +1143,104 @@ class SemanticProject:
             hopsworks.client.exceptions.SemanticLayerException: For the same causes as [`create_dashboard`][hopsworks_common.semantic_layer.SemanticProject.create_dashboard].
         """
         return self._semantic_layer_api._explore_url(self, metric)
+
+    # endregion
+
+    # region Exports
+
+    @public
+    @usage._method_logger
+    def exports(self) -> list[SemanticExport]:
+        """The exports of the build that answers queries, each with the outcome of its last run.
+
+        Returns:
+            The exports, empty when no saved query defines one.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._semantic_layer_api._exports(self)
+
+    @public
+    @usage._method_logger
+    def run_export(self, name: str, wait: bool = False) -> Execution:
+        """Run an export now, outside its schedule, through its job.
+
+        The job runs as the semantic project's creator and records its outcome in the export's `last_status`; runs of one export never overlap, so a run started while another is going waits for it.
+        Only a Data Owner of the project can start one.
+
+        Parameters:
+            name: Name of the export, from [`exports`][hopsworks_common.semantic_layer.SemanticProject.exports].
+            wait: Whether to block until the job execution ends.
+
+        Returns:
+            The job execution; [`exports`][hopsworks_common.semantic_layer.SemanticProject.exports] says how many rows it wrote, or why it wrote none.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If there is no such export, the caller is not a Data Owner, or the backend encounters another error.
+            hopsworks.client.exceptions.JobExecutionException: When `wait` is set and the execution failed.
+        """
+        return self._semantic_layer_api._start_export(self, name, wait)
+
+    # endregion
+
+    # region Clients
+
+    @public
+    @usage._method_logger
+    def connection_info(self, ca_path: str | None = None) -> dict[str, Any]:
+        """What a dbt Semantic Layer client needs to reach this semantic project, apart from an API key.
+
+        `dbt-sl-sdk` takes the Hopsworks host, an API key and `environment_id`, with the `env` variables set; the Arrow Flight SQL JDBC driver takes `jdbc_url` and the API key as `token`.
+        When the cluster's certificates come from a private CA, the CA is written to `ca_path`, and `env` also points `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` at it.
+
+        Example: Query the semantic project with dbt-sl-sdk
+            ```python
+            import os
+            from dbtsl import SemanticLayerClient
+
+            info = sales.connection_info()
+            os.environ.update(info["env"])
+            dbt = SemanticLayerClient(
+                environment_id=info["environment_id"],
+                auth_token=api_key,
+                host="hopsworks.example.com",
+            )
+            ```
+
+        Parameters:
+            ca_path: File to write the CA certificate to; by default `hopsworks_semantic_<project id>_<semantic project id>_ca.pem` in the temporary directory.
+
+        Returns:
+            A dict with `environment_id`, `graphql_url`, `adbc_url`, `jdbc_url`, `flight_host`, `flight_port`, `env` (environment variable name to value) and `ca_path`, which is `None` without a private CA.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        info = self._semantic_layer_api._connection(self)
+        env = dict(info.get("env") or {})
+        ca_pem = info.get("caPem")
+        if ca_pem:
+            ca_path = ca_path or os.path.join(
+                _temp_dir(),
+                f"hopsworks_semantic_{self._project_id}_{self._id}_ca.pem",
+            )
+            with open(ca_path, "w") as ca_file:
+                ca_file.write(ca_pem)
+            env["SSL_CERT_FILE"] = ca_path
+            env["REQUESTS_CA_BUNDLE"] = ca_path
+        else:
+            ca_path = None
+        return {
+            "environment_id": info.get("environmentId"),
+            "graphql_url": info.get("graphqlUrl"),
+            "adbc_url": info.get("adbcUrl"),
+            "jdbc_url": info.get("jdbcUrl"),
+            "flight_host": info.get("flightHost"),
+            "flight_port": info.get("flightPort"),
+            "env": env,
+            "ca_path": ca_path,
+        }
 
     # endregion
 

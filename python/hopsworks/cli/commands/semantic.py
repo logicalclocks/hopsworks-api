@@ -7,6 +7,7 @@ Wraps ``project.get_semantic_layer_api()``. The query verbs follow MetricFlow's
 runs a saved query instead of ``--metrics``.
 ``init`` scaffolds a dbt project over feature groups, optionally in a new private GitHub repository cloned through Hopsworks git.
 ``time-spine create`` writes the time spine feature group that cumulative metrics and offsets join to.
+``export list|run`` shows and runs the exports that write saved queries into feature groups, and ``connect`` prints what a dbt Semantic Layer client needs.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from hopsworks.cli.commands import fg as fg_cmd
 from hopsworks.cli.commands import git as git_cmd
 from hopsworks_common.client.exceptions import (
     GitException,
+    JobExecutionException,
     SemanticBuildException,
     SemanticLayerException,
 )
@@ -1130,6 +1132,11 @@ def sql_cmd(
     is_flag=True,
     help="Print the SQL instead of running it, as `hops semantic sql` does.",
 )
+@click.option(
+    "--no-cache",
+    is_flag=True,
+    help="Run the query on the engine even when the gateway's result cache holds it.",
+)
 @click.pass_context
 def query_cmd(
     ctx: click.Context,
@@ -1144,6 +1151,7 @@ def query_cmd(
     end_time: str | None,
     fmt: str,
     explain: bool,
+    no_cache: bool,
 ) -> None:
     """Run a metric query or a saved query as you on the query engine and print the rows.
 
@@ -1160,6 +1168,7 @@ def query_cmd(
         end_time: Latest metric_time, inclusive.
         fmt: table, json or csv.
         explain: Print the SQL instead of the rows.
+        no_cache: Skip the gateway's result cache.
     """
     if explain:
         ctx.invoke(
@@ -1180,7 +1189,9 @@ def query_cmd(
     kwargs = _query_kwargs(
         metrics, saved_query, group_by, where, order_by, limit, start_time, end_time
     )
-    df = _semantic_project(ctx, name).query(**kwargs, dataframe_type="pandas")
+    df = _semantic_project(ctx, name).query(
+        **kwargs, dataframe_type="pandas", read_cache=not no_cache
+    )
     if output.JSON_MODE or fmt == "json":
         # NaN is not JSON; a missing value prints as null.
         output.print_json(
@@ -1271,6 +1282,135 @@ def dashboard_cmd(
     click.echo(
         f'Created dashboard {dashboard["id"]} "{dashboard["title"]}": {dashboard["url"]}'
     )
+
+
+# endregion
+
+# region Exports and clients
+
+
+@semantic_group.group("export")
+def export_group() -> None:
+    """Exports: feature groups that jobs fill with a saved query's rows, defined under the saved query's exports: in the YAML."""
+
+
+@export_group.command("list")
+@click.argument("name")
+@click.pass_context
+def export_list_cmd(ctx: click.Context, name: str) -> None:
+    """List the exports of a semantic project's current build, with each one's last run.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+    """
+    exports = _semantic_project(ctx, name).exports()
+    if output.JSON_MODE:
+        output.print_json([export.to_dict() for export in exports])
+        return
+    output.print_table(
+        [
+            "NAME",
+            "SAVED QUERY",
+            "FEATURE GROUP",
+            "SCHEDULE",
+            "LOOKBACK",
+            "STATUS",
+            "LAST RUN",
+            "ROWS",
+            "MESSAGE",
+        ],
+        [
+            [
+                export.name,
+                export.saved_query,
+                f"{export.feature_group} v{export.version}",
+                export.schedule or "on demand",
+                export.lookback or "-",
+                export.last_status or "-",
+                export.last_run or "-",
+                "-" if export.last_rows is None else export.last_rows,
+                output.first_line(export.last_message),
+            ]
+            for export in exports
+        ],
+    )
+
+
+@export_group.command("run")
+@click.argument("name")
+@click.argument("export")
+@click.option("--wait", is_flag=True, help="Wait for the run and print its outcome.")
+@click.pass_context
+def export_run_cmd(ctx: click.Context, name: str, export: str, wait: bool) -> None:
+    """Run an export now through its job, outside its schedule; needs the Data Owner role.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        export: Export name.
+        wait: Wait for the job execution to end.
+    """
+    sp = _semantic_project(ctx, name)
+    try:
+        execution = sp.run_export(export, wait=wait)
+    except JobExecutionException as exc:
+        raise click.ClickException(
+            f"The run of export {export} failed: {exc}. "
+            f"`hops semantic export list {name}` says why."
+        ) from exc
+    outcome = (
+        next((e for e in sp.exports() if e.name == export), None) if wait else None
+    )
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                "execution_id": execution.id,
+                "state": execution.state,
+                "export": outcome.to_dict() if outcome else None,
+            }
+        )
+        return
+    if outcome is None:
+        output.success("Started export %s (execution #%s).", export, execution.id)
+        return
+    output.success(
+        "Export %s %s: %s rows. %s",
+        export,
+        outcome.last_status,
+        "-" if outcome.last_rows is None else outcome.last_rows,
+        outcome.last_message or "",
+    )
+
+
+@semantic_group.command("connect")
+@click.argument("name")
+@click.option("--ca-path", help="File to write the cluster's CA certificate to.")
+@click.pass_context
+def connect_cmd(ctx: click.Context, name: str, ca_path: str | None) -> None:
+    """Print how a dbt Semantic Layer client reaches a semantic project: the URLs, and export lines for dbt-sl-sdk.
+
+    The export lines go to stdout and the rest to stderr, so
+    `eval "$(hops semantic connect sales)"` sets the variables. The client also needs
+    the Hopsworks host and an API key with the FEATURESTORE and TRINO scopes.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        ca_path: Where to write the CA certificate.
+    """
+    info = _semantic_project(ctx, name).connection_info(ca_path=ca_path)
+    if output.JSON_MODE:
+        output.print_json(info)
+        return
+    output.info("Environment id: %s", info["environment_id"])
+    output.info("GraphQL:        %s", info["graphql_url"])
+    output.info("ADBC:           %s", info["adbc_url"])
+    output.info("JDBC:           %s", info["jdbc_url"])
+    if info["ca_path"]:
+        output.info("CA certificate: %s", info["ca_path"])
+    for key, value in info["env"].items():
+        click.echo(f"export {key}={shlex.quote(str(value))}")
 
 
 # endregion

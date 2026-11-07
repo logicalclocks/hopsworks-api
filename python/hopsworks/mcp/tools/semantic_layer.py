@@ -164,6 +164,7 @@ class SemanticLayerTools:
             self.list_semantic_projects,
             self.list_metrics,
             self.list_saved_queries,
+            self.list_exports,
             self.get_dimensions,
             self.get_entities,
             self.get_dimension_values,
@@ -247,6 +248,39 @@ class SemanticLayerTools:
                 [q.name, q.label, q.description, q.metrics, q.group_by]
                 for q in saved_queries
             ],
+        )
+
+    async def list_exports(
+        self, semantic_project: str, ctx: Context | None = None
+    ) -> str:
+        """List a semantic project's exports, as CSV: feature groups that jobs keep filled with a saved query's rows, which other pipelines and models can read like any feature group.
+
+        Parameters:
+            semantic_project: Name of the semantic project.
+            ctx: The MCP context, provided automatically.
+
+        Returns:
+            CSV with the columns name, saved_query, feature_group, version, schedule (Quartz cron, empty when the export runs on demand only), lookback, enabled, last_status, last_run, last_rows and last_message; last_status TRUNCATED or TARGET_EXISTS means the last run wrote nothing.
+        """
+        if ctx:
+            await ctx.info(f"Listing the exports of {semantic_project}...")
+        exports = await run_sdk(lambda: _semantic_project(semantic_project).exports())
+        columns = [
+            "name",
+            "saved_query",
+            "feature_group",
+            "version",
+            "schedule",
+            "lookback",
+            "enabled",
+            "last_status",
+            "last_run",
+            "last_rows",
+            "last_message",
+        ]
+        return _csv(
+            columns,
+            [[getattr(export, column) for column in columns] for export in exports],
         )
 
     async def get_dimensions(

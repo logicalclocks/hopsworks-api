@@ -17,6 +17,7 @@
 import datetime
 import json
 import logging
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -29,11 +30,12 @@ from hopsworks_common.client.exceptions import (
     SemanticBuildException,
     SemanticLayerException,
 )
+from hopsworks_common.core import semantic_layer_api
 from hopsworks_common.core.semantic_layer_api import (
     SemanticLayerApi,
     _time_spine_frame,
 )
-from hopsworks_common.semantic_layer import SemanticSavedQuery
+from hopsworks_common.semantic_layer import SemanticExport, SemanticSavedQuery
 from hopsworks_common.tag import Tag
 
 
@@ -1168,6 +1170,21 @@ class TestQuery:
 
         http._session.request.assert_not_called()
 
+    def test_the_cache_is_read_unless_told_not_to(self, http, sales):
+        http._session.request.return_value = _response(
+            content=_arrow_stream(pa.table({"revenue": [1.0]})),
+            content_type="application/vnd.apache.arrow.stream",
+        )
+
+        sales.query(["revenue"])
+        sales.query(["revenue"], read_cache=False)
+
+        bodies = [
+            json.loads(c.kwargs["data"]) for c in http._session.request.call_args_list
+        ]
+        assert "cache" not in bodies[0]
+        assert bodies[1] == {"metrics": ["revenue"], "cache": False}
+
 
 class TestTimeSpine:
     @pytest.fixture
@@ -1306,3 +1323,471 @@ class TestTimeSpine:
             SemanticLayerApi().create_time_spine(start, end, granularity, custom)
 
         fs.get_or_create_feature_group.assert_not_called()
+
+
+EXPORT_JSON = {
+    "name": "revenue_daily",
+    "savedQuery": "revenue_by_country",
+    "exportAs": "TABLE",
+    "featureGroup": "revenue_daily",
+    "featureGroupId": None,
+    "version": 1,
+    "schedule": "0 0 2 * * ?",
+    "lookback": None,
+    "enabled": True,
+    "jobName": "semantic_export_sales_revenue_daily",
+    "lastStatus": "NEVER_RUN",
+}
+
+
+class TestExports:
+    def test_exports_lists_the_control_plane_answer(self, http, sales):
+        http._send_request.return_value = {"items": [EXPORT_JSON]}
+
+        exports = sales.exports()
+
+        http._send_request.assert_called_with(
+            "GET", ["project", 119, "semantic", "projects", 7, "exports"]
+        )
+        assert exports == [SemanticExport.from_response_json(EXPORT_JSON)]
+
+    def test_no_exports(self, http, sales):
+        http._send_request.return_value = {}
+
+        assert sales.exports() == []
+
+    @pytest.mark.parametrize("wait", [False, True])
+    def test_run_export_starts_the_job_and_returns_its_execution(
+        self, http, sales, mocker, wait
+    ):
+        http._send_request.return_value = {
+            "jobName": "semantic_export_sales_revenue_daily",
+            "executionId": 77,
+        }
+        get_job = mocker.patch(
+            "hopsworks_common.core.job_api.JobApi.get_job", autospec=True
+        )
+        job = get_job.return_value
+
+        result = sales.run_export("revenue_daily", wait=wait)
+
+        http._send_request.assert_called_with(
+            "POST",
+            [
+                "project",
+                119,
+                "semantic",
+                "projects",
+                7,
+                "exports",
+                "revenue_daily",
+                "run",
+            ],
+        )
+        assert get_job.call_args.args[1] == "semantic_export_sales_revenue_daily"
+        job._execution_api._get.assert_called_once_with(job, 77)
+        execution = job._execution_api._get.return_value
+        if wait:
+            job._execution_engine._wait_until_finished.assert_called_once_with(
+                job, execution
+            )
+            assert result is job._execution_engine._wait_until_finished.return_value
+        else:
+            job._execution_engine._wait_until_finished.assert_not_called()
+            assert result is execution
+
+
+class TestConnectionInfo:
+    CONNECTION = {
+        "environmentId": 7,
+        "graphqlUrl": "https://hopsworks.example.com/semantic-layer/api/graphql",
+        "adbcUrl": "grpc+tls://flight.example.com:18446",
+        "jdbcUrl": "jdbc:arrow-flight-sql://flight.example.com:18446?environmentId=7",
+        "flightHost": "flight.example.com",
+        "flightPort": 18446,
+        "env": {
+            "DBT_SL_GRAPHQL_URL_FORMAT": "https://{server_host}/semantic-layer/api/graphql",
+            "DBT_SL_ADBC_URL_FORMAT": "grpc+tls://flight.example.com:18446",
+        },
+        "caPem": "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n",
+    }
+
+    def test_the_ca_is_written_and_the_env_points_at_it(self, http, sales, tmp_path):
+        http._send_request.return_value = self.CONNECTION
+        ca_path = str(tmp_path / "ca.pem")
+
+        info = sales.connection_info(ca_path=ca_path)
+
+        http._send_request.assert_called_with(
+            "GET", ["project", 119, "semantic", "projects", 7, "connection"]
+        )
+        with open(ca_path) as ca_file:
+            assert ca_file.read() == self.CONNECTION["caPem"]
+        assert info == {
+            "environment_id": 7,
+            "graphql_url": "https://hopsworks.example.com/semantic-layer/api/graphql",
+            "adbc_url": "grpc+tls://flight.example.com:18446",
+            "jdbc_url": "jdbc:arrow-flight-sql://flight.example.com:18446?environmentId=7",
+            "flight_host": "flight.example.com",
+            "flight_port": 18446,
+            "env": {
+                **self.CONNECTION["env"],
+                "SSL_CERT_FILE": ca_path,
+                "REQUESTS_CA_BUNDLE": ca_path,
+            },
+            "ca_path": ca_path,
+        }
+
+    def test_the_default_ca_file_is_named_after_the_project_and_semantic_project(
+        self, http, sales, mocker, tmp_path
+    ):
+        http._send_request.return_value = self.CONNECTION
+        mocker.patch(
+            "hopsworks_common.semantic_layer._temp_dir", return_value=str(tmp_path)
+        )
+
+        info = sales.connection_info()
+
+        assert info["ca_path"] == str(tmp_path / "hopsworks_semantic_119_7_ca.pem")
+
+    def test_without_a_private_ca_nothing_is_written(self, http, sales):
+        http._send_request.return_value = {**self.CONNECTION, "caPem": None}
+
+        info = sales.connection_info()
+
+        assert info["ca_path"] is None
+        assert info["env"] == self.CONNECTION["env"]
+
+
+class TestExportJob:
+    SAVED_QUERY = {
+        "name": "revenue_by_country",
+        "description": "Daily revenue per country",
+        "metrics": ["revenue"],
+        "groupBy": ["metric_time__DAY", "customer__country"],
+    }
+    ROWS = pa.table(
+        {
+            "metric_time__day": pa.array(
+                [datetime.datetime(2026, 10, d) for d in (20, 30, 31)],
+                pa.timestamp("us"),
+            ),
+            "customer__country": ["SE", "SE", "NO"],
+            "revenue": [1.0, 2.0, 3.0],
+        }
+    )
+
+    @pytest.fixture
+    def job(self, http, mocker, monkeypatch):
+        """A run of export revenue_daily of semantic project 7, against fake control plane, gateway and feature store."""
+        monkeypatch.setenv("HOPSWORKS_JOB_EXECUTION_ID", "77")
+        monkeypatch.setenv("HOPS_LOGICAL_DATE", "2026-11-07T02:00:00Z")
+        state = SimpleNamespace(
+            export=dict(EXPORT_JSON),
+            rows=self.ROWS,
+            headers={"X-Semantic-Max-Rows": "1000000"},
+            reports=[],
+            fg=MagicMock(name="FeatureGroup", id=None, version=1),
+        )
+
+        def control_plane(method, path, **kwargs):
+            if path[-1] == "exports":
+                return {"items": [state.export]}
+            if path[-1] == "status":
+                state.reports.append(json.loads(kwargs["data"]))
+                return None
+            return SP_JSON
+
+        def gateway(method, url, **kwargs):
+            if url.endswith("/saved-queries"):
+                return _response(
+                    body={"savedQueries": [self.SAVED_QUERY], "buildId": 12}
+                )
+            return _response(
+                content=_arrow_stream(state.rows),
+                content_type="application/vnd.apache.arrow.stream",
+                headers=state.headers,
+            )
+
+        http._send_request.side_effect = control_plane
+        http._session.request.side_effect = gateway
+        connection = MagicMock(name="Connection")
+        mocker.patch("hopsworks_common.client._get_connection", return_value=connection)
+        state.fs = connection._get_feature_store.return_value
+        state.fs.get_or_create_feature_group.return_value = state.fg
+
+        def insert(frame, write_options):
+            state.written = frame
+            state.write_options = write_options
+            if state.fg.id is None:
+                state.fg.id = 501
+
+        state.fg.insert.side_effect = insert
+        return state
+
+    def test_the_first_run_creates_the_feature_group_with_every_row(self, http, job):
+        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        method, url, kwargs = _gateway_call(http)
+        assert (method, url) == (
+            "POST",
+            "https://hopsworks.example.com:443/semantic-layer/v1/projects/7/query",
+        )
+        assert json.loads(kwargs["data"]) == {
+            "savedQuery": "revenue_by_country",
+            "cache": False,
+        }
+        assert kwargs["headers"]["Accept"] == "application/vnd.apache.arrow.stream"
+        job.fs.get_or_create_feature_group.assert_called_once_with(
+            name="revenue_daily",
+            version=1,
+            description="Daily revenue per country",
+            primary_key=["customer__country"],
+            event_time="metric_time__day",
+            time_travel_format="DELTA",
+            online_enabled=False,
+            statistics_config=False,
+        )
+        assert job.write_options == {"replace": True}
+        assert len(job.written) == 3
+        assert str(job.written["customer__country"].dtype) == "string[pyarrow]"
+        assert job.reports == [report]
+        assert report == {
+            "generation": 3,
+            "executionId": 77,
+            "logicalTime": "2026-11-07T02:00:00Z",
+            "featureGroupId": 501,
+            "rows": 3,
+            "status": "SUCCEEDED",
+            "message": "Created feature group revenue_daily version 1.",
+        }
+        assert http._send_request.call_args_list[-1].args[:2] == (
+            "PUT",
+            [
+                "project",
+                119,
+                "semantic",
+                "projects",
+                7,
+                "exports",
+                "revenue_daily",
+                "status",
+            ],
+        )
+
+    def test_a_later_run_with_a_lookback_replaces_the_window_only(self, job):
+        job.export.update(featureGroupId=501, lookback="7 days")
+        job.fg.id = 501
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 4)
+
+        # 2026-11-07T02:00 minus 7 days, truncated to the day.
+        start = datetime.datetime(2026, 10, 31)
+        assert job.write_options == {"replace": start}
+        assert job.written["customer__country"].tolist() == ["NO"]
+        assert (report["status"], report["rows"]) == ("SUCCEEDED", 1)
+        assert report["message"] == "Replaced the rows from 2026-10-31T00:00:00Z on."
+
+    def test_an_empty_window_replaces_the_window_with_nothing(self, job):
+        job.export.update(featureGroupId=501, lookback="1 day")
+        job.fg.id = 501
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 4)
+
+        assert job.write_options == {"replace": datetime.datetime(2026, 11, 6)}
+        assert len(job.written) == 0
+        assert list(job.written.columns) == [
+            "metric_time__day",
+            "customer__country",
+            "revenue",
+        ]
+        assert report["rows"] == 0
+
+    def test_a_later_run_without_a_lookback_replaces_every_row(self, job):
+        job.export["featureGroupId"] = 501
+        job.fg.id = 501
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 4)
+
+        assert job.write_options == {"replace": True}
+        assert report["message"] == "Replaced every row."
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"X-Semantic-Truncated": "true", "X-Semantic-Max-Rows": "4"},
+            {"X-Semantic-Max-Rows": "3"},
+            {"X-Semantic-Truncated": "false", "X-Semantic-Max-Rows": "3"},
+        ],
+        ids=["flagged", "at_the_cap", "at_the_cap_whatever_the_flag_says"],
+    )
+    def test_a_cut_result_writes_nothing_and_reports_truncated(self, job, headers):
+        job.headers = headers
+
+        with pytest.raises(SemanticLayerException, match="gateway's cap") as err:
+            semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert err.value.error_code == "TRUNCATED"
+        job.fs.get_or_create_feature_group.assert_not_called()
+        assert [(r["status"], r["rows"]) for r in job.reports] == [("TRUNCATED", None)]
+
+    def test_a_result_below_the_cap_is_written(self, job):
+        job.headers = {"X-Semantic-Truncated": "false", "X-Semantic-Max-Rows": "4"}
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert report["status"] == "SUCCEEDED"
+
+    @pytest.mark.parametrize("recorded", [None, 499])
+    def test_a_feature_group_the_export_did_not_create_is_not_written(
+        self, job, recorded
+    ):
+        job.export["featureGroupId"] = recorded
+        job.fg.id = 501
+
+        with pytest.raises(SemanticLayerException, match="did not create it"):
+            semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        job.fg.insert.assert_not_called()
+        assert job.reports[0]["status"] == "TARGET_EXISTS"
+        assert job.reports[0]["featureGroupId"] == recorded
+
+    def test_a_failure_is_reported_and_raised(self, job):
+        job.fg.insert.side_effect = RuntimeError("HopsFS is down")
+
+        with pytest.raises(RuntimeError, match="HopsFS is down"):
+            semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert job.reports[0]["status"] == "FAILED"
+        assert job.reports[0]["message"] == "HopsFS is down"
+
+    def test_a_first_run_failing_after_creating_the_feature_group_reports_it(self, job):
+        def insert(frame, write_options):
+            job.fg.id = 501
+            raise RuntimeError("the write failed")
+
+        job.fg.insert.side_effect = insert
+
+        with pytest.raises(RuntimeError):
+            semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert (job.reports[0]["status"], job.reports[0]["featureGroupId"]) == (
+            "FAILED",
+            501,
+        )
+
+    def test_a_lookback_without_metric_time_fails(self, job):
+        job.export["lookback"] = "7 days"
+        job.rows = job.rows.drop_columns(["metric_time__day"])
+
+        with pytest.raises(SemanticLayerException, match="group by metric_time"):
+            semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert job.reports[0]["status"] == "FAILED"
+
+    def test_a_custom_grain_falls_back_to_replacing_every_row(self, job):
+        job.export.update(featureGroupId=501, lookback="7 days")
+        job.fg.id = 501
+        job.rows = job.rows.rename_columns(
+            ["metric_time__fiscal_quarter", "customer__country", "revenue"]
+        )
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert job.write_options == {"replace": True}
+        assert "custom granularity" in report["message"]
+
+    def test_without_other_group_bys_metric_time_is_the_key(self, job):
+        job.rows = job.rows.drop_columns(["customer__country"])
+
+        semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        kwargs = job.fs.get_or_create_feature_group.call_args.kwargs
+        assert (kwargs["primary_key"], kwargs["event_time"]) == (
+            ["metric_time__day"],
+            "metric_time__day",
+        )
+
+    def test_a_run_without_a_logical_date_uses_now(self, job, monkeypatch):
+        monkeypatch.delenv("HOPS_LOGICAL_DATE")
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        logical = datetime.datetime.fromisoformat(report["logicalTime"][:-1])
+        assert abs(
+            datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - logical
+        ) < datetime.timedelta(minutes=1)
+
+    def test_an_unknown_export_raises_before_any_query(self, http, job):
+        with pytest.raises(SemanticLayerException, match="no export 'nope'"):
+            semantic_layer_api._run_export(7, "nope", 3)
+
+        http._session.request.assert_not_called()
+        assert job.reports == []
+
+
+class TestExportWindow:
+    @pytest.mark.parametrize(
+        ("lookback", "grain", "start"),
+        [
+            ("7 days", "day", datetime.datetime(2026, 10, 31)),
+            ("1 day", "hour", datetime.datetime(2026, 11, 6, 2)),
+            ("2 weeks", "week", datetime.datetime(2026, 10, 19)),
+            ("1 month", "month", datetime.datetime(2026, 10, 1)),
+            ("1 quarter", "quarter", datetime.datetime(2026, 7, 1)),
+            ("1 year", "year", datetime.datetime(2025, 1, 1)),
+            (" 3 Hours ", "minute", datetime.datetime(2026, 11, 6, 23, 30)),
+        ],
+    )
+    def test_the_window_starts_a_lookback_before_truncated_to_the_grain(
+        self, lookback, grain, start
+    ):
+        logical = datetime.datetime(2026, 11, 7, 2, 30, 15)
+
+        assert semantic_layer_api._window_start(logical, lookback, grain) == start
+
+    def test_month_arithmetic_keeps_the_month_end(self):
+        assert semantic_layer_api._window_start(
+            datetime.datetime(2026, 3, 31, 12), "1 month", "day"
+        ) == datetime.datetime(2026, 2, 28)
+
+    @pytest.mark.parametrize("lookback", ["seven days", "7", "7 fortnights", "-1 day"])
+    def test_a_lookback_that_is_not_a_count_and_a_grain_is_refused(self, lookback):
+        with pytest.raises(SemanticLayerException, match="is not a number and a grain"):
+            semantic_layer_api._window_start(
+                datetime.datetime(2026, 11, 7), lookback, "day"
+            )
+
+    @pytest.mark.parametrize(
+        ("columns", "found"),
+        [
+            (["metric_time__day", "c"], ("metric_time__day", "day")),
+            (["c", "metric_time__MONTH"], ("metric_time__MONTH", "month")),
+            (["metric_time__extract_dow", "c"], (None, None)),
+            (["metric_time"], ("metric_time", None)),
+            (["booking__metric_time__day"], (None, None)),
+        ],
+    )
+    def test_the_metric_time_column(self, columns, found):
+        assert semantic_layer_api._metric_time(columns) == found
+
+    def test_rows_from_keeps_dates_and_aware_timestamps_at_or_after_the_start(self):
+        table = pa.table(
+            {
+                "d": pa.array(
+                    [datetime.date(2026, 11, 1), datetime.date(2026, 11, 2), None]
+                ),
+                "t": pa.array(
+                    [
+                        datetime.datetime(2026, 11, 1, 23),
+                        datetime.datetime(2026, 11, 2),
+                        None,
+                    ],
+                    pa.timestamp("us", tz="UTC"),
+                ),
+            }
+        )
+        start = datetime.datetime(2026, 11, 2)
+
+        assert semantic_layer_api._rows_from(table, "d", start).num_rows == 1
+        assert semantic_layer_api._rows_from(table, "t", start).num_rows == 1

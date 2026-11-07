@@ -65,7 +65,7 @@ A view composes at three levels; YAML and the rules for each: [references/compos
 | Automatic joins across semantic models | Yes, across the semantic graph, at most two hops |
 | Semantic view built directly on another semantic view | No; semantic models form a graph within one view, and a model can be repeated in several views |
 | Query multiple semantic models together | Yes |
-| Reuse semantic query results as input | Yes, through SQL from `hops semantic sql` in a dbt model, or a feature group written from a query |
+| Reuse semantic query results as input | Yes, through a saved query's export into a feature group, or SQL from `hops semantic sql` in a dbt model |
 
 Composition keeps a view small: one shared `customers` model reached through the `customer` entity serves every fact model, and a derived metric replaces a second copy of the data it is computed from.
 
@@ -81,6 +81,12 @@ Composition keeps a view small: one shared `customers` model reached through the
 - **One metric per measure and filter that matters.** `revenue` grouped by `customer__region` answers what `revenue_eu` and `revenue_us` would, at a fraction of the listing.
 - **Short labels, one-sentence descriptions.** A description that restates the name costs tokens and tells the agent nothing; one that says the unit, the filter and when to use the metric earns its place.
 - **Saved queries for the most-asked questions.** An agent runs one by name with `query_saved_query`, without discovering group-bys first, and Superset gets a view of it.
+
+## Exports for agents
+
+A saved query with `exports:` is also a feature group that a job keeps fresh ([hops-semantic](../hops-semantic/SKILL.md), Exports).
+`list_exports` tells an agent which saved queries are already materialized, under which feature group, and how fresh (`last_run`, `last_status`).
+Point feature views, models and pipelines at the export's feature group rather than re-running the saved query; answer a question with `query_saved_query`, which runs the saved query now.
 
 ## Split a view that grew too large
 
@@ -100,7 +106,7 @@ Composition keeps a view small: one shared `customers` model reached through the
 
 ## Toolset
 - **CLI:** `hops semantic init|compile|test|show|metrics|dimensions|entities|saved-queries`, `hops search --type metric|saved_query`
-- **MCP:** `list_semantic_projects`, `list_metrics`, `get_dimensions`, `get_entities`, `list_saved_queries`, `query_saved_query`
+- **MCP:** `list_semantic_projects`, `list_metrics`, `get_dimensions`, `get_entities`, `list_saved_queries`, `query_saved_query`, `list_exports`
 - **SDK:** `project.get_semantic_layer_api().get_project(<name>)`
 
 ## Related skills

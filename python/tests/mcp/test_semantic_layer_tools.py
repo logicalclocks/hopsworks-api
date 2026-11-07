@@ -31,6 +31,7 @@ from hopsworks_common.client.exceptions import (
 )
 from hopsworks_common.semantic_layer import (
     SemanticBuild,
+    SemanticExport,
     SemanticGroupBy,
     SemanticIssue,
     SemanticMetric,
@@ -83,14 +84,64 @@ def test_every_tool_registers_with_the_semantic_layer_tag():
     SemanticLayerTools(mcp)
 
     tags = [call.kwargs["tags"] for call in mcp.tool.call_args_list]
-    assert len(tags) == 13
+    assert len(tags) == 14
     assert all("semantic_layer" in t for t in tags)
     assert sum("write" in t for t in tags) == 3
     tools = [call.args[0].__name__ for call in mcp.tool.return_value.call_args_list]
     registered = dict(zip(tools, tags, strict=True))
     assert {"write", "stateful"} <= set(registered["create_dashboard_from_metrics"])
-    for tool in ("list_saved_queries", "query_saved_query"):
+    for tool in ("list_saved_queries", "query_saved_query", "list_exports"):
         assert set(registered[tool]) == {"semantic_layer", "read", "stateful"}
+
+
+def test_list_exports_is_csv_of_each_export_and_its_last_run(tools, sl, sales):
+    sales.exports.return_value = [
+        SemanticExport(
+            name="revenue_daily",
+            saved_query="revenue_by_country",
+            feature_group="revenue_daily",
+            version=1,
+            schedule="0 0 2 * * ?",
+            lookback="7 days",
+            enabled=True,
+            last_status="TRUNCATED",
+            last_run="2026-11-07T02:00:05Z",
+            last_message="Saved query 'revenue_by_country' has more rows than the cap",
+        ),
+        SemanticExport(name="on_demand", saved_query="q", last_status="NEVER_RUN"),
+    ]
+
+    rows = _rows(_call(tools.list_exports("sales")))
+
+    assert rows == [
+        [
+            "name",
+            "saved_query",
+            "feature_group",
+            "version",
+            "schedule",
+            "lookback",
+            "enabled",
+            "last_status",
+            "last_run",
+            "last_rows",
+            "last_message",
+        ],
+        [
+            "revenue_daily",
+            "revenue_by_country",
+            "revenue_daily",
+            "1",
+            "0 0 2 * * ?",
+            "7 days",
+            "True",
+            "TRUNCATED",
+            "2026-11-07T02:00:05Z",
+            "",
+            "Saved query 'revenue_by_country' has more rows than the cap",
+        ],
+        ["on_demand", "q", "", "", "", "", "", "NEVER_RUN", "", "", ""],
+    ]
 
 
 def test_list_semantic_projects_reports_what_each_serves(tools, sl, sales):

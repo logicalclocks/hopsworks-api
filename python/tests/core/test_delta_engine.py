@@ -16,7 +16,7 @@
 import os
 import sys
 import types
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import mock
 
@@ -2985,3 +2985,206 @@ def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
         ("fg/chunk/a", 1),
         ("fg/chunk/b", 1),
     ]
+
+
+class TestReplaceWrite:
+    """`write_options["replace"]` on a local delta-rs table: one overwrite commit, with a predicate built from a typed bound."""
+
+    @pytest.fixture
+    def deltalake(self, monkeypatch):
+        # The fake goes first: other tests leave one in sys.modules, and importorskip
+        # would find it and not skip where there is no real deltalake.
+        monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+        monkeypatch.delitem(sys.modules, "deltalake.exceptions", raising=False)
+        return pytest.importorskip("deltalake")
+
+    @pytest.fixture
+    def engine(self, mocker, tmp_path, deltalake):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg(str(tmp_path))
+        fg.primary_key = ["country"]
+        fg.event_time = "metric_time__day"
+        fg.partition_key = []
+        fg.online_enabled = False
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value=str(tmp_path)
+        )
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        mocker.patch.object(engine, "_cluster_columns", return_value=[])
+        return engine
+
+    @staticmethod
+    def _table(rows, time_type=None):
+        time_type = time_type or pa.timestamp("us")
+        return pa.table(
+            {
+                "country": pa.array([r[0] for r in rows], pa.string()),
+                "metric_time__day": pa.array([r[1] for r in rows], time_type),
+                "revenue": pa.array([r[2] for r in rows], pa.float64()),
+            }
+        )
+
+    @staticmethod
+    def _rows(location, deltalake):
+        table = deltalake.DeltaTable(location).to_pyarrow_table()
+        return sorted(
+            (r["country"], r["metric_time__day"], r["revenue"])
+            for r in table.to_pylist()
+        )
+
+    def _seed(self, engine, deltalake, time_type=None, day=None):
+        day = day or (lambda d: datetime(2026, 11, d))
+        deltalake.write_deltalake(
+            engine._get_delta_rs_location(),
+            self._table(
+                [("SE", day(1), 1.0), ("SE", day(2), 2.0), ("NO", day(3), 3.0)],
+                time_type,
+            ),
+        )
+
+    def test_true_replaces_every_row_in_one_commit(self, engine, deltalake):
+        self._seed(engine, deltalake)
+        location = engine._get_delta_rs_location()
+        before = deltalake.DeltaTable(location).version()
+
+        commit = engine._write_delta_rs_dataset(
+            self._table([("DK", datetime(2026, 11, 5), 5.0)]),
+            write_options={"replace": True},
+        )
+
+        assert self._rows(location, deltalake) == [("DK", datetime(2026, 11, 5), 5.0)]
+        assert deltalake.DeltaTable(location).version() == before + 1
+        assert commit.rows_inserted == 1
+
+    def test_an_empty_dataset_replaces_every_row_with_nothing(self, engine, deltalake):
+        self._seed(engine, deltalake)
+
+        engine._write_delta_rs_dataset(self._table([]), write_options={"replace": True})
+
+        assert self._rows(engine._get_delta_rs_location(), deltalake) == []
+
+    @pytest.mark.parametrize(
+        "bound",
+        [
+            datetime(2026, 11, 2),
+            date(2026, 11, 2),
+            datetime(2026, 11, 2, 1, 0, tzinfo=timezone(timedelta(hours=1))),
+        ],
+        ids=["naive_is_utc", "date", "aware_is_converted_to_utc"],
+    )
+    def test_a_bound_replaces_only_the_rows_at_or_after_it(
+        self, engine, deltalake, bound
+    ):
+        self._seed(engine, deltalake)
+
+        engine._write_delta_rs_dataset(
+            self._table([("NO", datetime(2026, 11, 3), 30.0)]),
+            write_options={"replace": bound},
+        )
+
+        # SE on the 2nd is gone although the new rows do not name it; the 1st is untouched.
+        assert self._rows(engine._get_delta_rs_location(), deltalake) == [
+            ("NO", datetime(2026, 11, 3), 30.0),
+            ("SE", datetime(2026, 11, 1), 1.0),
+        ]
+
+    def test_a_date_event_time_takes_the_same_bound(self, engine, deltalake):
+        self._seed(engine, deltalake, pa.date32(), day=lambda d: date(2026, 11, d))
+
+        engine._write_delta_rs_dataset(
+            self._table([], pa.date32()), write_options={"replace": date(2026, 11, 3)}
+        )
+
+        assert self._rows(engine._get_delta_rs_location(), deltalake) == [
+            ("SE", date(2026, 11, 1), 1.0),
+            ("SE", date(2026, 11, 2), 2.0),
+        ]
+
+    def test_a_row_before_the_bound_fails_the_write_and_changes_nothing(
+        self, engine, deltalake
+    ):
+        self._seed(engine, deltalake)
+        location = engine._get_delta_rs_location()
+        before = self._rows(location, deltalake)
+        from deltalake.exceptions import DeltaError
+
+        with pytest.raises(DeltaError, match="Invalid data"):
+            engine._write_delta_rs_dataset(
+                self._table([("SE", datetime(2026, 11, 1), 9.0)]),
+                write_options={"replace": datetime(2026, 11, 2)},
+            )
+
+        assert self._rows(location, deltalake) == before
+
+    def test_the_first_write_creates_the_table(self, engine, deltalake):
+        engine._write_delta_rs_dataset(
+            self._table([("SE", datetime(2026, 11, 1), 1.0)]),
+            write_options={"replace": datetime(2026, 11, 1)},
+        )
+
+        assert self._rows(engine._get_delta_rs_location(), deltalake) == [
+            ("SE", datetime(2026, 11, 1), 1.0)
+        ]
+
+    def test_save_records_the_feature_group_commit(self, engine, deltalake, mocker):
+        self._seed(engine, deltalake)
+        commit = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi._commit")
+
+        engine._save_delta_fg(
+            pd.DataFrame(
+                {
+                    "country": ["SE", "NO"],
+                    "metric_time__day": pd.to_datetime(["2026-11-04", "2026-11-04"]),
+                    "revenue": [4.0, 5.0],
+                }
+            ),
+            write_options={"replace": True},
+        )
+
+        fg, fg_commit = commit.call_args.args
+        assert fg is engine._feature_group
+        assert fg_commit.rows_inserted == 2
+
+    @pytest.mark.parametrize(
+        ("value", "message"),
+        [
+            ("2026-11-02' OR '1'='1", "must be True or a date or datetime"),
+            (1794050000, "must be True or a date or datetime"),
+        ],
+    )
+    def test_a_bound_that_is_not_a_date_is_refused(self, engine, value, message):
+        with pytest.raises(FeatureStoreException, match=message):
+            engine._replace_predicate(value)
+
+    def test_the_predicate_is_built_from_the_typed_bound(self, engine):
+        assert engine._replace_predicate(True) is None
+        assert engine._replace_predicate(datetime(2026, 11, 2, 3, 4, 5, 6)) == (
+            "\"metric_time__day\" >= '2026-11-02T03:04:05.000006'"
+        )
+
+    def test_a_bound_needs_an_event_time(self, engine):
+        engine._feature_group.event_time = None
+
+        with pytest.raises(FeatureStoreException, match="no event time"):
+            engine._replace_predicate(date(2026, 11, 2))
+
+    def test_an_event_time_name_outside_identifiers_is_refused(self, engine):
+        engine._feature_group.event_time = 'day" OR 1=1 --'
+
+        with pytest.raises(FeatureStoreException, match="cannot be used"):
+            engine._replace_predicate(date(2026, 11, 2))
+
+    def test_an_online_feature_group_is_refused(self, engine):
+        engine._feature_group.online_enabled = True
+
+        with pytest.raises(FeatureStoreException, match="online"):
+            engine._replace_predicate(True)
+
+    def test_spark_refuses_rather_than_upserting(self, mocker):
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        engine = DeltaEngine(1, "fs", _make_fg("hopsfs://nn:8020/p"), spark, None)
+
+        with pytest.raises(FeatureStoreException, match="Python engine only"):
+            engine._write_delta_dataset(mocker.Mock(), {"replace": True})

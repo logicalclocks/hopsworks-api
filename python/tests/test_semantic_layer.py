@@ -21,6 +21,7 @@ import pytest
 from hopsworks_common import semantic_layer
 from hopsworks_common.semantic_layer import (
     SemanticBuild,
+    SemanticExport,
     SemanticGroupBy,
     SemanticIssue,
     SemanticMetric,
@@ -383,6 +384,57 @@ class TestSavedQuery:
         assert saved_query.order_by == []
         assert saved_query.tags == {}
         assert SemanticSavedQuery.from_response_json(None) is None
+
+
+class TestExport:
+    JSON = {
+        "name": "revenue_daily",
+        "savedQuery": "revenue_by_country",
+        "exportAs": "TABLE",
+        "featureGroup": "revenue_daily",
+        "featureGroupId": 501,
+        "version": 1,
+        "schedule": "0 0 2 * * ?",
+        "lookback": "7 days",
+        "enabled": True,
+        "jobName": "semantic_export_sales_revenue_daily",
+        "lastStatus": "SUCCEEDED",
+        "lastRun": "2026-11-07T02:00:05Z",
+        "rows": 123,
+        "lastMessage": "Replaced the rows from 2026-10-31T00:00:00Z on.",
+        "generation": 3,
+    }
+
+    def test_from_the_control_plane_answer(self):
+        export = SemanticExport.from_response_json(self.JSON)
+
+        assert export == SemanticExport(
+            name="revenue_daily",
+            saved_query="revenue_by_country",
+            export_as="TABLE",
+            feature_group="revenue_daily",
+            feature_group_id=501,
+            version=1,
+            schedule="0 0 2 * * ?",
+            lookback="7 days",
+            enabled=True,
+            job_name="semantic_export_sales_revenue_daily",
+            last_status="SUCCEEDED",
+            last_run="2026-11-07T02:00:05Z",
+            last_rows=123,
+            last_message="Replaced the rows from 2026-10-31T00:00:00Z on.",
+        )
+        assert SemanticExport.from_response_json(export.to_dict()) == export
+
+    def test_an_export_that_never_ran(self):
+        export = SemanticExport.from_response_json(
+            {"name": "e", "lastStatus": "NEVER_RUN", "featureGroupId": None}
+        )
+
+        assert export.feature_group_id is None
+        assert export.last_rows is None
+        assert export.last_status == "NEVER_RUN"
+        assert SemanticExport.from_response_json(None) is None
 
 
 def test_polars_conversion_of_a_json_result():

@@ -10,11 +10,13 @@ import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
 from hopsworks_common.client.exceptions import (
+    JobExecutionException,
     SemanticBuildException,
     SemanticLayerException,
 )
 from hopsworks_common.semantic_layer import (
     SemanticBuild,
+    SemanticExport,
     SemanticIssue,
     SemanticMetric,
     SemanticProject,
@@ -173,6 +175,14 @@ class TestQueryOutput:
             {"metric_time__month": "2026-01-01", "revenue": 10.5},
             {"metric_time__month": "2026-02-01", "revenue": None},
         ]
+
+    def test_no_cache_skips_the_result_cache(self, frame):
+        result = _run("query", "sales", "--metrics", "revenue", "--no-cache")
+
+        assert result.exit_code == 0, result.output
+        assert frame.query.call_args.kwargs["read_cache"] is False
+        assert _run("query", "sales", "--metrics", "revenue").exit_code == 0
+        assert frame.query.call_args.kwargs["read_cache"] is True
 
     def test_gateway_errors_print_as_one_line(self, sales):
         sales.query.side_effect = SemanticLayerException(
@@ -739,6 +749,7 @@ class TestSavedQueries:
             limit=5,
             time_range=None,
             dataframe_type="pandas",
+            read_cache=True,
         )
         assert result.output.splitlines() == ["revenue", "1.0"]
 
@@ -956,3 +967,127 @@ class TestTestGroupsByMetricTimeWhenRequired:
         assert [
             (c.args[0], c.kwargs["group_by"]) for c in sales.query.call_args_list
         ] == [(["revenue_mtd"], ["metric_time"]), (["nope"], None)]
+
+
+class TestExports:
+    EXPORT = SemanticExport(
+        name="revenue_daily",
+        saved_query="revenue_by_country",
+        export_as="TABLE",
+        feature_group="revenue_daily",
+        feature_group_id=501,
+        version=1,
+        schedule=None,
+        lookback="7 days",
+        enabled=True,
+        job_name="semantic_export_sales_revenue_daily",
+        last_status="SUCCEEDED",
+        last_run="2026-11-07T02:00:05Z",
+        last_rows=123,
+        last_message="Replaced the rows from 2026-10-31T00:00:00Z on.\nmore",
+    )
+
+    def test_list_is_a_table_of_each_export_and_its_last_run(self, sales):
+        sales.exports.return_value = [self.EXPORT]
+
+        result = _run("export", "list", "sales")
+
+        assert result.exit_code == 0, result.output
+        lines = result.output.splitlines()
+        assert lines[0].split()[:3] == ["NAME", "SAVED", "QUERY"]
+        assert lines[2].split() == [
+            "revenue_daily",
+            "revenue_by_country",
+            "revenue_daily",
+            "v1",
+            "on",
+            "demand",
+            "7",
+            "days",
+            "SUCCEEDED",
+            "2026-11-07T02:00:05Z",
+            "123",
+            "Replaced",
+            "the",
+            "rows",
+            "from",
+            "2026-10-31T00:00:00Z",
+            "on.",
+        ]
+
+    def test_list_in_json(self, sales):
+        sales.exports.return_value = [self.EXPORT]
+
+        result = _run("--json", "export", "list", "sales")
+
+        assert json.loads(result.output) == [self.EXPORT.to_dict()]
+
+    def test_run_starts_the_job_without_waiting(self, sales):
+        sales.run_export.return_value = mock.Mock(id=77, state="INITIALIZING")
+
+        result = _run("export", "run", "sales", "revenue_daily")
+
+        assert result.exit_code == 0, result.output
+        sales.run_export.assert_called_once_with("revenue_daily", wait=False)
+        sales.exports.assert_not_called()
+        assert "Started export revenue_daily (execution #77)" in result.output
+
+    def test_run_with_wait_prints_the_outcome(self, sales):
+        sales.run_export.return_value = mock.Mock(id=77, state="FINISHED")
+        sales.exports.return_value = [self.EXPORT]
+
+        result = _run("--json", "export", "run", "sales", "revenue_daily", "--wait")
+
+        assert result.exit_code == 0, result.output
+        sales.run_export.assert_called_once_with("revenue_daily", wait=True)
+        assert json.loads(result.output) == {
+            "execution_id": 77,
+            "state": "FINISHED",
+            "export": self.EXPORT.to_dict(),
+        }
+
+    def test_a_failed_run_names_the_list_command(self, sales):
+        sales.run_export.side_effect = JobExecutionException("The Hopsworks Job failed")
+
+        result = _run("export", "run", "sales", "revenue_daily", "--wait")
+
+        assert result.exit_code == 1
+        assert "hops semantic export list sales" in result.output
+        assert "Traceback" not in result.output
+
+
+class TestConnect:
+    INFO = {
+        "environment_id": 7,
+        "graphql_url": "https://hopsworks.example.com/semantic-layer/api/graphql",
+        "adbc_url": "grpc+tls://flight.example.com:18446",
+        "jdbc_url": "jdbc:arrow-flight-sql://flight.example.com:18446?environmentId=7",
+        "flight_host": "flight.example.com",
+        "flight_port": 18446,
+        "env": {
+            "DBT_SL_GRAPHQL_URL_FORMAT": "https://{server_host}/semantic-layer/api/graphql",
+            "SSL_CERT_FILE": "/tmp/ca dir/ca.pem",
+        },
+        "ca_path": "/tmp/ca dir/ca.pem",
+    }
+
+    def test_stdout_is_only_export_lines(self, sales):
+        sales.connection_info.return_value = self.INFO
+
+        result = _run("connect", "sales", "--ca-path", "/tmp/ca dir/ca.pem")
+
+        assert result.exit_code == 0, result.output
+        sales.connection_info.assert_called_once_with(ca_path="/tmp/ca dir/ca.pem")
+        assert result.stdout.splitlines() == [
+            "export DBT_SL_GRAPHQL_URL_FORMAT='https://{server_host}/semantic-layer/api/graphql'",
+            "export SSL_CERT_FILE='/tmp/ca dir/ca.pem'",
+        ]
+        assert "Environment id: 7" in result.stderr
+        assert "CA certificate: /tmp/ca dir/ca.pem" in result.stderr
+
+    def test_json_is_the_connection_info(self, sales):
+        sales.connection_info.return_value = self.INFO
+
+        result = _run("--json", "connect", "sales")
+
+        assert json.loads(result.output) == self.INFO

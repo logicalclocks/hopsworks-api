@@ -1,6 +1,6 @@
 ---
 name: hops-semantic
-description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Scaffold a semantic project from feature groups with `hops semantic init` (in HopsFS or a new private GitHub repository), author semantic YAML (semantic_models, measures, dimensions, entities, simple, ratio, derived, cumulative and conversion metrics, saved queries) next to a dbt project, write the time spine with `hops semantic time-spine create`, map semantic models to feature groups, compile and validate with `hops semantic compile`, test every metric on Trino with `hops semantic test`, tag semantic projects and metrics with schematised tags, list metrics, dimensions, entities and dimension values, get SQL or rows for a metric query or a saved query, and build Superset dashboards of metrics, from the CLI, the SDK or the MCP agent tools. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input feature groups or a dbt project over them; output a compiled semantic project and metric query results.
+description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Scaffold a semantic project from feature groups with `hops semantic init` (in HopsFS or a new private GitHub repository), author semantic YAML (semantic_models, measures, dimensions, entities, simple, ratio, derived, cumulative and conversion metrics, saved queries) next to a dbt project, write the time spine with `hops semantic time-spine create`, map semantic models to feature groups, compile and validate with `hops semantic compile`, test every metric on Trino with `hops semantic test`, tag semantic projects and metrics with schematised tags, list metrics, dimensions, entities and dimension values, get SQL or rows for a metric query or a saved query, export saved queries into feature groups on a schedule, connect dbt Semantic Layer clients (dbt-sl-sdk, the Arrow Flight SQL JDBC driver), and build Superset dashboards of metrics, from the CLI, the SDK or the MCP agent tools. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input feature groups or a dbt project over them; output a compiled semantic project and metric query results.
 ---
 
 # Semantic Layer on Hopsworks
@@ -228,7 +228,30 @@ df = sales.query(saved_query="revenue_by_country", limit=10)   # its own metrics
 - A metric with `requires_metric_time` (`hops semantic metrics <name> --json`), a cumulative metric with a window or grain-to-date or a derived metric with an offset, must be grouped by `metric_time`.
 - Queries run on Trino as the caller's own `<project>__<user>` principal, so they see exactly what that member can read.
 - The gateway caps a result at 1,000,000 rows by default; add a `limit` or narrow the query.
+- A repeated query may come from the gateway's result cache, which drops a result once a feature group it reads has a new commit; access changes reach it within a minute. `--no-cache` (`read_cache=False`) runs it on Trino.
 - It works from outside the cluster with an API key, through the same host as `hopsworks.login()`.
+
+## Exports
+
+A saved query's `exports:` writes its rows into a Delta feature group that a job refreshes on a schedule or on demand, keeping the feature group's id; every group-by but `metric_time` is its primary key and `metric_time` its event time.
+The YAML, the lookback window, and the statuses (`TRUNCATED`, `TARGET_EXISTS`, `OWNER_NOT_DATA_OWNER`): [references/exports.md](references/exports.md).
+
+```bash
+hops semantic export list sales                                   # last status, run, rows and message of each export
+hops semantic export run sales revenue_by_country_daily --wait    # run now; needs the Data Owner role
+```
+
+## dbt Semantic Layer clients
+
+`dbt-sl-sdk` (GraphQL and ADBC) and the Arrow Flight SQL JDBC driver, with dbt's `{{ semantic_layer.query(...) }}` syntax, reach a semantic project with the Hopsworks host, an API key with the `FEATURESTORE` and `TRINO` scopes, and the semantic project's id as the environment id:
+
+```bash
+eval "$(hops semantic connect sales)"   # DBT_SL_GRAPHQL_URL_FORMAT, DBT_SL_ADBC_URL_FORMAT and, with a private CA, SSL_CERT_FILE; URLs on stderr
+```
+
+```python
+info = sales.connection_info()          # environment_id, graphql_url, adbc_url, jdbc_url, env and ca_path
+```
 
 ## Tags
 

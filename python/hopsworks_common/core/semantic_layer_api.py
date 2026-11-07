@@ -21,9 +21,11 @@ Discovery and queries go to the semantic gateway with the same credential and TL
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
+import re
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlparse
 
@@ -31,18 +33,18 @@ from hopsworks_apigen import public
 from hopsworks_common import client, decorators, semantic_layer, tag, usage
 from hopsworks_common.client import auth
 from hopsworks_common.client.exceptions import RestAPIError, SemanticLayerException
+from hopsworks_common.core import job_api
 from hopsworks_common.core.variable_api import VariableApi
 from hopsworks_common.decorators import _uses_pyarrow
 
 
 if TYPE_CHECKING:
-    import datetime
     from collections.abc import Callable, Mapping
 
     import pandas as pd
     import pyarrow as pa
     import requests
-    from hopsworks_common import project
+    from hopsworks_common import execution, project
     from hsfs.feature_group import FeatureGroup
 
 
@@ -70,6 +72,10 @@ _HINTS = {
 }
 _SPINE_GRAINS = ("second", "minute", "hour", "day", "week", "month", "quarter", "year")
 _SUB_DAY_GRAINS = frozenset({"second", "minute", "hour"})
+# Export statuses of a run that wrote nothing on purpose; any other failure is FAILED.
+_EXPORT_REFUSALS = frozenset({"TRUNCATED", "TARGET_EXISTS"})
+# The width of semantic_export.last_message.
+_EXPORT_MESSAGE_CHARS = 1000
 
 
 @public("hopsworks.core.semantic_layer_api.SemanticLayerApi")
@@ -337,6 +343,12 @@ class SemanticLayerApi:
         _client = client._get_instance()
         return _client._send_request("GET", self._path(sp.id), timeout=timeout)
 
+    def _get_by_id(self, sp_id: int) -> semantic_layer.SemanticProject:
+        _client = client._get_instance()
+        return semantic_layer.SemanticProject.from_response_json(
+            _client._send_request("GET", self._path(sp_id)), self
+        )
+
     def _update(
         self,
         sp: semantic_layer.SemanticProject,
@@ -442,6 +454,48 @@ class SemanticLayerApi:
             return _client._send_request(method, self._path(sp.id, resource), **kwargs)
         except RestAPIError as err:
             raise _semantic_layer_error(sp, err.response) from err
+
+    # endregion
+
+    # region Exports and clients
+
+    def _exports(
+        self, sp: semantic_layer.SemanticProject
+    ) -> list[semantic_layer.SemanticExport]:
+        _client = client._get_instance()
+        response = _client._send_request("GET", self._path(sp.id, "exports")) or {}
+        return [
+            semantic_layer.SemanticExport.from_response_json(item)
+            for item in response.get("items") or []
+        ]
+
+    def _start_export(
+        self, sp: semantic_layer.SemanticProject, name: str, wait: bool
+    ) -> execution.Execution:
+        _client = client._get_instance()
+        started = _client._send_request(
+            "POST", self._path(sp.id, "exports", name, "run")
+        )
+        job = job_api.JobApi().get_job(started["jobName"])
+        run = job._execution_api._get(job, started["executionId"])
+        if wait:
+            return job._execution_engine._wait_until_finished(job, run)
+        return run
+
+    def _report_export(
+        self, sp: semantic_layer.SemanticProject, name: str, report: dict[str, Any]
+    ) -> None:
+        _client = client._get_instance()
+        _client._send_request(
+            "PUT",
+            self._path(sp.id, "exports", name, "status"),
+            headers={"content-type": _JSON},
+            data=json.dumps(report),
+        )
+
+    def _connection(self, sp: semantic_layer.SemanticProject) -> dict[str, Any]:
+        _client = client._get_instance()
+        return _client._send_request("GET", self._path(sp.id, "connection"))
 
     # endregion
 
@@ -730,3 +784,236 @@ def _read_arrow_stream(content: bytes) -> pa.Table:
     import pyarrow as pa
 
     return pa.ipc.open_stream(content).read_all()
+
+
+# region Export job
+
+
+def _run_export(
+    semantic_project_id: int, export_name: str, generation: int
+) -> dict[str, Any]:
+    """Run one export of a semantic project: the body of the export's job, which calls it after `hopsworks.login()`.
+
+    The saved query runs in full, past the gateway's result cache.
+    A result the gateway's row cap cut ends the run as `TRUNCATED`, and a target feature group the export did not create as `TARGET_EXISTS`, both before anything is written.
+    Otherwise the first run creates the Delta feature group and fills it; a later run replaces every row, or with a lookback the rows from the window start on, in one commit that keeps the feature group's id.
+    The window starts at the execution's logical date, `HOPS_LOGICAL_DATE` (the start of a scheduled run's interval, now for a run without one), minus the lookback, truncated to the `metric_time` grain.
+
+    The outcome is reported to the export's status with `generation` and the execution id from `HOPSWORKS_JOB_EXECUTION_ID`; a run that wrote nothing raises after reporting, so the job execution fails.
+
+    Returns:
+        The status reported.
+    """
+    api = SemanticLayerApi()
+    sp = api._get_by_id(semantic_project_id)
+    export = next((e for e in api._exports(sp) if e.name == export_name), None)
+    if export is None:
+        raise SemanticLayerException(
+            f"Semantic project '{sp.name}' has no export '{export_name}'.",
+            error_code="SEMANTIC_LAYER_NOT_FOUND",
+        )
+    logical_time = _logical_time()
+    execution_id = os.environ.get("HOPSWORKS_JOB_EXECUTION_ID")
+    report: dict[str, Any] = {
+        "generation": generation,
+        "executionId": int(execution_id) if execution_id else None,
+        "logicalTime": logical_time.replace(microsecond=0).isoformat() + "Z",
+        "featureGroupId": export.feature_group_id,
+        "rows": None,
+    }
+    try:
+        _write_export(api, sp, export, logical_time, report)
+    except Exception as err:
+        refused = (
+            isinstance(err, SemanticLayerException)
+            and err.error_code in _EXPORT_REFUSALS
+        )
+        report["status"] = err.error_code if refused else "FAILED"
+        report["message"] = str(err)[:_EXPORT_MESSAGE_CHARS]
+        api._report_export(sp, export_name, report)
+        raise
+    report["status"] = "SUCCEEDED"
+    api._report_export(sp, export_name, report)
+    _logger.info("Export %s of %s: %s", export_name, sp.name, report["message"])
+    return report
+
+
+def _write_export(
+    api: SemanticLayerApi,
+    sp: semantic_layer.SemanticProject,
+    export: semantic_layer.SemanticExport,
+    logical_time: datetime.datetime,
+    report: dict[str, Any],
+) -> None:
+    """Query the export's saved query and write its rows, setting `rows`, `featureGroupId` and `message` in `report`."""
+    import pandas as pd
+
+    saved_query = next(
+        (q for q in api._saved_queries(sp) if q.name == export.saved_query), None
+    )
+    if saved_query is None:
+        raise SemanticLayerException(
+            f"Semantic project '{sp.name}' has no saved query '{export.saved_query}'."
+        )
+    table = _complete_result(api, sp, export.saved_query)
+    group_bys = [c for c in table.column_names if c not in saved_query.metrics]
+    event_time, grain = _metric_time(group_bys)
+    if export.lookback and event_time is None:
+        raise SemanticLayerException(
+            f"Export '{export.name}' has a lookback, which needs the saved query to group by metric_time."
+        )
+    fs = client._get_connection()._get_feature_store(api._project_name)
+    fg = fs.get_or_create_feature_group(
+        name=export.feature_group,
+        version=export.version or 1,
+        description=saved_query.description
+        or f"Export {export.name} of saved query {saved_query.name} of semantic project {sp.name}.",
+        primary_key=[c for c in group_bys if c != event_time] or group_bys,
+        event_time=event_time,
+        time_travel_format="DELTA",
+        online_enabled=False,
+        statistics_config=False,
+    )
+    if fg.id is not None and fg.id != export.feature_group_id:
+        raise SemanticLayerException(
+            f"Feature group {export.feature_group} version {fg.version} exists and export "
+            f"'{export.name}' did not create it, so nothing was written. Delete it, or give "
+            "the export another alias or version.",
+            error_code="TARGET_EXISTS",
+        )
+    replace: bool | datetime.datetime = True
+    if fg.id is None:
+        message = f"Created feature group {export.feature_group} version {fg.version}."
+    elif not export.lookback:
+        message = "Replaced every row."
+    elif grain not in semantic_layer._GRAINS:
+        message = (
+            f"Replaced every row: {event_time} has a custom granularity, which a "
+            "lookback window cannot be truncated to."
+        )
+    else:
+        replace = _window_start(logical_time, export.lookback, grain)
+        table = _rows_from(table, event_time, replace)
+        message = f"Replaced the rows from {replace.isoformat()}Z on."
+    try:
+        fg.insert(
+            table.to_pandas(types_mapper=pd.ArrowDtype),
+            write_options={"replace": replace},
+        )
+    finally:
+        # A first run that fails after creating the feature group still owns it;
+        # unrecorded, it would make every later run TARGET_EXISTS.
+        report["featureGroupId"] = fg.id
+    report["rows"] = table.num_rows
+    report["message"] = message
+
+
+def _complete_result(
+    api: SemanticLayerApi, sp: semantic_layer.SemanticProject, saved_query: str
+) -> pa.Table:
+    response = api._gateway_request(
+        "POST",
+        sp,
+        "query",
+        body={"savedQuery": saved_query, "cache": False},
+        accept=_ARROW_STREAM,
+    )
+    if not response.headers.get("Content-Type", "").startswith(_ARROW_STREAM):
+        raise SemanticLayerException(
+            f"The gateway answered saved query '{saved_query}' without an Arrow stream."
+        )
+    table = _read_arrow_stream(response.content)
+    max_rows = response.headers.get("X-Semantic-Max-Rows")
+    flagged = response.headers.get("X-Semantic-Truncated", "").lower() == "true"
+    # The gateway streams Arrow, so its headers go out before it knows whether the cap
+    # cut the result: one that fills the cap counts as cut, whatever the flag says.
+    at_cap = bool(max_rows) and table.num_rows >= int(max_rows)
+    if flagged or at_cap:
+        raise SemanticLayerException(
+            f"Saved query '{saved_query}' reached the gateway's cap of {max_rows} "
+            "rows, so it may be incomplete and nothing was written. Narrow the "
+            "saved query, or raise the gateway's MAX_ROWS.",
+            error_code="TRUNCATED",
+        )
+    return table
+
+
+def _metric_time(group_bys: list[str]) -> tuple[str | None, str | None]:
+    """The `metric_time` column of an export and its grain, `None` without a suffix; a date part such as `metric_time__extract_dow` is a key column instead."""
+    for column in group_bys:
+        name, _, suffix = column.partition("__")
+        if name == "metric_time" and not suffix.startswith("extract_"):
+            return column, suffix.lower() or None
+    return None, None
+
+
+def _logical_time() -> datetime.datetime:
+    """The execution's logical date as naive UTC, or now for an execution without one."""
+    import pandas as pd
+
+    value = os.environ.get("HOPS_LOGICAL_DATE")
+    if not value:
+        return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    instant = pd.Timestamp(value)
+    if instant.tzinfo is not None:
+        instant = instant.tz_convert("UTC").tz_localize(None)
+    return instant.to_pydatetime()
+
+
+def _window_start(
+    logical_time: datetime.datetime, lookback: str, grain: str
+) -> datetime.datetime:
+    """`logical_time` minus a lookback such as `7 days`, truncated to `grain`."""
+    import pandas as pd
+
+    match = re.fullmatch(r"\s*(\d+)\s*([A-Za-z]+?)s?\s*", lookback)
+    unit = match.group(2).lower() if match else None
+    if unit not in _SPINE_GRAINS:
+        raise SemanticLayerException(
+            f"Lookback {lookback!r} is not a number and a grain from second to year, such as '7 days'."
+        )
+    count = int(match.group(1))
+    offset = (
+        pd.DateOffset(months=3 * count)
+        if unit == "quarter"
+        else pd.DateOffset(**{f"{unit}s": count})
+    )
+    return _truncate((pd.Timestamp(logical_time) - offset).to_pydatetime(), grain)
+
+
+def _truncate(instant: datetime.datetime, grain: str) -> datetime.datetime:
+    """The start of the period at `grain` that holds `instant`; weeks start on Monday, as MetricFlow's do."""
+    midnight = instant.replace(hour=0, minute=0, second=0, microsecond=0)
+    if grain == "year":
+        return midnight.replace(month=1, day=1)
+    if grain == "quarter":
+        return midnight.replace(month=(instant.month - 1) // 3 * 3 + 1, day=1)
+    if grain == "month":
+        return midnight.replace(day=1)
+    if grain == "week":
+        return midnight - datetime.timedelta(days=instant.weekday())
+    if grain == "day":
+        return midnight
+    if grain == "hour":
+        return instant.replace(minute=0, second=0, microsecond=0)
+    if grain == "minute":
+        return instant.replace(second=0, microsecond=0)
+    if grain == "second":
+        return instant.replace(microsecond=0)
+    if grain == "millisecond":
+        return instant.replace(microsecond=instant.microsecond // 1000 * 1000)
+    return instant
+
+
+@_uses_pyarrow
+def _rows_from(table: pa.Table, column: str, start: datetime.datetime) -> pa.Table:
+    """The rows whose `column` is at or after `start`, a naive UTC datetime; a null is not."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    values = table[column]
+    bound = start.date() if pa.types.is_date(values.type) else start
+    return table.filter(pc.greater_equal(values, pa.scalar(bound, type=values.type)))
+
+
+# endregion

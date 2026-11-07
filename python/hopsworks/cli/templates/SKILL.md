@@ -273,8 +273,11 @@ hops semantic entities <name> [--metrics a,b]
 hops semantic dimension-values <name> <dimension> [--metrics a,b] [--limit N]
 hops semantic saved-queries <name>                          # sql, query, dashboard take --saved-query q for --metrics
 hops semantic sql <name> --metrics a,b [--group-by metric_time__month,customer__country] [--where "..."] [--order-by -a] [--limit N]
-hops semantic query <name> --metrics a,b [...same flags] [--output table|json|csv] [--explain]   # --explain prints the SQL
+hops semantic query <name> --metrics a,b [...same flags] [--output table|json|csv] [--explain] [--no-cache]   # --explain prints the SQL; --no-cache skips the gateway's result cache
 hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset 7.0 dashboard over the semantic view; prints its URL
+hops semantic export list <name>                            # exports of saved queries into feature groups, with each one's last run
+hops semantic export run <name> <export> [--wait]           # run an export's job now (Data Owner)
+hops semantic connect <name>                                # URLs and export lines for dbt-sl-sdk; eval "$(hops semantic connect <name>)"
 hops semantic time-spine create --start D --end D [--grain day] [--custom NAME=FREQ]   # feature group time_spine_<grain>
 hops semantic delete <name> --yes
 hops semantic tag list <name>                               # schematised tags on the semantic project

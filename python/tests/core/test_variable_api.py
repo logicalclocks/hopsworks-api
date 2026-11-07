@@ -57,6 +57,16 @@ class TestVariableApi:
         assert "loadbalancer_external_domain_datanode" in str(e.value)
         assert e.value.__cause__ is error
 
+    def test_an_unset_semantic_gateway_domain_names_the_service(self, mocker):
+        error = _rest_api_error(mocker, RestAPIError.STATUS_CODE_NOT_FOUND)
+        _patch_send_request(mocker).side_effect = error
+
+        with pytest.raises(FeatureStoreException) as e:
+            VariableApi()._get_loadbalancer_external_domain("semantic_gateway")
+
+        assert "semantic-gateway service hostname" in str(e.value)
+        assert "loadbalancer_external_domain_semantic_gateway" in str(e.value)
+
     @pytest.mark.parametrize(
         "status_code",
         [
