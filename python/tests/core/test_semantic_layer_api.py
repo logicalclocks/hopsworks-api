@@ -1525,6 +1525,18 @@ class TestExportJob:
         state.fg.insert.side_effect = insert
         return state
 
+    def test_the_feature_groups_the_query_read_are_reported_as_parents(self, http, job):
+        job.headers = {**job.headers, "X-Semantic-Feature-Groups": "11,12"}
+
+        semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert job.reports[-1]["parentFeatureGroupIds"] == [11, 12]
+
+    def test_a_query_that_read_no_feature_group_reports_no_parents(self, http, job):
+        semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert job.reports[-1]["parentFeatureGroupIds"] == []
+
     def test_the_first_run_creates_the_feature_group_with_every_row(self, http, job):
         report = semantic_layer_api._run_export(7, "revenue_daily", 3)
 
@@ -1557,6 +1569,7 @@ class TestExportJob:
             "executionId": 77,
             "logicalTime": "2026-11-07T02:00:00Z",
             "featureGroupId": 501,
+            "parentFeatureGroupIds": [],
             "rows": 3,
             "status": "SUCCEEDED",
             "message": "Created feature group revenue_daily version 1.",

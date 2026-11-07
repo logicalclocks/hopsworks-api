@@ -855,7 +855,8 @@ def _write_export(
         raise SemanticLayerException(
             f"Semantic project '{sp.name}' has no saved query '{export.saved_query}'."
         )
-    table = _complete_result(api, sp, export.saved_query)
+    table, parents = _complete_result(api, sp, export.saved_query)
+    report["parentFeatureGroupIds"] = parents
     group_bys = [c for c in table.column_names if c not in saved_query.metrics]
     event_time, grain = _metric_time(group_bys)
     if export.lookback and event_time is None:
@@ -910,7 +911,8 @@ def _write_export(
 
 def _complete_result(
     api: SemanticLayerApi, sp: semantic_layer.SemanticProject, saved_query: str
-) -> pa.Table:
+) -> tuple[pa.Table, list[int]]:
+    """The saved query's full result and the ids of the feature groups it read, which become the export's lineage parents."""
     response = api._gateway_request(
         "POST",
         sp,
@@ -935,7 +937,8 @@ def _complete_result(
             "saved query, or raise the gateway's MAX_ROWS.",
             error_code="TRUNCATED",
         )
-    return table
+    read = response.headers.get("X-Semantic-Feature-Groups", "")
+    return table, [int(fg_id) for fg_id in read.split(",") if fg_id.strip()]
 
 
 def _metric_time(group_bys: list[str]) -> tuple[str | None, str | None]:
