@@ -170,3 +170,33 @@ class TestExecutionPerTable:
         ex = Execution(id=1, state="FAILED", job=mock.Mock())
 
         assert ex.rerun_count == 0
+
+    def test_files_progress_keeps_the_backend_keys(self):
+        stats = {"status": "ok", "bytesCopied": 10, "failedFiles": []}
+
+        ex_list = execution.Execution.from_response_json(
+            {
+                "count": 1,
+                "items": [{"id": 4711, "state": "FINISHED", "filesProgress": stats}],
+            },
+            job=mock.Mock(),
+        )
+
+        assert ex_list[0].files_progress == stats
+        assert ex_list[0].files_progress["bytesCopied"] == 10
+
+    def test_files_progress_none_for_other_executions(self):
+        ex = execution.Execution.from_response_json(
+            {"id": 1, "state": "FINISHED"}, job=mock.Mock()
+        )
+
+        assert ex.files_progress is None
+
+    def test_update_from_response_json_keeps_files_progress(self):
+        ex = Execution(id=1, state="RUNNING", job=mock.Mock())
+
+        ex.update_from_response_json(
+            {"id": 1, "state": "FINISHED", "filesProgress": {"copied": 2}}
+        )
+
+        assert ex.files_progress == {"copied": 2}

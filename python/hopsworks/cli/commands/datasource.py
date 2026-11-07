@@ -2317,6 +2317,189 @@ def connector_infer_metadata(
 # into datasets, so it gets its own command group.
 
 
+_FILES_SOURCE_TYPES = ("S3", "GCS", "ADLS")
+
+
+def _files_source(ctx: click.Context, name: str) -> Any:
+    fs = session.get_feature_store(ctx)
+    try:
+        sc = fs.get_data_source(name).storage_connector
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
+    if sc is None:
+        raise click.ClickException(f"Data source '{name}' not found.")
+    if getattr(sc, "type", None) not in _FILES_SOURCE_TYPES:
+        raise click.ClickException(
+            f"Data source '{name}' is {getattr(sc, 'type', None)}, not S3, GCS or ADLS."
+        )
+    return sc
+
+
+def _files_job_dict(job: Any, execution_id: Any = None) -> dict[str, Any]:
+    result = {
+        "job": job.name,
+        "dataset": job.dataset_name,
+        "prefix": job.prefix,
+        "include": job.include,
+        "exclude": job.exclude,
+        "mirrorDeletions": job.mirror_deletions,
+        "indexFeatureGroup": job.index_feature_group,
+        "maxFileSizeMb": job.max_file_size_mb,
+        "schedule": job.schedule,
+    }
+    if execution_id is not None:
+        result["executionId"] = execution_id
+    return result
+
+
+_FILES_JOB_HEADERS = ["JOB", "DATASET", "PREFIX", "SCHEDULE", "MIRROR", "INDEX"]
+
+
+def _files_job_rows(jobs: list[Any]) -> list[list[Any]]:
+    return [
+        [
+            j.name,
+            j.dataset_name,
+            j.prefix or "/",
+            j.schedule or "once",
+            "yes" if j.mirror_deletions else "no",
+            j.index_feature_group or "-",
+        ]
+        for j in jobs
+    ]
+
+
+@datasource_group.command("ingest-files")
+@click.argument("name")
+@click.option(
+    "--dataset", required=True, help="Dataset the files are copied into (owned or new)."
+)
+@click.option(
+    "--prefix",
+    default="",
+    help="Prefix inside the bucket or container, relative to its root; the whole bucket when unset.",
+)
+@click.option(
+    "--include", multiple=True, help="Glob of files to copy. Repeat for several."
+)
+@click.option(
+    "--exclude", multiple=True, help="Glob of files to skip. Repeat for several."
+)
+@click.option(
+    "--mirror-deletions",
+    is_flag=True,
+    help="Delete files from the dataset that are gone from the source.",
+)
+@click.option(
+    "--index",
+    "index_files",
+    is_flag=True,
+    help="Keep an index feature group files_<dataset>, one row per file.",
+)
+@click.option("--index-name", help="Name of the index feature group. Implies --index.")
+@click.option(
+    "--max-file-size-mb", type=int, help="Skip larger files; unset or 0 for no limit."
+)
+@click.option(
+    "--cron",
+    help="Schedule, a Quartz cron expression in UTC, seconds first, e.g. '0 0 2 ? * *' for daily at 02:00.",
+)
+@click.option(
+    "--name", "job_name", help="Job name; <source>_<dataset>_files when unset."
+)
+@click.option("--no-run", is_flag=True, help="Create the job without running it.")
+@click.pass_context
+def connector_ingest_files(
+    ctx: click.Context,
+    name: str,
+    dataset: str,
+    prefix: str,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    mirror_deletions: bool,
+    index_files: bool,
+    index_name: str | None,
+    max_file_size_mb: int | None,
+    cron: str | None,
+    job_name: str | None,
+    no_run: bool,
+) -> None:
+    """Copy the files under a prefix of an S3, GCS or ADLS data source into a dataset.
+
+    Creates a files ingestion job and, unless --no-run, starts its first run.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+        dataset: Dataset to copy into.
+        prefix: Prefix inside the bucket or container.
+        include: Include globs.
+        exclude: Exclude globs.
+        mirror_deletions: Whether deletions are mirrored.
+        index_files: Whether to keep an index feature group.
+        index_name: Name of the index feature group.
+        max_file_size_mb: File size cap in MB.
+        cron: Cron expression of the schedule.
+        job_name: Name of the job.
+        no_run: Whether to skip the first run.
+    """
+    if index_name is not None and not index_name.strip():
+        raise click.ClickException("--index-name must not be empty.")
+    if max_file_size_mb is not None and max_file_size_mb < 0:
+        raise click.ClickException("--max-file-size-mb must be 0 or more.")
+    index: bool | str = index_name if index_name else index_files
+    sc = _files_source(ctx, name)
+    job = _call(
+        "Create",
+        lambda: sc.ingest_files(
+            dataset=dataset,
+            prefix=prefix,
+            include=list(include),
+            exclude=list(exclude),
+            mirror_deletions=mirror_deletions,
+            index=index,
+            max_file_size_mb=max_file_size_mb,
+            schedule=cron,
+            name=job_name,
+        ),
+    )
+    execution_id = None
+    if not no_run:
+        execution = _call("Run", lambda: job.run(await_termination=False))
+        execution_id = getattr(execution, "id", None)
+    if output.JSON_MODE:
+        output.print_json(_files_job_dict(job, execution_id))
+        return
+    output.print_table(_FILES_JOB_HEADERS, _files_job_rows([job]))
+    if execution_id is None:
+        output.success("✓ Created job %s into dataset %s", job.name, job.dataset_name)
+    else:
+        output.success(
+            "✓ Created job %s into dataset %s, execution %s started",
+            job.name,
+            job.dataset_name,
+            execution_id,
+        )
+
+
+@datasource_group.command("files-jobs")
+@click.argument("name")
+@click.pass_context
+def connector_files_jobs(ctx: click.Context, name: str) -> None:
+    """List the files ingestion jobs of an S3, GCS or ADLS data source.
+
+    Args:
+        ctx: Click context.
+        name: Data source name.
+    """
+    sc = _files_source(ctx, name)
+    jobs = _call("Listing files jobs", sc.get_files_ingestion_jobs)
+    if output.JSON_MODE:
+        output.print_json([_files_job_dict(j) for j in jobs])
+        return
+    output.print_table(_FILES_JOB_HEADERS, _files_job_rows(jobs))
+
+
 def _sharepoint(ctx: click.Context, name: str) -> Any:
     fs = session.get_feature_store(ctx)
     try:

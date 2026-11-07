@@ -1592,3 +1592,164 @@ def test_sharepoint_reset_script():
 
 
 # endregion
+
+
+# region ingest-files
+
+
+def _files_source(argv: list[str], connector_type: str = "S3"):
+    """Run ``datasource <argv>`` against a mocked S3/GCS/ADLS connector; return (result, connector)."""
+    from hsfs.storage_connector import S3Connector
+
+    sc = mock.create_autospec(S3Connector, instance=True)
+    sc.type = connector_type
+    job = mock.Mock()
+    job.configure_mock(
+        name="my_s3_docs_files",
+        dataset_name="docs",
+        prefix="handbook/",
+        include=["**/*.pdf"],
+        exclude=[],
+        mirror_deletions=False,
+        index_feature_group=None,
+        max_file_size_mb=None,
+        schedule=None,
+    )
+    job.run.return_value.id = 4711
+    sc.ingest_files.return_value = job
+    sc.get_files_ingestion_jobs.return_value = [job]
+    with mock.patch.object(ds.session, "get_feature_store") as fs:
+        fs.return_value.get_data_source.return_value.storage_connector = sc
+        result = CliRunner().invoke(cli, ["datasource", *argv])
+    return result, sc
+
+
+def test_ingest_files_creates_and_runs_with_defaults():
+    result, sc = _files_source(["ingest-files", "my_s3", "--dataset", "docs"])
+
+    assert result.exit_code == 0, result.output
+    sc.ingest_files.assert_called_once_with(
+        dataset="docs",
+        prefix="",
+        include=[],
+        exclude=[],
+        mirror_deletions=False,
+        index=False,
+        max_file_size_mb=None,
+        schedule=None,
+        name=None,
+    )
+    job = sc.ingest_files.return_value
+    job.run.assert_called_once_with(await_termination=False)
+    assert "my_s3_docs_files" in result.output
+    assert "docs" in result.output
+    assert "4711" in result.output
+
+
+def test_ingest_files_passes_every_option_and_skips_the_run():
+    result, sc = _files_source(
+        [
+            "ingest-files",
+            "my_s3",
+            "--dataset",
+            "docs",
+            "--prefix",
+            "handbook/2026/",
+            "--include",
+            "**/*.pdf",
+            "--include",
+            "**/*.docx",
+            "--exclude",
+            "**/~$*",
+            "--mirror-deletions",
+            "--index",
+            "--max-file-size-mb",
+            "512",
+            "--cron",
+            "0 0 2 ? * *",
+            "--name",
+            "handbook_files",
+            "--no-run",
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    sc.ingest_files.assert_called_once_with(
+        dataset="docs",
+        prefix="handbook/2026/",
+        include=["**/*.pdf", "**/*.docx"],
+        exclude=["**/~$*"],
+        mirror_deletions=True,
+        index=True,
+        max_file_size_mb=512,
+        schedule="0 0 2 ? * *",
+        name="handbook_files",
+    )
+    sc.ingest_files.return_value.run.assert_not_called()
+    assert "4711" not in result.output
+
+
+def test_ingest_files_index_name_implies_index():
+    result, sc = _files_source(
+        ["ingest-files", "my_s3", "--dataset", "docs", "--index-name", "docs_idx"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert sc.ingest_files.call_args.kwargs["index"] == "docs_idx"
+
+
+def test_ingest_files_requires_a_dataset():
+    result, sc = _files_source(["ingest-files", "my_s3"])
+
+    assert result.exit_code == 2
+    assert "--dataset" in result.output
+    sc.ingest_files.assert_not_called()
+
+
+def test_ingest_files_refuses_other_types_of_data_source():
+    result, sc = _files_source(
+        ["ingest-files", "sp", "--dataset", "docs"], connector_type="SHAREPOINT"
+    )
+
+    assert result.exit_code == 1
+    assert "not S3, GCS or ADLS" in result.output
+    sc.ingest_files.assert_not_called()
+
+
+def test_ingest_files_json_output(monkeypatch):
+    result, _ = _files_source(["ingest-files", "my_s3", "--dataset", "docs", "--json"])
+    monkeypatch.setattr(output, "JSON_MODE", False)
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["job"] == "my_s3_docs_files"
+    assert payload["dataset"] == "docs"
+    assert payload["executionId"] == 4711
+
+
+def test_ingest_files_reports_a_failed_create():
+    from hsfs.storage_connector import S3Connector
+
+    sc = mock.create_autospec(S3Connector, instance=True)
+    sc.type = "GCS"
+    sc.ingest_files.side_effect = RuntimeError("dataset owned by another job")
+    with mock.patch.object(ds.session, "get_feature_store") as fs:
+        fs.return_value.get_data_source.return_value.storage_connector = sc
+        result = CliRunner().invoke(
+            cli, ["datasource", "ingest-files", "g", "--dataset", "docs"]
+        )
+
+    assert result.exit_code == 1
+    assert "Create failed: dataset owned by another job" in result.output
+
+
+def test_files_jobs_lists_the_jobs():
+    result, sc = _files_source(["files-jobs", "my_s3"], connector_type="ADLS")
+
+    assert result.exit_code == 0, result.output
+    sc.get_files_ingestion_jobs.assert_called_once_with()
+    assert "my_s3_docs_files" in result.output
+    assert "handbook/" in result.output
+
+
+# endregion

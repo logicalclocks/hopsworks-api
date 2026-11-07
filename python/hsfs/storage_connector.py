@@ -46,6 +46,7 @@ from hsfs.core import (
     data_source_api,
     data_source_credentials_api,
     elasticsearch_api,
+    files_ingestion,
     sharepoint_api,
     sharepoint_sync,
     storage_connector_api,
@@ -428,6 +429,116 @@ class StorageConnector(ABC):
             featurestore_id=self._featurestore_id,
             scope=scope,
         )
+
+    _FILES_INGESTION_TYPES = ("S3", "GCS", "ADLS")
+
+    @public
+    def ingest_files(
+        self,
+        dataset: str,
+        prefix: str = "",
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
+        mirror_deletions: bool = False,
+        index: bool | str = False,
+        max_file_size_mb: int | None = None,
+        schedule: str | None = None,
+        resources: dict[str, Any] | None = None,
+        name: str | None = None,
+        fail_on_first_error: bool = False,
+        files_per_page: int = 100,
+    ) -> files_ingestion.FilesIngestionJob:
+        """Create a job that copies the files under a prefix of this S3, GCS or ADLS data source into a dataset.
+
+        The job is created on the server at once; run it with
+        [`FilesIngestionJob.run`][hsfs.core.files_ingestion.FilesIngestionJob.run].
+        Each run lists the prefix, copies new and changed files, keeps unchanged ones and, with `mirror_deletions`, deletes from the dataset the files that are gone from the source.
+        The dataset may exist (the caller must own it) or is created; one files job owns a dataset, so a second job on the same dataset is refused.
+        Per-file failures do not stop the run: the copies that succeeded stay, the run ends as failed, and the execution's `files_progress` lists the failed files.
+        Needs the Data Owner role.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = fs.get_data_source("my_s3").storage_connector
+            job = sc.ingest_files(
+                dataset="acme_docs_handbook",
+                prefix="handbook/2026/",
+                include=["**/*.pdf"],
+                schedule="0 0 2 ? * *",
+                index=True,
+            )
+            execution = job.run(await_termination=True)
+            print(execution.files_progress["copied"], job.last_stats["status"])
+            ```
+
+        Parameters:
+            dataset: Name of the dataset the files are copied into; an existing one you own, or a new one.
+            prefix: Prefix inside the bucket or container, relative to its root, e.g. `"handbook/2026/"`; `""` for the whole bucket.
+            include: Glob patterns of the files to copy, e.g. `["**/*.pdf"]`; every file when empty.
+            exclude: Glob patterns of the files to skip.
+            mirror_deletions: Delete files from the dataset that are gone from the source, so the dataset equals the prefix after each run.
+            index: `True` to keep a Delta feature group `files_<dataset>` with one row per file, a name to use instead, or `False` for no index.
+            max_file_size_mb: Files larger than this are skipped and counted as oversized; `None` or `0` copies any size.
+            schedule: Quartz cron expression in UTC, seconds first, e.g. `"0 0 2 ? * *"` for daily at 02:00; `None` creates no schedule.
+            resources: Pod resources of a run, e.g. `{"cores": 1, "memory": 2048, "gpus": 0}`.
+            name: Job name; `<connector>_<dataset>_files`, lowercased with `_` for other characters, when `None`.
+            fail_on_first_error: Stop a run at the first file that fails instead of copying the rest.
+            files_per_page: Number of files listed per request to the source.
+
+        Returns:
+            The created files ingestion job.
+
+        Raises:
+            ValueError: If this data source is not S3, GCS or ADLS, or a setting is invalid.
+            hopsworks.client.exceptions.RestAPIError: If the dataset belongs to another files job, the data source has no usable credentials, or the caller is not a data owner.
+        """
+        if self.type not in self._FILES_INGESTION_TYPES:
+            raise ValueError(
+                f"Data source '{self._name}' is {self.type}; files can only be "
+                "ingested from S3, GCS or ADLS data sources."
+            )
+        job = files_ingestion.FilesIngestionJob(
+            self,
+            dataset,
+            prefix=prefix,
+            include=include,
+            exclude=exclude,
+            mirror_deletions=mirror_deletions,
+            index=index,
+            max_file_size_mb=max_file_size_mb,
+            schedule=schedule,
+            resources=resources,
+            name=name,
+            fail_on_first_error=fail_on_first_error,
+            files_per_page=files_per_page,
+        )
+        job.save()
+        return job
+
+    @public
+    def get_files_ingestion_jobs(self) -> list[files_ingestion.FilesIngestionJob]:
+        """List the files ingestion jobs of the project that read from this data source.
+
+        Returns:
+            The jobs created with [`ingest_files`][hsfs.storage_connector.StorageConnector.ingest_files] for this data source.
+        """
+        from hopsworks_common.core.job_api import JobApi
+
+        jobs = []
+        for job in JobApi().get_jobs():
+            config = job.config if isinstance(job.config, dict) else {}
+            files_config = config.get("filesConfig") or {}
+            if (
+                config.get("mode") == files_ingestion.MODE_FILES
+                and files_config.get("storageConnectorId") == self._id
+            ):
+                jobs.append(files_ingestion.FilesIngestionJob.from_job(job))
+        return jobs
 
     @public
     @property
