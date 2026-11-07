@@ -1197,10 +1197,12 @@ class SemanticProject:
         Example: Query the semantic project with dbt-sl-sdk
             ```python
             import os
-            from dbtsl import SemanticLayerClient
 
             info = sales.connection_info()
+            # dbt-sl-sdk reads its DBT_SL_* variables when it is imported, so set them first.
             os.environ.update(info["env"])
+            from dbtsl import SemanticLayerClient
+
             dbt = SemanticLayerClient(
                 environment_id=info["environment_id"],
                 auth_token=api_key,
