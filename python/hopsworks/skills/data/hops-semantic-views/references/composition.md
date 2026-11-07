@@ -108,7 +108,8 @@ metrics:
 - **Accumulate the parts, then divide.** Cumulative and conversion metrics take simple inputs, so a 7-day average order value is two 7-day cumulative metrics (revenue and order count) divided in a derived metric.
 - **An offset needs `metric_time` and a time spine.** A metric with an `offset_window` or `offset_to_grain` input, at any depth, is grouped by `metric_time` in every query, and the build needs a time spine (`hops semantic time-spine create`), or it reports a `TIME_SPINE` error.
 - **Filters stack.** A filter on a simple metric applies wherever it is an input; a filter on a ratio or derived input applies to that input only.
-- **Limits.** An offset with a custom granularity window, a derived metric with an offset grouped by a custom granularity, and a `Metric()` filter on an input read at an offset are refused as `UNSUPPORTED`.
+- **Limits.** An offset with a custom granularity window, a derived metric with an offset grouped by a custom granularity or by a grain that cannot express the offset (2 days in a monthly query), and a `Metric()` filter on an input read at an offset are refused as `UNSUPPORTED`.
+- **Time ranges bound cumulative inputs.** When an offset reads a cumulative metric, the query's time range also bounds the periods that metric is computed for, as in MetricFlow, so the first offset's worth of the range is empty; start the range one offset earlier.
 - **One definition, many slices.** Prefer `revenue` grouped or filtered by `customer__country` over `revenue_se` and `revenue_no`: the view stays small and the slices stay consistent.
 
 ## Query composition
