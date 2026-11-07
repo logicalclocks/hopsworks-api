@@ -13,6 +13,7 @@ list is `hops skills list --bucket data`.
 - [hops-delta](hops-delta/SKILL.md) — Maintain Delta feature groups: optimize, vacuum, checkpoint, and choosing a write mode and layout.
 - [hops-dbt](hops-dbt/SKILL.md) — Run dbt models over feature groups in Trino, validate with data tests, produce an execution graph.
 - [hops-semantic](hops-semantic/SKILL.md): Define metrics in semantic YAML next to a dbt project, or scaffold them from feature groups, compile and tag them, and query them by dimension and time grain from the CLI, the SDK or the agent tools.
+- [hops-semantic-views](hops-semantic-views/SKILL.md): Scope a semantic view to one business domain, compose it from models, metrics and saved queries, and keep it under 100k tokens so agents can read it whole.
 - [hops-sharepoint-search](hops-sharepoint-search/SKILL.md) — Search the files a SharePoint sync copied in, through its index feature group, with the DuckDB CLI.
 - [hops-spark](hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta config).
 - [hops-synthetic-data](hops-synthetic-data/SKILL.md) — Generate seeded synthetic batch tables or live event streams into feature groups with Polars.

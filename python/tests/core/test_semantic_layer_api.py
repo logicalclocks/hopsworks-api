@@ -1290,6 +1290,7 @@ class TestTimeSpine:
         [
             (("2026-01-01", "2026-12-31", "fortnight", {}), "not one of second"),
             (("2026-02-01", "2026-01-01", "day", {}), "is before its start"),
+            (("2026-02-15", "2026-02-01", "month", {}), "is before its start"),
             (
                 ("2026-01-01", "2026-01-31", "day", {"fq": "quarterly"}),
                 "Custom granularity 'fq': 'quarterly' is not a pandas period frequency",

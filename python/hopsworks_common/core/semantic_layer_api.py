@@ -696,15 +696,15 @@ def _time_spine_frame(
         raise ValueError(
             f"Granularity {granularity!r} is not one of {', '.join(_SPINE_GRAINS)}."
         )
+    if pd.Timestamp(end) < pd.Timestamp(start):
+        raise ValueError(
+            f"The end of the time spine, {end}, is before its start, {start}."
+        )
     starts = pd.Series(
         pd.period_range(
             pd.Timestamp(start), pd.Timestamp(end), freq=periods[granularity]
         ).start_time
     )
-    if starts.empty:
-        raise ValueError(
-            f"The end of the time spine, {end}, is before its start, {start}."
-        )
 
     def typed(instants: pd.Series) -> pd.Series:
         return instants if granularity in _SUB_DAY_GRAINS else instants.dt.date
