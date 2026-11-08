@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+import secrets
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import urlparse
 
@@ -56,6 +57,8 @@ _GATEWAY_SERVICE_NAME = "semantic-gateway.service"
 _GATEWAY_PORT = 18443
 _GATEWAY_PATH = "semantic-layer/v1"
 _JSON = "application/json"
+# The most query history records the control plane answers in one page.
+_HISTORY_PAGE = 1000
 _ARROW_STREAM = "application/vnd.apache.arrow.stream"
 # The gateway sends nothing until its answer is ready, so the read timeout bounds a whole query.
 # 330 s outlasts the gateway's QUERY_TIMEOUT_SECONDS and the ingress proxy timeout, both 300 s
@@ -74,6 +77,8 @@ _SPINE_GRAINS = ("second", "minute", "hour", "day", "week", "month", "quarter", 
 _SUB_DAY_GRAINS = frozenset({"second", "minute", "hour"})
 # Export statuses of a run that wrote nothing on purpose; any other failure is FAILED.
 _EXPORT_REFUSALS = frozenset({"TRUNCATED", "TARGET_EXISTS"})
+_SOURCE_VERSIONS_HEADER = "X-Semantic-Source-Versions"
+_DEFINITION_HEADER = "X-Semantic-Definition"
 # The width of semantic_export.last_message.
 _EXPORT_MESSAGE_CHARS = 1000
 
@@ -279,6 +284,8 @@ class SemanticLayerApi:
             version=1,
             description=f"Time spine, one row per {granularity}, for the semantic layer.",
             primary_key=[f"date_{granularity}"],
+            # The compiler binds a time spine without a declared column to its feature group's event time.
+            event_time=f"date_{granularity}",
             online_enabled=False,
             statistics_config=False,
         )
@@ -493,6 +500,41 @@ class SemanticLayerApi:
             data=json.dumps(report),
         )
 
+    def _session(self, sp: semantic_layer.SemanticProject) -> dict[str, Any]:
+        """The caller's gateway session on the semantic project, which lists its exports and the Trino rules revision."""
+        _client = client._get_instance()
+        return _client._send_request("GET", ["semantic", "sessions", sp.id]) or {}
+
+    def _query_history(
+        self,
+        sp: semantic_layer.SemanticProject,
+        limit: int,
+        status: list[str] | None,
+        user: str | None,
+    ) -> list[dict[str, Any]]:
+        _client = client._get_instance()
+        items: list[dict[str, Any]] = []
+        cursor = None
+        while len(items) < limit:
+            params: dict[str, Any] = {"limit": min(limit - len(items), _HISTORY_PAGE)}
+            if cursor:
+                params["cursor"] = cursor
+            if status:
+                params["status"] = ",".join(status)
+            if user:
+                params["user"] = user
+            page = (
+                _client._send_request(
+                    "GET", self._path(sp.id, "queries"), query_params=params
+                )
+                or {}
+            )
+            items.extend(page.get("items") or [])
+            cursor = page.get("nextCursor")
+            if not cursor:
+                break
+        return items[:limit]
+
     def _connection(self, sp: semantic_layer.SemanticProject) -> dict[str, Any]:
         _client = client._get_instance()
         return _client._send_request("GET", self._path(sp.id, "connection"))
@@ -636,8 +678,11 @@ class SemanticLayerApi:
         result = self._gateway_json("POST", sp, "dimension-values", body=request)
         return result.get("values") or []
 
-    def _sql(self, sp: semantic_layer.SemanticProject, request: dict[str, Any]) -> str:
-        return self._gateway_json("POST", sp, "sql", body=request)["sql"]
+    def _sql(
+        self, sp: semantic_layer.SemanticProject, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The gateway's whole `sql` answer: `sql`, and with `"engine": "SPARK"` the `views` it reads."""
+        return self._gateway_json("POST", sp, "sql", body=request)
 
     def _query(
         self,
@@ -800,6 +845,7 @@ def _run_export(
     The window starts at the execution's logical date, `HOPS_LOGICAL_DATE` (the start of a scheduled run's interval, now for a run without one), minus the lookback, truncated to the `metric_time` grain.
 
     The outcome is reported to the export's status with `generation` and the execution id from `HOPSWORKS_JOB_EXECUTION_ID`; a run that wrote nothing raises after reporting, so the job execution fails.
+    A successful run of an export without a lookback also reports what it materialised, so that the gateway can answer queries of exactly its saved query from the feature group (see `_materialization`).
 
     Returns:
         The status reported.
@@ -822,8 +868,16 @@ def _run_export(
         "rows": None,
     }
     api._report_export(sp, export_name, {**report, "status": "RUNNING"})
+    rules_revision, policy_free = _rules_at_start(api, sp, export_name)
     try:
-        _write_export(api, sp, export, logical_time, report)
+        _write_export(
+            api,
+            sp,
+            export,
+            logical_time,
+            report,
+            rules_revision if policy_free else None,
+        )
     except Exception as err:
         refused = (
             isinstance(err, SemanticLayerException)
@@ -839,14 +893,39 @@ def _run_export(
     return report
 
 
+def _rules_at_start(
+    api: SemanticLayerApi, sp: semantic_layer.SemanticProject, export_name: str
+) -> tuple[str | None, bool]:
+    """The Trino rules revision at the run's start and whether the session lists the export as policy-free; `(None, False)` when the session cannot be read."""
+    try:
+        session = api._session(sp)
+    except Exception as err:
+        _logger.warning(
+            "Export %s of %s records no materialisation: the session cannot be read: %s",
+            export_name,
+            sp.name,
+            err,
+        )
+        return None, False
+    entry = next(
+        (e for e in session.get("exports") or [] if e.get("name") == export_name),
+        {},
+    )
+    return session.get("rulesRevision"), entry.get("policyFree") is True
+
+
 def _write_export(
     api: SemanticLayerApi,
     sp: semantic_layer.SemanticProject,
     export: semantic_layer.SemanticExport,
     logical_time: datetime.datetime,
     report: dict[str, Any],
+    rules_revision: str | None = None,
 ) -> None:
-    """Query the export's saved query and write its rows, setting `rows`, `featureGroupId` and `message` in `report`."""
+    """Query the export's saved query and write its rows, setting `rows`, `featureGroupId`, `message` and, when one may be recorded, `materialization` in `report`.
+
+    `rules_revision` is the Trino rules revision at the run's start, `None` unless the session then listed the export as policy-free.
+    """
     import pandas as pd
 
     saved_query = next(
@@ -856,7 +935,7 @@ def _write_export(
         raise SemanticLayerException(
             f"Semantic project '{sp.name}' has no saved query '{export.saved_query}'."
         )
-    table, parents = _complete_result(api, sp, export.saved_query)
+    table, parents, headers = _complete_result(api, sp, export.saved_query)
     report["parentFeatureGroupIds"] = parents
     group_bys = [c for c in table.column_names if c not in saved_query.metrics]
     event_time, grain = _metric_time(group_bys)
@@ -903,10 +982,15 @@ def _write_export(
         replace = _window_start(logical_time, export.lookback, grain)
         table = _rows_from(table, event_time, replace)
         message = f"Replaced the rows from {replace.isoformat()}Z on."
+    write_options: dict[str, Any] = {"replace": replace}
+    execution_id = report.get("executionId")
+    app_id = f"semantic-export-{sp.id}-{export.name}"
+    attempt = _transaction_version() if execution_id is not None else None
+    if attempt is not None:
+        write_options["commit_properties"] = {"app_id": app_id, "version": attempt}
     try:
         fg.insert(
-            table.to_pandas(types_mapper=pd.ArrowDtype),
-            write_options={"replace": replace},
+            table.to_pandas(types_mapper=pd.ArrowDtype), write_options=write_options
         )
     finally:
         # A first run that fails after creating the feature group still owns it;
@@ -914,17 +998,124 @@ def _write_export(
         report["featureGroupId"] = fg.id
     report["rows"] = table.num_rows
     report["message"] = message
+    materialization = _materialization(
+        export, fg, table, parents, headers, rules_revision, app_id, attempt
+    )
+    if materialization is not None:
+        report["materialization"] = materialization
+
+
+def _materialization(
+    export: semantic_layer.SemanticExport,
+    fg: FeatureGroup,
+    table: pa.Table,
+    parents: list[int],
+    headers: Mapping[str, str],
+    rules_revision: str | None,
+    app_id: str,
+    attempt: int | None,
+) -> dict[str, Any] | None:
+    """What a run wrote that the gateway may answer queries from, or `None` when any condition fails.
+
+    Every condition of the contract must hold: the export has no lookback, so the run replaced every row; the session listed the export as policy-free at the run's start, under `rules_revision`; the gateway pinned every relation the query scanned (`X-Semantic-Source-Versions`, covering the feature groups it read) and named the build and the saved query's definition; and the Delta version of the run's own commit is found by its application transaction.
+    """
+    try:
+        source_versions = json.loads(headers.get(_SOURCE_VERSIONS_HEADER) or "null")
+        build_id = int(headers.get("X-Semantic-Build") or "")
+    except ValueError:
+        return None
+    definition = headers.get(_DEFINITION_HEADER)
+    if (
+        export.lookback
+        or not rules_revision
+        or not isinstance(source_versions, dict)
+        or not source_versions
+        or not set(map(str, parents)) <= set(source_versions)
+        or not definition
+        or attempt is None
+        or fg.id is None
+    ):
+        return None
+    output_version = _output_version(fg, app_id, attempt)
+    if output_version is None:
+        return None
+    return {
+        "buildId": build_id,
+        "definition": definition,
+        "sourceVersions": {str(k): int(v) for k, v in source_versions.items()},
+        "featureGroupId": fg.id,
+        "outputVersion": output_version,
+        "outputColumns": table.column_names,
+        "rulesRevision": rules_revision,
+    }
+
+
+_OUTPUT_VERSION_SEARCH = 100
+
+
+def _transaction_version() -> int:
+    """The version of this write's application transaction: a random 63-bit number, so each attempt marks one commit.
+
+    A re-run of an execution keeps its id, so the id would mark two commits, and a clock can repeat a reading.
+    Delta does not require application transaction versions to grow.
+    """
+    return secrets.randbits(63)
+
+
+def _output_version(fg: FeatureGroup, app_id: str, attempt: int) -> int | None:
+    """The Delta version of the commit that carries the run's application transaction `(app_id, attempt)`, `None` when it is not found.
+
+    The log is read with delta-rs from the head back: the commit carrying the transaction is the first version at which `DeltaTable.transaction_version(app_id)` is `attempt`, since each attempt's version is its own.
+    Another writer may have committed after the run, so up to `_OUTPUT_VERSION_SEARCH` versions are read.
+    """
+    try:
+        # The export job's process, not library code: hsfs is there once the job has logged in.
+        from deltalake import DeltaTable
+        from hsfs.core import delta_engine
+
+        engine = delta_engine.DeltaEngine(
+            feature_store_id=fg.feature_store_id,
+            feature_store_name=fg.feature_store_name,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+        table = DeltaTable(
+            engine._get_delta_rs_location(),
+            storage_options=engine._get_delta_rs_storage_options() or None,
+        )
+        version = table.version()
+        if table.transaction_version(app_id) != attempt:
+            return None
+        for _ in range(_OUTPUT_VERSION_SEARCH):
+            if version == 0:
+                return 0
+            table.load_as_version(version - 1)
+            if table.transaction_version(app_id) != attempt:
+                return version
+            version -= 1
+    except Exception as err:
+        _logger.warning("The Delta log of %s cannot be read: %s", fg.name, err)
+    return None
 
 
 def _complete_result(
     api: SemanticLayerApi, sp: semantic_layer.SemanticProject, saved_query: str
-) -> tuple[pa.Table, list[int]]:
-    """The saved query's full result and the ids of the feature groups it read, which become the export's lineage parents."""
+) -> tuple[pa.Table, list[int], Mapping[str, str]]:
+    """The saved query's full result, the ids of the feature groups it read, which become the export's lineage parents, and the gateway's response headers.
+
+    The query reads its sources, never an export, each at the head of its Delta log when the gateway can pin it.
+    """
     response = api._gateway_request(
         "POST",
         sp,
         "query",
-        body={"savedQuery": saved_query, "cache": False},
+        body={
+            "savedQuery": saved_query,
+            "cache": False,
+            "useExports": False,
+            "pinVersions": True,
+        },
         accept=_ARROW_STREAM,
     )
     if not response.headers.get("Content-Type", "").startswith(_ARROW_STREAM):
@@ -945,7 +1136,11 @@ def _complete_result(
             error_code="TRUNCATED",
         )
     read = response.headers.get("X-Semantic-Feature-Groups", "")
-    return table, [int(fg_id) for fg_id in read.split(",") if fg_id.strip()]
+    return (
+        table,
+        [int(fg_id) for fg_id in read.split(",") if fg_id.strip()],
+        response.headers,
+    )
 
 
 def _metric_time(group_bys: list[str]) -> tuple[str | None, str | None]:

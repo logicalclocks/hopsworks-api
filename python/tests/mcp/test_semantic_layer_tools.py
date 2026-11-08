@@ -84,14 +84,68 @@ def test_every_tool_registers_with_the_semantic_layer_tag():
     SemanticLayerTools(mcp)
 
     tags = [call.kwargs["tags"] for call in mcp.tool.call_args_list]
-    assert len(tags) == 14
+    assert len(tags) == 15
     assert all("semantic_layer" in t for t in tags)
     assert sum("write" in t for t in tags) == 3
     tools = [call.args[0].__name__ for call in mcp.tool.return_value.call_args_list]
     registered = dict(zip(tools, tags, strict=True))
     assert {"write", "stateful"} <= set(registered["create_dashboard_from_metrics"])
-    for tool in ("list_saved_queries", "query_saved_query", "list_exports"):
+    for tool in (
+        "list_saved_queries",
+        "query_saved_query",
+        "list_exports",
+        "list_query_history",
+    ):
         assert set(registered[tool]) == {"semantic_layer", "read", "stateful"}
+
+
+def test_list_query_history_is_csv_of_the_newest_queries(tools, sl, sales):
+    frame = pd.DataFrame(
+        [
+            {
+                "execution_id": "3f8c2a52-0000-4000-8000-000000000001",
+                "user": "meb10000",
+                "surface": "FLIGHT",
+                "status": "SUCCEEDED",
+                "duration_ms": 12,
+                "rows": 3,
+                "cache": "hit",
+                "error": None,
+                "request": {"metrics": ["revenue"]},
+                "started_at": pd.Timestamp("2026-11-08T10:00:00Z"),
+                "sql": "SELECT 1",
+            }
+        ]
+    )
+    sales.query_history.return_value = frame
+
+    rows = _rows(_call(tools.list_query_history("sales", limit=5, status=["FAILED"])))
+
+    sales.query_history.assert_called_once_with(limit=5, status=["FAILED"], user=None)
+    assert rows[0] == [
+        "started_at",
+        "user",
+        "surface",
+        "status",
+        "duration_ms",
+        "rows",
+        "cache",
+        "error",
+        "request",
+        "execution_id",
+    ]
+    assert rows[1] == [
+        "2026-11-08 10:00:00+00:00",
+        "meb10000",
+        "FLIGHT",
+        "SUCCEEDED",
+        "12",
+        "3",
+        "hit",
+        "",
+        '{"metrics": ["revenue"]}',
+        "3f8c2a52-0000-4000-8000-000000000001",
+    ]
 
 
 def test_list_exports_is_csv_of_each_export_and_its_last_run(tools, sl, sales):

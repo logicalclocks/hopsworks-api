@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 import requests
 from hopsworks_apigen import public
 from hopsworks_common import client, usage
+from hopsworks_common.core.superset_mcp_api import _SupersetMcpClient
 from hopsworks_common.core.variable_api import VariableApi
 
 
@@ -112,6 +113,7 @@ class SupersetApi:
         self._session_token: str | None = None
         self._csrf_token: str | None = None
         self._http = requests.Session()
+        self._mcp_client: _SupersetMcpClient | None = None
 
     def _get_superset_url(self) -> str:
         if client._is_external():
@@ -498,3 +500,109 @@ class SupersetApi:
             Empty dict on success.
         """
         return self._request("DELETE", f"/api/v1/dashboard/{dashboard_id}")
+
+    # ------------------------------------------------------------------ #
+    #  Superset MCP service                                               #
+    # ------------------------------------------------------------------ #
+
+    def _mcp(self) -> _SupersetMcpClient:
+        # The same in-cluster and service discovery checks as the REST calls.
+        self._get_superset_url()
+        if self._mcp_client is None:
+            self._mcp_client = _SupersetMcpClient(
+                self._project_id, self._service_discovery_domain
+            )
+        return self._mcp_client
+
+    @public
+    @usage._method_logger
+    def generate_chart(
+        self,
+        dataset_id: int | str,
+        config: dict[str, Any],
+        name: str | None = None,
+        save: bool = True,
+    ) -> dict:
+        """Create a chart from a short typed configuration, which Superset compiles and validates into its chart parameters.
+
+        Superset's MCP service `generate_chart` tool does the work, so the chart types and their fields are Superset's own; [`chart_type_schema`][hopsworks_common.core.superset_api.SupersetApi.chart_type_schema] describes them.
+        Superset checks the columns and metrics against the dataset before it saves anything.
+
+        Example:
+            ```python
+            superset = project.get_superset_api()
+            chart = superset.generate_chart(
+                dataset_id=12,
+                config={
+                    "chart_type": "xy",
+                    "kind": "line",
+                    "x": {"name": "event_time"},
+                    "y": [{"name": "amount", "aggregate": "SUM"}],
+                    "group_by": [{"name": "category"}],
+                    "time_grain": "P1D",
+                },
+                name="Spend per day",
+            )
+            chart_id = chart["chart"]["id"]
+            ```
+
+        Parameters:
+            dataset_id: The Superset dataset ID or UUID.
+            config: The chart configuration; `chart_type` selects the schema, for example `xy`, `table`, `pie` or `big_number`.
+            name: The chart name; Superset derives one when omitted.
+            save: Save the chart; when false Superset only returns an Explore link with the chart unsaved.
+
+        Returns:
+            Superset's `generate_chart` response; `chart.id` is the saved chart's ID.
+
+        Raises:
+            hopsworks.client.exceptions.SupersetException: When Superset rejects the configuration or the MCP service is unavailable.
+        """
+        request: dict[str, Any] = {
+            "dataset_id": dataset_id,
+            "config": config,
+            "save_chart": save,
+        }
+        if name:
+            request["chart_name"] = name
+        return self._mcp()._call("generate_chart", {"request": request})
+
+    @public
+    @usage._method_logger
+    def chart_type_schema(self, chart_type: str) -> dict:
+        """Describe the configuration [`generate_chart`][hopsworks_common.core.superset_api.SupersetApi.generate_chart] accepts for one chart type.
+
+        Parameters:
+            chart_type: The chart type, for example `xy`, `table`, `pie`, `big_number`, `pivot_table`, `mixed_timeseries`, `histogram` or `box_plot`.
+
+        Returns:
+            The JSON Schema of the type's configuration, with working examples.
+
+        Raises:
+            hopsworks.client.exceptions.SupersetException: When the chart type is unknown or the MCP service is unavailable.
+        """
+        return self._mcp()._call(
+            "get_chart_type_schema",
+            {"chart_type": chart_type, "include_examples": True},
+        )
+
+    @public
+    @usage._method_logger
+    def patch_dashboard(self, dashboard_id: int | str, **fields: Any) -> dict:
+        """Change only the given fields of a Superset dashboard, through Superset's MCP service `update_dashboard` tool.
+
+        Unlike [`update_dashboard`][hopsworks_common.core.superset_api.SupersetApi.update_dashboard], `json_metadata_overrides` is merged into the dashboard's metadata instead of replacing it.
+
+        Parameters:
+            dashboard_id: The dashboard ID or slug.
+            **fields: `dashboard_title`, `description`, `slug`, `published`, `position_json`, `json_metadata_overrides`, `css`, `tags` (tag IDs), `cross_filters_enabled`, `refresh_frequency` (seconds) or `filter_bar_orientation` (`VERTICAL` or `HORIZONTAL`).
+
+        Returns:
+            Superset's `update_dashboard` response, with the updated dashboard under `dashboard`.
+
+        Raises:
+            hopsworks.client.exceptions.SupersetException: When the user may not edit the dashboard, a field is invalid, or the MCP service is unavailable.
+        """
+        return self._mcp()._call(
+            "update_dashboard", {"request": {"identifier": dashboard_id, **fields}}
+        )

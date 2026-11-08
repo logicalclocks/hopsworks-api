@@ -9,6 +9,7 @@ They act on the logged-in project; the parent skill's "Agent tools" section says
 | `list_metrics` | CSV of name, type, label, description, tags; `tag` filters |
 | `list_saved_queries` | CSV of name, label, description, metrics, group_by |
 | `list_exports` | CSV of each export's feature group, schedule, lookback and last run (status, rows, message) |
+| `list_query_history` | CSV of the newest queries run on the semantic project over any API: surface, status, duration, rows, cache, error, request |
 | `get_dimensions`, `get_entities` | CSV of what the metrics can be grouped by |
 | `get_dimension_values` | CSV of one dimension's values |
 | `query_metrics` | CSV rows, `limit` 100 by default, cut at 50,000 characters |

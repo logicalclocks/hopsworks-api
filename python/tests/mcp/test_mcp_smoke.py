@@ -38,6 +38,7 @@ _SEMANTIC_LAYER_TOOLS = (
     "list_metrics",
     "list_saved_queries",
     "list_exports",
+    "list_query_history",
     "get_dimensions",
     "get_entities",
     "get_dimension_values",

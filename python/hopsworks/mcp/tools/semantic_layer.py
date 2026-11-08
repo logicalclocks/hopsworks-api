@@ -165,6 +165,7 @@ class SemanticLayerTools:
             self.list_metrics,
             self.list_saved_queries,
             self.list_exports,
+            self.list_query_history,
             self.get_dimensions,
             self.get_entities,
             self.get_dimension_values,
@@ -282,6 +283,50 @@ class SemanticLayerTools:
             columns,
             [[getattr(export, column) for column in columns] for export in exports],
         )
+
+    async def list_query_history(
+        self,
+        semantic_project: str,
+        limit: int = 20,
+        status: list[str] | None = None,
+        user: str | None = None,
+        ctx: Context | None = None,
+    ) -> str:
+        """List the most recent queries run on a semantic project over any API, newest first, as CSV.
+
+        Members see their own queries and Data Owners everyone's; use it to find what failed, what was slow, and which metrics are queried.
+
+        Parameters:
+            semantic_project: Name of the semantic project.
+            limit: Maximum number of queries.
+            status: SUCCEEDED, FAILED or CANCELLED, to keep only those.
+            user: User name whose queries to list; Data Owners only.
+            ctx: The MCP context, provided automatically.
+
+        Returns:
+            CSV with the columns started_at, user, surface (REST, GRAPHQL, FLIGHT or BI), status, duration_ms, rows, cache (hit, miss or bypass), error, request (the normalized query as JSON, empty once the history has dropped it) and execution_id.
+        """
+        if ctx:
+            await ctx.info(f"Listing the query history of {semantic_project}...")
+        frame = await run_sdk(
+            lambda: _semantic_project(semantic_project).query_history(
+                limit=limit, status=status, user=user
+            )
+        )
+        columns = [
+            "started_at",
+            "user",
+            "surface",
+            "status",
+            "duration_ms",
+            "rows",
+            "cache",
+            "error",
+            "request",
+            "execution_id",
+        ]
+        rows = frame[columns].astype(object).where(frame[columns].notna(), None)
+        return _csv(columns, rows.itertuples(index=False, name=None))
 
     async def get_dimensions(
         self,

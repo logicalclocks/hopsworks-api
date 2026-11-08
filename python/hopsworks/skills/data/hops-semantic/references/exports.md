@@ -51,6 +51,17 @@ Compile errors: `EXPORT_AS` (not `table`), `EXPORT_TARGET` (an invalid or duplic
 The job runs as the semantic project's creator, who must be a Data Owner of the project; otherwise the export is `OWNER_NOT_DATA_OWNER` and has no job.
 Runs of one export never overlap.
 
+## Answered from the export
+
+The gateway reads a query's rows from the export's feature group, instead of computing them, only while all hold:
+- the export has no `lookback`, and its saved query has no `limit`, `order_by`, group limit or filter relative to the current date;
+- the query has the saved query's metrics, group-bys and grains, filters and time range (named or spelled out), adding at most HAVING, ORDER BY and LIMIT; an extra filter misses;
+- every source, time spine included, is a Delta feature group at the commit the last run read, and the export feature group at the commit it wrote;
+- the saved query's definition is the one the run read, no Trino row filter or column mask applies, and no source is shared with only some of its features.
+
+REST answers carry `X-Semantic-Served-From: export:<name>`, `X-Semantic-Export-Feature-Group` and `X-Semantic-Source-Versions`; Flight and GraphQL are served without headers; BI table SQL and `engine="spark"` never are.
+The history's `served_from` shows it on every surface. `"useExports": false` in a REST query body computes from the sources.
+
 ## Commands
 
 ```bash

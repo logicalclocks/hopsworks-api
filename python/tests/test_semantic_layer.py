@@ -315,6 +315,12 @@ class TestModels:
         assert metric.to_dict()["agg"] is None
         assert group_by.entity_path == ["listing"]
         assert group_by.date_parts_supported is False
+        assert group_by.event_time is False
+        order_ts = SemanticGroupBy.from_response_json(
+            {"name": "order__order_ts", "type": "TIME", "eventTime": True}
+        )
+        assert order_ts.event_time is True
+        assert order_ts.to_dict()["event_time"] is True
 
     def test_metric_tags_keep_the_case_of_schema_names_and_value_keys(self):
         metric = SemanticMetric.from_response_json(

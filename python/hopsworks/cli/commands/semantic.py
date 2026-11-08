@@ -8,6 +8,7 @@ runs a saved query instead of ``--metrics``.
 ``init`` scaffolds a dbt project over feature groups, optionally in a new private GitHub repository cloned through Hopsworks git.
 ``time-spine create`` writes the time spine feature group that cumulative metrics and offsets join to.
 ``export list|run`` shows and runs the exports that write saved queries into feature groups, and ``connect`` prints what a dbt Semantic Layer client needs.
+``history`` lists the queries run on a semantic project over every API.
 """
 
 from __future__ import annotations
@@ -1282,6 +1283,113 @@ def dashboard_cmd(
     click.echo(
         f'Created dashboard {dashboard["id"]} "{dashboard["title"]}": {dashboard["url"]}'
     )
+
+
+# endregion
+
+# region History
+
+
+@semantic_group.command("history")
+@click.argument("name")
+@click.option(
+    "--user",
+    help="User name whose queries to list; only Data Owners can list other users' queries.",
+)
+@click.option(
+    "--status",
+    type=click.Choice(["SUCCEEDED", "FAILED", "CANCELLED"], case_sensitive=False),
+    multiple=True,
+    help="Only queries with this status; repeat for several.",
+)
+@click.option(
+    "--limit", type=int, default=50, show_default=True, help="Most queries listed."
+)
+@click.pass_context
+def history_cmd(
+    ctx: click.Context,
+    name: str,
+    user: str | None,
+    status: tuple[str, ...],
+    limit: int,
+) -> None:
+    """List the most recent queries run on a semantic project, newest first, over every API.
+
+    Members see their own queries, Data Owners everyone's.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        user: User name to filter by.
+        status: Statuses to keep.
+        limit: Maximum number of queries.
+    """
+    frame = _semantic_project(ctx, name).query_history(
+        limit=limit, status=list(status) or None, user=user
+    )
+    records = frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
+    if output.JSON_MODE:
+        output.print_json(
+            [
+                {
+                    **r,
+                    "started_at": _iso(r["started_at"]),
+                    "finished_at": _iso(r["finished_at"]),
+                }
+                for r in records
+            ]
+        )
+        return
+    output.print_table(
+        [
+            "STARTED",
+            "USER",
+            "SURFACE",
+            "STATUS",
+            "MS",
+            "ROWS",
+            "CACHE",
+            "QUERY",
+            "ERROR",
+        ],
+        [
+            [
+                _iso(r["started_at"]),
+                r["user"] or "-",
+                r["surface"],
+                r["status"],
+                r["duration_ms"],
+                "-" if r["rows"] is None else r["rows"],
+                r["cache"],
+                _history_query(r["request"]),
+                output.first_line(r["error"]),
+            ]
+            for r in records
+        ],
+    )
+
+
+def _iso(value: Any) -> str | None:
+    return None if value is None else value.isoformat()
+
+
+def _history_query(request: Any) -> str:
+    """A recorded request in a line: its saved query or metrics, and its group-bys."""
+    if not isinstance(request, dict):
+        return "-"
+    if "call" in request:
+        args = request.get("args") or {}
+        return f"values of {args.get('group_by') or args.get('groupBy')}"
+    if request.get("savedQuery"):
+        return f"saved query {request['savedQuery']}"
+    group_by = [
+        g.get("name", "") + (f"__{g['grain']}" if g.get("grain") else "")
+        if isinstance(g, dict)
+        else str(g)
+        for g in request.get("groupBy") or []
+    ]
+    text = ",".join(str(m) for m in request.get("metrics") or [])
+    return f"{text} by {','.join(group_by)}" if group_by else text or "-"
 
 
 # endregion

@@ -215,10 +215,10 @@ class ExecutionApi:
 
 
 def _to_iso(dt: datetime) -> str:
-    """ISO-8601 UTC string, matching what the backend parses into Instant."""
+    """ISO-8601 UTC string ending in `Z`, which the backend parses into an Instant and `fg.read()` in the job parses as the scheduler's own values."""
+    from datetime import timezone as _tz
+
     if dt.tzinfo is None:
         # Treat naive as UTC rather than silently shift by the local offset.
-        from datetime import timezone as _tz
-
         dt = dt.replace(tzinfo=_tz.utc)
-    return dt.isoformat()
+    return dt.astimezone(_tz.utc).isoformat().replace("+00:00", "Z")

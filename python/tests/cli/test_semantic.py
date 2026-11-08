@@ -969,6 +969,90 @@ class TestTestGroupsByMetricTimeWhenRequired:
         ] == [(["revenue_mtd"], ["metric_time"]), (["nope"], None)]
 
 
+class TestHistory:
+    @staticmethod
+    def _frame():
+        frame = pd.DataFrame(
+            [
+                {
+                    "execution_id": "3f8c2a52-0000-4000-8000-000000000001",
+                    "user": "meb10000",
+                    "surface": "GRAPHQL",
+                    "engine": "TRINO",
+                    "build_id": 12,
+                    "status": "FAILED",
+                    "error": "unknown metric 'nope'\nmore",
+                    "rows": None,
+                    "started_at": "2026-11-08T10:00:00.123Z",
+                    "finished_at": "2026-11-08T10:00:00.200Z",
+                    "duration_ms": 77,
+                    "cache": "bypass",
+                    "served_from": None,
+                    "trino_query_id": None,
+                    "request": {
+                        "metrics": ["nope"],
+                        "groupBy": [{"name": "metric_time", "grain": "month"}],
+                    },
+                    "sql": None,
+                }
+            ]
+        )
+        for column in ("started_at", "finished_at"):
+            frame[column] = pd.to_datetime(frame[column], utc=True)
+        for column in ("build_id", "rows", "duration_ms"):
+            frame[column] = frame[column].astype("Int64")
+        return frame
+
+    def test_history_passes_its_filters_and_prints_a_line_per_query(self, sales):
+        sales.query_history.return_value = self._frame()
+
+        result = _run(
+            "history",
+            "sales",
+            "--status",
+            "failed",
+            "--user",
+            "meb10000",
+            "--limit",
+            "5",
+        )
+
+        assert result.exit_code == 0, result.output
+        sales.query_history.assert_called_once_with(
+            limit=5, status=["FAILED"], user="meb10000"
+        )
+        lines = result.output.splitlines()
+        assert lines[0].split()[:4] == ["STARTED", "USER", "SURFACE", "STATUS"]
+        assert lines[2].split() == [
+            "2026-11-08T10:00:00.123000+00:00",
+            "meb10000",
+            "GRAPHQL",
+            "FAILED",
+            "77",
+            "-",
+            "bypass",
+            "nope",
+            "by",
+            "metric_time__month",
+            "unknown",
+            "metric",
+            "'nope'",
+        ]
+
+    def test_history_in_json(self, sales):
+        sales.query_history.return_value = self._frame()
+
+        result = _run("--json", "history", "sales")
+
+        assert result.exit_code == 0, result.output
+        sales.query_history.assert_called_once_with(limit=50, status=None, user=None)
+        record = json.loads(result.output)[0]
+        assert record["started_at"] == "2026-11-08T10:00:00.123000+00:00"
+        assert record["rows"] is None
+        assert record["build_id"] == 12
+        assert record["request"]["metrics"] == ["nope"]
+
+
 class TestExports:
     EXPORT = SemanticExport(
         name="revenue_daily",

@@ -17,6 +17,7 @@
 import datetime
 import json
 import logging
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -1218,6 +1219,7 @@ class TestTimeSpine:
             version=1,
             description="Time spine, one row per day, for the semantic layer.",
             primary_key=["date_day"],
+            event_time="date_day",
             online_enabled=False,
             statistics_config=False,
         )
@@ -1340,6 +1342,85 @@ EXPORT_JSON = {
 }
 
 
+HISTORY_JSON = {
+    "executionId": "3f8c2a52-0000-4000-8000-000000000001",
+    "user": "meb10000",
+    "surface": "REST",
+    "engine": "TRINO",
+    "buildId": 12,
+    "status": "SUCCEEDED",
+    "error": None,
+    "rows": 42,
+    "startedAt": "2026-11-08T10:00:00.123Z",
+    "finishedAt": "2026-11-08T10:00:01.456Z",
+    "durationMs": 1333,
+    "cache": "miss",
+    "servedFrom": None,
+    "trinoQueryId": "20261108_100000_00012_abcde",
+    "request": {"metrics": ["revenue"]},
+    "sql": "SELECT 1",
+}
+
+
+class TestQueryHistory:
+    def test_pages_with_the_cursor_until_the_limit(self, http, sales):
+        failed = {**HISTORY_JSON, "status": "FAILED", "rows": None, "error": "boom"}
+        http._send_request.reset_mock()
+        http._send_request.side_effect = [
+            {"items": [HISTORY_JSON, failed], "nextCursor": "c1"},
+            {"items": [HISTORY_JSON], "nextCursor": "c2"},
+        ]
+
+        frame = sales.query_history(limit=3, status=["failed", "SUCCEEDED"], user="bob")
+
+        calls = http._send_request.call_args_list
+        assert [c.args for c in calls] == [
+            ("GET", ["project", 119, "semantic", "projects", 7, "queries"])
+        ] * 2
+        assert calls[0].kwargs["query_params"] == {
+            "limit": 3,
+            "status": "FAILED,SUCCEEDED",
+            "user": "bob",
+        }
+        assert calls[1].kwargs["query_params"]["cursor"] == "c1"
+        assert calls[1].kwargs["query_params"]["limit"] == 1
+        assert list(frame.columns) == [
+            "execution_id",
+            "user",
+            "surface",
+            "engine",
+            "build_id",
+            "status",
+            "error",
+            "rows",
+            "started_at",
+            "finished_at",
+            "duration_ms",
+            "cache",
+            "served_from",
+            "trino_query_id",
+            "request",
+            "sql",
+        ]
+        assert len(frame) == 3
+        assert frame["status"].tolist() == ["SUCCEEDED", "FAILED", "SUCCEEDED"]
+        assert frame["rows"].tolist()[0] == 42
+        assert frame["rows"].isna().tolist() == [False, True, False]
+        assert str(frame["started_at"].iloc[0]) == "2026-11-08 10:00:00.123000+00:00"
+        assert frame["request"].iloc[0] == {"metrics": ["revenue"]}
+
+    def test_stops_at_the_last_page(self, http, sales):
+        http._send_request.reset_mock()
+        http._send_request.return_value = {"items": [], "nextCursor": None}
+
+        frame = sales.query_history()
+
+        assert http._send_request.call_count == 1
+        assert http._send_request.call_args.kwargs["query_params"] == {"limit": 100}
+        assert frame.empty
+        assert "started_at" in frame.columns
+
+
 class TestExports:
     def test_exports_lists_the_control_plane_answer(self, http, sales):
         http._send_request.return_value = {"items": [EXPORT_JSON]}
@@ -1459,7 +1540,25 @@ class TestConnectionInfo:
         assert info["env"] == self.CONNECTION["env"]
 
 
+def _written(replace):
+    """The write options of an attempt marked 77 of export revenue_daily of semantic project 7, which replaces `replace`."""
+    return {
+        "replace": replace,
+        "commit_properties": {
+            "app_id": "semantic-export-7-revenue_daily",
+            "version": 77,
+        },
+    }
+
+
 class TestExportJob:
+    @pytest.fixture(autouse=True)
+    def attempt(self, mocker):
+        mocker.patch(
+            "hopsworks_common.core.semantic_layer_api._transaction_version",
+            return_value=77,
+        )
+
     SAVED_QUERY = {
         "name": "revenue_by_country",
         "description": "Daily revenue per country",
@@ -1488,10 +1587,15 @@ class TestExportJob:
             headers={"X-Semantic-Max-Rows": "1000000"},
             reports=[],
             started=[],
+            session={},
             fg=MagicMock(name="FeatureGroup", id=None, version=1, description=None),
         )
 
         def control_plane(method, path, **kwargs):
+            if path[:2] == ["semantic", "sessions"]:
+                if isinstance(state.session, Exception):
+                    raise state.session
+                return state.session
             if path[-1] == "exports":
                 return {"items": [state.export]}
             if path[-1] == "status":
@@ -1560,6 +1664,8 @@ class TestExportJob:
         assert json.loads(kwargs["data"]) == {
             "savedQuery": "revenue_by_country",
             "cache": False,
+            "useExports": False,
+            "pinVersions": True,
         }
         assert kwargs["headers"]["Accept"] == "application/vnd.apache.arrow.stream"
         job.fs.get_or_create_feature_group.assert_called_once_with(
@@ -1572,7 +1678,7 @@ class TestExportJob:
             online_enabled=False,
             statistics_config=False,
         )
-        assert job.write_options == {"replace": True}
+        assert job.write_options == _written(True)
         assert len(job.written) == 3
         assert str(job.written["customer__country"].dtype) == "string[pyarrow]"
         assert job.reports == [report]
@@ -1608,7 +1714,7 @@ class TestExportJob:
 
         # 2026-11-07T02:00 minus 7 days, truncated to the day.
         start = datetime.datetime(2026, 10, 31)
-        assert job.write_options == {"replace": start}
+        assert job.write_options == _written(start)
         assert job.written["customer__country"].tolist() == ["NO"]
         assert (report["status"], report["rows"]) == ("SUCCEEDED", 1)
         assert report["message"] == "Replaced the rows from 2026-10-31T00:00:00Z on."
@@ -1619,7 +1725,7 @@ class TestExportJob:
 
         report = semantic_layer_api._run_export(7, "revenue_daily", 4)
 
-        assert job.write_options == {"replace": datetime.datetime(2026, 11, 6)}
+        assert job.write_options == _written(datetime.datetime(2026, 11, 6))
         assert len(job.written) == 0
         assert list(job.written.columns) == [
             "metric_time__day",
@@ -1634,7 +1740,7 @@ class TestExportJob:
 
         report = semantic_layer_api._run_export(7, "revenue_daily", 4)
 
-        assert job.write_options == {"replace": True}
+        assert job.write_options == _written(True)
         assert report["message"] == "Replaced every row."
 
     @pytest.mark.parametrize(
@@ -1687,7 +1793,7 @@ class TestExportJob:
 
         report = semantic_layer_api._run_export(7, "revenue_daily", 3)
 
-        assert job.write_options == {"replace": True}
+        assert job.write_options == _written(True)
         assert (report["status"], report["featureGroupId"]) == ("SUCCEEDED", 501)
 
     def test_another_exports_marker_does_not_take_a_feature_group_over(self, job):
@@ -1739,7 +1845,7 @@ class TestExportJob:
 
         report = semantic_layer_api._run_export(7, "revenue_daily", 3)
 
-        assert job.write_options == {"replace": True}
+        assert job.write_options == _written(True)
         assert "custom granularity" in report["message"]
 
     def test_without_other_group_bys_metric_time_is_the_key(self, job):
@@ -1769,6 +1875,208 @@ class TestExportJob:
 
         http._session.request.assert_not_called()
         assert job.reports == []
+
+
+class TestExportMaterialization:
+    """What a run reports it materialised (HWORKS-3740 API contract §3, runner steps 1 to 4)."""
+
+    RULES = "b" * 64
+
+    @pytest.fixture
+    def run(self, http, mocker, monkeypatch):
+        job = TestExportJob.job.__wrapped__(TestExportJob(), http, mocker, monkeypatch)
+        job.export["featureGroupId"] = 501
+        job.fg.id = 501
+        job.session = {
+            "rulesRevision": self.RULES,
+            "exports": [
+                {"name": "other", "policyFree": False},
+                {"name": "revenue_daily", "policyFree": True},
+            ],
+        }
+        job.headers = {
+            **job.headers,
+            "X-Semantic-Build": "12",
+            "X-Semantic-Definition": "a" * 64,
+            "X-Semantic-Source-Versions": '{"11":4,"12":0}',
+            "X-Semantic-Feature-Groups": "11",
+        }
+        job.output_version = mocker.patch(
+            "hopsworks_common.core.semantic_layer_api._output_version", return_value=9
+        )
+        mocker.patch(
+            "hopsworks_common.core.semantic_layer_api._transaction_version",
+            return_value=77,
+        )
+        return job
+
+    def test_a_full_refresh_run_reports_what_it_materialised(self, http, run):
+        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert report["materialization"] == {
+            "buildId": 12,
+            "definition": "a" * 64,
+            "sourceVersions": {"11": 4, "12": 0},
+            "featureGroupId": 501,
+            "outputVersion": 9,
+            "outputColumns": ["metric_time__day", "customer__country", "revenue"],
+            "rulesRevision": self.RULES,
+        }
+        run.output_version.assert_called_once_with(
+            run.fg, "semantic-export-7-revenue_daily", 77
+        )
+        assert run.write_options == _written(True)
+        assert "materialization" not in run.started[0]
+        session_calls = [
+            c
+            for c in http._send_request.call_args_list
+            if c.args[1][:2] == ["semantic", "sessions"]
+        ]
+        assert len(session_calls) == 1
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            lambda run: run.export.update(lookback="7 days"),
+            lambda run: run.session.update(rulesRevision=None),
+            lambda run: run.session["exports"][1].update(policyFree=False),
+            lambda run: run.session.update(exports=[]),
+            lambda run: setattr(run, "session", RuntimeError("Payara is down")),
+            lambda run: run.headers.pop("X-Semantic-Source-Versions"),
+            lambda run: run.headers.update({"X-Semantic-Feature-Groups": "11,13"}),
+            lambda run: run.headers.update({"X-Semantic-Source-Versions": "{}"}),
+            lambda run: run.headers.pop("X-Semantic-Definition"),
+            lambda run: run.headers.pop("X-Semantic-Build"),
+            lambda run: setattr(run.output_version, "return_value", None),
+        ],
+        ids=[
+            "lookback",
+            "no_rules_revision",
+            "not_policy_free",
+            "not_listed",
+            "session_unreadable",
+            "unpinned",
+            "a_source_not_pinned",
+            "no_sources",
+            "no_definition",
+            "no_build",
+            "output_commit_not_found",
+        ],
+    )
+    def test_any_condition_failing_reports_none(self, run, change):
+        change(run)
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert report["status"] == "SUCCEEDED"
+        assert "materialization" not in report
+
+
+class _DeltaLog:
+    """A Delta log for `_output_version`: the version of each commit's `semantic-export-7-daily` transaction."""
+
+    def __init__(self, transactions):
+        self.transactions = transactions
+        self.at = len(transactions) - 1
+        self.loaded = []
+
+    def __call__(self, location, storage_options=None):
+        return self
+
+    def version(self):
+        return self.at
+
+    def load_as_version(self, version):
+        self.loaded.append(version)
+        self.at = version
+
+    def transaction_version(self, app_id):
+        assert app_id == "semantic-export-7-daily"
+        return self.transactions[self.at]
+
+
+def _fake_delta_engine(mocker):
+    """The Delta engine module of hsfs, faked with the packages above it: importing hsfs needs the generated alias modules."""
+    engine = SimpleNamespace(DeltaEngine=MagicMock(name="DeltaEngine"))
+    core = SimpleNamespace(delta_engine=engine)
+    mocker.patch.dict(
+        sys.modules,
+        {
+            "hsfs": SimpleNamespace(core=core),
+            "hsfs.core": core,
+            "hsfs.core.delta_engine": engine,
+        },
+    )
+
+
+def test_each_write_attempt_has_its_own_transaction_version():
+    versions = {semantic_layer_api._transaction_version() for _ in range(1000)}
+    assert len(versions) == 1000
+    assert all(0 <= v < 2**63 for v in versions)
+
+
+class TestOutputVersion:
+    @pytest.fixture
+    def log(self, mocker):
+        def install(transactions):
+            delta_log = _DeltaLog(transactions)
+            mocker.patch("deltalake.DeltaTable", delta_log)
+            _fake_delta_engine(mocker)
+            return delta_log
+
+        return install
+
+    def test_the_head_is_the_runs_commit(self, log):
+        delta_log = log([None, 76, 77])
+
+        assert (
+            semantic_layer_api._output_version(
+                MagicMock(), "semantic-export-7-daily", 77
+            )
+            == 2
+        )
+        assert delta_log.loaded == [1]
+
+    def test_a_later_commit_of_another_writer_is_skipped(self, log):
+        log([None, 76, 77, 77, 77])
+
+        assert (
+            semantic_layer_api._output_version(
+                MagicMock(), "semantic-export-7-daily", 77
+            )
+            == 2
+        )
+
+    def test_the_first_commit_of_the_table(self, log):
+        log([77])
+
+        assert (
+            semantic_layer_api._output_version(
+                MagicMock(), "semantic-export-7-daily", 77
+            )
+            == 0
+        )
+
+    def test_a_log_without_the_runs_transaction(self, log):
+        log([None, 76, 78])
+
+        assert (
+            semantic_layer_api._output_version(
+                MagicMock(), "semantic-export-7-daily", 77
+            )
+            is None
+        )
+
+    def test_an_unreadable_log(self, mocker):
+        mocker.patch("deltalake.DeltaTable", side_effect=OSError("HopsFS is down"))
+        _fake_delta_engine(mocker)
+
+        assert (
+            semantic_layer_api._output_version(
+                MagicMock(), "semantic-export-7-daily", 77
+            )
+            is None
+        )
 
 
 class TestExportWindow:
