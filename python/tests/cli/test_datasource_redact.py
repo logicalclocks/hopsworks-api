@@ -25,7 +25,7 @@ _OPTION_LISTS = {
     "headers",
     "parameters",
 }
-_NO_SECRET = (sc.GoogleSheetsConnector, sc.HopsFSConnector)
+_NO_SECRET = (sc.GoogleSheetsConnector, sc.HopsFSConnector, sc.GoogleDriveConnector)
 _CONNECTION_STRINGS = {"connection_string"}
 # The constructor slots that hold a secret, per connector class.
 _SECRETS = {
@@ -52,6 +52,7 @@ _SECRETS = {
         "session_token",
     ],
     "SapHanaConnector": ["password"],
+    "SftpConnector": ["password", "private_key", "passphrase"],
     "SharePointConnector": ["client_secret"],
     "SnowflakeConnector": ["password", "token", "private_key", "passphrase"],
     "SqlConnector": ["password", "wallet_password"],

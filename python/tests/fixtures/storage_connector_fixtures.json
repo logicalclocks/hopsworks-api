@@ -1171,5 +1171,105 @@
             "temporaryCredentials": true
         },
         "headers": null
+    },
+    "get_sftp": {
+        "response": {
+            "type": "featurestoreSftpConnectorDTO",
+            "description": "SFTP connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_sftp",
+            "storageConnectorType": "SFTP",
+            "host": "sftp.example.com",
+            "port": 2222,
+            "username": "hopsworks",
+            "path": "/outgoing",
+            "authType": "PRIVATE_KEY",
+            "credentialsSet": true
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_sftp"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_sftp_basic_info": {
+        "response": {
+            "type": "featurestoreSftpConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_sftp",
+            "storageConnectorType": "SFTP"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_sftp"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_google_drive": {
+        "response": {
+            "type": "featurestoreGoogleDriveConnectorDTO",
+            "description": "Google Drive connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_google_drive",
+            "storageConnectorType": "GOOGLE_DRIVE",
+            "keyPath": "/Projects/test/Resources/drive-sa.json",
+            "folderId": "1AbCdEfGhIjKlMnOpQrStUvWxYz",
+            "folderName": "Handbook",
+            "serviceAccountEmail": "drive@test.iam.gserviceaccount.com"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_google_drive"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_google_drive_basic_info": {
+        "response": {
+            "type": "featurestoreGoogleDriveConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_google_drive",
+            "storageConnectorType": "GOOGLE_DRIVE"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_google_drive"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
     }
 }

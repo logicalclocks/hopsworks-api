@@ -12,6 +12,7 @@ methods where available.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -100,7 +101,30 @@ def connector_info(ctx: click.Context, name: str) -> None:
         ["Type", type(sc).__name__],
         ["Description", output.first_line(getattr(sc, "description", ""))],
     ]
+    for label, attr in _INFO_FIELDS.get(getattr(sc, "type", None), ()):
+        value = getattr(sc, attr, None)
+        rows.append([label, "-" if value is None else value])
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+# The fields of a files-only data source, which has no tables to browse, so
+# ``info`` is where its settings are read; the credentials are never among them.
+_INFO_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
+    "SFTP": (
+        ("Host", "host"),
+        ("Port", "port"),
+        ("Username", "username"),
+        ("Root path", "path"),
+        ("Auth type", "auth_type"),
+        ("Credentials set", "credentials_set"),
+    ),
+    "GOOGLE_DRIVE": (
+        ("Key path", "key_path"),
+        ("Folder ID", "folder_id"),
+        ("Folder name", "folder_name"),
+        ("Service account", "service_account_email"),
+    ),
+}
 
 
 def _list_connectors(fs: Any) -> list[dict[str, Any]]:
@@ -391,8 +415,10 @@ class _Opt:
     """One CLI option and the connector property it fills.
 
     ``kind`` is ``str``, ``int``, ``flag`` (sent only when set), ``bool`` (an
-    on/off pair, sent only when either is given) or ``args`` (repeatable
-    ``key=value``, sent as the connector's argument list).
+    on/off pair, sent only when either is given), ``args`` (repeatable
+    ``key=value``, sent as the connector's argument list), ``file`` (a local
+    file whose text is sent, so a key never has to be pasted) or ``path`` (a
+    local file the spec's ``prepare`` handles, not sent as a field).
     A ``secret`` option also reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` and
     accepts ``-`` for stdin, so the value never has to be an argument.
     """
@@ -403,7 +429,7 @@ class _Opt:
     required: bool = False
     kind: str = "str"
     choices: tuple[str, ...] = ()
-    default: str | None = None
+    default: str | int | None = None
     secret: bool = False
 
 
@@ -417,6 +443,15 @@ class _Spec:
     opts: tuple[_Opt, ...]
     check: Callable[[dict[str, Any]], str | None] | None = None
     epilog: str = ""
+    # Completes the body from the options once they are checked, e.g. by
+    # uploading a file or deriving a field; returns how to undo what it did
+    # outside the body, run when the connector is not created after all.
+    prepare: (
+        Callable[
+            [click.Context, dict[str, Any], dict[str, Any]], Callable[[], None] | None
+        ]
+        | None
+    ) = None
 
 
 def _given(values: dict[str, Any], flag: str) -> bool:
@@ -688,6 +723,113 @@ def _check_bigquery(v: dict[str, Any]) -> str | None:
         "bigquery without a query project, dataset or table",
         "--materialization-dataset",
     )
+
+
+_SFTP_PATH = re.compile(r"^/(?!.*(^|/)\.\.(/|$)).*$")
+
+
+def _check_sftp(v: dict[str, Any]) -> str | None:
+    host = v.get("host") or ""
+    if "://" in host or "/" in host:
+        return "--host takes the bare host name or address, without a scheme or a path."
+    port = v.get("port")
+    if port is not None and not 1 <= port <= 65535:
+        return "--port is between 1 and 65535."
+    if not _SFTP_PATH.match(v.get("path") or ""):
+        return "--path is an absolute path on the server, starting with / and without .. segments."
+    problem = _one_of(v, "sftp", "--password", "--private-key-file")
+    if problem:
+        return problem
+    if _given(v, "--passphrase") and not _given(v, "--private-key-file"):
+        return "--passphrase needs --private-key-file."
+    if _given(v, "--private-key-file"):
+        first = next(
+            (
+                line
+                for line in _file_text(v["private_key_file"]).splitlines()
+                if line.strip()
+            ),
+            "",
+        )
+        if not (first.startswith("-----BEGIN ") and first.endswith("PRIVATE KEY-----")):
+            return "--private-key-file is not a PEM private key (-----BEGIN ... PRIVATE KEY-----)."
+    return None
+
+
+def _prepare_sftp(ctx: click.Context, v: dict[str, Any], body: dict[str, Any]) -> None:
+    body["authType"] = "PRIVATE_KEY" if _given(v, "--private-key-file") else "PASSWORD"
+
+
+_DRIVE_FOLDER_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _check_google_drive(v: dict[str, Any]) -> str | None:
+    if not _DRIVE_FOLDER_ID.match(v.get("folder_id") or ""):
+        return "--folder-id is the folder's Drive ID, letters, digits, - and _ only; it is the last part of the folder's URL."
+    problem = _one_of(v, "google-drive", "--key-file", "--key-path")
+    if problem:
+        return problem
+    if _given(v, "--key-file"):
+        return _service_account_key_problem(v["key_file"])
+    return None
+
+
+def _service_account_key_problem(local_path: str) -> str | None:
+    try:
+        key = json.loads(_file_text(local_path))
+    except ValueError:
+        return f"--key-file {local_path} is not JSON."
+    if (
+        not isinstance(key, dict)
+        or not key.get("client_email")
+        or not key.get("private_key")
+    ):
+        return f"--key-file {local_path} is not a service account key: it has no client_email and private_key."
+    return None
+
+
+def _prepare_google_drive(
+    ctx: click.Context, v: dict[str, Any], body: dict[str, Any]
+) -> Callable[[], None] | None:
+    if not _given(v, "--key-file"):
+        return None
+    body["keyPath"], relative = _upload_key_file(ctx, body["name"], v["key_file"])
+    return lambda: _discard_upload(ctx, relative)
+
+
+def _file_text(local_path: str) -> str:
+    with open(local_path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def _upload_key_file(
+    ctx: click.Context, connector_name: str, local_path: str
+) -> tuple[str, str]:
+    """Upload a key file to ``Resources/datasources/<connector>/`` of the project.
+
+    Returns:
+        The HopsFS path to send and the project-relative path to remove it by.
+    """
+    project = session.get_project(ctx)
+    target_dir = f"Resources/datasources/{connector_name}"
+    dataset_api = project.get_dataset_api()
+    try:
+        for directory in (os.path.dirname(target_dir), target_dir):
+            if not dataset_api.exists(directory):
+                dataset_api.mkdir(directory)
+        dataset_api.upload(local_path, target_dir, overwrite=True)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Key upload failed: {exc}") from exc
+    relative = f"{target_dir}/{os.path.basename(local_path)}"
+    output.info("Uploaded key to %s", relative)
+    return f"/Projects/{project.name}/{relative}", relative
+
+
+def _discard_upload(ctx: click.Context, relative: str) -> None:
+    try:
+        session.get_project(ctx).get_dataset_api().remove(relative)
+    except Exception as exc:  # noqa: BLE001
+        output.warn("Could not remove the uploaded file %s: %s", relative, exc)
 
 
 _ARGS = _Opt(
@@ -1523,6 +1665,78 @@ _SPECS: dict[str, _Spec] = {
         ),
         epilog="Copy or sync folders with `hops datasource sharepoint`.",
     ),
+    "sftp": _Spec(
+        "featurestoreSftpConnectorDTO",
+        "SFTP",
+        "Register an SFTP server, to copy its files into datasets with `hops datasource ingest-files`.",
+        (
+            _Opt(
+                "--host",
+                "host",
+                "Host name or address of the server, without a scheme or a path.",
+                required=True,
+            ),
+            _Opt("--port", "port", "TCP port of the server.", kind="int", default=22),
+            _Opt("--username", "username", "User to log in as.", required=True),
+            _Opt(
+                "--path",
+                "path",
+                "Absolute root path on the server; ingest-files prefixes are relative to it.",
+                default="/",
+            ),
+            _Opt(
+                "--password",
+                "password",
+                "Password of the user. Alternative to --private-key-file.",
+                secret=True,
+            ),
+            _Opt(
+                "--private-key-file",
+                "privateKey",
+                "Local PEM private key of the user, read and stored in Hopsworks. Alternative to --password.",
+                kind="file",
+            ),
+            _Opt(
+                "--passphrase",
+                "passphrase",
+                "Passphrase of an encrypted private key.",
+                secret=True,
+            ),
+        ),
+        check=_check_sftp,
+        prepare=_prepare_sftp,
+        epilog="Copy files with `hops datasource ingest-files`; the data source holds no tables.",
+    ),
+    "google-drive": _Spec(
+        "featurestoreGoogleDriveConnectorDTO",
+        "GOOGLE_DRIVE",
+        "Register a Google Drive folder, to copy its files into datasets with `hops datasource ingest-files`.",
+        (
+            _Opt(
+                "--key-file",
+                "keyPath",
+                "Local JSON key of the service account; uploaded to "
+                "Resources/datasources/<name>/ in the project. Alternative to --key-path.",
+                kind="path",
+            ),
+            _Opt(
+                "--key-path",
+                "keyPath",
+                "Service-account key already in the project, as a full HopsFS path. "
+                "Alternative to --key-file.",
+            ),
+            _Opt(
+                "--folder-id",
+                "folderId",
+                "ID of the Drive folder shared with the service account, the last part of its URL.",
+                required=True,
+            ),
+            _Opt("--folder-name", "folderName", "Display name of the folder."),
+        ),
+        check=_check_google_drive,
+        prepare=_prepare_google_drive,
+        epilog="Copy files with `hops datasource ingest-files`; the data source holds no tables.",
+    ),
 }
 
 
@@ -1572,6 +1786,10 @@ def _option(opt: _Opt, connector: str) -> Callable[[Any], Any]:
         return click.option(opt.flag, default=None, **kwargs)
     if opt.kind == "args":
         return click.option(opt.flag, multiple=True, **kwargs)
+    if opt.kind in ("file", "path"):
+        return click.option(
+            opt.flag, type=click.Path(exists=True, dir_okay=False), **kwargs
+        )
     if opt.choices:
         kwargs["type"] = click.Choice(opt.choices, case_sensitive=False)
     elif opt.kind == "int":
@@ -1619,13 +1837,25 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
             value = values.get(_dest(opt.flag))
             if value is None or value == () or (opt.kind == "flag" and not value):
                 continue
+            if opt.kind == "path":
+                continue
             if opt.kind == "args":
                 value = _parse_arguments(opt.flag, value)
+            elif opt.kind == "file":
+                value = _file_text(value)
             _set_path(body, opt.json, value)
-        if test:
-            _test_connector(ctx, body)
-        else:
-            _create_connector(ctx, body)
+        undo = spec.prepare(ctx, values, body) if spec.prepare else None
+        try:
+            if test:
+                _test_connector(ctx, body)
+            else:
+                _create_connector(ctx, body)
+        except BaseException:
+            if undo:
+                undo()
+            raise
+        if test and undo:
+            undo()
 
     # Click renders a command's docstring as its help, so the docstring is the
     # summary alone; the options carry their own help and the parameters are
@@ -2317,7 +2547,7 @@ def connector_infer_metadata(
 # into datasets, so it gets its own command group.
 
 
-_FILES_SOURCE_TYPES = ("S3", "GCS", "ADLS")
+_FILES_SOURCE_TYPES = ("S3", "GCS", "ADLS", "SFTP", "GOOGLE_DRIVE")
 
 
 def _files_source(ctx: click.Context, name: str) -> Any:
@@ -2330,7 +2560,8 @@ def _files_source(ctx: click.Context, name: str) -> Any:
         raise click.ClickException(f"Data source '{name}' not found.")
     if getattr(sc, "type", None) not in _FILES_SOURCE_TYPES:
         raise click.ClickException(
-            f"Data source '{name}' is {getattr(sc, 'type', None)}, not S3, GCS or ADLS."
+            f"Data source '{name}' is {getattr(sc, 'type', None)}, not S3, GCS, "
+            "ADLS, SFTP or Google Drive."
         )
     return sc
 
@@ -2377,7 +2608,7 @@ def _files_job_rows(jobs: list[Any]) -> list[list[Any]]:
 @click.option(
     "--prefix",
     default="",
-    help="Prefix inside the bucket or container, relative to its root; the whole bucket when unset.",
+    help="Prefix inside the bucket, container, SFTP root path or Drive folder, relative to it; everything when unset.",
 )
 @click.option(
     "--include", multiple=True, help="Glob of files to copy. Repeat for several."
@@ -2424,7 +2655,7 @@ def connector_ingest_files(
     job_name: str | None,
     no_run: bool,
 ) -> None:
-    """Copy the files under a prefix of an S3, GCS or ADLS data source into a dataset.
+    """Copy the files under a prefix of an S3, GCS, ADLS, SFTP or Google Drive data source into a dataset.
 
     Creates a files ingestion job and, unless --no-run, starts its first run.
 
@@ -2486,7 +2717,7 @@ def connector_ingest_files(
 @click.argument("name")
 @click.pass_context
 def connector_files_jobs(ctx: click.Context, name: str) -> None:
-    """List the files ingestion jobs of an S3, GCS or ADLS data source.
+    """List the files ingestion jobs of an S3, GCS, ADLS, SFTP or Google Drive data source.
 
     Args:
         ctx: Click context.

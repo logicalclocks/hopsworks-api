@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs, Gmail) or copies files from SharePoint, S3, GCS or ADLS into a dataset. For searching copied emails use hops-email-search; for searching copied files use hops-files-search.
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs, Gmail) or copies files from SharePoint, S3, GCS, ADLS, an SFTP server or a Google Drive folder into a dataset. For searching copied emails use hops-email-search; for searching copied files use hops-files-search.
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -133,6 +133,8 @@ hops datasource create sharepoint <name> --tenant-id T --client-id C --client-se
 hops datasource create google-sheets <name> --spreadsheet-id ID --key-path /Projects/<project>/Resources/key.json
 hops datasource create rest <name> --base-url https://api.example.com --auth-type API_KEY --api-key - < api_key.txt
 hops datasource create crm <name> --crm-type HUBSPOT --api-key - < api_key.txt
+hops datasource create sftp <name> --host sftp.example.com --port 22 --username U --path /outgoing --password - < pw.txt   # or --private-key-file ~/.ssh/id_ed25519 [--passphrase -]; files only, see "Copy files"
+hops datasource create google-drive <name> --key-file ./drive-sa.json --folder-id 1AbC...   # uploads the key to Resources/datasources/<name>/; --key-path for a key already in the project; files only
 hops datasource delete <name> --yes
 ```
 
@@ -510,13 +512,32 @@ Deleting a sync deletes its index feature group unless `keep_files=True`.
 
 The audit log is CSV in `date=YYYY-MM-DD` partitions (columns `execution_id, op, kind, path, src_path`), written only by runs that changed something and kept 7 days by default; read it with DuckDB `read_csv(..., hive_partitioning = true)` to prune by date.
 
-## Copy files from S3, GCS or ADLS into a dataset
+## Copy files from S3, GCS, ADLS, SFTP or Google Drive into a dataset
 
 An S3, GCS or ADLS data source can also copy files, not tables: a files ingestion job copies every object under a prefix of the bucket or container into a project dataset, once or on a cron schedule.
+An `sftp` or `google-drive` data source exists for this alone: it holds no tables, cannot be mounted as a feature group or read through Spark (`read()` raises), and `prefix` is relative to the SFTP root `--path` or to the Drive folder.
 It is the DLT ingestion job in `FILES` mode (`hops job` shows it as an INGESTION job), so it runs in the `dlthub-ingestion-pipeline` environment and needs no script.
 Only data owners create, change or run one; members read the dataset.
 The dataset may be new or an existing one the caller owns, and one job owns a dataset: a second files job on the same dataset is refused.
 An S3 data source with an IAM role works when the cluster maps a role for it; the backend assumes the role at launch.
+
+**SFTP.** `hops datasource create sftp <name> --host H [--port 22] --username U [--path /] (--password - | --private-key-file PATH [--passphrase -])`: the key file is read locally and stored in Hopsworks, never uploaded to the project; `--password` and `--passphrase` also read `HOPSWORKS_DS_SFTP_PASSWORD` / `HOPSWORKS_DS_SFTP_PASSPHRASE`.
+The credentials are write-only (`credentials_set` on read); rotate them with `sc.set_credentials(password=...)` or `sc.set_credentials(private_key=..., passphrase=...)` then `sc.update()`.
+The job accepts the server's host key as it finds it; `--test` only checks that the host answers with an SSH banner.
+
+**Google Drive.** `hops datasource create google-drive <name> --key-file ./sa.json --folder-id ID [--folder-name N]` uploads the service-account key to `Resources/datasources/<name>/` and sends its path (`--key-path /Projects/<project>/...` for a key already in the project); the folder ID is the last part of the folder's URL in Drive.
+Share the folder, or its shared drive, with the service account: `hops datasource info <name>` shows its address as `Service account`, and `--test` reports it.
+
+```python
+sftp = hsfs.storage_connector.SftpConnector(id=None, name="partner_drop", featurestore_id=fs.id,
+    host="sftp.example.com", port=22, username="hopsworks", path="/outgoing",
+    private_key=open("id_ed25519").read())            # or password="..."; auth_type follows
+sftp.save()
+drive = hsfs.storage_connector.GoogleDriveConnector(id=None, name="shared_docs", featurestore_id=fs.id,
+    key_path="/Projects/<project>/Resources/drive-sa.json",   # upload the key first, as for GCS
+    folder_id="1AbCdEfGhIjKlMnOpQrStUvWxYz", folder_name="Handbook")
+drive.save()
+```
 
 ```bash
 hops datasource ingest-files <source> --dataset NAME [--prefix P] [--include GLOB]... [--exclude GLOB]... [--mirror-deletions] [--index | --index-name FG] [--max-file-size-mb N] [--cron "0 0 2 ? * *"] [--name JOB] [--no-run]
@@ -525,10 +546,10 @@ hops job history <job>                       # runs; a run that failed on some f
 ```
 
 ```python
-sc = fs.get_data_source("my_s3").storage_connector     # S3, GCS or ADLS; others raise ValueError
+sc = fs.get_data_source("my_s3").storage_connector     # S3, GCS, ADLS, SFTP or Google Drive; others raise ValueError
 job = sc.ingest_files(
     dataset="acme_docs_handbook",      # existing (owned) or new
-    prefix="handbook/2026/",           # relative to the bucket root, no leading "/"; "" = whole bucket
+    prefix="handbook/2026/",           # relative to the bucket root, SFTP --path or Drive folder, no leading "/"; "" = everything
     include=["**/*.pdf"],              # globs over the path below the prefix; [] = every file
     exclude=["**/~$*"],
     mirror_deletions=False,            # True: files gone from the source are deleted from the dataset

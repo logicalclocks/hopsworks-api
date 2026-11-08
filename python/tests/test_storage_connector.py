@@ -4297,3 +4297,262 @@ class TestCRMShopifyConnector:
             "secret",
         )
         assert payload["privateAppPassword"] is None
+
+
+class TestSftpConnector:
+    def test_from_response_json(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+
+        assert isinstance(sc, storage_connector.SftpConnector)
+        assert sc.type == "SFTP"
+        assert sc.host == "sftp.example.com"
+        assert sc.port == 2222
+        assert sc.username == "hopsworks"
+        assert sc.path == "/outgoing"
+        assert sc.auth_type == "PRIVATE_KEY"
+        assert sc.credentials_set is True
+        assert sc._password is None
+        assert sc._private_key is None
+        assert sc._passphrase is None
+        assert sc.description == "SFTP connector description"
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp_basic_info"]["response"]
+        )
+
+        assert isinstance(sc, storage_connector.SftpConnector)
+        assert sc.host is None
+        assert sc.port == 22
+        assert sc.path == "/"
+        assert sc.auth_type is None
+        assert sc.credentials_set is None
+
+    def test_a_read_round_trips_without_secrets(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+
+        assert sc.to_dict() == {
+            "id": 1,
+            "name": "test_sftp",
+            "description": "SFTP connector description",
+            "featurestoreId": 67,
+            "storageConnectorType": "SFTP",
+            "type": "featurestoreSftpConnectorDTO",
+            "host": "sftp.example.com",
+            "port": 2222,
+            "username": "hopsworks",
+            "path": "/outgoing",
+            "authType": "PRIVATE_KEY",
+        }
+
+    def test_to_dict_sends_the_password_and_derives_the_auth_type(self):
+        sc = storage_connector.SftpConnector(
+            id=None,
+            name="partner",
+            featurestore_id=67,
+            host="sftp.example.com",
+            username="hopsworks",
+            password="pw",
+        )
+
+        payload = sc.to_dict()
+
+        assert payload["type"] == "featurestoreSftpConnectorDTO"
+        assert payload["storageConnectorType"] == "SFTP"
+        assert payload["authType"] == "PASSWORD"
+        assert payload["password"] == "pw"
+        assert payload["port"] == 22 and payload["path"] == "/"
+        assert "privateKey" not in payload and "passphrase" not in payload
+
+    def test_to_dict_sends_the_private_key_and_its_passphrase(self):
+        sc = storage_connector.SftpConnector(
+            id=None,
+            name="partner",
+            featurestore_id=67,
+            host="sftp.example.com",
+            port=2222,
+            username="hopsworks",
+            path="/outgoing",
+            private_key="-----BEGIN OPENSSH PRIVATE KEY-----\nk\n-----END OPENSSH PRIVATE KEY-----",
+            passphrase="pp",
+        )
+
+        payload = sc.to_dict()
+
+        assert payload["authType"] == "PRIVATE_KEY"
+        assert payload["privateKey"].startswith("-----BEGIN OPENSSH PRIVATE KEY-----")
+        assert payload["passphrase"] == "pp"
+        assert "password" not in payload
+
+    def test_set_credentials_switches_the_auth_type(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+
+        sc.set_credentials(password="pw")
+
+        payload = sc.to_dict()
+        assert payload["authType"] == "PASSWORD" and payload["password"] == "pw"
+        assert "privateKey" not in payload
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {},
+            {"password": "pw", "private_key": "k"},
+            {"passphrase": "pp"},
+            {"password": "pw", "passphrase": "pp"},
+        ],
+    )
+    def test_set_credentials_refuses_inconsistent_credentials(self, kwargs):
+        sc = storage_connector.SftpConnector(
+            None, "partner", 67, host="h", username="u"
+        )
+
+        with pytest.raises(ValueError):
+            sc.set_credentials(**kwargs)
+
+    def test_repr_never_shows_credentials(self):
+        sc = storage_connector.SftpConnector(
+            None,
+            "partner",
+            67,
+            host="h",
+            username="u",
+            private_key="key-value",
+            passphrase="pp-value",
+        )
+
+        assert "key-value" not in repr(sc) and "pp-value" not in repr(sc)
+        assert "PRIVATE_KEY" in repr(sc)
+
+    def test_not_readable_through_spark(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+
+        with pytest.raises(NotImplementedError, match="ingest_files"):
+            sc.read()
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.spark_options()
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.prepare_spark("x")
+
+    def test_ingest_files_is_accepted(self, backend_fixtures, mocker):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sftp"]["response"]
+        )
+        save = mocker.patch("hsfs.core.files_ingestion.FilesIngestionJob.save")
+
+        job = sc.ingest_files(dataset="partner_drop", prefix="2026/")
+
+        save.assert_called_once_with()
+        assert job.dataset_name == "partner_drop"
+        assert job.name == "test_sftp_partner_drop_files"
+
+
+class TestGoogleDriveConnector:
+    def test_from_response_json(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+        )
+
+        assert isinstance(sc, storage_connector.GoogleDriveConnector)
+        assert sc.type == "GOOGLE_DRIVE"
+        assert sc.key_path == "/Projects/test/Resources/drive-sa.json"
+        assert sc.folder_id == "1AbCdEfGhIjKlMnOpQrStUvWxYz"
+        assert sc.folder_name == "Handbook"
+        assert sc.service_account_email == "drive@test.iam.gserviceaccount.com"
+        assert sc.description == "Google Drive connector description"
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive_basic_info"][
+                "response"
+            ]
+        )
+
+        assert isinstance(sc, storage_connector.GoogleDriveConnector)
+        assert sc.key_path is None
+        assert sc.folder_id is None
+        assert sc.service_account_email is None
+
+    def test_to_dict_round_trip(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+        )
+
+        assert sc.to_dict() == {
+            "id": 1,
+            "name": "test_google_drive",
+            "description": "Google Drive connector description",
+            "featurestoreId": 67,
+            "storageConnectorType": "GOOGLE_DRIVE",
+            "type": "featurestoreGoogleDriveConnectorDTO",
+            "keyPath": "/Projects/test/Resources/drive-sa.json",
+            "folderId": "1AbCdEfGhIjKlMnOpQrStUvWxYz",
+            "folderName": "Handbook",
+        }
+
+    def test_to_dict_of_a_new_connector(self):
+        sc = storage_connector.GoogleDriveConnector(
+            id=None,
+            name="shared_docs",
+            featurestore_id=67,
+            key_path="/Projects/p/Resources/sa.json",
+            folder_id="1abc",
+        )
+
+        payload = sc.to_dict()
+
+        assert payload["type"] == "featurestoreGoogleDriveConnectorDTO"
+        assert payload["storageConnectorType"] == "GOOGLE_DRIVE"
+        assert payload["keyPath"] == "/Projects/p/Resources/sa.json"
+        assert payload["folderId"] == "1abc"
+        assert payload["folderName"] is None
+        assert "serviceAccountEmail" not in payload
+
+    def test_not_readable_through_spark(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+        )
+
+        with pytest.raises(NotImplementedError, match="ingest_files"):
+            sc.read()
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.spark_options()
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.prepare_spark()
+
+    def test_ingest_files_is_accepted(self, backend_fixtures, mocker):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"]
+        )
+        save = mocker.patch("hsfs.core.files_ingestion.FilesIngestionJob.save")
+
+        job = sc.ingest_files(dataset="shared_docs", include=["**/*.pdf"])
+
+        save.assert_called_once_with()
+        assert job.include == ["**/*.pdf"]
+        assert job.name == "test_google_drive_shared_docs_files"
+
+
+class TestFilesOnlyConnectorList:
+    def test_the_list_keeps_both_files_only_types(self, backend_fixtures):
+        items = [
+            backend_fixtures["storage_connector"]["get_sftp"]["response"],
+            backend_fixtures["storage_connector"]["get_google_drive"]["response"],
+        ]
+
+        connectors = storage_connector.StorageConnector.from_response_json(
+            {"items": items}
+        )
+
+        assert [type(c).__name__ for c in connectors] == [
+            "SftpConnector",
+            "GoogleDriveConnector",
+        ]

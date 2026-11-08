@@ -66,6 +66,8 @@ def _connector(connector_type="S3"):
         "S3": storage_connector.S3Connector,
         "GCS": storage_connector.GcsConnector,
         "ADLS": storage_connector.AdlsConnector,
+        "SFTP": storage_connector.SftpConnector,
+        "GOOGLE_DRIVE": storage_connector.GoogleDriveConnector,
         "REDSHIFT": storage_connector.RedshiftConnector,
     }
     return classes[connector_type](12, "my_s3", 67)
@@ -607,7 +609,9 @@ class TestStorageConnector:
         assert bodies == [expected]
         assert job.job is not None
 
-    @pytest.mark.parametrize("connector_type", ["S3", "GCS", "ADLS"])
+    @pytest.mark.parametrize(
+        "connector_type", ["S3", "GCS", "ADLS", "SFTP", "GOOGLE_DRIVE"]
+    )
     def test_ingest_files_accepts_object_stores(self, connector_type):
         with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
             MockJobApi.return_value.create.return_value = _server_job()
