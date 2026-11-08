@@ -1,0 +1,33 @@
+# The verify questions of the sales example, with the answers the data setup.py creates gives.
+# `sql` computes each answer over the sales_* tables; tests/cli/test_ontology.py keeps the two in step.
+questions:
+  - question: How many orders were placed in March 2025?
+    answer: 14
+    sql: >-
+      SELECT COUNT(*) FROM sales_orders
+      WHERE order_date >= '2025-03-01' AND order_date < '2025-04-01'
+  - question: What was the total revenue of delivered orders?
+    answer: 107467.00
+    sql: >-
+      SELECT ROUND(SUM(l.quantity * l.unit_price), 2)
+      FROM sales_order_lines l JOIN sales_orders o ON o.order_id = l.order_id
+      WHERE o.status = 'Delivered'
+  - question: Which state has the most customers?
+    answer: [Georgia, 7]
+    sql: >-
+      SELECT s.name, COUNT(*) AS customers
+      FROM sales_customers c
+      JOIN sales_cities ci ON ci.city_id = c.city_id
+      JOIN sales_state_provinces s ON s.state_province_id = ci.state_province_id
+      GROUP BY s.name ORDER BY customers DESC LIMIT 1
+  - question: Which products have fewer than 20 units in stock?
+    answer: [Build your own robot kit, Office desk toy, Ride on toy sedan car]
+    sql: >-
+      SELECT name FROM sales_products WHERE stock_on_hand < 20 ORDER BY name
+  - question: Which salesperson brought in the most revenue from delivered orders?
+    answer: [Archer Lamble, 33722.00]
+    sql: >-
+      SELECT o.salesperson, ROUND(SUM(l.quantity * l.unit_price), 2) AS revenue
+      FROM sales_order_lines l JOIN sales_orders o ON o.order_id = l.order_id
+      WHERE o.status = 'Delivered'
+      GROUP BY o.salesperson ORDER BY revenue DESC LIMIT 1

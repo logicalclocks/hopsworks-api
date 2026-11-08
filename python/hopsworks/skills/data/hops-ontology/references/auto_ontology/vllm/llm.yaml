@@ -1,0 +1,12 @@
+# vLLM engine arguments for the nemotronllm deployment, passed to `vllm serve --config`.
+# Hopsworks adds --served-model-name (the deployment name), the model path and the port.
+# The GPU is time-sliced with nemotronembed, which takes 0.12 of its memory.
+gpu-memory-utilization: 0.80
+max-model-len: 32768
+max-num-seqs: 8
+enable-prefix-caching: true
+mamba-backend: flashinfer
+mamba-ssm-cache-dtype: float16
+reasoning-parser: nemotron_v3
+tool-call-parser: qwen3_coder
+enable-auto-tool-choice: true

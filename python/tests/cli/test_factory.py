@@ -331,6 +331,78 @@ def test_analytics_ingestion_is_a_built_in():
     assert "analytics-ingestion" in factory_spec.BUILTINS
 
 
+ONTOLOGY = """\
+apiVersion: hopsworks.ai/factory/v1
+kind: Factory
+name: ontology
+title: Ontology and text-to-SQL
+form:
+  sections:
+    - id: basics
+      title: Basics
+      fields:
+        - {id: slug, type: slug, label: Name, required: true}
+        - {id: repo, type: repository, label: Repository, default: {create: true}}
+    - id: sources
+      title: Sources
+      fields:
+        - id: sources
+          type: list
+          label: Data sources
+          item_label: Data source
+          min_items: 1
+          fields:
+            - {id: name, type: text, label: Data source, required: true}
+            - {id: schemas, type: text, label: Schemas}
+            - {id: table_regex, type: text, label: Table regex}
+    - id: models
+      title: Models
+      collapsed: true
+      fields:
+        - {id: llm_mode, type: choice, label: LLM, default: local, options: [local, external]}
+        - {id: embedding_dim, type: choice, label: Dimension, default: "2048", options: ["2048", "1024"]}
+        - {id: hf_token, type: account_env, env: HF_TOKEN, secret: true, label: Hugging Face token}
+    - id: schedule
+      title: Schedule
+      collapsed: true
+      fields:
+        - {id: pii_detection, type: boolean, label: PII detection, default: false}
+phases:
+  - {key: reqs, label: Requirements, minutes: 5}
+  - {key: models, label: Models, minutes: 60}
+  - {key: app, label: App, minutes: 10}
+  - {key: ingest, label: Ingest, minutes: 15}
+  - {key: compile, label: Compile, minutes: 60}
+  - {key: verify, label: Verify, minutes: 10}
+build:
+  answers: {system_type: ontology}
+  skills: [hops-ontology, hops-app, hops-app-db, hops-job]
+  instructions: Follow hops-ontology/references/auto_ontology/README.md.
+presets:
+  - id: wwi-example
+    label: Sales example
+    answers: {slug: sales-ontology}
+    fixed: {example: wwi}
+"""
+
+
+def test_ontology_is_a_built_in_that_takes_the_planned_form():
+    assert "ontology" in factory_spec.BUILTINS
+    assert factory_spec.text_problems(ONTOLOGY) == []
+
+
+def test_the_skill_docs_name_every_built_in():
+    docs = (
+        Path(factory_spec.__file__).resolve().parents[1]
+        / "skills/platform/hops-factory"
+    )
+    for text in (
+        (docs / "SKILL.md").read_text(encoding="utf-8"),
+        (docs / "references/definition.md").read_text(encoding="utf-8"),
+    ):
+        assert [n for n in factory_spec.BUILTINS if f"`{n}`" not in text] == []
+
+
 @pytest.mark.parametrize("name", factory_spec.BUILTINS)
 def test_the_shipped_built_ins_are_valid(name):
     resources = (

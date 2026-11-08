@@ -208,6 +208,27 @@ class TestAppApiCreate:
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
         assert body["agentDeploymentId"] == 8
 
+    def test_create_app_leaves_identity_signing_out_unless_asked(
+        self, mock_client, api
+    ):
+        api.create_app("dash", app_path="Resources/dash.py")
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert "signIdentity" not in body
+
+    def test_create_custom_app_with_identity_signing(self, mock_client, api):
+        api.create_app(
+            "sales-ontology",
+            app_path="Resources/sales-ontology/app.py",
+            app_kind="CUSTOM",
+            entrypoint_command="python app.py",
+            sign_identity=True,
+        )
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["signIdentity"] is True
+        assert "agentDeploymentId" not in body
+
     def test_create_app_leaves_idle_scale_to_zero_to_the_cluster_default(
         self, mock_client, api
     ):

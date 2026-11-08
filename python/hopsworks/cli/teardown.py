@@ -163,6 +163,11 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
                 add(Asset("model", named.group(1)))
         if path[:1] == ("inference",) and isinstance(node.get("deployment"), str):
             add(Asset("deployment", node["deployment"]))
+        # An ontology system's vLLM deployments, which the project's ontology systems share.
+        if path == ("serving", "deployments") and isinstance(
+            node.get("deployment"), str
+        ):
+            add(Asset("deployment", node["deployment"]))
         if parent == "connector" and node.get("created") and node.get("name"):
             add(Asset("data source", str(node["name"])))
         # An ingestion's data source is the system's only when the build created it.

@@ -1,0 +1,32 @@
+# ontology.yaml of an ontology system (HWORKS-3744 contract, section 3).
+# The build writes it from the answers in system.yaml: replace every <...> and drop these comments.
+schema_version: 1
+name: <slug>
+app: <slug>
+feature_store: null
+feature_groups:
+  data_objects: <slug_>_data_objects
+  semantic: <slug_>_semantic
+  version: 1
+embedding:
+  mode: <requirements.embedding_mode>        # local | external
+  deployment: nemotronembed
+  model: nvidia/Nemotron-3.5-Embed-1B-BF16   # external: null, and the runtime reads EMBEDDING_MODEL
+  dimension: <int(requirements.embedding_dim)>
+  request: v1-prefix
+llm:
+  mode: <requirements.llm_mode>              # local | external
+  deployment: nemotronllm
+  model: null                                # external: the runtime reads LLM_MODEL
+sources:                                     # one entry per requirements.sources item
+  - name: <data source name>
+    schemas: null                            # or a list from the comma-separated answer
+    table_regex: null
+jobs:
+  ingest: <slug>-ingest
+  compile: <slug>-compile
+  embed: <slug>-embed
+  reset: <slug>-reset
+  import: <slug>-import
+pii_detection: <requirements.pii_detection>
+distinct_value_probing: true

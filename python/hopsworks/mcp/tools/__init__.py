@@ -19,5 +19,6 @@ from .auth import AuthTools as AuthTools
 from .dataset import DatasetTools as DatasetTools
 from .feature_group import FeatureGroupTools as FeatureGroupTools
 from .jobs import JobTools as JobTools
+from .ontology import OntologyTools as OntologyTools
 from .project import ProjectTools as ProjectTools
 from .terminal import TerminalTools as TerminalTools

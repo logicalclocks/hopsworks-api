@@ -14,6 +14,7 @@ into bucket folders:
 - [hops-email-search](data/hops-email-search/SKILL.md) — Search emails a Gmail or Outlook data source copied into a feature group, with DuckDB.
 - [hops-sharepoint-search](data/hops-sharepoint-search/SKILL.md) — search the files a SharePoint sync copied in, through its index feature group, with the DuckDB CLI.
 - [hops-delta](data/hops-delta/SKILL.md) — maintain Delta feature groups: optimize, vacuum, write modes and layout.
+- [hops-ontology](data/hops-ontology/SKILL.md) — ontology systems: an auto-generated business glossary and text-to-SQL chat over SQL data sources, built by the `ontology` factory.
 - [hops-partitioning](data/hops-partitioning/SKILL.md) — Whether a derived feature group should be partitioned by time, from the source table's files.
 - [hops-analytics](data/hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.
 - [hops-dbt](data/hops-dbt/SKILL.md) — dbt models over feature groups in Trino, with tests and an execution graph.
