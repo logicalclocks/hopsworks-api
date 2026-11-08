@@ -4347,6 +4347,7 @@ class TestSftpConnector:
             "username": "hopsworks",
             "path": "/outgoing",
             "authType": "PRIVATE_KEY",
+            "credentialsSet": True,
         }
 
     def test_to_dict_sends_the_password_and_derives_the_auth_type(self):
@@ -4367,6 +4368,21 @@ class TestSftpConnector:
         assert payload["password"] == "pw"
         assert payload["port"] == 22 and payload["path"] == "/"
         assert "privateKey" not in payload and "passphrase" not in payload
+        assert "credentialsSet" not in payload
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"password": "pw", "private_key": "k"},
+            {"passphrase": "pp"},
+            {"password": "pw", "passphrase": "pp"},
+        ],
+    )
+    def test_the_constructor_refuses_inconsistent_credentials(self, kwargs):
+        with pytest.raises(ValueError):
+            storage_connector.SftpConnector(
+                None, "partner", 67, host="h", username="u", **kwargs
+            )
 
     def test_to_dict_sends_the_private_key_and_its_passphrase(self):
         sc = storage_connector.SftpConnector(
@@ -4496,6 +4512,7 @@ class TestGoogleDriveConnector:
             "keyPath": "/Projects/test/Resources/drive-sa.json",
             "folderId": "1AbCdEfGhIjKlMnOpQrStUvWxYz",
             "folderName": "Handbook",
+            "serviceAccountEmail": "drive@test.iam.gserviceaccount.com",
         }
 
     def test_to_dict_of_a_new_connector(self):

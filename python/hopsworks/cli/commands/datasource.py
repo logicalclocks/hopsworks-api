@@ -725,17 +725,16 @@ def _check_bigquery(v: dict[str, Any]) -> str | None:
     )
 
 
-_SFTP_PATH = re.compile(r"^/(?!.*(^|/)\.\.(/|$)).*$")
-
-
 def _check_sftp(v: dict[str, Any]) -> str | None:
     host = v.get("host") or ""
-    if "://" in host or "/" in host:
-        return "--host takes the bare host name or address, without a scheme or a path."
+    # The same rule as the backend: a host is neither a URL nor user@host:port.
+    if "/" in host or "@" in host or ":" in host or any(c.isspace() for c in host):
+        return "--host takes the bare host name or address, without a scheme, user, port or path."
     port = v.get("port")
     if port is not None and not 1 <= port <= 65535:
         return "--port is between 1 and 65535."
-    if not _SFTP_PATH.match(v.get("path") or ""):
+    path = v.get("path") or ""
+    if not path.startswith("/") or ".." in path.split("/"):
         return "--path is an absolute path on the server, starting with / and without .. segments."
     problem = _one_of(v, "sftp", "--password", "--private-key-file")
     if problem:
@@ -793,43 +792,78 @@ def _prepare_google_drive(
 ) -> Callable[[], None] | None:
     if not _given(v, "--key-file"):
         return None
-    body["keyPath"], relative = _upload_key_file(ctx, body["name"], v["key_file"])
-    return lambda: _discard_upload(ctx, relative)
+    body["keyPath"], created = _upload_key_file(ctx, body["name"], v["key_file"])
+    return lambda: _discard_upload(ctx, created)
 
 
 def _file_text(local_path: str) -> str:
-    with open(local_path, encoding="utf-8") as handle:
-        return handle.read()
+    try:
+        with open(local_path, encoding="utf-8") as handle:
+            return handle.read()
+    except UnicodeDecodeError as exc:
+        raise click.ClickException(
+            f"{local_path} is not UTF-8 text; a key file is a PEM or JSON text file."
+        ) from exc
+    except OSError as exc:
+        raise click.ClickException(f"Could not read {local_path}: {exc}") from exc
+
+
+# The upload path is built from the connector name, so the name must not be able
+# to walk out of Resources/datasources/.
+_UPLOAD_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _upload_key_file(
     ctx: click.Context, connector_name: str, local_path: str
-) -> tuple[str, str]:
+) -> tuple[str, list[str]]:
     """Upload a key file to ``Resources/datasources/<connector>/`` of the project.
 
+    A file already there belongs to an existing data source, so it is never replaced.
+
     Returns:
-        The HopsFS path to send and the project-relative path to remove it by.
+        The HopsFS path to send and the project-relative paths this call created, the file first, to undo it by.
     """
+    if not _UPLOAD_NAME.match(connector_name):
+        raise click.ClickException(
+            f"--key-file needs a data source name of letters, digits, - and _, not {connector_name!r}; "
+            "upload the key yourself and pass --key-path instead."
+        )
     project = session.get_project(ctx)
     target_dir = f"Resources/datasources/{connector_name}"
+    relative = f"{target_dir}/{os.path.basename(local_path)}"
     dataset_api = project.get_dataset_api()
+    created: list[str] = []
     try:
+        if dataset_api.exists(relative):
+            raise click.ClickException(
+                f"{relative} already exists in the project; pass --key-path "
+                f"/Projects/{project.name}/{relative} to reuse it, or choose another name."
+            )
         for directory in (os.path.dirname(target_dir), target_dir):
             if not dataset_api.exists(directory):
                 dataset_api.mkdir(directory)
-        dataset_api.upload(local_path, target_dir, overwrite=True)
+                if directory == target_dir:
+                    created.append(directory)
+        dataset_api.upload(local_path, target_dir, overwrite=False)
+        created.insert(0, relative)
+    except click.ClickException:
+        _discard_upload(ctx, created)
+        raise
     except Exception as exc:  # noqa: BLE001
+        _discard_upload(ctx, created)
         raise click.ClickException(f"Key upload failed: {exc}") from exc
-    relative = f"{target_dir}/{os.path.basename(local_path)}"
     output.info("Uploaded key to %s", relative)
-    return f"/Projects/{project.name}/{relative}", relative
+    return f"/Projects/{project.name}/{relative}", created
 
 
-def _discard_upload(ctx: click.Context, relative: str) -> None:
-    try:
-        session.get_project(ctx).get_dataset_api().remove(relative)
-    except Exception as exc:  # noqa: BLE001
-        output.warn("Could not remove the uploaded file %s: %s", relative, exc)
+def _discard_upload(ctx: click.Context, created: list[str]) -> None:
+    """Remove what an upload created, the file before its directory."""
+    dataset_api = session.get_project(ctx).get_dataset_api()
+    for relative in created:
+        try:
+            dataset_api.remove(relative)
+        except Exception as exc:  # noqa: BLE001
+            output.warn("Could not remove the uploaded %s: %s", relative, exc)
 
 
 _ARGS = _Opt(
@@ -2000,14 +2034,20 @@ def _provided_connector(ctx: click.Context, name: str) -> Any:
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
     sc = getattr(ds, "storage_connector", ds)
-    if not hasattr(sc, "set_credentials"):
-        raise click.ClickException(
-            f"Data source '{name}' does not take member credentials."
-        )
-    if getattr(sc, "credentials_mode", None) == "SHARED":
+    mode = getattr(sc, "credentials_mode", None)
+    if mode == "SHARED":
         raise click.ClickException(
             f"Data source '{name}' has shared credentials; its owner sets them on the "
             "data source itself."
+        )
+    # Only a data source with provided credentials binds a member's own; every
+    # other type (SFTP, Gmail, ...) keeps its owner's credentials, set at
+    # creation or with set_credentials() and update() in the SDK.
+    if mode != "PROVIDED" or not hasattr(sc, "set_credentials"):
+        raise click.ClickException(
+            f"Data source '{name}' does not take member credentials; its owner sets "
+            "them with `hops datasource create`, or with set_credentials() and "
+            "update() in the SDK."
         )
     return sc
 

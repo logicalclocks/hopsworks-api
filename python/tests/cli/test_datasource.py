@@ -1683,10 +1683,15 @@ def test_sftp_secrets_are_read_from_the_environment():
         ),
         (["--password", "p", "--host", "sftp://h"], "--host takes the bare host name"),
         (["--password", "p", "--host", "h/data"], "--host takes the bare host name"),
+        (["--password", "p", "--host", "user@h"], "--host takes the bare host name"),
+        (["--password", "p", "--host", "h:22"], "--host takes the bare host name"),
+        (["--password", "p", "--host", "h example"], "--host takes the bare host name"),
         (["--password", "p", "--port", "70000"], "--port is between 1 and 65535"),
         (["--password", "p", "--port", "0"], "--port is between 1 and 65535"),
         (["--password", "p", "--path", "data"], "--path is an absolute path"),
         (["--password", "p", "--path", "/a/../b"], "--path is an absolute path"),
+        (["--password", "p", "--path", "/.."], "--path is an absolute path"),
+        (["--password", "p", "--path", "/../x"], "--path is an absolute path"),
     ],
 )
 def test_sftp_refuses_inconsistent_options(argv, message):
@@ -1726,6 +1731,38 @@ def test_sftp_refuses_a_key_file_that_is_not_pem(tmp_path):
     assert "not a PEM private key" in output
 
 
+def test_sftp_path_may_contain_dots_inside_a_segment():
+    body = _create(
+        [
+            "sftp",
+            "n",
+            "--host",
+            "h",
+            "--username",
+            "u",
+            "--password",
+            "p",
+            "--path",
+            "/a..b/.hidden",
+        ]
+    )
+
+    assert body["path"] == "/a..b/.hidden"
+
+
+def test_sftp_refuses_a_binary_key_file(tmp_path):
+    key = tmp_path / "id_rsa.bin"
+    key.write_bytes(b"\xff\xfe\x00binary")
+
+    result, create = _invoke(
+        ["sftp", "n", "--host", "h", "--username", "u", "--private-key-file", str(key)]
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "not UTF-8 text" in result.output
+    create.assert_not_called()
+
+
 def test_sftp_refuses_a_missing_key_file():
     result, create = _invoke(
         [
@@ -1745,12 +1782,17 @@ def test_sftp_refuses_a_missing_key_file():
     create.assert_not_called()
 
 
-def _create_google_drive(argv: list[str], *, create_fails: bool = False):
-    """Run ``create google-drive`` with the upload and the request mocked."""
+def _create_google_drive(
+    argv: list[str], *, create_fails: bool = False, existing: tuple[str, ...] = ()
+):
+    """Run ``create google-drive`` with the upload and the request mocked.
+
+    ``existing`` lists the project paths the dataset API reports as present.
+    """
     project = mock.Mock()
     project.name = "p"
     dataset_api = project.get_dataset_api.return_value
-    dataset_api.exists.return_value = False
+    dataset_api.exists.side_effect = lambda path: path in existing
     with (
         mock.patch.object(ds.session, "get_project", return_value=project),
         mock.patch.object(ds, "_create_connector") as create,
@@ -1784,7 +1826,7 @@ def test_google_drive_uploads_the_key_file_and_sends_its_path(tmp_path):
         [mock.call("Resources/datasources"), mock.call("Resources/datasources/n")]
     )
     dataset_api.upload.assert_called_once_with(
-        str(key), "Resources/datasources/n", overwrite=True
+        str(key), "Resources/datasources/n", overwrite=False
     )
     dataset_api.remove.assert_not_called()
     assert create.call_args.args[1] == {
@@ -1808,7 +1850,109 @@ def test_google_drive_removes_the_uploaded_key_when_the_create_fails(tmp_path):
 
     assert result.exit_code == 1
     assert "refused" in result.output
+    # The file goes first, then the directory this run created; not its parent.
+    assert dataset_api.remove.call_args_list == [
+        mock.call("Resources/datasources/n/drive-sa.json"),
+        mock.call("Resources/datasources/n"),
+    ]
+
+
+def test_google_drive_undo_keeps_a_directory_that_already_existed(tmp_path):
+    key = tmp_path / "drive-sa.json"
+    key.write_text(json.dumps(_SA_KEY))
+
+    result, _, dataset_api = _create_google_drive(
+        ["n", "--key-file", str(key), "--folder-id", "1abc"],
+        create_fails=True,
+        existing=("Resources/datasources", "Resources/datasources/n"),
+    )
+
+    assert result.exit_code == 1
+    dataset_api.mkdir.assert_not_called()
     dataset_api.remove.assert_called_once_with("Resources/datasources/n/drive-sa.json")
+
+
+def test_google_drive_never_replaces_an_existing_key(tmp_path):
+    """The key of a data source of the same name stays, and is not deleted by the undo."""
+    key = tmp_path / "drive-sa.json"
+    key.write_text(json.dumps(_SA_KEY))
+
+    result, create, dataset_api = _create_google_drive(
+        ["n", "--key-file", str(key), "--folder-id", "1abc"],
+        existing=(
+            "Resources/datasources",
+            "Resources/datasources/n",
+            "Resources/datasources/n/drive-sa.json",
+        ),
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "already exists" in result.output
+    assert (
+        "--key-path /Projects/p/Resources/datasources/n/drive-sa.json" in result.output
+    )
+    dataset_api.upload.assert_not_called()
+    dataset_api.remove.assert_not_called()
+    create.assert_not_called()
+
+
+def test_google_drive_test_removes_only_what_it_uploaded(tmp_path):
+    key = tmp_path / "drive-sa.json"
+    key.write_text(json.dumps(_SA_KEY))
+    project = mock.Mock()
+    project.name = "p"
+    dataset_api = project.get_dataset_api.return_value
+    dataset_api.exists.side_effect = lambda path: path == "Resources/datasources"
+    with (
+        mock.patch.object(ds.session, "get_project", return_value=project),
+        mock.patch.object(ds, "_test_connector") as test,
+        mock.patch.object(ds, "_create_connector") as create,
+    ):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "create",
+                "google-drive",
+                "n",
+                "--key-file",
+                str(key),
+                "--folder-id",
+                "1abc",
+                "--test",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    test.assert_called_once()
+    create.assert_not_called()
+    assert dataset_api.remove.call_args_list == [
+        mock.call("Resources/datasources/n/drive-sa.json"),
+        mock.call("Resources/datasources/n"),
+    ]
+
+
+@pytest.mark.parametrize("name", ["../Jupyter", "a/b", "a b", "n.json"])
+def test_google_drive_upload_needs_a_plain_name(tmp_path, name):
+    key = tmp_path / "drive-sa.json"
+    key.write_text(json.dumps(_SA_KEY))
+
+    result, create, dataset_api = _create_google_drive(
+        [name, "--key-file", str(key), "--folder-id", "1abc"]
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "letters, digits, - and _" in result.output
+    dataset_api.upload.assert_not_called()
+    dataset_api.mkdir.assert_not_called()
+    create.assert_not_called()
+
+
+def test_google_drive_key_path_takes_any_name():
+    result, create, _ = _create_google_drive(["../Jupyter", *_MINIMAL["google-drive"]])
+
+    assert result.exit_code == 0, result.output
+    assert create.call_args.args[1]["name"] == "../Jupyter"
 
 
 def test_google_drive_key_path_uses_an_uploaded_key_without_uploading():
@@ -1879,12 +2023,69 @@ def test_google_drive_refuses_a_key_file_with_a_key_path(tmp_path):
     assert "exactly one of --key-file, --key-path" in output
 
 
-def _info(sc) -> str:
+def _info(sc, *flags: str) -> str:
     with mock.patch.object(ds.session, "get_feature_store") as fs:
         fs.return_value.get_data_source.return_value.storage_connector = sc
-        result = CliRunner().invoke(cli, ["datasource", "info", sc.name])
+        result = CliRunner().invoke(cli, ["datasource", "info", sc.name, *flags])
     assert result.exit_code == 0, result.output
     return result.output
+
+
+def test_info_json_carries_the_read_only_fields_and_no_secret(monkeypatch):
+    from hsfs.storage_connector import GoogleDriveConnector, SftpConnector
+
+    sftp = SftpConnector(
+        3,
+        "partner",
+        67,
+        host="h",
+        username="u",
+        auth_type="PASSWORD",
+        credentials_set=True,
+        password="never-shown",
+    )
+    drive = GoogleDriveConnector(
+        4,
+        "drive",
+        67,
+        key_path="/Projects/p/k.json",
+        folder_id="1abc",
+        service_account_email="drive@p.iam.gserviceaccount.com",
+    )
+
+    sftp_json = json.loads(_info(sftp, "--json"))
+    monkeypatch.setattr(output, "JSON_MODE", False)
+    drive_json = json.loads(_info(drive, "--json"))
+    monkeypatch.setattr(output, "JSON_MODE", False)
+
+    assert sftp_json["credentialsSet"] is True
+    assert "password" not in sftp_json and "never-shown" not in json.dumps(sftp_json)
+    assert drive_json["serviceAccountEmail"] == "drive@p.iam.gserviceaccount.com"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["set", "--password", "p"],
+        ["show"],
+        ["validate", "--password", "p"],
+        ["delete", "--yes"],
+    ],
+)
+def test_credentials_commands_refuse_an_sftp_data_source(argv):
+    from hsfs.storage_connector import SftpConnector
+
+    sc = SftpConnector(3, "partner", 67, host="h", username="u", credentials_set=True)
+    with mock.patch.object(ds.session, "get_feature_store") as fs:
+        fs.return_value.get_data_source.return_value.storage_connector = sc
+        result = CliRunner().invoke(
+            cli, ["datasource", "credentials", argv[0], "partner", *argv[1:]]
+        )
+
+    assert result.exit_code == 1, result.output
+    assert "does not take member credentials" in result.output
+    assert "set_credentials()" in result.output
+    assert "TypeError" not in result.output
 
 
 def test_info_renders_the_sftp_fields_without_credentials():

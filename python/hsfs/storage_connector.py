@@ -7912,11 +7912,22 @@ class SftpConnector(StorageConnector):
         self._port = port
         self._username = username
         self._path = path
+        if password or private_key or passphrase:
+            self._check_credentials(password, private_key, passphrase)
         self._password = password
         self._private_key = private_key
         self._passphrase = passphrase
         self._credentials_set = credentials_set
         self._auth_type = auth_type or self._inferred_auth_type()
+
+    @staticmethod
+    def _check_credentials(
+        password: str | None, private_key: str | None, passphrase: str | None
+    ) -> None:
+        if bool(password) == bool(private_key):
+            raise ValueError("Give exactly one of password and private_key.")
+        if passphrase and not private_key:
+            raise ValueError("A passphrase needs a private_key.")
 
     def _inferred_auth_type(self) -> str | None:
         if self._private_key:
@@ -7996,10 +8007,7 @@ class SftpConnector(StorageConnector):
         Raises:
             ValueError: If both or neither of `password` and `private_key` are given, or a passphrase comes without a private key.
         """
-        if bool(password) == bool(private_key):
-            raise ValueError("Give exactly one of password and private_key.")
-        if passphrase and not private_key:
-            raise ValueError("A passphrase needs a private_key.")
+        self._check_credentials(password, private_key, passphrase)
         self._password = password
         self._private_key = private_key
         self._passphrase = passphrase
@@ -8016,6 +8024,8 @@ class SftpConnector(StorageConnector):
                 "authType": self._auth_type,
             }
         )
+        if self._credentials_set is not None:
+            payload["credentialsSet"] = self._credentials_set
         for key, value in (
             ("password", self._password),
             ("privateKey", self._private_key),
@@ -8180,6 +8190,8 @@ class GoogleDriveConnector(StorageConnector):
                 "folderName": self._folder_name,
             }
         )
+        if self._service_account_email is not None:
+            payload["serviceAccountEmail"] = self._service_account_email
         return payload
 
     def spark_options(self) -> dict[str, Any]:

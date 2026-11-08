@@ -111,6 +111,13 @@ def _build(cls: type) -> tuple[sc.StorageConnector, list[str]]:
             "bearer_token": _marker("bearer"),
         }
         markers += [_marker("rest-header"), _marker("bearer")]
+    if cls is sc.SftpConnector:
+        # The constructor takes one credential, a password or a key; the other
+        # marker is slotted in after, so the redaction is checked for both.
+        password = kwargs.pop("password")
+        connector = cls(**kwargs)
+        connector._password = password
+        return connector, markers
     return cls(**kwargs), markers
 
 
@@ -207,3 +214,12 @@ def test_info_json_of_a_shopify_source_prints_neither_credential():
         printed = json.dumps(redact(payload), default=str)
         assert "MARKER" not in printed
         assert json.loads(printed)["shopUrl"] == "https://s.myshopify.com"
+
+
+def test_the_credentials_set_flag_is_not_a_credential():
+    connector, _ = _build(sc.SftpConnector)
+    connector._credentials_set = True
+    payload = redact(connector.to_dict())
+    assert payload["credentialsSet"] is True
+    assert payload["host"] == connector.to_dict()["host"]
+    assert "password" not in payload and "privateKey" not in payload
