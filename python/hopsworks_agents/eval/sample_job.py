@@ -68,7 +68,7 @@ SESSION_PAGE = 100
 
 
 def _evaluators_for(
-    run: dict[str, Any], judge_completer: Any = None
+    run: dict[str, Any], judge_completer: Any = None, sources: Any = None
 ) -> list[Evaluator]:
     """The checks this monitor grades with, from the spec on the run.
 
@@ -84,7 +84,9 @@ def _evaluators_for(
 
     return list(
         _evaluators_from_spec(
-            run.get("sampleEvaluators") or "[]", judge_completer=judge_completer
+            run.get("sampleEvaluators") or "[]",
+            judge_completer=judge_completer,
+            sources=sources,
         )
     )
 

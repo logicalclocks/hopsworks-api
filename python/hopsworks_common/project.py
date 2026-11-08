@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Literal
 import humps
 from hopsworks_apigen import deprecated, public
 from hopsworks_common import alert, client, project_member, util
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import (
     alerts_api,
     app_api,
@@ -45,6 +46,10 @@ if TYPE_CHECKING:
     from hsfs.feature_store import FeatureStore
     from hsml.model_registry import ModelRegistry
     from hsml.model_serving import ModelServing
+
+
+# ProjectErrorCode.PROJECT_OWNER_TRANSFER_INCOMPLETE: the owner moved, a follow-up step did not.
+_PROJECT_OWNER_TRANSFER_INCOMPLETE = 150127
 
 
 @public("hopsworks.project.Project")
@@ -240,7 +245,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_model_serving()
+        return client._get_connection()._get_model_serving(self.project_namespace)
 
     @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:
@@ -490,6 +495,39 @@ class Project:
         self._project_members_api.remove_member(
             email, delete_home_dir=delete_home_dir, new_file_owner=new_file_owner
         )
+
+    @public
+    def transfer_ownership(self, email: str) -> None:
+        """Hand the project over to another data owner of the project.
+
+        Only the current owner can do this.
+        The previous owner stays a data owner, so they can afterwards be removed with [`remove_member`][hopsworks_common.project.Project.remove_member].
+        This also works in projects whose members are managed by group mapping, since no membership changes.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.transfer_ownership("carol@example.com")
+            project.remove_member("alice@example.com")
+            ```
+
+        Parameters:
+            email: Email address of the data owner who becomes the project owner.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller does not own the project or the new owner is not a data owner of it.
+                With error code 150127 the owner has already changed and only a follow-up step failed; the project then names the new owner, and the new owner can finish the transfer by handing the project to themselves.
+        """
+        try:
+            self._project_members_api.transfer_ownership(email)
+        except RestAPIError as e:
+            if e.error_code == _PROJECT_OWNER_TRANSFER_INCOMPLETE:
+                self._owner = email
+            raise
+        self._owner = email
 
     @public
     def get_search_api(self) -> search_api.SearchApi:
