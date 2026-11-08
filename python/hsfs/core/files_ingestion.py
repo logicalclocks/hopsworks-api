@@ -495,7 +495,7 @@ class FilesIngestionJob:
     @public
     @property
     def last_stats(self) -> dict[str, Any] | None:
-        """The `filesProgress` of the most recent execution, as [`Execution.files_progress`][hopsworks.execution.Execution.files_progress] describes it: `status`, `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `bytesCopied`, `failedFiles`, `auditFile`, `auditPath` and more; `None` before the first run and while the latest run has not written its result yet."""
+        """The `filesProgress` of the most recent execution, as [`Execution.files_progress`][hopsworks.execution.Execution.files_progress] describes it: `status`, `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `unsupported`, `bytesCopied`, `failedFiles`, `auditFile`, `auditPath` and more; `None` before the first run and while the latest run has not written its result yet."""
         if self._job is None:
             return None
         from hopsworks_common.core.job_api import JobApi

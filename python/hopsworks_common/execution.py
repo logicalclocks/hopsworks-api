@@ -219,7 +219,7 @@ class Execution:
         """Result of a files ingestion run, or `None` for other jobs and for a run that has not written its result yet.
 
         The backend attaches `datasetName`, `prefix` and `connectorName` to every execution of a files job; that stub alone, without `status` or `executionId`, is reported as `None`.
-        Keys as the backend reports them: `executionId`, `status` (`ok`, `partial` or `failed`), `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `bytesCopied`, `listingComplete`, `deletionsSkipped`, `indexed`, `error`, `failedFiles` (`relativePath` and `error` of up to 100 files), `auditFile` (the run's audit CSV, relative to the job's state directory, or `None`), `auditPath` (the same file as an absolute HopsFS path, or `None`), `datasetName`, `connectorName`, `prefix`, `startedAt` and `finishedAt`.
+        Keys as the backend reports them: `executionId`, `status` (`ok`, `partial` or `failed`), `listed`, `copied`, `updated`, `skipped`, `deleted`, `failed`, `oversized`, `unsupported` (files that cannot be copied, such as Google-native documents or SFTP symlinks), `bytesCopied`, `listingComplete`, `deletionsSkipped`, `indexed`, `error`, `failedFiles` (`relativePath` and `error` of up to 100 files), `auditFile` (the run's audit CSV, relative to the job's state directory, or `None`), `auditPath` (the same file as an absolute HopsFS path, or `None`), `datasetName`, `connectorName`, `prefix`, `startedAt` and `finishedAt`.
         """
         progress = self._files_progress
         if not isinstance(progress, dict) or not (
