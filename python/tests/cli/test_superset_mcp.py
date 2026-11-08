@@ -267,7 +267,7 @@ def test_dashboard_update_sends_only_the_options_given(api, tmp_path):
         tags=[3, 7],
         json_metadata_overrides={"color_scheme": "supersetColors"},
     )
-    assert "superset/dashboard/7/" in result.output
+    assert "hopsworks-api/superset/dashboard/7/" in result.output
 
 
 def test_dashboard_update_with_nothing_to_change_is_a_usage_error(api):
@@ -285,3 +285,25 @@ def test_dashboard_update_rejects_bad_json(api):
     assert result.exit_code == 2
     assert "not valid JSON" in result.output
     api.patch_dashboard.assert_not_called()
+
+
+def test_commas_inside_parentheses_and_quotes_do_not_split():
+    from hopsworks.cli.commands import superset
+
+    assert superset._split(("SUM(COALESCE(amount, 0)),revenue", "'a,b'")) == [
+        "SUM(COALESCE(amount, 0))",
+        "revenue",
+        "'a,b'",
+    ]
+
+
+def test_a_quoted_filter_value_stays_a_string():
+    from hopsworks.cli.commands import superset
+
+    assert superset._filter("postal_code = '00123'") == {
+        "column": "postal_code",
+        "op": "=",
+        "value": "00123",
+    }
+    assert superset._filter("amount > 100")["value"] == 100
+    assert superset._filter("region IN 'EU,North', 7")["value"] == ["EU,North", 7]

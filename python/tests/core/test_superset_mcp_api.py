@@ -199,6 +199,13 @@ class TestSupersetMcpClient:
         with pytest.raises(SupersetException, match="not reachable"):
             mcp._call("generate_chart", {"request": {}})
 
+    def test_a_slow_service_raises_a_superset_exception(self, mcp, hopsworks_client):
+        mcp._http = Mock()
+        mcp._http.post.side_effect = requests.ReadTimeout("read timed out")
+
+        with pytest.raises(SupersetException, match="did not answer within"):
+            mcp._call("generate_chart", {"request": {}})
+
 
 class TestSupersetApiMcpMethods:
     @pytest.fixture

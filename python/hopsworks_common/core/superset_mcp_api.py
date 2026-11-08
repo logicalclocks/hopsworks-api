@@ -126,6 +126,10 @@ class _SupersetMcpClient:
             raise SupersetException(
                 f"Superset's MCP service is not reachable at {self._url}: {e}"
             ) from e
+        except requests.Timeout as e:
+            raise SupersetException(
+                f"Superset's MCP service at {self._url} did not answer within {_TIMEOUT_SECONDS} s: {e}"
+            ) from e
         if response.status_code == 401:
             self._token = None
             raise SupersetException(

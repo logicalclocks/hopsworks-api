@@ -561,7 +561,7 @@ def superset_dashboard_update(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Update dashboard failed: {exc}") from exc
     dashboard = result.get("dashboard") or {}
-    url = _superset_link(f"superset/dashboard/{dashboard.get('id', dashboard_id)}/")
+    url = _superset_link(f"dashboard/{dashboard.get('id', dashboard_id)}/")
     if output.JSON_MODE:
         output.print_json({**result, "hopsworks_url": url})
         return
@@ -674,7 +674,28 @@ _FILTER = re.compile(
 
 
 def _split(values: tuple[str, ...]) -> list[str]:
-    return [part.strip() for v in values for part in v.split(",") if part.strip()]
+    """Comma-separated items, splitting only on commas outside parentheses and quotes."""
+    return [part for v in values for part in _comma_items(v)]
+
+
+def _comma_items(text: str) -> list[str]:
+    items, current, depth, quote = [], [], 0, None
+    for ch in text:
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(depth - 1, 0)
+        elif ch == "," and depth == 0:
+            items.append("".join(current).strip())
+            current = []
+            continue
+        current.append(ch)
+    items.append("".join(current).strip())
+    return [item for item in items if item]
 
 
 def _metric(text: str) -> dict[str, Any]:
@@ -709,13 +730,16 @@ def _filter(text: str) -> dict[str, Any]:
         return {
             "column": column,
             "op": op,
-            "value": [_scalar(v) for v in raw.split(",")],
+            "value": [_scalar(v) for v in _comma_items(raw)],
         }
     return {"column": column, "op": op, "value": _scalar(raw)}
 
 
 def _scalar(text: str) -> str | int | float:
-    text = text.strip().strip("'\"")
+    """A quoted value is a string as written; an unquoted one a number when it reads as one."""
+    text = text.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
+        return text[1:-1]
     for cast in (int, float):
         try:
             return cast(text)
