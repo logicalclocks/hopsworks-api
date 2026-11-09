@@ -57,7 +57,13 @@ MEMORY_FACTS_FG = "agent_memory_facts"
 
 @public
 def is_agent(serving: dict[str, Any]) -> bool:
-    """Whether a serving row is an agent: a Python server with no model artifact behind it."""
+    """Whether a serving row is an agent, as its deployment kind says.
+
+    Feature view and plain Python deployments have no model artifact either, so a Python server without one is only the answer for a backend that sends no kind.
+    """
+    kind = serving.get("kind")
+    if kind:
+        return str(kind).upper() == "AGENT"
     return str(serving.get("modelServer") or "").upper() == "PYTHON" and not (
         serving.get("modelName") or serving.get("modelPath")
     )
