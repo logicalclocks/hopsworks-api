@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs, Gmail) or copies files from SharePoint into a dataset. For searching copied emails use hops-email-search.
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, Teradata, SQL Server, SAP, MongoDB, Elasticsearch, another Hopsworks cluster, CRM, REST APIs, Gmail) or copies files from SharePoint, S3, GCS, ADLS, an SFTP server or a Google Drive folder into a dataset. For searching copied emails use hops-email-search; for searching copied files use hops-files-search.
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -133,6 +133,8 @@ hops datasource create sharepoint <name> --tenant-id T --client-id C --client-se
 hops datasource create google-sheets <name> --spreadsheet-id ID --key-path /Projects/<project>/Resources/key.json
 hops datasource create rest <name> --base-url https://api.example.com --auth-type API_KEY --api-key - < api_key.txt
 hops datasource create crm <name> --crm-type HUBSPOT --api-key - < api_key.txt
+hops datasource create sftp <name> --host sftp.example.com --port 22 --username U --path /outgoing --password - < pw.txt   # or --private-key-file ~/.ssh/id_ed25519 [--passphrase -]; files only, see "Copy files"
+hops datasource create google-drive <name> --key-file ./drive-sa.json --folder-id 1AbC...   # uploads the key to Resources/datasources/<name>/; --key-path for a key already in the project; files only
 hops datasource delete <name> --yes
 ```
 
@@ -434,7 +436,7 @@ There is no SQL query and no Trino catalog for this data source type.
 ## Copy or sync SharePoint folders into a dataset
 
 A SharePoint data source has no tables: it copies a folder of a document library into a new top-level dataset of the project, once or on a cron schedule.
-With `index_files` a sync also keeps a Delta feature group with one row per file in the dataset; search it with **hops-sharepoint-search**.
+With `index_files` a sync also keeps a Delta feature group with one row per file in the dataset; search it with **hops-files-search**.
 Each sync is an ordinary Python job, `sharepoint_<connector>_<dataset>`, running the script `DataSources/<connector>/sharepoint_sync.py` that data owners can edit; `reset_script()` restores the template.
 Creating, running and changing syncs needs the Data Owner role; members read the dataset and the audit log.
 With mirror deletions (the default for a schedule) the dataset equals the folder after each run; files edited or deleted in Hopsworks are restored, and data never flows back to SharePoint.
@@ -504,11 +506,86 @@ hops datasource sharepoint sync list|status|run|pause|resume|resync|schedule|set
 hops datasource sharepoint reset-script <name>
 ```
 
-The index feature group is partitioned by `ingestion_date`, the day a file was first indexed, and keyed by the SharePoint item id; its columns are listed in **hops-sharepoint-search**.
+The index feature group is partitioned by `ingestion_date`, the day a file was first indexed, and keyed by the SharePoint item id; its columns are listed in **hops-files-search**.
 Each run writes the rows of new, changed, renamed and removed files with delta-rs, and compacts each earlier day that holds more than one file into files of about 200 MB.
 Deleting a sync deletes its index feature group unless `keep_files=True`.
 
 The audit log is CSV in `date=YYYY-MM-DD` partitions (columns `execution_id, op, kind, path, src_path`), written only by runs that changed something and kept 7 days by default; read it with DuckDB `read_csv(..., hive_partitioning = true)` to prune by date.
+
+## Copy files from S3, GCS, ADLS, SFTP or Google Drive into a dataset
+
+An S3, GCS or ADLS data source can also copy files, not tables: a files ingestion job copies every object under a prefix of the bucket or container into a project dataset, once or on a cron schedule.
+An `sftp` or `google-drive` data source exists for this alone: it holds no tables, cannot be mounted as a feature group or read through Spark (`read()` raises), and `prefix` is relative to the SFTP root `--path` or to the Drive folder.
+It is the DLT ingestion job in `FILES` mode (`hops job` shows it as an INGESTION job), so it runs in the `dlthub-ingestion-pipeline` environment and needs no script.
+Only data owners create, change or run one; members read the dataset.
+The dataset may be new or an existing one the caller owns, and one job owns a dataset: a second files job on the same dataset is refused.
+An S3 data source with an IAM role works when the cluster maps a role for it; the backend assumes the role at launch.
+
+**SFTP.** `hops datasource create sftp <name> --host H [--port 22] --username U [--path /] (--password - | --private-key-file PATH [--passphrase -])`: the key file is read locally and stored in Hopsworks, never uploaded to the project; `--password` and `--passphrase` also read `HOPSWORKS_DS_SFTP_PASSWORD` / `HOPSWORKS_DS_SFTP_PASSPHRASE`.
+The credentials are write-only (`credentials_set` on read) and belong to the data source, so `hops datasource credentials set` does not apply; rotate them with `sc.set_credentials(password=...)` or `sc.set_credentials(private_key=..., passphrase=...)` then `sc.update()`.
+`--test` only checks that an SSH server answers at the host and port.
+
+**Google Drive.** `hops datasource create google-drive <name> --key-file ./sa.json --folder-id ID [--folder-name N]` uploads the service-account key to `Resources/datasources/<name>/` and sends its path, refusing to replace a key already there (`--key-path /Projects/<project>/...` reuses a key already in the project); the folder ID is the last part of the folder's URL in Drive.
+Share the folder, or its shared drive, with the service account: `hops datasource info <name>` shows its address as `Service account`, and `--test` reports it.
+
+```python
+sftp = hsfs.storage_connector.SftpConnector(id=None, name="partner_drop", featurestore_id=fs.id,
+    host="sftp.example.com", port=22, username="hopsworks", path="/outgoing",
+    private_key=open("id_ed25519").read())            # or password="..."; auth_type follows
+sftp.save()
+drive = hsfs.storage_connector.GoogleDriveConnector(id=None, name="shared_docs", featurestore_id=fs.id,
+    key_path="/Projects/<project>/Resources/drive-sa.json",   # upload the key first, as for GCS
+    folder_id="1AbCdEfGhIjKlMnOpQrStUvWxYz", folder_name="Handbook")
+drive.save()
+```
+
+```bash
+hops datasource ingest-files <source> --dataset NAME [--prefix P] [--include GLOB]... [--exclude GLOB]... [--mirror-deletions] [--index | --index-name FG] [--max-file-size-mb N] [--cron "0 0 2 ? * *"] [--name JOB] [--no-run]
+hops datasource files-jobs <source>          # the files jobs of this data source: job, dataset, prefix, schedule, mirror, index
+hops job history <job>                       # runs; a run that failed on some files is FAILED, the successful copies stay
+```
+
+```python
+sc = fs.get_data_source("my_s3").storage_connector     # S3, GCS, ADLS, SFTP or Google Drive; others raise ValueError
+job = sc.ingest_files(
+    dataset="acme_docs_handbook",      # existing (owned) or new
+    prefix="handbook/2026/",           # relative to the bucket root, SFTP --path or Drive folder, no leading "/"; "" = everything
+    include=["**/*.pdf"],              # globs over the path below the prefix; [] = every file
+    exclude=["**/~$*"],
+    mirror_deletions=False,            # True: files gone from the source are deleted from the dataset
+    index=False,                       # True -> feature group files_<dataset>; or a name
+    max_file_size_mb=None,             # None or 0 = no cap; larger files are counted as oversized
+    schedule=None,                     # Quartz cron in UTC, seconds first; None = run only when started
+    resources=None,                    # {"cores": 1, "memory": 2048, "gpus": 0}
+    name=None,                         # default "<source>_<dataset>_files"
+)                                      # created on the server at once
+execution = job.run(await_termination=True)
+execution.files_progress               # {"status": "ok|partial|failed", "listed", "copied", "updated", "skipped",
+                                       #  "deleted", "failed", "oversized", "bytesCopied", "failedFiles": [...], "auditPath", ...}
+job.last_stats                         # the same dict for the latest run, None before the first
+job.update(prefix="handbook/2027/", include=["**/*.pdf", "**/*.docx"], mirror_deletions=True, index=True, schedule="0 0 2 ? * *")
+job.index_feature_group                # "files_acme_docs_handbook" | None
+job.delete(delete_files=False, delete_index=False)   # the job, its runs and state; the dataset and index only when asked
+sc.get_files_ingestion_jobs()          # the FILES jobs of this data source in the project
+```
+
+Each run lists the prefix (`files_per_page` objects per request), copies new and changed files (size, modification time or ETag differ from the manifest), and skips the rest; a file that fails does not stop the run (unless `fail_on_first_error=True`), the copies that succeeded stay, and the run ends FAILED with the failures in `files_progress["failedFiles"]`.
+`prefix`, `include`, `exclude`, `mirror_deletions`, `index`, `max_file_size_mb`, `schedule` and `resources` can change with `update(...)`; the data source and the dataset cannot, create another job instead.
+
+**Mirror semantics.** With `mirror_deletions=True` the dataset equals the prefix after each run: copies whose source file disappeared, or that a new `prefix`, `include`, `exclude` or size cap now leaves out, are deleted from the dataset (and from the index).
+Deletions are skipped, and the run reports `deletionsSkipped: true`, when the listing did not complete (`listingComplete: false`), so a source outage never empties the dataset.
+Without mirror deletions nothing is ever deleted from the dataset; data never flows back to the source.
+
+**State** lives in `DataSources/<source>/files/<dataset>/` of the project (`/hopsfs/DataSources/...` in a terminal), owned by the job and deleted with it:
+
+- `owner.json` names the job that owns the dataset; `lease.json` is the running execution's lease, so two overlapping runs do not race (the second exits at once).
+- `manifest.jsonl` has one row per file present in the dataset: `file_id`, `source_url`, `relative_path`, `hopsfs_path`, `size_bytes`, `modified_at`, `etag`, `content_hash`, `execution_id`, `copied_at`.
+- `audit/date=YYYY-MM-DD/<HHMMSS>Z_<executionId>.csv` lists what a run changed (`execution_id, op, kind, path, src_path`; op `copied|updated|deleted|failed|oversized`), written only by runs that changed something and kept for the cluster's audit retention (7 days by default); read it with DuckDB `read_csv(..., hive_partitioning = true)`.
+- `<executionId>_files_stats.json` is the run's result, the same object as `execution.files_progress`.
+
+**Index.** With `index=True` (or a name) the backend creates a Delta feature group `files_<dataset>` version 1 at job creation, keyed by `file_id` (SHA-1 of the source URL) and partitioned by `ingestion_date`, the day a file was first indexed; each run upserts the rows of new and changed files and removes the rows of mirrored-away files.
+Turning the index on later indexes every file of the manifest on the next run.
+Its columns are listed in **hops-files-search**; `delete(delete_index=True)` removes it only when this job created it.
 
 ## Copy a Gmail mailbox into a feature group
 
