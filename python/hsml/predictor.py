@@ -1263,6 +1263,8 @@ class Predictor(DeployableComponent):
     @llm_gateway.setter
     def llm_gateway(self, llm_gateway: bool):
         self._llm_gateway = llm_gateway
+
+    @property
     def kind(self) -> str:
         """What the deployment serves, one of `hsml.constants.DEPLOYMENT_KIND`.
 
