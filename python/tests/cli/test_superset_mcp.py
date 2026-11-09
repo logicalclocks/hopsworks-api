@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from unittest import mock
 
+import click
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
@@ -307,3 +308,35 @@ def test_a_quoted_filter_value_stays_a_string():
     }
     assert superset._filter("amount > 100")["value"] == 100
     assert superset._filter("region IN 'EU,North', 7")["value"] == ["EU,North", 7]
+
+
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        ("country IN (SE,NO)", ["SE", "NO"]),
+        ("country NOT IN ( SE , 'N,O' )", ["SE", "N,O"]),
+        ("country IN '(SE)', NO", ["(SE)", "NO"]),
+    ],
+)
+def test_an_in_list_may_be_parenthesized(text, value):
+    from hopsworks.cli.commands import superset
+
+    assert superset._filter(text)["value"] == value
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "country IN ()",
+        "country IN",
+        "country IN (SE),(NO)",
+        "country IN (SE)(NO)",
+        "email IS NULL x",
+        "email IS NOT NULL = 1",
+    ],
+)
+def test_a_malformed_list_or_a_value_after_is_null_is_refused(text):
+    from hopsworks.cli.commands import superset
+
+    with pytest.raises(click.BadParameter):
+        superset._filter(text)

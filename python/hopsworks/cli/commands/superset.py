@@ -725,13 +725,24 @@ def _filter(text: str) -> dict[str, Any]:
         )
     column, op, raw = match.group(1), match.group(2).upper(), match.group(3)
     if op in ("IS NULL", "IS NOT NULL"):
+        if raw:
+            raise click.BadParameter(
+                f"{text!r}: {op} takes no value", param_hint="--filter"
+            )
         return {"column": column, "op": op}
     if op in ("IN", "NOT IN"):
-        return {
-            "column": column,
-            "op": op,
-            "value": [_scalar(v) for v in _comma_items(raw)],
-        }
+        if raw.startswith("(") and raw.endswith(")"):
+            raw = raw[1:-1]
+        items = _comma_items(raw)
+        if not items or any(
+            ("(" in item or ")" in item) and _scalar(item) == item for item in items
+        ):
+            raise click.BadParameter(
+                f"{text!r}: expected a list such as 'country {op} SE,NO' or "
+                f"'country {op} (SE,NO)'; quote a value that has parentheses",
+                param_hint="--filter",
+            )
+        return {"column": column, "op": op, "value": [_scalar(v) for v in items]}
     return {"column": column, "op": op, "value": _scalar(raw)}
 
 
