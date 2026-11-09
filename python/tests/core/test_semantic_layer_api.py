@@ -150,6 +150,11 @@ class TestControlPlane:
 
         assert SemanticLayerApi().get_projects() == []
 
+    def test_get_projects_bounds_its_wait(self, http):
+        SemanticLayerApi().get_projects()
+
+        assert http._send_request.call_args.kwargs["timeout"] == (30, 120)
+
     def test_get_project_is_none_for_an_unknown_name(self, http):
         assert SemanticLayerApi().get_project("missing") is None
 
