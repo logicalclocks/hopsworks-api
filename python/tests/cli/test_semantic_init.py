@@ -807,6 +807,33 @@ class TestInitFromAnExistingRepository:
         assert "authentication required" in result.output
         sl.create_project.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://user:token@github.com/acme/metrics.git",
+            "https://token@github.com/acme/metrics.git",
+        ],
+    )
+    def test_a_url_with_a_login_is_refused_before_any_request(self, sl, git_api, url):
+        result = _run("sales", "--repo", url)
+
+        assert result.exit_code == 2
+        assert "hops git provider set" in result.output
+        assert "token@" not in result.output
+        sl.get_project.assert_not_called()
+        git_api._clone.assert_not_called()
+
+    def test_a_failed_clone_prints_urls_without_their_login(self, sl, git_api):
+        git_api._clone.side_effect = GitException(
+            "fatal: unable to access 'https://user:token@github.com/acme/metrics.git/'"
+        )
+
+        result = _run("sales", "--repo", "https://github.com/acme/metrics.git")
+
+        assert result.exit_code == 1
+        assert "'https://github.com/acme/metrics.git/'" in result.output
+        assert "user:token" not in result.output
+
 
 class FakeShell:
     """Answers the gh and git commands init runs, recording each with the files in its working directory."""
