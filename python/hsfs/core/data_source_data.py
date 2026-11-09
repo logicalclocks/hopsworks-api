@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,6 +23,7 @@ from typing import (
 
 import humps
 from hopsworks_apigen import public
+from hsfs import util
 
 
 if TYPE_CHECKING:
@@ -50,19 +52,44 @@ class DataSourceData:
         # consumers such as infer_metadata can read feature.name / feature.type rather
         # than failing with AttributeError: 'dict' object has no attribute 'name'.
         # Feature objects passed by direct construction are kept as-is.
-        from hsfs import feature as feature_mod
-
         self._limit = limit
         self._features = [
-            feature_mod.Feature.from_response_json(f) if isinstance(f, dict) else f
+            self._source_feature(f) if isinstance(f, dict) else f
             for f in (features or [])
         ]
+        # One line for the whole source: the per-feature warning is for names a user types.
+        renamed = [
+            f["name"]
+            for f in features or []
+            if isinstance(f, dict)
+            and util._autofix_feature_name(f["name"]) != f["name"]
+        ]
+        if renamed:
+            warnings.warn(
+                "Feature names are sanitized to lower case with underscores in the"
+                f" feature store; these source columns are renamed: {', '.join(renamed)}.",
+                stacklevel=2,
+            )
         self._preview = preview if preview else []
         self._schema_fetch_failed = schema_fetch_failed
         self._schema_fetch_in_progress = schema_fetch_in_progress
         self._schema_fetch_logs = schema_fetch_logs
         self._supported_resources = supported_resources if supported_resources else []
         self._column_metadata = column_metadata if column_metadata else []
+
+    @staticmethod
+    def _source_feature(json_dict: dict[str, Any]):
+        """A source column as a Feature, its name sanitized without a warning of its own."""
+        from hsfs import feature as feature_mod
+
+        json_decamelized = humps.decamelize(json_dict)
+        name = json_decamelized["name"]
+        json_decamelized.setdefault("column_name", name)
+        result = feature_mod.Feature(
+            **{**json_decamelized, "name": util._autofix_feature_name(name)}
+        )
+        result._original_name = name
+        return result
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> DataSourceData:
