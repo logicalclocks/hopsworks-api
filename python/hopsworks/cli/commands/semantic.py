@@ -105,6 +105,8 @@ _SERVING_POLL_SECONDS = 5
 # Where init clones a repository, and writes a scaffold unless --path names another directory.
 _SEMANTIC_DIR = "Resources/semantic"
 _CLONE_TIMEOUT_SECONDS = 600
+# The `user:token@` part of any URL in a text.
+_URL_LOGIN = re.compile(r"(?<=://)[^/\s@]+@")
 
 
 # region Projects
@@ -449,6 +451,11 @@ def init_cmd(
     if existing and from_fg:
         raise click.UsageError(
             "--from-fg scaffolds a new project; an existing repository (--repo <url>) is registered as it is."
+        )
+    if existing and "@" in urlparse(repo).netloc:
+        raise click.UsageError(
+            "--repo takes the repository URL without a username or token; Hopsworks clones "
+            "with the token registered for the provider (`hops git provider set`)."
         )
     api = _api(ctx)
     if api.get_project(name) is not None:
@@ -2174,7 +2181,8 @@ def _clone(
             if init_name
             else ""
         )
-        raise click.ClickException(f"Cloning {url} failed: {exc}.{resume}") from exc
+        detail = _URL_LOGIN.sub("", str(exc))
+        raise click.ClickException(f"Cloning {url} failed: {detail}.{resume}") from exc
 
 
 def _free_repo_name(owner: str, name: str, datasets: Any, parent: str) -> str:
