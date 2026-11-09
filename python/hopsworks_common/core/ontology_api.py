@@ -48,7 +48,7 @@ _TOKEN_MARGIN_MS = 60_000
 _READ_TIMEOUT_S = 120.0
 
 _STATUS_PATH = "api/semantic-compilation/status"
-_CONNECTIONS_PATH = "api/connections"
+_SOURCES_PATH = "api/sources"
 _DATABASES_PATH = "api/datasources/dbs"
 
 _tokens: dict[tuple[Any, str], tuple[str, int]] = {}
@@ -328,12 +328,12 @@ def _readiness(app_name: str) -> dict[str, Any]:
     """
     return _summarise(
         _probe(app_name, _STATUS_PATH),
-        _probe(app_name, _CONNECTIONS_PATH),
+        _probe(app_name, _SOURCES_PATH),
         _probe(app_name, _DATABASES_PATH),
     )
 
 
-def _summarise(status: Any, connections: Any, databases: Any) -> dict[str, Any]:
+def _summarise(status: Any, sources: Any, databases: Any) -> dict[str, Any]:
     blockers: list[str] = []
     unverified: list[str] = []
 
@@ -357,21 +357,21 @@ def _summarise(status: Any, connections: Any, databases: Any) -> dict[str, Any]:
             )
 
     can_execute: bool | None
-    if connections is _UNVERIFIED:
+    if sources is _UNVERIFIED:
         unverified.append(
-            f"Whether a data source is configured to run SQL on ({_CONNECTIONS_PATH}) could not be checked."
+            f"Whether a data source is configured to run SQL on ({_SOURCES_PATH}) could not be checked."
         )
         can_execute = None
-    elif connections is None:
+    elif sources is None:
         blockers.append(
-            f"The configured data sources ({_CONNECTIONS_PATH}) could not be read."
+            f"The configured data sources ({_SOURCES_PATH}) could not be read."
         )
         can_execute = False
     else:
-        can_execute = int(connections.get("count") or 0) > 0
+        can_execute = bool(sources)
         if not can_execute:
             blockers.append(
-                "No data source is configured, so generated SQL has nothing to run on: add one under sources in ontology.yaml."
+                "No data source is configured, so generated SQL has nothing to run on: add one on the app's Sources page."
             )
 
     names: list[str] = []

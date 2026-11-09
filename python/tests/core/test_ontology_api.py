@@ -144,7 +144,9 @@ class TestAnswer:
 class TestReadiness:
     def test_ready_with_everything_in_place(self):
         verdict = ontology_api._summarise(
-            {"calculated": True}, {"count": 1}, {"data": [{"name": "demo"}]}
+            {"calculated": True},
+            [{"name": "sales_mysql"}],
+            {"data": [{"name": "demo"}]},
         )
 
         assert verdict["ready"] is True
@@ -162,7 +164,9 @@ class TestReadiness:
 
     def test_a_role_without_chat_is_a_blocker(self):
         verdict = ontology_api._summarise(
-            ontology_api._UNVERIFIED, {"count": 1}, {"data": [{"name": "demo"}]}
+            ontology_api._UNVERIFIED,
+            [{"name": "sales_mysql"}],
+            {"data": [{"name": "demo"}]},
         )
 
         assert verdict["ready"] is False
@@ -170,9 +174,7 @@ class TestReadiness:
         assert "cannot use chat" in verdict["blockers"][0]
 
     def test_not_compiled_and_nothing_ingested(self):
-        verdict = ontology_api._summarise(
-            {"calculated": False}, {"count": 0}, {"data": []}
-        )
+        verdict = ontology_api._summarise({"calculated": False}, [], {"data": []})
 
         assert verdict["ready"] is False
         assert len(verdict["blockers"]) == 3
@@ -180,18 +182,14 @@ class TestReadiness:
     def test_probe_tells_a_refusal_from_a_failure(self, hopsworks_client, mocker):
         get = mocker.patch("hopsworks_common.core.ontology_api._get")
         get.side_effect = _error(403)
-        assert (
-            ontology_api._probe("sales", "api/connections") is ontology_api._UNVERIFIED
-        )
+        assert ontology_api._probe("sales", "api/sources") is ontology_api._UNVERIFIED
         get.side_effect = _error(404)
-        assert (
-            ontology_api._probe("sales", "api/connections") is ontology_api._UNVERIFIED
-        )
+        assert ontology_api._probe("sales", "api/sources") is ontology_api._UNVERIFIED
         get.side_effect = _error(500)
-        assert ontology_api._probe("sales", "api/connections") is None
+        assert ontology_api._probe("sales", "api/sources") is None
         get.side_effect = _error(401)
         with pytest.raises(RestAPIError):
-            ontology_api._probe("sales", "api/connections")
+            ontology_api._probe("sales", "api/sources")
 
 
 class TestRefusal:
