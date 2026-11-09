@@ -54,6 +54,8 @@ _ARROW_STREAM = "application/vnd.apache.arrow.stream"
 # 330 s outlasts the gateway's QUERY_TIMEOUT_SECONDS and the ingress proxy timeout, both 300 s
 # by default, so the gateway's own 504 arrives first.
 _GATEWAY_TIMEOUT = (30, 330)
+# Seconds to connect and to read the semantic project listing, which every lookup by name runs.
+_CONTROL_PLANE_TIMEOUT = (30, 120)
 _GROUP_BY_KEYS = {
     "dimensions": "dimensions",
     "entities": "entities",
@@ -110,7 +112,10 @@ class SemanticLayerApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
-        response = _client._send_request("GET", self._path()) or {}
+        response = (
+            _client._send_request("GET", self._path(), timeout=_CONTROL_PLANE_TIMEOUT)
+            or {}
+        )
         return [
             semantic_layer.SemanticProject.from_response_json(item, self)
             for item in response.get("items") or []
