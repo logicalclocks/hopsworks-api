@@ -207,6 +207,24 @@ def test_fg_preview_names_the_columns_of_plain_rows(mock_project):
     assert '"text": "a"' in result.output
 
 
+def test_fg_preview_keeps_integers_beside_floats(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group(
+        "usage",
+        features=[_feature("customer_id", "bigint"), _feature("hours", "double")],
+    )
+    fg.select_all.return_value.show.return_value = pd.DataFrame(
+        {"customer_id": [14], "hours": [8.1]}
+    )
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "preview", "usage"])
+    assert result.exit_code == 0, result.output
+    assert "14.0" not in result.output
+    assert "14" in result.output and "8.1" in result.output
+
+
 def test_fg_preview_truncates_wide_columns(mock_project):
     import pandas as pd
 

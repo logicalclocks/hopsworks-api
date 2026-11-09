@@ -52,6 +52,34 @@ def test_read_returns_one_split_with_its_labels(mock_project):
     assert json.loads(result.stdout) == [{"x": 1, "y": 11}]
 
 
+def test_read_table_keeps_integers_beside_floats(mock_project):
+    fv = _fv(mock_project)
+    td = mock.MagicMock(version=4, splits=[mock.MagicMock()] * 3)
+    fv.get_training_datasets.return_value = [td]
+    frames = [pd.DataFrame({"customer_id": [14], "hours": [8.1]}) for _ in range(3)]
+    labels = [pd.DataFrame({"churned": [1]}) for _ in range(3)]
+    fv.get_train_validation_test_split.return_value = (*frames, *labels)
+    result = CliRunner().invoke(
+        cli,
+        ["td", "read", "orders"]
+        + ["--fv-version", "1", "--td-version", "4", "--split", "validation"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "14.0" not in result.output
+    assert "14" in result.output and "8.1" in result.output
+
+
+def test_fv_read_table_keeps_integers_beside_floats(mock_project):
+    fv = _fv(mock_project)
+    fv.get_batch_data.return_value = pd.DataFrame(
+        {"customer_id": [14], "hours": [8.1]}
+    )
+    result = CliRunner().invoke(cli, ["fv", "read", "orders", "--version", "1"])
+    assert result.exit_code == 0, result.output
+    assert "14.0" not in result.output
+    assert "14" in result.output and "8.1" in result.output
+
+
 def test_read_refuses_a_split_the_dataset_does_not_have(mock_project):
     fv = _fv(mock_project)
     td = mock.MagicMock(version=4, splits=[mock.MagicMock()] * 2)

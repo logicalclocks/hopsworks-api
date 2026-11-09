@@ -34,8 +34,11 @@ There is no ML system: no `system.yaml`, no build lease, no `set.py`. Load **hop
    hops job schedule set <name>-features '<quartz cron>'      # only when schedule is given
    ```
 
-4. **Check.** `hops fg preview <name> --limit 5` and `hops sql "SELECT count(*), count(DISTINCT
-   <key>) FROM <name>_1"`: rows, unique keys, no nulls where a feature may not be null.
+4. **Check.** Only after the backfill succeeded (chain it with `&&`, never `;`): `hops fg preview
+   <name> --limit 5` and `hops sql "SELECT count(*), count(DISTINCT <key>), count(*) - count(<f>)
+   FROM <name>_1"`, with one `count(*) - count(<f>)` per feature that may not be null. The check
+   fails on 0 rows, on fewer distinct keys than rows for a one-row-per-key group, and on any null
+   count above 0.
 
 A failed run: `hops job logs <name>-features --stdout --tail 200`, name the cause in one line, fix and run
 again, at most three attempts.

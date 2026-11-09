@@ -218,7 +218,7 @@ def td_read(
         output.print_json(df.to_dict(orient="records"))
         return
     columns = list(df.columns)
-    rows = [[row[c] for c in columns] for _, row in df.iterrows()]
+    rows = [list(row) for row in df.itertuples(index=False, name=None)]
     output.print_table(columns, rows)
 
 

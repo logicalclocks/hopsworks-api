@@ -276,7 +276,11 @@ def fg_preview(
         return
 
     cols = list(df.columns)
-    rows = [[_truncate_cell(row[c]) for c in cols] for _, row in df.iterrows()]
+    # itertuples keeps each column's dtype; iterrows upcasts a row of ints and floats to float.
+    rows = [
+        [_truncate_cell(v) for v in row]
+        for row in df.itertuples(index=False, name=None)
+    ]
     output.print_table(cols, rows)
 
 

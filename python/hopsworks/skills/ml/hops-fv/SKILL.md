@@ -61,7 +61,7 @@ rather than assuming `1`.
 
 ### 1. Build a Query (Feature Selection)
 
-Feature selection starts from a **root feature group** (often, but not necessarily, the one holding the label). From the root you can reach any feature group connected by a join key path; a feature group with no path from the root cannot be included. Use `select()`, `select_all()`, or `select_except()` on a feature group to create a Query, then join additional queries.
+Feature selection starts from a **root feature group** (often, but not necessarily, the one holding the label). From the root you can reach any feature group connected by a join key path; a feature group with no path from the root cannot be included. Before joining another source, look for a shared key: the same name or meaning, the same type, and a match rate from `hops sql` over a sample. With none, keep that source as exploration, name in one line what would link it ("no column links Salesforce accounts to customer_id; a customer_id or email on Account would"), and build on the sources that join. Never join on fuzzy-matched names. Use `select()`, `select_all()`, or `select_except()` on a feature group to create a Query, then join additional queries.
 
 ```python
 import hopsworks
