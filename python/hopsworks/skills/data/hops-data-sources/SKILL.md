@@ -523,7 +523,7 @@ An S3 data source with an IAM role works when the cluster maps a role for it; th
 
 **SFTP.** `hops datasource create sftp <name> --host H [--port 22] --username U [--path /] (--password - | --private-key-file PATH [--passphrase -])`: the key file is read locally and stored in Hopsworks, never uploaded to the project; `--password` and `--passphrase` also read `HOPSWORKS_DS_SFTP_PASSWORD` / `HOPSWORKS_DS_SFTP_PASSPHRASE`.
 The credentials are write-only (`credentials_set` on read) and belong to the data source, so `hops datasource credentials set` does not apply; rotate them with `sc.set_credentials(password=...)` or `sc.set_credentials(private_key=..., passphrase=...)` then `sc.update()`.
-The job accepts the server's host key as it finds it; `--test` only checks that the host answers with an SSH banner.
+`--test` only checks that an SSH server answers at the host and port.
 
 **Google Drive.** `hops datasource create google-drive <name> --key-file ./sa.json --folder-id ID [--folder-name N]` uploads the service-account key to `Resources/datasources/<name>/` and sends its path, refusing to replace a key already there (`--key-path /Projects/<project>/...` reuses a key already in the project); the folder ID is the last part of the folder's URL in Drive.
 Share the folder, or its shared drive, with the service account: `hops datasource info <name>` shows its address as `Service account`, and `--test` reports it.
