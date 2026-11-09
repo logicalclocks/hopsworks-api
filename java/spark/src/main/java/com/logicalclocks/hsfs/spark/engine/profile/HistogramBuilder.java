@@ -43,22 +43,41 @@ import java.util.Map;
 class HistogramBuilder {
 
   /**
-   * Builds histogram bins for a numeric column using equal-width bucketing.
+   * Exact counts of each column's finite values per equal-width bin, for all the columns in one
+   * aggregation: every row is unpivoted into one (column, bin) cell per column and the cells are
+   * counted, so the cost grows with the number of columns but not with the number of bins.
    *
-   * @param df source dataframe
-   * @param columnName column to histogram
-   * @param minValue pre-computed minimum over the finite values (non-null, from agg row)
-   * @param maxValue pre-computed maximum over the finite values (non-null, from agg row)
-   * @param histogramBins number of bins
-   * @param totalRows total finite rows (denominator for ratio)
-   * @return list of histogram entry maps with keys: value, count, ratio
+   * @param ranges minimum and maximum over the finite values, keyed by column name
+   * @return per-bin counts keyed by column name; no Spark job runs when ranges is empty
    */
-  List<Map<String, Object>> buildNumeric(Dataset<Row> df,
-      String columnName,
-      double minValue,
-      double maxValue,
-      int histogramBins,
-      long totalRows) {
+  static Map<String, long[]> binCounts(Dataset<Row> df, Map<String, double[]> ranges,
+      int histogramBins) {
+    Map<String, long[]> counts = new HashMap<String, long[]>();
+    if (ranges.isEmpty()) {
+      return counts;
+    }
+    List<String> names = new ArrayList<String>(ranges.keySet());
+    Column[] cells = new Column[names.size()];
+    for (int ii = 0; ii < cells.length; ii++) {
+      double[] range = ranges.get(names.get(ii));
+      cells[ii] = functions.struct(functions.lit(ii).alias("c"),
+          binIndex(names.get(ii), range[0], range[1], histogramBins).alias("b"));
+      counts.put(names.get(ii), new long[histogramBins]);
+    }
+    Dataset<Row> counted = df.select(functions.explode(functions.array(cells)).alias("cell"))
+        .select(functions.col("cell.c"), functions.col("cell.b"))
+        .filter(functions.col("b").isNotNull())
+        .groupBy("c", "b")
+        .count();
+    for (Row row : counted.collectAsList()) {
+      counts.get(names.get(row.getInt(0)))[row.getInt(1)] = row.getLong(2);
+    }
+    return counts;
+  }
+
+  /** Bin of a column's value, or NULL for a NULL or non-finite value. */
+  private static Column binIndex(String columnName, double minValue, double maxValue,
+      int histogramBins) {
     double range = maxValue - minValue;
     double binWidth = range / histogramBins;
 
@@ -77,23 +96,29 @@ class HistogramBuilder {
     // and floor(Infinity) is Long.MAX_VALUE, which least() clamps into the last bin - or,
     // where ANSI mode is on, fails the job outright on the cast to int. Hopsworks pins
     // spark.sql.ansi.enabled=false, so the default is the silent miscount, not the error.
-    Dataset<Row> binned = df.filter(col.isNotNull().and(ColumnProfiler.isFinite(col)))
-        .withColumn("_bin", binExpr)
-        .groupBy("_bin")
-        .count();
+    return functions.when(col.isNotNull().and(ColumnProfiler.isFinite(col)), binExpr);
+  }
 
-    Map<Integer, Long> binCounts = new HashMap<Integer, Long>();
-    for (Row row : binned.collectAsList()) {
-      int binIdx = row.getInt(0);
-      long count = row.getLong(1);
-      binCounts.put(binIdx, count);
-    }
+  /**
+   * Builds histogram bins for a numeric column from its {@link #binCounts}.
+   *
+   * @param minValue minimum over the finite values, as passed to {@link #binCounts}
+   * @param maxValue maximum over the finite values, as passed to {@link #binCounts}
+   * @param totalRows total finite rows (denominator for ratio)
+   * @return list of histogram entry maps with keys: value, count, ratio
+   */
+  List<Map<String, Object>> buildNumeric(long[] counts,
+      double minValue,
+      double maxValue,
+      int histogramBins,
+      long totalRows) {
+    double binWidth = (maxValue - minValue) / histogramBins;
 
     List<Map<String, Object>> result = new ArrayList<Map<String, Object>>(histogramBins);
     for (int ii = 0; ii < histogramBins; ii++) {
       double low = minValue + (ii * binWidth);
       double high = low + binWidth;
-      long count = binCounts.containsKey(ii) ? binCounts.get(ii) : 0L;
+      long count = counts[ii];
       double ratio = totalRows > 0 ? (double) count / totalRows : 0.0;
       String valueLabel = String.format(Locale.ROOT, "%.2f to %.2f", low, high);
 
@@ -107,29 +132,36 @@ class HistogramBuilder {
   }
 
   /**
+   * Per-value counts of a column's non-null values, as columns {@code _v} and {@code count}.
+   * Shared by the categorical histogram and the exact-uniqueness statistics.
+   */
+  static Dataset<Row> valueCounts(Dataset<Row> df, String columnName) {
+    // Project to a fixed name before grouping. For a feature named "count", grouping on the
+    // column itself leaves two "count" columns: the uniqueness reads cannot resolve, and
+    // Spark resolves the histogram's orderBy against the grouping one rather than failing,
+    // so the bins come out ordered by value and the top-N cut keeps the wrong values.
+    return df.select(functions.col(columnName).alias("_v"))
+        .filter(functions.col("_v").isNotNull())
+        .groupBy(functions.col("_v"))
+        .count();
+  }
+
+  /**
    * Builds histogram bins for a categorical (String or Boolean) column.
    *
-   * @param df source dataframe
-   * @param columnName column to histogram
+   * @param valueCounts the column's {@link #valueCounts}
    * @param histogramBins maximum number of bins (top-N by count)
    * @param totalRows total non-null rows (denominator for ratio)
    * @return list of histogram entry maps with keys: value, count, ratio
    */
-  List<Map<String, Object>> buildCategorical(Dataset<Row> df,
-      String columnName,
+  List<Map<String, Object>> buildCategorical(Dataset<Row> valueCounts,
       int histogramBins,
       long totalRows) {
-    // Project to a fixed name before grouping, as ColumnProfiler's uniqueness pass does. For
-    // a feature named "count", grouping on the column itself leaves two "count" columns, and
-    // Spark resolves the orderBy against the grouping one rather than failing: the bins come
-    // out ordered by value, and the top-N cut keeps the wrong values.
-    Column value = functions.col(columnName).alias("_v");
-    Dataset<Row> grouped = df
-        .select(value)
-        .filter(functions.col("_v").isNotNull())
-        .groupBy(functions.col("_v"))
-        .count()
-        .orderBy(functions.desc("count"))
+    // Ties broken by value: otherwise their order, and which of them survive the top-N cut,
+    // follow the shuffle, and a monitoring comparison sees bins move between two profiles of
+    // the same data.
+    Dataset<Row> grouped = valueCounts
+        .orderBy(functions.desc("count"), functions.asc("_v"))
         .limit(histogramBins);
 
     List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();

@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import time
 from datetime import datetime
 from unittest.mock import MagicMock
 
@@ -70,6 +71,12 @@ VALID_FRACTIONAL_METRICS = [
     "std_dev",
     "count",
 ]
+
+
+@pytest.fixture(autouse=True)
+def python_engine(mocker):
+    # The Python engine is the one that runs the two windows at the same time.
+    return mocker.patch("hsfs.engine._get_type", return_value="python")
 
 
 class TestFeatureMonitoringConfigEngine:
@@ -767,7 +774,12 @@ class TestFeatureMonitoringConfigEngine:
         mocker.patch.object(
             config_engine._monitoring_window_config_engine,
             "_run_single_window_monitoring",
-            side_effect=[non_empty_fds, empty_fds],
+            return_value=non_empty_fds,
+        )
+        mocker.patch.object(
+            config_engine._reference_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=empty_fds,
         )
 
         saved_result = MagicMock()
@@ -818,18 +830,15 @@ class TestFeatureMonitoringConfigEngine:
         }
         not_found_response.status_code = 404
 
-        def side_effect_raise_on_second_call(*args, **kwargs):
-            if side_effect_raise_on_second_call.call_count == 0:
-                side_effect_raise_on_second_call.call_count += 1
-                return non_empty_fds
-            raise RestAPIError("url", not_found_response)
-
-        side_effect_raise_on_second_call.call_count = 0
-
         mocker.patch.object(
             config_engine._monitoring_window_config_engine,
             "_run_single_window_monitoring",
-            side_effect=side_effect_raise_on_second_call,
+            return_value=non_empty_fds,
+        )
+        mocker.patch.object(
+            config_engine._reference_window_config_engine,
+            "_run_single_window_monitoring",
+            side_effect=RestAPIError("url", not_found_response),
         )
 
         saved_result = MagicMock()
@@ -911,6 +920,11 @@ class TestFeatureMonitoringConfigEngine:
             "_run_single_window_monitoring",
             return_value=non_empty_fds,
         )
+        run_reference_mock = mocker.patch.object(
+            config_engine._reference_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=non_empty_fds,
+        )
 
         saved_result = MagicMock()
         saved_result.empty_reference_window = False
@@ -926,7 +940,7 @@ class TestFeatureMonitoringConfigEngine:
         config_engine._run_feature_monitoring(entity=entity, config_name="pdf_config")
 
         # Both calls (detection + reference) must pass profile_flags with histograms=True, kll=True
-        for call in run_single_mock.call_args_list:
+        for call in run_single_mock.call_args_list + run_reference_mock.call_args_list:
             passed_flags = call.kwargs.get("profile_flags")
             assert passed_flags is not None, (
                 "profile_flags must not be None for distribution config"
@@ -960,6 +974,11 @@ class TestFeatureMonitoringConfigEngine:
             "_run_single_window_monitoring",
             return_value=non_empty_fds,
         )
+        run_reference_mock = mocker.patch.object(
+            config_engine._reference_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=non_empty_fds,
+        )
 
         saved_result = MagicMock()
         saved_result.empty_reference_window = False
@@ -976,7 +995,7 @@ class TestFeatureMonitoringConfigEngine:
             entity=entity, config_name="scalar_config"
         )
 
-        for call in run_single_mock.call_args_list:
+        for call in run_single_mock.call_args_list + run_reference_mock.call_args_list:
             passed_flags = call.kwargs.get("profile_flags")
             assert passed_flags is None, (
                 "profile_flags must be None for scalar-only config"
@@ -998,3 +1017,111 @@ class TestFeatureMonitoringConfigEngine:
             ValueError, match="specific_value is not allowed for distribution"
         ):
             config_engine._validate_statistics_comparison_config(mock_sc)
+
+    def test_run_feature_monitoring_computes_both_windows_at_the_same_time(
+        self, mocker
+    ):
+        # The detection window only returns once the reference window has started: with
+        # the windows run one after the other this would never finish.
+        import threading
+
+        feature_names = ["amount"]
+        fds = [FeatureDescriptiveStatistics(feature_name="amount", count=100)]
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        mock_config = self._build_mock_fm_config(
+            feature_names, with_reference_window=True
+        )
+        mocker.patch.object(
+            config_engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=mock_config,
+        )
+        reference_started = threading.Event()
+
+        def detection(*args, **kwargs):
+            assert reference_started.wait(timeout=5), (
+                "the reference window did not start while the detection window ran"
+            )
+            return fds
+
+        def reference(*args, **kwargs):
+            reference_started.set()
+            return fds
+
+        mocker.patch.object(
+            config_engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            side_effect=detection,
+        )
+        mocker.patch.object(
+            config_engine._reference_window_config_engine,
+            "_run_single_window_monitoring",
+            side_effect=reference,
+        )
+        comparison = mocker.patch.object(
+            config_engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(),
+        )
+
+        config_engine._run_feature_monitoring(entity=MagicMock(), config_name="cfg")
+
+        assert comparison.call_args.kwargs["detection_statistics"] == fds
+        assert comparison.call_args.kwargs["reference_statistics"] == fds
+
+    def test_run_feature_monitoring_runs_windows_one_after_the_other_on_spark(
+        self, mocker, python_engine
+    ):
+        # Spark registers feature group reads as session-global temporary views under fixed
+        # aliases, so the windows must never overlap.
+        python_engine.return_value = "spark"
+        fds = [FeatureDescriptiveStatistics(feature_name="amount", count=100)]
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        mocker.patch.object(
+            config_engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=self._build_mock_fm_config(
+                ["amount"], with_reference_window=True
+            ),
+        )
+        events = []
+
+        def window(name):
+            def run(*args, **kwargs):
+                events.append(f"{name} start")
+                time.sleep(0.05)
+                events.append(f"{name} end")
+                return fds
+
+            return run
+
+        mocker.patch.object(
+            config_engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            side_effect=window("detection"),
+        )
+        mocker.patch.object(
+            config_engine._reference_window_config_engine,
+            "_run_single_window_monitoring",
+            side_effect=window("reference"),
+        )
+        mocker.patch.object(
+            config_engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(),
+        )
+
+        config_engine._run_feature_monitoring(entity=MagicMock(), config_name="cfg")
+
+        assert events == [
+            "detection start",
+            "detection end",
+            "reference start",
+            "reference end",
+        ]
