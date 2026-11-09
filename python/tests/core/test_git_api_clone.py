@@ -54,6 +54,21 @@ def test_a_stalled_clone_request_ends_with_the_clone_budget(api, mocker):
     )
 
 
+def test_a_clone_timeout_names_only_the_budget(api):
+    git, instance = api
+    instance._send_request.side_effect = requests.exceptions.Timeout()
+
+    with pytest.raises(GitException) as info:
+        git._clone(
+            "https://user:token@github.com/o/r",
+            "Resources",
+            provider="GitHub",
+            timeout=30,
+        )
+
+    assert str(info.value) == "Git clone has not finished after 30 seconds."
+
+
 def test_every_step_of_a_clone_shares_one_budget(api, mocker):
     git, instance = api
     mocker.patch(

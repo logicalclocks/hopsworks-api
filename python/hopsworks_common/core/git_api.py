@@ -106,7 +106,7 @@ class GitApi:
             left = deadline - time.monotonic()
             if left <= 0:
                 raise GitException(
-                    f"Git clone of {url} has not finished after {timeout:.0f} seconds."
+                    f"Git clone has not finished after {timeout:.0f} seconds."
                 )
             return left
 
@@ -117,7 +117,7 @@ class GitApi:
                 if deadline is None:
                     raise
                 raise GitException(
-                    f"Git clone of {url} has not finished after {timeout:.0f} seconds."
+                    f"Git clone has not finished after {timeout:.0f} seconds."
                 ) from e
 
         # Support absolute and relative path to dataset
