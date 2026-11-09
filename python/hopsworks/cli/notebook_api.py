@@ -532,18 +532,34 @@ def to_output(kind: str, content: dict) -> dict | None:
     return None
 
 
+def _carriage_returns(text: str) -> str:
+    """Text as a terminal shows it: a carriage return overwrites its line from the start.
+
+    A progress line redrawn with \\r every half second is one line, not one line per frame.
+    A trailing \\r stays, so the next write to the stream still overwrites that line.
+    """
+    lines = []
+    for line in text.split("\n"):
+        shown, *redraws = line.split("\r")
+        for redraw in redraws:
+            shown = redraw + shown[len(redraw) :]
+        lines.append(shown + ("\r" if line.endswith("\r") else ""))
+    return "\n".join(lines)
+
+
 def _append(outputs: list[dict], output: dict) -> None:
     # Jupyter merges consecutive writes to one stream into one output, as JupyterLab shows them.
     last = outputs[-1] if outputs else None
-    if (
-        output["output_type"] == "stream"
-        and last is not None
-        and last["output_type"] == "stream"
-        and last["name"] == output["name"]
-    ):
-        last["text"] += output["text"]
-    else:
-        outputs.append(output)
+    if output["output_type"] == "stream":
+        if (
+            last is not None
+            and last["output_type"] == "stream"
+            and last["name"] == output["name"]
+        ):
+            last["text"] = _carriage_returns(last["text"] + output["text"])
+            return
+        output["text"] = _carriage_returns(output["text"])
+    outputs.append(output)
 
 
 def new_notebook(kernelspec: dict) -> dict:
