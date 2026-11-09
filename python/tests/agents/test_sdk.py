@@ -1664,7 +1664,7 @@ class TestAgents:
         evals, _ = client(
             Reply({"id": 8, "name": "fraud", "modelServer": "PYTHON", "modelName": "m"})
         )
-        with pytest.raises(AgentServingError, match="serves a model, not an agent"):
+        with pytest.raises(AgentServingError, match="is not an agent"):
             evals.get_agent(8)
 
     def test_only_agents_are_listed(self):
@@ -1679,6 +1679,28 @@ class TestAgents:
                         "modelName": "m",
                     },
                     {"id": 9, "name": "llm", "modelServer": "VLLM"},
+                ]
+            )
+        )
+        assert [a.name for a in evals.get_agents()] == ["support"]
+
+    def test_the_kind_says_which_model_less_deployments_are_agents(self):
+        evals, _ = client(
+            Reply(
+                [
+                    {**SERVING, "kind": "AGENT"},
+                    {
+                        "id": 8,
+                        "name": "fv",
+                        "modelServer": "PYTHON",
+                        "kind": "FEATURE_VIEW",
+                    },
+                    {
+                        "id": 9,
+                        "name": "server",
+                        "modelServer": "PYTHON",
+                        "kind": "PYTHON",
+                    },
                 ]
             )
         )
