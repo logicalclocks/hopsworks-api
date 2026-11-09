@@ -90,7 +90,9 @@ class _SupersetMcpClient:
     def _bearer(self) -> str:
         if self._token is None or time.monotonic() >= self._token_deadline:
             response = client._get_instance()._send_request(
-                "GET", ["project", self._project_id, "superset", "mcp", "token"]
+                "GET",
+                ["project", self._project_id, "superset", "mcp", "token"],
+                timeout=_TIMEOUT_SECONDS,
             )
             self._token = response["token"]
             self._token_deadline = (

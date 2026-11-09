@@ -20,6 +20,7 @@ from unittest.mock import Mock
 import pytest
 import requests
 from hopsworks_common.client.exceptions import SupersetException
+from hopsworks_common.core import superset_mcp_api
 from hopsworks_common.core.superset_api import SupersetApi
 from hopsworks_common.core.superset_mcp_api import _SupersetMcpClient
 
@@ -87,7 +88,9 @@ class TestSupersetMcpClient:
 
         assert result == {"chart": {"id": 7}}
         hopsworks_client._send_request.assert_called_once_with(
-            "GET", ["project", 119, "superset", "mcp", "token"]
+            "GET",
+            ["project", 119, "superset", "mcp", "token"],
+            timeout=superset_mcp_api._TIMEOUT_SECONDS,
         )
         url = post.call_args_list[0].args[0]
         assert url == "http://app.superset-mcp.service.consul:5008/mcp"
