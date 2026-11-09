@@ -43,6 +43,9 @@ if TYPE_CHECKING:
 # when the functionality is used.
 _logger = logging.getLogger(__name__)
 
+# Bit widths of the declared integer types a narrower input column is cast up to.
+_INTEGER_BIT_WIDTHS = {"smallint": 16, "int": 32, "bigint": 64}
+
 
 def _as_ingest_date(value: str | datetime.date | None) -> str | None:
     """`after_ingest_date` as a plain `YYYY-MM-DD` string, or None.
@@ -1144,11 +1147,12 @@ class DeltaEngine:
 
     @staticmethod
     def _cast_to_declared_types(dataset, feature_group):
-        """Safe-cast the decimal and null-typed columns of *dataset* to the feature group's declared types.
+        """Safe-cast the decimal, null-typed and narrower integer or float columns of *dataset* to the feature group's declared types.
 
         A new Delta table takes the batch's types, which follow the values: a
-        decimal(7) feature would otherwise land as decimal(2,1) for 1.5, and an
-        all-None column is typed null, which delta-rs refuses.
+        decimal(7) feature would otherwise land as decimal(2,1) for 1.5, an
+        int32 column as int for a bigint feature, and an all-None column is
+        typed null, which delta-rs refuses.
         """
         import pyarrow as pa
 
@@ -1163,6 +1167,15 @@ class DeltaEngine:
                 or (
                     pa.types.is_decimal(column.type)
                     and offline_type.lower().startswith("decimal")
+                )
+                or (
+                    pa.types.is_signed_integer(column.type)
+                    and column.type.bit_width
+                    < _INTEGER_BIT_WIDTHS.get(offline_type.lower(), 0)
+                )
+                or (
+                    pa.types.is_float32(column.type)
+                    and offline_type.lower() == "double"
                 )
             ):
                 column = column.cast(

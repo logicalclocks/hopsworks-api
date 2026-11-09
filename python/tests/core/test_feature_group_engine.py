@@ -2351,6 +2351,53 @@ class TestFeatureGroupEngine:
             is expected
         )
 
+    @pytest.mark.parametrize(
+        "engine_type,time_travel_format,stream,online_enabled,expected",
+        [
+            ("python", "DELTA", False, False, True),
+            ("python", "DELTA", False, True, True),
+            ("python", "DELTA", True, False, False),
+            ("python", "HUDI", False, False, False),
+            ("python", "ICEBERG", False, False, False),
+            ("spark", "DELTA", False, False, False),
+        ],
+    )
+    def test_python_delta_write(
+        self, engine_type, time_travel_format, stream, online_enabled, expected, mocker
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value=engine_type)
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format=time_travel_format,
+            stream=stream,
+            online_enabled=online_enabled,
+        )
+
+        # Act and Assert
+        assert (
+            feature_group_engine.FeatureGroupEngine._python_delta_write(fg) is expected
+        )
+
+    def test_python_delta_write_external(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = feature_group.ExternalFeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            data_source=DataSource(query="select 1"),
+        )
+
+        # Act and Assert
+        assert not feature_group_engine.FeatureGroupEngine._python_delta_write(fg)
+
     def test_delta_rs_casts_decimals_external(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine._get_type", return_value="python")
@@ -2399,7 +2446,10 @@ class TestFeatureGroupEngine:
         )
 
         # Assert
-        assert mock_verify.call_args.kwargs == {"decimals_cast": True}
+        assert mock_verify.call_args.kwargs == {
+            "decimals_cast": True,
+            "numbers_widen": True,
+        }
 
     def test_delta_rs_casts_decimals_lowercase_setter(self, mocker):
         # Arrange
@@ -2523,6 +2573,54 @@ class TestFeatureGroupEngine:
         assert DeltaTable(location).to_pyarrow_table().to_pylist() == [
             {"id": 1, "amount": Decimal("42")}
         ]
+
+    def test_insert_first_write_widens_int32_and_float32(
+        self, mocker, monkeypatch, tmp_path
+    ):
+        # Arrange
+        from decimal import Decimal
+
+        import numpy as np
+        import pandas as pd
+        import pyarrow as pa
+
+        location = str(tmp_path / "fg")
+        fg, _ = self._python_delta_fg(mocker, monkeypatch, location)
+        fg.features.append(feature.Feature(name="score", type="double"))
+        from deltalake import DeltaTable
+
+        # The schema the Python engine derives from these dtypes.
+        from hsfs import engine
+
+        engine._get_instance.return_value._parse_schema_feature_group.side_effect = (
+            lambda *a, **k: [
+                feature.Feature(name="id", type="int"),
+                feature.Feature(name="amount", type="decimal(1,0)"),
+                feature.Feature(name="score", type="float"),
+            ]
+        )
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=99)
+
+        # Act: pandas aggregations over an int column give int32
+        fg_engine._insert(
+            feature_group=fg,
+            feature_dataframe=pd.DataFrame(
+                {
+                    "id": np.array([1, 2], dtype=np.int32),
+                    "amount": [Decimal("5"), Decimal("6")],
+                    "score": np.array([0.5, 1.5], dtype=np.float32),
+                }
+            ),
+            overwrite=None,
+            operation=None,
+            storage=None,
+            write_options=None,
+        )
+
+        # Assert: the new table takes the declared types
+        schema = DeltaTable(location).to_pyarrow_table().schema
+        assert schema.field("id").type == pa.int64()
+        assert schema.field("score").type == pa.float64()
 
     def test_check_declared_decimals_polars(self, mocker):
         # Arrange

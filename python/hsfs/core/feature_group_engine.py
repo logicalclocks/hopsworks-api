@@ -304,6 +304,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 self._columns_for_user_schema(feature_group),
                 dataframe_features,
                 decimals_cast=decimals_cast,
+                numbers_widen=self._python_delta_write(feature_group),
             )
 
         # ge validation on python and non stream feature groups on spark
@@ -389,6 +390,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and feature_group.time_travel_format == "DELTA"
             and not feature_group.stream
             and not feature_group.online_enabled
+        )
+
+    @staticmethod
+    def _python_delta_write(feature_group) -> bool:
+        """Whether the Python engine writes the offline table with delta-rs, which casts a narrower integer or float to the declared type."""
+        return (
+            engine._get_type() == "python"
+            and not isinstance(feature_group, fg.ExternalFeatureGroup)
+            and feature_group.time_travel_format == "DELTA"
+            and not feature_group.stream
         )
 
     @staticmethod
@@ -1041,6 +1052,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 self._columns_for_user_schema(feature_group),
                 dataframe_features,
                 decimals_cast=self._delta_rs_casts_decimals(feature_group),
+                numbers_widen=self._python_delta_write(feature_group),
             )
 
         # set primary, foreign and partition key columns

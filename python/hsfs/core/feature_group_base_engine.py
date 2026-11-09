@@ -28,6 +28,18 @@ from hsfs.core import (
 )
 
 
+# Lossless widenings, (input type, declared type): the write casts the input up.
+_NUMBER_WIDENINGS = {
+    ("tinyint", "smallint"),
+    ("tinyint", "int"),
+    ("tinyint", "bigint"),
+    ("smallint", "int"),
+    ("smallint", "bigint"),
+    ("int", "bigint"),
+    ("float", "double"),
+}
+
+
 if TYPE_CHECKING:
     from hsfs.core import explicit_provenance
     from hsfs.feature import Feature
@@ -235,7 +247,11 @@ class FeatureGroupBaseEngine:
         return new_features + updated_features
 
     def _verify_schema_compatibility(
-        self, feature_group_features, dataframe_features, decimals_cast=False
+        self,
+        feature_group_features,
+        dataframe_features,
+        decimals_cast=False,
+        numbers_widen=False,
     ):
         err = []
         feature_df_dict = {
@@ -262,6 +278,8 @@ class FeatureGroupBaseEngine:
                         and fg_type.startswith("decimal")
                         and df_type.startswith("decimal")
                     ):
+                        continue
+                    if numbers_widen and (df_type, fg_type) in _NUMBER_WIDENINGS:
                         continue
 
                     err += [
