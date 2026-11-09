@@ -506,7 +506,7 @@
 | python/hsml/python/model.py                                                      |        8 |        0 |    100% |           |
 | python/hsml/python/predictor.py                                                  |        9 |        5 |     44% |     25-33 |
 | python/hsml/python/signature.py                                                  |       13 |        0 |    100% |           |
-| python/hsml/resources.py                                                         |      153 |       11 |     93% |51, 71, 94, 107, 149, 168, 203, 207, 237, 247, 250 |
+| python/hsml/resources.py                                                         |      167 |       11 |     93% |57, 81, 107, 132, 181, 200, 235, 239, 269, 279, 282 |
 | python/hsml/scaling\_config.py                                                   |      389 |       32 |     92% |98, 102, 124, 184, 297, 480-482, 486, 536, 553-562, 595, 608, 653, 669, 689, 727, 737, 747, 757, 767, 785, 820, 834, 866, 881 |
 | python/hsml/schema.py                                                            |       30 |        3 |     90% |72, 79, 82 |
 | python/hsml/sklearn/\_\_init\_\_.py                                              |        0 |        0 |    100% |           |
@@ -536,7 +536,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **58744** | **13520** | **77%** |           |
+| **TOTAL**                                                                        | **58758** | **13520** | **77%** |           |
 
 
 ## Setup coverage badge
