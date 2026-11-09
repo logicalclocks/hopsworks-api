@@ -764,7 +764,13 @@ _INGEST_STRATEGIES = {
     help="Database of the table, where the source has several.",
 )
 @click.option("--version", type=int, help="Feature group version.")
-@click.option("--primary-key", "primary_key", help="Comma-separated primary keys.")
+@click.option(
+    "--primary-key",
+    "primary_key",
+    required=True,
+    help="Comma-separated primary keys, as the group names them (lower case: `Id` is `id`). "
+    "Required: Hopsworks stores the group as a Delta table, which needs one.",
+)
 @click.option("--event-time", "event_time", help="Event-time column.")
 @click.option(
     "--strategy",

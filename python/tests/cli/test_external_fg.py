@@ -367,6 +367,8 @@ def test_ingest_keeps_the_schema_of_a_listed_table(mock_project):
             "pg",
             "--table",
             "sales.orders",
+            "--primary-key",
+            "id",
             "--no-wait",
         ],
     )
@@ -379,7 +381,9 @@ def test_ingest_refuses_a_bare_name_listed_in_several_schemas(mock_project):
     fs = mock_project.get_feature_store.return_value
     fs.get_data_source.return_value = _listing("sales", "archive")
     result = CliRunner().invoke(
-        cli, ["fg", "ingest", "orders", "--connector", "pg", "--table", "orders"]
+        cli,
+        ["fg", "ingest", "orders", "--connector", "pg", "--table", "orders"]
+        + ["--primary-key", "id"],
     )
     assert result.exit_code != 0
     assert "several schemas" in result.output
@@ -420,6 +424,8 @@ def test_ingest_json_stdout_is_the_payload_only(mock_project, wait):
             "sf",
             "--table",
             "account",
+            "--primary-key",
+            "id",
             wait,
         ],
     )
@@ -427,6 +433,15 @@ def test_ingest_json_stdout_is_the_payload_only(mock_project, wait):
     payload = json.loads(result.stdout)
     assert payload["job"] == "my_salesforce_to_sf_accounts_1"
     assert payload["execution"]["id"] == 5
+
+
+def test_ingest_without_a_primary_key_is_refused_before_any_call(mock_project):
+    result = CliRunner().invoke(
+        cli, ["fg", "ingest", "sf_accounts", "--connector", "sf", "--table", "account"]
+    )
+    assert result.exit_code == 2
+    assert "--primary-key" in result.output
+    mock_project.get_feature_store.assert_not_called()
 
 
 def test_create_external_refuses_a_crm_source_and_names_ingest(mock_project):
