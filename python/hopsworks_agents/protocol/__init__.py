@@ -58,6 +58,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers only
     )
     from .summarizers import (
         anthropic_summarizer,
+        claude_agents_summarizer,
         hopsworks_summarizer,
         openai_summarizer,
         sentence_transformer_embedder,
@@ -91,6 +92,7 @@ _EXPORTS: dict[str, str] = {
     "load_sentence_transformer": "embeddings",
     "register_sentence_transformer": "embeddings",
     "anthropic_summarizer": "summarizers",
+    "claude_agents_summarizer": "summarizers",
     "openai_summarizer": "summarizers",
     "hopsworks_summarizer": "summarizers",
     "sentence_transformer_embedder": "summarizers",

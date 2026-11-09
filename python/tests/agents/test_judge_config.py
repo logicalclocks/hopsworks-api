@@ -1098,3 +1098,237 @@ class TestExtraHeaders:
         )
         jc._completer_for(jc._parse_judge_config({"provider": "openai"}), "key")("p")
         assert "default_headers" not in seen and "base_url" not in seen
+
+
+class TestTheJudgeOnAClaudeCodeLogin:
+    """The Anthropic judge runs through Claude Code on the login the user connected.
+
+    An evaluation or review job on the login holds no API key; without this it
+    would skip every judge.
+    """
+
+    def config(self, provider="anthropic", named=""):
+        from hopsworks_agents.eval.judge_config import JudgeConfig
+
+        return JudgeConfig(provider=provider, api_key_env=named)
+
+    def test_the_login_stands_in_for_a_missing_anthropic_key(self, monkeypatch):
+        from hopsworks_agents.eval.judge_config import _api_key_for
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        assert _api_key_for(self.config()) == "sk-ant-oat01-x"
+
+    def test_a_key_wins_over_the_login(self, monkeypatch):
+        from hopsworks_agents.eval.judge_config import _api_key_for
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient")
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        assert _api_key_for(self.config()) == "ambient"
+
+    def test_only_the_anthropic_judge_can_run_on_it(self, monkeypatch):
+        # Claude Code stands in for Claude, not for anyone else's model
+        from hopsworks_agents.eval.judge_config import _api_key_for
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        assert _api_key_for(self.config(provider="openai")) is None
+
+    def test_a_named_variable_is_not_replaced_by_the_login(self, monkeypatch):
+        from hopsworks_agents.eval.judge_config import _api_key_for
+
+        monkeypatch.delenv("GATE_KEY", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        assert _api_key_for(self.config(named="GATE_KEY")) is None
+
+    def test_the_login_is_named_as_a_place_to_look(self):
+        from hopsworks_agents.eval.judge_config import _api_key_source
+
+        assert "CLAUDE_CODE_OAUTH_TOKEN" in _api_key_source(self.config())
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in _api_key_source(
+            self.config(provider="openai")
+        )
+
+    def test_the_completer_grades_through_claude_code_never_the_api_client(
+        self, monkeypatch
+    ):
+        import sys
+        import types
+
+        from hopsworks_agents.eval.judge_config import JudgeConfig, _completer_for
+
+        calls = {}
+
+        class ClaudeAgentOptions:
+            def __init__(self, **kwargs):
+                calls["options"] = kwargs
+
+        class TextBlock:
+            def __init__(self, text):
+                self.text = text
+
+        class AssistantMessage:
+            def __init__(self, content):
+                self.content = content
+                self.error = None
+
+        class ResultMessage:
+            def __init__(self, result):
+                self.result = result
+                self.is_error = False
+
+        async def query(prompt, options):
+            calls["prompt"] = prompt
+            yield AssistantMessage([TextBlock('{"scores": {"overall": 5}}')])
+            yield ResultMessage('{"scores": {"overall": 5}}')
+
+        sdk = types.ModuleType("claude_agent_sdk")
+        sdk.ClaudeAgentOptions = ClaudeAgentOptions
+        sdk.TextBlock, sdk.AssistantMessage, sdk.ResultMessage = (
+            TextBlock,
+            AssistantMessage,
+            ResultMessage,
+        )
+        sdk.query = query
+        monkeypatch.setitem(sys.modules, "claude_agent_sdk", sdk)
+        anthropic = types.ModuleType("anthropic")
+
+        class Anthropic:
+            def __init__(self, **kwargs):
+                raise AssertionError("the Anthropic client was built")
+
+        anthropic.Anthropic = Anthropic
+        monkeypatch.setitem(sys.modules, "anthropic", anthropic)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+
+        config = JudgeConfig(
+            provider="anthropic", model="sonnet", reasoning_effort="high"
+        )
+        complete = _completer_for(config, "sk-ant-oat01-x")
+        assert complete("grade this") == '{"scores": {"overall": 5}}'
+        assert calls["prompt"] == "grade this"
+        options = calls["options"]
+        assert options["model"] == "sonnet" and options["effort"] == "high"
+        assert options["tools"] == [] and options["max_turns"] == 1
+        assert "system_prompt" not in options
+
+    def test_a_key_that_is_not_the_login_still_uses_the_api_client(self, monkeypatch):
+        # the login is recognised by value, never by shape
+        import sys
+        import types
+
+        from hopsworks_agents.eval.judge_config import JudgeConfig, _completer_for
+
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        built = {}
+
+        class Anthropic:
+            def __init__(self, **kwargs):
+                built.update(kwargs)
+                self.messages = types.SimpleNamespace(create=self._create)
+
+            def _create(self, **kwargs):
+                return types.SimpleNamespace(
+                    content=[types.SimpleNamespace(type="text", text="{}")],
+                    stop_reason="end_turn",
+                )
+
+        anthropic = types.ModuleType("anthropic")
+        anthropic.Anthropic = Anthropic
+        monkeypatch.setitem(sys.modules, "anthropic", anthropic)
+        complete = _completer_for(
+            JudgeConfig(provider="anthropic"), "sk-ant-oat01-other"
+        )
+        assert complete("grade this") == "{}"
+        assert built["api_key"] == "sk-ant-oat01-other"
+
+
+class TestARoutedJudgeNeverRunsOnTheLogin:
+    """A judge on its own endpoint or headers is a route Claude Code cannot follow.
+
+    Falling back to the login for it would send the grading prompt through
+    Claude Code's own endpoint, past the gateway or tenant the judge was
+    configured with.
+    """
+
+    def config(self, **route):
+        from hopsworks_agents.eval.judge_config import JudgeConfig
+
+        return JudgeConfig(provider="anthropic", **route)
+
+    @pytest.mark.parametrize(
+        "route",
+        [
+            {"base_url": "https://judge-gateway.invalid/v1"},
+            {"headers": {"X-Route": "restricted"}},
+        ],
+        ids=["base_url", "headers"],
+    )
+    def test_the_login_is_not_handed_to_it_and_the_log_says_why(
+        self, monkeypatch, caplog, route
+    ):
+        from hopsworks_agents.eval.judge_config import _api_key_for
+
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        with caplog.at_level("WARNING", logger="hopsworks_agents.eval.judge_config"):
+            assert _api_key_for(self.config(**route)) is None
+        assert "Claude Code cannot honour" in caplog.text
+        assert "ANTHROPIC_API_KEY" in caplog.text
+
+    @pytest.mark.parametrize(
+        "route",
+        [
+            {"base_url": "https://judge-gateway.invalid/v1"},
+            {"headers": {"X-Route": "restricted"}},
+        ],
+        ids=["base_url", "headers"],
+    )
+    def test_a_key_given_by_hand_that_is_the_login_is_refused_not_rerouted(
+        self, monkeypatch, route
+    ):
+        from hopsworks_agents.eval.judge_config import JudgeConfigError, _completer_for
+
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        with pytest.raises(JudgeConfigError, match="base_url or headers"):
+            _completer_for(self.config(**route), "sk-ant-oat01-x")
+
+    def test_a_routed_judge_with_a_key_goes_through_its_route(self, monkeypatch):
+        import sys
+        import types
+
+        from hopsworks_agents.eval.judge_config import _completer_for
+
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x")
+        built = {}
+
+        class Anthropic:
+            def __init__(self, **kwargs):
+                built.update(kwargs)
+                self.messages = types.SimpleNamespace(create=self._create)
+
+            def _create(self, **kwargs):
+                return types.SimpleNamespace(
+                    content=[types.SimpleNamespace(type="text", text="{}")],
+                    stop_reason="end_turn",
+                )
+
+        anthropic = types.ModuleType("anthropic")
+        anthropic.Anthropic = Anthropic
+        monkeypatch.setitem(sys.modules, "anthropic", anthropic)
+        config = self.config(
+            base_url="https://judge-gateway.invalid/v1",
+            headers={"X-Route": "restricted"},
+        )
+        assert _completer_for(config, "real-key")("grade") == "{}"
+        assert built["base_url"] == "https://judge-gateway.invalid/v1"
+        assert built["default_headers"] == {"X-Route": "restricted"}
+        assert built["api_key"] == "real-key"
+
+    def test_the_login_is_not_named_as_a_place_to_look_for_it(self):
+        from hopsworks_agents.eval.judge_config import _api_key_source
+
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in _api_key_source(
+            self.config(base_url="https://judge-gateway.invalid/v1")
+        )
+        assert "CLAUDE_CODE_OAUTH_TOKEN" in _api_key_source(self.config())

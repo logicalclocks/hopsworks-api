@@ -6,10 +6,12 @@ A summarizer is any callable::
 
     (previous_summary: str | None, turns: list[Turn]) -> str
 
-sync or async. This module ships three so the common cases are a single line:
-:func:`anthropic_summarizer` for Claude, :func:`openai_summarizer` for OpenAI
-and for anything that speaks its chat-completions API (vLLM, Ollama, a LiteLLM
-proxy, Azure, most hosted models) through ``base_url``, and
+sync or async. This module ships four so the common cases are a single line:
+:func:`anthropic_summarizer` for Claude, :func:`claude_agents_summarizer` for
+Claude through Claude Code on the login a deployment holds (which
+:func:`anthropic_summarizer` falls back to by itself), :func:`openai_summarizer`
+for OpenAI and for anything that speaks its chat-completions API (vLLM, Ollama,
+a LiteLLM proxy, Azure, most hosted models) through ``base_url``, and
 :func:`hopsworks_summarizer` for an LLM deployed in Hopsworks itself, found by
 name with no key to configure. Anything else — a rules-based compactor, a
 provider with its own SDK — is just a function with that shape.
@@ -22,10 +24,15 @@ import os
 
 from hopsworks_apigen import public
 
+from .. import _claude_code
+
 
 log = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "claude-haiku-4-5"
+#: The model :func:`claude_agents_summarizer` runs on: an alias the bundled Claude Code
+#: resolves to its current Haiku, rather than an id a build may predate.
+CLAUDE_CODE_DEFAULT_MODEL = "haiku"
 
 SYSTEM_PROMPT = """\
 You maintain a running summary of a conversation between a user and an AI \
@@ -120,6 +127,13 @@ def anthropic_summarizer(
     Defaults to Haiku 4.5: this is a bounded rewrite of text the agent already
     produced, and the cost lands on every Nth turn of every conversation. Pass
     ``model=`` for anything else. Not on Claude? See :func:`openai_summarizer`.
+
+    A deployment that holds no key but the Claude Code login the user connected
+    (``CLAUDE_CODE_OAUTH_TOKEN``) summarizes through Claude Code instead, as
+    :func:`claude_agents_summarizer` does: the same prompt, on the login's current
+    Haiku when ``model`` is the default and on ``model`` otherwise, with
+    ``max_tokens`` left to Claude Code. The login is honoured by Claude Code alone, so
+    it never goes on the API client.
     """
     try:
         import anthropic  # noqa: F401
@@ -129,19 +143,32 @@ def anthropic_summarizer(
         ) from err
 
     client = None
+    through_claude_code = None
     _resolve_key = _key_resolver(api_key, "ANTHROPIC_API_KEY", api_key_secret)
 
     async def summarize(previous: str | None, turns) -> str:
-        nonlocal client
-        if client is None:
-            import anthropic
-
+        nonlocal client, through_claude_code
+        if client is None and through_claude_code is None:
             key = _resolve_key()
-            client = (
-                anthropic.AsyncAnthropic(api_key=key)
-                if key
-                else anthropic.AsyncAnthropic()
-            )
+            if not key and _claude_code._login():
+                log.info(
+                    "No Anthropic API key; summarizing through Claude Code on the "
+                    "login the deployment holds"
+                )
+                through_claude_code = claude_agents_summarizer(
+                    CLAUDE_CODE_DEFAULT_MODEL if model == DEFAULT_MODEL else model,
+                    system_prompt=system_prompt,
+                )
+            else:
+                import anthropic
+
+                client = (
+                    anthropic.AsyncAnthropic(api_key=key)
+                    if key
+                    else anthropic.AsyncAnthropic()
+                )
+        if through_claude_code is not None:
+            return await through_claude_code(previous, turns)
 
         response = await client.messages.create(
             model=model,
@@ -152,6 +179,51 @@ def anthropic_summarizer(
         return "".join(
             block.text for block in response.content if block.type == "text"
         ).strip()
+
+    return summarize
+
+
+@public
+def claude_agents_summarizer(
+    model: str = CLAUDE_CODE_DEFAULT_MODEL,
+    *,
+    system_prompt: str = SYSTEM_PROMPT,
+    effort: str | None = None,
+):
+    """An async summarizer that runs through Claude Code, on the login the deployment holds.
+
+        memory = ManagedMemoryService(summarize=claude_agents_summarizer())
+
+    Requires ``pip install claude-agent-sdk``.
+
+    For an agent that runs on the Claude Code login the user connected rather
+    than on an API key: the login (``CLAUDE_CODE_OAUTH_TOKEN``, from ``claude
+    setup-token``) is honoured by Claude Code alone, so each summary is one
+    Claude Code session with every built-in tool off and nothing read from the
+    pod's settings, the same prompt the other summarizers send.
+    :func:`anthropic_summarizer` reaches for this by itself when it finds no key
+    but the login, so an agent written for the API keeps working when deployed on
+    the login; name this one to be explicit, or to pick ``effort``.
+
+    ``model`` is an alias the bundled Claude Code resolves (``haiku``, ``sonnet``,
+    ``opus``) or a full id that build knows; the alias is the default because a
+    build answers an id it predates with a 400.
+    """
+    try:
+        import claude_agent_sdk  # noqa: F401
+    except ImportError as err:
+        raise ImportError(
+            "claude_agents_summarizer requires the Claude Agent SDK: "
+            "pip install claude-agent-sdk"
+        ) from err
+
+    async def summarize(previous: str | None, turns) -> str:
+        return await _claude_code._reply(
+            _user_message(previous, turns),
+            model=model,
+            system_prompt=system_prompt,
+            effort=effort,
+        )
 
     return summarize
 
