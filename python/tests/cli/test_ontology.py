@@ -202,6 +202,7 @@ def test_the_template_has_the_contracts_keys():
         "llm",
         "sources",
         "jobs",
+        "semantic_compilation",
         "pii_detection",
         "distinct_value_probing",
     ]

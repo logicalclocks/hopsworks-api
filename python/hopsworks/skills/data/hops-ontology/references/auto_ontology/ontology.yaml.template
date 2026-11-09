@@ -28,5 +28,6 @@ jobs:
   embed: <slug>-embed
   reset: <slug>-reset
   import: <slug>-import
+semantic_compilation: true
 pii_detection: <requirements.pii_detection>
 distinct_value_probing: true
