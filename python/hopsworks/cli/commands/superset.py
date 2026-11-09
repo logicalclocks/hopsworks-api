@@ -265,7 +265,7 @@ Examples:
     "--filter",
     "filters",
     multiple=True,
-    help="Filter, repeatable: 'country = SE', 'amount > 100', 'region IN EU,US', 'email IS NULL'.",
+    help="Filter, repeatable: 'country = SE', 'amount > 100', 'region IN EU,US', 'email IS NULL'; a quoted value stays a string.",
 )
 @click.option(
     "--config",
