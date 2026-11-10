@@ -2038,7 +2038,26 @@ class Engine:
             self._set_s3_hadoop_conf(
                 storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
             )
+            self._set_s3_endpoint_hadoop_conf(
+                storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
+            )
         return path.replace("s3://", "s3a://", 1) if path is not None else None
+
+    def _set_s3_endpoint_hadoop_conf(self, storage_connector, prefix):
+        # Bucket scope only, and after the forwarded Spark options so it wins over them:
+        # at global scope it would redirect later data sources on AWS in the same session.
+        endpoint = getattr(storage_connector, "endpoint", None)
+        if not endpoint:
+            return
+        self._set_hadoop_conf(f"{prefix}.endpoint", endpoint)
+        self._set_hadoop_conf(
+            f"{prefix}.path.style.access",
+            "true" if storage_connector.path_style_access else "false",
+        )
+        self._set_hadoop_conf(
+            f"{prefix}.connection.ssl.enabled",
+            "true" if endpoint.startswith("https://") else "false",
+        )
 
     def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:

@@ -2985,3 +2985,62 @@ def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
         ("fg/chunk/a", 1),
         ("fg/chunk/b", 1),
     ]
+
+
+class TestDeltaRsStorageOptionsS3:
+    @staticmethod
+    def _options(mocker, **connector_fields):
+        from hsfs import storage_connector
+
+        _patch_client(mocker, is_external=False)
+        _patch_apis(mocker)
+        fg = _make_fg("s3://landing/fg")
+        fg.storage_connector = storage_connector.S3Connector(
+            id=1,
+            name="s3",
+            featurestore_id=1,
+            bucket="landing",
+            access_key="ak",
+            secret_key="sk",
+            region="us-east-1",
+            **connector_fields,
+        )
+        engine = DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=fg,
+            spark_session=None,
+            spark_context=None,
+        )
+        return engine._get_delta_rs_storage_options()
+
+    def test_aws_data_source_gets_only_credentials_and_region(self, mocker):
+        assert self._options(mocker) == {
+            "AWS_ACCESS_KEY_ID": "ak",
+            "AWS_SECRET_ACCESS_KEY": "sk",
+            "AWS_REGION": "us-east-1",
+        }
+
+    def test_path_style_endpoint_is_used_as_given(self, mocker):
+        options = self._options(
+            mocker, endpoint="https://s3.example.com:9021", path_style_access=True
+        )
+
+        assert options["AWS_ENDPOINT_URL"] == "https://s3.example.com:9021"
+        assert options["AWS_VIRTUAL_HOSTED_STYLE_REQUEST"] == "false"
+        assert "AWS_ALLOW_HTTP" not in options
+
+    def test_virtual_hosted_endpoint_names_the_bucket(self, mocker):
+        options = self._options(mocker, endpoint="https://s3.example.com:9021")
+
+        assert options["AWS_ENDPOINT_URL"] == "https://landing.s3.example.com:9021"
+        assert options["AWS_VIRTUAL_HOSTED_STYLE_REQUEST"] == "true"
+
+    def test_http_endpoint_allows_http(self, mocker):
+        options = self._options(
+            mocker,
+            endpoint="http://minio.hopsworks.svc.cluster.local:9000",
+            path_style_access=True,
+        )
+
+        assert options["AWS_ALLOW_HTTP"] == "true"
