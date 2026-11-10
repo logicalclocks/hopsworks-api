@@ -1388,7 +1388,7 @@ class FeatureGroupBase:
             ```
 
         Parameters:
-            target_project: Project name (preferred) or numeric id.
+            target_project: Project name or numeric id.
             features: Optional whitelist of feature names. ``None`` shares
                 the whole feature group.
 
@@ -1409,7 +1409,7 @@ class FeatureGroupBase:
     def shared_with(self) -> list[dict]:
         """List the projects this feature group has been shared with.
 
-        Each entry has ``sharedWithProject`` (with ``name`` / ``id``),
+        Each entry has ``sharedWithProject`` (with ``projectName`` / ``projectId``),
         ``sharedBy``, ``sharedOn``, ``sharedEntirely`` (false when only
         specific columns were shared), and ``features`` (the column
         whitelist when not shared entirely; empty/null otherwise).
