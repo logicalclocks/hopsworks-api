@@ -658,6 +658,8 @@ def fg_create_external(
         raise click.ClickException(
             f"Connector '{connector_name}' not found: {exc}"
         ) from exc
+    if data_source is None:
+        raise click.ClickException(f"Data source '{connector_name}' not found.")
 
     # The SDK ignores query and path passed next to a data source, so the
     # whole source spec goes on the data source itself.

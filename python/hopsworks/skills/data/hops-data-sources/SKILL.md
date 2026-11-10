@@ -93,6 +93,8 @@ ext_fg = fs.create_external_feature_group(
 ext_fg.save()
 ```
 
+`fs.get_data_source(name)` returns `None` when no data source with that name exists, so check the result before using it.
+
 ## Create a connector
 
 Connectors are not UI-only.
