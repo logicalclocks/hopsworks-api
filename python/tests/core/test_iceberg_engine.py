@@ -1746,6 +1746,56 @@ class TestPyIcebergEngine:
             "adls.tenant-id": "tenant",
         }
 
+    @pytest.mark.parametrize(
+        ("endpoint", "path_style", "expected_endpoint_props"),
+        [
+            (None, None, {}),
+            (
+                "https://s3.example.com:9021",
+                True,
+                {
+                    "s3.endpoint": "https://s3.example.com:9021",
+                    "s3.force-virtual-addressing": "false",
+                },
+            ),
+            (
+                "http://minio.example.com:9000",
+                None,
+                {
+                    "s3.endpoint": "http://minio.example.com:9000",
+                    "s3.force-virtual-addressing": "true",
+                },
+            ),
+        ],
+    )
+    def test_get_pyiceberg_properties_s3(
+        self, mocker, endpoint, path_style, expected_endpoint_props
+    ):
+        from hsfs import storage_connector as sc
+
+        fg = _make_fg()
+        fg.storage_connector = sc.S3Connector(
+            id=1,
+            name="s3",
+            featurestore_id=1,
+            bucket="landing",
+            access_key="ak",
+            secret_key="sk",
+            region="us-east-1",
+            endpoint=endpoint,
+            path_style_access=path_style,
+        )
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+
+        props = iceberg_engine._get_pyiceberg_properties()
+
+        assert props == {
+            "s3.access-key-id": "ak",
+            "s3.secret-access-key": "sk",
+            "s3.region": "us-east-1",
+            **expected_endpoint_props,
+        }
+
     def test_pyiceberg_write_supported(self, mocker):
         # Arrange
         fg = _make_fg()

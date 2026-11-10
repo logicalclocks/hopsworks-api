@@ -537,6 +537,30 @@ public class TestStorageConnector {
     }
 
     @Test
+    void testS3EndpointHadoopConfIsBucketScoped() throws IOException, FeatureStoreException {
+      StorageConnector.S3Connector connector = new StorageConnector.S3Connector();
+      connector.setBucket("landing");
+      connector.setRegion("us-east-1");
+      connector.setAccessKey("ak");
+      connector.setSecretKey("sk");
+      connector.setEndpoint("https://s3.example.com:9021");
+      connector.setPathStyleAccess(true);
+      SparkContext sc = SparkEngine.getInstance().getSparkSession().sparkContext();
+      String globalEndpoint = sc.hadoopConfiguration().get(Constants.S3_ENDPOINT);
+
+      SparkEngine.getInstance().setupConnectorHadoopConf(connector);
+
+      Assertions.assertEquals("https://s3.example.com:9021",
+          sc.hadoopConfiguration().get("fs.s3a.bucket.landing.endpoint"));
+      Assertions.assertEquals("true", sc.hadoopConfiguration().get("fs.s3a.bucket.landing.path.style.access"));
+      Assertions.assertEquals("true", sc.hadoopConfiguration().get("fs.s3a.bucket.landing.connection.ssl.enabled"));
+      Assertions.assertEquals("us-east-1", sc.hadoopConfiguration().get("fs.s3a.bucket.landing.endpoint.region"));
+      Assertions.assertEquals("ak", sc.hadoopConfiguration().get("fs.s3a.bucket.landing.access.key"));
+      Assertions.assertEquals("sk", sc.hadoopConfiguration().get("fs.s3a.bucket.landing.secret.key"));
+      Assertions.assertEquals(globalEndpoint, sc.hadoopConfiguration().get(Constants.S3_ENDPOINT));
+    }
+
+    @Test
     void testDefaultPathS3() throws FeatureStoreException, IOException {
       // Arrange
       StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();

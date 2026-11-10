@@ -53,6 +53,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
 import org.apache.commons.io.FileUtils;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.spark.SparkFiles;
 import org.apache.spark.sql.Column;
@@ -880,6 +881,30 @@ public class SparkEngine extends EngineBase {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_CONNECTION_USE_SSL,
           storageConnector.sparkOptions().get(Constants.S3_CONNECTION_USE_SSL));
+    }
+    setupS3EndpointHadoopConf(storageConnector);
+  }
+
+  // Bucket scope only, with the keys and region beside it: the settings above are global, so a later data source
+  // in the same session would otherwise redirect this bucket to its own store or credentials.
+  private void setupS3EndpointHadoopConf(StorageConnector.S3Connector storageConnector) {
+    String endpoint = storageConnector.getEndpoint();
+    if (Strings.isNullOrEmpty(endpoint)) {
+      return;
+    }
+    Configuration conf = sparkSession.sparkContext().hadoopConfiguration();
+    String prefix = "fs.s3a.bucket." + storageConnector.getBucket() + ".";
+    conf.set(prefix + "endpoint", endpoint);
+    conf.set(prefix + "path.style.access", String.valueOf(Boolean.TRUE.equals(storageConnector.getPathStyleAccess())));
+    conf.set(prefix + "connection.ssl.enabled", String.valueOf(endpoint.startsWith("https://")));
+    if (!Strings.isNullOrEmpty(storageConnector.getRegion())) {
+      conf.set(prefix + "endpoint.region", storageConnector.getRegion());
+    }
+    if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
+      conf.set(prefix + "access.key", storageConnector.getAccessKey());
+    }
+    if (!Strings.isNullOrEmpty(storageConnector.getSecretKey())) {
+      conf.set(prefix + "secret.key", storageConnector.getSecretKey());
     }
   }
 

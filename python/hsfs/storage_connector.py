@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import logging
 import os
 import posixpath
@@ -25,6 +26,7 @@ import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from urllib.parse import urlsplit
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -269,6 +271,10 @@ class StorageConnector(ABC):
         """Refuse to create the data source when its fields cannot be stored as given."""
         return
 
+    def _check_stored(self, stored: StorageConnector) -> None:
+        """Refuse a save or update that the backend accepted without storing a field this client sent."""
+        return
+
     def to_dict(self) -> dict[str, int | str | None]:
         return {
             "id": self._id,
@@ -315,10 +321,13 @@ class StorageConnector(ABC):
         Raises:
             ValueError: If a SQL data source with provided credentials is given a username, password, wallet or wallet password, since each member sets their own with `set_credentials()`.
             hopsworks.client.exceptions.FeatureStoreException: If `tags` are passed to a Hopsworks backend older than 5.3, which cannot store data source tags.
+                Also if an S3 data source with an endpoint was saved by such a backend without the endpoint, so it targets AWS S3.
             hopsworks.client.exceptions.RestAPIError: If a tag that is mandatory for data sources is missing from `tags`, if a tag value does not match its schema, or if the backend encounters another error when handling the request.
         """
         self._check_new()
-        return self._storage_connector_api._create(self, tags)
+        stored = self._storage_connector_api._create(self, tags)
+        self._check_stored(stored)
+        return stored
 
     @public
     def update(self) -> StorageConnector:
@@ -340,9 +349,14 @@ class StorageConnector(ABC):
             The updated storage connector.
 
         Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If an S3 data source with an endpoint was updated by a Hopsworks backend older than 5.3, which stored it without the endpoint, so it targets AWS S3.
             hopsworks.client.exceptions.RestAPIError: If the data source lacks a tag that is mandatory for data sources, which has to be added with [`add_tag`][hsfs.storage_connector.StorageConnector.add_tag] first, or if the backend encounters another error when handling the request.
         """
-        return self._storage_connector_api._update(self)
+        # The response overwrites this instance, so keep what was sent to compare against it.
+        requested = copy.copy(self)
+        updated = self._storage_connector_api._update(self)
+        requested._check_stored(updated)
+        return updated
 
     @public
     def get_trino_catalog_template(self) -> dict[str, Any]:
@@ -1254,6 +1268,28 @@ class HopsFSConnector(StorageConnector):
 
 @public
 class S3Connector(StorageConnector):
+    """A data source on an S3 bucket, in AWS or in an S3-compatible store.
+
+    Set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] to use an S3-compatible store such as MinIO, Dell ECS or Ceph.
+    Such a data source needs a region, an access key and a secret key, and cannot use IAM roles.
+
+    Example:
+        ```python
+        sc = hsfs.storage_connector.S3Connector(
+            id=None,
+            name="ecs_landing",
+            featurestore_id=fs.id,
+            bucket="landing",
+            region="us-east-1",
+            access_key="...",
+            secret_key="...",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+        sc.save()
+        ```
+    """
+
     type = StorageConnector.S3
 
     def __init__(
@@ -1273,11 +1309,15 @@ class S3Connector(StorageConnector):
         session_token: str | None = None,
         iam_role: str | None = None,
         arguments: dict[str, Any] | None = None,
+        endpoint: str | None = None,
+        path_style_access: bool | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
 
         # S3
+        self._endpoint = endpoint
+        self._path_style_access = path_style_access
         self._access_key = access_key
         self._secret_key = secret_key
         self._server_encryption_algorithm = server_encryption_algorithm
@@ -1354,8 +1394,31 @@ class S3Connector(StorageConnector):
 
         These are set using the `Spark Options` field in the UI when creating the connector.
         Example: `{"fs.s3a.endpoint": "s3.eu-west-1.amazonaws.com", "fs.s3a.path.style.access": "true"}`.
+        For an S3-compatible store, set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] instead, which every Hopsworks client honours.
         """
         return self._arguments
+
+    @public
+    @property
+    def endpoint(self) -> str | None:
+        """The S3-compatible store this data source targets, as `http(s)://host[:port]`.
+
+        `None` means AWS S3.
+        The backend refuses an endpoint without a region, an access key and a secret key, together with an IAM role, or next to the `fs.s3a.endpoint` and `fs.s3a.path.style.access` Spark options it replaces.
+        An update that leaves it `None` keeps the stored endpoint; an empty string removes it.
+        Changing it moves the data source, and the data it already holds stays on the previous store.
+        """
+        return self._endpoint
+
+    @public
+    @property
+    def path_style_access(self) -> bool | None:
+        """Whether requests to the endpoint name the bucket in the URL path instead of the host name.
+
+        Most S3-compatible stores need it, since their host names do not resolve per bucket.
+        It applies only together with an [`endpoint`][hsfs.storage_connector.S3Connector.endpoint], and `None` reads as `False`.
+        """
+        return self._path_style_access
 
     def to_dict(self) -> dict[str, Any]:
         payload = super().to_dict()
@@ -1373,9 +1436,19 @@ class S3Connector(StorageConnector):
                 "arguments": [
                     {"name": k, "value": v} for k, v in self._arguments.items()
                 ],
+                "endpoint": self._endpoint,
+                "pathStyleAccess": self._path_style_access,
             }
         )
         return payload
+
+    def _check_stored(self, stored: StorageConnector) -> None:
+        if self._endpoint and self._endpoint.strip() and not stored._endpoint:
+            raise FeatureStoreException(
+                f"Data source '{self._name}' was saved without its endpoint, so it targets AWS S3: "
+                "the Hopsworks cluster predates S3-compatible storage. "
+                "Upgrade Hopsworks to 5.3 or later before using an endpoint."
+            )
 
     def spark_options(self) -> dict[str, str]:
         return self._arguments
@@ -1401,7 +1474,15 @@ class S3Connector(StorageConnector):
 
     @public
     def connector_options(self) -> dict[str, Any]:
-        """Return options to be passed to an external S3 connector library."""
+        """Return options to be passed to an external S3 connector library.
+
+        The keys follow DuckDB's S3 secret: `endpoint` is a `host[:port]`, `use_ssl` a boolean and `url_style` either `path` or `vhost`.
+        With an [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] set, all three come from it and [`path_style_access`][hsfs.storage_connector.S3Connector.path_style_access].
+        Otherwise they come from the `fs.s3a.endpoint`, `fs.s3a.connection.ssl.enabled` and `fs.s3a.path.style.access` Spark options, when those are set.
+
+        Info: `"false"` in the Spark options takes effect, ~=5.3.0
+            Before 5.3.0, `use_ssl` was the option's string as given and `url_style` was `path` for any value of `fs.s3a.path.style.access`, so `"false"` read as true.
+        """
         self._refetch()
         options = {
             "access_key": self.access_key,
@@ -1409,23 +1490,29 @@ class S3Connector(StorageConnector):
             "session_token": self.session_token,
             "region": self.region,
         }
+        if self.endpoint:
+            parts = urlsplit(self.endpoint)
+            options["endpoint"] = parts.netloc
+            options["use_ssl"] = parts.scheme == "https"
+            options["url_style"] = "path" if self.path_style_access else "vhost"
+            return options
         if not self.arguments:
             return options
+        # Spark's s3a and DuckDB name the same settings differently:
+        # https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html
+        # https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
         if self.arguments.get("fs.s3a.endpoint"):
             options["endpoint"] = self.arguments.get("fs.s3a.endpoint")
         if self.arguments.get("fs.s3a.connection.ssl.enabled"):
-            # use_ssl is used by s3 secrets in duckdb
-            # where as fs.s3a.connection.ssl.enabled is used by spark s3a connector
-            # hadoop : https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Low-level_Network.2FHttp_Options
-            # duckdb : https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
-            options["use_ssl"] = self.arguments.get("fs.s3a.connection.ssl.enabled")
+            options["use_ssl"] = (
+                str(self.arguments.get("fs.s3a.connection.ssl.enabled")).lower()
+                == "true"
+            )
         if self.arguments.get("fs.s3a.path.style.access"):
-            # url_style is used by duckdb s3 connector
-            # where as fs.s3a.path.style.access is used by spark s3a connector
-            # hadoop: https://hadoop.apache.org/docs/stable/hadoop-aws/tools/hadoop-aws/connecting.html#Third_party_stores
-            # duckdb: https://duckdb.org/docs/stable/core_extensions/httpfs/s3api
             options["url_style"] = (
-                "path" if self.arguments.get("fs.s3a.path.style.access") else "vhost"
+                "path"
+                if str(self.arguments.get("fs.s3a.path.style.access")).lower() == "true"
+                else "vhost"
             )
         return options
 

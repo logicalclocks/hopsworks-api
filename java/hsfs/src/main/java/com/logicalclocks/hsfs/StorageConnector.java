@@ -154,6 +154,18 @@ public abstract class StorageConnector {
     @Getter @Setter
     protected List<Option> arguments;
 
+    /**
+     * The S3-compatible store the data source targets, as {@code http(s)://host[:port]}, or null for AWS S3.
+     */
+    @Getter @Setter
+    protected String endpoint;
+
+    /**
+     * Whether requests to the endpoint name the bucket in the URL path; null reads as false.
+     */
+    @Getter @Setter
+    protected Boolean pathStyleAccess;
+
     @JsonIgnore
     public String getPath(String subPath) {
       return "s3://" + bucket

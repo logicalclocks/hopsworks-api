@@ -6021,6 +6021,86 @@ class TestSpark:
             s3_connector.arguments.get("fs.s3a.endpoint"),
         )
 
+    @pytest.mark.parametrize(
+        ("endpoint", "path_style", "ssl", "path_style_value"),
+        [
+            ("https://s3.example.com:9021", True, "true", "true"),
+            ("http://minio.example.com:9000", None, "false", "false"),
+        ],
+    )
+    def test_setup_s3_hadoop_conf_endpoint_at_bucket_scope_only(
+        self, mocker, endpoint, path_style, ssl, path_style_value
+    ):
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context,
+        )
+        spark_engine = spark.Engine()
+        s3_connector = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=99,
+            bucket="landing",
+            region="us-east-1",
+            access_key="1",
+            secret_key="2",
+            endpoint=endpoint,
+            path_style_access=path_style,
+        )
+
+        spark_engine._setup_s3_hadoop_conf(
+            storage_connector=s3_connector, path="s3://landing/fg"
+        )
+
+        hadoop_set = mock_spark_context._jsc.hadoopConfiguration.return_value.set
+        hadoop_set.assert_any_call("fs.s3a.bucket.landing.endpoint", endpoint)
+        hadoop_set.assert_any_call(
+            "fs.s3a.bucket.landing.path.style.access", path_style_value
+        )
+        hadoop_set.assert_any_call("fs.s3a.bucket.landing.connection.ssl.enabled", ssl)
+        hadoop_set.assert_any_call("fs.s3a.bucket.landing.endpoint.region", "us-east-1")
+        global_keys = {call.args[0] for call in hadoop_set.call_args_list}
+        assert "fs.s3a.endpoint" not in global_keys
+        assert "fs.s3a.path.style.access" not in global_keys
+        assert "fs.s3a.connection.ssl.enabled" not in global_keys
+
+    def test_setup_s3_hadoop_conf_endpoint_wins_over_spark_option_at_bucket_scope(
+        self, mocker
+    ):
+        mock_spark_context = MagicMock()
+        mocker.patch.object(
+            pyspark.sql.SparkSession,
+            "sparkContext",
+            new_callable=PropertyMock,
+            return_value=mock_spark_context,
+        )
+        spark_engine = spark.Engine()
+        s3_connector = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=99,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+            arguments=[
+                {"name": "fs.s3a.endpoint", "value": "s3.eu-west-1.amazonaws.com"}
+            ],
+        )
+
+        spark_engine._setup_s3_hadoop_conf(
+            storage_connector=s3_connector, path="s3://landing/fg"
+        )
+
+        hadoop_set = mock_spark_context._jsc.hadoopConfiguration.return_value.set
+        bucket_endpoints = [
+            call.args[1]
+            for call in hadoop_set.call_args_list
+            if call.args[0] == "fs.s3a.bucket.landing.endpoint"
+        ]
+        assert bucket_endpoints[-1] == "https://s3.example.com:9021"
+
     def test_setup_adls_hadoop_conf(self, mocker):
         # Arrange
         mock_spark_context = MagicMock()

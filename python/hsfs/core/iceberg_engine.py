@@ -1717,6 +1717,12 @@ class IcebergEngine:
                 props["s3.session-token"] = connector.session_token
             if connector.region:
                 props["s3.region"] = connector.region
+            endpoint = getattr(connector, "endpoint", None)
+            if endpoint:
+                props["s3.endpoint"] = endpoint
+                props["s3.force-virtual-addressing"] = (
+                    "false" if connector.path_style_access else "true"
+                )
             return props
         if connector.type == sc.StorageConnector.ADLS:
             props = {}

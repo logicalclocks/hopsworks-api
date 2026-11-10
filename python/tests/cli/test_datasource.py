@@ -207,6 +207,37 @@ def test_each_option_of_the_minimal_command_is_needed(kind, flag):
     assert flag in output
 
 
+def test_s3_without_endpoint_sends_no_endpoint_fields():
+    body = _create(["s3", "aws", "--bucket", "b", "--region", "eu-north-1"])
+
+    assert "endpoint" not in body
+    assert "pathStyleAccess" not in body
+
+
+def test_s3_compatible_store_sends_endpoint_and_path_style():
+    body = _create(
+        [
+            "s3",
+            "ecs",
+            "--bucket",
+            "landing",
+            "--region",
+            "us-east-1",
+            "--access-key",
+            "ak",
+            "--secret-key",
+            "sk",
+            "--endpoint",
+            "https://s3.example.com:9021",
+            "--path-style-access",
+        ]
+    )
+
+    assert body["endpoint"] == "https://s3.example.com:9021"
+    assert body["pathStyleAccess"] is True
+    assert body["region"] == "us-east-1"
+
+
 def test_rest_nests_the_auth_and_client_config():
     body = _create(
         [
