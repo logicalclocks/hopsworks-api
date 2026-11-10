@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import inspect
 import json
+import types
 from unittest import mock
 
+import pytest
 from click.testing import CliRunner
-from hopsworks.cli.commands.datasource import _preview_rows
+from hopsworks.cli.commands.datasource import _preview_rows, _read_target
+from hopsworks.cli.commands.fg import _truncate_cell
 from hopsworks.cli.main import cli
 from hsfs.core.data_source import DataSource
 from hsfs.feature_group import ExternalFeatureGroup, SpineGroup
@@ -178,6 +181,65 @@ def test_create_external_features_help_does_not_claim_it_is_required():
 def test_datasource_preview_help_names_schema_table():
     result = CliRunner().invoke(cli, ["datasource", "preview", "--help"])
     assert "schema.table" in " ".join(result.output.split())
+
+
+@pytest.mark.parametrize("json_mode", [False, True])
+def test_datasource_preview_relays_the_rows_it_printed(
+    mock_project, tmp_path, monkeypatch, json_mode
+):
+    events_file = tmp_path / "events.jsonl"
+    monkeypatch.setenv("HOPS_EVENTS_FILE", str(events_file))
+    ds = mock.MagicMock()
+    ds.get_tables.return_value = []
+    ds.get_data.return_value = types.SimpleNamespace(
+        features=[types.SimpleNamespace(name=n, type="string") for n in ("id", "note")],
+        preview={
+            "preview": [
+                {"values": [{"value0": "id", "value1": "1"}, {"value0": "note"}]},
+                {
+                    "values": [
+                        {"value0": "id", "value1": "2"},
+                        {"value0": "note", "value1": "line one\nline two " + "x" * 80},
+                    ]
+                },
+            ]
+        },
+    )
+    mock_project.get_feature_store.return_value.get_data_source.return_value = ds
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            *(["--json"] if json_mode else []),
+            "datasource",
+            "preview",
+            "neon",
+            "--table",
+            "orders",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    (line,) = [json.loads(x) for x in events_file.read_text().splitlines()]
+    assert (line["kind"], line["op"], line["phase"]) == ("datasource", "read", "done")
+    assert line["key"] == {"name": "neon"}
+    assert line["detail"]["table"] == "orders"
+    preview = events_file.parent / "previews" / f"{line['detail']['preview']}.json"
+    note = _truncate_cell("line one\nline two " + "x" * 80)
+    assert json.loads(preview.read_text()) == {
+        "head": ["id", "note"],
+        "rows": [["1", None], ["2", note]],
+    }
+    if not json_mode:
+        assert note in result.output
+
+
+def test_a_preview_line_names_the_source_when_nothing_else_names_the_read():
+    ds = types.SimpleNamespace(table=None, path=None, query=None)
+    assert _read_target(None, ds, "neon") == "neon"
+    ds.path = "a.csv"
+    assert _read_target(None, ds, "neon") == "a.csv"
+    assert _read_target("orders", ds, "neon") == "orders"
 
 
 def test_preview_rows_flattens_the_rows_the_backend_nests():

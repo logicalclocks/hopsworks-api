@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from hopsworks_common import events
 from hopsworks_common.client.exceptions import (
     DataValidationException,
     FeatureStoreException,
@@ -34,6 +35,14 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
     def _test_data_source_access(self, feature_group) -> dict:
         return self._feature_group_api._test_data_source_access(feature_group)
 
+    @events.tracking(
+        "fg",
+        "create",
+        key=lambda self, feature_group, *a, **k: {
+            "name": feature_group.name,
+            "version": feature_group.version,
+        },
+    )
     def _save(self, feature_group):
         if not feature_group.data_source:
             raise FeatureStoreException(
@@ -105,6 +114,15 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
 
         self._feature_group_api._save(feature_group)
 
+    @events.tracking(
+        "fg",
+        "update",
+        long=True,
+        key=lambda self, feature_group, *a, **k: {
+            "name": feature_group.name,
+            "version": feature_group.version,
+        },
+    )
     def _insert(
         self,
         feature_group,
@@ -187,6 +205,14 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
             feature_group, self._new_feature_list(feature_group, updated_features)
         )
 
+    @events.tracking(
+        "fg",
+        "update",
+        key=lambda self, feature_group, *a, **k: {
+            "name": feature_group.name,
+            "version": feature_group.version,
+        },
+    )
     def _append_features(
         self, feature_group: FeatureGroup, new_features: list[Feature]
     ):

@@ -292,3 +292,112 @@ def test_a_dashboard_line_carries_its_id(tmp_path, monkeypatch, mocker):
     assert (created["key"], created["detail"]) == ({"name": "Churn"}, {"id": 7})
     assert (updated["key"], updated["detail"]) == ({"name": "Churn v2"}, {"id": 7})
     assert (deleted["key"], deleted["detail"]) == ({"name": "7"}, {"id": 7})
+
+
+def _preview(events_file, line):
+    """The preview file a `read` line names, and its mode."""
+    path = events_file.parent / "previews" / f"{line['detail']['preview']}.json"
+    with open(path, encoding="utf-8") as f:
+        return json.load(f), path.stat().st_mode & 0o777
+
+
+def test_a_source_preview_writes_its_rows_then_the_read_line(tmp_path, monkeypatch):
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+
+    events.source_preview(
+        "neon_prod", "public.orders", ["id", "city"], [["1", "Paris"], ["2", None]]
+    )
+
+    (line,) = _lines(target)
+    assert (line["kind"], line["op"], line["phase"]) == ("datasource", "read", "done")
+    assert line["key"] == {"name": "neon_prod"}
+    assert line["detail"]["table"] == "public.orders"
+    assert re.fullmatch(r"[0-9a-f]{32}", line["detail"]["preview"])
+    data, mode = _preview(target, line)
+    assert data == {"head": ["id", "city"], "rows": [["1", "Paris"], ["2", None]]}
+    assert mode == 0o600
+
+
+def test_a_source_preview_stays_within_what_the_host_reads(tmp_path, monkeypatch):
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+    head = [f"c{i}" for i in range(250)]
+    rows = [["x" * 300] * 250 for _ in range(30)]
+
+    events.source_preview("s3_raw", "orders.csv", head, rows)
+
+    (line,) = _lines(target)
+    data, _ = _preview(target, line)
+    path = target.parent / "previews" / f"{line['detail']['preview']}.json"
+    assert path.stat().st_size <= events.PREVIEW_MAX_BYTES
+    assert len(data["head"]) == 200
+    assert 0 < len(data["rows"]) <= 20
+    assert all(len(row) == 200 for row in data["rows"])
+    assert all(len(cell) == 200 for row in data["rows"] for cell in row)
+
+
+def test_a_preview_cell_is_capped_as_javascript_counts_it(tmp_path, monkeypatch):
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+
+    events.source_preview("crm", "notes", ["emoji"], [["\U0001f600" * 150]])
+
+    (line,) = _lines(target)
+    data, _ = _preview(target, line)
+    (cell,) = data["rows"][0]
+    assert len(cell.encode("utf-16-le")) // 2 <= 200
+
+
+def test_no_preview_is_written_without_the_variable(tmp_path, monkeypatch):
+    monkeypatch.delenv(events.ENV_VAR, raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    events.source_preview("neon_prod", "orders", ["id"], [["1"]])
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_previews_keep_the_newest_only(tmp_path, monkeypatch):
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+
+    for i in range(events._PREVIEWS_KEPT + 5):
+        events.source_preview("neon_prod", f"t{i}", ["id"], [[str(i)]])
+
+    lines = _lines(target)
+    kept = sorted(p.stem for p in (tmp_path / "previews").iterdir())
+    assert len(kept) == events._PREVIEWS_KEPT
+    newest = sorted(
+        line["detail"]["preview"] for line in lines[-events._PREVIEWS_KEPT :]
+    )
+    assert kept == newest
+
+
+def test_an_external_feature_group_create_is_reported(tmp_path, monkeypatch, mocker):
+    from hsfs import feature, feature_group
+    from hsfs.core import external_feature_group_engine
+
+    target = tmp_path / "events.jsonl"
+    monkeypatch.setenv(events.ENV_VAR, str(target))
+    mocker.patch("hsfs.engine._get_type")
+    mocker.patch("hsfs.engine._get_instance")
+    api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+    group = feature_group.ExternalFeatureGroup(
+        name="orders",
+        version=None,
+        featurestore_id=99,
+        primary_key=[],
+        foreign_key=[],
+        features=[feature.Feature(name="id", type="bigint")],
+    )
+
+    def saved(fg):
+        fg.version = 1
+
+    api.return_value._save.side_effect = saved
+    external_feature_group_engine.ExternalFeatureGroupEngine(99)._save(group)
+
+    (line,) = _lines(target)
+    assert (line["kind"], line["op"], line["phase"]) == ("fg", "create", "done")
+    assert line["key"] == {"name": "orders", "version": 1}

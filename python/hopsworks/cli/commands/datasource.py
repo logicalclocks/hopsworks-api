@@ -1968,6 +1968,17 @@ def _preview_rows(preview) -> list[dict]:
     ]
 
 
+def _read_target(table: str | None, ds: Any, name: str) -> str:
+    """What a preview read, for its hops line: the table, path or query, else the source's name."""
+    return (
+        table
+        or getattr(ds, "table", None)
+        or getattr(ds, "path", None)
+        or getattr(ds, "query", None)
+        or name
+    )
+
+
 @datasource_group.command("preview")
 @click.argument("name")
 @click.option(
@@ -2028,6 +2039,8 @@ def connector_preview(
         data = ds.get_data()
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Preview failed: {exc}") from exc
+    from hopsworks_common import events
+
     columns = [f.name for f in getattr(data, "features", None) or []]
     rows = _preview_rows(getattr(data, "preview", None))[:limit]
     if output.JSON_MODE:
@@ -2040,10 +2053,22 @@ def connector_preview(
                 "preview": rows,
             }
         )
-        return
     columns = columns or (list(rows[0]) if rows else [])
-    output.print_table(
-        columns, [[fg_cmd._truncate_cell(row.get(c)) for c in columns] for row in rows]
+    printed = [[fg_cmd._truncate_cell(row.get(c)) for c in columns] for row in rows]
+    if not output.JSON_MODE:
+        output.print_table(columns, printed)
+    # The host shows what the agent read without reading the source again (a null stays null).
+    events.source_preview(
+        name,
+        _read_target(table, ds, name),
+        columns,
+        [
+            [
+                None if row.get(c) is None else cell
+                for c, cell in zip(columns, line, strict=True)
+            ]
+            for row, line in zip(rows, printed, strict=True)
+        ],
     )
 
 

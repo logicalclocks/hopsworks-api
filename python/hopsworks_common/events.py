@@ -21,6 +21,7 @@ written. Writing never fails or slows the operation it reports.
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import functools
 import json
@@ -42,6 +43,12 @@ MAX_LINE_BYTES = 4096
 _MAX_STRING = 200
 _MAX_DETAIL_BYTES = 1024
 _PROGRESS_INTERVAL_S = 1.0
+# A source preview file, as the host reads it: at most this many bytes, rows and columns.
+PREVIEW_MAX_BYTES = 65536
+_PREVIEW_ROWS = 20
+_PREVIEW_COLUMNS = 200
+# Previews kept beside the events file; the host reads each one once, right after its line.
+_PREVIEWS_KEPT = 20
 
 _last_progress: dict[tuple, float] = {}
 
@@ -61,7 +68,7 @@ def emit(
 
     Parameters:
         kind: What changed: `file`, `fg`, `fv`, `td`, `model`, `deployment`, `job`, `execution`, `schedule`, `dashboard`, `chart`, `app`, `notebook` or `datasource`.
-        op: `create`, `update` or `delete`.
+        op: `create`, `update` or `delete`; `read` for a `datasource` (`source_preview` writes it).
         phase: `started`, `progress`, `done` or `failed`.
         name: The asset's name.
         version: The asset's version.
@@ -117,6 +124,85 @@ def emit(
             os.close(fd)
     except Exception:  # noqa: BLE001 - reporting a change never fails the change
         return
+
+
+def source_preview(
+    name: str, table: str, head: list[str], rows: list[list[Any]]
+) -> None:
+    """Write the rows a data source preview printed, then the `read` line that names them.
+
+    The rows go to `<events dir>/previews/<32 hex>.json` as `{"head": [...], "rows": [[...]]}`:
+    at most 20 rows and 200 columns, every cell text of at most 200 characters or null, the
+    file at most 64 KB (rows past it are left out). The file name is random, never from input.
+    Nothing is written without an events file; writing never fails the preview.
+
+    Parameters:
+        name: The data source.
+        table: The table, sheet or path read.
+        head: The column names, as printed.
+        rows: The cells, as printed; None for a null.
+    """
+    target = os.environ.get(ENV_VAR)
+    if not target:
+        return
+    try:
+        head = [_cell(h) or "" for h in head[:_PREVIEW_COLUMNS]]
+        rows = [[_cell(c) for c in row[: len(head)]] for row in rows[:_PREVIEW_ROWS]]
+        while True:
+            data = json.dumps(
+                {"head": head, "rows": rows}, ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8")
+            if len(data) <= PREVIEW_MAX_BYTES:
+                break
+            if not rows:
+                return
+            rows.pop()
+        folder = os.path.join(os.path.dirname(os.path.abspath(target)), "previews")
+        os.makedirs(folder, mode=0o700, exist_ok=True)
+        preview_id = secrets.token_hex(16)
+        fd = os.open(
+            os.path.join(folder, preview_id + ".json"),
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+        _prune(folder)
+        emit(
+            "datasource",
+            "read",
+            "done",
+            name=name,
+            detail={"table": table, "preview": preview_id},
+        )
+    except Exception:  # noqa: BLE001 - relaying a preview never fails the preview
+        return
+
+
+def _cell(value: Any) -> str | None:
+    """A cell as text of at most 200 characters as JavaScript counts them (UTF-16 units), or None."""
+    if value is None:
+        return None
+    text = str(value)[:_MAX_STRING]
+    while len(text.encode("utf-16-le")) > 2 * _MAX_STRING:
+        text = text[:-1]
+    return text
+
+
+def _prune(folder: str) -> None:
+    """Keep the newest previews only."""
+    files = [
+        e
+        for e in os.scandir(folder)
+        if e.name.endswith(".json") and e.is_file(follow_symlinks=False)
+    ]
+    # More than 20 previews written before the host reads them drop the oldest.
+    files.sort(key=lambda e: e.stat(follow_symlinks=False).st_mtime_ns)
+    for e in files[:-_PREVIEWS_KEPT]:
+        with contextlib.suppress(OSError):
+            os.unlink(e.path)
 
 
 class Change:
