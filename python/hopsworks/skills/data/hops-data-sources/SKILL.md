@@ -142,6 +142,13 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 **Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
 
+## Tag a data source
+
+Schematized tags classify a data source (owner, source system, sensitivity) and make it findable in search.
+A tag that an admin made mandatory for data sources must be passed when the data source is created.
+`hops datasource create` cannot attach tags, so it fails while a tag is mandatory; create the data source from Python with `sc.save(tags=[...])` or `fs.create_data_source(sc, tags=[...])` instead.
+The SDK calls, mandatory tags and search are in [references/tags.md](references/tags.md).
+
 ## Provided credentials (Oracle)
 
 A data source has a credentials mode.

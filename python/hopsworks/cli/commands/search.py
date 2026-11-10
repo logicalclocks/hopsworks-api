@@ -1,9 +1,7 @@
 """``hops search`` — search the project's OpenSearch index, or every project's.
 
-One REST call against the ``featurestore`` index returns matching feature
-groups, feature views, training datasets, features, jobs, apps, models,
-deployments and agents. Project scope is the default; ``--global`` searches
-every project the caller belongs to.
+One REST call against the ``featurestore`` index returns matching feature groups, feature views, training datasets, features, jobs, apps, models, deployments, agents and data sources.
+Project scope is the default; ``--global`` searches every project the caller belongs to.
 """
 
 from __future__ import annotations
@@ -28,6 +26,7 @@ _DOC_TYPES = {
     "model": "MODEL",
     "deployment": "DEPLOYMENT",
     "agent": "AGENT",
+    "data_source": "DATASOURCE",
 }
 
 # Result attribute -> KIND label, in display order.
@@ -41,6 +40,7 @@ _BUCKETS = [
     ("models", "model"),
     ("deployments", "deployment"),
     ("agents", "agent"),
+    ("data_sources", "data_source"),
 ]
 
 
@@ -151,9 +151,8 @@ def search_cmd(
 def _row(kind: str, item: Any) -> list[Any]:
     """Flatten a search result item into a fixed-width table row.
 
-    Features and jobs have no version; models and jobs have no description, so
-    DETAIL falls back to the type-specific field the index carries for them
-    (framework, job type, serving tool). Text is cut to one line of 60 chars.
+    Features and jobs have no version; models and jobs have no description, so DETAIL falls back to the type-specific field the index carries for them (framework, job type, serving tool, connector type).
+    Text is cut to one line of 60 chars.
     """
     name = getattr(item, "name", "?")
     version = getattr(item, "version", None)
@@ -165,6 +164,7 @@ def _row(kind: str, item: Any) -> list[Any]:
         or raw.get("framework")
         or raw.get("jobType")
         or raw.get("servingTool")
+        or raw.get("connectorType")
         or ""
     )
     first_line = detail.splitlines()[0] if detail else ""
