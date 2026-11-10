@@ -1723,6 +1723,16 @@ class IcebergEngine:
                 props["s3.force-virtual-addressing"] = (
                     "false" if connector.path_style_access else "true"
                 )
+                # PyArrow's S3 filesystem (aws-sdk-cpp) streams every upload with a CRC64NVME
+                # trailer, which stores such as Dell ECS refuse. Neither PyArrow nor PyIceberg
+                # exposes the SDK's switch, so it goes through the SDK's process-wide variables;
+                # setdefault keeps a value the user chose.
+                os.environ.setdefault(
+                    "AWS_REQUEST_CHECKSUM_CALCULATION", "when_required"
+                )
+                os.environ.setdefault(
+                    "AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required"
+                )
             return props
         if connector.type == sc.StorageConnector.ADLS:
             props = {}

@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import os
 import sys
 from unittest import mock
 
@@ -1694,13 +1695,12 @@ class TestPyIcebergEngine:
         assert "namenode load balancer" in str(e.value)
         assert "contact your system administrator" in str(e.value.__cause__)
 
-    def test_get_pyiceberg_properties_gcs_sets_credentials_env(
-        self, mocker, monkeypatch
-    ):
+    def test_get_pyiceberg_properties_gcs_sets_credentials_env(self, mocker):
         # Arrange
         from hsfs import storage_connector as sc
 
-        monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+        mocker.patch.dict(os.environ)
+        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
         fg = _make_fg()
         connector = mocker.Mock()
         connector.type = sc.StorageConnector.GCS
@@ -1716,8 +1716,6 @@ class TestPyIcebergEngine:
         # Assert
         # GCS auth goes through the application-default chain; without this
         # env var the client stalls probing the GCP metadata server
-        import os
-
         assert props == {}
         assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/tmp/key.json"
 
@@ -1773,6 +1771,10 @@ class TestPyIcebergEngine:
     ):
         from hsfs import storage_connector as sc
 
+        # patch.dict restores os.environ afterwards, including keys the code adds.
+        mocker.patch.dict(os.environ)
+        os.environ.pop("AWS_REQUEST_CHECKSUM_CALCULATION", None)
+        os.environ.pop("AWS_RESPONSE_CHECKSUM_VALIDATION", None)
         fg = _make_fg()
         fg.storage_connector = sc.S3Connector(
             id=1,
@@ -1795,6 +1797,35 @@ class TestPyIcebergEngine:
             "s3.region": "us-east-1",
             **expected_endpoint_props,
         }
+        expected_checksums = "when_required" if endpoint else None
+        assert os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION") == expected_checksums
+        assert os.environ.get("AWS_RESPONSE_CHECKSUM_VALIDATION") == expected_checksums
+
+    def test_get_pyiceberg_properties_s3_keeps_user_checksum_setting(self, mocker):
+        from hsfs import storage_connector as sc
+
+        mocker.patch.dict(
+            os.environ, {"AWS_REQUEST_CHECKSUM_CALCULATION": "when_supported"}
+        )
+        os.environ.pop("AWS_RESPONSE_CHECKSUM_VALIDATION", None)
+        fg = _make_fg()
+        fg.storage_connector = sc.S3Connector(
+            id=1,
+            name="s3",
+            featurestore_id=1,
+            bucket="landing",
+            access_key="ak",
+            secret_key="sk",
+            region="us-east-1",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+
+        iceberg_engine._get_pyiceberg_properties()
+
+        assert os.environ["AWS_REQUEST_CHECKSUM_CALCULATION"] == "when_supported"
+        assert os.environ["AWS_RESPONSE_CHECKSUM_VALIDATION"] == "when_required"
 
     def test_pyiceberg_write_supported(self, mocker):
         # Arrange
