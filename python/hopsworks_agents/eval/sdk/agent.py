@@ -40,13 +40,15 @@ from .models import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Sequence
 
+    from hopsworks_common.app import App
+
     from .client import AgentServing
     from .models import EvalJob, ReviewJob, Task
 
 VERDICTS = ("positive", "negative", "false_alarm")
 MANIFEST_PATH = ".well-known/hopsworks-agent.json"
 DEFAULT_CHAT_PATH = "/v1/chat"
-DEFAULT_STREAM_PATH = "/v1/chat/stream"
+DEFAULT_RUN_PATH = "/v1/run"
 #: The feature groups an agent's memory is kept in, every deployment's rows together.
 MEMORY_MESSAGES_FG = "agent_memory_messages"
 MEMORY_CONVERSATIONS_FG = "agent_memory_conversations"
@@ -135,12 +137,13 @@ class Agent:
     @public
     def chat(
         self,
-        text: str,
+        text: str | None,
         *,
         conversation_id: str | None = None,
         subject: str | None = None,
         context: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        resume: dict[str, Any] | Sequence[dict[str, Any]] | None = None,
         timeout: float = 120.0,
     ) -> ChatReply:
         """Send the agent one message and get its reply.
@@ -153,20 +156,23 @@ class Agent:
             ```
 
         Parameters:
-            text: The user's message.
+            text: The user's message; `None` when `resume` answers a paused turn, which the agent replays.
             conversation_id: Thread this message onto an earlier reply's conversation, so the agent's own memory sees one conversation. A new conversation when omitted.
             subject: Who the end user is, for agents that keep per-user memory.
             context: Extra request context the agent reads.
             metadata: Extra request metadata the agent reads.
+            resume: Answers to the questions a paused turn asked (`reply.interrupts`): a mapping of interrupt id to the answer's payload, or AG-UI resume entries (`interrupt_id`, `status`, `payload`) to cancel one.
             timeout: Seconds to wait for the reply.
 
         Returns:
-            `ChatReply`: the reply, with its text, its conversation id and the trace id the agent recorded.
+            `ChatReply`: the reply, with its text, its conversation id and the trace id the agent recorded; `status` is `interrupted` when the agent paused to ask a person, with the questions in `interrupts`.
 
         Raises:
             `AgentServingError`: If the agent or the gateway refuses the request.
         """
         payload = _chat_payload(text, conversation_id, subject, context, metadata)
+        if resume:
+            payload["resume"] = _resume_entries(resume)
         body = self._http.agent_request(
             "POST",
             self._segments(self._endpoint("chat", DEFAULT_CHAT_PATH)),
@@ -178,21 +184,23 @@ class Agent:
     @public
     def chat_stream(
         self,
-        text: str,
+        text: str | None,
         *,
         conversation_id: str | None = None,
         subject: str | None = None,
         context: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        resume: dict[str, Any] | Sequence[dict[str, Any]] | None = None,
         timeout: float = 120.0,
     ) -> ChatStream:
         """Send the agent one message and read its reply as it is produced.
 
-        The stream is the protocol's server-sent events: text deltas, the steps
-        the agent reports while working (tool calls, retrievals, code runs) and
-        the completed reply. Iterating the stream yields the text deltas;
-        `events()` yields every frame; `reply` is the completed `ChatReply`,
-        reading the rest of the stream first if needed.
+        The message is sent as an AG-UI run, and the stream is its events: text
+        deltas, the tool calls and steps the agent reports while working, and
+        the completed reply.
+        Iterating the stream yields the text deltas; `events()` yields every
+        frame; `reply` is the completed `ChatReply`, reading the rest of the
+        stream first if needed.
 
         Example:
             ```python
@@ -207,11 +215,12 @@ class Agent:
             ```
 
         Parameters:
-            text: The user's message.
+            text: The user's message; `None` when `resume` answers a paused turn, which the agent replays.
             conversation_id: Thread this message onto an earlier reply's conversation.
             subject: Who the end user is, for agents that keep per-user memory.
             context: Extra request context the agent reads.
             metadata: Extra request metadata the agent reads.
+            resume: Answers to the questions a paused turn asked, as for `chat`.
             timeout: Seconds to wait for each piece of the reply.
 
         Returns:
@@ -220,10 +229,19 @@ class Agent:
         Raises:
             `AgentServingError`: If the gateway refuses the request, or, while reading, if the agent reports an error.
         """
-        payload = _chat_payload(text, conversation_id, subject, context, metadata)
+        payload = _run_payload(text, conversation_id, subject, context, metadata)
+        if resume:
+            payload["resume"] = [
+                {
+                    "interruptId": e["interrupt_id"],
+                    "status": e["status"],
+                    **({"payload": e["payload"]} if "payload" in e else {}),
+                }
+                for e in _resume_entries(resume)
+            ]
         lines = self._http.agent_request(
             "POST",
-            self._segments(self._endpoint("stream", DEFAULT_STREAM_PATH)),
+            self._segments(self._endpoint("run", DEFAULT_RUN_PATH)),
             json=payload,
             timeout=timeout,
             stream=True,
@@ -1159,6 +1177,96 @@ class Agent:
         job = self.review_job() or self._client.jobs.ensure_review_job(self.id)
         return self._client.jobs.analyse(job, **kwargs)
 
+    # ── sharing it ─────────────────────────────────────────────────────────
+
+    @public
+    def create_chat_app(self, name: str | None = None) -> App:
+        """Create a chat app for this agent and start it, or return the one it already has.
+
+        The chat app is a Hopsworks app that speaks AG-UI to the agent, for people who do not use Hopsworks.
+        Project members open it through their Hopsworks login, and turning on the app's public link shares it with anyone holding the link.
+        Each visitor is anonymous and gets their own memory, and no serving key reaches their browser.
+        It is deleted with the agent.
+
+        Example:
+            ```python
+            agent = project.get_agent_serving().get_agent("support")
+            app = agent.create_chat_app()
+            ```
+
+        Parameters:
+            name: The app's name; `<agent name>_chat` when omitted.
+
+        Returns:
+            `App`: the chat app.
+
+        Raises:
+            `AgentServingError`: If this deployment is not an agent, or the name is taken by another job or app.
+        """
+        body = self._http.post(
+            f"/serving/{self.id}/chatapp", json={"name": name} if name else {}
+        )
+        return self._app(str(body["name"]))
+
+    @public
+    def chat_app(self) -> App | None:
+        """The agent's chat app, or `None` when it has none.
+
+        Returns:
+            `App | None`: the chat app.
+        """
+        try:
+            body = self._http.get(f"/serving/{self.id}/chatapp")
+        except AgentServingError as err:
+            if err.status == 404:
+                return None
+            raise
+        return self._app(str(body["name"]))
+
+    @public
+    def customize_chat_app(self) -> App:
+        """Run the agent's chat app from a folder of the project, where its page and server can be changed.
+
+        The folder is `Resources/chat-apps/<app name>`.
+        On its next start, which this triggers, the app copies its template there (nothing already there is overwritten) and runs from it.
+        The template holds a `server.mjs`, a React page in `web/`, a `theme.css`, and an `AGENTS.md` for whoever changes it, coding agents in the Hopsworks terminal included.
+        The chat's core (who is chatting, whose conversations are whose, how the agent is reached) stays the image's `@hopsworks/agent-chat` package, so it keeps getting fixes.
+        Restart the app (`app.redeploy()`) to see a change; one that fails to load or build is logged and the default page is served instead.
+        Customizing an app that already is keeps its folder.
+
+        Example:
+            ```python
+            agent = project.get_agent_serving().get_agent("support")
+            app = agent.customize_chat_app()  # now edit Resources/chat-apps/support_chat
+            app.redeploy()  # after a change
+            ```
+
+        Returns:
+            `App`: the chat app.
+
+        Raises:
+            `AgentServingError`: If the agent has no chat app.
+        """
+        body = self._http.post(f"/serving/{self.id}/chatapp/customize", json={})
+        return self._app(str(body["name"]))
+
+    @public
+    def delete_chat_app(self) -> None:
+        """Delete the agent's chat app; nothing happens when it has none.
+
+        Raises:
+            `AgentServingError`: If the app could not be deleted; only a data owner may delete one.
+        """
+        self._http.delete(f"/serving/{self.id}/chatapp")
+
+    def _app(self, name: str) -> App:
+        from hopsworks_common.core import app_api  # noqa: PLC0415
+
+        found = app_api.AppApi().get_app(name)
+        if found is None:  # pragma: no cover - the app was just created or listed
+            raise AgentServingError(f"the chat app {name} vanished")
+        return found
+
 
 def _memory_feature_store(feature_store: Any) -> Any:
     if feature_store is not None:
@@ -1220,9 +1328,12 @@ def _chat_payload(
     context: dict[str, Any] | None,
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "message": {"role": "user", "content": [{"type": "text", "text": text}]}
-    }
+    payload: dict[str, Any] = {}
+    if text is not None:
+        payload["message"] = {
+            "role": "user",
+            "content": [{"type": "text", "text": text}],
+        }
     if conversation_id:
         payload["conversation_id"] = conversation_id
     if subject:
@@ -1234,15 +1345,69 @@ def _chat_payload(
     return payload
 
 
+def _resume_entries(
+    resume: dict[str, Any] | Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Answers to a paused turn as resume entries: a mapping is id to a resolved payload."""
+    if isinstance(resume, dict):
+        return [
+            {"interrupt_id": key, "status": "resolved", "payload": value}
+            for key, value in resume.items()
+        ]
+    entries = []
+    for entry in resume:
+        interrupt_id = entry.get("interrupt_id") or entry.get("interruptId")
+        item = {"interrupt_id": interrupt_id, "status": entry.get("status", "resolved")}
+        if "payload" in entry:
+            item["payload"] = entry["payload"]
+        entries.append(item)
+    return entries
+
+
+def _run_payload(
+    text: str,
+    conversation_id: str | None,
+    subject: str | None,
+    context: dict[str, Any] | None,
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """One message as an AG-UI ``RunAgentInput``.
+
+    Only the new message is sent: the agent keeps the conversation, and one with
+    no memory gets this message alone, as it would on ``/v1/chat``.
+    Hopsworks' own fields ride under ``forwardedProps.hopsworks``.
+    """
+    import uuid  # noqa: PLC0415
+
+    hopsworks: dict[str, Any] = {}
+    if subject:
+        hopsworks["subject"] = subject
+    if context:
+        hopsworks["context"] = context
+    if metadata:
+        hopsworks["metadata"] = metadata
+    return {
+        "threadId": conversation_id or "",
+        "runId": f"run_{uuid.uuid4().hex}",
+        "messages": []
+        if text is None
+        else [{"id": f"msg_{uuid.uuid4().hex}", "role": "user", "content": text}],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {"hopsworks": hopsworks} if hopsworks else {},
+    }
+
+
 # ── streaming ──────────────────────────────────────────────────────────────
 
 
 @dataclass
 class StreamFrame:
-    """One server-sent event of a streamed reply.
+    """One frame of a streamed reply, read from the run's AG-UI events.
 
-    ``type`` is ``delta`` (a piece of text, in ``text``), ``tool`` (a step the
-    agent reported, in ``tool``) or ``completed`` (the whole reply, in ``reply``).
+    ``type`` is ``delta`` (a piece of text, in ``text``), ``tool`` (a tool call
+    or a step the agent reported, in ``tool``) or ``completed`` (the whole reply,
+    in ``reply``). ``raw`` is the AG-UI event it was read from.
     """
 
     type: str
@@ -1317,38 +1482,151 @@ class ChatStream:
         return self._completed
 
     def _parse(self, lines: Iterable[str]) -> Iterator[StreamFrame]:
-        for event, data in _sse_events(lines):
+        thread_id = ""
+        trace_id: str | None = None
+        media: list[dict[str, Any]] = []
+        calls: dict[str, dict[str, Any]] = {}
+        for _, data in _sse_events(lines):
             try:
-                body = json.loads(data) if data else {}
+                event = json.loads(data) if data else {}
             except ValueError:
                 continue
-            if event == "message.delta":
-                delta = (
-                    (body.get("delta") or {}).get("text")
-                    if isinstance(body, dict)
-                    else None
-                )
+            if not isinstance(event, dict):
+                continue
+            kind = event.get("type")
+            hopsworks = _hopsworks_of(event.get("metadata"))
+            if kind == "RUN_STARTED":
+                thread_id = str(event.get("threadId") or "")
+                trace_id = hopsworks.get("trace_id") or trace_id
+            elif kind == "TEXT_MESSAGE_CONTENT":
+                delta = event.get("delta")
                 if isinstance(delta, str) and delta:
                     self._chunks.append(delta)
-                    yield StreamFrame("delta", text=delta, raw=body)
-            elif event == "tool_event":
-                if isinstance(body, dict) and body.get("name"):
-                    tool = ToolEvent.from_api(body)
-                    self._tool_events.append(tool)
-                    yield StreamFrame("tool", tool=tool, raw=body)
-            elif event == "message.completed":
-                self._completed = ChatReply.from_api(
-                    body if isinstance(body, dict) else {}
+                    yield StreamFrame("delta", text=delta, raw=event)
+            elif kind == "TOOL_CALL_START":
+                call_id = str(event.get("toolCallId") or "")
+                calls[call_id] = {
+                    "id": call_id,
+                    "name": event.get("toolCallName") or "tool",
+                    "status": "running",
+                }
+                yield self._tool_frame(dict(calls[call_id]), event)
+            elif kind == "TOOL_CALL_ARGS":
+                call = calls.get(str(event.get("toolCallId") or ""))
+                if call is not None:
+                    data_ = call.setdefault("data", {})
+                    data_["args"] = data_.get("args", "") + str(
+                        event.get("delta") or ""
+                    )
+            elif kind == "TOOL_CALL_RESULT":
+                call = calls.get(str(event.get("toolCallId") or ""))
+                if call is None:
+                    continue
+                failed = _hopsworks_of(event.get("metadata")).get("status") == "failed"
+                call["status"] = "failed" if failed else "done"
+                content = event.get("content")
+                if failed:
+                    call["message"] = content
+                else:
+                    call.setdefault("data", {})["result"] = content
+                yield self._tool_frame(dict(call), event)
+            elif kind in ("STEP_STARTED", "STEP_FINISHED"):
+                step = {
+                    "name": event.get("stepName") or "step",
+                    "status": hopsworks.get("status")
+                    or ("running" if kind == "STEP_STARTED" else "done"),
+                }
+                for key in ("id", "message", "data"):
+                    if hopsworks.get(key) is not None:
+                        step[key] = hopsworks[key]
+                yield self._tool_frame(step, event)
+            elif kind == "CUSTOM" and event.get("name") == "hopsworks.media":
+                if isinstance(event.get("value"), dict):
+                    media.append(event["value"])
+            elif kind == "RUN_FINISHED":
+                outcome = event.get("outcome") or {}
+                result = _hopsworks_of(event.get("result"))
+                if isinstance(result.get("text"), str):
+                    # the agent's final text rewrote the streamed draft
+                    self._chunks = [result["text"]]
+                metadata = dict(result.get("metadata") or {})
+                metadata["trace_id"] = result.get("trace_id") or trace_id
+                for key in ("subject", "subject_source"):
+                    if result.get(key) is not None:
+                        metadata[key] = result[key]
+                metadata["tool_events"] = [t.raw for t in self._tool_events]
+                self._completed = ChatReply(
+                    id=str(result.get("response_id") or ""),
+                    conversation_id=str(event.get("threadId") or thread_id),
+                    message={
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": self.text},
+                            *media,
+                        ],
+                    },
+                    citations=list(result.get("citations") or []),
+                    usage=_usage_of(event.get("usage")),
+                    metadata=metadata,
+                    status="interrupted"
+                    if outcome.get("type") == "interrupt"
+                    else "completed",
+                    interrupts=[
+                        _interrupt_of(q) for q in outcome.get("interrupts") or []
+                    ],
                 )
                 yield StreamFrame(
                     "completed",
                     text=self._completed.text,
                     reply=self._completed,
-                    raw=body,
+                    raw=event,
                 )
-            elif event == "error":
-                message = body.get("message") if isinstance(body, dict) else None
-                raise AgentServingError(str(message or "the agent returned an error"))
+            elif kind == "RUN_ERROR":
+                raise AgentServingError(
+                    str(event.get("message") or "the agent returned an error"),
+                    int(hopsworks.get("status") or 0),
+                    code=str(event.get("code") or ""),
+                    retryable=bool(hopsworks.get("retryable")),
+                )
+
+    def _tool_frame(self, body: dict[str, Any], event: dict[str, Any]) -> StreamFrame:
+        tool = ToolEvent.from_api(body)
+        self._tool_events.append(tool)
+        return StreamFrame("tool", tool=tool, raw=event)
+
+
+def _hopsworks_of(value: Any) -> dict[str, Any]:
+    """What Hopsworks put under ``hopsworks`` in an AG-UI event's metadata or result."""
+    if isinstance(value, dict) and isinstance(value.get("hopsworks"), dict):
+        return value["hopsworks"]
+    return {}
+
+
+def _interrupt_of(question: dict[str, Any]) -> dict[str, Any]:
+    """An AG-UI interrupt with the field names the JSON route uses."""
+    names = {
+        "toolCallId": "tool_call_id",
+        "responseSchema": "response_schema",
+        "expiresAt": "expires_at",
+    }
+    return {names.get(k, k): v for k, v in question.items()}
+
+
+def _usage_of(usage: Any) -> dict[str, int] | None:
+    """AG-UI's per-model token counts, summed into the reply's ``usage``."""
+    if not isinstance(usage, list):
+        return None
+    totals: dict[str, int] = {}
+    for entry in usage:
+        if not isinstance(entry, dict):
+            continue
+        for wire, key in (
+            ("inputTokens", "input_tokens"),
+            ("outputTokens", "output_tokens"),
+        ):
+            if isinstance(entry.get(wire), int):
+                totals[key] = totals.get(key, 0) + entry[wire]
+    return totals or None
 
 
 def _sse_events(lines: Iterable[str]) -> Iterator[tuple[str, str]]:

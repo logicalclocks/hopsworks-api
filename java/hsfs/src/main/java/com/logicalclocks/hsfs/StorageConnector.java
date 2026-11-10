@@ -483,11 +483,6 @@ public abstract class StorageConnector {
         config.put(Constants.KAFKA_SSL_KEY_PASSWORD, sslKeyPassword);
       }
 
-      if (externalKafka) {
-        LOGGER.info("Getting connection details to externally managed Kafka cluster. "
-            + "Make sure that the topic being used exists.");
-      }
-
       return config;
     }
 

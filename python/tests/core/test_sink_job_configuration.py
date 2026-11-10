@@ -353,3 +353,89 @@ class TestTableIngestionTargetRoundTrip:
             target.to_dict()
         )
         assert restored.to_dict()["endpointConfig"] == {"relativeUrl": "v1/events"}
+
+
+class TestFileColumns:
+    def test_absent_unless_set(self):
+        config = sink_job_configuration.SinkJobConfiguration()
+        assert "fileColumns" not in config.to_dict()
+
+    def test_names_get_their_default_features(self):
+        config = sink_job_configuration.SinkJobConfiguration(
+            write_mode="MERGE",
+            file_columns=[
+                "Body",
+                {"source_column": "Scan", "path_feature": "scan_path"},
+                {"sourceColumn": "Thumb", "pathFeature": "t", "sizeFeature": "t_bytes"},
+            ],
+            files_directory="Resources/erp/docs",
+        )
+        assert config.to_dict()["fileColumns"] == {
+            "directory": "Resources/erp/docs",
+            "columns": [
+                {
+                    "sourceColumn": "Body",
+                    "pathFeature": "body",
+                    "sizeFeature": "body_size",
+                },
+                {
+                    "sourceColumn": "Scan",
+                    "pathFeature": "scan_path",
+                    "sizeFeature": "scan_path_size",
+                },
+                {"sourceColumn": "Thumb", "pathFeature": "t", "sizeFeature": "t_bytes"},
+            ],
+        }
+
+    def test_a_directory_alone_asks_for_the_filestream_columns(self):
+        config = sink_job_configuration.SinkJobConfiguration(
+            files_directory="Resources/docs"
+        )
+        assert config.to_dict()["fileColumns"] == {
+            "directory": "Resources/docs",
+            "columns": [],
+        }
+
+    def test_an_entry_without_a_source_column_is_refused(self):
+        config = sink_job_configuration.SinkJobConfiguration(
+            file_columns=[{"path_feature": "x"}]
+        )
+        with pytest.raises(ValueError, match="source_column"):
+            config.to_dict()
+
+    def test_round_trip(self):
+        response = {
+            "fileColumns": {
+                "directory": "Resources/erp/docs",
+                "columns": [
+                    {
+                        "sourceColumn": "Body",
+                        "pathFeature": "body",
+                        "sizeFeature": "body_size",
+                    }
+                ],
+            }
+        }
+        config = sink_job_configuration.SinkJobConfiguration.from_response_json(
+            response
+        )
+        assert config.files_directory == "Resources/erp/docs"
+        assert config.to_dict()["fileColumns"] == response["fileColumns"]
+
+    def test_per_target(self):
+        target = sink_job_configuration.TableIngestionTarget(
+            feature_group_id=3, file_columns=["Body"], files_directory="Resources/a"
+        )
+        assert (
+            target.to_dict()["fileColumns"]["columns"][0]["sizeFeature"] == "body_size"
+        )
+        assert (
+            "fileColumns"
+            not in sink_job_configuration.TableIngestionTarget(
+                feature_group_id=3
+            ).to_dict()
+        )
+        again = sink_job_configuration.TableIngestionTarget.from_response_json(
+            target.to_dict()
+        )
+        assert again.to_dict()["fileColumns"] == target.to_dict()["fileColumns"]

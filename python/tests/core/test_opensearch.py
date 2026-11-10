@@ -19,7 +19,13 @@ import pytest
 from hopsworks_common.core.opensearch import ProjectOpenSearchClient
 from hsfs.client.exceptions import VectorDatabaseException
 from hsfs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
-from opensearchpy.exceptions import RequestError
+from opensearchpy.exceptions import (
+    AuthenticationException,
+    AuthorizationException,
+    ConnectionError,
+    NotFoundError,
+    RequestError,
+)
 
 
 class TestOpenSearchClientSingleton:
@@ -120,6 +126,59 @@ class TestOpenSearchClientSingleton:
         assert e.value.info == {
             VectorDatabaseException.REQUESTED_K_TOO_LARGE_INFO_K: 10000
         }
+
+    @pytest.mark.parametrize(
+        "first_error",
+        [
+            AuthenticationException(401, "security_exception", {}),
+            ConnectionError("N/A", "connection refused", None),
+        ],
+        ids=["expired_token", "closed_connection"],
+    )
+    def test_search_converts_request_error_after_refresh(self, mocker, first_error):
+        error = {
+            "type": "illegal_argument_exception",
+            "reason": "[knn] requires k to be in the range (0, 10000]",
+        }
+        opensearch_client = MagicMock()
+        opensearch_client.search.side_effect = [
+            first_error,
+            RequestError(400, error["type"], {"error": error, "status": 400}),
+        ]
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client, is_cluster_client=False
+        )
+        mock_refresh = mocker.patch.object(target, "_refresh_opensearch_connection")
+
+        with pytest.raises(VectorDatabaseException) as e:
+            target._search(index="index", body={})
+
+        mock_refresh.assert_called_once()
+        assert e.value.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
+        assert isinstance(e.value.__cause__, RequestError)
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            AuthorizationException(403, "security_exception", {}),
+            NotFoundError(404, "index_not_found_exception", {}),
+        ],
+        ids=["refused", "missing"],
+    )
+    def test_field_mapping_unreadable_keeps_federated_client(self, mocker, error):
+        opensearch_client = MagicMock()
+        opensearch_client.indices.get_field_mapping.side_effect = error
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client,
+            feature_store_id=99,
+            is_cluster_client=False,
+        )
+        invalidate = mocker.patch.object(OpenSearchClientSingleton, "_invalidate_cache")
+
+        assert target._get_field_mapping(index="index", field="f2") is None
+
+        invalidate.assert_not_called()
+        opensearch_client.close.assert_not_called()
 
     @pytest.fixture(autouse=True)
     def reset_singleton(self):

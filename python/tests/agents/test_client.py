@@ -347,3 +347,115 @@ class TestWhereTheAgentIs:
             agent_url="https://elsewhere/agent/",
         )
         assert client._base_url() == "https://elsewhere/agent"
+
+
+class SequenceSession(FakeSession):
+    """Answers each post with the next reply, the last one forever."""
+
+    def __init__(self, *replies):
+        super().__init__()
+        self._replies = list(replies)
+
+    def post(self, url, **kwargs):
+        self.posted.append({"url": url, **kwargs})
+        return self._replies.pop(0) if len(self._replies) > 1 else self._replies[0]
+
+
+class TestATrialThatPausesToAskAPerson:
+    """A trial has nobody to ask: the run answers a paused turn on its behalf."""
+
+    PAUSED = {
+        "conversation_id": "c1",
+        "status": "interrupted",
+        "message": {"role": "assistant", "content": []},
+        "interrupts": [{"id": "refund-42", "reason": "confirmation"}],
+    }
+
+    def test_an_unanswered_question_is_cancelled_and_the_turn_finishes(self):
+        session = SequenceSession(FakeResponse(self.PAUSED), FakeResponse(REPLY))
+        result = client(session)._send_prompt(
+            "refund order 42", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert result.text == "4" and result.error == ""
+        assert result.interrupts == [{"id": "refund-42", "reason": "confirmation"}]
+        resume = session.posted[1]
+        assert resume["json"] == {
+            "conversation_id": "c1",
+            "resume": [{"interrupt_id": "refund-42", "status": "cancelled"}],
+        }
+        # one trial, one trace: the answer goes on the pause's trace
+        assert resume["headers"]["traceparent"] == "t"
+
+    def test_the_tasks_context_answers_by_question_id(self):
+        session = SequenceSession(FakeResponse(self.PAUSED), FakeResponse(REPLY))
+        client(session)._send_prompt(
+            "refund order 42",
+            traceparent="t",
+            baggage="b",
+            timeout_s=10,
+            context={"interrupt_answers": {"refund-42": {"approved": True}}},
+        )
+        assert session.posted[1]["json"]["resume"] == [
+            {
+                "interrupt_id": "refund-42",
+                "status": "resolved",
+                "payload": {"approved": True},
+            }
+        ]
+
+    def test_an_agent_that_breaks_on_the_answer_is_graded_as_breaking(self):
+        # a 5xx on the resumed turn is the agent failing, not the infrastructure:
+        # without its status the runner set the trial aside and it was not graded
+        session = SequenceSession(
+            FakeResponse(self.PAUSED),
+            FakeResponse(status_code=500, text="Traceback: KeyError 'approved'"),
+        )
+        result = client(session)._send_prompt(
+            "q", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert result.status_code == 500
+        assert "500" in result.error and "KeyError" in result.error
+        assert result.interrupts == [{"id": "refund-42", "reason": "confirmation"}]
+
+    def test_an_answer_that_cannot_be_delivered_is_the_trials_error(self):
+        class Unreachable(SequenceSession):
+            def post(self, url, **kwargs):
+                if self.posted:
+                    raise ConnectionError("connection reset")
+                return super().post(url, **kwargs)
+
+        result = client(Unreachable(FakeResponse(self.PAUSED)))._send_prompt(
+            "q", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert "connection reset" in result.error and result.status_code == 0
+
+    def test_an_agent_that_keeps_asking_is_graded_as_failing_the_trial(self):
+        # every pause answers 200, so without the client's finding the runner
+        # filed the exhausted limit as INFRA_ERROR and left it out of the score
+        # FastAPI is the agents extra's: the CI jobs without optional dependencies skip this
+        TestClient = pytest.importorskip("fastapi.testclient").TestClient
+        from hopsworks_agents.eval.runner import TrialStatus, _classify  # noqa: PLC0415
+        from hopsworks_agents.protocol import AgentApp  # noqa: PLC0415
+
+        app = AgentApp(tracing=False)
+        asked = [0]
+
+        @app.chat
+        async def chat(request, ctx):
+            asked[0] += 1
+            ctx.interrupt("One more thing?", key=f"q-{asked[0]}")
+            return "never"
+
+        result = client(TestClient(app))._send_prompt(
+            "q", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert "kept asking" in result.error and result.status_code == 200
+        assert result.agent_at_fault
+        assert _classify(result, None) is TrialStatus.AGENT_ERROR
+
+    def test_an_agent_that_never_stops_asking_fails_the_trial(self):
+        session = SequenceSession(FakeResponse(self.PAUSED))
+        result = client(session)._send_prompt(
+            "q", traceparent="t", baggage="b", timeout_s=10
+        )
+        assert "kept asking" in result.error

@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import socket
 
 from hopsworks_common.client.exceptions import ModelRegistryException
@@ -29,8 +31,11 @@ class ModelServingApi:
         self._dataset_api = dataset_api.DatasetApi()
         self._serving_api = serving_api.ServingApi()
 
-    def _get(self) -> ModelServing:
+    def _get(self, project_namespace: str | None = None) -> ModelServing:
         """Get model serving for specific project.
+
+        Parameters:
+            project_namespace: Kubernetes namespace of the project.
 
         Returns:
             the model serving metadata
@@ -43,7 +48,11 @@ class ModelServingApi:
                 f"No Models dataset exists in project {_client._project_name}, Please enable the Serving service or create the dataset manually."
             )
 
-        return ModelServing(_client._project_name, _client._project_id)
+        return ModelServing(
+            _client._project_name,
+            _client._project_id,
+            project_namespace=project_namespace,
+        )
 
     def _load_default_configuration(self):
         """Load default configuration and set istio client for model serving."""

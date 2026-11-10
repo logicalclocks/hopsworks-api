@@ -57,10 +57,20 @@ class TestWritingTrialsAsTheyFinish:
             self.features = []
 
         def insert(self, frame, storage=None, write_options=None):  # noqa: ARG002
-            # Online only, or the write starts a Spark materialization job per
-            # insert against the nodes the agent is running on.
-            assert storage == "online", f"not an online-only write: storage={storage!r}"
-            self.frames.append(frame)
+            # Through the project's Kafka topic, which only a data owner may
+            # produce to: an evaluation a data scientist ran failed writing.
+            raise AssertionError("written through the feature group, not over SQL")
+
+    @pytest.fixture(autouse=True)
+    def _online_writes(self, monkeypatch):
+        """What the job writes over SQL, kept on the group it was written to."""
+        from hopsworks_agents.eval import online_tables
+
+        def write(feature_store, group, frame):  # noqa: ARG001
+            group.frames.append(frame)
+            return len(frame)
+
+        monkeypatch.setattr(online_tables, "_write_online", write)
 
     class FakeStore:
         def __init__(self):

@@ -22,10 +22,16 @@ from .runner import _AGENT_REPORTED_FAILURE, AgentResponse
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    import requests
+
     from .evaluators import Trace
 
 
 log = logging.getLogger(__name__)
+
+
+# How many times one turn of a trial may pause before the run gives up on it.
+_MAX_RESUMES = 5
 
 
 class HopsworksAgentClient:
@@ -168,8 +174,8 @@ class HopsworksAgentClient:
                 text="", latency_ms=(time.monotonic() - started) * 1000, error=str(err)
             )
 
-        latency_ms = (time.monotonic() - started) * 1000
         if response.status_code >= 400:
+            latency_ms = (time.monotonic() - started) * 1000
             return AgentResponse(
                 text="",
                 latency_ms=latency_ms,
@@ -178,12 +184,67 @@ class HopsworksAgentClient:
             )
 
         body = response.json()
+        asked: list[dict] = []
+        for _ in range(_MAX_RESUMES):
+            if body.get("status") != "interrupted":
+                break
+            # A trial has nobody to ask, so the run answers for them: what the
+            # task's context says to answer, by question id, and a refusal to
+            # answer for the rest. A question left open would be a trial that
+            # never ends; a cancelled one is a turn the agent has to finish
+            # without the answer, which is itself worth grading.
+            questions = body.get("interrupts") or []
+            asked.extend(questions)
+            try:
+                response = self._resume(
+                    questions,
+                    (context or {}).get("interrupt_answers") or {},
+                    conversation_id=body.get("conversation_id") or conversation_id,
+                    traceparent=traceparent,
+                    baggage=baggage,
+                    timeout_s=timeout_s,
+                )
+            except Exception as err:  # noqa: BLE001 — classified by the runner
+                return AgentResponse(
+                    text="",
+                    latency_ms=(time.monotonic() - started) * 1000,
+                    error=str(err),
+                    interrupts=asked,
+                )
+            # A resumed turn that fails is the agent failing, as the first
+            # request's would be: its status goes to the runner, which grades a
+            # 5xx as the agent breaking rather than setting it aside as an
+            # infrastructure error.
+            if response.status_code >= 400:
+                return AgentResponse(
+                    text="",
+                    latency_ms=(time.monotonic() - started) * 1000,
+                    error=(
+                        "the agent paused to ask a person, and the answer got "
+                        f"{response.status_code}: {response.text[:200]}"
+                    ),
+                    status_code=response.status_code,
+                    interrupts=asked,
+                )
+            body = response.json()
+        latency_ms = (time.monotonic() - started) * 1000
         text = "".join(
             part.get("text", "")
             for part in (body.get("message") or {}).get("content", [])
             if part.get("type") == "text"
         )
         metadata = body.get("metadata") or {}
+        if body.get("status") == "interrupted":
+            return AgentResponse(
+                text=text,
+                latency_ms=latency_ms,
+                error=f"the agent kept asking: {_MAX_RESUMES} questions in one turn",
+                status_code=response.status_code,
+                interrupts=asked,
+                # each pause answered 200: the limit is the agent's doing, and a
+                # trial it never finishes is a failed one, not one to set aside
+                agent_at_fault=True,
+            )
         return AgentResponse(
             text=text,
             # The SDK reports the trace id it actually used. The runner already
@@ -194,6 +255,39 @@ class HopsworksAgentClient:
             latency_ms=latency_ms,
             error=("" if body.get("status") != "failed" else _AGENT_REPORTED_FAILURE),
             status_code=response.status_code,
+            interrupts=asked,
+        )
+
+    def _resume(
+        self,
+        questions: list[dict],
+        answers: dict,
+        *,
+        conversation_id: str | None,
+        traceparent: str,
+        baggage: str,
+        timeout_s: float,
+    ) -> requests.Response:
+        """Answer a paused turn on the trial's behalf; the agent's response, whatever its status."""
+        resume = []
+        for question in questions:
+            interrupt_id = question.get("id")
+            if interrupt_id in answers:
+                resume.append(
+                    {
+                        "interrupt_id": interrupt_id,
+                        "status": "resolved",
+                        "payload": answers[interrupt_id],
+                    }
+                )
+            else:
+                resume.append({"interrupt_id": interrupt_id, "status": "cancelled"})
+        return self._session.post(
+            f"{self._base_url()}{self._chat_path}",
+            json={"conversation_id": conversation_id, "resume": resume},
+            # the same trace: the pause and the answer are one trial
+            headers={"traceparent": traceparent, "baggage": baggage},
+            timeout=timeout_s,
         )
 
     # ── the trace ───────────────────────────────────────────────────────────
@@ -212,126 +306,131 @@ class HopsworksAgentClient:
         if response.status_code == 404:
             return None
         response.raise_for_status()
-        trace = response.json()
+        return _assemble_trace(trace_id, response.json())
 
-        spans = trace.get("spans") or []
-        if not spans:
-            return None
-        attributes = trace.get("spanAttributes") or []
 
-        by_span: dict[str, dict[str, str]] = {}
-        for attribute in attributes:
-            span_id, key = attribute.get("spanId"), attribute.get("attrKey")
-            if span_id and key:
-                by_span.setdefault(span_id, {})[key] = attribute.get("attrValue") or ""
+def _assemble_trace(trace_id: str, trace: dict[str, Any]) -> Trace | None:
+    """The API's trace document as the dict every evaluator reads.
 
-        def first(attrs: dict[str, str], keys: Sequence[str]) -> str:
-            for key in keys:
-                if attrs.get(key):
-                    return attrs[key]
-            return ""
+    A module function rather than a method so a check tried on a laptop with
+    ``run_check(trace=agent.trace(...))`` sees exactly the shape the job hands it.
+    """
+    spans = trace.get("spans") or []
+    if not spans:
+        return None
+    attributes = trace.get("spanAttributes") or []
 
-        def span_kind(attrs: dict[str, str]) -> str:
-            kind = attrs.get(conventions.SPAN_KIND, "").upper()
-            if kind:
-                return kind
-            operation = attrs.get(conventions.GEN_AI_OPERATION_NAME, "").lower()
-            return {
-                conventions.OPERATION_CHAT: conventions.SPAN_KIND_LLM,
-                conventions.OPERATION_EXECUTE_TOOL: conventions.SPAN_KIND_TOOL,
-                conventions.OPERATION_INVOKE_AGENT: conventions.SPAN_KIND_AGENT,
-            }.get(operation, "")
+    by_span: dict[str, dict[str, str]] = {}
+    for attribute in attributes:
+        span_id, key = attribute.get("spanId"), attribute.get("attrKey")
+        if span_id and key:
+            by_span.setdefault(span_id, {})[key] = attribute.get("attrValue") or ""
 
-        def token_count(attrs: dict[str, str], keys: Sequence[str]) -> int:
-            for key in keys:
-                raw = attrs.get(key)
-                if raw is None or raw == "":
-                    continue
+    def first(attrs: dict[str, str], keys: Sequence[str]) -> str:
+        for key in keys:
+            if attrs.get(key):
+                return attrs[key]
+        return ""
+
+    def span_kind(attrs: dict[str, str]) -> str:
+        kind = attrs.get(conventions.SPAN_KIND, "").upper()
+        if kind:
+            return kind
+        operation = attrs.get(conventions.GEN_AI_OPERATION_NAME, "").lower()
+        return {
+            conventions.OPERATION_CHAT: conventions.SPAN_KIND_LLM,
+            conventions.OPERATION_EXECUTE_TOOL: conventions.SPAN_KIND_TOOL,
+            conventions.OPERATION_INVOKE_AGENT: conventions.SPAN_KIND_AGENT,
+        }.get(operation, "")
+
+    def token_count(attrs: dict[str, str], keys: Sequence[str]) -> int:
+        for key in keys:
+            raw = attrs.get(key)
+            if raw is None or raw == "":
+                continue
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
                 try:
-                    return int(raw)
+                    return round(float(raw))
                 except (TypeError, ValueError):
-                    try:
-                        return round(float(raw))
-                    except (TypeError, ValueError):
-                        continue
-            return 0
+                    continue
+        return 0
 
-        tool_spans = sorted(
-            (
-                s
-                for s in spans
-                if span_kind(by_span.get(s.get("spanId"), {}))
-                == conventions.SPAN_KIND_TOOL
-            ),
-            key=lambda s: s.get("startTimeNs") or 0,
-        )
-
-        token_spans = [
+    tool_spans = sorted(
+        (
             s
             for s in spans
-            if span_kind(by_span.get(s.get("spanId"), {})) == conventions.SPAN_KIND_LLM
-            or (
-                span_kind(by_span.get(s.get("spanId"), {}))
-                == conventions.SPAN_KIND_AGENT
-                and (
-                    token_count(
-                        by_span.get(s.get("spanId"), {}),
-                        conventions.INPUT_TOKEN_KEYS,
-                    )
-                    or token_count(
-                        by_span.get(s.get("spanId"), {}),
-                        conventions.OUTPUT_TOKEN_KEYS,
-                    )
+            if span_kind(by_span.get(s.get("spanId"), {})) == conventions.SPAN_KIND_TOOL
+        ),
+        key=lambda s: s.get("startTimeNs") or 0,
+    )
+
+    token_spans = [
+        s
+        for s in spans
+        if span_kind(by_span.get(s.get("spanId"), {})) == conventions.SPAN_KIND_LLM
+        or (
+            span_kind(by_span.get(s.get("spanId"), {})) == conventions.SPAN_KIND_AGENT
+            and (
+                token_count(
+                    by_span.get(s.get("spanId"), {}),
+                    conventions.INPUT_TOKEN_KEYS,
+                )
+                or token_count(
+                    by_span.get(s.get("spanId"), {}),
+                    conventions.OUTPUT_TOKEN_KEYS,
                 )
             )
-        ]
+        )
+    ]
 
-        def tokens(keys: Sequence[str]) -> int:
-            return sum(
-                token_count(by_span.get(span.get("spanId"), {}), keys)
-                for span in token_spans
-            )
+    def tokens(keys: Sequence[str]) -> int:
+        return sum(
+            token_count(by_span.get(span.get("spanId"), {}), keys)
+            for span in token_spans
+        )
 
-        tool_calls = []
-        for span in tool_spans:
-            attrs = by_span.get(span.get("spanId"), {})
-            start = span.get("startTimeNs") or 0
-            end = span.get("endTimeNs") or 0
-            tool_calls.append(
-                {
-                    "span_id": span.get("spanId") or "",
-                    "parent_span_id": span.get("parentSpanId") or "",
-                    "name": first(
-                        attrs, (conventions.TOOL_NAME, conventions.GEN_AI_TOOL_NAME)
-                    )
-                    or span.get("name")
-                    or "",
-                    "call_id": attrs.get(conventions.GEN_AI_TOOL_CALL_ID, ""),
-                    "arguments": first(attrs, conventions.TOOL_ARGUMENT_KEYS),
-                    "result": first(attrs, conventions.TOOL_RESULT_KEYS),
-                    "status": str(span.get("statusCode") or ""),
-                    # None rather than 0 when a span is missing an end time: a tool
-                    # that "took 0ms" and one that was never closed are different
-                    # facts, and a latency budget must not pass on the second.
-                    "duration_ms": (end - start) / 1e6 if end and start else None,
-                    "start_time_ns": start,
-                }
-            )
+    tool_calls = []
+    for span in tool_spans:
+        attrs = by_span.get(span.get("spanId"), {})
+        start = span.get("startTimeNs") or 0
+        end = span.get("endTimeNs") or 0
+        tool_calls.append(
+            {
+                "span_id": span.get("spanId") or "",
+                "parent_span_id": span.get("parentSpanId") or "",
+                "name": first(
+                    attrs, (conventions.TOOL_NAME, conventions.GEN_AI_TOOL_NAME)
+                )
+                or span.get("name")
+                or "",
+                "call_id": attrs.get(conventions.GEN_AI_TOOL_CALL_ID, ""),
+                "arguments": first(attrs, conventions.TOOL_ARGUMENT_KEYS),
+                "result": first(attrs, conventions.TOOL_RESULT_KEYS),
+                "status": str(span.get("statusCode") or ""),
+                # None rather than 0 when a span is missing an end time: a tool
+                # that "took 0ms" and one that was never closed are different
+                # facts, and a latency budget must not pass on the second.
+                "duration_ms": (end - start) / 1e6 if end and start else None,
+                "start_time_ns": start,
+            }
+        )
 
-        return {
-            "trace_id": trace_id,
-            "root_span_id": next(
-                (s.get("spanId") for s in spans if not s.get("parentSpanId")), ""
-            ),
-            # The full ordered sequence, repeats included. `agent_trace_features`
-            # stores distinct names instead, which is why retry and
-            # unnecessary-call analysis reads tool_calls and not that row.
-            "tool_names": [call["name"] for call in tool_calls],
-            "tool_calls": tool_calls,
-            "tool_error_count": sum(
-                1 for call in tool_calls if call["status"].endswith("ERROR")
-            ),
-            "span_count": len(spans),
-            "input_tokens": tokens(conventions.INPUT_TOKEN_KEYS),
-            "output_tokens": tokens(conventions.OUTPUT_TOKEN_KEYS),
-        }
+    return {
+        "trace_id": trace_id,
+        "root_span_id": next(
+            (s.get("spanId") for s in spans if not s.get("parentSpanId")), ""
+        ),
+        # The full ordered sequence, repeats included. `agent_trace_features`
+        # stores distinct names instead, which is why retry and
+        # unnecessary-call analysis reads tool_calls and not that row.
+        "tool_names": [call["name"] for call in tool_calls],
+        "tool_calls": tool_calls,
+        "tool_error_count": sum(
+            1 for call in tool_calls if call["status"].endswith("ERROR")
+        ),
+        "span_count": len(spans),
+        "input_tokens": tokens(conventions.INPUT_TOKEN_KEYS),
+        "output_tokens": tokens(conventions.OUTPUT_TOKEN_KEYS),
+    }

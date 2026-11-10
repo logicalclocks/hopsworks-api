@@ -40,7 +40,12 @@ from hopsworks_agents.eval.runner import (
 )
 
 
-CAPABLE = {"capabilities": {"trace_correlation": True, "eval_mode": True}}
+def declares(**capabilities):
+    """A manifest declaring these to Hopsworks, where an AG-UI manifest keeps them."""
+    return {"capabilities": {"custom": {"hopsworks": capabilities}}}
+
+
+CAPABLE = declares(trace_correlation=True, eval_mode=True)
 
 
 class FakeClient:
@@ -165,20 +170,18 @@ class TestRefusals:
         # an SDK too old to continue the traceparent: every trial row would
         # point at a trace that was never created
         with pytest.raises(SuiteRefused, match="trace_correlation"):
-            _check_deployment_supports(suite(), {"capabilities": {}})
+            _check_deployment_supports(suite(), declares())
 
     def test_refuses_when_tracing_is_disabled(self):
         with pytest.raises(SuiteRefused, match="tracing is disabled"):
-            _check_deployment_supports(
-                suite(), {"capabilities": {"trace_correlation": False}}
-            )
+            _check_deployment_supports(suite(), declares(trace_correlation=False))
 
     def test_refuses_a_sandboxed_suite_against_a_live_deployment(self):
         # the tools can still reach production systems
         with pytest.raises(SuiteRefused, match="eval_mode"):
             _check_deployment_supports(
                 suite(execution_mode=ExecutionMode.SANDBOXED),
-                {"capabilities": {"trace_correlation": True, "eval_mode": False}},
+                declares(trace_correlation=True, eval_mode=False),
             )
 
     def test_allows_a_sandboxed_suite_against_an_eval_mode_deployment(self):
@@ -192,13 +195,7 @@ class TestRefusals:
         # suite can share one deployment
         _check_deployment_supports(
             suite(execution_mode=ExecutionMode.SANDBOXED),
-            {
-                "capabilities": {
-                    "trace_correlation": True,
-                    "eval_mode": False,
-                    "eval_per_request": True,
-                }
-            },
+            declares(trace_correlation=True, eval_mode=False, eval_per_request=True),
         )
 
     def test_refuses_a_safety_suite_that_is_not_sandboxed(self):

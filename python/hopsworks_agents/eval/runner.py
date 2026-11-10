@@ -67,6 +67,13 @@ class AgentResponse:
     #: rather than a judgement: `_classify` decides what it means, so the two
     #: live in one place next to the enum.
     status_code: int = 0
+    #: What the agent paused to ask during the turn, and the run answered on the
+    #: trial's behalf (the task context's `interrupt_answers`, else cancelled).
+    interrupts: list[dict[str, Any]] = field(default_factory=list)
+    #: The client's finding that the agent itself failed the turn although it
+    #: answered 200, as when it kept asking past the number of questions a
+    #: trial answers. Graded like a crash rather than set aside.
+    agent_at_fault: bool = False
 
 
 class AgentClient(Protocol):
@@ -143,6 +150,17 @@ class RunResult:
     error_message: str = ""
 
 
+def _hopsworks_capabilities(manifest: dict[str, Any]) -> dict[str, Any]:
+    """What the agent declares to Hopsworks: ``capabilities.custom.hopsworks``.
+
+    The rest of ``capabilities`` is AG-UI's ``AgentCapabilities``, which has no
+    word for trace correlation or evaluation mode.
+    """
+    custom = (manifest.get("capabilities") or {}).get("custom") or {}
+    hopsworks = custom.get("hopsworks") if isinstance(custom, dict) else None
+    return hopsworks if isinstance(hopsworks, dict) else {}
+
+
 def _check_deployment_supports(suite: Suite, manifest: dict[str, Any]) -> None:
     """Refuse a run that cannot produce trustworthy results.
 
@@ -152,7 +170,7 @@ def _check_deployment_supports(suite: Suite, manifest: dict[str, Any]) -> None:
     deployment executes injection attempts against real tools. Neither announces
     itself in the results.
     """
-    capabilities = manifest.get("capabilities", {})
+    capabilities = _hopsworks_capabilities(manifest)
 
     if suite.execution_mode is ExecutionMode.LIVE:
         raise SuiteRefused(
@@ -239,8 +257,9 @@ def _agent_at_fault(response: AgentResponse) -> bool:
     drops, so an agent that crashed on two of three tasks reported a pass rate
     of 1.0 and passed its gate.
     """
-    if response.error == _AGENT_REPORTED_FAILURE:
-        # The agent answered 200 and said in the body that it had failed.
+    if response.error == _AGENT_REPORTED_FAILURE or response.agent_at_fault:
+        # The agent answered 200 and said in the body that it had failed, or the
+        # client found it failing the turn (it never stopped asking).
         return True
     code = response.status_code or _status_in(response.error)
     return bool(code) and code >= 500 and code not in _GATEWAY_STATUSES

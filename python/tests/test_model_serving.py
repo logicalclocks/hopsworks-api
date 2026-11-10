@@ -15,12 +15,14 @@
 #
 
 import os  # noqa: I001
+import sys
+import types
 import zipfile
 
 import build  # noqa: F401  # eagerly load so test patches resolve build.ProjectBuilder
 import build.env  # noqa: F401  # eagerly load so test patches resolve build.env.DefaultIsolatedEnv
 import pytest
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hsml import deployment_tracing_config as deployment_tracing_config, model_serving
 
 
@@ -111,6 +113,18 @@ class TestTracingForwarding:
 
         # Assert
         assert mock_for_model.call_args.kwargs["knative_mode"] is False
+
+    def test_create_predictor_forwards_triton_image_tag(self, ms, mocker):
+        # Arrange
+        model = mocker.Mock()
+        model._get_default_serving_name.return_value = "my_model"
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
+
+        # Act
+        ms.create_predictor(model, triton_image_tag="26.09-py3")
+
+        # Assert
+        assert mock_for_model.call_args.kwargs["triton_image_tag"] == "26.09-py3"
 
     def test_create_endpoint_forwards_knative_mode(self, ms, mocker):
         # Arrange
@@ -828,3 +842,477 @@ class TestGetVllmImageTags:
         with pytest.raises(ValueError):
             ms.get_vllm_image_tags(variant="SGLANG")
         send.assert_not_called()
+
+
+class TestGetTritonImageTags:
+    """The helper users call to find a valid triton_image_tag, and to tell whether Triton is enabled."""
+
+    def _stub(self, ms, mocker, response):
+        return mocker.patch.object(
+            ms._serving_api, "_get_triton_image_tags", return_value=response
+        )
+
+    def test_returns_the_advertised_tags(self, ms, mocker):
+        self._stub(
+            ms,
+            mocker,
+            {"tags": ["26.09-py3", "26.08-py3"], "defaultTag": "26.09-py3"},
+        )
+        assert ms.get_triton_image_tags() == ["26.09-py3", "26.08-py3"]
+
+    def test_not_enabled_returns_empty(self, ms, mocker):
+        self._stub(ms, mocker, {"tags": [], "defaultTag": None})
+        assert ms.get_triton_image_tags() == []
+
+
+class _StubOpenAI:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
+class _StubHttpxClient:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
+@pytest.fixture
+def stub_openai(mocker):
+    """Inject a stub `openai` module so the tests pass without the optional extra."""
+    module = types.ModuleType("openai")
+    module.OpenAI = _StubOpenAI
+    module.DefaultHttpxClient = _StubHttpxClient
+    mocker.patch.dict(sys.modules, {"openai": module})
+    mocker.patch("hopsworks_common.decorators.HAS_OPENAI", True)
+    return module
+
+
+@pytest.fixture
+def istio(mocker, main_client):
+    istio_client = mocker.MagicMock()
+    istio_client._base_url = "https://istio.example.com"
+    istio_client._auth._token = "key.secret"
+    istio_client._verify = True
+    mocker.patch(
+        "hopsworks_common.client.istio._get_instance", return_value=istio_client
+    )
+    return istio_client
+
+
+@pytest.fixture
+def main_client(mocker):
+    main = mocker.MagicMock()
+    main._verify = True
+    mocker.patch("hopsworks_common.client._get_instance", return_value=main)
+    return main
+
+
+class TestOpenAI:
+    @pytest.mark.parametrize(
+        ("project_name", "project_namespace"),
+        [
+            ("myproject", "myproject"),
+            ("my_project", "my-project"),
+            ("model_serving_int_MhGJP", "loadtest-kserve-0-main-000"),
+        ],
+    )
+    def test_get_openai_url_uses_the_namespace(
+        self, istio, project_name, project_namespace
+    ):
+        ms = model_serving.ModelServing(
+            project_name, 1, project_namespace=project_namespace
+        )
+
+        assert (
+            ms.get_openai_url()
+            == f"https://istio.example.com/v1/{project_namespace}/v1"
+        )
+
+    def test_get_openai_url_is_none_without_istio(self, mocker):
+        mocker.patch("hopsworks_common.client.istio._get_instance", return_value=None)
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        assert ms.get_openai_url() is None
+
+    def test_get_openai_url_fetches_the_namespace_when_not_given(
+        self, mocker, istio, ms
+    ):
+        connection = mocker.patch("hsml.model_serving.client._get_connection")
+        connection.return_value._get_project.return_value.project_namespace = "lazy"
+
+        assert ms.get_openai_url() == "https://istio.example.com/v1/lazy/v1"
+        assert ms.get_openai_url() == "https://istio.example.com/v1/lazy/v1"
+        connection.return_value._get_project.assert_called_once()
+
+    def test_get_openai_url_raises_when_the_namespace_is_unknown(
+        self, mocker, istio, ms
+    ):
+        connection = mocker.patch("hsml.model_serving.client._get_connection")
+        connection.return_value._get_project.return_value.project_namespace = None
+
+        with pytest.raises(ModelServingException, match="namespace"):
+            ms.get_openai_url()
+
+    def test_project_namespace_property(self, ms):
+        assert ms.project_namespace is None
+        assert (
+            model_serving.ModelServing("p", 1, project_namespace="ns").project_namespace
+            == "ns"
+        )
+
+    def test_get_openai_client_builds_the_client(self, istio, stub_openai):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client()
+
+        assert client.kwargs == {
+            "base_url": "https://istio.example.com/v1/ns/v1",
+            "api_key": "key.secret",
+            "default_headers": {"Authorization": "ApiKey key.secret"},
+        }
+
+    def test_get_openai_client_merges_caller_headers(self, istio, stub_openai):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client(default_headers={"X-Trace": "1"})
+
+        assert client.kwargs["default_headers"] == {
+            "Authorization": "ApiKey key.secret",
+            "X-Trace": "1",
+        }
+
+    def test_get_openai_client_lets_the_caller_override_authorization(
+        self, istio, stub_openai
+    ):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client(default_headers={"Authorization": "Bearer other"})
+
+        assert client.kwargs["default_headers"] == {"Authorization": "Bearer other"}
+
+    def test_get_openai_client_passes_other_kwargs_through(self, istio, stub_openai):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        http_client = object()
+
+        client = ms.get_openai_client(
+            timeout=5.0, max_retries=0, http_client=http_client
+        )
+
+        assert client.kwargs["timeout"] == 5.0
+        assert client.kwargs["max_retries"] == 0
+        assert client.kwargs["http_client"] is http_client
+
+    def test_get_openai_client_verifies_by_default(
+        self, istio, stub_openai, main_client
+    ):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client()
+
+        assert "http_client" not in client.kwargs
+
+    def test_get_openai_client_ignores_the_istio_verify_flag(
+        self, istio, stub_openai, main_client
+    ):
+        istio._verify = False
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client()
+
+        assert "http_client" not in client.kwargs
+
+    def test_get_openai_client_disables_verification_without_hostname_verification(
+        self, istio, stub_openai, main_client
+    ):
+        main_client._verify = False
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client()
+
+        assert client.kwargs["http_client"].kwargs == {"verify": False}
+
+    def test_get_openai_client_uses_the_trust_store_as_ssl_context(
+        self, mocker, istio, stub_openai, main_client
+    ):
+        main_client._verify = "/srv/hops/trust/ca.pem"
+        context = object()
+        create_context = mocker.patch(
+            "hsml.core.openai_client.ssl.create_default_context",
+            return_value=context,
+        )
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client()
+
+        create_context.assert_called_once_with(cafile="/srv/hops/trust/ca.pem")
+        assert client.kwargs["http_client"].kwargs == {"verify": context}
+
+    def test_get_openai_client_loads_a_trust_store_directory(
+        self, mocker, tmp_path, istio, stub_openai, main_client
+    ):
+        main_client._verify = str(tmp_path)
+        context = object()
+        create_context = mocker.patch(
+            "hsml.core.openai_client.ssl.create_default_context",
+            return_value=context,
+        )
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        client = ms.get_openai_client()
+
+        create_context.assert_called_once_with(capath=str(tmp_path))
+        assert client.kwargs["http_client"].kwargs == {"verify": context}
+
+    def test_get_openai_client_keeps_the_callers_transport(
+        self, istio, stub_openai, main_client
+    ):
+        main_client._verify = False
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        http_client = object()
+
+        client = ms.get_openai_client(http_client=http_client)
+
+        assert client.kwargs["http_client"] is http_client
+
+    @pytest.mark.parametrize("reserved", ["base_url", "api_key"])
+    def test_get_openai_client_rejects_reserved_kwargs(
+        self, istio, stub_openai, reserved
+    ):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        with pytest.raises(ValueError, match=reserved):
+            ms.get_openai_client(**{reserved: "x"})
+
+    def test_get_openai_client_raises_without_istio(self, mocker, stub_openai):
+        mocker.patch("hopsworks_common.client.istio._get_instance", return_value=None)
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        with pytest.raises(ModelServingException, match="Istio"):
+            ms.get_openai_client()
+
+    def test_get_openai_client_requires_the_openai_package(self, istio, mocker):
+        mocker.patch("hopsworks_common.decorators.HAS_OPENAI", False)
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+
+        with pytest.raises(ModuleNotFoundError, match="hopsworks\\[openai\\]"):
+            ms.get_openai_client()
+
+
+class TestLlmGateway:
+    def test_get_llm_gateway_adds_the_url(self, mocker, istio):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        mocker.patch.object(
+            ms._serving_api,
+            "_get_llm_gateway",
+            return_value={"enabled": True, "available": False},
+        )
+
+        assert ms.get_llm_gateway() == {
+            "enabled": True,
+            "available": False,
+            "url": "https://istio.example.com/v1/ns/v1",
+        }
+
+    def test_set_llm_gateway_puts_the_switch(self, mocker, istio):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        put = mocker.patch.object(
+            ms._serving_api,
+            "_set_llm_gateway",
+            return_value={"enabled": False, "available": True},
+        )
+
+        state = ms.set_llm_gateway(False)
+
+        put.assert_called_once_with(False)
+        assert state["enabled"] is False
+        assert state["available"] is True
+
+
+class TestDeployAgentFrameworkAndChatConfig:
+    AGENT_APP = (
+        "from hopsworks_agents.protocol import AgentApp\n"
+        'agent_app = AgentApp(name="a", framework="{framework}")\n'
+    )
+
+    def _deploy(self, ms, mocker, entry, existing=None, **kwargs):
+        mocker.patch.object(ms, "get_deployment", return_value=existing)
+        mocker.patch("hsml.model_serving.Predictor.for_server")
+        predictor = model_serving.Predictor.for_server.return_value
+        ms.deploy_agent(entry=str(entry), name="my_agent", **kwargs)
+        return predictor
+
+    def test_reads_framework_and_contract_from_agent_app(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text(self.AGENT_APP.format(framework="LangGraph"))
+
+        # Act
+        predictor = self._deploy(ms, mocker, script)
+
+        # Assert
+        assert predictor._agent_framework == "langgraph"
+        assert predictor._chat_config == {"protocol": "hopsworks"}
+
+    def test_explicit_arguments_win(self, ms, mocker, stub_apis, tmp_path):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text(self.AGENT_APP.format(framework="langgraph"))
+
+        # Act
+        predictor = self._deploy(
+            ms, mocker, script, framework="openai_agents", chat_config="openai"
+        )
+
+        # Assert
+        assert predictor._agent_framework == "openai_agents"
+        assert predictor._chat_config == {"protocol": "openai"}
+
+    def test_reads_package_modules(self, ms, mocker, stub_apis, tmp_path):
+        # Arrange
+        (tmp_path / "pyproject.toml").write_text("[project]\nname='p'\n")
+        pkg = tmp_path / "src" / "p"
+        pkg.mkdir(parents=True)
+        (pkg / "app.py").write_text(
+            self.AGENT_APP.format(framework="claude_agents").replace(
+                "AgentApp(", "protocol.AgentApp("
+            )
+        )
+        mocker.patch(
+            "hsml.model_serving._build_and_install_package", return_value="w.py"
+        )
+
+        # Act
+        predictor = self._deploy(ms, mocker, tmp_path)
+
+        # Assert
+        assert predictor._agent_framework == "claude_agents"
+        assert predictor._chat_config == {"protocol": "hopsworks"}
+
+    def test_plain_script_gets_neither(self, ms, mocker, stub_apis, tmp_path):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("class Predict:\n    pass\n")
+
+        # Act
+        predictor = self._deploy(ms, mocker, script)
+
+        # Assert
+        assert predictor._agent_framework is None
+        assert predictor._chat_config is None
+
+    def test_redeploy_keeps_stored_framework_and_contract(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # The backend overwrites the framework with whatever arrives, and keeps the stored
+        # chat contract only when none is sent.
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("from x import AgentApp\napp = AgentApp(name='a')\n")
+        existing = mocker.MagicMock()
+        existing.predictor.memory = None
+        existing.predictor.agent_framework = "llamaindex"
+
+        # Act
+        predictor = self._deploy(ms, mocker, script, existing=existing)
+
+        # Assert
+        assert predictor._agent_framework == "llamaindex"
+        assert predictor._chat_config is None
+        existing.save.assert_called_once()
+
+    def test_git_source_is_not_read(self, ms, mocker, stub_apis):
+        # Act
+        predictor = self._deploy(
+            ms,
+            mocker,
+            "agent.py",
+            git_url="https://github.com/acme/repo.git",
+            git_provider="GitHub",
+        )
+
+        # Assert
+        assert predictor._agent_framework is None
+        assert predictor._chat_config is None
+
+    @pytest.mark.parametrize(
+        ("literal", "stored"),
+        [
+            ("claude-agent-sdk", "claude_agents"),
+            ("OpenAI-Agents", "openai_agents"),
+            # AgentApp runs an unknown name as custom, and the backend refuses it.
+            ("crewai", "custom"),
+        ],
+    )
+    def test_a_literal_is_recorded_as_the_backend_spells_it(
+        self, ms, mocker, stub_apis, tmp_path, literal, stored
+    ):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text(self.AGENT_APP.format(framework=literal))
+
+        # Act
+        predictor = self._deploy(ms, mocker, script)
+
+        # Assert
+        assert predictor._agent_framework == stored
+
+    def test_an_explicit_alias_is_resolved(self, ms, mocker, stub_apis, tmp_path):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("print('hi')")
+
+        # Act
+        predictor = self._deploy(ms, mocker, script, framework="Claude-Agents")
+
+        # Assert
+        assert predictor._agent_framework == "claude_agents"
+
+    def _package(self, tmp_path, mocker, files):
+        (tmp_path / "pyproject.toml").write_text("[project]\nname='p'\n")
+        for relpath, framework in files.items():
+            path = tmp_path / relpath
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(self.AGENT_APP.format(framework=framework))
+        mocker.patch(
+            "hsml.model_serving._build_and_install_package", return_value="w.py"
+        )
+
+    def test_package_scan_skips_examples_tests_and_venvs(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # Arrange: examples/ sorts before src/ and must not decide the framework.
+        self._package(
+            tmp_path,
+            mocker,
+            {
+                "examples/demo.py": "langgraph",
+                "tests/test_app.py": "llamaindex",
+                "myenv/lib/site.py": "openai_agents",
+                "src/p/app.py": "claude_agents",
+            },
+        )
+        (tmp_path / "myenv" / "pyvenv.cfg").write_text("home = /usr\n")
+
+        # Act
+        predictor = self._deploy(ms, mocker, tmp_path)
+
+        # Assert
+        assert predictor._agent_framework == "claude_agents"
+
+    def test_package_with_disagreeing_literals_records_none(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # Arrange
+        self._package(
+            tmp_path,
+            mocker,
+            {"src/p/a.py": "langgraph", "src/p/b.py": "claude_agents"},
+        )
+
+        # Act
+        predictor = self._deploy(ms, mocker, tmp_path)
+
+        # Assert
+        assert predictor._agent_framework is None
+        assert predictor._chat_config == {"protocol": "hopsworks"}

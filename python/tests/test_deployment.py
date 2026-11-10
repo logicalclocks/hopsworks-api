@@ -15,6 +15,7 @@
 #
 
 import copy
+import datetime
 import os
 
 import humps
@@ -474,6 +475,114 @@ class TestDeployment:
         d.rollback(mocker.Mock(version=3), await_update=5)
 
         mock_rollback.assert_called_once_with(d, 3, 5)
+
+    # set_tracing
+
+    def test_set_tracing_puts_the_change_and_keeps_the_stored_config(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        # The dummy predictor stubs the JSON-to-object helper the tracing setter uses.
+        mocker.stopall()
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._set_tracing",
+            return_value={"enabled": True, "active": False, "samplingPercentage": 50},
+        )
+
+        d.set_tracing(active=False, sampling_percentage=50)
+
+        send.assert_called_once_with(d, False, 50, None)
+        assert d.tracing.enabled is True
+        assert d.tracing.active is False
+        assert d.tracing.sampling_percentage == 50
+
+    def test_set_tracing_refuses_a_percentage_out_of_range(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._set_tracing")
+
+        with pytest.raises(ValueError):
+            d.set_tracing(sampling_percentage=101)
+        send.assert_not_called()
+
+    def test_set_tracing_sends_the_days_and_reads_the_period(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.stopall()
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._set_tracing",
+            return_value={
+                "enabled": True,
+                "active": True,
+                "durationDays": 30,
+                "activeUntil": 1793145600000,
+            },
+        )
+
+        d.set_tracing(active=True, duration_days=30)
+
+        send.assert_called_once_with(d, True, None, 30)
+        assert d.tracing.duration_days == 30
+        assert d.tracing.active_until == datetime.datetime(
+            2026, 10, 28, 0, 0, tzinfo=datetime.timezone.utc
+        )
+        assert d.tracing.expired_at is None
+
+    def test_set_tracing_refuses_days_below_one(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._set_tracing")
+
+        with pytest.raises(ValueError):
+            d.set_tracing(duration_days=0)
+        send.assert_not_called()
+
+    # delete_traces
+
+    def test_delete_traces_repeats_batches_until_none_are_left(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._delete_traces",
+            side_effect=[500, 500, 7, 0],
+        )
+
+        deleted = d.delete_traces(
+            until_datetime=datetime.datetime(2026, 10, 28), batch_size=500
+        )
+
+        assert deleted == 1007
+        assert send.call_count == 4
+        send.assert_called_with(d, 1793145600000, 500)
+
+    def test_delete_traces_deletes_all_without_a_date(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch(
+            "hsml.core.serving_api.ServingApi._delete_traces", return_value=0
+        )
+
+        assert d.delete_traces() == 0
+        send.assert_called_once_with(d, None, 1000)
+
+    @pytest.mark.parametrize("batch_size", [0, 10001])
+    def test_delete_traces_refuses_a_batch_size_out_of_range(
+        self, mocker, backend_fixtures, batch_size
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        send = mocker.patch("hsml.core.serving_api.ServingApi._delete_traces")
+
+        with pytest.raises(ValueError):
+            d.delete_traces(batch_size=batch_size)
+        send.assert_not_called()
 
     # start
 
@@ -955,6 +1064,18 @@ class TestDeployment:
             # Act and Assert
             assert not d.is_stopped(or_created=True)
 
+    # model server
+
+    def test_model_server_is_read_only(self, mocker, backend_fixtures):
+        # Arrange: the predictor derives it from the model framework and has no setter.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+
+        # Act + Assert
+        with pytest.raises(AttributeError):
+            d.model_server = "TRITON"
+        assert d.model_server == p.model_server
+
     # predict
 
     def test_predict(self, mocker, backend_fixtures):
@@ -970,7 +1091,7 @@ class TestDeployment:
 
         # Assert
         mock_serving_engine_predict.assert_called_once_with(
-            d, "data", "inputs", validate=True
+            d, "data", "inputs", validate=True, outputs=None
         )
 
     # download artifact
@@ -1997,6 +2118,38 @@ class TestDeployment:
         assert url == "https://example.com/v1/project/name/v1"
         mock_predictor_get_openai_url.assert_called_once()
 
+    # get openai client
+
+    def test_get_openai_client_uses_the_deployment_url(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(
+            p, "get_openai_url", return_value="https://example.com/v1/ns/depl/v1"
+        )
+        build = mocker.patch("hsml.deployment._build_openai_client")
+
+        # Act
+        result = d.get_openai_client(timeout=3)
+
+        # Assert
+        build.assert_called_once_with("https://example.com/v1/ns/depl/v1", timeout=3)
+        assert result is build.return_value
+
+    def test_get_openai_client_raises_when_there_is_no_url(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange: non-vLLM deployments have no OpenAI-compatible URL.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch.object(p, "get_openai_url", return_value=None)
+        build = mocker.patch("hsml.deployment._build_openai_client")
+
+        # Act / Assert
+        with pytest.raises(ModelServingException, match="vLLM"):
+            d.get_openai_client()
+        build.assert_not_called()
+
     # get inference url
 
     def test_get_inference_url_delegates_to_predictor(self, mocker, backend_fixtures):
@@ -2343,3 +2496,50 @@ class TestDeploymentSchemaAndFeatureView:
         assert schema.output["kind"] == "feature_vectors"
         assert schema.inferred is True
         assert d.schema is schema
+
+
+class TestDeploymentLlmGateway:
+    def _deployment(self, mocker):
+        mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
+        p = predictor.Predictor(
+            id=7,
+            name="llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        return deployment.Deployment(predictor=p, name="llm")
+
+    def test_defaults_to_on_and_is_omitted_from_to_dict(self, mocker):
+        d = self._deployment(mocker)
+
+        assert d.llm_gateway is True
+        assert "llmGateway" not in d._predictor.to_dict()
+
+    def test_setter_is_serialized(self, mocker):
+        d = self._deployment(mocker)
+
+        d.llm_gateway = False
+
+        assert d.llm_gateway is False
+        assert d._predictor.to_dict()["llmGateway"] is False
+
+    def test_read_from_the_backend_json(self, mocker, backend_fixtures):
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployment_vllm_kserve_vllm_variant"][
+                "response"
+            ]
+        )
+        p_json["llmGateway"] = False
+
+        kwargs = predictor.Predictor.extract_fields_from_json(humps.decamelize(p_json))
+
+        assert kwargs["llm_gateway"] is False
+
+    def test_set_llm_gateway_posts_and_updates_the_local_value(self, mocker):
+        d = self._deployment(mocker)
+        post = mocker.patch.object(d._serving_api, "_set_deployment_llm_gateway")
+
+        d.set_llm_gateway(False)
+
+        post.assert_called_once_with(d, False)
+        assert d.llm_gateway is False

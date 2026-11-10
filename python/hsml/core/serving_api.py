@@ -38,6 +38,7 @@ from hsml.client.istio.utils.infer_type import (
     InferRequest,
 )
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hsml.constants import PREDICTOR
 
 
 _logger = logging.getLogger(__name__)
@@ -253,6 +254,79 @@ class ServingApi:
         path_params = ["project", _client._project_id, "serving", "vllmImageTags"]
         return _client._send_request("GET", path_params)
 
+    def _get_triton_image_tags(self) -> dict[str, Any]:
+        """Get the Triton Inference Server image tags the cluster advertises.
+
+        Returns:
+            The advertised tags and the default tag; no tags and no default when Triton is not enabled on the cluster.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "tritonImageTags"]
+        return _client._send_request("GET", path_params)
+
+    def _get_llm_gateway(self) -> dict[str, Any]:
+        """Get the LLM gateway switch and whether the cluster publishes the endpoint.
+
+        Returns:
+            A dict with the keys `enabled` and `available`.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "llmGateway"]
+        return _client._send_request("GET", path_params)
+
+    def _set_llm_gateway(self, enabled: bool) -> dict[str, Any]:
+        """Switch the LLM gateway on or off for the whole project.
+
+        Parameters:
+            enabled: Whether the LLM gateway serves the project's deployments.
+
+        Returns:
+            A dict with the keys `enabled` and `available`.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "llmGateway"]
+        return self._send_llm_gateway_switch("PUT", path_params, enabled)
+
+    def _set_deployment_llm_gateway(
+        self, deployment_instance: deployment.Deployment, enabled: bool
+    ):
+        """Switch one deployment on or off the LLM gateway.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+            enabled: Whether the LLM gateway serves the deployment.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "llmGateway",
+        ]
+        return self._send_llm_gateway_switch("POST", path_params, enabled)
+
+    def _send_llm_gateway_switch(
+        self, method: str, path_params: list, enabled: bool
+    ) -> dict[str, Any] | None:
+        """Send an LLM gateway switch and return the response body, if any.
+
+        The backend answers 202 when it stored the switch but could not apply it to the LLM gateway yet; it retries on its own.
+        """
+        _client = client._get_instance()
+        response = _client._send_request(
+            method,
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps({"enabled": enabled}),
+            stream=True,
+        )
+        if response.status_code == 202:
+            _logger.info(
+                "The LLM gateway switch is saved; the LLM gateway applies it within a minute."
+            )
+        return response.json() if response.content else None
+
     def _get_schema(
         self,
         deployment_id: int,
@@ -416,6 +490,57 @@ class ServingApi:
         deployment_instance.model_registry_id = _client._project_id
         deployment_instance.project_name = _client._project_name
         return deployment_instance
+
+    def _set_tracing(
+        self,
+        deployment_instance: deployment.Deployment,
+        active: bool | None,
+        sampling_percentage: float | None,
+        duration_days: int | None = None,
+    ) -> dict[str, Any]:
+        """Switch a running deployment's tracing without redeploying it, returning the stored tracing config."""
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "tracing",
+        ]
+        body = {}
+        if active is not None:
+            body["active"] = active
+        if sampling_percentage is not None:
+            body["samplingPercentage"] = sampling_percentage
+        if duration_days is not None:
+            body["durationDays"] = duration_days
+        return _client._send_request(
+            "PUT",
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps(body),
+        )
+
+    def _delete_traces(
+        self,
+        deployment_instance: deployment.Deployment,
+        until_ms: int | None,
+        batch_size: int,
+    ) -> int:
+        """Delete one batch of the deployment's trace rows, returning the rows deleted."""
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "otel",
+            "servings",
+            deployment_instance.id,
+            "traces",
+        ]
+        query_params = {"batchSize": batch_size}
+        if until_ms is not None:
+            query_params["until"] = until_ms
+        return _client._send_request("DELETE", path_params, query_params)["deleted"]
 
     def _post(self, deployment_instance: deployment.Deployment, action: str):
         """Perform an action on the deployment.
@@ -630,8 +755,13 @@ class ServingApi:
         return True
 
     def _get_istio_model_metadata_path(self, deployment_instance) -> list[str]:
+        protocol = (
+            "v2"
+            if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON
+            else "v1"
+        )
         return self._get_istio_inference_path(deployment_instance, base_only=True) + [
-            "v1",
+            protocol,
             "models",
             deployment_instance.name,
         ]
@@ -782,6 +912,14 @@ class ServingApi:
         Returns:
             List of path segments.
         """
+        if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON:
+            return [
+                "project",
+                project_id,
+                "inference",
+                "serving",
+                deployment_instance.name + ":infer",
+            ]
         return [
             "project",
             project_id,
@@ -789,6 +927,17 @@ class ServingApi:
             "models",
             deployment_instance.name + ":predict",
         ]
+
+    def _get_istio_project_openai_path(self, project_namespace: str) -> list[str]:
+        """Get the Istio path of the project-wide OpenAI-compatible endpoint.
+
+        Parameters:
+            project_namespace: Kubernetes namespace of the project.
+
+        Returns:
+            List of path segments.
+        """
+        return ["v1", project_namespace, "v1"]
 
     def _get_istio_inference_path(
         self, deployment_instance, base_only: bool = False
@@ -809,4 +958,6 @@ class ServingApi:
         ]
         if base_only:
             return base_path
+        if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_TRITON:
+            return base_path + ["v2", "models", deployment_instance.name, "infer"]
         return base_path + ["v1", "models", deployment_instance.name + ":predict"]

@@ -160,6 +160,7 @@ requirements:                         # owner: reqs
   reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/recommender   # optional: a path or URL of sample code the system is based on; the build reads it first
   monitoring:                         # batch and realtime; built by infer, recorded in inference.monitoring
     feature_logging: true             # every prediction logs its features: the feature view's logging_enabled
+    tracing: {sampling_percentage: 10, duration_days: 7}   # realtime only; absent = no tracing: the deployment is created with prediction latency tracing
     watch: drift in monthly_charges against the training data; a failed or late job   # the user's words, turned into checks and alerts
   open_questions: []                  # non-empty blocks the data phase
   started: 2026-09-22T09:02Z          # every phase block records started and finished; /hops status derives durations and estimates
@@ -273,6 +274,7 @@ inference:                            # owner: infer (the inference agent); budg
     last_run: {when: 2026-09-22T11:40Z, run_id: tests-inference-1, commit: 9a1b2c3, unit: "7 passed", integration: "5 passed", parity: "200/200", test_objects_deleted: true}
   monitoring:                         # what requirements.monitoring asked for, as built; absent when nothing was asked
     feature_logging: {feature_view: telco_churn_fv, version: 1, log_feature_group: telco_churn_fv_1_logging, rows: 5200, at: 2026-09-22T11:35Z}
+    tracing: {deployment: telcochurn, sampling_percentage: 10, active_until: 2026-09-29T11:35Z, stages: [feature_lookup, transformations, model_predict, feature_log]}   # realtime, as built
     checks:                           # one per thing watched; `from` quotes the part of requirements.monitoring.watch it serves
       - {name: monthly_charges_drift, on: {feature_view: telco_churn_fv, version: 1}, feature: monthly_charges,
          compare: {metric: mean, threshold: 0.2, relative: true, reference: training_dataset 1}, cron: "0 0 5 1 * ?", job: telco_churn_fv_1_run_feature_monitoring,

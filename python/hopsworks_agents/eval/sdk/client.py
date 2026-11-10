@@ -26,7 +26,7 @@ from hopsworks_apigen import public
 
 from ._transport import AgentServingError, Transport
 from .agent import Agent, is_agent
-from .evals import Evaluators, Jobs, Runs, Suites, Tasks
+from .evals import Checks, Evaluators, Jobs, Runs, Suites, Tasks
 from .models import ApiModel, ReviewJob, Run, Suite, Task
 
 
@@ -47,6 +47,7 @@ class AgentServing:
         suites: The project's evaluation suites.
         tasks: The tasks suites are made of.
         evaluators: The evaluator library (saved judge and check templates).
+        checks: Checks the project wrote in Python: upload and register them.
         runs: Evaluation runs, across agents.
         jobs: The per-agent evaluation and failure-analysis jobs.
     """
@@ -74,6 +75,7 @@ class AgentServing:
         self.suites = Suites(self)
         self.tasks = Tasks(self)
         self.evaluators = Evaluators(self)
+        self.checks = Checks(self)
         self.runs = Runs(self)
         self.jobs = Jobs(self)
 
@@ -125,7 +127,14 @@ class AgentServing:
         ]
 
     @public
-    def deploy_agent(self, entry: str, name: str | None = None, **kwargs: Any) -> Agent:
+    def deploy_agent(
+        self,
+        entry: str,
+        name: str | None = None,
+        *,
+        chat_app: bool = False,
+        **kwargs: Any,
+    ) -> Agent:
         """Deploy a Python script or package as an agent; the same call as `ModelServing.deploy_agent`.
 
         The agent is created on first call and updated on the next ones. Its
@@ -135,6 +144,7 @@ class AgentServing:
         Parameters:
             entry: Path to the agent's entry script or package directory.
             name: Name of the deployment; the entry's file name when omitted.
+            chat_app: Also create the agent's chat app, as `Agent.create_chat_app` does.
             **kwargs: Everything `ModelServing.deploy_agent` takes (requirements, environment, resources, git_url, ...).
 
         Returns:
@@ -147,6 +157,8 @@ class AgentServing:
         agent = self.get_agent(int(deployment.id))
         if agent is None:  # pragma: no cover - the deployment was just created
             raise AgentServingError(f"deployment {deployment.id} vanished after deploy")
+        if chat_app:
+            agent.create_chat_app()
         return agent
 
     def _serving_row(self, agent: str | int) -> dict[str, Any] | None:

@@ -24,13 +24,14 @@ hops agent logs my_agent         # startup and request errors land here
 
 ## Ask the user (only when state is ambiguous)
 - **Framework.** `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`: picks the tracing instrumentation.
+  It goes in two places: `AgentApp(framework=...)` in the code and the deployment's config (see **Framework and chat contract** below).
 - **Memory.** Working memory only, plus a short-term rolling summary, plus long-term memory across conversations (the summary needs a summariser key; long-term memory needs the *client* to say who the user is — see **Who long-term memory belongs to**).
 - **Source.** A local script uploaded to HopsFS, or a Git repository (branch, and whether to auto-redeploy on push).
 - **Evaluation.** Whether the agent will be evaluated against a sandboxed suite while serving customers (`eval_per_request=True` and tools that check `in_evaluation()`), or in a deployment of its own (`EVAL_MODE=true`).
 
 ## Write the entry script
 
-Build the agent with the framework of your choice and wrap it in `AgentApp` from `hopsworks_agents.protocol`. `AgentApp` is a FastAPI app that speaks the **Hopsworks Agent Protocol**: the chat panel detects it from its manifest, `/v1/chat` and `/v1/chat/stream` are served, health and readiness probes exist, CORS is on, and when tracing is enabled on the deployment the library wires OpenTelemetry itself. The script runs as a program in the pod, so serve the app on port 8080 in its main block.
+Build the agent with the framework of your choice and wrap it in `AgentApp` from `hopsworks_agents.protocol`. `AgentApp` is a FastAPI app that speaks **AG-UI**, the open agent–user interaction protocol, plus Hopsworks' extensions: the chat panel detects it from its manifest, `/v1/run` (AG-UI runs) and `/v1/chat` (one JSON reply) are served, health and readiness probes exist, CORS is on, and when tracing is enabled on the deployment the library wires OpenTelemetry itself. The script runs as a program in the pod, so serve the app on port 8080 in its main block.
 
 ```python
 # my_agent.py
@@ -48,7 +49,7 @@ agent_app = AgentApp(
 graph = build_graph()                      # your LangGraph / LlamaIndex / custom agent, built once
 
 
-@agent_app.stream                          # one handler serves /v1/chat and /v1/chat/stream
+@agent_app.stream                          # one handler serves /v1/run and /v1/chat
 async def stream(request, ctx):
     if not request.text:
         raise AgentError("The message cannot be empty.", status_code=400)
@@ -71,10 +72,14 @@ What matters in the handler:
 - `request.conversation_id` is always set; history is server-side, the request carries only the new message. `request.text` is the plain text; `request.to_framework_messages()` gives `[{"role", "content"}]`.
 - A `@chat` handler returning a `str` (or `AgentResponse.text(...)`) is enough when you do not stream. Only `@stream` gives token deltas in the panel.
 - **Tracing is automatic** when enabled on the deployment. Every LLM call, tool call and retrieval becomes a span; these traces are what evaluation, feedback and failure analysis read. An agent without tracing cannot be debugged or improved, so enable it.
-- **Memory without code:** a deployment can carry the policy instead — the form's Agent memory card, or `deploy_agent(memory=DeploymentMemoryConfig(summarize={"provider": "hopsworks", "deployment": "my-llm"}, long_term=True))`, injected as `AGENT_MEMORY_CONFIG`. `AgentApp` applies it only when the agent passed no `memory=`, so code wins; `capabilities.memory.source` says which it was. The handler still has to read memory, so `ctx.history` and `ctx.system_context()` stay in the prompt either way.
-- **Memory:** `memory=ManagedMemoryService(summarize=anthropic_summarizer(), long_term=True)` gives all three tiers with no storage to set up — working memory (the turns in context), short-term memory (older turns folded into a rolling summary) and long-term memory, both semantic (what the agent decides to remember, through `remember`/`recall`/`forget`) and episodic (`search` over past conversations); read it with `ctx.system_context()` and `ctx.history`, and read or write your own facts with `ctx.recall(key)` / `ctx.remember(key, value, scope="user"|"session")` / `ctx.forget(key)`, which key each scope the way `ctx.state(scope)` reads it (`app` scope is agent-wide and not a turn's to write). Match the summarizer to the key the agent already has: `openai_summarizer()` for OpenAI, `openai_summarizer(model, base_url=...)` for a vLLM/Ollama/LiteLLM-proxy endpoint, `anthropic_summarizer()` for Claude, `hopsworks_summarizer("<deployment name>")` for an LLM deployed in the same project (no key to configure); any `(previous_summary, turns) -> str` callable also works.
+- **Memory without code:** a deployment can carry the policy instead — the form's Agent memory card, or `deploy_agent(memory=DeploymentMemoryConfig(summarize={"provider": "hopsworks", "deployment": "my-llm"}, long_term=True))`, injected as `AGENT_MEMORY_CONFIG`. `AgentApp` applies it only when the agent passed no `memory=`, so code wins; `capabilities.custom.hopsworks.memory.source` says which it was. The handler still has to read memory, so `ctx.history` and `ctx.system_context()` stay in the prompt either way.
+- **Memory:** `memory=ManagedMemoryService(summarize=anthropic_summarizer(), long_term=True)` gives all three tiers with no storage to set up — working memory (the turns in context), short-term memory (older turns folded into a rolling summary) and long-term memory, both semantic (what the agent decides to remember, through `remember`/`recall`/`forget`) and episodic (`search` over past conversations); read it with `ctx.system_context()` and `ctx.history`, and read or write your own facts with `ctx.recall(key)` / `ctx.remember(key, value, scope="user"|"session")` / `ctx.forget(key)`, which key each scope the way `ctx.state(scope)` reads it (`app` scope is agent-wide and not a turn's to write). Match the summarizer to the key the agent already has: `openai_summarizer()` for OpenAI, `openai_summarizer(model, base_url=...)` for a vLLM/Ollama/LiteLLM-proxy endpoint, `anthropic_summarizer()` for Claude (which summarizes through Claude Code by itself on a deployment that holds the connected Claude Code login and no key; `claude_agents_summarizer()` names that path), `hopsworks_summarizer("<deployment name>")` for an LLM deployed in the same project (no key to configure); any `(previous_summary, turns) -> str` callable also works.
 - **Embedding models never download in a pod.** Register once where there is internet with `register_sentence_transformer("all-MiniLM-L6-v2")` (a notebook or the feature pipeline that embeds the data) and load with `load_sentence_transformer("all-MiniLM-L6-v2")` in the agent; `sentence_transformer_embedder()` does the same for memory search. An unregistered model falls back to the hub with a warning; `fallback=False` forbids it.
 - **Evaluation-safe writes:** an agent that writes (refunds, tickets) checks `hopsworks_agents.protocol.evaluation.in_evaluation()` in its tools and skips the real write, so a sandboxed suite can run against the production deployment (`eval_per_request=True` on the app). A deployment that exists only to be evaluated sets `EVAL_MODE=true` instead.
+
+## Ask a person before acting
+
+For an action that needs a person's approval (a refund, a deletion, sending an email), call `answer = ctx.interrupt("Refund 40 EUR?", key="refund-42", response_schema={...})` before the action. The run pauses with an AG-UI interrupt; the chat panel shows the question and the person's answer resumes the turn, which runs again from the start and gets `answer` (`answer.cancelled`, `answer.payload`). Everything before the call runs twice, so it must not act. In evaluation, the task context's `interrupt_answers` (question id to payload) answers on the trial's behalf; unanswered questions are cancelled. See the protocol README's human-in-the-loop section.
 
 ## Who long-term memory belongs to
 
@@ -119,7 +124,8 @@ Streaming, multimodal content, memory tiers, progress events and the structure g
 
 ```bash
 hops agent create my_agent.py --name my_agent \
-  --requirements requirements.txt --environment my_agent [--memory 3072]
+  --requirements requirements.txt --environment my_agent \
+  --framework langgraph --chat-contract hopsworks [--memory 3072]
 hops agent start my_agent                       # waits for RUNNING
 hops agent info my_agent                        # status + URL
 hops agent logs my_agent                        # follow startup / errors
@@ -206,11 +212,33 @@ agent = agents.deploy_agent(
     name="my_agent",
     requirements="requirements.txt",
     environment="my_agent",
+    framework="langgraph",               # same value as AgentApp(framework=...)
+    chat_config="hopsworks",             # AgentApp speaks the Hopsworks agent protocol
     tracing={"enabled": True},           # spans for evals, feedback and failure analysis
 )
 agent.start(await_running=600)
 # After editing the code: deploy_agent again, then agent.restart()
 ```
+
+### Framework and chat contract
+
+Every agent deployment carries both in its config, the same fields as the **Agent framework** and **Chat contract** of the UI's deployment form.
+Always set them:
+
+- **`framework`** is injected into the pod as `AGENT_FRAMEWORK`.
+  It also picks the model provider of the agent's failure analysis (OpenAI for `openai_agents`, Anthropic for `claude_agents`), and keeps the Claude login token away from agents that are not built on the Claude SDK.
+  A deployment without one shows as **Custom** in the UI.
+- **`chat_config`** tells the chat panel and chat clients how to talk to the agent.
+  Use `"hopsworks"` for an `AgentApp` agent, `"openai"` for an OpenAI-compatible server, or a dict such as `{"protocol": "simple", "path": "/chat", "message_field_in": "body", "message_field_name": "message"}` for a custom endpoint.
+  Without one, the panel detects the contract from the running agent.
+
+From a local script or package, `deploy_agent` reads both from the code when you omit them.
+The framework comes from a string literal in `AgentApp(framework="...")`; a name the platform does not know is recorded as `custom`, and calls that name different frameworks record none.
+A new agent that builds an `AgentApp` gets the `"hopsworks"` contract.
+**A git-backed agent is not read, so pass both explicitly.**
+On a redeploy that omits them, the framework is the code's literal when it has one and the stored value otherwise, and the chat contract is kept.
+So a framework changed in the UI is replaced on the next bare redeploy when the code names a different one: change it in the code, or pass `framework=`.
+Check with `hops agent info my_agent` (the **Framework** and **Chat contract** rows) or `agent.deployment.predictor.agent_framework` / `.chat_config`.
 
 `deploy_agent` here is model serving's call (`project.get_model_serving().deploy_agent(...)` takes the same arguments) returning an `Agent`. `agent.deployment` is the `hsml` deployment for resources, scaling and describe.
 
@@ -229,6 +257,8 @@ agent = agents.deploy_agent(
     git_branch="main",
     git_auto_redeploy=True,              # roll to branch HEAD on every new commit
     environment="my_agent",
+    framework="langgraph",               # not read from a git source: always pass it
+    chat_config="hopsworks",
 )
 ```
 
@@ -257,7 +287,7 @@ agent.manifest()                               # what the agent advertises
 
 **A turn the application answers itself has no model call.** When the app replies without running the model (an agent that asks who you are before doing anything else, say), the trace is one agent span: no LLM span, zero tokens, no cost, and `trace(wait=)` returns as soon as the turn closes. `wait` also covers the trace reaching the tracing store, which can take a few seconds after the reply on a busy cluster.
 
-**What `manifest()` returns** is the protocol document, not a flat summary: the agent's own fields are under `agent` (`name`, `description`, `version`, `framework`), the routes under `endpoints`, and the rest under `capabilities` and `ui`. `manifest()["agent"]["framework"]`, not `manifest()["framework"]` — the latter is `None` for every agent.
+**What `manifest()` returns** is the protocol document, not a flat summary: the agent's own fields are under `agent` (`name`, `description`, `version`, `framework`), the routes under `endpoints`, the UI hints under `ui`, and `capabilities` is AG-UI's `AgentCapabilities` with what only Hopsworks reads (streaming, memory tiers, trace correlation, evaluation mode) under `capabilities["custom"]["hopsworks"]`. `manifest()["agent"]["framework"]`, not `manifest()["framework"]` — the latter is `None` for every agent.
 
 **Tool events pair by id.** Each tool call yields more than one event, `status` going `running` then `done`, matched on the id. The closing event is named for the event, not for the tool — an agent that emits `ctx.emit_event("tool", status="done")` ends with `name == "tool"` — so follow the id rather than the name.
 
@@ -275,6 +305,8 @@ for event in reply.metadata.get("tool_events", []):
 **Reading a conversation back.** `agent.traces()` lists conversations, one row per session; `agent.session(session_id)` gives that conversation's turns and `agent.conversation(session_id)` pairs them as `{trace_id, user, assistant}` — `role`/`content` is the shape of the messages inside a turn, not of these.
 
 Messages go through the cluster's inference gateway, the route the chat panel uses; the logged-in user's credential is accepted there. From outside Hopsworks, log in with an API key.
+
+**A ready-made chat app for people outside Hopsworks**: `app = agent.create_chat_app()` (or `deploy_agent(..., chat_app=True)`, or "Create chat app" on the deployment page) creates and starts a Hopsworks app named `<agent>_chat` that speaks AG-UI to the agent: streaming, tool calls, attachments, the agent's questions, and thumbs up or down. Members open it with their Hopsworks login and chat as their Hopsworks user (the same subject, and memory, as the chat panel); turning on the app's public link shares it, and public visitors are anonymous with their own memory. The app sets the subject either way, and no serving key reaches the browser. Its thumbs up and down reach the Feedback tab marked "via chat app" (`Feedback.given_via == "chat-app"`). App variables change it: `CHAT_TITLE`, `CHAT_WELCOME`, `CHAT_SHOW_TOOL_CALLS`, `CHAT_ACCENT_COLOR`, `CHAT_LOGO_URL`, and `CHAT_THEME_DIR`, a project folder such as `Resources/chat-theme` with a `theme.css` and a `logo.svg`/`.png`. `agent.chat_app()` returns it, and it is deleted with the agent. To change more than the variables allow (its page, layout, components, routes of its own), `app = agent.customize_chat_app()` runs it from the project folder `Resources/chat-apps/<app>`: the app copies its template there (a `server.mjs` on `@hopsworks/agent-chat`, a React page in `web/`, a `theme.css`) and runs it; read that folder's `AGENTS.md` before changing anything, keep the chat's identity and safety to the package as it says, and `app.redeploy()` then `app.get_logs()` to try a change (a folder that fails to build falls back to the default page, logged).
 
 **A custom chat UI** talks to `agent.url` directly with the serving credential: `POST /v1/chat`
 with `{"message": {"role": "user", "content": [{"type": "text", "text": "..."}]}}`, and its users

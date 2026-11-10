@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
@@ -140,6 +140,7 @@ class AppApi:
         idle_scale_to_zero: bool | None = None,
         idle_cooldown_seconds: int | None = None,
         cold_start_timeout_seconds: int | None = None,
+        agent: Any | None = None,
     ) -> app.App:
         """Create a new app.
 
@@ -212,6 +213,10 @@ class AppApi:
                 Turns the option on when given; the default is the cluster's `pythonapp_idle_cooldown_seconds` (21600, six hours).
             cold_start_timeout_seconds: Seconds the first request waits for the app to wake.
                 Turns the option on when given; the default and ceiling is the cluster's `pythonapp_cold_start_timeout_max_seconds` (300). The ingress read timeout (60 unless raised) may fail the waking request earlier; the pod keeps starting and the next request finds it ready.
+            agent: An agent deployment of the project (an `Agent`, or its id) for an app of your own that embeds the agent's chat.
+                The app is then started as the agent's chat app is: with the agent's in-cluster address in `CHAT_AGENT_URL` (and `CHAT_AGENT_HOST`) and the key in `HOPSWORKS_APP_IDENTITY_KEY` that Hopsworks signs its members' names with, so the chat server the app runs (`hopsworks-agent-chat`, from the `@hopsworks/agent-chat` package in `python-app-pipeline`) knows who is chatting.
+                Off by default: an app without an agent gets neither.
+                For the ready-made chat page, use `Agent.create_chat_app()` instead.
 
         Returns:
             The created App object.
@@ -339,6 +344,8 @@ class AppApi:
                 config["idleCooldownSeconds"] = int(idle_cooldown_seconds)
             if cold_start_timeout_seconds is not None:
                 config["coldStartTimeoutSeconds"] = int(cold_start_timeout_seconds)
+        if agent is not None:
+            config["agentDeploymentId"] = int(getattr(agent, "id", agent))
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}

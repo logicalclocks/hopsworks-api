@@ -48,6 +48,7 @@ from .judge_config import (
     _completer_for,
     _tool_calls_text,
 )
+from .online_tables import _write_online
 from .run_fields import _run_trials
 from .run_job import _api, _match_schema, _short
 from .sample_job import _conversation_before, _question_and_answer, _started_ns
@@ -464,9 +465,9 @@ def _review_one(
 
 
 def _write_clusters(feature_store: Any, clusters: Sequence[Cluster]) -> None:
-    """Upsert the clusters that changed. The online table keys on cluster_id, so a.
+    """Upsert the clusters that changed.
 
-    cluster written again replaces its row; offline history keeps every version.
+    The online table keys on cluster_id, so a cluster written again replaces its row.
     """
     if not clusters:
         return
@@ -481,10 +482,9 @@ def _write_clusters(feature_store: Any, clusters: Sequence[Cluster]) -> None:
             "that failed, then run the review again"
         )
     frame = pd.DataFrame([c._to_row(now) for c in clusters])
-    # Online only: an insert that is not starts this group's offline
-    # materialization job, a Spark driver and executors per write, and the
-    # clusters are read back from the online store.
-    group.insert(_match_schema(group, frame), storage="online")
+    # Over SQL, not through the feature group's Kafka topic: only a data owner
+    # may produce to that, and a data scientist starts reviews too.
+    _write_online(feature_store, group, _match_schema(group, frame))
     log.info("wrote %d clusters to %s", len(clusters), CLUSTERS_FG)
 
 
@@ -503,8 +503,8 @@ def _write_triage(feature_store: Any, rows: Sequence[dict[str, Any]]) -> None:
             "Hopsworks provisions it when a review job is started -- check the server log for "
             "why that failed, then run the review again"
         )
-    # Online only, as for the clusters above.
-    group.insert(_match_schema(group, pd.DataFrame(list(rows))), storage="online")
+    # Over SQL, as for the clusters above.
+    _write_online(feature_store, group, _match_schema(group, pd.DataFrame(list(rows))))
     log.info("wrote %d rows to %s", len(rows), TRIAGE_FG)
 
 
