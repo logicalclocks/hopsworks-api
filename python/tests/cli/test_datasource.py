@@ -238,6 +238,30 @@ def test_s3_compatible_store_sends_endpoint_and_path_style():
     assert body["region"] == "us-east-1"
 
 
+@pytest.mark.parametrize(
+    ("stored", "refused"),
+    [
+        ({"name": "ecs"}, True),
+        ({"name": "ecs", "endpoint": "https://s3.example.com:9021"}, False),
+    ],
+)
+def test_s3_create_refuses_a_cluster_that_dropped_the_endpoint(stored, refused):
+    body = {"name": "ecs", "endpoint": "https://s3.example.com:9021"}
+    with (
+        mock.patch.object(ds.session, "get_feature_store"),
+        mock.patch("hopsworks_common.core.rest._project_path"),
+        mock.patch("hopsworks_common.core.rest._send_request", return_value=stored),
+        mock.patch.object(output, "success") as success,
+    ):
+        if refused:
+            with pytest.raises(ds.click.ClickException, match="targets AWS S3"):
+                ds._create_connector(mock.Mock(), body)
+            success.assert_not_called()
+        else:
+            ds._create_connector(mock.Mock(), body)
+            success.assert_called_once()
+
+
 def test_rest_nests_the_auth_and_client_config():
     body = _create(
         [

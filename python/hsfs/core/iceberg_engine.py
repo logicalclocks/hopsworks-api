@@ -50,6 +50,11 @@ if TYPE_CHECKING:
 # when the functionality is used.
 _logger = logging.getLogger(__name__)
 
+# PyIceberg imports it by this name through the py-io-impl property, when it opens files.
+_WHEN_REQUIRED_CHECKSUM_FILE_IO = (
+    "hsfs.core.iceberg_file_io._WhenRequiredChecksumFileIO"
+)
+
 
 def _make_ephemeral_catalog(name: str, properties: dict[str, str]):
     """Build a dict-backed PyIceberg catalog living for one operation in-process.
@@ -1723,16 +1728,7 @@ class IcebergEngine:
                 props["s3.force-virtual-addressing"] = (
                     "false" if connector.path_style_access else "true"
                 )
-                # PyArrow's S3 filesystem (aws-sdk-cpp) streams every upload with a CRC64NVME
-                # trailer, which stores such as Dell ECS refuse. Neither PyArrow nor PyIceberg
-                # exposes the SDK's switch, so it goes through the SDK's process-wide variables;
-                # setdefault keeps a value the user chose.
-                os.environ.setdefault(
-                    "AWS_REQUEST_CHECKSUM_CALCULATION", "when_required"
-                )
-                os.environ.setdefault(
-                    "AWS_RESPONSE_CHECKSUM_VALIDATION", "when_required"
-                )
+                props["py-io-impl"] = _WHEN_REQUIRED_CHECKSUM_FILE_IO
             return props
         if connector.type == sc.StorageConnector.ADLS:
             props = {}
@@ -2042,9 +2038,11 @@ class IcebergEngine:
         properties and merged with any `.pyiceberg.yaml` configuration for the
         same catalog name.
         """
+        from hsfs import storage_connector as sc
         from pyiceberg.catalog import Catalog, load_catalog
         from pyiceberg.exceptions import NamespaceAlreadyExistsError
 
+        connector = self._feature_group.storage_connector
         # The properties extracted from the write options follow the Iceberg
         # Spark schema; PyIceberg needs its own schema, so for a Glue feature
         # group rebuild them from the connector's PyIceberg options.
@@ -2056,6 +2054,12 @@ class IcebergEngine:
             # of letting PyIceberg derive it from the catalog warehouse, which
             # would place a new table at a wrong (possibly local) path.
             create_location = self._require_absolute_location()
+        elif isinstance(connector, sc.S3Connector) and connector.endpoint:
+            # The user's catalog properties name the store, but not the checksum behaviour it needs.
+            catalog_properties = {
+                "py-io-impl": _WHEN_REQUIRED_CHECKSUM_FILE_IO,
+                **catalog_properties,
+            }
 
         catalog = load_catalog(catalog_name, **catalog_properties)
         _logger.debug(

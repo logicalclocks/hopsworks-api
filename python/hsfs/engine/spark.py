@@ -2058,6 +2058,10 @@ class Engine:
             f"{prefix}.connection.ssl.enabled",
             "true" if endpoint.startswith("https://") else "false",
         )
+        # The backend and the Java SDK sign with the typed region, so a forwarded
+        # fs.s3a.endpoint.region must not override it here.
+        if storage_connector.region:
+            self._set_hadoop_conf(f"{prefix}.endpoint.region", storage_connector.region)
 
     def _set_s3_hadoop_conf(self, storage_connector, prefix):
         if storage_connector.access_key:
