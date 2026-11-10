@@ -1085,6 +1085,123 @@ class TestIcebergEngine:
         # Act & Assert
         assert iceberg_engine._get_total_records("location") == 0
 
+    def _jvm_snapshot(self, mocker, snapshot_id, timestamp, operation, summary=None):
+        snapshot = mocker.Mock()
+        snapshot.snapshotId.return_value = snapshot_id
+        snapshot.timestampMillis.return_value = timestamp
+        snapshot.operation.return_value = operation
+        summary = summary or {}
+        snapshot.summary.return_value.keySet.return_value = list(summary)
+        snapshot.summary.return_value.get.side_effect = summary.get
+        return snapshot
+
+    def _jvm_partition_delete(self, mocker, after_summary):
+        spark_context = mocker.MagicMock()
+        iceberg_engine = _make_engine(mocker, spark_context=spark_context)
+        table = mocker.Mock()
+        before = self._jvm_snapshot(mocker, 1, 1792000000000, "append")
+        after = self._jvm_snapshot(mocker, 2, 1792400000000, "delete", after_summary)
+        table.currentSnapshot.side_effect = [before, after]
+        table.snapshots.return_value.iterator.return_value.hasNext.side_effect = [
+            True,
+            True,
+            False,
+        ]
+        table.snapshots.return_value.iterator.return_value.next.side_effect = [
+            before,
+            after,
+        ]
+        mocker.patch.object(iceberg_engine, "_load_jvm_table", return_value=table)
+        selection = mocker.Mock()
+        return iceberg_engine, table, selection, spark_context
+
+    def test_delete_partitions_jvm_drops_files_through_the_java_api(self, mocker):
+        # Arrange
+        iceberg_engine, table, selection, spark_context = self._jvm_partition_delete(
+            mocker, {"deleted-data-files": "2", "deleted-records": "11"}
+        )
+
+        # Act
+        fg_commit, committed = iceberg_engine._delete_partitions(selection)
+
+        # Assert
+        selection._iceberg_jvm_expression.assert_called_once_with(spark_context._jvm)
+        delete = table.newDelete.return_value
+        delete.deleteFromRowFilter.assert_called_once_with(
+            selection._iceberg_jvm_expression.return_value
+        )
+        delete.deleteFromRowFilter.return_value.commit.assert_called_once_with()
+        assert committed == "Iceberg snapshot 2"
+        assert fg_commit.rows_deleted == 11
+        assert fg_commit.commit_time == 1792400000000
+        assert fg_commit.last_active_commit_time == 1792000000000
+
+    def test_delete_partitions_jvm_no_removed_file_registers_nothing(self, mocker):
+        # Arrange
+        iceberg_engine, _, selection, _ = self._jvm_partition_delete(
+            mocker, {"deleted-data-files": "0"}
+        )
+
+        # Act & Assert
+        assert iceberg_engine._delete_partitions(selection) is None
+
+    def test_delete_partitions_jvm_unchanged_snapshot_registers_nothing(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        table = mocker.Mock()
+        snapshot = self._jvm_snapshot(mocker, 1, 1000, "append")
+        table.currentSnapshot.side_effect = [snapshot, snapshot]
+        mocker.patch.object(iceberg_engine, "_load_jvm_table", return_value=table)
+
+        # Act & Assert
+        assert iceberg_engine._delete_partitions(mocker.Mock()) is None
+
+    def test_delete_partitions_rejects_spark_connect(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_context=None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="Spark Connect"):
+            iceberg_engine._delete_partitions(mocker.Mock())
+
+    def test_partition_delete_commit_warns_when_files_were_rewritten(
+        self, mocker, caplog
+    ):
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+
+        # Act
+        fg_commit, _ = iceberg_engine._partition_delete_commit(
+            [
+                {"snapshot_id": 4, "committed_at": 1000, "operation": "append"},
+                {"snapshot_id": 5, "committed_at": 2000, "operation": "delete"},
+            ],
+            5,
+            {"deleted-data-files": "2", "added-data-files": "1"},
+        )
+
+        # Assert
+        assert "rewrote 1 data file(s)" in caplog.text
+        assert fg_commit.rows_deleted is None
+
+    def test_build_fg_commit_for_a_snapshot_before_the_latest(self, mocker):
+        # Arrange: a concurrent append committed after snapshot 5.
+        iceberg_engine = _make_engine(mocker)
+        snapshots = [
+            {"snapshot_id": 4, "committed_at": 1792000000000, "operation": "append"},
+            {"snapshot_id": 5, "committed_at": 1792100000000, "operation": "delete"},
+            {"snapshot_id": 6, "committed_at": 1792200000000, "operation": "append"},
+        ]
+
+        # Act
+        fg_commit = iceberg_engine._build_fg_commit(
+            snapshots, rows_inserted=0, rows_updated=0, snapshot_id=5
+        )
+
+        # Assert
+        assert fg_commit.commit_time == 1792100000000
+        assert fg_commit.last_active_commit_time == 1792000000000
+
 
 class TestFeatureGroupEngineIceberg:
     def test_commit_details_time_travel_format_iceberg(self, mocker):
@@ -2132,6 +2249,84 @@ class TestPyIcebergEngine:
         assert version == 3
         rows = table.scan().to_arrow().sort_by("id").to_pydict()
         assert rows["id"] == [2, 3]
+
+    def _pyiceberg_partition_delete(self, mocker, snapshot_ids):
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        mocker.patch.object(
+            iceberg_engine, "_pyiceberg_write_supported", return_value=True
+        )
+        mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
+        mocker.patch.object(
+            iceberg_engine, "_get_pyiceberg_location", return_value="location"
+        )
+        mocker.patch.object(iceberg_engine, "_make_pyiceberg_catalog")
+        table = mocker.Mock()
+        table.current_snapshot.side_effect = [
+            mocker.Mock(snapshot_id=snapshot_id) for snapshot_id in snapshot_ids
+        ]
+        mocker.patch.object(
+            iceberg_engine, "_load_pyiceberg_table", return_value=(3, table)
+        )
+        mocker.patch.object(
+            iceberg_engine,
+            "_pyiceberg_snapshots",
+            return_value=[
+                {
+                    "snapshot_id": 1,
+                    "committed_at": 1792000000000,
+                    "operation": "append",
+                    "summary": {},
+                },
+                {
+                    "snapshot_id": 2,
+                    "committed_at": 1792400000000,
+                    "operation": "delete",
+                    "summary": {"deleted-data-files": "2", "deleted-records": "2"},
+                },
+            ],
+        )
+        publish = mocker.patch.object(iceberg_engine, "_publish_hadoop_metadata")
+        return iceberg_engine, table, publish
+
+    def test_delete_partitions_pyiceberg_publishes_and_counts(self, mocker):
+        # Arrange
+        iceberg_engine, table, publish = self._pyiceberg_partition_delete(
+            mocker, snapshot_ids=[1, 2]
+        )
+        selection = mocker.Mock()
+
+        # Act
+        fg_commit, committed = iceberg_engine._delete_partitions(selection)
+
+        # Assert
+        table.delete.assert_called_once_with(
+            delete_filter=selection._pyiceberg_expression.return_value
+        )
+        publish.assert_called_once_with(table, "location", 4)
+        assert committed == "Iceberg snapshot 2"
+        assert fg_commit.rows_deleted == 2
+        assert fg_commit.last_active_commit_time == 1792000000000
+
+    def test_delete_partitions_pyiceberg_no_match_publishes_nothing(self, mocker):
+        # Arrange
+        iceberg_engine, _, publish = self._pyiceberg_partition_delete(
+            mocker, snapshot_ids=[1, 1]
+        )
+
+        # Act & Assert
+        assert iceberg_engine._delete_partitions(mocker.Mock()) is None
+        publish.assert_not_called()
+
+    def test_delete_partitions_pyiceberg_rejects_external_hopsfs_client(self, mocker):
+        # Arrange
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        mocker.patch.object(
+            iceberg_engine, "_pyiceberg_write_supported", return_value=False
+        )
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="libhdfs"):
+            iceberg_engine._delete_partitions(mocker.Mock())
 
 
 class TestIcebergMetastoreSync:
