@@ -298,7 +298,8 @@ class Engine:
     def _register_pushdown_query(self, fs_query):
         external_fg = fs_query.on_demand_fg_aliases[0].on_demand_feature_group
         dataframe = external_fg.data_source.storage_connector.read(
-            fs_query.pushdown_query
+            fs_query.pushdown_query,
+            options=fs_query._pushdown_options() or None,
         )
 
         # Feature names in the feature store are always lower case, while a warehouse that folds
