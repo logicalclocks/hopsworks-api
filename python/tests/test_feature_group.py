@@ -1995,6 +1995,44 @@ class TestFeatureGroupRead:
         fake_query.filter.assert_not_called()
         fake_query.read.assert_called_once()
 
+    def test_read_with_limit_limits_the_query(self, mocker):
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+        )
+        fake_query = mock.MagicMock()
+        fake_query.limit.return_value = fake_query
+        mocker.patch.object(fg, "select_all", return_value=fake_query)
+        mocker.patch("hsfs.engine._get_instance")
+
+        fg.read(limit=50)
+
+        fake_query.limit.assert_called_once_with(50)
+        fake_query.read.assert_called_once()
+
+    def test_read_without_limit_reads_everything(self, mocker):
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("pk", primary=True)],
+            primary_key=["pk"],
+            partition_key=[],
+        )
+        fake_query = mock.MagicMock()
+        mocker.patch.object(fg, "select_all", return_value=fake_query)
+        mocker.patch("hsfs.engine._get_instance")
+
+        fg.read()
+
+        fake_query.limit.assert_not_called()
+
     def test_read_explicit_start_time_no_event_time_still_raises_under_scheduler(self):
         # Even when scheduler env vars are set, an *explicit* time arg from the caller on
         # a no-event_time FG is genuine user error and must still raise. Only the env-var

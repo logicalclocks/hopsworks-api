@@ -27,4 +27,5 @@ You first examine the unstructured text to identify and propose schemas for the 
 ## Next Steps
 
 - Create and write the target feature group: **hops-fg**.
+- Pick the SharePoint files to extract from by searching a sync's file index: **hops-sharepoint-search**.
 - For RAG over the extracted text, chunk it and compute vector embeddings (both are MITs run in the feature pipeline), store them in an embedding index (**hops-fg** embeddings section), and serve similarity (kNN) search via **hops-fv**.

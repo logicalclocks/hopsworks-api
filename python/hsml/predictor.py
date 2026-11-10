@@ -35,6 +35,7 @@ from hopsworks_common.constants import (
 from hsml import deployment
 from hsml.deployable_component import DeployableComponent
 from hsml.deployment_logging_config import DeploymentLoggingConfig
+from hsml.deployment_memory_config import DeploymentMemoryConfig
 from hsml.deployment_schema import (
     OUTPUT_FEATURE_VECTORS,
     DeploymentSchema,
@@ -99,6 +100,7 @@ class Predictor(DeployableComponent):
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | Default | None = None,
+        memory: DeploymentMemoryConfig | dict | Default | None = None,
         feature_logging: DeploymentLoggingConfig | dict | Default | None = None,
         git_url: str | None = None,
         git_provider: str | None = None,
@@ -176,6 +178,7 @@ class Predictor(DeployableComponent):
         self._project_name = None
         self._env_vars = env_vars
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+        self._memory = util._get_obj_from_json(memory, DeploymentMemoryConfig)
         self._feature_logging = util._get_obj_from_json(
             feature_logging, DeploymentLoggingConfig
         )
@@ -515,6 +518,11 @@ class Predictor(DeployableComponent):
             ["tracing", "tracing_config"],
             as_instance_of=DeploymentTracingConfig,
         )
+        kwargs["memory"] = util._extract_field_from_json(
+            json_decamelized,
+            ["memory", "memory_config"],
+            as_instance_of=DeploymentMemoryConfig,
+        )
         kwargs["feature_logging"] = util._extract_field_from_json(
             json_decamelized,
             ["feature_logging", "feature_logging_config"],
@@ -634,6 +642,13 @@ class Predictor(DeployableComponent):
             predictor_dict = {**predictor_dict, **self._transformer.to_dict()}
         if self._tracing is not None:
             predictor_dict = {**predictor_dict, "tracing": self._tracing.to_dict()}
+        if self._memory is not None:
+            # memoryConfig because the deployment carries it under that name; the keys
+            # inside stay as the agent SDK reads them
+            predictor_dict = {
+                **predictor_dict,
+                "memoryConfig": self._memory.to_dict(),
+            }
         if self._feature_logging is not None:
             predictor_dict = {
                 **predictor_dict,
@@ -836,6 +851,16 @@ class Predictor(DeployableComponent):
     @tracing.setter
     def tracing(self, tracing: DeploymentTracingConfig | dict | Default | None):
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+
+    @public
+    @property
+    def memory(self):
+        """Memory the deployment gives an agent that configures none itself."""
+        return self._memory
+
+    @memory.setter
+    def memory(self, memory: DeploymentMemoryConfig | dict | Default | None):
+        self._memory = util._get_obj_from_json(memory, DeploymentMemoryConfig)
 
     @public
     @property

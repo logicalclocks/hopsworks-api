@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 # the command (or asks for its --help).
 _LAZY_SUBCOMMANDS: dict[str, str] = {
     "setup": "hopsworks.cli.commands.setup:setup_cmd",
+    "admin": "hopsworks.cli.commands.admin:admin_group",
     "logout": "hopsworks.cli.commands.logout:logout_cmd",
     "login": "hopsworks.cli.commands.login:login_cmd",
     "project": "hopsworks.cli.commands.project:project_group",

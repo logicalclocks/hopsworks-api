@@ -53,6 +53,7 @@ _SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 if TYPE_CHECKING:
     from hsml.deployment_logging_config import DeploymentLoggingConfig
+    from hsml.deployment_memory_config import DeploymentMemoryConfig
     from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
@@ -540,6 +541,10 @@ class ModelServing:
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
         knative_mode: bool | None = None,
+        # Appended rather than inserted: everything above it shipped in 5.0, so
+        # a position in the middle would move parameters callers may already be
+        # passing positionally.
+        memory: DeploymentMemoryConfig | dict | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -580,6 +585,8 @@ class ModelServing:
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            memory: Memory given to an agent that configures none itself; see
+                [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
 
         Returns:
             The predictor metadata object.
@@ -606,6 +613,7 @@ class ModelServing:
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
             tracing=tracing,
+            memory=memory,
             git_url=git_url,
             git_provider=git_provider,
             git_branch=git_branch,
@@ -634,6 +642,8 @@ class ModelServing:
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
         knative_mode: bool | None = None,
+        # Appended rather than inserted, for the reason create_endpoint gives.
+        memory: DeploymentMemoryConfig | dict | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -688,6 +698,11 @@ class ModelServing:
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            memory:
+                Memory the deployment gives the agent, for an agent that configures none in
+                its own code; see [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
+                The agent SDK applies it only when the agent passed no memory store of its
+                own, so code always wins over it.
 
         Returns:
             The deployment metadata object.
@@ -787,6 +802,7 @@ class ModelServing:
             environment=env_name,
             scaling_configuration=scaling_configuration,
             tracing=tracing,
+            memory=memory,
             git_url=git_url if git_backed else None,
             git_provider=git_provider if git_backed else None,
             git_branch=git_branch if git_backed else None,
@@ -800,6 +816,13 @@ class ModelServing:
             # existing record instead of creating a new one.
             predictor._id = existing.predictor.id
             predictor._version = existing.predictor.version
+            # And carry over a memory policy this call said nothing about. The
+            # documented way to roll out new code is to run deploy_agent again,
+            # and the backend overwrites an agent's memory column with whatever
+            # arrives -- so omitting `memory=` silently switched off memory
+            # that had been configured in the UI or on the first deploy.
+            if memory is None and existing.predictor.memory is not None:
+                predictor._memory = existing.predictor.memory
             existing.predictor = predictor
             existing.description = description
             existing.save()

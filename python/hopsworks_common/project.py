@@ -27,6 +27,7 @@ from hopsworks_common.core import (
     dataset_api,
     environment_api,
     git_api,
+    gpu_api,
     job_api,
     kafka_api,
     opensearch_api,
@@ -39,6 +40,8 @@ from hopsworks_common.core import (
 
 
 if TYPE_CHECKING:
+    from hopsworks_agents.eval.sdk import AgentServing
+    from hopsworks_common import gpu_availability
     from hsfs.feature_store import FeatureStore
     from hsml.model_registry import ModelRegistry
     from hsml.model_serving import ModelServing
@@ -314,6 +317,42 @@ class Project:
         return self._dataset_api
 
     @public
+    def get_agent_serving(self) -> AgentServing:
+        """Connect to the project's Agent Serving API.
+
+        The agents deployed in the project: send them messages, read their
+        traces and feedback, run evaluation suites against them, and review
+        what the failure analysis found.
+
+        Example: Example for getting the Agent Serving API of a project
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            agents = project.get_agent_serving()
+            agent = agents.get_agent("support")
+            print(agent.chat("hello").text)
+            ```
+
+        Returns:
+            The Agent Serving API.
+        """
+        from hopsworks_agents.eval.sdk import AgentServing
+        from hopsworks_agents.eval.sdk._transport import (
+            HopsworksClientSession,
+            Transport,
+        )
+
+        instance = client._get_instance()
+        base_url = getattr(instance, "_base_url", "") or ""
+        host = (
+            base_url.split("/hopsworks-api", 1)[0] if base_url else "https://hopsworks"
+        )
+        transport = Transport(host, self.id, session=HopsworksClientSession(instance))
+        return AgentServing(host, self.id, transport=transport)
+
+    @public
     def get_environment_api(self) -> environment_api.EnvironmentApi:
         """Get the Python environment API for the project.
 
@@ -330,6 +369,32 @@ class Project:
             The Alerts Api handle.
         """
         return self._alerts_api
+
+    @public
+    def get_gpu_availability(self) -> gpu_availability.GpuAvailability:
+        """Get the GPUs this project can use.
+
+        When NVIDIA Run:ai manages the cluster's GPUs, this reports the project's and its department's Run:ai quota and allocation, and how many GPUs are available within quota and over quota.
+        Otherwise it reports the cluster's GPU inventory.
+        The call has no side effects: a project not bound to a Run:ai project yet, or a Run:ai control plane that cannot be reached, is reported in `warnings` (`RUN_AI_PROJECT_NOT_BOUND`, `RUN_AI_UNREACHABLE`) with no numbers rather than raised.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            gpus = project.get_gpu_availability()
+            print(gpus.available_non_preemptible, gpus.available_preemptible)
+            ```
+
+        Returns:
+            The project's GPU availability.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return gpu_api.GpuApi()._get_gpu_availability(self.id)
 
     @public
     def get_members_api(self) -> project_members_api.ProjectMembersApi:

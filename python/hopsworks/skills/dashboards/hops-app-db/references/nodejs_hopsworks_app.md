@@ -15,6 +15,8 @@ import { getSecret, mysqlConfig, trinoClient, query, streamQuery, featureGroupTa
 | `getSecret(name)` | a private secret of the user who **started** the app (cached per process) | `REST_ENDPOINT`, `SECRETS_DIR` |
 | `restCall(path, init?)` | parsed JSON of a Hopsworks REST call as that user; `path` is relative to `/hopsworks-api/api` | same |
 | `mysqlConfig()` | `{ host, port, user, password, database }` of the project's online feature store, for `mysql2` / `mysql` / `knex` | `MYSQL_*` (`db_access=True`) |
+| `createTable(name, definition)` | the full table name, after Hopsworks registered the table and created it on disk from `definition` (the columns and indexes); idempotent | `HOPSWORKS_PROJECT_ID`, `HOPSWORKS_JOB_NAME` |
+| `alterTable(name, alteration)` | — ; Hopsworks runs `ALTER TABLE <name> <alteration>` and keeps the table on disk | same |
 | `trinoClient({ catalog, schema? })` | an authenticated `TrinoClient` (Trino REST protocol, no dependency) for the offline feature groups | `TRINO_*` (Trino enabled; independent of `db_access`) |
 | `query(client, sql)` | all rows as `[{ column: value }]` | — |
 | `streamQuery(client, sql)` | async iterator of row objects, page by page | — |
@@ -50,7 +52,7 @@ const [rows] = await pool.execute("SELECT * FROM transactions_1 WHERE cc_num = ?
 
 `mysqlConfig()` honours an explicit `MYSQL_PASSWORD` (local development, or an
 entrypoint that resolved it with the Python SDK) and otherwise reads the secret.
-The privileges follow the starter's project role (**hops-app-db**, "Privileges").
+An app that registers its tables connects as its own database user, which writes only those tables; create and change them with `createTable()` and `alterTable()`, through which Hopsworks runs the DDL and keeps the columns on disk; the app user itself cannot `CREATE` or `ALTER` a table (**hops-app-db**).
 
 ## Offline feature groups (Trino)
 

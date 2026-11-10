@@ -483,6 +483,10 @@ def _encode_row(complex_feature_writers, writer, row):
                 row[k] = row[k].replace(tzinfo=timezone.utc)
             if HAS_PANDAS and isinstance(row[k], pd._libs.missing.NAType):
                 row[k] = None
+            # A nullable boolean column (pandas' "boolean") yields numpy.bool_ from itertuples,
+            # which is not a bool, so avro matches it to no branch of ["null", "boolean"].
+            if HAS_NUMPY and isinstance(row[k], np.bool_):
+                row[k] = bool(row[k])
     # encode complex features
     row = _encode_complex_features(complex_feature_writers, row)
     # encode feature row

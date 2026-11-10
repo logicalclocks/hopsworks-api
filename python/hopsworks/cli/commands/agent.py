@@ -463,6 +463,21 @@ def _predictor_attr(d: Any, attr: str, default: Any) -> Any:
 
 
 def _deployment_status(d: Any) -> str:
+    """Whether the agent is running, which has to be asked for rather than read.
+
+    A deployment's state is not an attribute on the object: `get_state()` fetches
+    it. Reading `status`/`deployment_state`/`_state` off a deployment that had not
+    been asked found nothing every time, so `hops agent info` printed `Status -`
+    for a pod that was running and answering -- the one line anybody runs the
+    command for. The attributes stay as a fallback for an object that carries one.
+    """
+    try:
+        state = d.get_state()
+    except Exception:  # noqa: BLE001 -- a status we cannot fetch is not a failed command
+        state = None
+    status = getattr(state, "status", None)
+    if status:
+        return str(status)
     for attr in ("status", "deployment_state", "_state"):
         value = getattr(d, attr, None)
         if value:

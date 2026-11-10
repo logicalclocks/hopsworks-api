@@ -58,7 +58,7 @@ from hopsworks_apigen.griffe import HopsworksApigenGriffe
 
 
 # The four packages whose public surface is governed by the invariant.
-PACKAGES = ["hopsworks_common", "hopsworks", "hsfs", "hsml"]
+PACKAGES = ["hopsworks_common", "hopsworks", "hsfs", "hsml", "hopsworks_agents"]
 
 # Path fragments (relative to the python root, using "/" separators) whose
 # subtrees are excluded from the check entirely. ``istio`` is vendored from

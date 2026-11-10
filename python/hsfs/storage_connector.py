@@ -46,6 +46,8 @@ from hsfs.core import (
     data_source_api,
     data_source_credentials_api,
     elasticsearch_api,
+    sharepoint_api,
+    sharepoint_sync,
     storage_connector_api,
 )
 
@@ -87,11 +89,14 @@ class StorageConnector(ABC):
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
     TERADATA = "TERADATA"
+    SQLSERVER = "SQLSERVER"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
     GLUE = "GLUE"
     ELASTICSEARCH = "ELASTICSEARCH"
+    HOPSWORKS = "HOPSWORKS"
+    SHAREPOINT = "SHAREPOINT"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -112,6 +117,8 @@ class StorageConnector(ABC):
         ORACLE: "featurestoreSqlConnectorDTO",
         OPENSEARCH: "featurestoreOpensearchConnectorDTO",
         ELASTICSEARCH: "featurestoreElasticsearchConnectorDTO",
+        HOPSWORKS: "featurestoreHopsworksConnectorDTO",
+        SHAREPOINT: "featurestoreSharePointConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
         GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
@@ -155,7 +162,11 @@ class StorageConnector(ABC):
         | MongoDBConnector
         | GlueConnector
         | ElasticsearchConnector
+        | HopsworksConnector
+        | SharePointConnector
     ):
+        if isinstance(json_dict, list) or "items" in json_dict:
+            return cls._from_response_json_list(json_dict)
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
         sc_type = json_decamelized.get("storage_connector_type")
@@ -165,8 +176,34 @@ class StorageConnector(ABC):
                 return subcls(**json_decamelized)
         raise ValueError(
             f"Unknown storage_connector_type {sc_type!r}; expected one of "
-            f"{sorted({s.type for s in cls.__subclasses__()})}."
+            f"{sorted({s.type for s in cls.__subclasses__() if isinstance(s.type, str)})}."
         )
+
+    @classmethod
+    def _from_response_json_list(
+        cls, json_list: list[dict[str, Any]] | dict[str, Any]
+    ) -> list[StorageConnector]:
+        """Deserialize a list of connectors, skipping those of a type this client does not know.
+
+        A newer backend may hold connector types this client predates, and one of them must not make every connector of the feature store unreadable.
+        """
+        items = json_list if isinstance(json_list, list) else json_list["items"] or []
+        known = {subcls.type for subcls in cls.__subclasses__()}
+        connectors = []
+        for item in items:
+            sc_type = item.get(
+                "storageConnectorType", item.get("storage_connector_type")
+            )
+            if sc_type not in known:
+                warnings.warn(
+                    f"Skipping data source {item.get('name')!r} of type {sc_type!r}, "
+                    "which this version of the hopsworks client does not support; "
+                    "upgrade the client to use it.",
+                    stacklevel=2,
+                )
+                continue
+            connectors.append(cls.from_response_json(item))
+        return connectors
 
     def update_from_response_json(
         self, json_dict: dict[str, Any]
@@ -187,6 +224,8 @@ class StorageConnector(ABC):
         | MongoDBConnector
         | GlueConnector
         | ElasticsearchConnector
+        | HopsworksConnector
+        | SharePointConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -615,6 +654,7 @@ class StorageConnector(ABC):
             StorageConnector.CRM,
             StorageConnector.GOOGLE_SHEETS,
             StorageConnector.REST,
+            StorageConnector.SHAREPOINT,
         ]:
             raise ValueError("This connector type does not support fetching databases.")
         self._require_credentials()
@@ -644,7 +684,7 @@ class StorageConnector(ABC):
             A list of DataSource objects representing the tables.
             For Google Sheets connectors, each entry represents a sheet name.
         """
-        if self.type == StorageConnector.REST:
+        if self.type in [StorageConnector.REST, StorageConnector.SHAREPOINT]:
             raise ValueError("This connector type does not support fetching tables.")
         self._require_credentials()
         if not database and self.type != StorageConnector.CRM:
@@ -694,6 +734,8 @@ class StorageConnector(ABC):
                         "explicit `database` to get_tables()."
                     )
                 database = self.database
+            elif self.type == StorageConnector.HOPSWORKS:
+                database = self._default_feature_store()
             elif self.type in [
                 StorageConnector.S3,
                 StorageConnector.GCS,
@@ -3466,6 +3508,7 @@ class SqlConnector(StorageConnector):
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
     TERADATA = "TERADATA"
+    SQLSERVER = "SQLSERVER"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
@@ -3473,6 +3516,7 @@ class SqlConnector(StorageConnector):
         ORACLE: "oracle.jdbc.driver.OracleDriver",
         CLICKHOUSE: "com.clickhouse.jdbc.ClickHouseDriver",
         TERADATA: "com.teradata.jdbc.TeraDriver",
+        SQLSERVER: "com.microsoft.sqlserver.jdbc.SQLServerDriver",
     }
     # Connection settings the connector's own fields supply, so a free-form argument must never be
     # able to replace them.
@@ -3482,6 +3526,11 @@ class SqlConnector(StorageConnector):
             "port",
             "dbs_port",
             "database",
+            "databasename",
+            # SQL Server's JDBC driver reads the host and port under these names too.
+            "server",
+            "servername",
+            "portnumber",
             "database_type",
             "user",
             "username",
@@ -3495,6 +3544,7 @@ class SqlConnector(StorageConnector):
         # No protocol in the scheme: the 0.9.x driver defaults to HTTP (port 8123).
         CLICKHOUSE: "clickhouse",
         TERADATA: "teradata",
+        SQLSERVER: "sqlserver",
     }
 
     def __init__(
@@ -4108,6 +4158,11 @@ class SqlConnector(StorageConnector):
             if self._port:
                 params.append(f"DBS_PORT={self._port}")
             opts["url"] = f"jdbc:{scheme}://{self._host}/" + ",".join(params)
+        elif self._database_type == self.SQLSERVER:
+            # The database is a ;-separated property, not a path, braced so a ; or = in it cannot
+            # start another property; }} is a literal } inside braces.
+            database = (self._database or "").replace("}", "}}")
+            opts["url"] = f"jdbc:{scheme}://{host_port};databaseName={{{database}}}"
         else:
             opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
         return opts
@@ -4900,6 +4955,555 @@ class ElasticsearchConnector(StorageConnector):
             dataframe, self._object_paths(self._get_mapping(index, merged))
         )
         return engine._get_instance()._return_dataframe_type(dataframe, dataframe_type)
+
+
+@public
+class HopsworksConnector(StorageConnector):
+    """Storage connector to a project on another Hopsworks cluster.
+
+    Use this connector to browse the feature stores and feature groups that the remote project can read, to register an external feature group on one of its feature groups, and to ingest one into a local feature group with a DLTHub ingestion job.
+    External feature groups are read through the Hopsworks Query Service of the remote cluster.
+    The API key is kept in the Hopsworks secret store and needs the `PROJECT` and `FEATURESTORE` scopes on the remote cluster.
+
+    Example:
+        ```python
+        fs = ...
+        sc = fs.get_storage_connector("my_remote_cluster")
+        tables = sc.get_tables("sales_featurestore")
+        fg = fs.create_external_feature_group(
+            name="transactions",
+            version=1,
+            primary_key=["id"],
+            data_source=tables[0],
+        )
+        fg.save()
+        ```
+    """
+
+    type = StorageConnector.HOPSWORKS
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        project: str | None = None,
+        api_key: str | None = None,
+        verify: bool | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._host = host
+        self._port = port
+        self._project = project
+        self._api_key = api_key
+        self._verify = verify
+
+    @public
+    @property
+    def host(self) -> str | None:
+        """Host name or IP address of the remote Hopsworks cluster."""
+        return self._host
+
+    @public
+    @property
+    def port(self) -> int | None:
+        """HTTPS port of the remote cluster; 443 when unset."""
+        return self._port
+
+    @public
+    @property
+    def project(self) -> str | None:
+        """Name of the project on the remote cluster that the API key belongs to."""
+        return self._project
+
+    @public
+    @property
+    def api_key(self) -> str | None:
+        """API key of a user of the remote project, resolved from the secret store."""
+        return self._api_key
+
+    @public
+    @property
+    def verify(self) -> bool | None:
+        """Whether the TLS certificate and host name of the remote cluster are verified; true when unset."""
+        return self._verify
+
+    def _ensure_full(self) -> None:
+        """Refetch the connector when it is the basic-info copy a data source or feature group carries."""
+        if not self._host:
+            self._refetch()
+
+    def _default_feature_store(self) -> str:
+        """Name of the remote project's own feature store, browsed when no database is given."""
+        self._ensure_full()
+        if not self._project:
+            raise ValueError(
+                "Database name is required for Hopsworks connectors without a project. "
+                "Pass the remote feature store name as the `database` argument to get_tables()."
+            )
+        return f"{self._project.lower()}_featurestore"
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "host": self._host,
+                "port": self._port,
+                "project": self._project,
+                "apiKey": self._api_key,
+                "verify": self._verify,
+            }
+        )
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: read a remote feature group through an external feature group instead.
+
+        Create an external feature group on a table from [`get_tables`][hsfs.storage_connector.StorageConnector.get_tables] and read it with [`FeatureGroup.read`][hsfs.feature_group.FeatureGroup.read], which goes through the Hopsworks Query Service.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "Cannot read from a Hopsworks connector directly. Create an external feature group "
+            "on one of its tables and use feature_group.read() instead."
+        )
+
+
+@public
+class SharePointConnector(StorageConnector):
+    """SharePoint Online data source.
+
+    Holds the Microsoft Entra ID application credentials, the cloud and the site.
+    It is not read through Spark and backs no feature group; instead it copies folders of the site's document libraries into datasets of the project, once or on a schedule, through [`SharePointSync`][hsfs.core.sharepoint_sync.SharePointSync] objects.
+    The client secret is kept in the Hopsworks secret store and never returned by the backend.
+
+    Each sync runs as a Python job whose script is `DataSources/<connector>/sharepoint_sync.py` in the project, which data owners can edit.
+
+    Example:
+        ```python
+        from hsfs.storage_connector import SharePointConnector
+
+        fs = project.get_feature_store()
+        sc = fs.create_data_source(
+            SharePointConnector(
+                id=None,
+                name="finance_sharepoint",
+                featurestore_id=fs.id,
+                tenant_id="...",
+                client_id="...",
+                client_secret="...",
+                site_url="https://contoso.sharepoint.com/sites/Finance",
+            )
+        ).storage_connector
+        drive = sc.list_drives()[0]
+        sync = sc.create_sync(drive_id=drive["id"], folder_path="Reports/2026")
+        ```
+    """
+
+    type = StorageConnector.SHAREPOINT
+    CLOUD_GLOBAL = "GLOBAL"
+    CLOUD_US_GOV = "US_GOV"
+    CLOUD_CHINA = "CHINA"
+    AUTH_APP = "APP"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        cloud: str | None = None,
+        auth_mode: str | None = None,
+        tenant_id: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        client_secret_set: bool | None = None,
+        site_url: str | None = None,
+        site_id: str | None = None,
+        pinned: bool | None = None,
+        script_path: str | None = None,
+        script_template_version: int | None = None,
+        script_modified: bool | None = None,
+        current_template_version: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._cloud = cloud
+        self._auth_mode = auth_mode
+        self._tenant_id = tenant_id
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._client_secret_set = client_secret_set
+        self._site_url = site_url
+        self._site_id = site_id
+        self._pinned = pinned
+        self._script_path = script_path
+        self._script_template_version = script_template_version
+        self._script_modified = script_modified
+        self._current_template_version = current_template_version
+        self._sharepoint_api = sharepoint_api.SharePointApi()
+
+    @public
+    @property
+    def cloud(self) -> str | None:
+        """Microsoft cloud of the tenant: `GLOBAL` (the default when unset), `US_GOV` or `CHINA`."""
+        return self._cloud
+
+    @public
+    @property
+    def auth_mode(self) -> str | None:
+        """How the data source signs in to Microsoft Graph; `APP` (application credentials) when unset."""
+        return self._auth_mode
+
+    @public
+    @property
+    def tenant_id(self) -> str | None:
+        """Directory (tenant) id of the Microsoft Entra ID tenant; fixed while the data source has syncs."""
+        return self._tenant_id
+
+    @public
+    @property
+    def client_id(self) -> str | None:
+        """Application (client) id of the Entra ID app registration."""
+        return self._client_id
+
+    @public
+    @property
+    def client_secret(self) -> str | None:
+        """Client secret of the app registration, to send with the next `save()` or `update()`.
+
+        The backend never returns it, so it is `None` on a fetched data source; see `client_secret_set`.
+        It can be rotated at any time, also while syncs exist.
+        """
+        return self._client_secret
+
+    @client_secret.setter
+    def client_secret(self, client_secret: str | None) -> None:
+        self._client_secret = client_secret
+
+    @public
+    @property
+    def client_secret_set(self) -> bool | None:
+        """Whether the backend holds a client secret for this data source."""
+        return self._client_secret_set
+
+    @public
+    @property
+    def site_url(self) -> str | None:
+        """URL of the SharePoint site, e.g. `https://contoso.sharepoint.com/sites/Finance`; fixed while the data source has syncs."""
+        return self._site_url
+
+    @public
+    @property
+    def site_id(self) -> str | None:
+        """Graph id of the site, for apps granted `Sites.Selected` that cannot look the site up by URL."""
+        return self._site_id
+
+    @public
+    @property
+    def pinned(self) -> bool | None:
+        """Whether syncs exist, which fixes the tenant, cloud and site of the data source."""
+        return self._pinned
+
+    @public
+    @property
+    def script_path(self) -> str | None:
+        """Path of the sync script in the project, shared by every sync of this data source."""
+        return self._script_path
+
+    @public
+    @property
+    def script_template_version(self) -> int | None:
+        """Template version the sync script was written from, `None` when the script was removed."""
+        return self._script_template_version
+
+    @public
+    @property
+    def script_modified(self) -> bool | None:
+        """Whether the sync script differs from the current platform template."""
+        return self._script_modified
+
+    @public
+    @property
+    def current_template_version(self) -> int | None:
+        """Version of the platform template that `reset_script()` writes; newer than `script_template_version` when the script predates a template upgrade."""
+        return self._current_template_version
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "cloud": self._cloud,
+                "authMode": self._auth_mode,
+                "tenantId": self._tenant_id,
+                "clientId": self._client_id,
+                "clientSecret": self._client_secret,
+                "siteUrl": self._site_url,
+                "siteId": self._site_id,
+            }
+        )
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        """Not supported: a SharePoint data source is not read through Spark.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SharePoint data sources sync files into a dataset; they are not read through Spark"
+        )
+
+    @public
+    def read(
+        self,
+        query: str | None = None,
+        data_format: str | None = None,
+        options: dict[str, Any] | None = None,
+        path: str | None = None,
+        dataframe_type: Literal[
+            "default", "spark", "pandas", "polars", "numpy", "python"
+        ] = "default",
+    ) -> (
+        TypeVar("pyspark.sql.DataFrame")
+        | TypeVar("pyspark.RDD")
+        | pd.DataFrame
+        | np.ndarray
+        | pl.DataFrame
+    ):
+        """Not supported: sync the files into a dataset with `create_sync()` or `copy_folder()` and read them there.
+
+        Parameters:
+            query: Not used.
+            data_format: Not used.
+            options: Not used.
+            path: Not used.
+            dataframe_type: Not used.
+
+        Raises:
+            NotImplementedError: Always.
+        """
+        raise NotImplementedError(
+            "SharePoint data sources sync files into a dataset; use create_sync() "
+            "or copy_folder() and read the files from the dataset."
+        )
+
+    def _sync(self, json_dict: dict[str, Any]) -> sharepoint_sync.SharePointSync:
+        return sharepoint_sync.SharePointSync.from_response_json(
+            json_dict, self._featurestore_id, self._name
+        )
+
+    @public
+    def list_drives(self) -> list[dict[str, Any]]:
+        """List the document libraries of the site.
+
+        Returns:
+            One dict per library with `id`, `name` and `web_url`; pass `id` as `drive_id` to the other methods.
+        """
+        return humps.decamelize(
+            self._sharepoint_api._get_drives(self._featurestore_id, self._name)
+        )
+
+    @public
+    def list_folders(self, drive_id: str, path: str = "") -> list[dict[str, Any]]:
+        """List the child folders of a folder in a document library.
+
+        Parameters:
+            drive_id: Id of the library, from [`list_drives`][hsfs.storage_connector.SharePointConnector.list_drives].
+            path: Folder path inside the library, `""` for the library root.
+
+        Returns:
+            One dict per child folder with its `id`, `name`, `web_url` and `path`, relative to the library root without a leading slash.
+        """
+        return humps.decamelize(
+            self._sharepoint_api._get_folders(
+                self._featurestore_id, self._name, drive_id, path
+            )
+        )
+
+    @public
+    def create_sync(
+        self,
+        drive_id: str,
+        folder_path: str = "",
+        dataset_name: str = "sharepoint",
+        schedule: str | None = "0 0 * ? * *",
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
+        max_file_size_mb: int = 1024,
+        mirror_deletions: bool | None = None,
+        verify_checksums: bool = False,
+        checksum_every: int = 24,
+        transfers: int | None = None,
+        alert_receiver: str | None = None,
+        run_now: bool = True,
+        index_files: bool = False,
+        index_feature_group: str | None = None,
+    ) -> sharepoint_sync.SharePointSync:
+        """Create a sync that copies a library folder into a new dataset of the project.
+
+        The sync creates the dataset (members read it, data owners write it) and a Python job that copies the folder with rclone.
+        With mirror deletions, each run makes the dataset equal to the folder: files deleted in SharePoint, and files added or changed in Hopsworks, are deleted or restored.
+        Data only flows from SharePoint to Hopsworks.
+        Needs the Data Owner role.
+
+        Parameters:
+            drive_id: Id of the library, from [`list_drives`][hsfs.storage_connector.SharePointConnector.list_drives].
+            folder_path: Folder path inside the library, `""` for the library root.
+            dataset_name: Name of the top-level dataset to create; it must not exist.
+            schedule:
+                Quartz cron expression in UTC, with seconds first; the default is hourly.
+                `None` creates no schedule, so the sync copies only when started.
+            include: Filter patterns, in rclone syntax, of the files to copy; when given, every other file is skipped.
+            exclude: Filter patterns, in rclone syntax, of the files to skip.
+            max_file_size_mb: Files larger than this are skipped; 0 copies files of any size.
+            mirror_deletions:
+                Delete files from the dataset that are not in the folder.
+                Defaults to on with a schedule and off without one.
+            verify_checksums: Compare file contents by checksum on every run, not only size and modification time.
+            checksum_every: Make every this many runs a checksum run when `verify_checksums` is off.
+            transfers: Number of files downloaded in parallel; the cluster default when `None`.
+            alert_receiver: Alert receiver notified when a run fails or is killed.
+            run_now: Start the first run as soon as the sync is created.
+            index_files:
+                Index the dataset's files in a Delta feature group, one row per file, partitioned by the day the file was first indexed.
+                Each run updates it; see [`SharePointSync.get_index_feature_group`][hsfs.core.sharepoint_sync.SharePointSync.get_index_feature_group].
+            index_feature_group: Name of the index feature group; `sharepoint_<dataset_name>` when `None`.
+
+        Returns:
+            The created sync.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the folder does not resolve, the dataset exists, the schedule is more frequent than the cluster allows, or a pattern or the alert receiver is invalid.
+        """
+        if mirror_deletions is None:
+            mirror_deletions = schedule is not None
+        body = {
+            "driveId": drive_id,
+            "folderPath": folder_path,
+            "datasetName": dataset_name,
+            "cronExpression": schedule,
+            "includePatterns": list(include or []),
+            "excludePatterns": list(exclude or []),
+            "maxFileSizeMb": max_file_size_mb,
+            "mirrorDeletions": mirror_deletions,
+            "verifyChecksums": verify_checksums,
+            "checksumEvery": checksum_every,
+            "transfers": transfers,
+            "alertReceiver": alert_receiver,
+            "runNow": run_now,
+            "indexFiles": index_files or index_feature_group is not None,
+            "indexFeatureGroup": index_feature_group,
+        }
+        return self._sync(
+            self._sharepoint_api._create_sync(self._featurestore_id, self._name, body)
+        )
+
+    @public
+    def copy_folder(
+        self,
+        drive_id: str,
+        folder_path: str = "",
+        dataset_name: str = "sharepoint",
+        alert_receiver: str | None = None,
+        index_files: bool = False,
+    ) -> sharepoint_sync.SharePointSync:
+        """Copy a library folder into a new dataset now, without a schedule.
+
+        This is [`create_sync`][hsfs.storage_connector.SharePointConnector.create_sync] with no schedule, no mirror deletions and an immediate run.
+        Refresh the copy later with [`SharePointSync.run`][hsfs.core.sharepoint_sync.SharePointSync.run], or schedule it with [`SharePointSync.set_schedule`][hsfs.core.sharepoint_sync.SharePointSync.set_schedule].
+
+        Parameters:
+            drive_id: Id of the library, from [`list_drives`][hsfs.storage_connector.SharePointConnector.list_drives].
+            folder_path: Folder path inside the library, `""` for the library root.
+            dataset_name: Name of the top-level dataset to create; it must not exist.
+            alert_receiver: Alert receiver notified when the copy fails or is killed.
+            index_files: Index the copied files in a feature group, as [`create_sync`][hsfs.storage_connector.SharePointConnector.create_sync] does.
+
+        Returns:
+            The created sync.
+        """
+        return self.create_sync(
+            drive_id=drive_id,
+            folder_path=folder_path,
+            dataset_name=dataset_name,
+            schedule=None,
+            mirror_deletions=False,
+            alert_receiver=alert_receiver,
+            run_now=True,
+            index_files=index_files,
+        )
+
+    @public
+    def get_syncs(self) -> list[sharepoint_sync.SharePointSync]:
+        """List the syncs of this data source.
+
+        Returns:
+            The syncs, with their status.
+        """
+        return [
+            self._sync(item)
+            for item in self._sharepoint_api._get_syncs(
+                self._featurestore_id, self._name
+            )
+        ]
+
+    @public
+    def get_sync(self, sync_id: int) -> sharepoint_sync.SharePointSync:
+        """Get one sync of this data source.
+
+        Parameters:
+            sync_id: Id of the sync.
+
+        Returns:
+            The sync, with its status.
+        """
+        return self._sync(
+            self._sharepoint_api._get_sync(self._featurestore_id, self._name, sync_id)
+        )
+
+    @public
+    def reset_script(self) -> None:
+        """Overwrite the sync script in the project with the current platform template.
+
+        Warning: Discards edits to the script
+            Every sync of this data source runs the script, so changes a data owner made to it are lost for all of them.
+            Copy the file first to keep them.
+        """
+        self.update_from_response_json(
+            self._sharepoint_api._reset_script(self._featurestore_id, self._name)
+        )
 
 
 class CRMSource(Enum):

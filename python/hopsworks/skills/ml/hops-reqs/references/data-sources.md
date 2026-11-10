@@ -76,6 +76,7 @@ index must be loaded, or the source is an API with no table to mount.
 | glue | AWS Glue Data Catalog | `--database`, `--region` | `--secret-key`, `--session-token` (`HOPSWORKS_DS_GLUE_<OPTION>`) |
 | google-sheets | Google Sheets | `--key-path` | none; the key file is uploaded to HopsFS first |
 | hopsfs | A dataset in this project | `--dataset` | none |
+| hopsworks | Feature groups of a project on another Hopsworks cluster | `--host`, `--project` | `--api-key` (`HOPSWORKS_DS_HOPSWORKS_API_KEY`) |
 | jdbc | Any JDBC database | `--url` | `--password` (`HOPSWORKS_DS_JDBC_PASSWORD`) |
 | kafka | An external Kafka cluster | `--bootstrap-servers`, `--security-protocol` | `--ssl-truststore-password`, `--ssl-keystore-password`, `--ssl-key-password` (`HOPSWORKS_DS_KAFKA_<OPTION>`) |
 | mongodb | MongoDB | `--connection-string`, `--database` | `--password` (`HOPSWORKS_DS_MONGODB_PASSWORD`) |
@@ -84,6 +85,7 @@ index must be loaded, or the source is an API with no table to mount.
 | rest | A REST API | `--base-url`, `--auth-type` | `--api-key`, `--bearer-token`, `--password`, `--client-secret`, `--access-token` (`HOPSWORKS_DS_REST_<OPTION>`) |
 | s3 | Amazon S3 | `--bucket` | `--secret-key` (`HOPSWORKS_DS_S3_SECRET_KEY`) |
 | sap-hana | SAP HANA | `--host`, `--user` | `--password` (`HOPSWORKS_DS_SAP_HANA_PASSWORD`) |
+| sharepoint | SharePoint Online document libraries, copied into a dataset rather than mounted | `--tenant-id`, `--client-id`, `--site-url` | `--client-secret` (`HOPSWORKS_DS_SHAREPOINT_CLIENT_SECRET`) |
 | snowflake | Snowflake | `--url`, `--user`, `--database`, `--schema`, `--warehouse` | `--password` (`HOPSWORKS_DS_SNOWFLAKE_PASSWORD`) |
 | sql | MySQL, PostgreSQL, Oracle, SQL Server, ClickHouse, Teradata and other SQL databases; `--user` too unless `--credentials-mode PROVIDED` (Oracle only), where each member saves their own | `--database-type`, `--port`, `--database` | `--password`, `--wallet-password` (`HOPSWORKS_DS_SQL_<OPTION>`) |
 | unity-catalog | Databricks Unity Catalog | `--workspace-url` | `--access-token`, `--client-secret` (`HOPSWORKS_DS_UNITY_CATALOG_<OPTION>`) |

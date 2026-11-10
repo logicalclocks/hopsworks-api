@@ -46,7 +46,7 @@ def _model_cache_base_dirs():
     Downloads are attempted in this order, falling back to the next location
     when one is unusable (e.g. disk full or no write permission):
 
-    1. The system temp area (``/tmp/hopsworks/models`` by default).
+    1. The system temp area (``/tmp/hopsworks/models`` by default, under ``%TEMP%`` on Windows).
     2. A ``cache`` directory under the Hopsworks home directory (``~/.hopsworks``).
     3. A ``.hopsworks_cache`` directory under the current working directory.
 

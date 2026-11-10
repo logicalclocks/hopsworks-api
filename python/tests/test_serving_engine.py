@@ -110,6 +110,36 @@ class TestUploadLocalServingFiles:
             == "hopsfs::transformer.script_file::./transformer.py"
         )
 
+    def test_a_git_backed_script_is_left_as_the_path_inside_the_repository(
+        self, mocker
+    ):
+        # The pod clones the repository and runs the script from it, so the
+        # path must reach the backend exactly as given: resolving it would
+        # either fail (the cwd does not hold the repository) or upload a copy
+        # and rewrite the field to an absolute HopsFS path the backend refuses.
+        eng = self._engine(mocker)
+        mock_resolve = mocker.patch.object(
+            serving_engine,
+            "_resolve_serving_file",
+            side_effect=lambda engine, name, p, **kw: f"hopsfs::{p}",
+        )
+
+        predictor = _FakePredictor(
+            script_file="chinook/support_agent.py",
+            config_file="./c.yaml",
+            transformer=None,
+        )
+        predictor.git_url = "https://github.com/org/repo.git"
+        deployment = _FakeDeployment(predictor, name="my_dep")
+
+        eng._upload_local_serving_files(deployment)
+
+        assert predictor.script_file == "chinook/support_agent.py"
+        assert predictor.config_file == "hopsfs::./c.yaml"
+        assert [c.kwargs["field_name"] for c in mock_resolve.mock_calls] == [
+            "config_file"
+        ]
+
     def test_each_field_uploads_to_its_own_subdir(self, mocker):
         # Per-role subdirs prevent basename collisions when predictor and
         # transformer scripts share the same filename.

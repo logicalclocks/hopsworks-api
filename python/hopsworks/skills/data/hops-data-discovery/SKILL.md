@@ -36,7 +36,12 @@ hops search <term> --global            # search across shared/other projects
 ```bash
 hops datasource list                      # configured connectors (Snowflake, S3, JDBC, ...)
 hops datasource info <name>
+hops datasource databases <name>
+hops datasource tables <name> --database <db>
+hops datasource preview <name> --table <t> [--database <db>]
 ```
+
+Read a source only through Hopsworks (preview, or mount a LIMIT query as an external feature group; see **hops-data-sources**), never with a database driver and a credential copied from a secret. A failed read is reported, not routed around.
 
 ### Files (HopsFS)
 
