@@ -6083,9 +6083,11 @@ class TestSpark:
             name="ecs",
             featurestore_id=99,
             bucket="landing",
+            region="us-east-1",
             endpoint="https://s3.example.com:9021",
             arguments=[
-                {"name": "fs.s3a.endpoint", "value": "s3.eu-west-1.amazonaws.com"}
+                {"name": "fs.s3a.endpoint", "value": "s3.eu-west-1.amazonaws.com"},
+                {"name": "fs.s3a.endpoint.region", "value": "eu-west-1"},
             ],
         )
 
@@ -6094,12 +6096,16 @@ class TestSpark:
         )
 
         hadoop_set = mock_spark_context._jsc.hadoopConfiguration.return_value.set
-        bucket_endpoints = [
-            call.args[1]
-            for call in hadoop_set.call_args_list
-            if call.args[0] == "fs.s3a.bucket.landing.endpoint"
-        ]
-        assert bucket_endpoints[-1] == "https://s3.example.com:9021"
+
+        def last_bucket_value(key):
+            return [
+                call.args[1]
+                for call in hadoop_set.call_args_list
+                if call.args[0] == f"fs.s3a.bucket.landing.{key}"
+            ][-1]
+
+        assert last_bucket_value("endpoint") == "https://s3.example.com:9021"
+        assert last_bucket_value("endpoint.region") == "us-east-1"
 
     def test_setup_adls_hadoop_conf(self, mocker):
         # Arrange

@@ -984,6 +984,57 @@ class TestPython:
         assert kwargs["aws_session_token"] == "token"
         assert kwargs["config"].s3 == {"addressing_style": addressing_style}
 
+    def test_read_s3_with_endpoint_sends_no_flexible_checksum(self, mocker):
+        import boto3
+        from botocore.awsrequest import AWSResponse
+
+        sent = []
+
+        def answer(request, **kwargs):
+            sent.append(request)
+            if request.method == "GET" and "list-type=2" in request.url:
+                body = (
+                    b"<ListBucketResult><IsTruncated>false</IsTruncated>"
+                    b"<Contents><Key>fg/part-0</Key><Size>1</Size></Contents>"
+                    b"</ListBucketResult>"
+                )
+            else:
+                body = b"x"
+            raw = mocker.Mock()
+            raw.stream.return_value = iter([body])
+            return AWSResponse(request.url, 200, {}, raw)
+
+        real_client = boto3.client
+
+        def client(*args, **kwargs):
+            s3 = real_client(*args, **kwargs)
+            s3.meta.events.register("before-send.s3", answer)
+            return s3
+
+        mocker.patch("boto3.client", side_effect=client)
+        mocker.patch("hsfs.engine.python.Engine._read_pandas")
+        connector = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            region="us-east-1",
+            access_key="ak",
+            secret_key="sk",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+
+        python.Engine()._read_s3(
+            storage_connector=connector, location="s3://landing/fg", data_format=None
+        )
+
+        assert [r.method for r in sent] == ["GET", "GET"]
+        for request in sent:
+            assert not [
+                h for h in request.headers if h.lower().startswith("x-amz-checksum")
+            ]
+
     def test_read_options(self):
         # Arrange
         python_engine = python.Engine()

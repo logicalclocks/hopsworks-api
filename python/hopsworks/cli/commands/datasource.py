@@ -2952,7 +2952,7 @@ def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
     from hopsworks_common.core import rest
 
     try:
-        rest._send_request(
+        stored = rest._send_request(
             "POST",
             rest._project_path(
                 "featurestores", getattr(fs, "id", None), "storageconnectors"
@@ -2961,4 +2961,11 @@ def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Create failed: {exc}") from exc
+    # A cluster that predates S3-compatible storage drops the endpoint and creates an AWS data source.
+    if body.get("endpoint") and not (stored or {}).get("endpoint"):
+        raise click.ClickException(
+            f"Connector {body['name']} was created without its endpoint, so it targets AWS S3: "
+            "the Hopsworks cluster predates S3-compatible storage. "
+            "Upgrade Hopsworks to 5.3 or later before using --endpoint."
+        )
     output.success("✓ Created connector %s", body["name"])

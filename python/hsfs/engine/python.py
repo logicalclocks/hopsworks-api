@@ -703,6 +703,16 @@ class Engine:
 
         endpoint = getattr(storage_connector, "endpoint", None)
         if endpoint:
+            # Stores such as Dell ECS refuse the flexible checksums botocore 1.36+ sends by default.
+            # Older botocore has neither the options nor the default.
+            checksums = (
+                {
+                    "request_checksum_calculation": "when_required",
+                    "response_checksum_validation": "when_required",
+                }
+                if "request_checksum_calculation" in BotocoreConfig.OPTION_DEFAULTS
+                else {}
+            )
             s3 = boto3.client(
                 "s3",
                 aws_access_key_id=storage_connector.access_key,
@@ -715,7 +725,8 @@ class Engine:
                         "addressing_style": "path"
                         if storage_connector.path_style_access
                         else "virtual"
-                    }
+                    },
+                    **checksums,
                 ),
             )
         elif storage_connector.session_token is not None:
