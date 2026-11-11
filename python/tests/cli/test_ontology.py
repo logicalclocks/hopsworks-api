@@ -153,7 +153,9 @@ def test_status_of_a_missing_app(mock_project):
 # region Reference code
 
 
-def test_the_launchers_are_the_contracts_two_lines():
+def test_the_launchers_are_the_contracts_guarded_calls():
+    # The guard matters: the app's chat worker is a spawned process, which re-runs
+    # app.py, and an unguarded app() there starts a second server.
     def code(path):
         return [
             line
@@ -161,9 +163,11 @@ def test_the_launchers_are_the_contracts_two_lines():
             if line and not line.startswith("#")
         ]
 
+    guard = 'if __name__ == "__main__":'
     assert code(REF / "app.py") == [
         "from auto_ontology.hopsworks.launch import app",
-        "app()",
+        guard,
+        "    app()",
     ]
     for launcher, job in [
         ("ingest", "ingest"),
@@ -174,7 +178,8 @@ def test_the_launchers_are_the_contracts_two_lines():
     ]:
         assert code(REF / "jobs" / f"{launcher}.py") == [
             "from auto_ontology.hopsworks.launch import job",
-            f'job("{job}")',
+            guard,
+            f'    job("{job}")',
         ]
 
 
