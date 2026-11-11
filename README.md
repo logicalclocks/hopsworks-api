@@ -222,7 +222,7 @@
 | python/hopsworks\_common/core/opensearch.py                                      |      271 |       57 |     79% |62, 93-108, 171, 288-291, 295-301, 306-313, 377-379, 388, 465-500, 543-546, 551-563, 604 |
 | python/hopsworks\_common/core/opensearch\_api.py                                 |       54 |       15 |     72% |62-73, 86-87, 113-114, 135-140 |
 | python/hopsworks\_common/core/project\_api.py                                    |       67 |       31 |     54% |39-43, 54-64, 76-79, 90-94, 108-115, 192-198, 201-204 |
-| python/hopsworks\_common/core/project\_members\_api.py                           |       62 |        1 |     98% |        86 |
+| python/hopsworks\_common/core/project\_members\_api.py                           |       79 |        1 |     99% |       104 |
 | python/hopsworks\_common/core/rest.py                                            |       18 |        1 |     94% |        63 |
 | python/hopsworks\_common/core/rest\_endpoint.py                                  |      236 |       59 |     75% |48-51, 60, 63, 68, 102, 106-109, 115, 124, 130, 141, 144-146, 152, 157, 167, 182-183, 186, 201-203, 206, 271-277, 280, 305-310, 313, 325, 333, 366, 382, 385, 410-413, 418, 429-433, 440, 450 |
 | python/hopsworks\_common/core/search\_api.py                                     |      133 |       63 |     53% |55-57, 63, 69, 75, 79, 82, 94-113, 120, 125, 129, 132, 144-148, 247, 309-318, 372-381, 435-444, 495-504, 524-535, 557-572, 587, 598, 604, 620-622, 626-628 |
@@ -259,8 +259,8 @@
 | python/hopsworks\_common/kafka\_schema.py                                        |       51 |       22 |     57% |36-41, 45-50, 53-55, 61, 67, 73, 79, 92, 95, 98, 101 |
 | python/hopsworks\_common/kafka\_topic.py                                         |      106 |       17 |     84% |70, 97-99, 118-120, 130, 136, 146, 152, 162, 168, 183, 186, 198, 201 |
 | python/hopsworks\_common/library.py                                              |       19 |        0 |    100% |           |
-| python/hopsworks\_common/project.py                                              |      192 |       40 |     79% |116, 128, 140, 146, 257-260, 269-272, 281, 299, 304, 313, 322, 367, 376, 539, 548-550, 573-575, 584-586, 598, 610, 640, 683, 688, 691, 694-696, 701-702 |
-| python/hopsworks\_common/project\_member.py                                      |       67 |        9 |     87% |55, 76, 82, 88, 100, 166, 169, 175, 178 |
+| python/hopsworks\_common/project.py                                              |      192 |       40 |     79% |116, 128, 140, 146, 257-260, 269-272, 281, 299, 304, 313, 322, 367, 376, 540, 549-551, 574-576, 585-587, 599, 611, 641, 684, 689, 692, 695-697, 702-703 |
+| python/hopsworks\_common/project\_member.py                                      |       74 |        9 |     88% |59, 80, 86, 92, 116, 184, 187, 194, 197 |
 | python/hopsworks\_common/request\_metrics.py                                     |      110 |       14 |     87% |113, 151-164 |
 | python/hopsworks\_common/search\_results.py                                      |      314 |       41 |     87% |61, 110, 116, 122, 156-172, 199, 253-262, 454, 460, 466, 472, 502, 514, 520, 538, 544, 550, 556, 616 |
 | python/hopsworks\_common/secret.py                                               |       61 |       11 |     82% |61, 80, 86, 92, 98, 110, 113, 116, 119-121 |
@@ -536,7 +536,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **58884** | **13423** | **77%** |           |
+| **TOTAL**                                                                        | **58908** | **13423** | **77%** |           |
 
 
 ## Setup coverage badge
