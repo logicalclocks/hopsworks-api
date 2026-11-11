@@ -232,7 +232,7 @@
 | python/hopsworks\_common/core/superset\_api.py                                   |      156 |       45 |     71% |110-111, 210, 240-252, 265, 275, 290, 303, 337-350, 363, 373, 388, 401, 433-447, 460, 470, 485, 500 |
 | python/hopsworks\_common/core/tag\_schemas\_api.py                               |       50 |       20 |     60% |63-64, 80-83, 148, 159-162, 179-187 |
 | python/hopsworks\_common/core/tags\_api.py                                       |       46 |        5 |     89% |67, 85-90, 175 |
-| python/hopsworks\_common/core/trino\_api.py                                      |      111 |        1 |     99% |       225 |
+| python/hopsworks\_common/core/trino\_api.py                                      |       95 |        1 |     99% |       225 |
 | python/hopsworks\_common/core/trino\_catalog\_api.py                             |       63 |        2 |     97% |   130-131 |
 | python/hopsworks\_common/core/type\_systems.py                                   |      277 |       45 |     84% |220, 222, 338, 391, 413-415, 421-443, 483, 504, 508-532, 539 |
 | python/hopsworks\_common/core/users\_api.py                                      |      111 |        2 |     98% |  260, 262 |
@@ -536,7 +536,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **58982** | **13422** | **77%** |           |
+| **TOTAL**                                                                        | **58966** | **13422** | **77%** |           |
 
 
 ## Setup coverage badge
