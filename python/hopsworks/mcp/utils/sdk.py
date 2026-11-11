@@ -39,6 +39,14 @@ async def run_sdk(fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
     """Run blocking SDK work in a worker thread, so the event loop keeps serving.
 
     Calls run one at a time, and a login or project switch waits until the running one returns.
+    Keyword arguments are passed on to `fn` as well.
+
+    Parameters:
+        fn: The blocking SDK call.
+        *args: Positional arguments for `fn`.
+
+    Returns:
+        What `fn` returns.
     """
 
     def call() -> T:
@@ -55,6 +63,9 @@ async def connection_change() -> AsyncIterator[None]:
     The wait happens in a worker thread, so the event loop serves other requests meanwhile; the
     switch itself stays on the loop, where the tools that call the SDK synchronously cannot
     interleave with it.
+
+    Returns:
+        A context manager holding the lock while its block runs.
     """
     acquiring = asyncio.ensure_future(asyncio.to_thread(connection_lock.acquire))
     try:

@@ -592,10 +592,10 @@ class SupersetApi:
         """Change only the given fields of a Superset dashboard, through Superset's MCP service `update_dashboard` tool.
 
         Unlike [`update_dashboard`][hopsworks_common.core.superset_api.SupersetApi.update_dashboard], `json_metadata_overrides` is merged into the dashboard's metadata instead of replacing it.
+        The fields to change are keyword arguments: `dashboard_title`, `description`, `slug`, `published`, `position_json`, `json_metadata_overrides`, `css`, `tags` (tag IDs), `cross_filters_enabled`, `refresh_frequency` (seconds) or `filter_bar_orientation` (`VERTICAL` or `HORIZONTAL`).
 
         Parameters:
             dashboard_id: The dashboard ID or slug.
-            **fields: `dashboard_title`, `description`, `slug`, `published`, `position_json`, `json_metadata_overrides`, `css`, `tags` (tag IDs), `cross_filters_enabled`, `refresh_frequency` (seconds) or `filter_bar_orientation` (`VERTICAL` or `HORIZONTAL`).
 
         Returns:
             Superset's `update_dashboard` response, with the updated dashboard under `dashboard`.
