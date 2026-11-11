@@ -1,0 +1,3 @@
+# Auto-Ontology for the ontology factory, installed into a clone of python-feature-pipeline.
+# The build names the environment after this commit: change it here only.
+auto-ontology-server @ git+https://github.com/jimdowling/auto-ontology@4fa834f86c41d351dfb131671dd8dda3d02a89fc

@@ -10,7 +10,8 @@ Each system of the `ontology` factory is one ontology, named by its slug:
 
 | Part | Name |
 | --- | --- |
-| Python app (API, UI, chat) | `<slug>`, a custom app in the `ontology-pipeline` environment |
+| Python environment, shared by the project's ontology systems | `ontology-<commit>`, a clone of `python-feature-pipeline` with Auto-Ontology installed from the pinned fork commit |
+| Python app (API, UI, chat) | `<slug>`, a custom app in that environment |
 | App tables (catalog, ontology, chats) | `<app table_prefix><table>` in the project's online database |
 | Jobs | `<slug>-ingest`, `<slug>-compile` (both scheduled), `<slug>-embed`, `<slug>-reset`, `<slug>-import` |
 | Feature groups with vector indexes | `<slug_>_data_objects`, `<slug_>_semantic` (`<slug_>` is the slug with underscores) |

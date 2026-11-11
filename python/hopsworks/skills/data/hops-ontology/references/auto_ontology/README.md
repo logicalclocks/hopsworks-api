@@ -12,6 +12,9 @@ SLUG_=${SLUG//-/_}                           # feature groups use underscores
 REF=/opt/hopsworks-api/python/hopsworks/skills/data/hops-ontology/references/auto_ontology
 SYSTEM_DIR=$(python -c "import os, pathlib; h = pathlib.Path(os.environ['HOPSFS_USER_HOME_DIR']); print(pathlib.Path.cwd().resolve().relative_to(h.parent.parent.resolve()))")
 echo "$SYSTEM_DIR"                           # project-relative, such as Users/meb10000/sales-ontology
+AO_COMMIT=$(grep -o '@[0-9a-f]\{40\}' $REF/requirements.txt | tr -d @)
+ENV=ontology-${AO_COMMIT:0:8}                # the environment the app and the jobs run in
+echo "$ENV"
 ```
 
 Outside a terminal, `REF` is `skills/data/hops-ontology/references/auto_ontology` under the installed `hopsworks` package.
@@ -68,6 +71,39 @@ An example system never asks: a gap goes under `unavailable` and is named at the
    - `pii_detection` is `requirements.pii_detection`.
 
 Record `reqs: {status: met, sources: [{name, type, credentials: SHARED}]}`.
+
+## env
+
+The app and the jobs run in `$ENV`, a clone of `python-feature-pipeline` with Auto-Ontology installed from the commit of the Hopsworks fork that `$REF/requirements.txt` pins.
+The fork commits the built web UI, so the install needs no Node.
+The name carries the commit: a newer pin makes a new environment, and systems built on an older one keep theirs.
+It is shared by the project's ontology systems, so reuse it when another system already made it.
+Cloning and installing the package's dependencies takes several minutes: say so before it starts.
+
+```bash
+cp $REF/requirements.txt .
+```
+
+```python
+import hopsworks
+
+ENV, SYSTEM_DIR = "<ENV>", "<SYSTEM_DIR>"
+env_api = hopsworks.login().get_environment_api()
+if env_api.get_environment(ENV) is None:
+    env = env_api.create_environment(
+        ENV,
+        description="Auto-Ontology for the project's ontology systems",
+        base_environment_name="python-feature-pipeline",
+        await_creation=True,
+    )
+    env.install_requirements(f"{SYSTEM_DIR}/requirements.txt", await_installation=True)
+print(ENV, "ready")
+```
+
+`install_requirements` returning without an error is the success signal.
+A failed install leaves the clone behind without the package: read the error, delete the clone with `env_api.get_environment(ENV).delete()`, fix the cause and run the block again.
+
+Record `env: {status: met, name: <ENV>, auto_ontology_commit: <AO_COMMIT>}`.
 
 ## models
 
@@ -171,12 +207,12 @@ cp $REF/app.py . && mkdir -p jobs && cp $REF/jobs/*.py jobs/
 ```python
 import hopsworks
 
-SLUG, SYSTEM_DIR = "<slug>", "<SYSTEM_DIR>"
+SLUG, SYSTEM_DIR, ENV = "<slug>", "<SYSTEM_DIR>", "<ENV>"
 apps = hopsworks.login().get_app_api()
 app = apps.get_app(SLUG) or apps.create_app(
     SLUG,
     app_path=f"{SYSTEM_DIR}/app.py",        # project-relative: the app runs in /hopsfs/<SYSTEM_DIR> and reads ./ontology.yaml
-    environment="ontology-pipeline",
+    environment=ENV,
     memory=4096,
     cores=2.0,
     app_kind="CUSTOM",
@@ -201,12 +237,12 @@ Record `app: {status: met, name: <slug>, url: /hopsworks-api/pythonapp/<project>
 
 ## ingest
 
-Create the five jobs, each a PYTHON job in `ontology-pipeline` with 2 cores, 4096 MB and no GPU, whose default arguments name `ontology.yaml` by its project-relative path:
+Create the five jobs, each a PYTHON job in `$ENV` with 2 cores, 4096 MB and no GPU, whose default arguments name `ontology.yaml` by its project-relative path:
 
 ```python
 import hopsworks
 
-SLUG, SYSTEM_DIR = "<slug>", "<SYSTEM_DIR>"
+SLUG, SYSTEM_DIR, ENV = "<slug>", "<SYSTEM_DIR>", "<ENV>"
 project = hopsworks.login()
 api = project.get_job_api()
 for name, launcher in [("ingest", "ingest"), ("compile", "compile"), ("embed", "embed"), ("reset", "reset"), ("import", "import_model")]:
@@ -215,7 +251,7 @@ for name, launcher in [("ingest", "ingest"), ("compile", "compile"), ("embed", "
         continue
     config = api.get_configuration("PYTHON")
     config["appPath"] = f"/Projects/{project.name}/{SYSTEM_DIR}/jobs/{launcher}.py"
-    config["environmentName"] = "ontology-pipeline"
+    config["environmentName"] = ENV
     config["defaultArgs"] = f"--config {SYSTEM_DIR}/ontology.yaml"
     config["resourceConfig"].update(cores=2.0, memory=4096, gpus=0)
     job = api.create_job(job_name, config)
