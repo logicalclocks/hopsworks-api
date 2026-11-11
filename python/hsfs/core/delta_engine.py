@@ -991,6 +991,7 @@ class DeltaEngine:
                 commit_properties=commit_properties,
             )
         else:
+            dataset = self._reconcile_timestamp_tz(dataset, fg_source_table)
             if (
                 isinstance(write_options, dict)
                 and self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options
@@ -1067,6 +1068,41 @@ class DeltaEngine:
         return self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
         )
+
+    @staticmethod
+    def _reconcile_timestamp_tz(dataset, delta_rs_table):
+        """Align naive timestamp columns to an existing Delta table's zone.
+
+        `_prepare_df_for_delta` produces naive UTC timestamps, which delta-rs reads as `timestamp_ntz`.
+        A table created by Spark declares its timestamp columns as `timestamp`, which delta-rs reads as UTC.
+        Appending naive data to such a table needs the `timestampNtz` table feature, which the table lacks, so delta-rs refuses the commit.
+        Localizing each such naive column to UTC keeps its values and matches the table's type.
+        """
+        import pyarrow as pa
+
+        if not isinstance(dataset, pa.Table):
+            return dataset
+        # delta-rs returns an arro3 schema; pa.schema reads it through the Arrow C interface.
+        table_schema = pa.schema(delta_rs_table.schema().to_arrow())
+        target_by_name = {field.name: field.type for field in table_schema}
+        new_cols = []
+        changed = False
+        for i, field in enumerate(dataset.schema):
+            col = dataset.column(i)
+            target_type = target_by_name.get(field.name)
+            if (
+                pa.types.is_timestamp(field.type)
+                and field.type.tz is None
+                and target_type is not None
+                and pa.types.is_timestamp(target_type)
+                and target_type.tz is not None
+            ):
+                col = col.cast(pa.timestamp(field.type.unit, tz="UTC"))
+                changed = True
+            new_cols.append(col)
+        if not changed:
+            return dataset
+        return pa.Table.from_arrays(new_cols, names=dataset.column_names)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
