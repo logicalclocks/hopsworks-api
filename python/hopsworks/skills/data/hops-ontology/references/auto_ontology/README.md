@@ -247,16 +247,15 @@ project = hopsworks.login()
 api = project.get_job_api()
 for name, launcher in [("ingest", "ingest"), ("compile", "compile"), ("embed", "embed"), ("reset", "reset"), ("import", "import_model")]:
     job_name = f"{SLUG}-{name}"
-    if api.get_job(job_name) is not None:
-        continue
-    config = api.get_configuration("PYTHON")
-    config["appPath"] = f"/Projects/{project.name}/{SYSTEM_DIR}/jobs/{launcher}.py"
-    config["environmentName"] = ENV
-    config["defaultArgs"] = f"--config {SYSTEM_DIR}/ontology.yaml"
-    config["resourceConfig"].update(cores=2.0, memory=4096, gpus=0)
-    job = api.create_job(job_name, config)
-    creator = job.creator
-    print(job_name, creator.get("username") if isinstance(creator, dict) else getattr(creator, "username", creator))
+    if api.get_job(job_name) is None:
+        config = api.get_configuration("PYTHON")
+        config["appPath"] = f"/Projects/{project.name}/{SYSTEM_DIR}/jobs/{launcher}.py"
+        config["environmentName"] = ENV
+        config["defaultArgs"] = f"--config {SYSTEM_DIR}/ontology.yaml"
+        config["resourceConfig"].update(cores=2.0, memory=4096, gpus=0)
+        api.create_job(job_name, config)
+    # create_job's response carries no creator; read the job back for it.
+    print(job_name, api.get_job(job_name).creator["username"])
 ```
 
 Schedule ingest and compile by their cadences, ingest an hour before compile:
