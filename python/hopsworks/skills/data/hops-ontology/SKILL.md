@@ -38,7 +38,7 @@ The build copies the app and job launchers in [references/auto_ontology/](refere
 
 ```bash
 hops ontology status <slug>                                    # can it answer, and what blocks it; exits 1 when not
-hops ontology ask <slug> "Which state has the most customers?"  # the answer, its SQL and up to 100 rows
+hops ontology ask <slug> "Which state has the most customers, and how many?"  # the answer, its SQL and up to 100 rows
 hops ontology ask <slug> "And in Texas?" --conversation-id <uuid>  # a follow-up in a saved conversation
 hops app url <slug>                                            # the app: catalog, terms, graph, chat
 ```
