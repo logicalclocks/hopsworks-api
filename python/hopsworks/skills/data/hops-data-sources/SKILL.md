@@ -526,7 +526,9 @@ The credentials are write-only (`credentials_set` on read) and belong to the dat
 `--test` only checks that an SSH server answers at the host and port.
 
 **Google Drive.** `hops datasource create google-drive <name> --key-file ./sa.json --folder-id ID [--folder-name N]` uploads the service-account key to `Resources/datasources/<name>/` and sends its path, refusing to replace a key already there (`--key-path /Projects/<project>/...` reuses a key already in the project); the folder ID is the last part of the folder's URL in Drive.
-Share the folder, or its shared drive, with the service account: `hops datasource info <name>` shows its address as `Service account`, and `--test` reports it.
+Share the folder, or its shared drive, with the service account as `Viewer`: `hops datasource info <name>` shows its address as `Service account`, and `--test` reports it.
+The Drive API must be enabled in the service account's Google Cloud project; neither `--test` nor the UI checks sharing or the API, the first run does.
+Console steps and a troubleshooting table by Google's error message (`403 ... API has not been used`, `404 File not found` = not shared, `invalid_grant: Invalid JWT Signature` = key deleted or rotated) are in [references/google-drive-setup.md](references/google-drive-setup.md).
 
 ```python
 sftp = hsfs.storage_connector.SftpConnector(id=None, name="partner_drop", featurestore_id=fs.id,
