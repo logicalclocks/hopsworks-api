@@ -52,14 +52,17 @@ An example system never asks: a gap goes under `unavailable` and is named at the
    SUPPORTED = {("SQL", "MYSQL"), ("SQL", "POSTGRESQL"), ("SQL", "CLICKHOUSE"), ("SNOWFLAKE", None), ("UNITY_CATALOG", None)}
    fs = hopsworks.login().get_feature_store()
    for name in ["<each requirements.sources[].name>"]:
-       sc = fs.get_data_source(name).storage_connector          # a RestAPIError 404 means it does not exist
+       sc = fs.get_data_source(name).storage_connector          # None: the project has no data source by that name
+       if sc is None:
+           print(name, "MISSING")
+           continue
        kind = (sc.type, getattr(sc, "database_type", None) if sc.type == "SQL" else None)
        mode = getattr(sc, "credentials_mode", "SHARED")
        print(name, kind, mode, "ok" if kind in SUPPORTED and mode == "SHARED" else "REFUSED")
    ```
 
    Supported are MySQL, PostgreSQL and ClickHouse SQL data sources, Snowflake, and Databricks (Unity Catalog).
-   A refused source stops the build: set `reqs` `unmet` with the reason, naming the source, its type and its credentials mode.
+   A missing or refused source stops the build: set `reqs` `unmet` with the reason, naming the source and, when it exists, its type and its credentials mode.
 3. **External modes.** For `llm_mode: external`, `LLM_URL` and `LLM_MODEL` must be account variables; for `embedding_mode: external`, `EMBEDDING_URL` and `EMBEDDING_MODEL`. Check them by name only, never by value:
    `python -c "import hopsworks; hopsworks.login(); print(sorted(v.name for v in hopsworks.get_env_vars_api().get_env_vars(include_value=False)))"`.
    An external embedding model must return vectors of `requirements.embedding_dim` dimensions.

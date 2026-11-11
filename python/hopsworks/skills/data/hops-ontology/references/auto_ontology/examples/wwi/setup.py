@@ -247,15 +247,11 @@ def _create_tables(conn, rows: dict[str, list[tuple]]) -> None:
 
 
 def _create_source(fs, url, options: dict) -> None:
-    from hopsworks_common.client.exceptions import RestAPIError
     from hsfs.storage_connector import SqlConnector
 
-    try:
-        fs.get_data_source(SOURCE)
+    # A missing data source comes back as a DataSource without a connector, not as a 404.
+    if fs.get_data_source(SOURCE).storage_connector is not None:
         return
-    except RestAPIError as exc:
-        if getattr(exc.response, "status_code", None) != 404:
-            raise
     fs.create_data_source(
         SqlConnector(
             id=None,
