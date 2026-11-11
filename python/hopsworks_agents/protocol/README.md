@@ -199,6 +199,18 @@ Both resolve the key on first use — explicit argument, then the environment
 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`), then the Hopsworks secret named by
 `api_key_secret` — so a deployment reuses the secret its agent already holds.
 
+A deployment that runs on the Claude Code login the user connected
+(`CLAUDE_CODE_OAUTH_TOKEN`) rather than on a key summarizes through Claude Code:
+`anthropic_summarizer()` does so by itself when it finds the login and no key,
+and `claude_agents_summarizer()` does so by name. Each summary is one Claude
+Code session with every built-in tool off, on the login's current Haiku unless
+`model` names another alias or id:
+
+```python
+summarize=anthropic_summarizer()              # ANTHROPIC_API_KEY, or the login when there is none
+summarize=claude_agents_summarizer("sonnet")  # the login, explicitly
+```
+
 An LLM deployed in Hopsworks needs no key at all. `hopsworks_summarizer` finds
 the deployment by name, goes through the inference gateway with the serving
 key the pod already has, and uses the model the deployment serves:

@@ -338,7 +338,7 @@ class FeatureSearchResult(SearchResultItem):
 
 @public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
-    """Every bucket of a search: feature store entities, jobs, apps, models, deployments and agents."""
+    """Every bucket of a search: feature store entities, jobs, apps, models, deployments, agents and data sources."""
 
     def __init__(self, response_data: dict):
         self._log = logging.getLogger(__name__)
@@ -366,6 +366,10 @@ class FeaturestoreSearchResult:
             SearchResultItem(d) for d in response_data.get("deployments", [])
         ]
         self._agents = [SearchResultItem(a) for a in response_data.get("agents", [])]
+        # The connector type (S3, JDBC, ...) stays reachable through raw_data["connectorType"].
+        self._data_sources = [
+            SearchResultItem(d) for d in response_data.get("dataSources", [])
+        ]
 
         # Store metadata about result counts
         self._feature_groups_offset = response_data.get("featuregroupsFrom", 0)
@@ -386,6 +390,8 @@ class FeaturestoreSearchResult:
         self._deployments_total = response_data.get("deploymentsTotal", 0)
         self._agents_offset = response_data.get("agentsFrom", 0)
         self._agents_total = response_data.get("agentsTotal", 0)
+        self._data_sources_offset = response_data.get("dataSourcesFrom", 0)
+        self._data_sources_total = response_data.get("dataSourcesTotal", 0)
 
     @public
     @property
@@ -549,6 +555,24 @@ class FeaturestoreSearchResult:
         """Total number of Agents matching the search."""
         return self._agents_total
 
+    @public
+    @property
+    def data_sources(self) -> list[SearchResultItem]:
+        """List of Data Source search results."""
+        return self._data_sources
+
+    @public
+    @property
+    def data_sources_offset(self) -> int:
+        """Total offset for the return list of data sources within the whole result."""
+        return self._data_sources_offset
+
+    @public
+    @property
+    def data_sources_total(self) -> int:
+        """Total number of Data Sources matching the search."""
+        return self._data_sources_total
+
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary.
 
@@ -583,6 +607,9 @@ class FeaturestoreSearchResult:
             "agents": [i.json() for i in self._agents],
             "agentsFrom": self._agents_offset,
             "agentsTotal": self._agents_total,
+            "dataSources": [i.json() for i in self._data_sources],
+            "dataSourcesFrom": self._data_sources_offset,
+            "dataSourcesTotal": self._data_sources_total,
         }
 
     def __repr__(self):

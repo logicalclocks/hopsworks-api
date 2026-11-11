@@ -83,22 +83,31 @@ def _judge_for(
     separately — and, being asked wrongly, silently skipped every judge while the
     run reported success.
     """
-    from .judge_config import PROVIDERS, JudgeConfig, _completer_for
+    from .judge_config import (
+        PROVIDERS,
+        JudgeConfig,
+        _api_key_for,
+        _api_key_source,
+        _completer_for,
+    )
 
     chosen = (provider or os.environ.get("EVAL_JUDGE_PROVIDER") or "anthropic").lower()
     registry = PROVIDERS.get(chosen)
     if registry is None:
         log.warning("unknown judge provider %s; falling back to anthropic", chosen)
         chosen, registry = "anthropic", PROVIDERS["anthropic"]
-    env_var = registry["env_var"]
-    api_key = os.environ.get("EVAL_JUDGE_API_KEY") or os.environ.get(env_var)
+    # The provider's own variable, or for Anthropic the Claude Code login the
+    # user connected, which the job is handed as an agent deployment is.
+    api_key = os.environ.get("EVAL_JUDGE_API_KEY") or _api_key_for(
+        JudgeConfig(provider=chosen)
+    )
     if not api_key:
         log.info(
             "no default judge key in EVAL_JUDGE_API_KEY or %s. Set one in your "
             "account's environment variables and it reaches every job. A judge "
             "naming its own variable is unaffected; tasks graded only by the "
             "default judge report nothing.",
-            env_var,
+            _api_key_source(JudgeConfig(provider=chosen)),
         )
         return None
 
