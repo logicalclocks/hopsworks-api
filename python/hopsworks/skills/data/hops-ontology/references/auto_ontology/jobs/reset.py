@@ -16,4 +16,5 @@
 from auto_ontology.hopsworks.launch import job
 
 
-job("reset")
+if __name__ == "__main__":
+    job("reset")

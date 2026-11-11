@@ -16,4 +16,5 @@
 from auto_ontology.hopsworks.launch import job
 
 
-job("import")
+if __name__ == "__main__":
+    job("import")

@@ -16,4 +16,5 @@
 from auto_ontology.hopsworks.launch import app
 
 
-app()
+if __name__ == "__main__":
+    app()
