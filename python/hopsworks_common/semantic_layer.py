@@ -1163,9 +1163,9 @@ class SemanticProject:
             ValueError: If neither `metrics` nor `saved_query` is given, or `saved_query` is given with `metrics` or `group_by`.
             hopsworks.client.exceptions.SemanticLayerException:
                 With status 400 for an unknown metric or group-by or metrics with no time dimension in common, and 409 when the project has no valid build.
-                With status 404 and `error_code` 590001 (`SEMANTIC_LAYER_NOT_FOUND`) for an unknown saved query.
-                With status 503 and `error_code` 590014 (`SEMANTIC_LAYER_DASHBOARDS_DISABLED`) when semantic dashboards are not available: Superset 6, or Superset, its semantic dashboards or the project's Superset service off.
-                With status 503 and `error_code` 590015 (`SEMANTIC_LAYER_SUPERSET_ERROR`) when Superset did not answer.
+                With status 404 and `error_code` 600001 (`SEMANTIC_LAYER_NOT_FOUND`) for an unknown saved query.
+                With status 503 and `error_code` 600014 (`SEMANTIC_LAYER_DASHBOARDS_DISABLED`) when semantic dashboards are not available: Superset 6, or Superset, its semantic dashboards or the project's Superset service off.
+                With status 503 and `error_code` 600015 (`SEMANTIC_LAYER_SUPERSET_ERROR`) when Superset did not answer.
         """
         if saved_query is not None:
             if _as_list(metrics) or _as_list(group_by):

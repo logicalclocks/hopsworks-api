@@ -39,8 +39,8 @@ one exists: look in `hops semantic list` and `hops search <term> --type metric`,
 hops-superset's `references/semantic_layer.md` checks through `/api/v1/semantic_layer/types`. Only an
 answer that semantic views are unsupported selects Superset 6: that endpoint's 404 or a type list
 without the Hopsworks layer, or, from an external client, `hops semantic dashboard` failing with code
-590014 (`SEMANTIC_LAYER_DASHBOARDS_DISABLED`). Any other failure, an authentication error, a 5xx or
-590015 (`SEMANTIC_LAYER_SUPERSET_ERROR`), ends the run with that error.
+600014 (`SEMANTIC_LAYER_DASHBOARDS_DISABLED`). Any other failure, an authentication error, a 5xx or
+600015 (`SEMANTIC_LAYER_SUPERSET_ERROR`), ends the run with that error.
 
 - **Superset 7.0 with semantic views:** a dashboard that shows only metrics needs no program.
   `hops semantic dashboard <project> --metrics ... [--group-by ...] --title <title>` builds it, and

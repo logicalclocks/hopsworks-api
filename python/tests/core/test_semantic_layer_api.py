@@ -1000,7 +1000,7 @@ class TestSuperset:
                 lambda sp: sp.create_dashboard(["revnue"]),
                 400,
                 {
-                    "errorCode": 590004,
+                    "errorCode": 600004,
                     "errorMsg": "Illegal argument provided",
                     "usrMsg": "unknown metric 'revnue'",
                 },
@@ -1009,20 +1009,20 @@ class TestSuperset:
                 lambda sp: sp.explore_url("revenue"),
                 503,
                 {
-                    "errorCode": 590014,
+                    "errorCode": 600014,
                     "errorMsg": "Superset dashboards from the semantic layer are not enabled",
                 },
             ),
             (
                 lambda sp: sp.create_dashboard(["revenue"]),
                 503,
-                {"errorCode": 590015, "errorMsg": "Superset did not answer"},
+                {"errorCode": 600015, "errorMsg": "Superset did not answer"},
             ),
             (
                 lambda sp: sp.create_dashboard(saved_query="nope"),
                 404,
                 {
-                    "errorCode": 590001,
+                    "errorCode": 600001,
                     "errorMsg": "Semantic project not found",
                     "usrMsg": "Semantic project sales has no saved query nope.",
                 },

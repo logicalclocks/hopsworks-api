@@ -14,9 +14,9 @@ Superset 7.0 lists the Hopsworks semantic layer type in `/api/v1/semantic_layer/
 Only an explicit answer that semantic views are unsupported selects Superset 6's datasets over metric SQL:
 
 - that endpoint answering 404, or 200 without `extensions.hopsworks.semantic-layer.hopsworks` in its types;
-- from an external client, which cannot reach Superset, `hops semantic dashboard` (or `create_dashboard`) failing with code 590014, `SEMANTIC_LAYER_DASHBOARDS_DISABLED` (HTTP 503).
+- from an external client, which cannot reach Superset, `hops semantic dashboard` (or `create_dashboard`) failing with code 600014, `SEMANTIC_LAYER_DASHBOARDS_DISABLED` (HTTP 503).
 
-An authentication failure, any other 4xx or 5xx, and 590015, `SEMANTIC_LAYER_SUPERSET_ERROR` (Superset did not answer), are errors to report: retry or fix them, and never fall back on them.
+An authentication failure, any other 4xx or 5xx, and 600015, `SEMANTIC_LAYER_SUPERSET_ERROR` (Superset did not answer), are errors to report: retry or fix them, and never fall back on them.
 
 ```python
 import requests
@@ -56,7 +56,7 @@ sales.explore_url("revenue")   # Explore, the metric over metric_time, nothing s
 
 - It holds a line chart per metric over `metric_time`, a big number for the first metric, a table broken down by the group-by (by default the first categorical dimension the metrics share) and native filters.
 - The caller owns it, and a rerun with the same title updates it in place, keeping its id and URL.
-- A 503 with 590014 means semantic dashboards are not available: Superset 6, or Superset, its semantic dashboards or the project's Superset service off.
+- A 503 with 600014 means semantic dashboards are not available: Superset 6, or Superset, its semantic dashboards or the project's Superset service off.
 
 ### Other charts
 

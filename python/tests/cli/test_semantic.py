@@ -253,10 +253,10 @@ class TestDashboard:
 
     def test_a_refused_dashboard_prints_one_line(self, sales):
         sales.create_dashboard.side_effect = SemanticLayerException(
-            "Semantic layer request on 'sales' failed (HTTP 503, 590014): "
+            "Semantic layer request on 'sales' failed (HTTP 503, 600014): "
             "Superset dashboards from the semantic layer are not enabled",
             status_code=503,
-            error_code=590014,
+            error_code=600014,
         )
 
         result = _run("dashboard", "sales", "--metrics", "revenue")
