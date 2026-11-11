@@ -19,6 +19,7 @@ import contextlib
 import datetime
 import logging
 import os
+import re
 import warnings
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -132,6 +133,7 @@ class DeltaEngine:
     DELTA_DOT_PREFIX = "delta."
     DELTA_GLUE_CATALOG_IMPL = "org.apache.spark.sql.delta.catalog.DeltaCatalog"
     APPEND = "append"
+    REPLACE = "replace"
     RETENTION_CHECK_CONF = "spark.databricks.delta.retentionDurationCheck.enabled"
     OPTIMIZE_THREADS_CONF = "spark.databricks.delta.optimize.maxThreads"
     OPTIMIZE_FILE_SIZE_CONF = "spark.databricks.delta.optimize.maxFileSize"
@@ -663,6 +665,12 @@ class DeltaEngine:
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
+        if write_options.get(self.REPLACE):
+            # Spark would pass the key on as a writer option and upsert instead.
+            raise FeatureStoreException(
+                "write_options['replace'] is supported on the Python engine only, "
+                "which writes Delta feature groups with delta-rs."
+            )
 
         if not _is_delta_table_at(self._spark_session, location):
             cluster_columns = self._cluster_columns()
@@ -923,6 +931,45 @@ class DeltaEngine:
             ]
         )
 
+    def _replace_predicate(self, replace: Any) -> str | None:
+        """The delta-rs overwrite predicate of a replace write, `None` to replace every row.
+
+        `write_options["replace"]` is `True` to replace every row of the table, or a date or datetime to replace the rows whose event time is at or after it, a naive datetime being UTC.
+        Either way the write is one Delta commit that keeps the feature group, its id and its history; a row in the data whose event time is before the bound fails the write.
+        The predicate is built from the typed bound, as `_as_ingest_date` does for OPTIMIZE: a string is refused rather than put into it.
+        A replace on an online-enabled feature group is refused, since it would leave the removed rows online.
+        """
+        if self._feature_group.online_enabled:
+            raise FeatureStoreException(
+                "write_options['replace'] rewrites the offline table only; feature group "
+                f"{self._feature_group.name} v{self._feature_group.version} is online "
+                "enabled, so the rows it removes would stay online."
+            )
+        if replace is True:
+            return None
+        if not isinstance(replace, datetime.date):
+            raise FeatureStoreException(
+                "write_options['replace'] must be True or a date or datetime, "
+                f"got {replace!r}."
+            )
+        event_time = self._feature_group.event_time
+        if not event_time:
+            raise FeatureStoreException(
+                f"Feature group {self._feature_group.name} v{self._feature_group.version} "
+                "has no event time to replace from; replace every row with "
+                "write_options['replace'] = True."
+            )
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", event_time):
+            raise FeatureStoreException(
+                f"Event time column {event_time!r} cannot be used in a replace predicate."
+            )
+        if not isinstance(replace, datetime.datetime):
+            replace = datetime.datetime.combine(replace, datetime.time())
+        elif replace.tzinfo is not None:
+            replace = replace.astimezone(datetime.timezone.utc)
+        # delta-rs casts the literal to the column's type: date, timestamp or timestamp_ntz.
+        return f"\"{event_time}\" >= '{replace.strftime('%Y-%m-%dT%H:%M:%S.%f')}'"
+
     def _write_delta_rs_dataset(
         self,
         dataset: pa.Table | pl.DataFrame | pd.DataFrame,
@@ -963,6 +1010,8 @@ class DeltaEngine:
             and str(write_options.get("mode", "")).lower() == self.APPEND
         )
         commit_properties = self._commit_properties(write_options)
+        replace = (write_options or {}).get(self.REPLACE)
+        replace_predicate = self._replace_predicate(replace) if replace else None
 
         try:
             fg_source_table = DeltaRsTable(location, storage_options=storage_options)
@@ -1001,6 +1050,19 @@ class DeltaEngine:
                             self.DELTA_ENABLE_CHANGE_DATA_FEED
                         )
                     }
+                )
+            if replace:
+                # Not a delete and an append: between those two commits a reader would see the rows gone.
+                deltars_write(
+                    location,
+                    dataset,
+                    mode="overwrite",
+                    predicate=replace_predicate,
+                    storage_options=storage_options or None,
+                    commit_properties=commit_properties,
+                )
+                return self._get_last_commit_metadata(
+                    self._spark_session, location, storage_options=storage_options
                 )
             if append_requested:
                 deltars_write(

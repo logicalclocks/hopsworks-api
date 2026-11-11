@@ -20,4 +20,5 @@ from .dataset import DatasetTools as DatasetTools
 from .feature_group import FeatureGroupTools as FeatureGroupTools
 from .jobs import JobTools as JobTools
 from .project import ProjectTools as ProjectTools
+from .semantic_layer import SemanticLayerTools as SemanticLayerTools
 from .terminal import TerminalTools as TerminalTools

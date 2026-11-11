@@ -245,10 +245,50 @@ hops superset dataset list
 hops superset dataset create --database-id N --table-name T [--schema S] [--sql "SELECT ..."]
 
 hops superset chart list
-hops superset chart create --name X --viz-type bar --datasource-id N --params '{"metrics":["count"]}'
+hops superset chart types [TYPE]               # chart types; one type's config schema
+hops superset chart generate --dataset N --type xy --x event_time --y 'SUM(amount)' [--group-by c] [--time-grain P1D] [--name X] [--preview]
+hops superset chart generate --dataset N --config @chart.json
 
 hops superset dashboard list
 hops superset dashboard create "My Dashboard" [--published]
+hops superset dashboard update N [--title T] [--published] [--refresh 300] [--metadata '{...}'] [--css @f]
+```
+
+`chart generate` and `dashboard update` go through Superset 7.0's MCP service: Superset validates the config against the dataset, and `dashboard update` changes only the fields given.
+
+## Semantic Layer
+
+Wraps `project.get_semantic_layer_api()`: metrics defined in YAML next to a dbt project, over feature groups.
+The `hops-semantic` skill covers the YAML.
+
+```bash
+hops semantic list
+hops semantic init <name> [--from-fg <fg>[:<version>] ...] [--path <dir>] [--repo new|<url>] [--yes]   # scaffold, register, compile
+hops semantic create <name> --path <dbt project dir> [--format AUTO|DBT|NATIVE|MANIFEST_JSON] [--mode FOLLOW|PINNED] [--tag NAME=VALUE]
+hops semantic show <name>                                   # settings, the build queries use, and whether it is stale
+hops semantic update <name> [--path <dir>] [--format ...] [--mode FOLLOW|PINNED]
+hops semantic compile <name> [--wait] [--fail-on-error]     # --fail-on-error exits 1 on errors, for CI
+hops semantic test <name> [--metrics a,b] [--no-compile]    # compile, then run each metric once on Trino; exit 1 on any failure
+hops semantic builds <name>
+hops semantic build <name> <build id>                       # one build with its issues at file:line
+hops semantic promote <name> <build id>
+hops semantic metrics <name> [--group-by a,b] [--tag schema]   # --group-by keeps the compatible metrics, --tag (repeatable) the tagged ones
+hops semantic dimensions <name> [--metrics a,b]
+hops semantic entities <name> [--metrics a,b]
+hops semantic dimension-values <name> <dimension> [--metrics a,b] [--limit N]
+hops semantic saved-queries <name>                          # sql, query, dashboard take --saved-query q for --metrics
+hops semantic sql <name> --metrics a,b [--group-by metric_time__month,customer__country] [--where "..."] [--order-by -a] [--limit N]
+hops semantic query <name> --metrics a,b [...same flags] [--output table|json|csv] [--explain] [--no-cache]   # --explain prints the SQL; --no-cache skips the gateway's result cache
+hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset 7.0 dashboard over the semantic view; prints its URL
+hops semantic export list <name>                            # exports of saved queries into feature groups, with each one's last run
+hops semantic export run <name> <export> [--wait]           # run an export's job now (Data Owner)
+hops semantic connect <name>                                # URLs and export lines for dbt-sl-sdk; eval "$(hops semantic connect <name>)"
+hops semantic time-spine create --start D --end D [--grain day] [--custom NAME=FREQ]   # feature group time_spine_<grain>
+hops semantic delete <name> --yes
+hops semantic tag list <name>                               # schematised tags on the semantic project
+hops semantic tag set <name> <schema> '<json value>'
+hops semantic tag get <name> <schema>
+hops semantic tag delete <name> <schema>
 ```
 
 ## File system (HopsFS)
@@ -269,16 +309,19 @@ hops files unshare Resources/my_dir --target other_project
 
 ```bash
 # Project-scoped search across feature groups, feature views, training datasets, features,
-# jobs, apps, models, deployments and agents
+# datasets, semantic layer metrics, semantic projects and saved queries, jobs, apps, models, deployments and agents
 hops search "transactions"
 
 # Global search across every project the caller can see
 hops search "transactions" --global
 
 # Restrict to one entity type: feature_group, feature_view, training_dataset, feature,
-# job, app, model, deployment, agent
+# dataset, metric, semantic_project, saved_query, job, app, model, deployment, agent
 hops search "transactions" --type feature_group
 hops search "fraud" --type model
+hops search "revenue" --type metric   # DETAIL leads with the metric's semantic project
+hops search "sales" --type semantic_project   # DETAIL is the semantic project's root path
+hops search "revenue" --type saved_query   # DETAIL leads with the saved query's semantic project
 
 # Filter by keyword and/or schematized tag (repeatable)
 hops search "transactions" --keyword fraud --keyword production

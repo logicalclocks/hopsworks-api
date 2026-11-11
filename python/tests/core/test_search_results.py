@@ -230,3 +230,159 @@ class TestSearchResults:
         assert [m["name"] for m in as_json["models"]] == ["all_MiniLM_L6_v2"]
         assert as_json["modelsTotal"] == 3
         assert as_json["agents"][0]["name"] == "bot"
+
+    def test_search_result_parses_datasets_and_metrics(self):
+        json_dict = {
+            "datasets": [
+                {
+                    "hopsworksId": "dataset9",
+                    "name": "Resources",
+                    "description": "Raw uploads",
+                    "datasetId": 7,
+                    "datasetIId": 123,
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
+                    "highlights": {"name": "<em>Resources</em>"},
+                }
+            ],
+            "datasetsFrom": 0,
+            "datasetsTotal": 1,
+            "metrics": [
+                {
+                    "hopsworksId": "metric42",
+                    "name": "revenue",
+                    "label": "Revenue",
+                    "description": "Gross order value",
+                    "tags": [],
+                    "semanticProjectId": 4,
+                    "semanticProjectName": "sales",
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
+                    "accessProjects": {"1": "test_project"},
+                    "highlights": {"description": "Gross <em>order</em> value"},
+                }
+            ],
+            "metricsFrom": 5,
+            "metricsTotal": 6,
+        }
+
+        result = search_results.FeaturestoreSearchResult(json_dict)
+
+        dataset = result.datasets[0]
+        assert dataset.name == "Resources"
+        assert dataset.description == "Raw uploads"
+        assert dataset.version is None
+        assert dataset.project.name == "test_project"
+        assert dataset.raw_data["datasetId"] == 7
+        assert dataset.highlights.name == "<em>Resources</em>"
+        assert result.datasets_offset == 0
+        assert result.datasets_total == 1
+
+        metric = result.metrics[0]
+        assert isinstance(metric, search_results.MetricSearchResult)
+        assert metric.name == "revenue"
+        assert metric.label == "Revenue"
+        assert metric.description == "Gross order value"
+        assert metric.semantic_project_id == 4
+        assert metric.semantic_project_name == "sales"
+        assert metric.project.id == 1
+        assert metric.highlights.description == "Gross <em>order</em> value"
+        assert result.metrics_offset == 5
+        assert result.metrics_total == 6
+        assert result.jobs == []
+
+        as_json = result.json()
+        assert as_json["datasets"][0]["name"] == "Resources"
+        assert as_json["datasetsTotal"] == 1
+        assert as_json["metrics"][0]["label"] == "Revenue"
+        assert as_json["metrics"][0]["semantic_project_name"] == "sales"
+        assert as_json["metrics"][0]["project"]["name"] == "test_project"
+        assert as_json["metricsFrom"] == 5
+        assert as_json["metricsTotal"] == 6
+
+    def test_search_result_without_dataset_or_metric_buckets(self):
+        result = search_results.FeaturestoreSearchResult({"featuregroups": []})
+
+        assert result.datasets == []
+        assert result.metrics == []
+        assert result.saved_queries == []
+        assert result.datasets_total == 0
+        assert result.metrics_total == 0
+        assert result.saved_queries_total == 0
+
+    def test_search_result_parses_saved_queries_as_metric_hits(self):
+        result = search_results.FeaturestoreSearchResult(
+            {
+                "savedQueries": [
+                    {
+                        "hopsworksId": "savedquery3-1",
+                        "name": "revenue_by_country",
+                        "label": "Revenue by country",
+                        "semanticProjectId": 4,
+                        "semanticProjectName": "sales",
+                        "parentProjectId": 1,
+                        "parentProjectName": "test_project",
+                    }
+                ],
+                "savedQueriesFrom": 0,
+                "savedQueriesTotal": 1,
+            }
+        )
+
+        saved_query = result.saved_queries[0]
+        assert isinstance(saved_query, search_results.MetricSearchResult)
+        assert saved_query.name == "revenue_by_country"
+        assert saved_query.label == "Revenue by country"
+        assert saved_query.semantic_project_name == "sales"
+        assert result.saved_queries_offset == 0
+        assert result.saved_queries_total == 1
+        as_json = result.json()
+        assert as_json["savedQueries"][0]["semantic_project_name"] == "sales"
+        assert as_json["savedQueriesTotal"] == 1
+
+    def test_search_result_parses_semantic_projects(self):
+        result = search_results.FeaturestoreSearchResult(
+            {
+                "semanticProjects": [
+                    {
+                        "hopsworksId": "semproj7",
+                        "name": "sales",
+                        "rootPath": "/Projects/test_project/Resources/semantic/sales",
+                        "format": "DBT",
+                        "deploymentMode": "FOLLOW",
+                        "semanticProjectId": 7,
+                        "tags": [{"key": "domain", "value": "sales"}],
+                        "parentProjectId": 1,
+                        "parentProjectName": "test_project",
+                        "href": "project/1/semantic/projects/7",
+                        "highlights": {"name": "<em>sales</em>"},
+                    }
+                ],
+                "semanticProjectsFrom": 0,
+                "semanticProjectsTotal": 1,
+            }
+        )
+
+        sp = result.semantic_projects[0]
+        assert isinstance(sp, search_results.SemanticProjectSearchResult)
+        assert sp.name == "sales"
+        assert sp.root_path == "/Projects/test_project/Resources/semantic/sales"
+        assert sp.format == "DBT"
+        assert sp.deployment_mode == "FOLLOW"
+        assert sp.semantic_project_id == 7
+        assert sp.href == "project/1/semantic/projects/7"
+        assert sp.project.name == "test_project"
+        assert sp.raw_data["tags"] == [{"key": "domain", "value": "sales"}]
+        assert result.semantic_projects_offset == 0
+        assert result.semantic_projects_total == 1
+
+        as_json = result.json()
+        assert as_json["semanticProjects"][0]["root_path"] == sp.root_path
+        assert as_json["semanticProjects"][0]["semantic_project_id"] == 7
+        assert as_json["semanticProjectsTotal"] == 1
+
+    def test_search_result_without_a_semantic_project_bucket(self):
+        result = search_results.FeaturestoreSearchResult({})
+
+        assert result.semantic_projects == []
+        assert result.semantic_projects_total == 0
