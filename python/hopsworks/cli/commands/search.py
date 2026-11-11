@@ -1,6 +1,6 @@
 """``hops search``: search the project's OpenSearch index, or every project's.
 
-One REST call against the ``featurestore`` index returns matching feature groups, feature views, training datasets, features, datasets, semantic layer metrics, semantic projects and saved queries, jobs, apps, models, deployments and agents.
+One REST call against the ``featurestore`` index returns matching feature groups, feature views, training datasets, features, datasets, semantic layer metrics, semantic projects and saved queries, jobs, apps, models, deployments, agents and data sources.
 Project scope is the default; ``--global`` searches every project the caller belongs to.
 """
 
@@ -30,6 +30,7 @@ _DOC_TYPES = {
     "model": "MODEL",
     "deployment": "DEPLOYMENT",
     "agent": "AGENT",
+    "data_source": "DATASOURCE",
 }
 
 # Result attribute -> KIND label, in display order.
@@ -47,6 +48,7 @@ _BUCKETS = [
     ("models", "model"),
     ("deployments", "deployment"),
     ("agents", "agent"),
+    ("data_sources", "data_source"),
 ]
 
 
@@ -160,7 +162,7 @@ def search_cmd(
 def _row(kind: str, item: Any) -> list[Any]:
     """Flatten a search result item into a fixed-width table row.
 
-    Features, jobs, datasets, metrics, semantic projects and saved queries have no version; models, jobs and semantic projects have no description, so DETAIL falls back to the type-specific field the index carries for them (metric or saved query label, framework, job type, serving tool, root path).
+    Features, jobs, datasets, metrics, semantic projects and saved queries have no version; models, jobs and semantic projects have no description, so DETAIL falls back to the type-specific field the index carries for them (metric or saved query label, framework, job type, serving tool, root path, connector type).
     A metric's or saved query's DETAIL leads with its semantic project, the scope its name is unique in and the name ``hops semantic`` queries it by.
     Text is cut to one line of 60 chars.
     """
@@ -176,6 +178,7 @@ def _row(kind: str, item: Any) -> list[Any]:
         or raw.get("jobType")
         or raw.get("servingTool")
         or raw.get("rootPath")
+        or raw.get("connectorType")
         or ""
     )
     first_line = detail.splitlines()[0] if detail else ""

@@ -142,6 +142,13 @@ Files a connector points at (`--key-path`, truststores, keystores, wallets) are 
 
 **Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
 
+## Tag a data source
+
+Schematized tags classify a data source (owner, source system, sensitivity) and make it findable in search.
+A tag that an admin made mandatory for data sources must be passed when the data source is created.
+`hops datasource create` cannot attach tags, so it fails while a tag is mandatory; create the data source from Python with `sc.save(tags=[...])` or `fs.create_data_source(sc, tags=[...])` instead.
+The SDK calls, mandatory tags and search are in [references/tags.md](references/tags.md).
+
 ## Provided credentials (Oracle)
 
 A data source has a credentials mode.
@@ -166,7 +173,7 @@ A mounted table a member cannot read shows `no_access` in `hops fg list`; their 
 Fetching a `PROVIDED` data source never returns credential values, only the names of your secrets and env var; the SDK reads the values from your account when it connects.
 Inside Hopsworks runtimes your credentials are also available as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, with `HOPS_DS_<NAME>_CONNECTOR_ID` naming the data source they belong to.
 A Trino catalog on a `PROVIDED` data source is private to the member who creates it (`_<username>__<name>`), so each member creates their own with `sc.create_trino_catalog()`.
-It runs the owner's queries with their own login when they connect through `project.get_trino_api()`; other Trino clients must send the extra credentials described in the reference.
+It reads the data source with the owner's own login from every Trino client, Superset included.
 SDK equivalents, the naming rules and the access states are in [references/provided-credentials.md](references/provided-credentials.md).
 
 ## Ingest into a new feature group with DLTHub

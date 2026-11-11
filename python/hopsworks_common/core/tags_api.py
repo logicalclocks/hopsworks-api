@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 from hopsworks_apigen import also_available_as
@@ -64,7 +63,7 @@ class TagsApi:
             name
         ]
         headers = {"content-type": "application/json"}
-        json_value = json.dumps(value)
+        json_value = tag.Tag._encode(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     @usage._method_logger

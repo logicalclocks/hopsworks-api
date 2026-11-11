@@ -309,14 +309,15 @@ hops files unshare Resources/my_dir --target other_project
 
 ```bash
 # Project-scoped search across feature groups, feature views, training datasets, features,
-# datasets, semantic layer metrics, semantic projects and saved queries, jobs, apps, models, deployments and agents
+# datasets, semantic layer metrics, semantic projects and saved queries, jobs, apps, models, deployments,
+# agents and data sources
 hops search "transactions"
 
 # Global search across every project the caller can see
 hops search "transactions" --global
 
 # Restrict to one entity type: feature_group, feature_view, training_dataset, feature,
-# dataset, metric, semantic_project, saved_query, job, app, model, deployment, agent
+# dataset, metric, semantic_project, saved_query, job, app, model, deployment, agent, data_source
 hops search "transactions" --type feature_group
 hops search "fraud" --type model
 hops search "revenue" --type metric   # DETAIL leads with the metric's semantic project
