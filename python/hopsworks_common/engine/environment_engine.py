@@ -72,6 +72,15 @@ class EnvironmentEngine:
             timeout,
         )
 
+    def _await_custom_command(
+        self, environment_name: str, command_id: int, poll, timeout: float | None = None
+    ):
+        self._await_command(
+            poll,
+            f"custom command {command_id} in environment '{environment_name}'",
+            timeout,
+        )
+
     def _await_command(self, poll, description, timeout: float | None = None):
         """Poll until the command reaches a final status, the artifact is gone, or time runs out.
 
@@ -82,31 +91,43 @@ class EnvironmentEngine:
         timeout = self.AWAIT_COMMAND_TIMEOUT if timeout is None else timeout
         deadline = time.monotonic() + timeout
         commands = [command.Command(status="ONGOING")]
-        while len(commands) > 0 and not self._is_final_status(commands[0]):
+        last_status = commands[0].status
+        while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 # Name the last status seen.
                 # "Still ONGOING" and "no command at all" are very different problems, and the caller cannot tell them apart from a bare timeout.
                 raise EnvironmentException(
                     f"Timed out after {timeout:g}s waiting for {description}. "
-                    f"The last observed command status was {commands[0].status}. The command may still be "
+                    f"The last observed command status was {last_status}. The command may still be "
                     "running, or it may have stopped without reporting a final status: check "
                     "the environment page in the UI, where the command and its state are shown."
                 )
+            if not commands or self._is_final_status(commands[0]):
+                return
             time.sleep(min(self.POLL_INTERVAL, remaining))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                continue
+            request_timeout = min(self.POLL_REQUEST_TIMEOUT, remaining)
             try:
-                artifact = poll(self.POLL_REQUEST_TIMEOUT)
+                artifact = poll(request_timeout)
             except requests.exceptions.Timeout:
                 # A poll that never came back is not an answer, but it is not a failure either.
                 # Keep the last known status and let the deadline decide when to give up.
                 _logger.debug(
                     "Polling %s timed out after %ss, retrying until the deadline.",
                     description,
-                    self.POLL_REQUEST_TIMEOUT,
+                    request_timeout,
                 )
                 continue
             # Both Library and Environment leave _commands as None when the response carries none, which len() cannot take.
-            commands = [] if artifact is None else artifact._commands or []
+            if isinstance(artifact, command.Command):
+                commands = [artifact]
+            else:
+                commands = [] if artifact is None else artifact._commands or []
+            if commands:
+                last_status = commands[0].status
 
     def _is_final_status(self, command):
         if command.status == "FAILED":
@@ -148,6 +169,9 @@ class EnvironmentEngine:
                     headers=headers,
                     query_params=query_params,
                     timeout=request_timeout,
+                    deadline=time.monotonic() + request_timeout
+                    if request_timeout is not None
+                    else None,
                 ),
             )
         except RestAPIError as e:
@@ -184,5 +208,8 @@ class EnvironmentEngine:
                 headers=headers,
                 query_params=query_params,
                 timeout=request_timeout,
+                deadline=time.monotonic() + request_timeout
+                if request_timeout is not None
+                else None,
             ),
         )
