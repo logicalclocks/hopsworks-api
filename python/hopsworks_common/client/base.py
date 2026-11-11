@@ -135,6 +135,7 @@ class Client:
         files: dict | None = None,
         with_base_path_params: bool = True,
         timeout: float | tuple[float, float] | None = None,
+        deadline: float | None = None,
     ) -> dict:
         """Send REST request to Hopsworks.
 
@@ -152,6 +153,8 @@ class Client:
             with_base_path_params: Whether to include the base path parameters (hopsworks-api/api) in the request URL.
             timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
                 Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
+            deadline: Monotonic time after which no request, token refresh or rate-limit retry starts.
+                Each socket wait is clipped to the time left, so a response can finish after it; a successful one is returned.
 
         Returns:
             Response json
@@ -182,12 +185,17 @@ class Client:
         replayable = self._is_replayable(data, files) and self._is_replayable(
             query_params, None
         )
-        deadline = time.monotonic() + self.RATE_LIMITED_RETRY_BUDGET_SECONDS
+        retry_deadline = time.monotonic() + self.RATE_LIMITED_RETRY_BUDGET_SECONDS
+        if deadline is not None:
+            retry_deadline = min(retry_deadline, deadline)
         rate_limited = False
         while True:
             prepped = self._session.prepare_request(request)
             response = self._session.send(
-                prepped, verify=self._verify, stream=stream, timeout=timeout
+                prepped,
+                verify=self._verify,
+                stream=stream,
+                timeout=self._deadline_timeout(timeout, deadline),
             )
 
             if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
@@ -198,22 +206,29 @@ class Client:
                     self.TOKEN_EXPIRED_RETRY_INTERVAL,
                     1,
                     timeout,
-                    deadline if rate_limited else None,
+                    retry_deadline if rate_limited or deadline is not None else None,
                 )
                 # A requests.Response is falsy for any 4xx or 5xx, so `or` would drop a refreshed 429.
                 if refreshed is not None:
                     response = refreshed
 
             wait = self._rate_limited_wait(response) if replayable else None
-            if wait is None or wait > deadline - time.monotonic():
+            if wait is None or wait > retry_deadline - time.monotonic():
                 break
             _logger.info("Rate limited by Hopsworks, retrying in %s s: %s", wait, url)
             response.close()
             time.sleep(wait)
-            if time.monotonic() > deadline:
+            if time.monotonic() > retry_deadline:
                 break
             rate_limited = True
 
+        if (
+            deadline is not None
+            and time.monotonic() >= deadline
+            and response.status_code // 100 != 2
+        ):
+            response.close()
+            raise requests.exceptions.Timeout("HTTP request exceeded its deadline")
         if response.status_code // 100 != 2:
             raise exceptions.RestAPIError(url, response)
 
@@ -223,6 +238,21 @@ class Client:
         if len(response.content) == 0:
             return None
         return response.json()
+
+    @staticmethod
+    def _deadline_timeout(timeout, deadline):
+        """Share the remaining budget between connection and response waits."""
+        if deadline is None:
+            return timeout
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise requests.exceptions.Timeout("HTTP request deadline expired")
+        connect, read = timeout if isinstance(timeout, tuple) else (timeout, timeout)
+        return urllib3.util.Timeout(
+            total=remaining,
+            connect=min(connect, remaining) if connect is not None else remaining,
+            read=min(read, remaining) if read is not None else remaining,
+        )
 
     @staticmethod
     def _is_replayable(data, files) -> bool:
@@ -286,7 +316,10 @@ class Client:
         if deadline is not None and time.monotonic() > deadline:
             return None
         response = self._session.send(
-            prepped, verify=self._verify, stream=stream, timeout=timeout
+            prepped,
+            verify=self._verify,
+            stream=stream,
+            timeout=self._deadline_timeout(timeout, deadline),
         )
 
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
