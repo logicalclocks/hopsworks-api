@@ -12,6 +12,7 @@ methods where available.
 
 from __future__ import annotations
 
+import copy
 import os
 import re
 import shutil
@@ -1917,7 +1918,15 @@ def connector_tables(ctx: click.Context, name: str, database: str | None) -> Non
     output.print_table(["TABLE", "DATABASE", "SCHEMA"], rows)
 
 
-def _resolve_table(ds, table: str, database: str | None):
+def _listed_tables(ds, database: str | None) -> list:
+    """The source's table listing, or none for a source that cannot list (REST, CRM)."""
+    try:
+        return ds.get_tables(database=database) or []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _resolve_table(ds, table: str, database: str | None, listed: list | None = None):
     """Return the data source of ``table`` as the source lists it.
 
     The listing carries the schema a bare table name lacks, so a read by name
@@ -1926,10 +1935,8 @@ def _resolve_table(ds, table: str, database: str | None):
     source that cannot list tables (REST, CRM) or does not list this name is
     read with the name as given.
     """
-    try:
-        listed = ds.get_tables(database=database)
-    except Exception:  # noqa: BLE001
-        listed = []
+    if listed is None:
+        listed = _listed_tables(ds, database)
     schema, _, bare = table.rpartition(".")
     found = [
         entry
@@ -1983,10 +1990,14 @@ def _read_target(table: str | None, ds: Any, name: str) -> str:
 @click.argument("name")
 @click.option(
     "--table",
+    "tables",
+    multiple=True,
     help=(
         "Table, sheet or collection to preview, as schema.table when the name "
         "is in several schemas. Required for every connector type unless the "
-        "data source already names one; list them with `hops datasource tables`."
+        "data source already names one; list them with `hops datasource tables`. "
+        "Repeat it to preview several tables in one call: a CRM (but Google "
+        "Analytics), Google Sheets or REST source fetches them with one job."
     ),
 )
 @click.option(
@@ -2007,18 +2018,18 @@ def _read_target(table: str | None, ds: Any, name: str) -> str:
 def connector_preview(
     ctx: click.Context,
     name: str,
-    table: str | None,
+    tables: tuple[str, ...],
     database: str | None,
     limit: int,
 ) -> None:
-    """Fetch a small data preview of one table through a connector.
+    """Fetch a small data preview of one or more tables through a connector.
 
     Args:
         ctx: Click context.
         name: Connector name.
-        table: Table to read.
-        database: Database that contains the table.
-        limit: Rows to print; the backend sends its own sample (about 50 rows).
+        tables: Tables to read.
+        database: Database that contains the tables.
+        limit: Rows to print per table; the backend sends its own sample (about 50 rows).
     """
     fs = session.get_feature_store(ctx)
     try:
@@ -2027,40 +2038,85 @@ def connector_preview(
         raise click.ClickException(f"Preview failed: {exc}") from exc
     if database is not None:
         ds.database = database
-    if table is not None:
-        ds = _resolve_table(ds, table, database)
-    if not (ds.table or ds.query or ds.path):
-        raise click.UsageError(
-            f"Connector '{name}' needs a table to preview: pass --table "
-            f"(and --database where the type needs it). "
-            f"List them with `hops datasource tables {name}`."
-        )
+    if not tables:
+        if not (ds.table or ds.query or ds.path):
+            raise click.UsageError(
+                f"Connector '{name}' needs a table to preview: pass --table "
+                f"(and --database where the type needs it). "
+                f"List them with `hops datasource tables {name}`."
+            )
+        reads = [(None, ds)]
+    else:
+        listed = _listed_tables(ds, database)
+        reads = [
+            (table, _resolve_table(copy.copy(ds), table, database, listed))
+            for table in tables
+        ]
     try:
-        data = ds.get_data()
+        datas = _read_previews(ds, [read for _, read in reads])
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Preview failed: {exc}") from exc
-    from hopsworks_common import events
-
-    columns = [f.name for f in getattr(data, "features", None) or []]
-    rows = _preview_rows(getattr(data, "preview", None))[:limit]
+    shown = [
+        _show_preview(name, table, read, data, limit, len(reads) > 1)
+        for (table, read), data in zip(reads, datas, strict=True)
+    ]
     if output.JSON_MODE:
         output.print_json(
-            {
-                "features": [
-                    {"name": f.name, "type": f.type}
-                    for f in getattr(data, "features", None) or []
-                ],
-                "preview": rows,
+            shown[0]
+            if len(reads) == 1
+            else {
+                _read_target(table, read, name): one
+                for (table, read), one in zip(reads, shown, strict=True)
             }
         )
+
+
+def _batch_fetches(ds: Any) -> bool:
+    """Whether the source reads several tables with one schema-fetch job.
+
+    The backend's batch endpoint takes CRM, Google Sheets and REST sources, but
+    refuses Google Analytics with more than one resource.
+    """
+    from hsfs.storage_connector import CRMSource, StorageConnector
+
+    connector = getattr(ds, "storage_connector", None)
+    kind = getattr(connector, "type", None)
+    if kind in (StorageConnector.GOOGLE_SHEETS, StorageConnector.REST):
+        return True
+    crm = getattr(connector, "crm_type", None)
+    return kind == StorageConnector.CRM and getattr(crm, "value", crm) != (
+        CRMSource.GOOGLE_ANALYTICS.value
+    )
+
+
+def _read_previews(ds: Any, reads: list[Any]) -> list[Any]:
+    """The data of each read, in order: one batch call where the source takes it."""
+    if len(reads) > 1 and _batch_fetches(ds):
+        by_name = ds.storage_connector.get_data_batch(reads)
+        return [by_name[read.table] for read in reads]
+    return [read.get_data() for read in reads]
+
+
+def _show_preview(
+    name: str, table: str | None, ds: Any, data: Any, limit: int, titled: bool
+) -> dict:
+    """Print one read's rows, relay them to the host, and return its JSON."""
+    from hopsworks_common import events
+
+    features = getattr(data, "features", None) or []
+    columns = [f.name for f in features]
+    rows = _preview_rows(getattr(data, "preview", None))[:limit]
     columns = columns or (list(rows[0]) if rows else [])
     printed = [[fg_cmd._truncate_cell(row.get(c)) for c in columns] for row in rows]
+    target = _read_target(table, ds, name)
     if not output.JSON_MODE:
+        if titled:
+            click.echo(f"\n{target}")
         output.print_table(columns, printed)
     # The host shows what the agent read without reading the source again (a null stays null).
     events.source_preview(
         name,
-        _read_target(table, ds, name),
+        target,
         columns,
         [
             [
@@ -2070,6 +2126,10 @@ def connector_preview(
             for row, line in zip(rows, printed, strict=True)
         ],
     )
+    return {
+        "features": [{"name": f.name, "type": f.type} for f in features],
+        "preview": rows,
+    }
 
 
 @datasource_group.command("infer-metadata")

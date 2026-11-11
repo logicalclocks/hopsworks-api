@@ -15,6 +15,7 @@ from hopsworks.cli.main import cli
 from hsfs.core.data_source import DataSource
 from hsfs.feature_group import ExternalFeatureGroup, SpineGroup
 from hsfs.feature_store import FeatureStore
+from hsfs.storage_connector import CRMSource
 
 
 def _external_fg(**source):
@@ -294,3 +295,87 @@ def test_info_shows_the_schema_of_an_external_fg(mock_project):
     assert any(
         line.split()[:2] == ["Schema", "public"] for line in result.output.splitlines()
     ), result.output
+
+
+def _crm_preview(table):
+    return types.SimpleNamespace(
+        features=[types.SimpleNamespace(name="id", type="string")],
+        preview={"preview": [{"values": [{"value0": "id", "value1": f"{table}-1"}]}]},
+    )
+
+
+def _crm_source(mock_project, crm_type):
+    connector = mock.MagicMock()
+    connector.type = "CRM"
+    connector.crm_type = crm_type
+    connector.get_data.side_effect = lambda d, *a, **k: _crm_preview(d.table)
+    connector.get_data_batch.side_effect = lambda reads, *a, **k: {
+        d.table: _crm_preview(d.table) for d in reads
+    }
+    source = DataSource(storage_connector=connector)
+    source.get_tables = mock.MagicMock(return_value=[])
+    mock_project.get_feature_store.return_value.get_data_source.return_value = source
+    return connector
+
+
+def test_datasource_preview_reads_several_crm_tables_with_one_batch_call(
+    mock_project, tmp_path, monkeypatch
+):
+    events_file = tmp_path / "events.jsonl"
+    monkeypatch.setenv("HOPS_EVENTS_FILE", str(events_file))
+    connector = _crm_source(mock_project, CRMSource.SALESFORCE)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "--json",
+            "datasource",
+            "preview",
+            "sf",
+            "--table",
+            "account",
+            "--table",
+            "lead",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    connector.get_data_batch.assert_called_once()
+    assert [d.table for d in connector.get_data_batch.call_args.args[0]] == [
+        "account",
+        "lead",
+    ]
+    connector.get_data.assert_not_called()
+    shown = json.loads(result.output)
+    assert shown["account"]["preview"] == [{"id": "account-1"}]
+    assert shown["lead"]["preview"] == [{"id": "lead-1"}]
+    lines = [json.loads(x) for x in events_file.read_text().splitlines()]
+    assert [line["detail"]["table"] for line in lines] == ["account", "lead"]
+
+
+def test_datasource_preview_reads_google_analytics_tables_one_by_one(mock_project):
+    connector = _crm_source(mock_project, CRMSource.GOOGLE_ANALYTICS)
+
+    result = CliRunner().invoke(
+        cli, ["datasource", "preview", "ga", "--table", "sessions", "--table", "pages"]
+    )
+
+    assert result.exit_code == 0, result.output
+    connector.get_data_batch.assert_not_called()
+    assert [c.args[0].table for c in connector.get_data.call_args_list] == [
+        "sessions",
+        "pages",
+    ]
+    assert "sessions-1" in result.output and "pages-1" in result.output
+
+
+def test_datasource_preview_of_one_crm_table_keeps_the_single_read(mock_project):
+    connector = _crm_source(mock_project, CRMSource.SALESFORCE)
+
+    result = CliRunner().invoke(
+        cli, ["--json", "datasource", "preview", "sf", "--table", "account"]
+    )
+
+    assert result.exit_code == 0, result.output
+    connector.get_data_batch.assert_not_called()
+    assert json.loads(result.output)["preview"] == [{"id": "account-1"}]
