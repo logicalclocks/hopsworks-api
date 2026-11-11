@@ -224,6 +224,30 @@ class TestS3Connector:
         with pytest.raises(FeatureStoreException, match="saved without its endpoint"):
             sc.save()
 
+    def test_save_with_tags_sends_them_and_keeps_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        stored = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        tags = [{"name": "data_owner", "value": "platform"}]
+        create = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=stored,
+        )
+
+        assert sc.save(tags=tags) is stored
+        create.assert_called_once_with(sc, tags)
+
     def test_update_refuses_a_response_without_the_endpoint(self, mocker):
         sc = storage_connector.S3Connector(
             id=1,
