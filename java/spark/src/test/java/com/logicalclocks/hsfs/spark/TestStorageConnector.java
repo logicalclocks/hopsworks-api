@@ -539,6 +539,7 @@ public class TestStorageConnector {
     @Test
     void testS3EndpointHadoopConfIsBucketScoped() throws IOException, FeatureStoreException {
       StorageConnector.S3Connector connector = new StorageConnector.S3Connector();
+      connector.setStorageConnectorType(StorageConnectorType.S3);
       connector.setBucket("landing");
       connector.setRegion("us-east-1");
       connector.setAccessKey("ak");
