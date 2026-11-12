@@ -1135,6 +1135,30 @@ class Deployment:
         return self._predictor.get_openai_url()
 
     @public
+    def get_anthropic_url(self) -> str | None:
+        """Get the Anthropic-compatible base URL for vLLM deployments.
+
+        This is the value for `ANTHROPIC_BASE_URL`, used by Claude Code and the Anthropic SDK.
+        The deployment serves the Anthropic Messages API natively, so requests go to `url + "/v1/messages"`.
+        This method only returns a URL for LLM (vLLM) deployments, and the vLLM version must support the Messages API.
+
+        Returns:
+            The Anthropic-compatible base URL (the OpenAI-compatible URL without the trailing "/v1"), or `None` if not a LLM deployment.
+
+        Example:
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            url = deployment.get_anthropic_url()
+            # url = "https://host:port/v1/project/name"
+            # Then use: url + "/v1/messages"
+            ```
+        """
+        openai_url = self.get_openai_url()
+        if openai_url is None:
+            return None
+        return openai_url.removesuffix("/v1")
+
+    @public
     def get_openai_client(self, **kwargs: Any) -> openai.OpenAI:
         """Get an OpenAI client that talks to this vLLM deployment only.
 
