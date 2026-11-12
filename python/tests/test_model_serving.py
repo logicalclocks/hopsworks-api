@@ -174,7 +174,7 @@ class TestTracingForwarding:
         script.write_text("print('hi')")
         existing = mocker.Mock()
         existing.predictor.memory = None
-        existing.predictor.env_vars = {"HOPSABLE_EMBEDDING_PROJECT": "p"}
+        existing.predictor.env_vars = {"FIRST": "p"}
         mocker.patch.object(ms, "get_deployment", return_value=existing)
         mocker.patch(
             "hsml.model_serving.Predictor.for_server", return_value=mocker.Mock()
@@ -184,7 +184,7 @@ class TestTracingForwarding:
         ms.deploy_agent(entry=str(script), name="my_agent")
 
         # Assert
-        assert existing.predictor._env_vars == {"HOPSABLE_EMBEDDING_PROJECT": "p"}
+        assert existing.predictor._env_vars == {"FIRST": "p"}
 
     def test_deploy_agent_redeploy_with_env_vars_keeps_the_other_keys(
         self, ms, mocker, stub_apis, tmp_path
@@ -194,7 +194,7 @@ class TestTracingForwarding:
         script.write_text("print('hi')")
         existing = mocker.Mock()
         existing.predictor.memory = None
-        existing.predictor.env_vars = {"OWN": "kept", "HOPSABLE_EMBEDDING_MODEL": "old"}
+        existing.predictor.env_vars = {"OWN": "kept", "SECOND": "old"}
         mocker.patch.object(ms, "get_deployment", return_value=existing)
         mocker.patch(
             "hsml.model_serving.Predictor.for_server", return_value=mocker.Mock()
@@ -204,14 +204,37 @@ class TestTracingForwarding:
         ms.deploy_agent(
             entry=str(script),
             name="my_agent",
-            env_vars={"HOPSABLE_EMBEDDING_MODEL": "new"},
+            env_vars={"SECOND": "new"},
         )
 
         # Assert
         assert existing.predictor._env_vars == {
             "OWN": "kept",
-            "HOPSABLE_EMBEDDING_MODEL": "new",
+            "SECOND": "new",
         }
+
+    def test_deploy_agent_redeploy_does_not_send_back_reserved_env_vars(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # Arrange
+        from hopsworks_common.constants import MODEL_SERVING
+
+        script = tmp_path / "agent.py"
+        script.write_text("print('hi')")
+        reserved = MODEL_SERVING.RESERVED_ENV_VARS[0]
+        existing = mocker.Mock()
+        existing.predictor.memory = None
+        existing.predictor.env_vars = {"OWN": "kept", reserved: "set by Hopsworks"}
+        mocker.patch.object(ms, "get_deployment", return_value=existing)
+        mocker.patch(
+            "hsml.model_serving.Predictor.for_server", return_value=mocker.Mock()
+        )
+
+        # Act
+        ms.deploy_agent(entry=str(script), name="my_agent")
+
+        # Assert
+        assert existing.predictor._env_vars == {"OWN": "kept"}
 
     def test_create_deployment_sets_tags_on_predictor(self, ms, mocker):
         # create_deployment normalizes the tags through the shared Tag helper and

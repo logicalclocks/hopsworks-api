@@ -27,7 +27,7 @@ from hopsworks_apigen import public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.constants import PREDICTOR, PREDICTOR_STATE
+from hopsworks_common.constants import MODEL_SERVING, PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.core import dataset_api as _dataset_api
 from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
@@ -894,11 +894,15 @@ class ModelServing:
             # already preserved by the backend.
             if framework is None:
                 predictor._agent_framework = existing.predictor.agent_framework
-            # A redeploy keeps the agent's other variables (its own, and the ones Hopsworks reads back); the
-            # keys passed here win.
+            # A redeploy keeps the agent's other variables; the keys passed here win. The ones Hopsworks
+            # sets itself are read back with them and are not sent again.
             if existing.predictor.env_vars:
                 predictor._env_vars = {
-                    **existing.predictor.env_vars,
+                    **{
+                        key: value
+                        for key, value in existing.predictor.env_vars.items()
+                        if key not in MODEL_SERVING.RESERVED_ENV_VARS
+                    },
                     **(env_vars or {}),
                 }
             existing.predictor = predictor
