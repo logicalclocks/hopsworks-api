@@ -183,6 +183,8 @@ class Engine:
         self._spark_session.conf.set("spark.sql.hive.convertMetastoreParquet", "false")
         self._spark_session.conf.set("spark.sql.session.timeZone", "UTC")
         self._dataset_api = dataset_api.DatasetApi()
+        # Bucket name to the endpoint of the store this session uses it with, None for AWS S3.
+        self._s3_bucket_stores = {}
 
         # Stage metrics: enabled by default in Connect mode, can be overridden
         self._metrics = None
@@ -2035,6 +2037,7 @@ class Engine:
         # bucket (e.g. Glue, where the bucket is part of the table location)
         # only configure the global level.
         if storage_connector.bucket:
+            self._claim_s3_bucket(storage_connector)
             self._set_s3_hadoop_conf(
                 storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
             )
@@ -2043,12 +2046,44 @@ class Engine:
             )
         return path.replace("s3://", "s3a://", 1) if path is not None else None
 
+    def _claim_s3_bucket(self, storage_connector):
+        """Record which store this session uses the data source's bucket name with.
+
+        s3a keeps one filesystem per bucket name for the life of the application, so a second store under the same
+        bucket name would silently read and write the first one.
+
+        Raises:
+            FeatureStoreException: The session already uses the bucket name with another store.
+        """
+        bucket = storage_connector.bucket
+        endpoint = getattr(storage_connector, "endpoint", None) or None
+        known = self._s3_bucket_stores.setdefault(bucket, endpoint)
+        if known != endpoint:
+            raise FeatureStoreException(
+                f"Data source '{storage_connector.name}' uses bucket '{bucket}' on {endpoint or 'AWS S3'}, "
+                f"but this Spark application already uses that bucket name on {known or 'AWS S3'}. "
+                "Spark keeps one S3 client per bucket name for the life of the application, "
+                "so use this data source in a new Spark application."
+            )
+
     def _set_s3_endpoint_hadoop_conf(self, storage_connector, prefix):
         # Bucket scope only, and after the forwarded Spark options so it wins over them:
         # at global scope it would redirect later data sources on AWS in the same session.
         endpoint = getattr(storage_connector, "endpoint", None)
         if not endpoint:
             return
+        # Without a provider of its own the bucket inherits a global temporary-credentials
+        # provider and session token that an IAM-role data source set earlier in the session,
+        # and would send that token to this store.
+        if (
+            not storage_connector.session_token
+            and "fs.s3a.aws.credentials.provider"
+            not in storage_connector.spark_options()
+        ):
+            self._set_hadoop_conf(
+                f"{prefix}.aws.credentials.provider",
+                "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+            )
         self._set_hadoop_conf(f"{prefix}.endpoint", endpoint)
         self._set_hadoop_conf(
             f"{prefix}.path.style.access",

@@ -45,6 +45,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -145,6 +146,9 @@ public class SparkEngine extends EngineBase {
 
   @Getter
   private SparkSession sparkSession;
+
+  // Bucket name to the endpoint of the store this session uses it with, "" for AWS S3.
+  private final Map<String, String> s3BucketStores = new ConcurrentHashMap<>();
 
   private SparkEngine() {
     sparkSession = SparkSession.builder()
@@ -844,6 +848,9 @@ public class SparkEngine extends EngineBase {
 
   private void setupS3ConnectorHadoopConf(StorageConnector.S3Connector storageConnector)
       throws IOException, FeatureStoreException {
+    if (!Strings.isNullOrEmpty(storageConnector.getBucket())) {
+      claimS3Bucket(storageConnector);
+    }
     if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_ACCESS_KEY_ENV, storageConnector.getAccessKey());
@@ -885,9 +892,33 @@ public class SparkEngine extends EngineBase {
     setupS3EndpointHadoopConf(storageConnector);
   }
 
+  /**
+   * Record which store this session uses the data source's bucket name with. s3a keeps one filesystem per bucket name
+   * for the life of the application, so a second store under the same bucket name would silently read and write the
+   * first one.
+   *
+   * @throws FeatureStoreException the session already uses the bucket name with another store
+   */
+  private void claimS3Bucket(StorageConnector.S3Connector storageConnector) throws FeatureStoreException {
+    String endpoint = Strings.nullToEmpty(storageConnector.getEndpoint());
+    String known = s3BucketStores.putIfAbsent(storageConnector.getBucket(), endpoint);
+    if (known != null && !known.equals(endpoint)) {
+      throw new FeatureStoreException("Data source '" + storageConnector.getName() + "' uses bucket '"
+          + storageConnector.getBucket() + "' on " + storeName(endpoint)
+          + ", but this Spark application already uses that bucket name on " + storeName(known)
+          + ". Spark keeps one S3 client per bucket name for the life of the application, "
+          + "so use this data source in a new Spark application.");
+    }
+  }
+
+  private static String storeName(String endpoint) {
+    return endpoint.isEmpty() ? "AWS S3" : endpoint;
+  }
+
   // Bucket scope only, with the keys and region beside it: the settings above are global, so a later data source
   // in the same session would otherwise redirect this bucket to its own store or credentials.
-  private void setupS3EndpointHadoopConf(StorageConnector.S3Connector storageConnector) {
+  private void setupS3EndpointHadoopConf(StorageConnector.S3Connector storageConnector)
+      throws IOException, FeatureStoreException {
     String endpoint = storageConnector.getEndpoint();
     if (Strings.isNullOrEmpty(endpoint)) {
       return;
@@ -905,6 +936,14 @@ public class SparkEngine extends EngineBase {
     }
     if (!Strings.isNullOrEmpty(storageConnector.getSecretKey())) {
       conf.set(prefix + "secret.key", storageConnector.getSecretKey());
+    }
+    // Without a provider of its own the bucket inherits the global temporary-credentials provider and session token
+    // an IAM-role data source set earlier in the session, and would send that token to this store.
+    if (!Strings.isNullOrEmpty(storageConnector.getSessionToken())) {
+      conf.set(prefix + "aws.credentials.provider", Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER);
+      conf.set(prefix + "session.token", storageConnector.getSessionToken());
+    } else if (!storageConnector.sparkOptions().containsKey(Constants.S3_CREDENTIAL_PROVIDER_ENV)) {
+      conf.set(prefix + "aws.credentials.provider", Constants.S3_SIMPLE_CREDENTIAL_PROVIDER);
     }
   }
 
