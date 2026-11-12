@@ -3101,6 +3101,45 @@ def test_a_lower_writer_is_refused_and_the_table_is_unchanged(monkeypatch, tmp_p
     assert (DeltaTable(location).version(), _txn(location)) == (1, 5)
 
 
+@pytest.mark.parametrize("path", ["upsert", "append", "delete"])
+def test_a_writer_that_passed_the_check_is_refused_once_a_newer_one_commits(
+    monkeypatch, tmp_path, path
+):
+    engine, location = _fenced_table(monkeypatch, tmp_path)
+    from deltalake import DeltaTable
+    from deltalake.exceptions import CommitFailedError
+
+    engine._fence(4)
+    checked = DeltaEngine._check_writer_epoch.__func__
+
+    def check_then_a_newer_writer_commits(cls, table, epoch):
+        checked(cls, table, epoch)
+        monkeypatch.setattr(DeltaEngine, "_check_writer_epoch", classmethod(checked))
+        engine._fence(5)
+
+    monkeypatch.setattr(
+        DeltaEngine,
+        "_check_writer_epoch",
+        classmethod(check_then_a_newer_writer_commits),
+    )
+    stale = {"writer_epoch": 4}
+    with pytest.raises(CommitFailedError):
+        if path == "upsert":
+            _write_one(engine, 9, write_options=stale)
+        elif path == "append":
+            engine._write_delta_rs_dataset(
+                pd.DataFrame({"id": [9], "v": ["x"]}),
+                operation="insert",
+                write_options={**stale, "mode": "append"},
+            )
+        else:
+            engine._delete_record(pd.DataFrame({"id": [1], "v": ["a"]}), stale)
+
+    table = DeltaTable(location)
+    assert (table.version(), _txn(location)) == (2, 5)
+    assert sorted(table.to_pyarrow_table()["id"].to_pylist()) == [1, 2]
+
+
 def test_a_fenced_write_makes_no_table_property_commit(monkeypatch, tmp_path):
     engine, location = _fenced_table(monkeypatch, tmp_path)
     from deltalake import DeltaTable

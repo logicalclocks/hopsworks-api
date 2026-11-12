@@ -984,7 +984,8 @@ class DeltaEngine:
         """Commit an empty transaction recording `Transaction("hops-writer", epoch)`: from it on, lower writers are refused.
 
         A fenced writer makes it once per table at claim time, so a writer that writes nothing still advances the
-        table's fence. The table must exist: a fenced group's table is created with its properties at group create.
+        table's fence. The table must exist. A lower writer is refused with `StaleWriterError` when the table already
+        records a newer epoch, or with delta-rs's `CommitFailedError` when the newer writer commits after the check.
         """
         import pyarrow as pa
         from deltalake import DeltaTable as DeltaRsTable
