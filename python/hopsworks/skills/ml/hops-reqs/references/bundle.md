@@ -71,7 +71,7 @@ the result names. `--record` on a benchmark means "write result.json", nothing m
 2. Build and upload the bundle.
 3. Write the row with `state: submitted`, its `run_id`, `commit` and `bundle`.
 4. Submit (`hops job deploy ... --run`), record the execution id, `state: running`.
-5. Poll `hops job history <job>`; on completion download `result.json`, complete the row.
+5. Wait with `hops job wait <job> --execution <id> --timeout 840` (again while it times out); then download `result.json`, complete the row.
 6. Commit the evidence (`[<slug>] train run <n>: result`).
 
 A session that dies between 3 and 5 leaves a row a resume reconciles against

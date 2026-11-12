@@ -204,6 +204,7 @@ hops job run <name> [--wait] [--args "..."]
 hops job stop <name>
 hops job logs <name> [--execution ID]
 hops job history <name>
+hops job wait <name> [--execution ID] [--timeout 840]   # returns when the run ends; exits 1 with the log tail if it failed
 hops job schedule set <name> "0 0 * * * ?"              # Quartz 6-field cron
 hops job schedule info <name>
 hops job schedule delete <name>

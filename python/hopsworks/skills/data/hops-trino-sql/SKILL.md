@@ -38,8 +38,8 @@ hudi.<project_name>_featurestore.<fg_name>_<fg_version>
   `CALL delta.system.flush_metadata_cache(...)` is denied to project users. The
   data is not missing: confirm it with `hops fg preview <fg>` and the
   materialization job's log (the Kafka offsets it read), then count with
-  `hops sql` again later. Count only after `hops job history
-  <fg>_<v>_offline_fg_materialization` shows a finished run.
+  `hops sql` again later. Count only after `hops job wait
+  <fg>_<v>_offline_fg_materialization --timeout 840` returns.
 
 ### Faster queries
 

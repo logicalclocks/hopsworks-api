@@ -29,6 +29,7 @@ inputs, the steps, the definition of done, and where to write the result.
 hops job list                               # AGENT jobs are listed with the other jobs
 hops job info <name>
 hops job history <name>                     # executions and their states
+hops job wait <name> --timeout 840          # returns when the last run ends
 hops job logs <name> --stdout --tail 200    # the last execution's result (stdout = result.md)
 ```
 

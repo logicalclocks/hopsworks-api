@@ -70,7 +70,7 @@ Record each in `outputs.jobs` (`{name, cadence, cron, environment, tables}`).
 
 ### verify
 
-Wait for the first catch-up run of the most frequent cadence to finish (`hops job history <slug>-<cadence>`), then check from its log that it wrote its window and from the table that the rows of that window are there.
+Wait for the first catch-up run of the most frequent cadence to finish (`hops job wait <slug>-<cadence> --timeout 840`), then check from its log that it wrote its window and from the table that the rows of that window are there.
 Run the daily job once by hand for the last full day only when no daily window has run yet and the user wants it now: it writes yesterday's changes, which the next scheduled run would also write, and a rerun of the same window rewrites the same rows.
 Check the duplicate deliveries a silver layer will have to remove, for the clickstream example: `SELECT count(*) - count(DISTINCT click_id) FROM clickstream_clicks_1` (same catalog and schema) is about 0.001% of the clicks.
 Run `hops factory system status <slug>` and fix anything it flags.

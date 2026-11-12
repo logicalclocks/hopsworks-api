@@ -111,7 +111,10 @@ def job_list(ctx: click.Context) -> None:
 @click.argument("name")
 @click.pass_context
 def job_info(ctx: click.Context, name: str) -> None:
-    """Show the configuration of a single job.
+    """Show the configuration of a single job and its last run.
+
+    The last run's state is read once. To wait for a run to end, use
+    `hops job wait NAME`.
 
     \f
     Args:
@@ -126,8 +129,16 @@ def job_info(ctx: click.Context, name: str) -> None:
     if job is None:
         raise click.ClickException(f"Job '{name}' not found.")
 
+    last = _last_execution(job)
     if output.JSON_MODE:
-        output.print_json(_job_to_dict(job))
+        output.print_json(
+            {
+                **_job_to_dict(job),
+                "last_run": _execution_to_dict(last)
+                if last and not isinstance(last, Exception)
+                else None,
+            }
+        )
         return
 
     rows = [
@@ -138,8 +149,32 @@ def job_info(ctx: click.Context, name: str) -> None:
         ["Created", _ts_label(getattr(job, "creation_time", None))],
         ["Description", output.first_line(getattr(job, "description", None))],
         ["Tags", output.format_mapping(output.read_tags(job))],
+        ["Last run", _last_run_label(name, last)],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+def _last_execution(job: Any) -> Any:
+    """The job's newest execution, one row read; None when it never ran, the error when the read failed."""
+    try:
+        execs = job._job_api.last_execution(job)
+    except Exception as exc:  # noqa: BLE001 - the config still shows
+        return exc
+    return execs[0] if execs else None
+
+
+def _last_run_label(name: str, execution: Any | None) -> str:
+    if execution is None:
+        return "never ran"
+    if isinstance(execution, Exception):
+        return f"unavailable ({execution})"
+    from hopsworks_common import constants  # noqa: PLC0415 - SDK loaded on use
+
+    state = getattr(execution, "state", "?")
+    label = f"#{getattr(execution, 'id', '?')} {state}"
+    if state in constants.JOBS.FINAL_STATES:
+        return f"{label}, {_duration_s(execution)} s"
+    return f"{label}: wait with `hops job wait {name} --execution {getattr(execution, 'id', '?')} --timeout 840`"
 
 
 def _job_to_dict(job: Any) -> dict[str, Any]:

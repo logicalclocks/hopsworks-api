@@ -31,7 +31,7 @@ over exported Parquet produce the same artifacts.
 ## Smoke-test (cheap pre/post-flight)
 ```bash
 hops trino tables delta.<project>_featurestore                 # before: sources visible to dbt?
-hops job info <job-name>                                       # after: execution FINISHED?
+hops job wait <job-name> --timeout 840                         # after: returns when the run ends, exits 1 with the log tail if it failed
 hops files list Resources/dbt_runs/<job-name>/<execution id>   # after: run_graph.json + execution_graph.html present
 ```
 
