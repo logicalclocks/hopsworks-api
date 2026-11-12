@@ -85,7 +85,7 @@ index must be loaded, or the source is an API with no table to mount.
 | opensearch | OpenSearch | `--host`, `--port` | `--password`, `--truststore-password` (`HOPSWORKS_DS_OPENSEARCH_<OPTION>`) |
 | redshift | Amazon Redshift | `--cluster-identifier`, `--endpoint`, `--database`, `--port` | `--password` (`HOPSWORKS_DS_REDSHIFT_PASSWORD`) |
 | rest | A REST API | `--base-url`, `--auth-type` | `--api-key`, `--bearer-token`, `--password`, `--client-secret`, `--access-token` (`HOPSWORKS_DS_REST_<OPTION>`) |
-| s3 | Amazon S3, or an S3-compatible store with `--endpoint`, which also needs `--region` and `--access-key` | `--bucket` | `--secret-key` (`HOPSWORKS_DS_S3_SECRET_KEY`) |
+| s3 | Amazon S3, or an S3-compatible store with `--endpoint`, which also needs `--access-key` (`--region` defaults to `us-east-1`) | `--bucket` | `--secret-key` (`HOPSWORKS_DS_S3_SECRET_KEY`) |
 | sap-hana | SAP HANA | `--host`, `--user` | `--password` (`HOPSWORKS_DS_SAP_HANA_PASSWORD`) |
 | sharepoint | SharePoint Online document libraries, copied into a dataset rather than mounted | `--tenant-id`, `--client-id`, `--site-url` | `--client-secret` (`HOPSWORKS_DS_SHAREPOINT_CLIENT_SECRET`) |
 | snowflake | Snowflake | `--url`, `--user`, `--database`, `--schema`, `--warehouse` | `--password` (`HOPSWORKS_DS_SNOWFLAKE_PASSWORD`) |

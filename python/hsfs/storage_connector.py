@@ -1271,7 +1271,8 @@ class S3Connector(StorageConnector):
     """A data source on an S3 bucket, in AWS or in an S3-compatible store.
 
     Set [`endpoint`][hsfs.storage_connector.S3Connector.endpoint] to use an S3-compatible store such as MinIO, Dell ECS or Ceph.
-    Such a data source needs a region, an access key and a secret key, and cannot use IAM roles.
+    Such a data source needs an access key and a secret key, and cannot use IAM roles.
+    Without a region it gets `us-east-1`, which stores without regions accept.
 
     Example:
         ```python
@@ -1404,7 +1405,8 @@ class S3Connector(StorageConnector):
         """The S3-compatible store this data source targets, as `http(s)://host[:port]`.
 
         `None` means AWS S3.
-        The backend refuses an endpoint without a region, an access key and a secret key, together with an IAM role, or next to the `fs.s3a.endpoint` and `fs.s3a.path.style.access` Spark options it replaces.
+        The backend refuses an endpoint without an access key and a secret key, together with an IAM role, or next to the `fs.s3a.endpoint` and `fs.s3a.path.style.access` Spark options it replaces.
+        A data source with an endpoint and no region gets the region `us-east-1`.
         An update that leaves it `None` keeps the stored endpoint; an empty string removes it.
         Changing it moves the data source, and the data it already holds stays on the previous store.
         """

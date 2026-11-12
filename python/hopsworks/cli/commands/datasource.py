@@ -285,12 +285,12 @@ def connector_create_jdbc(
 @_secret_option("s3", "--secret-key", "AWS secret access key.")
 @click.option(
     "--region",
-    help="AWS region. Required with --endpoint; use us-east-1 if the store has no regions.",
+    help="AWS region. With --endpoint it defaults to us-east-1, which stores without regions accept.",
 )
 @click.option(
     "--endpoint",
     help="S3-compatible store as http(s)://host[:port], e.g. MinIO or Dell ECS. "
-    "Needs --region, --access-key and --secret-key.",
+    "Needs --access-key and --secret-key.",
 )
 @click.option(
     "--path-style-access",
