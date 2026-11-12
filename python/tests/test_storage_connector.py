@@ -15,14 +15,26 @@
 #
 
 import base64
+import json
 import os
 from pathlib import WindowsPath
 
 import pytest
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
+from hopsworks_common.tag import Tag
 from hsfs import engine, storage_connector
+from hsfs.core import storage_connector_api
 from hsfs.engine import python, spark
 from hsfs.storage_connector import BigQueryConnector
+
+
+def _client(mocker, response=None, side_effect=None):
+    client_mock = mocker.Mock()
+    client_mock._project_id = 119
+    client_mock._send_request.return_value = response
+    client_mock._send_request.side_effect = side_effect
+    mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+    return client_mock
 
 
 class TestHopsfsConnector:
@@ -1261,6 +1273,38 @@ class TestKafkaConnector:
             "sasl.username": "222",
         }
 
+    def test_confluent_options_jaas_mechanism_from_options(self, mocker):
+        # Arrange
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._add_file.return_value = None
+        mocker.patch("hopsworks_common.client._get_instance")
+        sc = storage_connector.KafkaConnector(
+            1,
+            "kafka_connector",
+            0,
+            external_kafka=True,
+            options=[
+                {
+                    "name": "sasl.jaas.config",
+                    "value": 'org.apache.kafka.common.security.scram.ScramLoginModule required username="222" password="111";',
+                },
+                {"name": "sasl.mechanism", "value": "SCRAM-SHA-512"},
+            ],
+        )
+
+        # Act
+        config = sc.confluent_options()
+
+        # Assert
+        assert config == {
+            "bootstrap.servers": None,
+            "security.protocol": None,
+            "ssl.endpoint.identification.algorithm": None,
+            "sasl.mechanism": "SCRAM-SHA-512",
+            "sasl.password": "111",
+            "sasl.username": "222",
+        }
+
 
 class TestGcsConnector:
     def test_from_response_json(self, backend_fixtures):
@@ -1695,6 +1739,57 @@ class TestSqlConnector:
             DataSourceException, match="Teradata connector requires a host"
         ):
             connector.spark_options()
+
+    def test_sqlserver_url_carries_the_database_as_a_property(self):
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="SQLSERVER",
+            host="mssql.example.com",
+            port=1433,
+            database="sales",
+            user="sa",
+            password="pass",
+            arguments=[
+                {"name": "trustServerCertificate", "value": "true"},
+                {"name": "databaseName", "value": "other_db"},
+                {"name": "serverName", "value": "evil.example.com"},
+                {"name": "portNumber", "value": "1434"},
+                {"name": "server", "value": "evil.example.com"},
+            ],
+        )
+
+        options = connector.spark_options()
+
+        assert (
+            options["url"]
+            == "jdbc:sqlserver://mssql.example.com:1433;databaseName={sales}"
+        )
+        assert options["driver"] == "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+        assert options["trustServerCertificate"] == "true"
+        # The field owns the database; Spark would hand the argument to the driver and override it.
+        assert "databaseName" not in options
+        assert "serverName" not in options
+        assert "portNumber" not in options
+        assert "server" not in options
+
+    def test_sqlserver_database_cannot_add_url_properties(self):
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="SQLSERVER",
+            host="mssql.example.com",
+            port=1433,
+            database="sales;encrypt=false}x",
+            user="sa",
+            password="pass",
+        )
+
+        assert connector.spark_options()["url"] == (
+            "jdbc:sqlserver://mssql.example.com:1433;databaseName={sales;encrypt=false}}x}"
+        )
 
     def test_clickhouse_ssl_argument_reaches_the_jdbc_driver(self):
         # Arrange
@@ -2492,7 +2587,7 @@ class TestSqlConnectorProvidedCredentials:
 
         sc.save()
 
-        create.assert_called_once_with(sc)
+        create.assert_called_once_with(sc, None)
 
     def test_an_update_never_sends_the_credentials_filled_in_on_read(
         self, backend_fixtures, mocker
@@ -2994,7 +3089,7 @@ class TestStorageConnectorToDict:
 
         d = sc.to_dict()
 
-        assert d["type"] == "featurestoreAdlsConnectorDTO"
+        assert d["type"] == "featurestoreADLSConnectorDTO"
         assert d["storageConnectorType"] == "ADLS"
         assert d["generation"] == "test_generation"
         assert d["directoryId"] == "test_directory_id"
@@ -3061,7 +3156,7 @@ class TestStorageConnectorToDict:
 
         d = sc.to_dict()
 
-        assert d["type"] == "featurestoreKafkaConnectorDTO"
+        assert d["type"] == "featureStoreKafkaConnectorDTO"
         assert d["storageConnectorType"] == "KAFKA"
         assert d["bootstrapServers"] == "test_bootstrap_servers"
         assert d["securityProtocol"] == "test_security_protocol"
@@ -3208,7 +3303,7 @@ class TestStorageConnectorSave:
 
         result = sc.save()
 
-        mock_create.assert_called_once_with(sc)
+        mock_create.assert_called_once_with(sc, None)
         assert result.id == 42
 
     def test_update_calls_api_update(self, mocker):
@@ -3756,3 +3851,766 @@ class TestElasticsearchConnector:
             "/Projects/p/Resources/ts.jks"
         )
         assert options["es.net.ssl.truststore.location"] == "file:.hopsworks-ab-ts.jks"
+
+
+class TestHopsworksConnector:
+    @staticmethod
+    def _connector(**kwargs):
+        defaults = {
+            "id": 1,
+            "name": "remote",
+            "featurestore_id": 67,
+            "host": "hopsworks.example.com",
+            "project": "Sales",
+            "api_key": "k",
+        }
+        defaults.update(kwargs)
+        return storage_connector.HopsworksConnector(**defaults)
+
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_hopsworks"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.HopsworksConnector)
+        assert sc.host == "hopsworks.example.com"
+        assert sc.port == 443
+        assert sc.project == "Sales"
+        assert sc.api_key == "test_api_key"
+        assert sc.verify is True
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_hopsworks_basic_info"][
+            "response"
+        ]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.HopsworksConnector)
+        assert sc.host is None
+        assert sc.api_key is None
+
+    def test_to_dict_uses_the_backend_dto_name(self):
+        payload = self._connector(port=8181, verify=False).to_dict()
+
+        assert payload["type"] == "featurestoreHopsworksConnectorDTO"
+        assert payload["storageConnectorType"] == "HOPSWORKS"
+        assert {k: payload[k] for k in ("host", "port", "project", "apiKey")} == {
+            "host": "hopsworks.example.com",
+            "port": 8181,
+            "project": "Sales",
+            "apiKey": "k",
+        }
+        assert payload["verify"] is False
+
+    def test_get_tables_defaults_to_the_remote_project_feature_store(self, mocker):
+        sc = self._connector()
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "sales_featurestore")
+
+    def test_get_tables_takes_a_shared_feature_store(self, mocker):
+        sc = self._connector()
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        sc.get_tables("marketing_featurestore")
+
+        mock_get_tables.assert_called_once_with(sc, "marketing_featurestore")
+
+    def test_get_tables_without_project_needs_a_database(self, mocker):
+        sc = self._connector(project=None)
+        mocker.patch.object(sc, "_refetch")
+
+        with pytest.raises(ValueError, match="remote feature store name"):
+            sc.get_tables()
+
+    def test_read_points_to_an_external_feature_group(self):
+        with pytest.raises(NotImplementedError, match="external feature group"):
+            self._connector().read()
+
+
+class TestSharePointConnector:
+    _BASE = [
+        "project",
+        119,
+        "featurestores",
+        67,
+        "storageconnectors",
+        "test_sharepoint",
+        "sharepoint",
+    ]
+
+    @staticmethod
+    def _connector(backend_fixtures):
+        return storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sharepoint"]["response"]
+        )
+
+    def test_from_response_json(self, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+
+        assert isinstance(sc, storage_connector.SharePointConnector)
+        assert sc.cloud == "GLOBAL"
+        assert sc.auth_mode == "APP"
+        assert sc.tenant_id == "tenant-1"
+        assert sc.client_id == "client-1"
+        assert sc.client_secret is None
+        assert sc.client_secret_set is True
+        assert sc.site_url == "https://contoso.sharepoint.com/sites/Finance"
+        assert sc.site_id is None
+        assert sc.pinned is True
+        assert sc.script_path.endswith(
+            "/DataSources/test_sharepoint/sharepoint_sync.py"
+        )
+        assert sc.script_template_version == 1
+        assert sc.script_modified is False
+        assert sc.current_template_version == 1
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_sharepoint_basic_info"][
+                "response"
+            ]
+        )
+
+        assert isinstance(sc, storage_connector.SharePointConnector)
+        assert sc.tenant_id is None
+        assert sc.script_path is None
+
+    def test_to_dict_sends_the_secret_and_the_backend_dto_name(self):
+        sc = storage_connector.SharePointConnector(
+            id=None,
+            name="sp",
+            featurestore_id=67,
+            tenant_id="t",
+            client_id="c",
+            site_url="https://contoso.sharepoint.com/sites/Finance",
+        )
+        sc.client_secret = "s3cret"
+
+        payload = sc.to_dict()
+
+        assert payload["type"] == "featurestoreSharePointConnectorDTO"
+        assert payload["storageConnectorType"] == "SHAREPOINT"
+        assert payload["tenantId"] == "t"
+        assert payload["clientId"] == "c"
+        assert payload["clientSecret"] == "s3cret"
+        assert payload["siteUrl"] == "https://contoso.sharepoint.com/sites/Finance"
+        assert "clientSecretSet" not in payload
+        assert "scriptPath" not in payload
+
+    def test_round_trip(self, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+
+        again = storage_connector.StorageConnector.from_response_json(sc.to_dict())
+
+        assert isinstance(again, storage_connector.SharePointConnector)
+        assert again.site_url == sc.site_url
+        assert again.tenant_id == sc.tenant_id
+
+    def test_is_not_read_through_spark(self, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+
+        with pytest.raises(NotImplementedError, match="not read through Spark"):
+            sc.spark_options()
+        with pytest.raises(NotImplementedError):
+            sc.read()
+        with pytest.raises(ValueError, match="tables"):
+            sc.get_tables()
+        with pytest.raises(ValueError, match="databases"):
+            sc.get_databases()
+
+    def test_list_drives(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = _client(
+            mocker,
+            {
+                "count": 1,
+                "items": [{"id": "b!1", "name": "Documents", "webUrl": "https://x"}],
+            },
+        )
+
+        drives = sc.list_drives()
+
+        assert drives == [{"id": "b!1", "name": "Documents", "web_url": "https://x"}]
+        assert client._send_request.call_args.args == ("GET", [*self._BASE, "drives"])
+
+    def test_list_folders(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = _client(
+            mocker,
+            {
+                "count": 1,
+                "items": [{"id": "f1", "name": "2026", "path": "Reports/2026"}],
+            },
+        )
+
+        folders = sc.list_folders("b!1", "Reports")
+
+        assert folders == [{"id": "f1", "name": "2026", "path": "Reports/2026"}]
+        call = client._send_request.call_args
+        assert call.args == ("GET", [*self._BASE, "drives", "b!1", "folders"])
+        assert call.kwargs["query_params"] == {"path": "Reports"}
+
+    def test_create_sync_posts_the_sync_dto(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = _client(mocker, {"id": 5, "datasetName": "reports", "state": "IDLE"})
+
+        sync = sc.create_sync(
+            drive_id="b!1",
+            folder_path="Reports/2026",
+            dataset_name="reports",
+            include=["*.pdf"],
+            exclude=["drafts/**"],
+            alert_receiver="ops",
+        )
+
+        call = client._send_request.call_args
+        assert call.args == ("POST", [*self._BASE, "syncs"])
+        assert json.loads(call.kwargs["data"]) == {
+            "driveId": "b!1",
+            "folderPath": "Reports/2026",
+            "datasetName": "reports",
+            "cronExpression": "0 0 * ? * *",
+            "includePatterns": ["*.pdf"],
+            "excludePatterns": ["drafts/**"],
+            "maxFileSizeMb": 1024,
+            "mirrorDeletions": True,
+            "verifyChecksums": False,
+            "checksumEvery": 24,
+            "transfers": None,
+            "alertReceiver": "ops",
+            "runNow": True,
+            "indexFiles": False,
+            "indexFeatureGroup": None,
+        }
+        assert sync.id == 5
+        assert sync.connector_name == "test_sharepoint"
+        assert sync.dataset_name == "reports"
+
+    def test_an_unscheduled_sync_does_not_mirror_deletions_by_default(
+        self, mocker, backend_fixtures
+    ):
+        sc = self._connector(backend_fixtures)
+        client = _client(mocker, {"id": 5})
+
+        sc.create_sync(drive_id="b!1", schedule=None)
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert body["cronExpression"] is None
+        assert body["mirrorDeletions"] is False
+
+    def test_copy_folder_is_an_unscheduled_copy_run_now(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = _client(mocker, {"id": 6})
+
+        sc.copy_folder(drive_id="b!1", folder_path="Reports/2026")
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert body["cronExpression"] is None
+        assert body["mirrorDeletions"] is False
+        assert body["runNow"] is True
+        assert body["datasetName"] == "sharepoint"
+        assert body["folderPath"] == "Reports/2026"
+
+    def test_get_syncs(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = _client(
+            mocker, {"count": 2, "items": [{"id": 1}, {"id": 2, "paused": True}]}
+        )
+
+        syncs = sc.get_syncs()
+
+        assert [s.id for s in syncs] == [1, 2]
+        assert syncs[1].paused is True
+        assert client._send_request.call_args.args == ("GET", [*self._BASE, "syncs"])
+
+    def test_get_sync(self, mocker, backend_fixtures):
+        sc = self._connector(backend_fixtures)
+        client = _client(mocker, {"id": 3, "auditPath": "/Projects/p/a"})
+
+        sync = sc.get_sync(3)
+
+        assert sync.audit_path == "/Projects/p/a"
+        assert client._send_request.call_args.args == (
+            "GET",
+            [*self._BASE, "syncs", 3],
+        )
+
+    def test_reset_script_takes_the_returned_connector(self, mocker, backend_fixtures):
+        response = {
+            **backend_fixtures["storage_connector"]["get_sharepoint"]["response"],
+            "scriptTemplateVersion": 2,
+            "currentTemplateVersion": 2,
+        }
+        sc = self._connector(backend_fixtures)
+        client = _client(mocker, response)
+
+        sc.reset_script()
+
+        assert client._send_request.call_args.args == (
+            "POST",
+            [*self._BASE, "script", "reset"],
+        )
+        assert sc.script_template_version == 2
+        assert sc.current_template_version == 2
+
+
+class TestStorageConnectorList:
+    def test_an_unknown_type_in_a_list_is_skipped_with_a_warning(
+        self, backend_fixtures
+    ):
+        sharepoint = backend_fixtures["storage_connector"]["get_sharepoint"]["response"]
+        unknown = {
+            "type": "featurestoreFutureConnectorDTO",
+            "storageConnectorType": "FUTURE",
+            "id": 9,
+            "name": "from_the_future",
+            "featurestoreId": 67,
+        }
+
+        with pytest.warns(UserWarning, match="from_the_future"):
+            connectors = storage_connector.StorageConnector.from_response_json(
+                {"count": 2, "items": [unknown, sharepoint]}
+            )
+
+        assert [type(c) for c in connectors] == [storage_connector.SharePointConnector]
+
+    def test_a_plain_list_is_accepted(self, backend_fixtures):
+        hopsfs = backend_fixtures["storage_connector"]["get_hopsfs"]["response"]
+
+        connectors = storage_connector.StorageConnector.from_response_json([hopsfs])
+
+        assert isinstance(connectors[0], storage_connector.HopsFSConnector)
+
+    def test_an_unknown_type_fetched_alone_still_raises(self):
+        with pytest.raises(ValueError, match="FUTURE"):
+            storage_connector.StorageConnector.from_response_json(
+                {"storageConnectorType": "FUTURE", "id": 9, "name": "x"}
+            )
+
+
+class TestCRMAndAnalyticsConnector:
+    @pytest.mark.parametrize(
+        "source,expected",
+        [
+            (storage_connector.CRMSource.HUBSPOT, "HUBSPOT"),
+            (storage_connector.CRMSource.FACEBOOK_ADS, "FACEBOOK_ADS"),
+            (storage_connector.CRMSource.SALESFORCE, "SALESFORCE"),
+            (storage_connector.CRMSource.PIPEDRIVE, "PIPEDRIVE"),
+            (storage_connector.CRMSource.FRESHDESK, "FRESHDESK"),
+            (storage_connector.CRMSource.GOOGLE_ADS, "GOOGLE_ADS"),
+            (storage_connector.CRMSource.GOOGLE_ANALYTICS, "GOOGLE_ANALYTICS"),
+            (storage_connector.CRMSource.SHOPIFY, "SHOPIFY"),
+        ],
+    )
+    @pytest.mark.parametrize("input_form", ["enum", "lowercase", "uppercase"])
+    def test_crm_type_uses_backend_subtype_id(self, source, expected, input_form):
+        crm_type = {
+            "enum": source,
+            "lowercase": source.value,
+            "uppercase": expected,
+        }[input_form]
+        sc = storage_connector.CRMAndAnalyticsConnector(
+            id=None, name="crm", featurestore_id=67, crm_type=crm_type
+        )
+
+        payload = sc.to_dict()
+
+        assert payload["type"] == "featurestoreCRMConnectorDTO"
+        assert payload["storageConnectorType"] == "CRM"
+        assert payload["crmType"] == expected
+        assert sc.crm_type == crm_type
+        assert source.value == expected.lower()
+
+    @pytest.mark.parametrize(
+        "crm_type,expected",
+        [
+            (storage_connector.CRMSource.HUBSPOT, "HUBSPOT"),
+            (storage_connector.CRMSource.SHOPIFY, "SHOPIFY"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "operation,http_method", [("save", "POST"), ("update", "PUT")]
+    )
+    def test_persist_sends_backend_subtype_id(
+        self, mocker, crm_type, expected, operation, http_method
+    ):
+        client = mocker.patch("hsfs.core.storage_connector_api.client._get_instance")
+        client.return_value._send_request.return_value = {
+            "type": "featurestoreCRMConnectorDTO",
+            "storageConnectorType": "CRM",
+            "id": 11,
+            "name": "crm",
+            "featurestoreId": 67,
+            "crmType": expected,
+        }
+        sc = storage_connector.CRMAndAnalyticsConnector(
+            id=None if operation == "save" else 11,
+            name="crm",
+            featurestore_id=67,
+            crm_type=crm_type,
+        )
+
+        saved = getattr(sc, operation)()
+
+        request = client.return_value._send_request
+        request.assert_called_once()
+        assert request.call_args.args[0] == http_method
+        assert json.loads(request.call_args.kwargs["data"])["crmType"] == expected
+        assert saved.crm_type == expected
+        assert saved.to_dict()["crmType"] == expected
+
+
+class TestCRMShopifyConnector:
+    @pytest.mark.parametrize("crm_type", ["shopify", "SHOPIFY"])
+    def test_shopify_client_credentials_round_trip(self, crm_type):
+        sc = storage_connector.StorageConnector.from_response_json(
+            {
+                "type": "featurestoreCRMConnectorDTO",
+                "storageConnectorType": "CRM",
+                "id": 11,
+                "name": "shop",
+                "featurestoreId": 67,
+                "crmType": crm_type,
+                "shopUrl": "https://s.myshopify.com",
+                "clientId": "id",
+                "clientSecret": "secret",
+            }
+        )
+        assert isinstance(sc, storage_connector.CRMAndAnalyticsConnector)
+        assert (sc.shop_url, sc.client_id, sc.client_secret) == (
+            "https://s.myshopify.com",
+            "id",
+            "secret",
+        )
+        payload = sc.to_dict()
+        assert payload["crmType"] == "SHOPIFY"
+        assert (payload["shopUrl"], payload["clientId"], payload["clientSecret"]) == (
+            "https://s.myshopify.com",
+            "id",
+            "secret",
+        )
+        assert payload["privateAppPassword"] is None
+
+
+class TestStorageConnectorTags:
+    _BASE = [
+        "project",
+        119,
+        "featurestores",
+        67,
+        "storageconnectors",
+        "test_s3",
+        "tags",
+    ]
+
+    @staticmethod
+    def _connector(backend_fixtures):
+        return storage_connector.StorageConnector.from_response_json(
+            backend_fixtures["storage_connector"]["get_s3"]["response"]
+        )
+
+    @staticmethod
+    def _error(mocker, status_code, error_code):
+        response = mocker.Mock()
+        response.status_code = status_code
+        response.json.return_value = {"errorCode": error_code}
+        return RestAPIError("url", response)
+
+    @staticmethod
+    def _tags(*items):
+        return {"count": len(items), "items": list(items)}
+
+    def test_add_tag_puts_json_value_under_connector_name(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker)
+
+        self._connector(backend_fixtures).add_tag("owner", {"team": "risk"})
+
+        call = client._send_request.call_args
+        assert call.args == ("PUT", [*self._BASE, "owner"])
+        assert call.kwargs["headers"] == {"content-type": "application/json"}
+        assert json.loads(call.kwargs["data"]) == {"team": "risk"}
+        assert call.kwargs["timeout"] == 60
+
+    def test_add_tag_refuses_none_before_the_request(self, mocker, backend_fixtures):
+        client = _client(mocker)
+
+        with pytest.raises(ValueError, match="cannot be None"):
+            self._connector(backend_fixtures).add_tag("owner", None)
+
+        client._send_request.assert_not_called()
+
+    def test_delete_tag_path(self, mocker, backend_fixtures):
+        client = _client(mocker)
+
+        self._connector(backend_fixtures).delete_tag("owner")
+
+        assert client._send_request.call_args.args == (
+            "DELETE",
+            [*self._BASE, "owner"],
+        )
+        assert client._send_request.call_args.kwargs["timeout"] == 60
+
+    def test_get_tags_returns_values(self, mocker, backend_fixtures):
+        client = _client(
+            mocker,
+            self._tags(
+                {"name": "owner", "value": '{"team": "risk"}'},
+                {"name": "tier", "value": "3"},
+            ),
+        )
+
+        tags = self._connector(backend_fixtures).get_tags()
+
+        assert tags == {"owner": {"team": "risk"}, "tier": 3}
+        assert client._send_request.call_args.args == ("GET", self._BASE)
+        assert client._send_request.call_args.kwargs["timeout"] == 60
+
+    def test_get_tag_reads_the_named_tag(self, mocker, backend_fixtures):
+        client = _client(
+            mocker, self._tags({"name": "owner", "value": '{"team": "risk"}'})
+        )
+
+        value = self._connector(backend_fixtures).get_tag("owner")
+
+        assert value == {"team": "risk"}
+        assert client._send_request.call_args.args == ("GET", [*self._BASE, "owner"])
+
+    def test_get_tag_missing_returns_none(self, mocker, backend_fixtures):
+        _client(mocker, side_effect=self._error(mocker, 404, 370002))
+        sc = self._connector(backend_fixtures)
+
+        assert sc.get_tag("owner") is None
+        assert sc.get_tag_metadata("owner") is None
+        assert sc.get_tags() == {}
+        assert sc.get_tags_metadata() == {}
+
+    def test_a_missing_tags_result_is_not_shared_between_calls(
+        self, mocker, backend_fixtures
+    ):
+        _client(mocker, side_effect=self._error(mocker, 404, 370002))
+        sc = self._connector(backend_fixtures)
+
+        sc.get_tags_metadata()["owner"] = "added by the caller"
+
+        assert sc.get_tags_metadata() == {}
+
+    def test_get_tags_metadata_keeps_created_on(self, mocker, backend_fixtures):
+        _client(
+            mocker,
+            self._tags(
+                {"name": "owner", "value": '"risk"', "createdOn": 1700000000000}
+            ),
+        )
+
+        attached = self._connector(backend_fixtures).get_tags_metadata()["owner"]
+
+        assert attached.value == "risk"
+        assert attached.created_on is not None
+        assert attached.created_on.timestamp() == 1700000000
+
+    def test_connector_not_found_is_not_swallowed(self, mocker, backend_fixtures):
+        _client(mocker, side_effect=self._error(mocker, 404, 270042))
+
+        with pytest.raises(RestAPIError):
+            self._connector(backend_fixtures).get_tags()
+
+
+class TestStorageConnectorMandatoryTags:
+    @staticmethod
+    def _s3_json(backend_fixtures, **extra):
+        return {**backend_fixtures["storage_connector"]["get_s3"]["response"], **extra}
+
+    @pytest.mark.parametrize(
+        "tags",
+        [
+            {"name": "owner", "value": {"team": "risk"}},
+            [{"name": "owner", "value": {"team": "risk"}}],
+            Tag("owner", {"team": "risk"}),
+            [Tag("owner", {"team": "risk"})],
+        ],
+    )
+    def test_save_sends_tags_with_their_values_as_json(
+        self, mocker, backend_fixtures, tags
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save(tags=tags)
+
+        call = client._send_request.call_args
+        assert call.args == (
+            "POST",
+            ["project", 119, "featurestores", 67, "storageconnectors"],
+        )
+        assert json.loads(call.kwargs["data"])["tags"] == {
+            "count": 1,
+            "items": [{"name": "owner", "value": '{"team": "risk"}'}],
+        }
+
+    @pytest.mark.parametrize(
+        "value", ["risk", "123", "false", "null", ["eu", "us"], 3, True]
+    )
+    def test_save_encodes_a_tag_value_as_add_tag_does(
+        self, mocker, backend_fixtures, value
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save(tags=[{"name": "owner", "value": value}])
+        created = json.loads(client._send_request.call_args.kwargs["data"])["tags"]
+        sc.add_tag("owner", value)
+        attached = client._send_request.call_args.kwargs["data"]
+
+        assert created["items"][0]["value"] == attached
+        # What get_tags makes of the stored text: a string that looks like JSON stays a string.
+        assert Tag.from_response_json(created)[0].value == value
+
+    def test_save_without_tags_sends_no_tags_key(self, mocker, backend_fixtures):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save()
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert "tags" not in body
+        assert body["name"] == "test_s3"
+
+    def test_missing_mandatory_tags_read_from_the_response(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(
+                backend_fixtures,
+                missingMandatoryTags=[{"name": "owner", "dataSourceSpecific": True}],
+            )
+        )
+
+        assert sc.missing_mandatory_tags == [
+            {"name": "owner", "data_source_specific": True}
+        ]
+
+    def test_missing_mandatory_tags_default_to_empty(self, backend_fixtures):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        assert sc.missing_mandatory_tags == []
+
+    def test_refetch_with_the_expansion_refreshes_missing_mandatory_tags(
+        self, backend_fixtures
+    ):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures, missingMandatoryTags=[{"name": "owner"}])
+        )
+
+        sc.update_from_response_json(
+            self._s3_json(backend_fixtures, missingMandatoryTags=[])
+        )
+
+        assert sc.missing_mandatory_tags == []
+
+    def test_get_asks_for_missing_mandatory_tags_when_told_to(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+
+        storage_connector_api.StorageConnectorApi()._get(
+            67, "test_s3", with_mandatory_tags=True
+        )
+
+        assert client._send_request.call_args.args == (
+            "GET",
+            ["project", 119, "featurestores", 67, "storageconnectors", "test_s3"],
+        )
+        assert client._send_request.call_args.kwargs["query_params"] == {
+            "temporaryCredentials": True,
+            "expand": "mandatorytags",
+        }
+
+    # The refetch runs on every Spark read of an S3 external feature group, among others, and none of them reads the mandatory tags.
+    def test_get_and_refetch_do_not_ask_for_mandatory_tags_by_default(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        api = storage_connector_api.StorageConnectorApi()
+
+        sc = api._get(67, "test_s3")
+        api._refetch(sc)
+
+        for call in client._send_request.call_args_list:
+            assert call.kwargs["query_params"] == {"temporaryCredentials": True}
+
+    def test_refetch_without_the_expansion_keeps_the_missing_mandatory_tags(
+        self, backend_fixtures
+    ):
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures, missingMandatoryTags=[{"name": "owner"}])
+        )
+
+        sc.update_from_response_json(self._s3_json(backend_fixtures))
+
+        assert sc.missing_mandatory_tags == [{"name": "owner"}]
+
+    @staticmethod
+    def _backend(mocker, version):
+        mocker.patch(
+            "hopsworks_common.client._get_connection",
+            return_value=mocker.Mock(backend_version=version),
+        )
+
+    def test_save_with_tags_refuses_a_backend_older_than_5_3(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        with pytest.raises(FeatureStoreException, match="5.3 or later"):
+            sc.save(tags=[{"name": "owner", "value": "risk"}])
+
+        client._send_request.assert_not_called()
+
+    def test_save_without_tags_still_creates_on_an_older_backend(
+        self, mocker, backend_fixtures
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, "5.2.4")
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save()
+
+        assert client._send_request.call_args.args[0] == "POST"
+        assert "tags" not in json.loads(client._send_request.call_args.kwargs["data"])
+
+    @pytest.mark.parametrize("version", ["5.3.0", "5.3.0.dev1", "6.0.0"])
+    def test_save_with_tags_sends_them_on_5_3_and_later(
+        self, mocker, backend_fixtures, version
+    ):
+        client = _client(mocker, self._s3_json(backend_fixtures))
+        self._backend(mocker, version)
+        sc = storage_connector.StorageConnector.from_response_json(
+            self._s3_json(backend_fixtures)
+        )
+
+        sc.save(tags=[{"name": "owner", "value": "risk"}])
+
+        body = json.loads(client._send_request.call_args.kwargs["data"])
+        assert body["tags"]["items"] == [{"name": "owner", "value": '"risk"'}]

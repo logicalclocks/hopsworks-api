@@ -21,12 +21,14 @@ from typing import TYPE_CHECKING, Literal
 import humps
 from hopsworks_apigen import deprecated, public
 from hopsworks_common import alert, client, project_member, util
+from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core import (
     alerts_api,
     app_api,
     dataset_api,
     environment_api,
     git_api,
+    gpu_api,
     job_api,
     kafka_api,
     opensearch_api,
@@ -39,9 +41,15 @@ from hopsworks_common.core import (
 
 
 if TYPE_CHECKING:
+    from hopsworks_agents.eval.sdk import AgentServing
+    from hopsworks_common import gpu_availability
     from hsfs.feature_store import FeatureStore
     from hsml.model_registry import ModelRegistry
     from hsml.model_serving import ModelServing
+
+
+# ProjectErrorCode.PROJECT_OWNER_TRANSFER_INCOMPLETE: the owner moved, a follow-up step did not.
+_PROJECT_OWNER_TRANSFER_INCOMPLETE = 150127
 
 
 @public("hopsworks.project.Project")
@@ -237,7 +245,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_model_serving()
+        return client._get_connection()._get_model_serving(self.project_namespace)
 
     @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:
@@ -314,6 +322,42 @@ class Project:
         return self._dataset_api
 
     @public
+    def get_agent_serving(self) -> AgentServing:
+        """Connect to the project's Agent Serving API.
+
+        The agents deployed in the project: send them messages, read their
+        traces and feedback, run evaluation suites against them, and review
+        what the failure analysis found.
+
+        Example: Example for getting the Agent Serving API of a project
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            agents = project.get_agent_serving()
+            agent = agents.get_agent("support")
+            print(agent.chat("hello").text)
+            ```
+
+        Returns:
+            The Agent Serving API.
+        """
+        from hopsworks_agents.eval.sdk import AgentServing
+        from hopsworks_agents.eval.sdk._transport import (
+            HopsworksClientSession,
+            Transport,
+        )
+
+        instance = client._get_instance()
+        base_url = getattr(instance, "_base_url", "") or ""
+        host = (
+            base_url.split("/hopsworks-api", 1)[0] if base_url else "https://hopsworks"
+        )
+        transport = Transport(host, self.id, session=HopsworksClientSession(instance))
+        return AgentServing(host, self.id, transport=transport)
+
+    @public
     def get_environment_api(self) -> environment_api.EnvironmentApi:
         """Get the Python environment API for the project.
 
@@ -330,6 +374,32 @@ class Project:
             The Alerts Api handle.
         """
         return self._alerts_api
+
+    @public
+    def get_gpu_availability(self) -> gpu_availability.GpuAvailability:
+        """Get the GPUs this project can use.
+
+        When NVIDIA Run:ai manages the cluster's GPUs, this reports the project's and its department's Run:ai quota and allocation, and how many GPUs are available within quota and over quota.
+        Otherwise it reports the cluster's GPU inventory.
+        The call has no side effects: a project not bound to a Run:ai project yet, or a Run:ai control plane that cannot be reached, is reported in `warnings` (`RUN_AI_PROJECT_NOT_BOUND`, `RUN_AI_UNREACHABLE`) with no numbers rather than raised.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            gpus = project.get_gpu_availability()
+            print(gpus.available_non_preemptible, gpus.available_preemptible)
+            ```
+
+        Returns:
+            The project's GPU availability.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return gpu_api.GpuApi()._get_gpu_availability(self.id)
 
     @public
     def get_members_api(self) -> project_members_api.ProjectMembersApi:
@@ -380,14 +450,15 @@ class Project:
         Parameters:
             email: Email address of the user to add.
             role: The project role to grant, one of `Data owner`, `Data scientist`,
-                `Observer`, `Feature store restricted`.
+                `Observer`, `Feature store restricted`, or a custom project role.
+                Matched regardless of case.
 
         Returns:
             The newly added `ProjectMember`.
 
         Raises:
-            ValueError: If `role` is not a settable project role.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner.
+            ValueError: If `role` is not a role of the project.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner or may not give the role.
         """
         return self._project_members_api.add_member(email, role)
 
@@ -425,6 +496,39 @@ class Project:
         self._project_members_api.remove_member(
             email, delete_home_dir=delete_home_dir, new_file_owner=new_file_owner
         )
+
+    @public
+    def transfer_ownership(self, email: str) -> None:
+        """Hand the project over to another data owner of the project.
+
+        Only the current owner can do this.
+        The previous owner stays a data owner, so they can afterwards be removed with [`remove_member`][hopsworks_common.project.Project.remove_member].
+        This also works in projects whose members are managed by group mapping, since no membership changes.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.transfer_ownership("carol@example.com")
+            project.remove_member("alice@example.com")
+            ```
+
+        Parameters:
+            email: Email address of the data owner who becomes the project owner.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller does not own the project or the new owner is not a data owner of it.
+                With error code 150127 the owner has already changed and only a follow-up step failed; the project then names the new owner, and the new owner can finish the transfer by handing the project to themselves.
+        """
+        try:
+            self._project_members_api.transfer_ownership(email)
+        except RestAPIError as e:
+            if e.error_code == _PROJECT_OWNER_TRANSFER_INCOMPLETE:
+                self._owner = email
+            raise
+        self._owner = email
 
     @public
     def get_search_api(self) -> search_api.SearchApi:

@@ -58,7 +58,7 @@ from hopsworks_apigen.griffe import HopsworksApigenGriffe
 
 
 # The four packages whose public surface is governed by the invariant.
-PACKAGES = ["hopsworks_common", "hopsworks", "hsfs", "hsml"]
+PACKAGES = ["hopsworks_common", "hopsworks", "hsfs", "hsml", "hopsworks_agents"]
 
 # Path fragments (relative to the python root, using "/" separators) whose
 # subtrees are excluded from the check entirely. ``istio`` is vendored from
@@ -95,7 +95,15 @@ SERIALIZATION_NAMES = {
 }
 
 # importlib loader protocol hooks.
-IMPORTLIB_HOOK_NAMES = {"create_module", "exec_module", "find_spec"}
+# Finder and loader hooks: a finder's find_spec, a loader's create_module / exec_module, and
+# the SourceLoader protocol a recording loader overrides (get_code, get_data).
+IMPORTLIB_HOOK_NAMES = {
+    "create_module",
+    "exec_module",
+    "find_spec",
+    "get_code",
+    "get_data",
+}
 
 # prometheus_client custom collector protocol: the registry calls these by name on
 # any class whose name marks it as a collector.

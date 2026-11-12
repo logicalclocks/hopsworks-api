@@ -1,6 +1,6 @@
 ---
 name: hops-collaboration
-description: Use when managing project membership and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects. 
+description: Use when managing project membership, administering platform users or inspecting per-project or per-department compute cost, and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects. 
 ---
 
 # Project Members, Platform Users, and Sharing
@@ -11,6 +11,7 @@ Manage collaboration and access control in Hopsworks: who is a member of a proje
 - **Input:** a project handle (`project = hopsworks.login()`) for project/sharing operations; a `HOPS_ADMIN` session for platform user administration.
 - **Output:** an updated membership list, an updated platform user, or an updated share/grant.
 - **Pre-condition:** for project-role changes and sharing, the caller needs the `Data owner` role in the relevant project. For platform user administration, the caller's account needs the `HOPS_ADMIN` platform role.
+- **Costs:** a project's own cost needs the `Data owner` role in it; the cluster-wide namespace and department costs need `HOPS_ADMIN` and, with an API key, its `ADMIN` scope.
 
 ## Two separate role systems — don't confuse them
 
@@ -63,6 +64,11 @@ users_api.delete_user(new_user.id)        # fails if the user still owns project
 ```
 
 `get_users()` / `get_user(id)` / `get_user_by_email(email)` return `AdminUser` objects (`id`, `email`, `roles`, `status`, ...) — distinct from the lightweight `User` class used elsewhere (e.g. as a feature group's `creator`). Look a user up by email when you don't already have their id; it scans the full user list, so pass the id when you have it.
+
+## Inspecting compute cost per project, namespace or department
+
+A project's data owners read its Kubernetes cost with `hopsworks.get_costs_api().get_project_costs("month")` or `hops project costs`; platform admins read every namespace's or department's with `get_namespace_costs` / `get_department_costs` or `hops admin costs` (API key with the `ADMIN` scope).
+Windows, coverage, workload classes, departments and error codes: [references/costs.md](references/costs.md).
 
 ## Sharing feature store data across projects
 

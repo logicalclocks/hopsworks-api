@@ -15,6 +15,7 @@
 #
 
 import json
+import logging
 import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -26,6 +27,7 @@ from hopsworks_common.client.exceptions import (
 )
 from hsml.client.istio.utils.infer_type import InferInput
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hsml.constants import PREDICTOR
 from hsml.core.serving_api import ServingApi
 
 
@@ -100,12 +102,14 @@ def _inference_deployment(
     project_namespace: str,
     name: str = "skdepl",
     api_protocol: str = IE.API_PROTOCOL_REST,
+    model_server: str = PREDICTOR.MODEL_SERVER_PYTHON,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         name=name,
         project_name=project_name,
         project_namespace=project_namespace,
         api_protocol=api_protocol,
+        model_server=model_server,
         _grpc_channel=None,
     )
 
@@ -122,6 +126,42 @@ def _as_gateway_authority(segment: str) -> str:
 
 
 class TestServingApi:
+    def test_set_tracing_sends_only_the_fields_it_changes(self, mocker):
+        api = ServingApi()
+        client_instance = _patch_client(mocker, {"enabled": True, "active": False})
+
+        api._set_tracing(_deployment(), False, None)
+
+        method, path_params = client_instance._send_request.call_args.args
+        assert method == "PUT"
+        assert path_params[-1] == "tracing"
+        assert json.loads(client_instance._send_request.call_args.kwargs["data"]) == {
+            "active": False
+        }
+
+    def test_set_tracing_sends_the_days(self, mocker):
+        api = ServingApi()
+        client_instance = _patch_client(mocker, {"enabled": True})
+
+        api._set_tracing(_deployment(), True, None, 30)
+
+        assert json.loads(client_instance._send_request.call_args.kwargs["data"]) == {
+            "active": True,
+            "durationDays": 30,
+        }
+
+    def test_delete_traces_sends_one_batch(self, mocker):
+        api = ServingApi()
+        client_instance = _patch_client(mocker, {"deleted": 12})
+
+        assert api._delete_traces(_deployment(), 1793145600000, 500) == 12
+
+        method, path_params, query_params = client_instance._send_request.call_args.args
+        assert method == "DELETE"
+        assert path_params[2:4] == ["otel", "servings"]
+        assert path_params[-1] == "traces"
+        assert query_params == {"batchSize": 500, "until": 1793145600000}
+
     def test_get_tag_returns_value_for_name(self, mocker):
         # Arrange
         api = ServingApi()
@@ -234,6 +274,18 @@ class TestServingApi:
 
         # Assert
         assert path == ["v1", project_namespace, "vllmdepl"]
+
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_istio_project_openai_path_addresses_the_namespace(
+        self, project_name, project_namespace
+    ):
+        # The LLM gateway is addressed by namespace only; the project name
+        # is not an input of the path.
+        assert ServingApi()._get_istio_project_openai_path(project_namespace) == [
+            "v1",
+            project_namespace,
+            "v1",
+        ]
 
     @pytest.mark.parametrize("project_namespace", ["myproject", "pre-created-ns"])
     @pytest.mark.parametrize("base_only", [False, True])
@@ -407,6 +459,117 @@ class TestServingApi:
         args, _ = hopsworks_client._send_request.call_args
         assert args[1] == ["project", 1, "inference", "models", "skdepl:predict"]
 
+    @pytest.mark.parametrize(("project_name", "project_namespace"), NAMESPACE_CASES)
+    def test_triton_rest_inference_request_posts_to_the_v2_infer_path(
+        self, mocker, project_name, project_namespace
+    ):
+        # Arrange
+        api = ServingApi()
+        istio_client = MagicMock()
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance",
+            return_value=istio_client,
+        )
+        deployment = _inference_deployment(
+            project_name,
+            project_namespace,
+            name="tritondepl",
+            model_server=PREDICTOR.MODEL_SERVER_TRITON,
+        )
+        body = {
+            "inputs": [
+                {
+                    "name": "x",
+                    "shape": [1],
+                    "datatype": "FP32",
+                    "data": [1.0],
+                    "parameters": {"p": 1},
+                }
+            ]
+        }
+
+        # Act
+        api._send_inference_request(deployment, body)
+
+        # Assert
+        args, kwargs = istio_client._send_request.call_args
+        assert args[1] == [
+            "v1",
+            project_namespace,
+            "tritondepl",
+            "v2",
+            "models",
+            "tritondepl",
+            "infer",
+        ]
+        assert json.loads(kwargs["data"]) == body
+
+    def test_triton_rest_inference_request_through_hopsworks_uses_the_infer_verb(
+        self, mocker
+    ):
+        # Arrange
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"outputs": []})
+        deployment = _inference_deployment(
+            "myproject",
+            "myproject",
+            name="tritondepl",
+            model_server=PREDICTOR.MODEL_SERVER_TRITON,
+        )
+
+        # Act
+        api._send_inference_request(
+            deployment, {"inputs": [{"name": "x"}]}, through_hopsworks=True
+        )
+
+        # Assert
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[1] == ["project", 1, "inference", "serving", "tritondepl:infer"]
+        assert kwargs["with_base_path_params"] is True
+
+    def test_triton_grpc_inference_request_names_the_deployment_as_the_model(
+        self, mocker
+    ):
+        # Arrange: Triton serves the model directory under the deployment name.
+        api = ServingApi()
+        istio_client = MagicMock()
+        mocker.patch(
+            "hsml.core.serving_api.client.istio._get_instance",
+            return_value=istio_client,
+        )
+        deployment = _inference_deployment(
+            "myproject",
+            "myproject",
+            name="tritondepl",
+            api_protocol=IE.API_PROTOCOL_GRPC,
+            model_server=PREDICTOR.MODEL_SERVER_TRITON,
+        )
+        infer_input = InferInput(name="input", shape=[1], datatype="FP32", data=[1.0])
+
+        # Act
+        api._send_inference_request(deployment, [infer_input])
+
+        # Assert
+        channel = istio_client._create_grpc_channel.return_value
+        request = channel.infer.call_args.kwargs["infer_request"]
+        assert request.model_name == "tritondepl"
+        assert request.inputs == [infer_input]
+
+    def test_get_triton_image_tags_addresses_the_project_serving_path(self, mocker):
+        # Arrange
+        api = ServingApi()
+        response = {"tags": ["26.09-py3"], "defaultTag": "26.09-py3"}
+        hopsworks_client = _patch_client(mocker, response)
+
+        # Act
+        result = api._get_triton_image_tags()
+
+        # Assert
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[0] == "GET"
+        assert args[1] == ["project", 1, "serving", "tritonImageTags"]
+        assert result == response
+
     def test_get_vllm_image_tags_addresses_the_project_serving_path(self, mocker):
         # Arrange
         api = ServingApi()
@@ -420,6 +583,59 @@ class TestServingApi:
         assert args[0] == "GET"
         assert args[1] == ["project", 1, "serving", "vllmImageTags"]
         assert response == _VLLM_IMAGE_TAGS_RESPONSE
+
+    def test_llm_gateway_switch_addresses_the_project_serving_path(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, {"enabled": False, "available": True})
+
+        assert api._get_llm_gateway() == {"enabled": False, "available": True}
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[:2] == ("GET", ["project", 1, "serving", "llmGateway"])
+
+        hopsworks_client._send_request.return_value = _switch_response(
+            200, {"enabled": False, "available": True}
+        )
+        assert api._set_llm_gateway(False) == {"enabled": False, "available": True}
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[:2] == ("PUT", ["project", 1, "serving", "llmGateway"])
+        assert json.loads(kwargs["data"]) == {"enabled": False}
+
+    def test_deployment_llm_gateway_posts_to_the_serving_id(self, mocker):
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, _switch_response(200, None))
+        depl = MagicMock()
+        depl.id = 5
+
+        assert api._set_deployment_llm_gateway(depl, True) is None
+
+        args, kwargs = hopsworks_client._send_request.call_args
+        assert args[:2] == ("POST", ["project", 1, "serving", 5, "llmGateway"])
+        assert json.loads(kwargs["data"]) == {"enabled": True}
+
+    @pytest.mark.parametrize("status, logged", [(200, False), (202, True)])
+    def test_llm_gateway_switch_logs_a_pending_change(
+        self, mocker, caplog, status, logged
+    ):
+        api = ServingApi()
+        body = {"enabled": True, "available": True}
+        _patch_client(mocker, _switch_response(status, body))
+        depl = MagicMock()
+        depl.id = 5
+
+        with caplog.at_level(logging.INFO, logger="hsml.core.serving_api"):
+            assert api._set_llm_gateway(True) == body
+            assert api._set_deployment_llm_gateway(depl, True) == body
+
+        pending = [r for r in caplog.records if "within a minute" in r.message]
+        assert len(pending) == (2 if logged else 0)
+
+
+def _switch_response(status: int, body: dict | None) -> MagicMock:
+    response = MagicMock()
+    response.status_code = status
+    response.content = b"" if body is None else json.dumps(body).encode()
+    response.json.return_value = body
+    return response
 
 
 class TestGrpcChannelLockIsPerDeployment:

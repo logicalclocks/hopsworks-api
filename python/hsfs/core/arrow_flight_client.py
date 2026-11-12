@@ -205,6 +205,7 @@ class ArrowFlightClient:
         StorageConnector.SAP_HANA,
         StorageConnector.MONGODB,
         StorageConnector.ELASTICSEARCH,
+        StorageConnector.HOPSWORKS,
         StorageConnector.S3,
         StorageConnector.GLUE,
     ]

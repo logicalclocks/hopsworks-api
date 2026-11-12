@@ -42,6 +42,14 @@ Inside a Hopsworks terminal pod, authentication is automatic via JWT.
 hops project list                         # List projects
 hops project use <name>                   # Switch active project
 hops project info                         # Current project details
+hops project costs --window month         # Kubernetes cost of the project (data owners); --project NAME, --json
+```
+
+## Platform administration
+
+```bash
+hops admin costs --window week            # Cost of every namespace (HOPS_ADMIN, API key with the ADMIN scope)
+hops admin costs --by department          # The same, one row per department
 ```
 
 ## Feature Groups
@@ -264,14 +272,14 @@ hops files unshare Resources/my_dir --target other_project
 
 ```bash
 # Project-scoped search across feature groups, feature views, training datasets, features,
-# jobs, apps, models, deployments and agents
+# jobs, apps, models, deployments, agents and data sources
 hops search "transactions"
 
 # Global search across every project the caller can see
 hops search "transactions" --global
 
 # Restrict to one entity type: feature_group, feature_view, training_dataset, feature,
-# job, app, model, deployment, agent
+# job, app, model, deployment, agent, data_source
 hops search "transactions" --type feature_group
 hops search "fraud" --type model
 

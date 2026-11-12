@@ -74,6 +74,11 @@ def _target_overrides(sink_job_conf: SinkJobConfiguration | None) -> dict:
     if sink_job_conf._endpoint_config is not None:
         overrides["endpoint_config"] = sink_job_conf._endpoint_config
 
+    if sink_job_conf._file_columns is not None:
+        overrides["file_columns"] = sink_job_conf._file_columns
+    if sink_job_conf._files_directory is not None:
+        overrides["files_directory"] = sink_job_conf._files_directory
+
     return overrides
 
 

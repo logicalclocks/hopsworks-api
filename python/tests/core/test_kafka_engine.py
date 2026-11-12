@@ -981,12 +981,12 @@ class TestKafkaEngine:
         # Act
         results = kafka_engine._get_headers(fg, num_entries=10, storage="offline")
 
-        # Assert: an offline-only write reaches no online store, so it gets no online
-        # ingestion to report progress against.
+        # Assert: an offline-only write reaches no online store, so it gets no online ingestion to report progress against.
+        # b"0" is what OnlineFS 2.3 skips too.
         assert results == {
             "featureGroupId": b"111",
             "projectId": b"234",
-            "storage": b"offline",
+            "storage": b"0",
             "subjectId": b"823",
         }
         mock_online_ingestion_api.return_value._create_online_ingestion.assert_not_called()
@@ -1123,7 +1123,7 @@ class TestKafkaEngine:
 
         # Act
         kafka_engine._wait_for_online_ingestion(
-            fg, {"storage": b"offline"}, {"wait_for_online_ingestion": True}
+            fg, {"storage": b"0"}, {"wait_for_online_ingestion": True}
         )
 
         # Assert: an offline-only write has no online ingestion, and waiting on any other
@@ -1237,3 +1237,28 @@ class TestKafkaEngine:
             io.BytesIO(encoded), fastavro.parse_schema(schema)
         )
         assert decoded["observed_at"] == expected
+
+    def test_encode_row_nullable_boolean_column(self):
+        # A "boolean" column with a hole in it yields numpy.bool_ from itertuples, which
+        # avro matched to no branch of ["null", "boolean"], so the whole insert failed.
+        pd = pytest.importorskip("pandas")
+        fastavro = pytest.importorskip("fastavro")
+        schema = {
+            "type": "record",
+            "name": "row",
+            "fields": [{"name": "passed", "type": ["null", "boolean"]}],
+        }
+        writer = kafka_engine._get_encoder_func(json.dumps(schema))
+        frame = pd.DataFrame(
+            {"passed": pd.Series([True, None, False]).astype("boolean")}
+        )
+
+        decoded = [
+            fastavro.schemaless_reader(
+                io.BytesIO(kafka_engine._encode_row({}, writer, row._asdict())),
+                fastavro.parse_schema(schema),
+            )["passed"]
+            for row in frame.itertuples(index=False)
+        ]
+
+        assert decoded == [True, None, False]

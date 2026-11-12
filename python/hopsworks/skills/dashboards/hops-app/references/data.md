@@ -35,7 +35,7 @@ three things are app-specific:
   never calls a deployment, because a batch system has none; a what-if score uses the embedded
   model above.
 - **Calling a deployment** (real-time systems only): check `deployment.is_running()` before `predict`, and surface a message rather than blocking ([frameworks.md](frameworks.md), Streamlit caching and cold start).
-- **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Keep app tables there with an `app_` prefix and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, privileges per role, and RonDB table rules: **hops-app-db**.
+- **App state and SQL over the online store:** the pod gets `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DB`, `MYSQL_USER` and `MYSQL_PASSWORD_SECRET_NAME` for the project's online feature store database (created on demand at start). Create and alter app tables with `app.create_table()` and `app.alter_table()`, which keep them on disk in RonDB (the app's own user cannot run `CREATE` or `ALTER TABLE`), and read online feature group tables (`<fg>_<version>`) by primary key. Connection helpers for Python, SQL and Node.js, table registration, and RonDB table rules: **hops-app-db**.
 
 ## Reading Trino from a JavaScript app
 

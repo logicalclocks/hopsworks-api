@@ -216,7 +216,8 @@ def _from_answers(prefetch: _Prefetch, cwd: Path, answers: dict) -> _System:
     `llm: "account"` records that the agent's LLM is in the user's account
     environment variables, which the UI has set.
     `reference_code` is a path or URL of sample code the system is based on.
-    `monitoring` is `{"feature_logging": bool, "watch": str}`, for batch and realtime systems: whether predictions log their features, and what to monitor and alert on.
+    `monitoring` is `{"feature_logging": bool, "watch": str, "tracing": {...}}`, for batch and realtime systems: whether predictions log their features, and what to monitor and alert on.
+    Its `tracing`, realtime only, is `{"enabled": bool, "sampling_percentage": float, "duration_days": int}`: whether the deployment is created with prediction latency tracing.
     What the answers leave out is asked as usual.
     An existing system of that slug is resumed and the answers are not applied again.
     """
@@ -372,13 +373,40 @@ def _normalized(answers: dict, kind: str | None) -> dict:
         )
         batch["at"] = at if fits else fallback
     monitoring = answers.get("monitoring")
-    if (
-        isinstance(monitoring, dict)
-        and not monitoring.get("feature_logging")
-        and not str(monitoring.get("watch") or "").strip()
-    ):
-        answers.pop("monitoring")
+    if isinstance(monitoring, dict):
+        tracing = monitoring.get("tracing")
+        if isinstance(tracing, dict) and not tracing.get("enabled"):
+            monitoring = {k: v for k, v in monitoring.items() if k != "tracing"}
+            answers["monitoring"] = monitoring
+        if (
+            not monitoring.get("feature_logging")
+            and not str(monitoring.get("watch") or "").strip()
+            and not monitoring.get("tracing")
+        ):
+            answers.pop("monitoring")
     return answers
+
+
+def _tracing_record(tracing: Any, kind: str | None) -> dict:
+    """The prediction latency tracing a realtime system's deployment is created with, from the form's answers."""
+    if kind != "realtime" or not isinstance(tracing, dict):
+        raise click.BadParameter(
+            "monitoring.tracing is an object, for a realtime system",
+            param_hint="--answers",
+        )
+    try:
+        sampling = float(tracing.get("sampling_percentage", 10))
+        days = int(tracing.get("duration_days", 7))
+    except (TypeError, ValueError) as error:
+        raise click.BadParameter(
+            f"monitoring.tracing: {error}", param_hint="--answers"
+        ) from error
+    if not 0 <= sampling <= 100 or days < 1:
+        raise click.BadParameter(
+            "monitoring.tracing.sampling_percentage is 0 to 100 and duration_days at least 1",
+            param_hint="--answers",
+        )
+    return {"sampling_percentage": sampling, "duration_days": days}
 
 
 def _apply_answers(system: _System, answers: dict) -> None:
@@ -454,6 +482,8 @@ def _apply_answers(system: _System, answers: dict) -> None:
         watch = str(monitoring.get("watch") or "").strip()
         if watch:
             record["watch"] = watch
+        if monitoring.get("tracing"):
+            record["tracing"] = _tracing_record(monitoring["tracing"], kind)
         system.put("requirements.monitoring", record)
     if answers.get("repo"):
         system.put("system.repo", repo_record(answers["repo"]))
@@ -777,7 +807,9 @@ def _llm_env_vars(slug: str) -> dict:
         return record
     click.echo(
         f"The {slug} agent calls an OpenAI-compatible chat endpoint. The URL, model "
-        "and API key are saved as your account environment variables, visible only to you."
+        "and API key are saved as your account environment variables, visible only to you.\n"
+        "For a vLLM deployment of this project, use the LLM gateway from "
+        "project.get_model_serving().get_openai_url(), a Hopsworks API key and the deployment name as the model."
     )
     url = click.prompt("LLM endpoint URL", default="https://api.openai.com/v1").strip()
     model = click.prompt("Model", default="gpt-4o-mini").strip()

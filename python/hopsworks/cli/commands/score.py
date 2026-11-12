@@ -535,7 +535,10 @@ def run_refusal(exc: BaseException, name: str) -> ScoreRefused | None:
     if cause is None:
         return None
     status = cause.response.status_code
-    if status not in (RestAPIError.STATUS_CODE_CONFLICT, 429):
+    if status not in (
+        RestAPIError.STATUS_CODE_CONFLICT,
+        RestAPIError.STATUS_CODE_TOO_MANY_REQUESTS,
+    ):
         return None
     try:
         body = cause.response.json()

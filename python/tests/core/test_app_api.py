@@ -190,6 +190,24 @@ class TestAppApiCreate:
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
         assert body["dbAccess"] is False
 
+    def test_create_app_without_an_agent_names_none(self, mock_client, api):
+        api.create_app("dash", app_path="Resources/dash.py")
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert "agentDeploymentId" not in body
+
+    def test_create_app_with_an_agent_names_its_deployment(self, mock_client, api):
+        class Agent:
+            id = 7
+
+        api.create_app("ui", app_path="Resources/ui.py", agent=Agent())
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["agentDeploymentId"] == 7
+
+        api.create_app("ui", app_path="Resources/ui.py", agent=8)
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["agentDeploymentId"] == 8
+
     def test_create_app_leaves_idle_scale_to_zero_to_the_cluster_default(
         self, mock_client, api
     ):
@@ -383,6 +401,51 @@ class TestAppApiCreate:
 
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
         assert body == {"enabled": False}
+
+    def test_get_tables_gets_the_tables_path(self, mock_client):
+        AppApi()._get_tables("my_app")
+
+        assert mock_client._send_request.call_args.args == (
+            "GET",
+            ["project", 119, "apps", "my_app", "tables"],
+        )
+
+    def test_register_table_posts_the_name(self, mock_client):
+        AppApi()._register_table("my_app", "app_my_app__notes")
+
+        assert mock_client._send_request.call_args.args == (
+            "POST",
+            ["project", 119, "apps", "my_app", "tables"],
+        )
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body == {"name": "app_my_app__notes"}
+
+    def test_get_table_gets_the_table_path(self, mock_client):
+        AppApi()._get_table("my_app", "app_my_app__notes")
+
+        assert mock_client._send_request.call_args.args == (
+            "GET",
+            ["project", 119, "apps", "my_app", "tables", "app_my_app__notes"],
+        )
+
+    def test_preview_table_passes_the_limit(self, mock_client):
+        AppApi()._preview_table("my_app", "app_my_app__notes", 5)
+
+        assert mock_client._send_request.call_args.args == (
+            "GET",
+            [
+                "project",
+                119,
+                "apps",
+                "my_app",
+                "tables",
+                "app_my_app__notes",
+                "preview",
+            ],
+        )
+        assert mock_client._send_request.call_args.kwargs["query_params"] == {
+            "limit": 5
+        }
 
 
 class TestAppApiCreateKinds:

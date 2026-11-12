@@ -183,3 +183,15 @@ class TestTagsApi:
 
         # Assert
         assert result == {}
+
+    def test_add_refuses_none_before_the_request(self, mocker):
+        # Arrange
+        api = TagsApi(feature_store_id=99, entity_type="featuregroups")
+        client_instance = _patch_client(mocker, None)
+
+        # Act
+        with pytest.raises(ValueError, match="cannot be None"):
+            api._add(_fg_metadata(), "meta", None)
+
+        # Assert
+        client_instance._send_request.assert_not_called()

@@ -109,6 +109,23 @@ class TestDataSource:
         # Assert
         assert sc.default_index == "events"
 
+    def test_update_storage_connector_hopsworks_keeps_the_connector(self):
+        # Arrange
+        ds = data_source.DataSource()
+        ds.database = "sales_featurestore"
+        ds.table = "transactions_1"
+
+        sc = storage_connector.HopsworksConnector(
+            1, "test", 100, host="h", project="sales"
+        )
+        before = sc.to_dict()
+
+        # Act
+        ds._update_storage_connector(sc)
+
+        # Assert
+        assert sc.to_dict() == before
+
     def test_update_storage_connector_other(self):
         # Arrange
         ds = data_source.DataSource()
@@ -603,3 +620,69 @@ class TestDataSourceEstimateIngestionResources:
         ds = data_source.DataSource(storage_connector=sc)
         with pytest.raises(ValueError, match="feature_group"):
             ds.estimate_ingestion_resources()
+
+
+class TestDataSourceTags:
+    @staticmethod
+    def _data_source(mocker):
+        sc = storage_connector.S3Connector(1, "test_s3", 67)
+        mocker.patch.object(sc, "add_tag")
+        mocker.patch.object(sc, "delete_tag")
+        mocker.patch.object(sc, "get_tag", return_value="risk")
+        mocker.patch.object(sc, "get_tags", return_value={"owner": "risk"})
+        mocker.patch.object(sc, "get_tag_metadata", return_value="tag")
+        mocker.patch.object(sc, "get_tags_metadata", return_value={"owner": "tag"})
+        return data_source.DataSource(storage_connector=sc), sc
+
+    def test_add_tag_delegates_to_connector(self, mocker):
+        ds, sc = self._data_source(mocker)
+
+        ds.add_tag("owner", {"team": "risk"})
+
+        sc.add_tag.assert_called_once_with("owner", {"team": "risk"})
+
+    def test_delete_tag_delegates_to_connector(self, mocker):
+        ds, sc = self._data_source(mocker)
+
+        ds.delete_tag("owner")
+
+        sc.delete_tag.assert_called_once_with("owner")
+
+    def test_getters_delegate_to_connector(self, mocker):
+        ds, sc = self._data_source(mocker)
+
+        assert ds.get_tag("owner") == "risk"
+        assert ds.get_tags() == {"owner": "risk"}
+        assert ds.get_tag_metadata("owner") == "tag"
+        assert ds.get_tags_metadata() == {"owner": "tag"}
+        sc.get_tag.assert_called_once_with("owner")
+        sc.get_tag_metadata.assert_called_once_with("owner")
+
+    @pytest.mark.parametrize(
+        ("method", "args"),
+        [
+            ("add_tag", ("owner", "risk")),
+            ("delete_tag", ("owner",)),
+            ("get_tag", ("owner",)),
+            ("get_tags", ()),
+            ("get_tag_metadata", ("owner",)),
+            ("get_tags_metadata", ()),
+        ],
+    )
+    def test_tag_methods_without_connector_raise(self, method, args):
+        ds = data_source.DataSource(table="t")
+
+        with pytest.raises(ValueError, match="no storage connector"):
+            getattr(ds, method)(*args)
+
+    def test_missing_mandatory_tags_delegates_to_connector(self):
+        sc = storage_connector.S3Connector(1, "test_s3", 67)
+        sc._missing_mandatory_tags = [{"name": "owner"}]
+        ds = data_source.DataSource(storage_connector=sc)
+
+        assert ds.missing_mandatory_tags == [{"name": "owner"}]
+
+    def test_missing_mandatory_tags_without_connector_is_empty(self):
+        ds = data_source.DataSource(table="t")
+
+        assert ds.missing_mandatory_tags == []

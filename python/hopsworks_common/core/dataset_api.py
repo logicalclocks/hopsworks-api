@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import copy
-import json
 import logging
 import math
 import os
@@ -1169,7 +1168,7 @@ class DatasetApi:
             path,
         ]
         headers = {"content-type": "application/json"}
-        json_value = json.dumps(value)
+        json_value = tag.Tag._encode(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
     @public

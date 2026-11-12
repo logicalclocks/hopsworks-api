@@ -1,0 +1,377 @@
+"""The LLM judge, which is the least trustworthy evaluator in the set.
+
+Almost every test is about that: what happens when the judge misbehaves. A
+judge that fails must never produce a score, because a score is a claim about
+the agent and a broken judge has made no claim about anything.
+"""
+
+import pytest
+from hopsworks_agents.eval.judges import (
+    LlmJudgeEvaluator,
+    _json_from,
+    _pairwise_verdict,
+)
+from hopsworks_agents.eval.models import Task, Trial
+
+
+def _expects(kwargs: dict) -> dict:
+    """Legacy per-field kwargs, written as the expectations they now are.
+
+    Expectations are keyed by the check that reads them, and a check's name
+    defaults to its type — so `required_tools=["x"]` is what the `tool_call` and
+    `tool_order` checks expect, and an expected answer is what every check that
+    reads one expects. Written once here so a test can still say the thing it
+    means.
+    """
+    import json as _json
+
+    expectations = dict(kwargs.pop("expectations", {}) or {})
+    answer = kwargs.pop("expected_output", None)
+    if answer is not None:
+        for name in ("exact_match", "contains", "pairwise", "llm_judge"):
+            expectations.setdefault(name, answer)
+    rubric = kwargs.pop("rubric", None)
+    if rubric is not None:
+        expectations["llm_judge"] = rubric
+    required = kwargs.pop("required_tools", None)
+    forbidden = kwargs.pop("forbidden_tools", None)
+    if required is not None or forbidden is not None:
+        expectations["tool_call"] = _json.dumps(
+            {"required": required or [], "forbidden": forbidden or []}
+        )
+        expectations["tool_order"] = ", ".join(required or [])
+        expectations["no_unnecessary_tools"] = ", ".join(required or [])
+    if expectations:
+        kwargs["expectations"] = expectations
+    return kwargs
+
+
+def task(**kwargs):
+    defaults = {
+        "task_id": "t1",
+        "input_messages": '[{"role": "user", "content": "why is the sky blue?"}]',
+        "rubric": "Mentions scattering. Does not invent a source.",
+    }
+    defaults.update(kwargs)
+    return Task(**_expects(defaults))
+
+
+def trial(answer="Rayleigh scattering."):
+    return Trial(
+        trial_id="x",
+        run_id="r",
+        task_id="t1",
+        task_version=1,
+        trial_index=0,
+        deployment_id=7,
+        final_output=answer,
+    )
+
+
+def judge(reply, **config_overrides):
+    """A judge with no criteria named — one `overall` score, scored 1-5."""
+    from hopsworks_agents.eval.judge_config import _parse_judge_config
+
+    config = _parse_judge_config({"type": "llm_judge", **config_overrides})
+    return LlmJudgeEvaluator(lambda _prompt: reply, config)
+
+
+# The unified judge asks for per-criterion scores even when there is one
+# criterion, so a single-score reply names it.
+GOOD = '{"scores": {"overall": 5}, "reasoning": {"overall": "Correct."}}'
+
+
+class TestGrading:
+    def test_a_clean_verdict_is_used(self):
+        result = judge(GOOD)._grade(task(), trial(), None)
+        assert result.passed is True
+        assert result.score == pytest.approx(1.0)
+        assert result.ungradable is False
+
+    def test_the_judge_model_is_recorded(self):
+        # a score that moved because the judge changed is not an agent
+        # regression, and without the model on the row the two look identical
+        result = judge(GOOD, model="claude-opus-5")._grade(task(), trial(), None)
+        assert result.assertions["judge_model"] == "claude-opus-5"
+
+    def test_one_unnamed_criterion_behaves_like_any_other(self):
+        # there is no separate single-score judge: a configuration naming no
+        # criteria gets one called `overall` and the same code path
+        result = judge(GOOD)._grade(task(), trial(), None)
+        assert set(result.assertions["criteria"]) == {"overall"}
+
+    def test_the_threshold_decides_the_verdict(self):
+        # the model no longer gets to return its own pass/fail: one trial
+        # passing at 0.6 while another fails at 0.7 because the judge felt
+        # differently makes results incomparable
+        reply = '{"scores": {"overall": 3}}'
+        assert judge(reply)._grade(task(), trial(), None).passed is False
+        assert (
+            judge(reply, thresholds={"pass_score": 3})
+            ._grade(task(), trial(), None)
+            .passed
+            is True
+        )
+
+    def test_scores_are_clamped(self):
+        # a model told to answer 1-5 and returning 7 has not found extra quality
+        reply = '{"scores": {"overall": 7}}'
+        assert judge(reply)._grade(task(), trial(), None).score == 1.0
+
+
+class TestWhatTheJudgeIsShown:
+    def test_the_one_expectation_is_rendered_once(self):
+        # A task has a single expectation per check. Passed as both `expected`
+        # and `rubric` it was rendered under <expected> and again under
+        # <criteria_notes> with the default inputs -- so guidance arrived
+        # labelled as the expected answer, which is the anchoring the inputs
+        # toggle exists to prevent.
+        seen = {}
+
+        def capture(prompt):
+            seen["prompt"] = prompt
+            return GOOD
+
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
+
+        config = _parse_judge_config({"type": "llm_judge"})
+        LlmJudgeEvaluator(capture, config)._grade(
+            task(rubric="Mentions scattering."), trial(), None
+        )
+
+        # and it lands in the slot this check asks the task for: the catalogue
+        # calls the field a rubric ("what a good answer does, in your own
+        # words"), so reading it as the expected answer -- which the default
+        # inputs did, because they tick both boxes -- labelled guidance as the
+        # text the agent was supposed to produce.
+        assert seen["prompt"].count("Mentions scattering.") == 1
+        assert "<criteria_notes>" in seen["prompt"]
+        assert "<expected>" not in seen["prompt"]
+
+    def test_a_judge_that_reads_no_expected_answer_still_sees_the_guidance(self):
+        # The "could it have got there alone" shape: no expected_result among
+        # its inputs, so the expectation is what to look for rather than the
+        # answer, and it belongs in the criteria notes instead of being lost.
+        seen = {}
+
+        def capture(prompt):
+            seen["prompt"] = prompt
+            return GOOD
+
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
+
+        config = _parse_judge_config(
+            {
+                "type": "llm_judge",
+                "inputs": ["user_request", "agent_response", "rubric"],
+            }
+        )
+        LlmJudgeEvaluator(capture, config)._grade(
+            task(rubric="Mentions scattering."), trial(), None
+        )
+
+        assert "<criteria_notes>" in seen["prompt"]
+        assert "<expected>" not in seen["prompt"]
+        assert seen["prompt"].count("Mentions scattering.") == 1
+
+    def test_unticking_the_rubric_grades_against_it_as_the_answer(self):
+        # The other way round, and the only way to get it: a judge whose inputs
+        # keep expected_result and drop rubric is saying the task's text is the
+        # answer to match, not guidance about it.
+        seen = {}
+
+        def capture(prompt):
+            seen["prompt"] = prompt
+            return GOOD
+
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
+
+        config = _parse_judge_config(
+            {
+                "type": "llm_judge",
+                "inputs": ["user_request", "expected_result", "agent_response"],
+            }
+        )
+        LlmJudgeEvaluator(capture, config)._grade(
+            task(rubric="Mentions scattering."), trial(), None
+        )
+
+        assert "<expected>" in seen["prompt"]
+        assert "<criteria_notes>" not in seen["prompt"]
+        assert seen["prompt"].count("Mentions scattering.") == 1
+
+
+class TestWhenTheJudgeMisbehaves:
+    """Every one of these must be ungradable, never a zero."""
+
+    def test_a_judge_that_raises_is_ungradable(self):
+        def explode(_prompt):
+            raise RuntimeError("rate limited")
+
+        result = LlmJudgeEvaluator(explode)._grade(task(), trial(), None)
+        assert result.ungradable is True
+        # No score, rather than a zero that reads as the worst possible answer.
+        assert result.score is None
+        assert result.passed is None
+        assert "rate limited" in result.reason
+
+    def test_unparseable_output_is_ungradable(self):
+        result = judge("I think it was pretty good actually")._grade(
+            task(), trial(), None
+        )
+        assert result.ungradable is True
+
+    def test_a_non_numeric_score_is_ungradable(self):
+        reply = '{"score": "high", "passed": true, "reason": "good"}'
+        assert judge(reply)._grade(task(), trial(), None).ungradable is True
+
+    def test_grading_against_nothing_is_refused(self):
+        # a judge given no rubric and no expected answer still returns a number,
+        # and that number is noise dressed as a measurement
+        bare = task(rubric="", expected_output="")
+        assert judge(GOOD)._grade(bare, trial(), None).ungradable is True
+
+    def test_an_empty_answer_is_ungradable(self):
+        assert judge(GOOD)._grade(task(), trial(answer=""), None).ungradable is True
+
+
+class TestJsonSalvage:
+    def test_plain_json(self):
+        assert _json_from('{"score": 1}') == {"score": 1}
+
+    def test_fenced_json(self):
+        # models fence output constantly; discarding a valid judgement over
+        # formatting would be its own kind of wrong
+        assert _json_from('```json\n{"score": 1}\n```') == {"score": 1}
+
+    def test_json_with_a_preamble(self):
+        assert _json_from('Here is my grade:\n{"score": 0.5}') == {"score": 0.5}
+
+    def test_prose_is_not_salvaged_into_something(self):
+        assert _json_from("looks fine to me") is None
+
+    def test_a_json_array_is_not_a_verdict(self):
+        assert _json_from("[1, 2, 3]") is None
+
+
+class TestPairwise:
+    def test_a_winner_is_reported(self):
+        result = _pairwise_verdict(
+            lambda _p: '{"winner": "b", "reason": "more complete"}',
+            "q",
+            "short",
+            "thorough",
+        )
+        assert result["winner"] == "b"
+
+    def test_a_tie_is_kept_as_a_tie(self):
+        # forcing a winner would read downstream as a real difference between
+        # two versions that are equivalent — the common case when comparing
+        # close deployments
+        result = _pairwise_verdict(
+            lambda _p: '{"winner": "tie", "reason": "equivalent"}', "q", "a", "b"
+        )
+        assert result["winner"] == "tie"
+
+    def test_an_unusable_verdict_is_unknown_not_a_winner(self):
+        result = _pairwise_verdict(lambda _p: "the first one I guess", "q", "a", "b")
+        assert result["winner"] == "unknown"
+
+    def test_a_failed_call_is_unknown(self):
+        def explode(_p):
+            raise ConnectionError("no route")
+
+        assert _pairwise_verdict(explode, "q", "a", "b")["winner"] == "unknown"
+
+
+class TestAPassSaysWhyItPassed:
+    """A green judge result is checkable without opening the trial.
+
+    A pass used to carry no reason at all, so a judge that waved a reply through
+    against the correction it was meant to be grading looked exactly like one that
+    had read it properly: `passed=True, score=0.84, reason=None`. The judge already
+    returns its per-criterion reasoning; putting it on the pass is what makes a
+    false pass something a person can spot in a results listing.
+    """
+
+    @staticmethod
+    def _criteria_judge(reply):
+        from hopsworks_agents.eval.judge_config import _parse_judge_config
+
+        config = _parse_judge_config(
+            {
+                "type": "llm_judge",
+                "score_range": [1, 5],
+                "criteria": {
+                    "correctness": {
+                        "weight": 0.5,
+                        "description": "says what the correction says",
+                    },
+                    "task_completion": {
+                        "weight": 0.5,
+                        "description": "did what was asked",
+                    },
+                },
+                "thresholds": {"pass_score": 4.0},
+            }
+        )
+        return LlmJudgeEvaluator(lambda _prompt: reply, config)
+
+    def test_a_pass_carries_the_score_it_earned(self):
+        reply = (
+            '{"scores": {"correctness": 5, "task_completion": 4},'
+            ' "reasoning": {"correctness": "matches the correction"}}'
+        )
+        result = self._criteria_judge(reply)._grade(task(), trial(), None)
+        assert result.passed is True
+        assert "scored 4.50 of 5" in result.reason
+
+    def test_a_pass_carries_the_judges_own_reasoning(self):
+        reply = (
+            '{"scores": {"correctness": 5, "task_completion": 4},'
+            ' "reasoning": {"correctness": "matches the correction"}}'
+        )
+        result = self._criteria_judge(reply)._grade(task(), trial(), None)
+        assert "matches the correction" in result.reason
+
+    def test_a_failure_still_says_why(self):
+        reply = (
+            '{"scores": {"correctness": 1, "task_completion": 2},'
+            ' "reasoning": {"correctness": "contradicts the correction"}}'
+        )
+        result = self._criteria_judge(reply)._grade(task(), trial(), None)
+        assert result.passed is False
+        assert "needs 4" in result.reason
+        assert "contradicts the correction" in result.reason
+
+
+class TestWhatTheJudgeIsToldAboutTheExchange:
+    @staticmethod
+    def _prompt(**kwargs):
+        from hopsworks_agents.eval.judge_config import (
+            _parse_judge_config,
+            _render_prompt,
+        )
+
+        config = _parse_judge_config({"type": "llm_judge", "criteria": ["Is polite"]})
+        return _render_prompt(config, question="q", answer="a", **kwargs)
+
+    def test_a_known_user_is_named_so_skipping_the_question_is_not_a_failure(self):
+        # A client-asserted subject was invisible: "Asked who it is talking to" failed
+        # the agent for not asking, and "Hallucination" called a remembered name invented.
+        prompt = self._prompt(subject="marcus@example.com")
+        assert "<user>" in prompt and "marcus@example.com" in prompt
+        assert "need not ask who they are" in prompt
+
+    def test_no_user_no_section(self):
+        assert "<user>" not in self._prompt()
+
+    def test_the_graded_reply_is_named_as_the_last_one(self):
+        # An introduction given on turn one was failed on turn two, which had no
+        # reason to repeat it, because the judge was not told which reply it graded.
+        prompt = self._prompt(transcript="user: dana@example.com\nagent: Hello ...")
+        assert "final reply of this conversation" in prompt
+        assert "about the conversation" in prompt
+
+    def test_a_single_turn_has_no_such_note(self):
+        assert "final reply of this conversation" not in self._prompt()

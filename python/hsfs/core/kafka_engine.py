@@ -74,17 +74,16 @@ if TYPE_CHECKING:
 #
 #   absent      both OnlineFS and the offline materialization job ingest the record
 #   b"online"   OnlineFS only; the materialization job skips the record
-#   b"offline"  the materialization job only; OnlineFS skips the record
+#   b"0"        the materialization job only; OnlineFS skips the record
 #
-# Older clients wrote a per-row flag into the same header instead: b"0" meant "skip
-# online" (equivalent to b"offline") and b"1" meant "ingest online" while the record was
-# still materialized offline (equivalent to absent).
-# Both consumers keep reading b"0" as b"offline"; the producers here no longer emit either
-# value.
+# A write for the materialization job only is "offline" in the API, but goes on the wire as b"0": OnlineFS before 2.4 (Hopsworks 5.0) skips b"0" and ingests b"offline", and the OnlineFS of a satellite cluster can be a release behind the client of its central cluster.
+# OnlineFS 2.4 and later skip both values, and both materialization jobs ingest both.
+# Older clients also wrote b"1", "ingest online" while the record was still materialized offline (equivalent to absent).
 # Only set the header when the record has a single destination: leaving it out is both the
 # default and the cheapest option on the wire, which matters per record at ingestion scale.
 _STORAGE_ONLINE = "online"
 _STORAGE_OFFLINE = "offline"
+_STORAGE_OFFLINE_HEADER = b"0"
 # endregion
 
 
@@ -207,7 +206,9 @@ def _get_headers(
     if operation is not None:
         headers["operation"] = operation.encode("utf8")
 
-    if storage is not None:
+    if storage == _STORAGE_OFFLINE:
+        headers["storage"] = _STORAGE_OFFLINE_HEADER
+    elif storage is not None:
         headers["storage"] = storage.encode("utf8")
 
     online_ingestion_options = (
@@ -483,6 +484,10 @@ def _encode_row(complex_feature_writers, writer, row):
                 row[k] = row[k].replace(tzinfo=timezone.utc)
             if HAS_PANDAS and isinstance(row[k], pd._libs.missing.NAType):
                 row[k] = None
+            # A nullable boolean column (pandas' "boolean") yields numpy.bool_ from itertuples,
+            # which is not a bool, so avro matches it to no branch of ["null", "boolean"].
+            if HAS_NUMPY and isinstance(row[k], np.bool_):
+                row[k] = bool(row[k])
     # encode complex features
     row = _encode_complex_features(complex_feature_writers, row)
     # encode feature row

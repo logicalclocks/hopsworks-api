@@ -14,6 +14,8 @@
 #   limitations under the License.
 
 import inspect
+import os
+import tempfile
 
 from hsml import constants
 
@@ -39,6 +41,7 @@ class TestConstants:
             "FRAMEWORK_PYTHON": "PYTHON",
             "FRAMEWORK_SKLEARN": "SKLEARN",
             "FRAMEWORK_LLM": "LLM",
+            "FRAMEWORK_TRITON": "TRITON",
         }
 
         # Assert
@@ -58,7 +61,11 @@ class TestConstants:
             "HOPSFS_MOUNT_PREFIX": "/hopsfs/",
             "MODELS_DATASET": "Models",
             "MODEL_FILES_DIR_NAME": "Files",
-            "MODEL_CACHE_DIR_DEFAULT": "/tmp/hopsworks/models",
+            "MODEL_CACHE_DIR_DEFAULT": os.path.join(
+                tempfile.gettempdir(), "hopsworks", "models"
+            )
+            if os.name == "nt"
+            else "/tmp/hopsworks/models",
         }
 
         # Assert
@@ -222,6 +229,7 @@ class TestConstants:
             "MODEL_SERVER_PYTHON": "PYTHON",
             "MODEL_SERVER_TF_SERVING": "TENSORFLOW_SERVING",
             "MODEL_SERVER_VLLM": "VLLM",
+            "MODEL_SERVER_TRITON": "TRITON",
         }
 
         # Assert

@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import ast
 import os
 import posixpath
 import re
@@ -23,13 +24,14 @@ import zipfile
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
-from hopsworks_common import tag, usage, util
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common import client, tag, usage, util
+from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.core import dataset_api as _dataset_api
 from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
+from hsml.core.openai_client import _build_openai_client
 from hsml.deployment import Deployment
 from hsml.predictor import Predictor
 from hsml.transformer import Transformer
@@ -52,7 +54,9 @@ _SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 if TYPE_CHECKING:
+    import openai
     from hsml.deployment_logging_config import DeploymentLoggingConfig
+    from hsml.deployment_memory_config import DeploymentMemoryConfig
     from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
@@ -74,10 +78,12 @@ class ModelServing:
         self,
         project_name: str,
         project_id: int,
+        project_namespace: str | None = None,
         **kwargs,
     ):
         self._project_name = project_name
         self._project_id = project_id
+        self._project_namespace = project_namespace
 
         self._serving_api = serving_api.ServingApi()
 
@@ -243,6 +249,27 @@ class ModelServing:
         return []
 
     @public
+    def get_triton_image_tags(self) -> list[str]:
+        """Get the Triton Inference Server image tags a cluster administrator advertises.
+
+        Use this to pick a valid `triton_image_tag` when creating a Triton deployment.
+        Triton is opt-in per cluster and runs an image the administrator supplies, so an empty list means Triton is not enabled and creating a Triton deployment fails.
+        A deployment keeps the tag it was created with even if that tag stops being advertised, so this list can be missing the tag an existing deployment uses.
+
+        Example:
+            ```python
+            # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
+
+            # list the Triton image tags this cluster advertises
+            image_tags = ms.get_triton_image_tags()
+            ```
+
+        Returns:
+            Advertised image tags. Empty if Triton is not enabled on this cluster.
+        """
+        return self._serving_api._get_triton_image_tags().get("tags") or []
+
+    @public
     @usage._method_logger
     def create_predictor(
         self,
@@ -270,6 +297,7 @@ class ModelServing:
         passed_features: list[str] | None = None,
         default_predictor: bool | None = None,
         knative_mode: bool | None = None,
+        triton_image_tag: str | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -340,6 +368,12 @@ class ModelServing:
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            triton_image_tag: Triton Inference Server image tag for Triton deployments.
+                If set, it must be one of the tags `ModelServing.get_triton_image_tags` returns.
+                On a new deployment, `None` selects the default tag of the cluster.
+                On an update, `None` means "unchanged": the deployment keeps its current tag, so moving it to the cluster default takes naming that tag explicitly.
+                A deployment also keeps its tag after an admin stops advertising it.
+                Ignored for non-Triton model servers.
 
         Returns:
             The predictor metadata object.
@@ -370,6 +404,7 @@ class ModelServing:
             passed_features=passed_features,
             default_predictor=default_predictor,
             knative_mode=knative_mode,
+            triton_image_tag=triton_image_tag,
         )
 
     @public
@@ -540,6 +575,10 @@ class ModelServing:
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
         knative_mode: bool | None = None,
+        # Appended rather than inserted: everything above it shipped in 5.0, so
+        # a position in the middle would move parameters callers may already be
+        # passing positionally.
+        memory: DeploymentMemoryConfig | dict | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -580,6 +619,8 @@ class ModelServing:
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            memory: Memory given to an agent that configures none itself; see
+                [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
 
         Returns:
             The predictor metadata object.
@@ -606,6 +647,7 @@ class ModelServing:
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
             tracing=tracing,
+            memory=memory,
             git_url=git_url,
             git_provider=git_provider,
             git_branch=git_branch,
@@ -634,6 +676,10 @@ class ModelServing:
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
         knative_mode: bool | None = None,
+        # Appended rather than inserted, for the reason create_endpoint gives.
+        memory: DeploymentMemoryConfig | dict | None = None,
+        framework: str | None = None,
+        chat_config: dict[str, Any] | str | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -688,6 +734,19 @@ class ModelServing:
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
                 A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+            memory:
+                Memory the deployment gives the agent, for an agent that configures none in
+                its own code; see [`DeploymentMemoryConfig`][hsml.deployment_memory_config.DeploymentMemoryConfig].
+                The agent SDK applies it only when the agent passed no memory store of its
+                own, so code always wins over it.
+            framework:
+                Framework the agent is built with: `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`.
+                It picks the tracing instrumentation, the model provider of the agent's failure analysis, and whether the agent may receive the Claude login.
+                When omitted, it is read from the `framework=` literal of the `AgentApp(...)` in a local entry, a name outside those five being recorded as `custom`, and otherwise kept from the existing deployment.
+            chat_config:
+                Chat contract of the agent, telling the chat panel and chat clients how to talk to it.
+                A protocol name (`"hopsworks"`, `"openai"`) or a dict with `protocol` and, for a custom endpoint (`simple`/`generic`), `path`, `message_field_in` and `message_field_name`.
+                When omitted, a new agent whose local entry builds an `AgentApp` gets `"hopsworks"`, and an existing agent keeps its contract.
 
         Returns:
             The deployment metadata object.
@@ -706,10 +765,19 @@ class ModelServing:
         git_branch = _trim_to_none(git_branch)
         git_backed = git_url is not None
 
+        framework = _trim_to_none(framework)
+        if framework is not None:
+            # Aliases resolved; a name the backend does not accept is left for it to refuse,
+            # since the caller asked for it by name.
+            framework = _normalize_agent_framework(framework)
+        if isinstance(chat_config, str):
+            chat_config = {"protocol": chat_config.strip()}
+
         if not git_backed and git_auto_redeploy:
             # Mirrors ServingUtil: the backend rejects the flag without a git source.
             raise ValueError("git_auto_redeploy requires git_url.")
 
+        uses_agent_app = False
         if git_backed:
             _validate_git_agent_source(entry, git_url, git_provider, git_branch)
             is_script = True
@@ -727,6 +795,11 @@ class ModelServing:
                 )
 
             script_file = None
+            # The deployment records what the code says, so an agent deployed from the SDK is
+            # labelled like one created in the UI without the caller repeating it.
+            uses_agent_app, detected_framework = _detect_agent_app(entry_abs)
+            if framework is None:
+                framework = detected_framework
 
         if name is None:
             default_name_source = entry
@@ -787,6 +860,7 @@ class ModelServing:
             environment=env_name,
             scaling_configuration=scaling_configuration,
             tracing=tracing,
+            memory=memory,
             git_url=git_url if git_backed else None,
             git_provider=git_provider if git_backed else None,
             git_branch=git_branch if git_backed else None,
@@ -795,11 +869,26 @@ class ModelServing:
         )
 
         existing = self.get_deployment(name)
+        if chat_config is None and existing is None and uses_agent_app:
+            chat_config = {"protocol": "hopsworks"}
+        predictor._agent_framework = framework
+        predictor._chat_config = chat_config
         if existing is not None:
             # Preserve identity and server-assigned version so save() updates the
             # existing record instead of creating a new one.
             predictor._id = existing.predictor.id
             predictor._version = existing.predictor.version
+            # And carry over a memory policy this call said nothing about. The
+            # documented way to roll out new code is to run deploy_agent again,
+            # and the backend overwrites an agent's memory column with whatever
+            # arrives -- so omitting `memory=` silently switched off memory
+            # that had been configured in the UI or on the first deploy.
+            if memory is None and existing.predictor.memory is not None:
+                predictor._memory = existing.predictor.memory
+            # Same for the framework, which the backend also overwrites; a null chat contract is
+            # already preserved by the backend.
+            if framework is None:
+                predictor._agent_framework = existing.predictor.agent_framework
             existing.predictor = predictor
             existing.description = description
             existing.save()
@@ -891,10 +980,197 @@ class ModelServing:
         return Deployment(predictor=predictor, name=name)
 
     @public
+    def get_openai_url(self) -> str | None:
+        """Get the OpenAI-compatible URL of the LLM gateway, shared by the vLLM deployments of the project.
+
+        Requests are routed to a deployment by the `model` field of the request body, which is the deployment name.
+        The URL stays the same when deployments are created, stopped or deleted.
+
+        Note: The endpoint answers 404 until it is available
+            The LLM gateway answers 404 until a vLLM deployment of the project is running and the cluster has the LLM gateway enabled.
+            The per-deployment URL from [`Deployment.get_openai_url`][hsml.deployment.Deployment.get_openai_url] keeps working in the meantime.
+
+        Note: Only some vLLM deployments are served
+            The LLM gateway serves the Standard-mode vLLM deployments of the project whose LLM gateway switch is on and that do not scale to zero.
+            Knative-mode deployments, deployments with a minimum of 0 instances and deployments with the switch off answer 404 here; use [`Deployment.get_openai_url`][hsml.deployment.Deployment.get_openai_url] for them.
+
+        Returns:
+            The OpenAI-compatible URL, or `None` if the Istio client is not available.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the Kubernetes namespace of the project is unknown.
+
+        Example: Call the LLM gateway with an HTTP client
+            ```python
+            ms = project.get_model_serving()
+            url = ms.get_openai_url()
+            # url = "https://host:port/v1/namespace/v1"
+            # Then use: url + "/chat/completions" with "model": "<deployment name>"
+            ```
+        """
+        istio_client = client.istio._get_instance()
+        if istio_client is None:
+            return None
+        path_parts = self._serving_api._get_istio_project_openai_path(
+            self._resolve_project_namespace()
+        )
+        return f"{istio_client._base_url}/{'/'.join(path_parts)}"
+
+    @public
+    def get_anthropic_url(self) -> str | None:
+        """Get the Anthropic-compatible base URL of the LLM gateway.
+
+        This is the value for `ANTHROPIC_BASE_URL`, used by Claude Code and the Anthropic SDK.
+        The URL is the OpenAI-compatible URL of the LLM gateway followed by `/anthropic`.
+        Requests are routed to a deployment by the `model` field of the request body, which is the deployment name.
+        The same availability notes as [`ModelServing.get_openai_url`][hsml.model_serving.ModelServing.get_openai_url] apply.
+
+        Returns:
+            The Anthropic-compatible base URL, or `None` if the Istio client is not available.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the Kubernetes namespace of the project is unknown.
+
+        Example: Point Claude Code at the LLM gateway
+            ```python
+            ms = project.get_model_serving()
+            url = ms.get_anthropic_url()
+            # url = "https://host:port/v1/namespace/v1/anthropic"
+            # Then set: ANTHROPIC_BASE_URL=url
+            ```
+        """
+        openai_url = self.get_openai_url()
+        if openai_url is None:
+            return None
+        return f"{openai_url}/anthropic"
+
+    @public
+    def get_llm_gateway(self) -> dict[str, Any]:
+        """Get the state of the LLM gateway.
+
+        Returns:
+            A dict with the keys `enabled` (the project switch), `available` (whether the cluster publishes the LLM gateway) and `url` (the URL of the endpoint, or `None` if the Istio client is not available).
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Check the LLM gateway
+            ```python
+            state = project.get_model_serving().get_llm_gateway()
+            if state["available"] and state["enabled"]:
+                print(state["url"])
+            ```
+        """
+        state = self._serving_api._get_llm_gateway()
+        return {
+            "enabled": state["enabled"],
+            "available": state["available"],
+            "url": self.get_openai_url(),
+        }
+
+    @public
+    def set_llm_gateway(self, enabled: bool) -> dict[str, Any]:
+        """Switch the LLM gateway on or off for the whole project.
+
+        While it is off, the LLM gateway answers 404 for every deployment of the project.
+        The per-deployment URLs keep working, and no deployment restarts.
+        Requires the data owner role in the project.
+        When the backend stores the switch but cannot apply it yet, it applies it within a minute and the call logs this at INFO level.
+
+        Parameters:
+            enabled: Whether the LLM gateway serves the deployments of the project.
+
+        Returns:
+            The state of the LLM gateway, as returned by [`get_llm_gateway`][hsml.model_serving.ModelServing.get_llm_gateway].
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Turn the LLM gateway off
+            ```python
+            project.get_model_serving().set_llm_gateway(False)
+            ```
+        """
+        state = self._serving_api._set_llm_gateway(enabled)
+        return {
+            "enabled": state["enabled"],
+            "available": state["available"],
+            "url": self.get_openai_url(),
+        }
+
+    def _resolve_project_namespace(self) -> str:
+        """Return the project's Kubernetes namespace.
+
+        The project handle passes it at construction; a handle built from a bare connection fetches it once from the backend.
+        """
+        if not self._project_namespace:
+            self._project_namespace = (
+                client._get_connection()._get_project().project_namespace
+            )
+        if not self._project_namespace:
+            raise ModelServingException(
+                "The Kubernetes namespace of the project is unknown, so the LLM gateway URL cannot be built."
+            )
+        return self._project_namespace
+
+    @public
+    def get_openai_client(self, **kwargs: Any) -> openai.OpenAI:
+        """Get an OpenAI client for the LLM gateway, shared by the vLLM deployments of the project.
+
+        The client authenticates with the Hopsworks token of the current connection.
+        Pass the deployment name as `model` in each request to choose the deployment.
+        Requires the `openai` package, installed with `pip install "hopsworks[openai]"`.
+        Keyword arguments are passed to `openai.OpenAI`, for example `timeout`, `max_retries` or `http_client`.
+        `default_headers` are merged over the authorization header set by Hopsworks.
+        `base_url` and `api_key` are set by Hopsworks and cannot be passed.
+        Without an `http_client`, certificates are verified as the main Hopsworks connection does.
+        With `hostname_verification=True`, the certificate of the inference endpoint must cover its host; otherwise pass an `http_client` with a matching CA, or one with `verify=False`.
+
+        Note: The endpoint answers 404 until it is available
+            The LLM gateway answers 404 until a vLLM deployment of the project is running and the cluster has the LLM gateway enabled.
+            The per-deployment client from [`Deployment.get_openai_client`][hsml.deployment.Deployment.get_openai_client] keeps working in the meantime.
+
+        Note: Only some vLLM deployments are served
+            The LLM gateway serves the Standard-mode vLLM deployments of the project whose LLM gateway switch is on and that do not scale to zero.
+            Knative-mode deployments, deployments with a minimum of 0 instances and deployments with the switch off answer 404 here; use [`Deployment.get_openai_client`][hsml.deployment.Deployment.get_openai_client] for them.
+
+        Returns:
+            The configured OpenAI client.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If no endpoint URL is available, or the Kubernetes namespace of the project is unknown.
+            ValueError: If `base_url` or `api_key` is passed.
+            ModuleNotFoundError: If the `openai` package is not installed.
+
+        Example: Chat with a deployment through the LLM gateway
+            ```python
+            ms = project.get_model_serving()
+            openai_client = ms.get_openai_client()
+            response = openai_client.chat.completions.create(
+                model="<deployment name>",
+                messages=[{"role": "user", "content": "Hello"}],
+            )
+            ```
+        """
+        url = self.get_openai_url()
+        if url is None:
+            raise ModelServingException(
+                "The LLM gateway is not available, because the Istio client is not set up. "
+                "This happens when KServe is not installed or the Istio ingress gateway has no load balancer address."
+            )
+        return _build_openai_client(url, **kwargs)
+
+    @public
     @property
     def project_name(self):
         """Name of the project in which Model Serving is located."""
         return self._project_name
+
+    @public
+    @property
+    def project_namespace(self) -> str | None:
+        """Kubernetes namespace of the project, or `None` if it was not provided."""
+        return self._project_namespace
 
     @public
     @property
@@ -1040,6 +1316,113 @@ def _read_package_name(package_dir: str) -> str:
             f"Cannot read [project].name as a static string from {package_dir}/pyproject.toml"
         )
     return pkg_name
+
+
+#: The frameworks the backend accepts, and the spellings the agent SDK reads as one of them.
+#: Mirrors `hopsworks_agents.protocol.tracing`, which hsml must not import.
+_AGENT_FRAMEWORKS = (
+    "langgraph",
+    "llamaindex",
+    "openai_agents",
+    "claude_agents",
+    "custom",
+)
+_AGENT_FRAMEWORK_ALIASES = {
+    "openai-agents": "openai_agents",
+    "openaiagents": "openai_agents",
+    "claude-agents": "claude_agents",
+    "claudeagents": "claude_agents",
+    "claude-agent-sdk": "claude_agents",
+    "claude_agent_sdk": "claude_agents",
+}
+#: Directories of a package whose `AgentApp(...)` calls are not the agent that is deployed.
+_AGENT_SCAN_SKIPPED_DIRS = frozenset(
+    {
+        "build",
+        "dist",
+        "node_modules",
+        "__pycache__",
+        "venv",
+        "env",
+        "test",
+        "tests",
+        "example",
+        "examples",
+        "docs",
+    }
+)
+
+
+def _normalize_agent_framework(framework: str) -> str:
+    """The spelling the backend stores for a framework name, aliases resolved."""
+    value = framework.strip().lower()
+    return _AGENT_FRAMEWORK_ALIASES.get(value, value)
+
+
+def _agent_source_files(entry_abs: str) -> list[str]:
+    """The Python files of a local agent source that make up the deployed agent.
+
+    A script is itself; a package is every module outside hidden, build, test, example and docs directories and outside virtual environments, which carry a `pyvenv.cfg` whatever they are called.
+    """
+    if os.path.isfile(entry_abs):
+        return [entry_abs]
+    paths = []
+    for root, dirs, files in os.walk(entry_abs):
+        dirs[:] = [
+            d
+            for d in dirs
+            if not d.startswith(".")
+            and d.lower() not in _AGENT_SCAN_SKIPPED_DIRS
+            and not d.endswith(".egg-info")
+            and not os.path.isfile(os.path.join(root, d, "pyvenv.cfg"))
+        ]
+        paths.extend(os.path.join(root, f) for f in files if f.endswith(".py"))
+    return sorted(paths)
+
+
+def _detect_agent_app(entry_abs: str) -> tuple[bool, str | None]:
+    """Whether a local agent source builds an `AgentApp`, and the framework it names.
+
+    Reads the source without importing it.
+    The framework is found only when it is a string literal in an `AgentApp(...)` call; a name the backend does not accept is recorded as `custom`, which is what the agent SDK runs it as.
+    When the calls name different frameworks, none is detected rather than one picked.
+    """
+    uses_agent_app = False
+    frameworks = set()
+    for path in _agent_source_files(entry_abs):
+        try:
+            with open(path, encoding="utf-8") as f:
+                tree = ast.parse(f.read(), filename=path)
+        except (OSError, SyntaxError, ValueError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            func_name = (
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
+                else None
+            )
+            if func_name != "AgentApp":
+                continue
+            uses_agent_app = True
+            for keyword in node.keywords:
+                if (
+                    keyword.arg == "framework"
+                    and isinstance(keyword.value, ast.Constant)
+                    and isinstance(keyword.value.value, str)
+                    and keyword.value.value.strip()
+                ):
+                    framework = _normalize_agent_framework(keyword.value.value)
+                    if framework not in _AGENT_FRAMEWORKS:
+                        framework = "custom"
+                    frameworks.add(framework)
+    if len(frameworks) == 1:
+        return uses_agent_app, frameworks.pop()
+    return uses_agent_app, None
 
 
 def _trim_to_none(value: str | None) -> str | None:

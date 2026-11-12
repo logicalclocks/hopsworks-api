@@ -11,7 +11,9 @@ into bucket folders:
 ## data/ — discovery, sources, SQL, Spark, table maintenance
 - [hops-airflow](data/hops-airflow/SKILL.md) — orchestrate Hopsworks jobs with Airflow DAGs.
 - [hops-data-discovery](data/hops-data-discovery/SKILL.md) — find FGs, data sources, search, files.
-- [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion.
+- [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion / copy or sync SharePoint folders into a dataset.
+- [hops-email-search](data/hops-email-search/SKILL.md) — Search emails a Gmail or Outlook data source copied into a feature group, with DuckDB.
+- [hops-sharepoint-search](data/hops-sharepoint-search/SKILL.md) — search the files a SharePoint sync copied in, through its index feature group, with the DuckDB CLI.
 - [hops-delta](data/hops-delta/SKILL.md) — maintain Delta feature groups: optimize, vacuum, write modes and layout.
 - [hops-partitioning](data/hops-partitioning/SKILL.md) — Whether a derived feature group should be partitioned by time, from the source table's files.
 - [hops-analytics](data/hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.
@@ -35,8 +37,10 @@ into bucket folders:
 - [hops-online-inference](ml/hops-online-inference/SKILL.md) — KServe model deployment.
 - [hops-monitoring](ml/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
 
-## agents/ — served agents and scheduled agent tasks
-- [hops-agent-deployment](agents/hops-agent-deployment/SKILL.md) — served interactive agent.
+## agents/ — served agents, their evaluation, and scheduled agent tasks
+- [hops-agent-deployment](agents/hops-agent-deployment/SKILL.md) — served, chat-ready interactive agent (`AgentApp`); talk to it from Python.
+- [hops-agent-chat](agents/hops-agent-chat/SKILL.md) — the agent's chat app, customizing it, or the chat embedded in an app of your own.
+- [hops-agent-evals](agents/hops-agent-evals/SKILL.md) — suites, LLM judges, traces and feedback, failure analysis into regression tests.
 - [hops-agent-task](agents/hops-agent-task/SKILL.md) — scheduled coding-agent task (claude-code / codex job).
 
 ## dashboards/ — apps and BI
@@ -53,7 +57,7 @@ into bucket folders:
 - [hops-notebook](platform/hops-notebook/SKILL.md) — notebooks written and run on the user's Jupyter kernel.
 - [hops-environments](platform/hops-environments/SKILL.md) — clone a Python env, install custom libs.
 - [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
-- [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, and feature store/dataset sharing.
+- [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, per-namespace compute cost, and feature store/dataset sharing.
 - [hops-kubectl-debug](platform/hops-kubectl-debug/SKILL.md) — diagnose failed workloads from namespace-scoped pod state, events, and logs.
 - [hops-factory](platform/hops-factory/SKILL.md) — software factories: definitions, cloning, import and export.
 

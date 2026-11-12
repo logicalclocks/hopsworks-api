@@ -7,6 +7,6 @@ FTI stage or data path. The live, canonical list is `hops skills list --bucket p
 - [hops-notebook](hops-notebook/SKILL.md) — Write and run notebook cells on the user's Jupyter kernel.
 - [hops-environments](hops-environments/SKILL.md) — Clone a base Python environment and install custom libraries for jobs/apps/deployments.
 - [hops-ui-navigation](hops-ui-navigation/SKILL.md) — Where things live in the Hopsworks UI: the project sidebar layout and how to reach each page.
-- [hops-collaboration](hops-collaboration/SKILL.md) — Manage project members, administer platform users, and share feature stores/feature groups/features/datasets.
+- [hops-collaboration](hops-collaboration/SKILL.md) — Manage project members, administer platform users, inspect per-namespace compute cost, and share feature stores/feature groups/features/datasets.
 - [hops-kubectl-debug](hops-kubectl-debug/SKILL.md) — Diagnose failed workloads from namespace-scoped pod state, events, and logs.
 - [hops-factory](hops-factory/SKILL.md) — Create, clone, import, export and delete software factories, and write factory definitions.

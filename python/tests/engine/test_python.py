@@ -16,6 +16,7 @@
 import decimal
 import json
 import logging
+import os
 from datetime import date, datetime, timedelta, timezone
 
 import hopsworks_common
@@ -3836,6 +3837,26 @@ class TestPython:
         # Assert
         assert result == file
 
+    def test_add_file_downloads_to_temp_dir(self, mocker):
+        # Arrange
+        python_engine = python.Engine()
+        python_engine._dataset_api = mocker.MagicMock()
+        python_engine._dataset_api.read_content.return_value.content = b"store"
+        name = f"hworks_3521_{os.getpid()}.jks"
+        local_file = os.path.join(constants._temp_dir(), name)
+
+        # Act
+        try:
+            result = python_engine._add_file(file=f"file:///Projects/p/{name}")
+
+            # Assert
+            assert result == local_file
+            with open(local_file, "rb") as f:
+                assert f.read() == b"store"
+        finally:
+            if os.path.exists(local_file):
+                os.remove(local_file)
+
     def test_get_unique_values(self):
         # Arrange
         python_engine = python.Engine()
@@ -4212,7 +4233,9 @@ class TestPython:
 
     def test_materialization_kafka_marks_superseded_rows_offline(self, mocker):
         # Arrange
-        mock_kafka_produce, _ = self._setup_storage_header_mocks(mocker)
+        mock_kafka_produce, mock_create_online_ingestion = (
+            self._setup_storage_header_mocks(mocker)
+        )
         python_engine = python.Engine()
         fg, df, job_mock = self._make_storage_header_fg(mocker)
 
@@ -4224,17 +4247,70 @@ class TestPython:
             storage=None,
         )
 
-        # Assert: both consumers read the rows that go online, so they carry no storage
-        # header; the superseded row is for the materialization job alone.
+        # Assert: both consumers read the rows that go online, so they carry no storage header.
+        # The superseded row is for the materialization job alone, as b"0", which OnlineFS 2.3 skips as well.
+        # It stays out of the online ingestion, which OnlineFS 2.3 would never report it to.
         headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
         assert len(headers) == 4
-        assert [header.get("storage") for header in headers] == [
+        assert [header.get("storage") for header in headers] == [None, b"0", None, None]
+        assert [header.get("onlineIngestionId") for header in headers] == [
+            b"123",
             None,
-            b"offline",
-            None,
-            None,
+            b"123",
+            b"123",
         ]
+        assert mock_create_online_ingestion.call_args[0][1].num_entries == 3
         job_mock.run.assert_called_once()
+
+    def test_materialization_kafka_ingestion_of_expired_rows_only_is_empty(
+        self, mocker
+    ):
+        # Arrange
+        mock_kafka_produce, mock_create_online_ingestion = (
+            self._setup_storage_header_mocks(mocker)
+        )
+        python_engine = python.Engine()
+        fg, df, job_mock = self._make_storage_header_fg(mocker)
+        mocker.patch.object(
+            python_engine, "_mark_online_rows", return_value=[False] * len(df)
+        )
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+            storage=None,
+        )
+
+        # Assert: every row is produced for the offline table, none is counted online.
+        headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
+        assert len(headers) == 4
+        assert all(header["storage"] == b"0" for header in headers)
+        assert all("onlineIngestionId" not in header for header in headers)
+        assert mock_create_online_ingestion.call_args[0][1].num_entries == 0
+        job_mock.run.assert_called_once()
+
+    def test_materialization_kafka_progress_counts_every_produced_row(self, mocker):
+        # Arrange
+        self._setup_storage_header_mocks(mocker)
+        mock_progress = mocker.patch(
+            "hsfs.core.kafka_engine._build_ack_callback_and_optional_progress_bar",
+            return_value=(mocker.Mock(), mocker.Mock()),
+        )
+        python_engine = python.Engine()
+        fg, df, _ = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+            storage=None,
+        )
+
+        # Assert: the superseded row is produced, so the upload progress counts it.
+        assert mock_progress.call_args.kwargs["n_rows"] == 4
 
     def test_materialization_kafka_storage_online(self, mocker):
         # Arrange
@@ -4281,7 +4357,7 @@ class TestPython:
         # ingestion is created for a write that reaches no online store.
         headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
         assert len(headers) == 4
-        assert all(header["storage"] == b"offline" for header in headers)
+        assert all(header["storage"] == b"0" for header in headers)
         assert all("onlineIngestionId" not in header for header in headers)
         mock_create_online_ingestion.assert_not_called()
         job_mock.run.assert_called_once()
@@ -10186,7 +10262,9 @@ class TestPython:
             fg = self._make_fg(
                 primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
             )
-            pdf_ts, pld_ts = self._make_ts_utc([datetime(2000, 1, 1), datetime.now()])
+            pdf_ts, pld_ts = self._make_ts_utc(
+                [datetime(2000, 1, 1), datetime.now(timezone.utc)]
+            )
             if use_polars:
                 df = pl.DataFrame(
                     {"id": [1, 2], "val": ["expired", "fresh"], "ts": pld_ts}
@@ -10263,12 +10341,43 @@ class TestPython:
                 ),
             ],
         )
+        def test_ttl_keeps_row_without_event_time_offline(self, use_polars):
+            # Arrange: a null event time cannot be shown unexpired
+            fg = self._make_fg(
+                primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
+            )
+            pdf_ts, pld_ts = self._make_ts_utc([None, datetime.now(timezone.utc)])
+            if use_polars:
+                df = pl.DataFrame({"id": [1, 2], "ts": pld_ts})
+            else:
+                df = pd.DataFrame({"id": [1, 2], "ts": pdf_ts})
+
+            # Act
+            flags = python.Engine()._mark_online_rows(fg, df)
+
+            # Assert: strict booleans, which the online ingestion count sums
+            assert flags == [False, True]
+
+        @pytest.mark.parametrize(
+            "use_polars",
+            [
+                False,
+                pytest.param(
+                    True,
+                    marks=pytest.mark.skipif(
+                        not HAS_POLARS, reason="polars not installed"
+                    ),
+                ),
+            ],
+        )
         def test_ttl_keeps_all_rows_when_none_expired(self, use_polars):
             # Arrange: all rows are fresh
             fg = self._make_fg(
                 primary_key=["id"], event_time="ts", ttl=3600, ttl_enabled=True
             )
-            pdf_ts, pld_ts = self._make_ts_utc([datetime.now(), datetime.now()])
+            pdf_ts, pld_ts = self._make_ts_utc(
+                [datetime.now(timezone.utc), datetime.now(timezone.utc)]
+            )
             if use_polars:
                 df = pl.DataFrame({"id": [1, 2], "val": ["a", "b"], "ts": pld_ts})
             else:

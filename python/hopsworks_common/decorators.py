@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import copy
 import functools
 import importlib
 import os
@@ -24,12 +25,14 @@ from hopsworks_apigen import also_available_as
 from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
+    HAS_OPENAI,
     HAS_POLARS,
     HAS_PYARROW,
     HAS_PYICEBERG,
     HAS_TRINO,
     confluent_kafka_not_installed_message,
     great_expectations_not_installed_message,
+    openai_not_installed_message,
     polars_not_installed_message,
     pyiceberg_not_installed_message,
     trino_not_installed_message,
@@ -92,7 +95,9 @@ def _catch_not_found(*class_import_paths, fallback_return=None):
                     e.response.status_code in [400, 404]
                     and e.response.json().get("errorCode", "") in not_found_error_codes
                 ):
-                    return fallback_return
+                    # A copy, since the fallback is one object shared by every call: a caller that
+                    # adds to the {} it got back would otherwise change what later calls return.
+                    return copy.copy(fallback_return)
                 raise e
 
         return g
@@ -156,6 +161,16 @@ def _uses_great_expectations(f):
     def g(*args, **kwds):
         if not HAS_GREAT_EXPECTATIONS:
             raise ModuleNotFoundError(great_expectations_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
+
+
+def _uses_openai(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_OPENAI:
+            raise ModuleNotFoundError(openai_not_installed_message)
         return f(*args, **kwds)
 
     return g

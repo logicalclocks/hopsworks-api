@@ -82,6 +82,8 @@ def agent_info(ctx: click.Context, name: str) -> None:
         ["Serving tool", getattr(agent, "serving_tool", "-")],
         ["Model server", getattr(agent, "model_server", "-")],
         ["API protocol", getattr(agent, "api_protocol", "-")],
+        ["Framework", _predictor_attr(agent, "agent_framework", None) or "-"],
+        ["Chat contract", _chat_protocol(agent) or "auto-detect"],
         ["Description", getattr(agent, "description", "-") or "-"],
         ["Status", _deployment_status(agent)],
     ]
@@ -116,6 +118,22 @@ def agent_info(ctx: click.Context, name: str) -> None:
     help="Memory limit in MB; the platform default otherwise. An agent that loads "
     "a model (e.g. torch and an embedder) needs more than the default 1 GB.",
 )
+@click.option(
+    "--framework",
+    type=click.Choice(
+        ["langgraph", "llamaindex", "openai_agents", "claude_agents", "custom"]
+    ),
+    default=None,
+    help="Agent framework, which picks the tracing instrumentation; read from "
+    "AgentApp(framework=...) in ENTRY when omitted.",
+)
+@click.option(
+    "--chat-contract",
+    type=click.Choice(["hopsworks", "openai"]),
+    default=None,
+    help="How the chat panel talks to the agent; a new AgentApp agent gets "
+    "'hopsworks' when omitted, an existing agent keeps its contract.",
+)
 @click.pass_context
 def agent_create(
     ctx: click.Context,
@@ -126,6 +144,8 @@ def agent_create(
     upload_dir: str,
     description: str | None,
     memory: int | None,
+    framework: str | None,
+    chat_contract: str | None,
 ) -> None:
     """Create (or update) an agent from a local script or package.
 
@@ -144,6 +164,8 @@ def agent_create(
         upload_dir: HopsFS upload directory.
         description: Description string.
         memory: Memory limit in MB.
+        framework: Agent framework.
+        chat_contract: Chat contract protocol.
     """
     ms = _get_model_serving(ctx)
     try:
@@ -155,6 +177,8 @@ def agent_create(
             upload_dir=upload_dir,
             description=description,
             resources=_memory_limit(memory),
+            framework=framework,
+            chat_config=chat_contract,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
@@ -455,6 +479,12 @@ def _get_model_serving(ctx: click.Context) -> Any:
     return project.get_model_serving()
 
 
+def _chat_protocol(agent: Any) -> str | None:
+    """The protocol of the agent's stored chat contract, if it has one."""
+    config = _predictor_attr(agent, "chat_config", None)
+    return config.get("protocol") if isinstance(config, dict) else None
+
+
 def _memory_limit(memory: int | None) -> Any:
     """The predictor resources with this memory limit, the rest at their defaults."""
     if memory is None:
@@ -494,6 +524,21 @@ def _predictor_attr(d: Any, attr: str, default: Any) -> Any:
 
 
 def _deployment_status(d: Any) -> str:
+    """Whether the agent is running, which has to be asked for rather than read.
+
+    A deployment's state is not an attribute on the object: `get_state()` fetches
+    it. Reading `status`/`deployment_state`/`_state` off a deployment that had not
+    been asked found nothing every time, so `hops agent info` printed `Status -`
+    for a pod that was running and answering -- the one line anybody runs the
+    command for. The attributes stay as a fallback for an object that carries one.
+    """
+    try:
+        state = d.get_state()
+    except Exception:  # noqa: BLE001 -- a status we cannot fetch is not a failed command
+        state = None
+    status = getattr(state, "status", None)
+    if status:
+        return str(status)
     for attr in ("status", "deployment_state", "_state"):
         value = getattr(d, attr, None)
         if value:
@@ -538,6 +583,8 @@ def _agent_to_dict(d: Any) -> dict[str, Any]:
         "serving_tool": getattr(d, "serving_tool", None),
         "model_server": getattr(d, "model_server", None),
         "api_protocol": getattr(d, "api_protocol", None),
+        "agent_framework": _predictor_attr(d, "agent_framework", None),
+        "chat_config": _predictor_attr(d, "chat_config", None),
         "description": getattr(d, "description", None),
         "status": _deployment_status(d),
     }

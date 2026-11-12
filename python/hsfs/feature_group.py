@@ -3876,6 +3876,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.SqlConnector.ORACLE,
                 sc.SqlConnector.CLICKHOUSE,
                 sc.SqlConnector.TERADATA,
+                sc.SqlConnector.SQLSERVER,
             ]
         )
         supported_sink_connector = (
@@ -3889,6 +3890,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.StorageConnector.REDSHIFT,
                 sc.StorageConnector.BIGQUERY,
                 sc.StorageConnector.MONGODB,
+                sc.StorageConnector.HOPSWORKS,
             ]
         ) or supported_sql_connector
 
@@ -3912,8 +3914,8 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
                 "Supported connector types: CRM, GOOGLE_SHEETS, REST, SNOWFLAKE, REDSHIFT, "
-                "BIGQUERY, MONGODB, and SQL connectors with database_type MYSQL, POSTGRESQL, "
-                "ORACLE, CLICKHOUSE, or TERADATA."
+                "BIGQUERY, MONGODB, HOPSWORKS, and SQL connectors with database_type MYSQL, POSTGRESQL, "
+                "ORACLE, CLICKHOUSE, TERADATA, or SQLSERVER."
             )
 
         # CRM/Google Sheets/REST connectors always have sink enabled.
@@ -4010,6 +4012,7 @@ class FeatureGroup(FeatureGroupBase):
         read_options: dict | None = None,
         start_time: str | int | datetime | date | None = None,
         end_time: str | int | datetime | date | None = None,
+        limit: int | None = None,
     ) -> (
         pd.DataFrame
         | np.ndarray
@@ -4038,6 +4041,12 @@ class FeatureGroup(FeatureGroupBase):
             ```python
             fg = fs.get_or_create_feature_group(...)
             fg.read("2020-10-20 07:34:11")
+            ```
+
+        Example: Reading the first rows of a large feature group
+            ```python
+            fg = fs.get_or_create_feature_group(...)
+            fg.read(limit=50)
             ```
 
         Example: Reading feature group with time-based filtering on event_time:
@@ -4116,6 +4125,10 @@ class FeatureGroup(FeatureGroupBase):
                 or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
                 Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
 
+            limit:
+                The most rows to read; `None` reads them all.
+                The Hopsworks Query Service stops after this many rows, so reading the first rows of a large feature group stays fast.
+
         Returns:
             A dataframe in the requested format containing the feature group data.
             Possible types are Spark DataFrame, Pandas DataFrame, Polars DataFrame, NumPy ndarray, or Python list.
@@ -4181,6 +4194,8 @@ class FeatureGroup(FeatureGroupBase):
             )
             query = query.filter(time_filter)
 
+        if limit is not None:
+            query = query.limit(limit)
         return query.read(online, dataframe_type, read_options or {})
 
     @public
@@ -6658,6 +6673,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         read_options: dict[str, Any] | None = None,
         start_time: str | int | datetime | date | None = None,
         end_time: str | int | datetime | date | None = None,
+        limit: int | None = None,
         *,
         force_vended: bool = False,
     ) -> (
@@ -6734,6 +6750,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
                 `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d %H:%M:%S.%f`,
                 or ISO-8601 UTC `%Y-%m-%dT%H:%M:%S.%fZ` (e.g. `2026-01-01T00:00:00.000000Z`).
                 Scheduler-injected `HOPS_START_TIME` / `HOPS_END_TIME` use the ISO-8601 form.
+            limit:
+                The most rows to read; `None` reads them all.
             force_vended:
                 For Unity Catalog-backed external feature groups read with Spark: skip the
                 Databricks-runtime auto-detection and always resolve vended S3 credentials
@@ -6775,7 +6793,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
         ):
             uc_df = self._maybe_read_unity_catalog_via_spark(force_vended=force_vended)
             if uc_df is not None:
-                return uc_df
+                return uc_df if limit is None else uc_df.limit(limit)
 
         if (
             engine._get_type() == "python"
@@ -6814,6 +6832,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
             )
             query = query.filter(time_filter)
 
+        if limit is not None:
+            query = query.limit(limit)
         return query.read(
             dataframe_type=dataframe_type,
             online=online,
