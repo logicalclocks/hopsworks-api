@@ -1340,8 +1340,8 @@ class FakeSuperset:
         self.next_id = 100
         self.databases = [{"id": 3, "database_name": "Trino"}]
         self.datasets, self.charts, self.dashboards = {}, {}, {}
-        # Superset's combined list of datasets and semantic views.
-        self.datasources = {}
+        # The Superset user the program runs as, <project>__<username>_superset.
+        self.me = "p__alice_superset"
         self.refreshed = []
         # Superset 6 served dashboards under /superset/dashboard/.
         self.dashboard_route = "/dashboard/"
@@ -1351,6 +1351,8 @@ class FakeSuperset:
         return self.next_id
 
     def _request(self, method, path):
+        if path == "/api/v1/me/":
+            return {"result": {"username": self.me}}
         if method == "PUT":
             self.refreshed.append(
                 int(re.match(r"/api/v1/dataset/(\d+)/refresh", path)[1])
@@ -1358,10 +1360,10 @@ class FakeSuperset:
             return {}
         resource, page = re.match(r"/api/v1/(\w+)/\?q=\(page:(\d+)", path).groups()
         store = {
+            "database": {db["id"]: db for db in self.databases},
             "dataset": self.datasets,
             "chart": self.charts,
             "dashboard": self.dashboards,
-            "datasource": self.datasources,
         }[resource]
         items = list(store.values())[int(page) * 100 : (int(page) + 1) * 100]
         return {"result": [dict(i) for i in items]}
@@ -1512,6 +1514,7 @@ class FakeSemanticLayer:
     def __init__(self):
         self.compiled = "SELECT revenue FROM build_1"
         self.calls = []
+        self.explored = []
 
     def get_project(self, name):
         if name != "sales":
@@ -1519,9 +1522,16 @@ class FakeSemanticLayer:
         layer = self
 
         class Project:
+            id = 7
+
             def sql(self, metrics, group_by=None):
                 layer.calls.append((metrics, group_by))
                 return layer.compiled
+
+            def explore_url(self, metric):
+                # Hopsworks creates or refreshes the caller's dataset of the metrics table here.
+                layer.explored.append(metric)
+                return f"https://host/explore/{metric}"
 
         return Project()
 
@@ -1595,45 +1605,73 @@ def test_a_metric_dataset_on_an_unknown_semantic_project_fails_the_run():
         program.build(api, "p", FakeSemanticLayer())
 
 
+SALES_METRICS = {
+    "name": "sales_metrics",
+    "semantic_project": "sales",
+    "metric": "revenue",
+}
+
+
 def _revenue_chart():
     return {
         "slice_name": "Revenue",
-        "semantic_view": "sales",
+        "dataset": "sales_metrics",
         "viz_type": "echarts_timeseries_line",
         "params": {
-            "x_axis": "metric_time",
+            "x_axis": "metric_time__day",
             "time_grain_sqla": "P1M",
             "metrics": ["revenue"],
         },
     }
 
 
-def test_a_chart_on_a_semantic_view_reads_the_view_by_its_integer_id():
-    program, api = _dashboard_program(), FakeSuperset()
-    api.datasources = {
-        7: {"id": 7, "kind": "virtual", "table_name": "sales"},
-        8: {"id": 8, "kind": "semantic_view", "table_name": "sales"},
+def _semantic_connections(api):
+    # Alice's connection to the sales semantic project (id 7), and Bob's, which an admin sees too.
+    api.databases += [
+        {"id": 9, "database_name": "Semantic_sales__p__alice_superset"},
+        {"id": 10, "database_name": "Semantic_sales__p__bob_superset"},
+    ]
+    api.datasets[50] = {
+        "id": 50,
+        "table_name": "metrics",
+        "schema": "7",
+        "database": {"id": 10},
     }
+    api.datasets[51] = {
+        "id": 51,
+        "table_name": "metrics",
+        "schema": "7",
+        "database": {"id": 9},
+    }
+
+
+def test_a_chart_of_metrics_reads_the_callers_dataset_on_their_own_connection():
+    program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    _semantic_connections(api)
+    program.SEMANTIC_DATASETS = [SALES_METRICS]
     program.CHARTS = [program.CHARTS[0], _revenue_chart()]
 
-    program.build(api, "p")
+    program.build(api, "p", semantic)
 
     charts = {c["slice_name"]: c for c in api.charts.values()}
-    assert charts["Revenue"]["datasource_id"] == 8
-    assert charts["Revenue"]["datasource_type"] == "semantic_view"
+    assert charts["Revenue"]["datasource_id"] == 51
+    assert charts["Revenue"]["datasource_type"] == "table"
     assert json.loads(charts["Revenue"]["params"])["metrics"] == ["revenue"]
-    assert charts["Total Customers"]["datasource_type"] == "table"
-    assert len(api.datasets) == 1
+    assert semantic.explored == ["revenue"]
+
+    program.delete(api, "p")
+    assert {50, 51} <= set(api.datasets), "Hopsworks' datasets are not the program's"
 
 
-def test_a_missing_semantic_view_fails_before_the_dashboard_changes():
+def test_without_a_semantic_connection_the_dashboard_is_left_as_it_was():
     program, api = _dashboard_program(), FakeSuperset()
     dashboard = program.build(api, "p")
     charts = set(api.charts)
+    program.SEMANTIC_DATASETS = [SALES_METRICS]
     program.CHARTS = [*program.CHARTS, _revenue_chart()]
 
-    with pytest.raises(RuntimeError, match="No semantic view named sales"):
-        program.build(api, "p")
+    with pytest.raises(RuntimeError, match="No Superset connection of yours to sales"):
+        program.build(api, "p", FakeSemanticLayer())
 
     assert set(api.charts) == charts
     assert set(api.dashboards) == {dashboard}

@@ -48,7 +48,7 @@ Compile errors: `EXPORT_AS` (not `table`), `EXPORT_TARGET` (an invalid or duplic
    Groups that vanished from the window are removed, rows before it are kept, and an empty result empties the window.
    A `metric_time` at a custom granularity cannot be truncated, so such a run replaces every row and says so.
 
-The job runs as the semantic project's creator, who must be a Data Owner of the project; otherwise the export is `OWNER_NOT_DATA_OWNER` and has no job.
+The job runs as the semantic project's creator, who must be a Data Owner of the project whose project role allows Semantic layer: Run exports; otherwise the export is `OWNER_NOT_DATA_OWNER` and has no job.
 Runs of one export never overlap.
 
 ## Answered from the export
@@ -80,6 +80,6 @@ execution = sales.run_export("revenue_by_country_daily", wait=True)
 | `FAILED` | The query or the write failed; `last_message` has the error | Fix the cause, run again |
 | `TRUNCATED` | The result reached the gateway's row cap | Fewer group-bys, a coarser grain, or a filter |
 | `TARGET_EXISTS` | Another feature group has the target name and version | Delete it, or change `alias` or `version` |
-| `OWNER_NOT_DATA_OWNER` | The semantic project's creator is not a Data Owner | Make them one, or recreate the project as a Data Owner |
+| `OWNER_NOT_DATA_OWNER` | The semantic project's creator is not a Data Owner, or their custom project role removes Semantic layer: Run exports | Give them a role that allows it, or recreate the project as such a Data Owner |
 | `JOB_ERROR` | Hopsworks could not create or update the export's job | `last_message` |
 | `DISABLED` | `enabled: false` | |

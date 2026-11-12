@@ -592,8 +592,8 @@ class SemanticLayerTools:
     ) -> Dashboard:
         """Build a Superset dashboard of the metrics, owned by the logged-in user, and return its URL.
 
-        It needs Superset 7.0 with semantic dashboards on. The charts read the metric definitions through the semantic project's view: a line chart per metric over metric_time, a big number for the first metric, a breakdown table and native filters. A dashboard of the same title the user owns is updated in place, keeping its id and URL.
-        Only a failure with code 600014 (SEMANTIC_LAYER_DASHBOARDS_DISABLED) means semantic dashboards are not available here, as on Superset 6; report any other failure, 600015 (Superset did not answer) included, as an error.
+        It needs Superset 7.0 with semantic dashboards on. The charts read the user's own Superset connection to the semantic project, which runs them as metric queries with the user's access: a line chart per metric over metric_time, a big number for the first metric, a breakdown table and native filters. A dashboard of the same title the user owns is updated in place, keeping its id and URL.
+        Only a failure with code 600014 (SEMANTIC_LAYER_DASHBOARDS_DISABLED) means semantic dashboards are not available here; report any other failure, 600015 (Superset did not answer) included, as an error.
 
         Parameters:
             semantic_project: Name of the semantic project.

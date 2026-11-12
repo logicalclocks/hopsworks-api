@@ -280,7 +280,7 @@ class SemanticExport:
     `schedule` is a Quartz cron expression, `None` to run only through [`SemanticProject.run_export`][hopsworks_common.semantic_layer.SemanticProject.run_export].
     `lookback`, such as `7 days`, makes each run replace only the rows whose `metric_time` is at or after the run's logical time minus the lookback, truncated to the `metric_time` grain; without it a run replaces every row.
     Either way the run computes the whole saved query and replaces the rows in one commit, keeping the feature group and its id.
-    `last_status` is `NEVER_RUN`, `RUNNING`, `SUCCEEDED`, `FAILED`, `TRUNCATED` (the result reached the gateway's row cap, so it may be incomplete and nothing was written), `TARGET_EXISTS`, `OWNER_NOT_DATA_OWNER` (the semantic project's creator is not a Data Owner, so the export has no job), `JOB_ERROR` or `DISABLED`, and `last_message` says more.
+    `last_status` is `NEVER_RUN`, `RUNNING`, `SUCCEEDED`, `FAILED`, `TRUNCATED` (the result reached the gateway's row cap, so it may be incomplete and nothing was written), `TARGET_EXISTS`, `OWNER_NOT_DATA_OWNER` (the semantic project's creator is not a Data Owner, or their project role does not allow Semantic layer: Run exports, so the export has no job), `JOB_ERROR` or `DISABLED`, and `last_message` says more.
     `last_rows` is the number of rows the last run wrote.
     """
 
@@ -1143,12 +1143,12 @@ class SemanticProject:
         title: str | None = None,
         saved_query: str | None = None,
     ) -> dict[str, Any]:
-        """Build a Superset dashboard of the metrics, owned by the caller, over this semantic project's view in Superset 7.0.
+        """Build a Superset dashboard of the metrics, owned by the caller, on the caller's own Superset connection to this semantic project.
 
-        The charts read the metric definitions through the view, so they show the numbers [`query`][hopsworks_common.semantic_layer.SemanticProject.query] returns.
+        The charts read a dataset of the semantic project's `metrics` table on that connection, which runs each chart as a metric query with the caller's access, so they show the numbers [`query`][hopsworks_common.semantic_layer.SemanticProject.query] returns.
         The dashboard has a line chart of each metric over `metric_time`, a big number with a trendline for the first metric, a table broken down by a dimension, and native filters.
         A dashboard of the same title that the caller owns is updated in place, keeping its id and URL, so calling this again does not duplicate it.
-        A dashboard from a saved query is built on the saved query's own view, `<semantic project>.<saved query>`, with its metrics and group-bys.
+        A dashboard from a saved query is built on the saved query's own table on the connection, with its metrics and group-bys.
 
         Parameters:
             metrics: Metric names, one to eight; leave them out with `saved_query`.
@@ -1194,9 +1194,9 @@ class SemanticProject:
     @public
     @usage._method_logger
     def explore_url(self, metric: str) -> str:
-        """A link that opens the metric in Superset's Explore view as a line chart over `metric_time`, read through this semantic project's view.
+        """A link that opens the metric in Superset's Explore view as a line chart over `metric_time`, on the caller's own Superset connection to this semantic project.
 
-        Nothing is saved in Superset until the chart is saved there.
+        It creates the caller's dataset of the semantic project's `metrics` table on that connection, or refreshes its columns and metrics; no chart is saved until the caller saves one in Superset.
 
         Parameters:
             metric: Name of the metric.

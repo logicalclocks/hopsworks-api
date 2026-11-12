@@ -1,12 +1,12 @@
 ---
 name: hops-semantic-views
-description: Use when creating or reshaping a semantic view on Hopsworks, the semantic project that agents and Superset 7.0 users read to answer questions with metrics. Scope it to one business domain and the questions it answers, compose it from semantic models joined through entities, metrics built on metrics (ratio, derived, nested derived, across models) and saved queries, scaffold it from only the feature groups those need, keep it under 100k tokens so it does not swamp an agent's context window, measure it, and split one that grew too large. Auto-invoke for a semantic view, a metric view, a semantic project meant for agents, model, metric or query composition, joins across semantic models, or metric and dimension lists that come back cut. Input the questions and the feature groups that hold the data; output a compiled semantic project sized for agents.
+description: Use when creating or reshaping a semantic view on Hopsworks, the semantic project that agents and Superset users read to answer questions with metrics. Scope it to one business domain and the questions it answers, compose it from semantic models joined through entities, metrics built on metrics (ratio, derived, nested derived, across models) and saved queries, scaffold it from only the feature groups those need, keep it under 100k tokens so it does not swamp an agent's context window, measure it, and split one that grew too large. Auto-invoke for a semantic view, a metric view, a semantic project meant for agents, model, metric or query composition, joins across semantic models, or metric and dimension lists that come back cut. Input the questions and the feature groups that hold the data; output a compiled semantic project sized for agents.
 ---
 
 # Semantic Views on Hopsworks
 
 A semantic view is one semantic project: the semantic models, metrics and saved queries that one set of questions needs.
-Hopsworks serves it to agents through the `hops semantic` CLI and the MCP tools, and to Superset 7.0 as one semantic view per semantic project plus one per saved query, named `<semantic project>.<saved query>`.
+Hopsworks serves it to agents through the `hops semantic` CLI and the MCP tools, and to Superset as each member's own database connection to the semantic project, with a `metrics` table and one table per saved query.
 The YAML format, compiling and querying are in [hops-semantic](../hops-semantic/SKILL.md); this skill covers what goes in a view and how large it may get.
 
 ## Contract
@@ -80,7 +80,7 @@ Composition keeps a view small: one shared `customers` model reached through the
 - **Entities only for the joins the view uses.**
 - **One metric per measure and filter that matters.** `revenue` grouped by `customer__region` answers what `revenue_eu` and `revenue_us` would, at a fraction of the listing.
 - **Short labels, one-sentence descriptions.** A description that restates the name costs tokens and tells the agent nothing; one that says the unit, the filter and when to use the metric earns its place.
-- **Saved queries for the most-asked questions.** An agent runs one by name with `query_saved_query`, without discovering group-bys first, and Superset gets a view of it.
+- **Saved queries for the most-asked questions.** An agent runs one by name with `query_saved_query`, without discovering group-bys first, and Superset gets a table of it.
 
 ## Exports for agents
 
@@ -111,5 +111,5 @@ Point feature views, models and pipelines at the export's feature group rather t
 
 ## Related skills
 - [hops-semantic](../hops-semantic/SKILL.md): the YAML, metric types, compiling, querying and tags.
-- [hops-superset](../../dashboards/hops-superset/SKILL.md): dashboards over the view in Superset 7.0.
+- [hops-superset](../../dashboards/hops-superset/SKILL.md): dashboards on the semantic project's tables in Superset.
 - [hops-analytics](../hops-analytics/SKILL.md): gold data marts, one semantic project each.

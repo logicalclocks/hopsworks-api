@@ -311,14 +311,14 @@ Semantic projects and metrics carry schematised tags (`hops semantic tag set|lis
 
 ## Dashboards
 
-On Superset 7.0, Hopsworks builds a dashboard of metrics over the semantic project's view in Superset, owned by the caller, from an external client too; a rerun with the same title updates it:
+Hopsworks builds a dashboard of metrics on the caller's own Superset connection to the semantic project, owned by the caller, from an external client too; a rerun with the same title updates it:
 
 ```bash
 hops semantic dashboard sales --metrics revenue,orders --group-by customer__country --title "Sales overview"   # prints its URL
-hops semantic dashboard sales --saved-query revenue_by_country   # over the saved query's view, sales.revenue_by_country
+hops semantic dashboard sales --saved-query revenue_by_country   # over the saved query's table on the connection
 ```
 
-The SDK's `create_dashboard` and `explore_url`, the charts, the errors that mean Superset 6, and other charts of metrics: [hops-superset/references/semantic_layer.md](../../dashboards/hops-superset/references/semantic_layer.md).
+The SDK's `create_dashboard` and `explore_url`, the charts, the errors that mean no semantic connection, and other charts of metrics: [hops-superset/references/semantic_layer.md](../../dashboards/hops-superset/references/semantic_layer.md).
 
 ## Agent tools
 

@@ -1242,7 +1242,7 @@ def query_cmd(
 @click.option(
     "--saved-query",
     "saved_query",
-    help="Chart a saved query's metrics and group-bys, over its own view, instead of "
+    help="Chart a saved query's metrics and group-bys, over its own table, instead of "
     "--metrics and --group-by.",
 )
 @click.option(
@@ -1260,7 +1260,7 @@ def dashboard_cmd(
     saved_query: str | None,
     title: str | None,
 ) -> None:
-    """Build a Superset dashboard of metrics, or of a saved query, over the semantic project's view, and print its URL.
+    """Build a Superset dashboard of metrics, or of a saved query, on your Superset connection to the semantic project, and print its URL.
 
     Needs Superset 7.0 with semantic dashboards on. The dashboard has a line chart per
     metric over metric_time, a big number for the first metric, a breakdown table and

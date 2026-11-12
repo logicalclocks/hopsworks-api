@@ -249,9 +249,10 @@ When a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md))
 defines the metric a chart shows, chart it from the semantic layer instead of deriving it
 again from the feature group: the definition holds the joins, filters and
 aggregation its owners agreed on, so every dashboard shows the same number.
-On Superset 7.0, `hops semantic dashboard` builds a dashboard of metrics and other
-charts read the project's semantic view; on Superset 6, a chart reads a dataset over
-the metric's SQL. Which Superset answers, and the rules for each, are in
+Each Data owner and Data scientist has their own Superset connection to each semantic
+project: `hops semantic dashboard` builds a dashboard of metrics on it, and other charts
+read a dataset of its `metrics` table. Where Superset has no such connection, a chart reads
+a dataset over the metric's SQL. How to tell, and the rules for each, are in
 [references/semantic_layer.md](references/semantic_layer.md).
 
 ---
@@ -478,8 +479,8 @@ only metrics needs no program: `hops semantic dashboard` builds it (§2).
 - An ML system's dashboard (the app phase of `/hops-build`) keeps its program in
   the system's repository, under `<slug>/dashboards/`, instead of the user's home.
 - **Metric charts** ([references/semantic_layer.md](references/semantic_layer.md)):
-  on Superset 7.0 a chart names `"semantic_view": "<semantic project>"` and reads
-  the view; on Superset 6 it names a `METRIC_DATASETS` entry as its `dataset`.
+  a chart names a `SEMANTIC_DATASETS` entry as its `dataset`, the caller's dataset of the
+  semantic project's metrics; without a semantic connection, a `METRIC_DATASETS` entry.
 
 ```bash
 python ~/dashboards/customers-overview.py            # create or update, prints the URL
@@ -510,7 +511,6 @@ a chart that still fails is dropped from `CHARTS` with a line saying why.
 | Bars come out unsorted | `x_axis_sort` doesn't match a metric label | Make `x_axis_sort` equal to the metric's `label` field |
 | Time-series bar shows one bar | X axis is a string but `x_axis_force_categorical` missing | Add `x_axis_force_categorical: true` |
 | Auth error from `api._request` | Session expired across long runs | Re-fetch `project.get_superset_api()` |
-| 500 `Adhoc dimensions are not supported in Semantic Views.` | A semantic view chart's BASE_AXIS column lacks `isColumnReference` | Add `"isColumnReference": true` to it |
 
 ---
 
