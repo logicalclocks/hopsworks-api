@@ -562,6 +562,45 @@ public class TestStorageConnector {
     }
 
     @Test
+    void testS3EndpointBucketDoesNotInheritATemporaryProvider() throws IOException, FeatureStoreException {
+      // s3Connector carries a session token, so it installs the temporary provider globally, as an IAM role does.
+      SparkEngine.getInstance().setupConnectorHadoopConf(s3Connector);
+      StorageConnector.S3Connector connector = endpointConnector("ecs-own-provider", "https://s3.example.com:9021");
+
+      SparkEngine.getInstance().setupConnectorHadoopConf(connector);
+
+      SparkContext sc = SparkEngine.getInstance().getSparkSession().sparkContext();
+      Assertions.assertEquals(Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER,
+          sc.hadoopConfiguration().get(Constants.S3_CREDENTIAL_PROVIDER_ENV));
+      Assertions.assertEquals(Constants.S3_SIMPLE_CREDENTIAL_PROVIDER,
+          sc.hadoopConfiguration().get("fs.s3a.bucket.ecs-own-provider.aws.credentials.provider"));
+    }
+
+    @Test
+    void testOneStorePerBucketName() throws IOException, FeatureStoreException {
+      SparkEngine.getInstance().setupConnectorHadoopConf(endpointConnector("shared", "https://s3.example.com:9021"));
+      SparkEngine.getInstance().setupConnectorHadoopConf(endpointConnector("shared", "https://s3.example.com:9021"));
+
+      FeatureStoreException e = Assertions.assertThrows(FeatureStoreException.class,
+          () -> SparkEngine.getInstance().setupConnectorHadoopConf(endpointConnector("shared", null)));
+      Assertions.assertTrue(e.getMessage().contains("already uses that bucket name on https://s3.example.com:9021"),
+          e.getMessage());
+    }
+
+    private StorageConnector.S3Connector endpointConnector(String bucket, String endpoint) {
+      StorageConnector.S3Connector connector = new StorageConnector.S3Connector();
+      connector.setStorageConnectorType(StorageConnectorType.S3);
+      connector.setName(bucket + "_source");
+      connector.setBucket(bucket);
+      connector.setRegion("us-east-1");
+      connector.setAccessKey("ak");
+      connector.setSecretKey("sk");
+      connector.setEndpoint(endpoint);
+      connector.setPathStyleAccess(endpoint != null);
+      return connector;
+    }
+
+    @Test
     void testDefaultPathS3() throws FeatureStoreException, IOException {
       // Arrange
       StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
