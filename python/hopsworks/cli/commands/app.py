@@ -637,37 +637,49 @@ def _get_app(ctx: click.Context, name: str) -> Any:
 
 def _start(a: Any, await_serving: bool = True) -> None:
     try:
-        a.run(await_serving=await_serving)
+        with output.sdk_quiet():
+            a.run(await_serving=await_serving)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Start failed: {exc}") from exc
     url = getattr(a, "app_url", None)
     state = getattr(a, "state", "-")
     serving = getattr(a, "serving", False)
+    name = getattr(a, "name", "?")
     output.success(
         "✓ Started app %s (state=%s, serving=%s)",
-        getattr(a, "name", "?"),
+        name,
         state,
         "yes" if serving else "no",
     )
-    if url:
+    if output.JSON_MODE:
+        output.print_json(
+            {"name": name, "state": state, "serving": bool(serving), "url": url}
+        )
+    elif url:
         click.echo(url)
 
 
 def _redeploy(a: Any, await_serving: bool = True) -> None:
     try:
-        a.redeploy(await_serving=await_serving)
+        with output.sdk_quiet():
+            a.redeploy(await_serving=await_serving)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Redeploy failed: {exc}") from exc
     url = getattr(a, "app_url", None)
     state = getattr(a, "state", "-")
     serving = getattr(a, "serving", False)
+    name = getattr(a, "name", "?")
     output.success(
         "✓ Redeployed app %s (state=%s, serving=%s)",
-        getattr(a, "name", "?"),
+        name,
         state,
         "yes" if serving else "no",
     )
-    if url:
+    if output.JSON_MODE:
+        output.print_json(
+            {"name": name, "state": state, "serving": bool(serving), "url": url}
+        )
+    elif url:
         click.echo(url)
 
 
