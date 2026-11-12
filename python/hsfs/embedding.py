@@ -247,6 +247,10 @@ class EmbeddingIndex:
         col_prefix:
             The prefix to be added to column names when using project index.
             It is managed by Hopsworks and should not be provided.
+        fenced:
+            Whether the feature group is written only by its writer job, under a writer fence.
+            Hopsworks names the index of a fenced feature group, so it takes no `index_name`.
+            Its deletes leave tombstones, which reads leave out.
 
     Example:
         ```python
@@ -261,8 +265,10 @@ class EmbeddingIndex:
         index_name: str | None = None,
         features: list[EmbeddingFeature] | None = None,
         col_prefix: str | None = None,
+        fenced: bool | None = None,
     ):
         self._index_name = index_name
+        self._fenced = fenced
         if features is None:
             self._features = {}
         else:
@@ -359,6 +365,7 @@ class EmbeddingIndex:
                 for f in json_decamelized.get("features")
             ],
             col_prefix=json_decamelized.get("col_prefix"),
+            fenced=json_decamelized.get("fenced"),
         )
 
     @public
@@ -388,6 +395,12 @@ class EmbeddingIndex:
         """The prefix to be added to column names."""
         return self._col_prefix
 
+    @public
+    @property
+    def fenced(self) -> bool:
+        """Whether the feature group is written under a writer fence; its deletes leave tombstones."""
+        return bool(self._fenced)
+
     def json(self):
         """Serialize the EmbeddingIndex object to a JSON string."""
         return json.dumps(self, cls=util.Encoder)
@@ -398,11 +411,14 @@ class EmbeddingIndex:
         Returns:
             A dictionary representation of the EmbeddingIndex object.
         """
-        return {
+        out = {
             "indexName": self._index_name,
             "features": [feature.to_dict() for feature in self._features.values()],
             "colPrefix": self._col_prefix,
         }
+        if self._fenced is not None:
+            out["fenced"] = self._fenced
+        return out
 
     def __repr__(self):
         return self.json()

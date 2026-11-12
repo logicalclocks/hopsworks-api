@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import operator
 import time
 import warnings
 from datetime import datetime, timezone
@@ -84,6 +85,14 @@ if TYPE_CHECKING:
 _STORAGE_ONLINE = "online"
 _STORAGE_OFFLINE = "offline"
 _STORAGE_OFFLINE_HEADER = b"0"
+# endregion
+
+# region Writer fence
+# A fenced write (write option `writer_epoch`, the epoch a claim of the feature group returned) carries the epoch
+# on every record as the `writerEpoch` header. A fence record (`type` header `fence`, no value) is sent to every
+# partition of the topic at claim time; OnlineFS drops a fenced group's records that follow a fence of a higher
+# epoch in their partition, and keeps the fence beside its saved offset.
+WRITER_EPOCH_OPTION = "writer_epoch"
 # endregion
 
 
@@ -211,6 +220,10 @@ def _get_headers(
     elif storage is not None:
         headers["storage"] = storage.encode("utf8")
 
+    epoch = _writer_epoch(options)
+    if epoch is not None:
+        headers["writerEpoch"] = str(epoch).encode("utf8")
+
     online_ingestion_options = (
         options.get("online_ingestion_options") if options else None
     )
@@ -229,6 +242,83 @@ def _get_headers(
         headers["onlineIngestionId"] = str(online_ingestion_instance.id).encode("utf8")
 
     return headers
+
+
+def _writer_epoch(options: dict[str, Any] | None) -> int | None:
+    """The writer epoch of a fenced write, from its write options; None for an unfenced write."""
+    epoch = (options or {}).get(WRITER_EPOCH_OPTION)
+    if epoch is None:
+        return None
+    try:
+        value = operator.index(epoch)
+    except TypeError:
+        value = 0
+    if isinstance(epoch, bool) or value < 1:
+        raise FeatureStoreException(
+            f"Write option {WRITER_EPOCH_OPTION} must be a positive integer, not {epoch!r}."
+        )
+    return value
+
+
+def _fence_headers(
+    feature_group: FeatureGroup | ExternalFeatureGroup, epoch: int
+) -> dict[str, bytes]:
+    """Headers of a fence record of `feature_group` at `epoch`.
+
+    `storage` is online so the offline materialization jobs reading the shared topic skip it.
+    """
+    return {
+        "type": b"fence",
+        "writerEpoch": str(int(epoch)).encode("utf8"),
+        "featureGroupId": str(feature_group._id).encode("utf8"),
+        "projectId": str(feature_group.feature_store.project_id).encode("utf8"),
+        "storage": _STORAGE_ONLINE.encode("utf8"),
+    }
+
+
+@_uses_confluent_kafka
+def _produce_fence(
+    feature_group: FeatureGroup | ExternalFeatureGroup,
+    epoch: int,
+    options: dict[str, Any] | None = None,
+    timeout_s: float = 30,
+) -> list[int]:
+    """Send one fence record at `epoch` to every partition of the group's online topic; the partitions fenced.
+
+    Each record names its partition explicitly, so every partition gets one whatever the keys of the data.
+    Raises when the topic has no partitions or a record is not delivered within `timeout_s`.
+    """
+    producer = _init_kafka_producer(feature_group.feature_store_id, options or {})
+    topic = feature_group._online_topic_name
+    metadata = producer.list_topics(topic, timeout=timeout_s).topics.get(topic)
+    if metadata is None or metadata.error is not None or not metadata.partitions:
+        raise FeatureStoreException(
+            f"Could not read the partitions of topic '{topic}' of feature group "
+            f"{feature_group.name}: {getattr(metadata, 'error', None) or 'no partitions'}."
+        )
+    partitions = sorted(metadata.partitions)
+    headers = _fence_headers(feature_group, epoch)
+    failed: list[str] = []
+
+    def acked(err: KafkaError | None, msg: Any) -> None:
+        if err is not None:
+            failed.append(f"partition {msg.partition()}: {err}")
+
+    for partition in partitions:
+        producer.produce(
+            topic=topic,
+            partition=partition,
+            value=None,
+            headers=headers,
+            on_delivery=acked,
+        )
+    left = producer.flush(timeout_s)
+    if left or failed:
+        raise FeatureStoreException(
+            f"Fence records of feature group {feature_group.name} at epoch {epoch} were not delivered "
+            f"to topic '{topic}': {'; '.join(failed) or f'{left} still queued after {timeout_s} s'}."
+        )
+    return partitions
 
 
 def _wait_for_online_ingestion(

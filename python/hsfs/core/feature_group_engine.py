@@ -411,7 +411,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            return delta_engine_instance._delete_record(delete_df)
+            return delta_engine_instance._delete_record(delete_df, write_options)
         if feature_group.time_travel_format == "ICEBERG":
             iceberg_engine_instance = iceberg_engine.IcebergEngine(
                 feature_group.feature_store_id,

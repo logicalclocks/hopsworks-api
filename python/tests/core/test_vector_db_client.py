@@ -538,6 +538,23 @@ class TestVectorDbClient:
             }
         }
 
+    @pytest.mark.parametrize("engine", ["faiss", "nmslib"])
+    def test_find_neighbors_of_a_fenced_group_leaves_out_tombstones(
+        self, mocker, engine
+    ):
+        mocker.patch.object(self.embedding_index, "_fenced", True)
+        self.mock_os_wrapper._get_field_mapping.return_value = self._field_mapping(
+            "f2", engine
+        )
+
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
+
+        query = self.mock_os_wrapper._search.call_args.kwargs["body"]["query"]
+        clause = (
+            query["knn"]["f2"]["filter"]["bool"] if engine == "faiss" else query["bool"]
+        )
+        assert clause["must_not"] == [{"term": {"_deleted": True}}]
+
     @staticmethod
     def _field_mapping(col_name, engine, index="2249__embedding_default_embedding"):
         # The response of GET <index>/_mapping/field/<col_name>
@@ -1106,3 +1123,27 @@ class TestBatchedEmbeddingReads:
 
         with pytest.raises(FeatureStoreException, match="does not have embedding"):
             client._read_many(99, ["col"], [{"col": "a"}], index_name="idx")
+
+
+# --- tombstones of fenced groups --------------------------------------------------
+
+
+def test_only_a_fenced_group_filters_tombstones():
+    from hsfs.core.vector_db_client import _not_deleted
+    from hsfs.embedding import EmbeddingIndex
+
+    assert _not_deleted(EmbeddingIndex(fenced=True)) == {
+        "must_not": [{"term": {"_deleted": True}}]
+    }
+    assert _not_deleted(EmbeddingIndex()) == {}
+    assert _not_deleted(None) == {}
+
+
+def test_the_fenced_flag_goes_to_the_backend_only_when_set():
+    from hsfs.embedding import EmbeddingIndex
+
+    assert "fenced" not in EmbeddingIndex(index_name="mine").to_dict()
+    assert EmbeddingIndex(fenced=True).to_dict()["fenced"] is True
+    assert EmbeddingIndex.from_response_json(
+        {"indexName": "7__embedding_fenced_9", "features": [], "fenced": True}
+    ).fenced

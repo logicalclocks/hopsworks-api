@@ -29,7 +29,12 @@ from hopsworks_common.core import project_api
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
 from hsfs import feature_group, feature_group_commit, util
-from hsfs.core import feature_group_api, partition_transforms, variable_api
+from hsfs.core import (
+    feature_group_api,
+    kafka_engine,
+    partition_transforms,
+    variable_api,
+)
 
 
 if TYPE_CHECKING:
@@ -124,8 +129,32 @@ def _delta_table_for_path(spark_session, path: str):
     return DeltaTable.forPath(spark_session, path)
 
 
+class StaleWriterError(FeatureStoreException):
+    """A newer writer committed to the table: a fenced write of a lower epoch is refused before it commits."""
+
+
+def _writer_epoch_refusal(table_epoch: int | None, epoch: int) -> str | None:
+    """Why a fenced commit at `epoch` must not go onto a table whose last writer epoch is `table_epoch`; None when it may.
+
+    An equal epoch is the same writer committing again. delta-rs itself only refuses a writer whose snapshot is
+    behind a commit carrying the same app id, so a fresh snapshot of a lower writer would commit without this check.
+
+    Parameters:
+        table_epoch: The writer epoch of the table's last fenced commit, None when it has none.
+        epoch: The epoch of the writer about to commit.
+
+    Returns:
+        The reason for the refusal, or None when the commit may go on.
+    """
+    if table_epoch is not None and table_epoch > epoch:
+        return f"a newer writer (epoch {table_epoch}) committed to the table; this writer's epoch is {epoch}"
+    return None
+
+
 class DeltaEngine:
     DELTA_SPARK_FORMAT = "delta"
+    #: The Delta application id under which a fenced write records its writer epoch.
+    WRITER_APP_ID = "hops-writer"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION = "versionAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
@@ -190,6 +219,10 @@ class DeltaEngine:
     ) -> feature_group_commit.FeatureGroupCommit:
         operation = operation.lower() if operation else "upsert"
         if self._spark_session is not None:
+            if kafka_engine._writer_epoch(write_options) is not None:
+                raise FeatureStoreException(
+                    "A fenced write (write option writer_epoch) runs on the Python engine only."
+                )
             _logger.debug(
                 f"Saving Delta dataset using spark to feature group {self._feature_group.name} v{self._feature_group.version}"
             )
@@ -454,9 +487,14 @@ class DeltaEngine:
         commits = self._get_delta_commits(location)
         return commits[0] if commits else None
 
-    def _delete_record(self, delete_df):
+    def _delete_record(self, delete_df, write_options=None):
         partition_transforms._require_writable(self._feature_group)
         storage_options = None
+        epoch = kafka_engine._writer_epoch(write_options)
+        if epoch is not None and self._spark_session is not None:
+            raise FeatureStoreException(
+                "A fenced delete (write option writer_epoch) runs on the Python engine only."
+            )
         if self._spark_session is not None:
             location = self._feature_group.prepare_spark_location()
             is_delta_table = _is_delta_table_at(self._spark_session, location)
@@ -503,11 +541,13 @@ class DeltaEngine:
                 delete_df.alias(updates_alias), merge_query_str
             ).whenMatchedDelete().execute()
         else:
+            self._check_writer_epoch(fg_source_table, epoch)
             fg_source_table.merge(
                 source=delete_df,
                 predicate=merge_query_str,
                 source_alias=updates_alias,
                 target_alias=source_alias,
+                commit_properties=self._commit_properties(write_options),
             ).when_matched_delete().execute()
         fg_commit = self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
@@ -906,13 +946,19 @@ class DeltaEngine:
         """The Delta application transactions a writer records with its commit.
 
         `write_options["commit_properties"]` names either one `app_id` and `version` or a list of them under `transactions`; a reader checks `DeltaTable.transaction_version(app_id)` to see whether a retried write already landed.
+        A fenced write (`write_options["writer_epoch"]`) also records `Transaction("hops-writer", epoch)`.
         """
         properties = (write_options or {}).get("commit_properties")
-        if not properties:
+        transactions = (
+            list(properties.get("transactions", [properties])) if properties else []
+        )
+        epoch = kafka_engine._writer_epoch(write_options)
+        if epoch is not None:
+            transactions.append({"app_id": DeltaEngine.WRITER_APP_ID, "version": epoch})
+        if not transactions:
             return None
         from deltalake import CommitProperties, Transaction
 
-        transactions = properties.get("transactions", [properties])
         return CommitProperties(
             app_transactions=[
                 Transaction(
@@ -921,6 +967,41 @@ class DeltaEngine:
                 )
                 for transaction in transactions
             ]
+        )
+
+    @classmethod
+    def _check_writer_epoch(cls, table, epoch: int | None) -> None:
+        """Refuse a fenced commit from `table`'s snapshot when a newer writer already committed to it."""
+        if epoch is None:
+            return
+        refusal = _writer_epoch_refusal(
+            table.transaction_version(cls.WRITER_APP_ID), epoch
+        )
+        if refusal is not None:
+            raise StaleWriterError(refusal)
+
+    def _fence(self, epoch: int) -> None:
+        """Commit an empty transaction recording `Transaction("hops-writer", epoch)`: from it on, lower writers are refused.
+
+        A fenced writer makes it once per table at claim time, so a writer that writes nothing still advances the
+        table's fence. The table must exist: a fenced group's table is created with its properties at group create.
+        """
+        import pyarrow as pa
+        from deltalake import DeltaTable as DeltaRsTable
+        from deltalake import write_deltalake as deltars_write
+
+        table = DeltaRsTable(
+            self._get_delta_rs_location(),
+            storage_options=self._get_delta_rs_storage_options(),
+        )
+        self._check_writer_epoch(table, epoch)
+        deltars_write(
+            table,
+            pa.schema(table.schema().to_arrow()).empty_table(),
+            mode=self.APPEND,
+            commit_properties=self._commit_properties(
+                {kafka_engine.WRITER_EPOCH_OPTION: epoch}
+            ),
         )
 
     def _write_delta_rs_dataset(
@@ -963,6 +1044,7 @@ class DeltaEngine:
             and str(write_options.get("mode", "")).lower() == self.APPEND
         )
         commit_properties = self._commit_properties(write_options)
+        epoch = kafka_engine._writer_epoch(write_options)
 
         try:
             fg_source_table = DeltaRsTable(location, storage_options=storage_options)
@@ -991,7 +1073,13 @@ class DeltaEngine:
                 commit_properties=commit_properties,
             )
         else:
-            if (
+            target = location
+            if epoch is not None:
+                # A fenced table's properties were set at create; a commit of its own here would carry no epoch.
+                self._check_writer_epoch(fg_source_table, epoch)
+                # The commit goes onto the checked snapshot, so delta-rs refuses it when a newer writer committed since.
+                target = fg_source_table
+            elif (
                 isinstance(write_options, dict)
                 and self.DELTA_ENABLE_CHANGE_DATA_FEED in write_options
             ):
@@ -1004,7 +1092,7 @@ class DeltaEngine:
                 )
             if append_requested:
                 deltars_write(
-                    location,
+                    target,
                     dataset,
                     mode=self.APPEND,
                     storage_options=storage_options or None,
@@ -1023,11 +1111,12 @@ class DeltaEngine:
             use_append = self._can_use_append(fg_source_table, dataset)
             if use_append:
                 deltars_write(
-                    location,
+                    target,
                     dataset,
                     mode="append",
                     partition_by=self._feature_group.partition_key,
                     storage_options=storage_options or None,
+                    commit_properties=commit_properties,
                 )
             else:
                 source_alias = (
@@ -1056,6 +1145,7 @@ class DeltaEngine:
                         predicate=merge_query_str,
                         source_alias=updates_alias,
                         target_alias=source_alias,
+                        commit_properties=commit_properties,
                     )
                     .when_matched_update_all()
                     .when_not_matched_insert_all()
