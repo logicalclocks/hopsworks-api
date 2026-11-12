@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import hopsworks
 from click.testing import CliRunner
@@ -37,3 +38,29 @@ def test_cli_quiets_sdk_info_logging(tmp_home):
     logging.getLogger().setLevel(logging.INFO)
     CliRunner().invoke(cli, ["project", "list"])
     assert logging.getLogger().level == logging.WARNING
+
+
+def test_echo_and_tables_keep_their_order_after_a_quiet_login():
+    """Piped stdout, a real process: after the login's stdout swap, a title stays before its table."""
+    import subprocess
+    import sys
+
+    script = (
+        "import sys\n"
+        "import click\n"
+        "from hopsworks.cli import auth, output\n"
+        "sys.stdout = auth._ThreadSilencedStdout(sys.stdout)\n"
+        "for t in ('first', 'second'):\n"
+        "    click.echo(t)\n"
+        "    output.print_table(['id'], [[t + '-row']])\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=str(Path(__file__).resolve().parents[2]),
+    )
+    lines = [line.strip() for line in done.stdout.splitlines() if line.strip()]
+    assert lines.index("first") < lines.index("first-row") < lines.index("second")
+    assert lines.index("second") < lines.index("second-row")

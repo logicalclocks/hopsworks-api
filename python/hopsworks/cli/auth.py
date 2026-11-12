@@ -151,6 +151,17 @@ class _ThreadSilencedStdout(io.TextIOBase):
     def flush(self) -> None:
         self.real.flush()
 
+    # io.TextIOBase defines these as None, so __getattr__ never reaches the real stream.
+    # click.echo reads them: with None it writes through a TextIOWrapper of its own over
+    # the binary buffer, and its lines overtake what still sits in the real stream's buffer.
+    @property
+    def encoding(self) -> str:
+        return self.real.encoding
+
+    @property
+    def errors(self) -> str | None:
+        return self.real.errors
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self.real, name)
 
