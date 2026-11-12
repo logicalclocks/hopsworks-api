@@ -1025,7 +1025,12 @@ def _run_and_report(
     if wait:
         _wait_and_show(ctx, job, name, execution, top, start_timeout, timeout)
         return
-    output.info("Read the scores once the run has ended: hops score %s --show", name)
+    output.info(
+        "Wait for the run once, then read the scores: hops job wait %s --execution %s --timeout 840 && hops score %s --show",
+        job_name,
+        execution.id,
+        name,
+    )
 
 
 class _JitteredWatch(waits.Watch):

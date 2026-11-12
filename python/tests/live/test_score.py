@@ -64,7 +64,7 @@ def _started(done: subprocess.CompletedProcess) -> int:
     assert done.returncode == 0, _out(done)
     match = re.search(r"started: execution #(\d+)", _out(done))
     assert match, _out(done)
-    assert "Read the scores once the run has ended" in _out(done)
+    assert "hops job wait kumo-score-" in _out(done)
     return int(match.group(1))
 
 
