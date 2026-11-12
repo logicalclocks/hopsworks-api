@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import random
 import re
 import shlex
 import tempfile
@@ -40,6 +41,12 @@ JOB_DELETING = "130102"
 IN_JOB = "--in-job"
 #: Seconds between two reads of the deletion execution's state.
 DELETION_POLL_S = 5
+# A start refused with a Retry-After of at most START_WAIT_MAX_S is sent again, within
+# START_SENDS sends and START_WAIT_BUDGET_S of waiting per command. The platform's
+# start-rate and lock refusals ask for seconds; its inventory refusal asks for 60 s.
+START_WAIT_MAX_S = 30
+START_SENDS = 5
+START_WAIT_BUDGET_S = 60
 #: Interval of the daily default, and the floor when no admin has granted a faster one.
 DAY_MINUTES = 1440
 
@@ -572,9 +579,7 @@ def start_refusal(exc: BaseException, group: str) -> str | None:
         RestAPIError,
     )
 
-    cause: BaseException | None = exc
-    while cause is not None and not isinstance(cause, RestAPIError):
-        cause = cause.__cause__
+    cause = _rest_error(exc)
     if cause is None:
         return None
     status = cause.response.status_code
@@ -592,16 +597,74 @@ def start_refusal(exc: BaseException, group: str) -> str | None:
     return None
 
 
-def _start(job: Any, group: str) -> Any:
-    """One execution of the job; a refusal exits non-zero, with no retry."""
-    try:
-        with output.sdk_quiet():
-            return job.run(await_termination=False)
-    except Exception as exc:  # noqa: BLE001
-        refusal = start_refusal(exc, group)
-        if refusal is not None:
-            raise click.ClickException(refusal) from exc
-        raise click.ClickException(f"Could not start job '{job.name}': {exc}") from exc
+def _rest_error(exc: BaseException) -> Any:
+    """The server's answer behind a failure, or None."""
+    from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
+        RestAPIError,
+    )
+
+    cause: BaseException | None = exc
+    while cause is not None and not isinstance(cause, RestAPIError):
+        cause = cause.__cause__
+    return cause
+
+
+def short_wait(exc: BaseException) -> int | None:
+    """Seconds a refused start asks to wait, when a resend is worth it; None otherwise.
+
+    Only a 429 whose Retry-After is a number of at most START_WAIT_MAX_S: a
+    refused start started nothing, so sending it again cannot start two.
+
+    Args:
+        exc: The failure of the start.
+
+    Returns:
+        The seconds to wait before the next send, or None when the start is not sent again.
+    """
+    cause = _rest_error(exc)
+    if cause is None or cause.response.status_code != 429:
+        return None
+    after = (cause.response.headers.get("Retry-After") or "").strip()
+    if not after.isdigit() or int(after) > START_WAIT_MAX_S:
+        return None
+    return int(after)
+
+
+def _start(
+    job: Any,
+    group: str,
+    sleep: Any = time.sleep,
+    jitter: Any = random.random,
+) -> Any:
+    """One execution of the job.
+
+    A capacity refusal with a short Retry-After is waited out and sent again,
+    with up to 1 s of jitter so commands refused together do not return
+    together. Any other refusal, or one past the budget, exits non-zero.
+    """
+    waited = 0
+    for send in range(1, START_SENDS + 1):
+        try:
+            with output.sdk_quiet():
+                return job.run(await_termination=False)
+        except Exception as exc:  # noqa: BLE001
+            wait = short_wait(exc)
+            if (
+                wait is not None
+                and send < START_SENDS
+                and waited + wait <= START_WAIT_BUDGET_S
+            ):
+                output.info("embed jobs are at capacity; waiting %d s", wait)
+                waited += wait
+                sleep(wait + jitter())
+                continue
+            refusal = start_refusal(exc, group)
+            if refusal is not None:
+                raise click.ClickException(refusal) from exc
+            raise click.ClickException(
+                f"Could not start job '{job.name}': {exc}"
+            ) from exc
+    raise AssertionError("unreachable: the last send returns or raises")
 
 
 def _schedule(job: Any, group: str, cron: str, execution: Any) -> None:
