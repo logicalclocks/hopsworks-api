@@ -21,7 +21,7 @@ from hopsworks_agents.protocol import AgentApp, AgentResponse
 agent_app = AgentApp(
     name="My agent",
     description="A custom LangGraph agent",
-    welcome_message="How can I help?",
+    welcome_message="Ask about the papers.",
     suggested_prompts=["What is attention?"],
 )
 

@@ -24,7 +24,7 @@ print(app.app_url)
 agent.chat_app()  # the app, or None
 ```
 
-Members open it with their Hopsworks login; `app.make_public()` shares it with anyone holding the link (needs `enable_public_apps`). Branding without code: the app's `CHAT_TITLE`, `CHAT_WELCOME`, `CHAT_ACCENT_COLOR`, `CHAT_LOGO_URL`, `CHAT_THEME_DIR` (a project folder with `theme.css` and a logo), `CHAT_SHOW_TOOL_CALLS`. Deleting the agent deletes its chat app; a data owner deletes it alone with `agent.delete_chat_app()`.
+Members open it with their Hopsworks login; `app.make_public()` shares it with anyone holding the link (needs `enable_public_apps`). Branding without code: the app's `CHAT_TITLE`, `CHAT_WELCOME`, `CHAT_ACCENT_COLOR`, `CHAT_LOGO_URL`, `CHAT_THEME_DIR` (a project folder with `theme.css` and a logo), `CHAT_SHOW_TOOL_CALLS`. `CHAT_WELCOME` and any text a customized page adds say what is: no greeting filler, no line that explains the page, and a text block takes its column's width (no `max-width` or `ch` cap on a paragraph, no `text-wrap: balance`). Deleting the agent deletes its chat app; a data owner deletes it alone with `agent.delete_chat_app()`.
 
 ## 2. Customizing the chat app
 
