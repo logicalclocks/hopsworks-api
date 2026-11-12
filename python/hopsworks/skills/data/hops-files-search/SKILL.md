@@ -39,11 +39,12 @@ The `duckdb` command in the terminal has the `delta` extension pre-installed.
 | `connector`, `source_type` | the data source name and its kind: `s3`, `gcs` or `adls` |
 | `file_name`, `file_type` | name, and extension in lowercase (`pdf`, `docx`, ...) |
 | `relative_path` | path below the job's prefix, e.g. `a/b.pdf` |
-| `hopsfs_path` | the copy in Hopsworks, `/Projects/<project>/<dataset>/<relative_path>`; in a terminal it is `/hopsfs/<dataset>/<relative_path>` |
+| `hopsfs_path` | the copy in Hopsworks, `/Projects/<project>/<dataset>/<relative_path>`; in a terminal it is `/hopsfs/<dataset>/<relative_path>`. With a transform script it is the stored output, whose name may differ from `relative_path`; a file the transform stored nothing of has no row |
 | `source_url` | the object's URL, `s3://bucket/prefix/a/b.pdf`, `gs://...` or `az://...` |
 | `mime_type`, `size_bytes` | content type and size |
 | `modified_at` | last modification in the source (UTC) |
 | `content_hash`, `etag` | SHA-256 of the copied bytes, and the source's ETag when it has one; equal hashes mean equal content |
+| `original_hopsfs_path` | only for a job with a transform script that keeps originals: the file as it is in the source, while `hopsfs_path`, `file_name`, `file_type`, `size_bytes` and `content_hash` describe the transform's output (under `_transformed/`); null otherwise |
 | `execution_id`, `indexed_at` | the run that last wrote the row, and when |
 | `ingestion_date` | partition: the day (UTC) the file was first indexed, which is the day it was copied in, or for a file already in the dataset, the day indexing was turned on; not its modification date |
 

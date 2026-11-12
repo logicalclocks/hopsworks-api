@@ -48,6 +48,8 @@ _EDITABLE = (
     "max_file_size_mb",
     "fail_on_first_error",
     "files_per_page",
+    "transform_script",
+    "keep_original",
     "resources",
     "schedule",
     "environment_name",
@@ -110,6 +112,23 @@ def _validate_max_file_size(value: Any) -> int | None:
     return value
 
 
+def _validate_transform_script(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(
+            "transform_script must be the path of a .py file in the project."
+        )
+    path = value.strip()
+    if not path:
+        return None
+    if not path.endswith(".py"):
+        raise ValueError(
+            "transform_script must be the path of a .py file in the project."
+        )
+    return path
+
+
 def _validate_files_per_page(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError("files_per_page must be a positive integer.")
@@ -162,6 +181,8 @@ class FilesIngestionJob:
         name: str | None = None,
         fail_on_first_error: bool = False,
         files_per_page: int = DEFAULT_FILES_PER_PAGE,
+        transform_script: str | None = None,
+        keep_original: bool = False,
         environment_name: str | None = None,
         storage_connector_id: int | None = None,
         featurestore_id: int | None = None,
@@ -184,6 +205,8 @@ class FilesIngestionJob:
             name: Job name; `<connector>_<dataset>_files` when `None`.
             fail_on_first_error: Stop the run at the first file that fails instead of continuing.
             files_per_page: Number of files listed per request.
+            transform_script: Path in the project of a `.py` file whose `HopsFileTransformer` runs on every file before it is stored, such as `Resources/transform.py`; `None` copies the files as they are.
+            keep_original: With a transform script, also store each file as it is in the source; the transform's output then goes under `_transformed/` in the dataset.
             environment_name: Python environment the job runs in; the cluster default when `None`.
             storage_connector_id: Id of the data source, when no connector object is given.
             featurestore_id: Id of the feature store the data source belongs to, when no connector object is given.
@@ -209,6 +232,8 @@ class FilesIngestionJob:
         self._resources = _validate_resources(resources)
         self._fail_on_first_error = bool(fail_on_first_error)
         self._files_per_page = _validate_files_per_page(files_per_page)
+        self._transform_script = _validate_transform_script(transform_script)
+        self._keep_original = bool(keep_original)
         self._environment_name = environment_name
         if name is None:
             if connector_name is None:
@@ -278,6 +303,8 @@ class FilesIngestionJob:
             name=job.name,
             fail_on_first_error=bool(files.get("failOnFirstError")),
             files_per_page=files.get("filesPerPage") or DEFAULT_FILES_PER_PAGE,
+            transform_script=files.get("transformScriptPath"),
+            keep_original=bool(files.get("keepOriginal")),
             environment_name=config.get("environmentName"),
             storage_connector_id=files.get("storageConnectorId"),
             featurestore_id=config.get("featurestoreId"),
@@ -326,6 +353,9 @@ class FilesIngestionJob:
                 "maxFileSizeMB": self._max_file_size_mb,
                 "filesPerPage": self._files_per_page,
                 "failOnFirstError": self._fail_on_first_error,
+                "transformScriptPath": self._transform_script,
+                # The flag says nothing without a script; the server drops it too.
+                "keepOriginal": bool(self._transform_script) and self._keep_original,
             },
         }
         if self._resources is not None:
@@ -400,6 +430,18 @@ class FilesIngestionJob:
     def max_file_size_mb(self) -> int | None:
         """Size cap of the files copied, in MB; `None` or `0` copies any size."""
         return self._max_file_size_mb
+
+    @public
+    @property
+    def transform_script(self) -> str | None:
+        """Path in the project of the script that transforms every file before it is stored, or `None`."""
+        return self._transform_script
+
+    @public
+    @property
+    def keep_original(self) -> bool:
+        """Whether each file is also stored as it is in the source, next to the output of the transform script."""
+        return bool(self._transform_script) and self._keep_original
 
     @public
     @property
@@ -512,8 +554,9 @@ class FilesIngestionJob:
     def update(self, **fields: Any) -> FilesIngestionJob:
         """Change settings of the job and save it; they apply from the next run.
 
-        The keyword arguments are any of `prefix`, `include`, `exclude`, `mirror_deletions`, `index`, `max_file_size_mb`, `fail_on_first_error`, `files_per_page`, `resources`, `schedule` (`None` removes it) and `environment_name`.
+        The keyword arguments are any of `prefix`, `include`, `exclude`, `mirror_deletions`, `index`, `max_file_size_mb`, `fail_on_first_error`, `files_per_page`, `transform_script` (`None` removes it), `keep_original`, `resources`, `schedule` (`None` removes it) and `environment_name`.
         Fields not given keep their value.
+        A changed transform script, or a script whose content changed, processes every file again on the next run: from the stored originals when they are kept, from the source otherwise.
         The data source and the dataset cannot change; create another job for them.
         An index feature group name can only be set while indexing was off.
 
@@ -545,6 +588,12 @@ class FilesIngestionJob:
             self._fail_on_first_error = bool(fields["fail_on_first_error"])
         if "files_per_page" in fields:
             self._files_per_page = _validate_files_per_page(fields["files_per_page"])
+        if "transform_script" in fields:
+            self._transform_script = _validate_transform_script(
+                fields["transform_script"]
+            )
+        if "keep_original" in fields:
+            self._keep_original = bool(fields["keep_original"])
         if "resources" in fields:
             self._resources = _validate_resources(fields["resources"])
         if "schedule" in fields:

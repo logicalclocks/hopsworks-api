@@ -44,6 +44,8 @@ _CONTRACT_BODY = {
         "maxFileSizeMB": None,
         "filesPerPage": 100,
         "failOnFirstError": False,
+        "transformScriptPath": None,
+        "keepOriginal": False,
     },
     "resourceConfig": {"cores": 1, "memory": 2048, "gpus": 0},
     "environmentName": "dlthub-ingestion-pipeline",
@@ -143,6 +145,8 @@ class TestConfiguration:
             "maxFileSizeMB": None,
             "filesPerPage": 100,
             "failOnFirstError": False,
+            "transformScriptPath": None,
+            "keepOriginal": False,
         }
         assert "resourceConfig" not in body
         assert "environmentName" not in body
@@ -171,6 +175,23 @@ class TestConfiguration:
         assert files["indexFiles"] is True
         assert files["indexFeatureGroupName"] == "handbook_index"
         assert job.index_feature_group == "handbook_index"
+
+    def test_transform_settings_are_sent(self):
+        job = _job_builder(
+            transform_script=" Resources/transform.py ", keep_original=True
+        )
+
+        files = job.to_dict()["filesConfig"]
+        assert files["transformScriptPath"] == "Resources/transform.py"
+        assert files["keepOriginal"] is True
+        assert job.transform_script == "Resources/transform.py"
+        assert job.keep_original is True
+
+    def test_keep_original_says_nothing_without_a_script(self):
+        job = _job_builder(keep_original=True)
+
+        assert job.to_dict()["filesConfig"]["keepOriginal"] is False
+        assert job.transform_script is None and job.keep_original is False
 
     def test_other_settings_are_sent(self):
         job = _job_builder(
@@ -202,6 +223,8 @@ class TestConfiguration:
             ({"max_file_size_mb": -1}, "max_file_size_mb"),
             ({"max_file_size_mb": "big"}, "max_file_size_mb"),
             ({"files_per_page": 0}, "files_per_page"),
+            ({"transform_script": "Resources/t.txt"}, "transform_script"),
+            ({"transform_script": 3}, "transform_script"),
             ({"resources": [1]}, "resources must be a dict"),
             ({"schedule": ""}, "schedule must be"),
             ({"name": " "}, "name must be"),

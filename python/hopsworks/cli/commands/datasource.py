@@ -2616,6 +2616,8 @@ def _files_job_dict(job: Any, execution_id: Any = None) -> dict[str, Any]:
         "mirrorDeletions": job.mirror_deletions,
         "indexFeatureGroup": job.index_feature_group,
         "maxFileSizeMb": job.max_file_size_mb,
+        "transformScript": job.transform_script,
+        "keepOriginal": job.keep_original,
         "schedule": job.schedule,
     }
     if execution_id is not None:
@@ -2672,6 +2674,15 @@ def _files_job_rows(jobs: list[Any]) -> list[list[Any]]:
     "--max-file-size-mb", type=int, help="Skip larger files; unset or 0 for no limit."
 )
 @click.option(
+    "--transform-script",
+    help="Path in the project of a .py file whose HopsFileTransformer runs on every file before it is stored, e.g. Resources/transform.py.",
+)
+@click.option(
+    "--keep-original",
+    is_flag=True,
+    help="With --transform-script: also store each file as it is in the source; outputs go under _transformed/.",
+)
+@click.option(
     "--cron",
     help="Schedule, a Quartz cron expression in UTC, seconds first, e.g. '0 0 2 ? * *' for daily at 02:00.",
 )
@@ -2691,6 +2702,8 @@ def connector_ingest_files(
     index_files: bool,
     index_name: str | None,
     max_file_size_mb: int | None,
+    transform_script: str | None,
+    keep_original: bool,
     cron: str | None,
     job_name: str | None,
     no_run: bool,
@@ -2710,10 +2723,14 @@ def connector_ingest_files(
         index_files: Whether to keep an index feature group.
         index_name: Name of the index feature group.
         max_file_size_mb: File size cap in MB.
+        transform_script: Project path of the script that transforms every file.
+        keep_original: Whether the files are also stored as they are in the source.
         cron: Cron expression of the schedule.
         job_name: Name of the job.
         no_run: Whether to skip the first run.
     """
+    if keep_original and not transform_script:
+        raise click.ClickException("--keep-original needs --transform-script.")
     if index_name is not None and not index_name.strip():
         raise click.ClickException("--index-name must not be empty.")
     if max_file_size_mb is not None and max_file_size_mb < 0:
@@ -2730,6 +2747,8 @@ def connector_ingest_files(
             mirror_deletions=mirror_deletions,
             index=index,
             max_file_size_mb=max_file_size_mb,
+            transform_script=transform_script,
+            keep_original=keep_original,
             schedule=cron,
             name=job_name,
         ),

@@ -2157,6 +2157,8 @@ def _files_source(argv: list[str], connector_type: str = "S3"):
         mirror_deletions=False,
         index_feature_group=None,
         max_file_size_mb=None,
+        transform_script=None,
+        keep_original=False,
         schedule=None,
     )
     job.run.return_value.id = 4711
@@ -2180,6 +2182,8 @@ def test_ingest_files_creates_and_runs_with_defaults():
         mirror_deletions=False,
         index=False,
         max_file_size_mb=None,
+        transform_script=None,
+        keep_original=False,
         schedule=None,
         name=None,
     )
@@ -2209,6 +2213,9 @@ def test_ingest_files_passes_every_option_and_skips_the_run():
             "--index",
             "--max-file-size-mb",
             "512",
+            "--transform-script",
+            "Resources/transform.py",
+            "--keep-original",
             "--cron",
             "0 0 2 ? * *",
             "--name",
@@ -2226,6 +2233,8 @@ def test_ingest_files_passes_every_option_and_skips_the_run():
         mirror_deletions=True,
         index=True,
         max_file_size_mb=512,
+        transform_script="Resources/transform.py",
+        keep_original=True,
         schedule="0 0 2 ? * *",
         name="handbook_files",
     )
@@ -2240,6 +2249,16 @@ def test_ingest_files_index_name_implies_index():
 
     assert result.exit_code == 0, result.output
     assert sc.ingest_files.call_args.kwargs["index"] == "docs_idx"
+
+
+def test_ingest_files_keep_original_needs_a_transform_script():
+    result, sc = _files_source(
+        ["ingest-files", "my_s3", "--dataset", "docs", "--keep-original"]
+    )
+
+    assert result.exit_code == 1
+    assert "--keep-original needs --transform-script" in result.output
+    sc.ingest_files.assert_not_called()
 
 
 def test_ingest_files_requires_a_dataset():
