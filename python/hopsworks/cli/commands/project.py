@@ -146,6 +146,7 @@ def project_costs(ctx: click.Context, window: str, project_name: str | None) -> 
     When some buckets of the window have no data, a coverage line says how
     many do; missing buckets are unknown cost, not zero.
 
+    \f
     Args:
         ctx: Click context.
         window: One of hour, day, week, month, year.

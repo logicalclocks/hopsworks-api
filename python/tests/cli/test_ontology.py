@@ -57,7 +57,14 @@ def test_every_leaf_uses_the_vocabulary():
 
 
 def test_no_group_is_named_by_a_verb():
-    verbs = _section("Vocabulary") - {"schema", "status", "sql", "context"}
+    verbs = _section("Vocabulary") - {
+        "schema",
+        "status",
+        "sql",
+        "context",
+        "sync",
+        "schedule",
+    }
     groups = [
         " ".join(path)
         for path, cmd in _tree()

@@ -73,6 +73,7 @@ RENAMED_FLAGS: dict[tuple[str, ...], dict[str, str]] = {
     ("fg", "insert"): {"--online": "--online-only"},
     ("agent", "create"): {"--environment": "--env"},
     ("app", "create"): {"--environment": "--env"},
+    ("datasource", "sync"): {"--environment": "--env"},
     ("factory", "system", "status"): {"--out": "--output"},
     ("fv", "deploy"): {"--training-dataset-version": "--td-version"},
     ("td", "list"): {"--version": "--fv-version"},

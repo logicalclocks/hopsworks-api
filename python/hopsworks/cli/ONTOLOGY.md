@@ -26,6 +26,7 @@ Leaves:
 - Data: `insert`, `read`, `preview`, `lookup`, `query`, `predict`, `search`, `derive`, `compute`, `backfill`.
 - Transfer: `upload`, `download`, `import`, `export`, `clone`, `push`, `pull`, `mirror`, `share`, `unshare`, `install`, `register`.
 - Domain: `create-external`, `infer-metadata`, `test-access`, `validate`, `trigger`, `use`, `mkdir`, `acquire`, `release`, `renew`, `write-doc`, `delete-assets`.
+- Data sources and costs: `labels`, `sync`, `sync-jobs`, `drives`, `folders`, `copy`, `schedule`, `set-folder`, `index`, `pause`, `resume`, `resync`, `audit`, `reset-script`, `costs`.
 - Views: `lineage`, `logs`, `history`, `schema`, `columns`, `tables`, `databases`, `catalogs`, `schemas`, `triggered`, `url`, `dir`, `status`.
 - Top level: `setup`, `login`, `logout`, `context`, `sql`, `score`, `update`.
 

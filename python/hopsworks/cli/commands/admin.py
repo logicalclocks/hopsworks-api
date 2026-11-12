@@ -44,7 +44,7 @@ _HEADERS = {
 
 @click.group("admin")
 def admin_group() -> None:
-    """Platform administration commands (needs the HOPS_ADMIN role)."""
+    """Platform administration (needs the HOPS_ADMIN role)."""
 
 
 def _money(value: float | None) -> str:
@@ -115,7 +115,7 @@ def _table_row(row: Any, by: str) -> list[str]:
 )
 @click.pass_context
 def admin_costs(ctx: click.Context, window: str, by: str) -> None:
-    """Show the Kubernetes cost of each namespace or department over a recent window.
+    """Show Kubernetes cost per namespace or department.
 
     Each project runs in its own namespace. Costs come from OpenCost; week,
     month and year also read the daily history Hopsworks has recorded so far.
@@ -130,6 +130,7 @@ def admin_costs(ctx: click.Context, window: str, by: str) -> None:
     or are shared by projects of different departments, show as one
     "Not a project" row.
 
+    \f
     Args:
         ctx: Click context.
         window: One of hour, day, week, month, year.

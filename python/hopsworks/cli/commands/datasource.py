@@ -2080,7 +2080,7 @@ def connector_databases(ctx: click.Context, name: str) -> None:
     "--job-name",
     help="Job name; defaults to <data source>_gmail_sync or _outlook_sync.",
 )
-@click.option("--environment", help="Python environment for the job.")
+@click.option("--env", "environment", help="Python environment for the job.")
 @click.option(
     "--start/--no-start", default=True, show_default=True, help="Start a run now."
 )
@@ -2099,8 +2099,11 @@ def connector_sync(
     environment: str | None,
     start: bool,
 ) -> None:
-    """Create or update a job that copies a Gmail or Outlook data source into a Delta feature group.
+    """Create or update a Gmail or Outlook sync job.
 
+    Create or update a job that copies a Gmail or Outlook data source into a Delta feature group.
+
+    \f
     Args:
         ctx: Click context.
         name: Gmail or Outlook data source name.
@@ -2123,7 +2126,7 @@ def connector_sync(
         if isinstance(data_source.storage_connector, OutlookConnector):
             if query:
                 raise click.ClickException(
-                    "--query is Gmail only; select Outlook messages with --label folder ids"
+                    "The --query option is Gmail only; select Outlook messages with --label folder ids"
                 )
             selection = {"folders": list(labels)}
         else:
@@ -2157,8 +2160,11 @@ def connector_sync(
 @click.argument("name")
 @click.pass_context
 def connector_labels(ctx: click.Context, name: str) -> None:
-    """List the Gmail labels or Outlook folders of a data source's mailbox that a sync can select.
+    """List the Gmail labels or Outlook folders to sync.
 
+    List the Gmail labels or Outlook folders of a data source's mailbox that a sync can select.
+
+    \f
     Args:
         ctx: Click context.
         name: Gmail or Outlook data source name.
@@ -2186,6 +2192,7 @@ def connector_labels(ctx: click.Context, name: str) -> None:
 def connector_sync_jobs(ctx: click.Context, name: str) -> None:
     """List the sync jobs of a Gmail or Outlook data source.
 
+    \f
     Args:
         ctx: Click context.
         name: Gmail or Outlook data source name.
@@ -2353,7 +2360,9 @@ def _sharepoint(ctx: click.Context, name: str) -> Any:
     try:
         sc = fs.get_data_source(name).storage_connector
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Data source '{name}' not found: {exc}") from exc
+        raise click.ClickException(
+            f"Could not find data source '{name}': {exc}"
+        ) from exc
     if sc is None:
         raise click.ClickException(f"Data source '{name}' not found.")
     if getattr(sc, "type", None) != "SHAREPOINT":
@@ -2414,12 +2423,15 @@ def _call(what: str, fn: Callable[[], Any]) -> Any:
     except click.ClickException:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"{what} failed: {exc}") from exc
+        raise click.ClickException(f"Could not {what}: {exc}") from exc
 
 
 @datasource_group.group("sharepoint")
 def sharepoint_group() -> None:
-    """Browse a SharePoint data source and copy or sync its folders into datasets."""
+    """Browse SharePoint and copy or sync folders to datasets.
+
+    Browse a SharePoint data source and copy or sync its folders into datasets.
+    """
 
 
 @sharepoint_group.command("drives")
@@ -2428,12 +2440,13 @@ def sharepoint_group() -> None:
 def sharepoint_drives(ctx: click.Context, name: str) -> None:
     """List the document libraries of the site.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
     """
     sc = _sharepoint(ctx, name)
-    drives = _call("Listing libraries", sc.list_drives)
+    drives = _call("list libraries", sc.list_drives)
     output.print_table(
         ["ID", "NAME", "WEB URL"],
         [[d.get("id"), d.get("name"), d.get("web_url", "-")] for d in drives],
@@ -2450,6 +2463,7 @@ def sharepoint_drives(ctx: click.Context, name: str) -> None:
 def sharepoint_folders(ctx: click.Context, name: str, drive_id: str, path: str) -> None:
     """List the child folders of a folder in a document library.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2457,7 +2471,7 @@ def sharepoint_folders(ctx: click.Context, name: str, drive_id: str, path: str) 
         path: Folder path inside the library.
     """
     sc = _sharepoint(ctx, name)
-    folders = _call("Listing folders", lambda: sc.list_folders(drive_id, path))
+    folders = _call("list folders", lambda: sc.list_folders(drive_id, path))
     output.print_table(["ID", "NAME"], [[f.get("id"), f.get("name")] for f in folders])
 
 
@@ -2486,8 +2500,11 @@ def sharepoint_copy(
     alert_receiver: str | None,
     index_files: bool,
 ) -> None:
-    """Copy a library folder into a new dataset once, now, without a schedule.
+    """Copy a library folder into a new dataset once.
 
+    Copy a library folder into a new dataset once, now, without a schedule.
+
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2499,7 +2516,7 @@ def sharepoint_copy(
     """
     sc = _sharepoint(ctx, name)
     sync = _call(
-        "Copy",
+        "copy the folder",
         lambda: sc.copy_folder(
             drive_id=drive_id,
             folder_path=folder,
@@ -2517,8 +2534,11 @@ def sharepoint_copy(
 @click.option("--yes", is_flag=True, help="Skip confirmation.")
 @click.pass_context
 def sharepoint_reset_script(ctx: click.Context, name: str, yes: bool) -> None:
-    """Overwrite the data source's sync script with the platform template.
+    """Reset the sync script to the platform template.
 
+    Overwrite the data source's sync script with the platform template.
+
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2530,13 +2550,16 @@ def sharepoint_reset_script(ctx: click.Context, name: str, yes: bool) -> None:
             f"Overwrite {sc.script_path or 'the sync script'}, discarding its edits?",
             abort=True,
         )
-    _call("Reset", sc.reset_script)
+    _call("reset the sync script", sc.reset_script)
     output.success("✓ Reset %s", sc.script_path or "the sync script")
 
 
 @sharepoint_group.group("sync")
 def sharepoint_sync_group() -> None:
-    """Syncs that copy a library folder into a dataset, once or on a schedule."""
+    """Scheduled copies of a library folder into a dataset.
+
+    Syncs that copy a library folder into a dataset, once or on a schedule.
+    """
 
 
 @sharepoint_sync_group.command("create")
@@ -2610,8 +2633,11 @@ def sharepoint_sync_create(
     index_files: bool,
     index_feature_group: str | None,
 ) -> None:
-    """Create a scheduled sync of a library folder into a new dataset.
+    """Create a scheduled sync of a library folder.
 
+    Create a scheduled sync of a library folder into a new dataset.
+
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2630,7 +2656,7 @@ def sharepoint_sync_create(
     """
     sc = _sharepoint(ctx, name)
     sync = _call(
-        "Create",
+        "create the sync",
         lambda: sc.create_sync(
             drive_id=drive_id,
             folder_path=folder,
@@ -2656,12 +2682,13 @@ def sharepoint_sync_create(
 def sharepoint_sync_list(ctx: click.Context, name: str) -> None:
     """List the syncs of a SharePoint data source.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
     """
     sc = _sharepoint(ctx, name)
-    syncs = _call("Listing syncs", sc.get_syncs)
+    syncs = _call("list syncs", sc.get_syncs)
     if output.JSON_MODE:
         output.print_json([s.to_dict() for s in syncs])
         return
@@ -2675,13 +2702,14 @@ def sharepoint_sync_list(ctx: click.Context, name: str) -> None:
 def sharepoint_sync_status(ctx: click.Context, name: str, sync_id: int) -> None:
     """Show the run state and counters of a sync.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
         sync_id: Sync id.
     """
     sync = _sync(ctx, name, sync_id)
-    status = _call("Status", sync.status)
+    status = _call("read the sync status", sync.status)
     if output.JSON_MODE:
         output.print_json(status)
         return
@@ -2700,7 +2728,7 @@ def _sync_action(command: str, help: str, act: Callable[[Any], Any], done: str) 
     @click.pass_context
     def run(ctx: click.Context, name: str, sync_id: int) -> None:
         sync = _sync(ctx, name, sync_id)
-        result = _call(command.capitalize(), lambda: act(sync))
+        result = _call(f"{command} the sync", lambda: act(sync))
         if output.JSON_MODE:
             output.print_json(_action_json(result))
             return
@@ -2758,6 +2786,7 @@ def sharepoint_sync_schedule(
 ) -> None:
     """Set or remove the schedule of a sync.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2768,7 +2797,7 @@ def sharepoint_sync_schedule(
     if bool(cron) == remove:
         raise click.UsageError("Pass exactly one of --cron and --none.", ctx)
     sync = _sync(ctx, name, sync_id)
-    _call("Schedule", lambda: sync.set_schedule(None if remove else cron))
+    _call("set the schedule", lambda: sync.set_schedule(None if remove else cron))
     _print_sync(sync)
 
 
@@ -2782,8 +2811,11 @@ def sharepoint_sync_schedule(
 def sharepoint_sync_set_folder(
     ctx: click.Context, name: str, sync_id: int, folder: str
 ) -> None:
-    """Point a sync at another folder of its library; the next run reconciles the dataset.
+    """Point a sync at another folder of its library.
 
+    Point a sync at another folder of its library; the next run reconciles the dataset.
+
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2791,7 +2823,7 @@ def sharepoint_sync_set_folder(
         folder: New folder path.
     """
     sync = _sync(ctx, name, sync_id)
-    _call("Set folder", lambda: sync.set_folder(folder))
+    _call("set the folder", lambda: sync.set_folder(folder))
     _print_sync(sync)
 
 
@@ -2816,8 +2848,11 @@ def sharepoint_sync_index(
     enabled: bool,
     feature_group: str | None,
 ) -> None:
-    """Turn indexing of a sync's files in a feature group on or off; the next run brings it up to date.
+    """Turn indexing of a sync's files on or off.
 
+    Turn indexing of a sync's files in a feature group on or off; the next run brings it up to date.
+
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2829,7 +2864,7 @@ def sharepoint_sync_index(
     fields: dict[str, Any] = {"index_files": enabled}
     if enabled and feature_group:
         fields["index_feature_group"] = feature_group
-    _call("Index", lambda: sync.update(**fields))
+    _call("update indexing", lambda: sync.update(**fields))
     _print_sync(sync)
 
 
@@ -2854,8 +2889,11 @@ def sharepoint_sync_delete(
     force: bool,
     yes: bool,
 ) -> None:
-    """Delete a sync and its job, and its dataset unless --keep-files.
+    """Delete a sync and its job; --keep-files keeps its dataset.
 
+    Delete a sync and its job, and its dataset unless --keep-files.
+
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2876,7 +2914,9 @@ def sharepoint_sync_delete(
             f"Delete sync {sync_id} {what} dataset '{sync.dataset_name}'{index}?",
             abort=True,
         )
-    deleted = _call("Delete", lambda: sync.delete(keep_files=keep_files, force=force))
+    deleted = _call(
+        "delete the sync", lambda: sync.delete(keep_files=keep_files, force=force)
+    )
     if output.JSON_MODE:
         output.print_json({"id": sync_id, "deleted": deleted})
         return
@@ -2903,6 +2943,7 @@ def sharepoint_sync_audit(
 ) -> None:
     """Show the paths a sync's runs changed on one day.
 
+    \f
     Args:
         ctx: Click context.
         name: Data source name.
@@ -2910,7 +2951,7 @@ def sharepoint_sync_audit(
         day: Day in UTC.
     """
     sync = _sync(ctx, name, sync_id)
-    rows = _call("Audit", lambda: sync.get_audit(day=day))
+    rows = _call("read the audit", lambda: sync.get_audit(day=day))
     output.print_table(
         ["DATE", "EXECUTION", "OP", "KIND", "PATH", "SRC_PATH"],
         [
