@@ -142,6 +142,7 @@ class TestPredictor:
         params = list(inspect.signature(predictor.Predictor.__init__).parameters)
         assert params.index("agent_framework") > params.index("llm_gateway")
         assert params.index("chat_config") > params.index("llm_gateway")
+        assert params.index("direct_access") > params.index("chat_config")
 
     def test_to_dict_omits_unset_agent_fields(self, mocker):
         # Arrange

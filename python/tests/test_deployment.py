@@ -2563,3 +2563,140 @@ class TestDeploymentLlmGateway:
 
         post.assert_called_once_with(d, False)
         assert d.llm_gateway is False
+
+
+class TestDeploymentSharing:
+    def _deployment(self, mocker):
+        mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
+        p = predictor.Predictor(
+            id=7,
+            name="llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        return deployment.Deployment(predictor=p, name="llm")
+
+    def _stored(self, mocker, d, all_projects=False, projects=()):
+        mocker.patch.object(
+            d._serving_api,
+            "_get_deployment_sharing",
+            return_value={"allProjects": all_projects, "projects": list(projects)},
+        )
+        return mocker.patch.object(d._serving_api, "_set_deployment_sharing")
+
+    def test_direct_access_defaults_to_on_and_is_omitted_from_to_dict(self, mocker):
+        d = self._deployment(mocker)
+
+        assert d.direct_access is True
+        assert "directAccess" not in d._predictor.to_dict()
+
+    def test_direct_access_setter_is_serialized(self, mocker):
+        d = self._deployment(mocker)
+
+        d.direct_access = False
+
+        assert d.direct_access is False
+        assert d._predictor.to_dict()["directAccess"] is False
+
+    def test_direct_access_read_from_the_backend_json(self, backend_fixtures):
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployment_vllm_kserve_vllm_variant"][
+                "response"
+            ]
+        )
+        p_json["directAccess"] = False
+
+        kwargs = predictor.Predictor.extract_fields_from_json(humps.decamelize(p_json))
+
+        assert kwargs["direct_access"] is False
+
+    def test_set_direct_access_posts_and_updates_the_local_value(self, mocker):
+        d = self._deployment(mocker)
+        post = mocker.patch.object(d._serving_api, "_set_deployment_direct_access")
+
+        d.set_direct_access(False)
+
+        post.assert_called_once_with(d, False)
+        assert d.direct_access is False
+
+    def test_shared_with_reads_the_backend(self, mocker):
+        d = self._deployment(mocker)
+        self._stored(mocker, d, True, ["b"])
+
+        assert d.shared_with == {"all_projects": True, "projects": ["b"]}
+
+    def test_share_with_adds_to_the_current_projects(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d, False, ["a"])
+
+        result = d.share_with(projects=["b", "a"])
+
+        put.assert_called_once_with(d, False, ["a", "b"])
+        assert result == {"all_projects": False, "projects": ["a", "b"]}
+
+    def test_share_with_accepts_a_single_name(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d)
+
+        d.share_with(projects="b")
+
+        put.assert_called_once_with(d, False, ["b"])
+
+    def test_share_with_all_projects_keeps_the_named_projects(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d, False, ["a"])
+
+        d.share_with(all_projects=True)
+
+        put.assert_called_once_with(d, True, ["a"])
+
+    def test_share_with_keeps_all_projects_when_unset(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d, True, [])
+
+        d.share_with(projects=["b"])
+
+        put.assert_called_once_with(d, True, ["b"])
+
+    def test_share_with_all_projects_false_restricts(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d, True, [])
+
+        d.share_with(all_projects=False)
+
+        put.assert_called_once_with(d, False, [])
+
+    def test_share_with_needs_an_argument(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d)
+
+        with pytest.raises(ValueError):
+            d.share_with()
+
+        put.assert_not_called()
+
+    def test_unshare_removes_the_named_projects(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d, True, ["a", "b"])
+
+        result = d.unshare(projects=["a", "missing"])
+
+        put.assert_called_once_with(d, True, ["b"])
+        assert result == {"all_projects": True, "projects": ["b"]}
+
+    def test_unshare_all_projects_keeps_the_named_projects(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d, True, ["a"])
+
+        d.unshare(all_projects=True)
+
+        put.assert_called_once_with(d, False, ["a"])
+
+    def test_unshare_needs_an_argument(self, mocker):
+        d = self._deployment(mocker)
+        put = self._stored(mocker, d)
+
+        with pytest.raises(ValueError):
+            d.unshare()
+
+        put.assert_not_called()

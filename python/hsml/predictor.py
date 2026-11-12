@@ -119,6 +119,7 @@ class Predictor(DeployableComponent):
         # position keeps its bindings.
         agent_framework: str | None = None,
         chat_config: dict[str, Any] | None = None,
+        direct_access: bool | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -201,6 +202,7 @@ class Predictor(DeployableComponent):
         self._triton_image_tag = triton_image_tag
         self._knative_mode = knative_mode
         self._llm_gateway = llm_gateway
+        self._direct_access = direct_access
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -599,6 +601,9 @@ class Predictor(DeployableComponent):
         kwargs["llm_gateway"] = util._extract_field_from_json(
             json_decamelized, "llm_gateway"
         )
+        kwargs["direct_access"] = util._extract_field_from_json(
+            json_decamelized, "direct_access"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -715,6 +720,11 @@ class Predictor(DeployableComponent):
             predictor_dict = {
                 **predictor_dict,
                 "llmGateway": self._llm_gateway,
+            }
+        if self._direct_access is not None:
+            predictor_dict = {
+                **predictor_dict,
+                "directAccess": self._direct_access,
             }
         tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
@@ -1208,6 +1218,22 @@ class Predictor(DeployableComponent):
     @llm_gateway.setter
     def llm_gateway(self, llm_gateway: bool):
         self._llm_gateway = llm_gateway
+
+    @public
+    @property
+    def direct_access(self) -> bool:
+        """The direct access switch of this deployment, as stored by the backend.
+
+        While it is on, the deployment also answers on its own URLs, not only through the LLM gateway.
+        It can only be turned off for a deployment the LLM gateway serves.
+        The switch is on by default and while the backend does not report the field.
+        Setting it before a save call sends the value with the deployment.
+        """
+        return True if self._direct_access is None else self._direct_access
+
+    @direct_access.setter
+    def direct_access(self, direct_access: bool):
+        self._direct_access = direct_access
 
     @public
     def get_endpoint_url(self) -> str | None:

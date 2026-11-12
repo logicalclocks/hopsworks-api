@@ -47,6 +47,12 @@ if TYPE_CHECKING:
     from hsml.transformer import Transformer
 
 
+def _as_name_list(names: list[str] | str | None) -> list[str]:
+    if names is None:
+        return []
+    return [names] if isinstance(names, str) else list(names)
+
+
 def _warn_opensearch_source_deprecated() -> None:
     """Warn that ``source="opensearch"`` is deprecated for deployment logs.
 
@@ -1616,6 +1622,143 @@ class Deployment:
         """
         self._serving_api._set_deployment_llm_gateway(self, enabled)
         self._predictor.llm_gateway = enabled
+
+    @public
+    @property
+    def direct_access(self) -> bool:
+        """The direct access switch of this deployment, as stored by the backend.
+
+        See [`Predictor.direct_access`][hsml.predictor.Predictor.direct_access].
+        Setting it only changes the local object; use [`set_direct_access`][hsml.deployment.Deployment.set_direct_access] to change an existing deployment.
+        """
+        return self._predictor.direct_access
+
+    @direct_access.setter
+    def direct_access(self, direct_access: bool):
+        self._predictor.direct_access = direct_access
+
+    @public
+    def set_direct_access(self, enabled: bool):
+        """Switch direct access on or off for an existing deployment.
+
+        While it is off, the deployment answers only through the LLM gateway, for every caller.
+        The change does not restart the deployment.
+        Requires the data owner role in the project.
+        The backend rejects turning it off for a deployment the LLM gateway does not serve.
+        When the backend stores the switch but cannot apply it yet, it applies it within a minute and the call logs this at INFO level.
+
+        Parameters:
+            enabled: Whether the deployment accepts direct calls.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Allow only the LLM gateway to reach a deployment
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            deployment.set_direct_access(False)
+            ```
+        """
+        self._serving_api._set_deployment_direct_access(self, enabled)
+        self._predictor.direct_access = enabled
+
+    @public
+    @property
+    def shared_with(self) -> dict[str, Any]:
+        """The projects this deployment is shared with through the LLM gateway.
+
+        The value is read from the backend on every access.
+        It is a dict with the keys `all_projects` (whether every project can use the deployment) and `projects` (names of the projects it is shared with).
+        """
+        return self._read_sharing()
+
+    @public
+    def share_with(
+        self,
+        projects: list[str] | str | None = None,
+        all_projects: bool | None = None,
+    ) -> dict[str, Any]:
+        """Share this deployment with other projects through the LLM gateway.
+
+        The named projects are added to the projects it is already shared with.
+        Members of a project it is shared with can run inference on it through the LLM gateway of the owning project, but cannot list, manage or call it directly.
+        Requires the data owner role in the project and sharing enabled on the cluster.
+
+        Parameters:
+            projects: Names of the projects to add.
+            all_projects: Whether to share with every project (`True`) or stop doing so (`False`).
+                Leave it unset to keep the current setting.
+
+        Returns:
+            The sharing state, as returned by [`shared_with`][hsml.deployment.Deployment.shared_with].
+
+        Raises:
+            ValueError: If neither `projects` nor `all_projects` is given.
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Share a deployment with one project
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            deployment.share_with(projects=["other_project"])
+            ```
+        """
+        added = _as_name_list(projects)
+        if not added and all_projects is None:
+            raise ValueError("Give `projects` or `all_projects`.")
+        current = self._read_sharing()
+        return self._write_sharing(
+            current["all_projects"] if all_projects is None else all_projects,
+            [*current["projects"], *(n for n in added if n not in current["projects"])],
+        )
+
+    @public
+    def unshare(
+        self,
+        projects: list[str] | str | None = None,
+        all_projects: bool = False,
+    ) -> dict[str, Any]:
+        """Stop sharing this deployment with projects.
+
+        The named projects are removed from the projects it is shared with.
+        Requires the data owner role in the project.
+
+        Parameters:
+            projects: Names of the projects to remove.
+            all_projects: Whether to stop sharing with every project.
+                Projects shared with by name stay shared with.
+
+        Returns:
+            The sharing state, as returned by [`shared_with`][hsml.deployment.Deployment.shared_with].
+
+        Raises:
+            ValueError: If neither `projects` nor `all_projects` is given.
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Restrict a deployment to its own project
+            ```python
+            deployment = ms.get_deployment("my_llm_deployment")
+            deployment.unshare(all_projects=True)
+            ```
+        """
+        removed = _as_name_list(projects)
+        if not removed and not all_projects:
+            raise ValueError("Give `projects` or `all_projects`.")
+        current = self._read_sharing()
+        return self._write_sharing(
+            False if all_projects else current["all_projects"],
+            [n for n in current["projects"] if n not in removed],
+        )
+
+    def _read_sharing(self) -> dict[str, Any]:
+        sharing = self._serving_api._get_deployment_sharing(self)
+        return {
+            "all_projects": bool(sharing.get("allProjects", False)),
+            "projects": list(sharing.get("projects") or []),
+        }
+
+    def _write_sharing(self, all_projects: bool, projects: list[str]) -> dict[str, Any]:
+        self._serving_api._set_deployment_sharing(self, all_projects, projects)
+        return {"all_projects": all_projects, "projects": projects}
 
     @public
     @property

@@ -1327,3 +1327,39 @@ class TestDeployAgentFrameworkAndChatConfig:
         # Assert
         assert predictor._agent_framework is None
         assert predictor._chat_config == {"protocol": "hopsworks"}
+
+
+class TestDirectAccess:
+    @pytest.mark.parametrize(
+        "state, expected",
+        [
+            ({"enabled": True}, True),
+            ({"directAccess": False}, False),
+            ({"directAccess": True}, True),
+        ],
+    )
+    def test_get_direct_access_defaults_to_on(self, mocker, state, expected):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        mocker.patch.object(ms._serving_api, "_get_llm_gateway", return_value=state)
+
+        assert ms.get_direct_access() is expected
+
+    def test_set_direct_access_puts_the_switch(self, mocker):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        put = mocker.patch.object(
+            ms._serving_api,
+            "_set_project_direct_access",
+            return_value={"enabled": False},
+        )
+
+        assert ms.set_direct_access(False) is False
+
+        put.assert_called_once_with(False)
+
+    def test_set_direct_access_without_a_body_returns_the_request(self, mocker):
+        ms = model_serving.ModelServing("proj", 1, project_namespace="ns")
+        mocker.patch.object(
+            ms._serving_api, "_set_project_direct_access", return_value=None
+        )
+
+        assert ms.set_direct_access(True) is True

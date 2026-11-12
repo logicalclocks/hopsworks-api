@@ -1098,6 +1098,46 @@ class ModelServing:
             "url": self.get_openai_url(),
         }
 
+    @public
+    def get_direct_access(self) -> bool:
+        """Get the direct access switch of the project.
+
+        Returns:
+            Whether the deployments of the project accept direct calls.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        return (
+            self._serving_api._get_llm_gateway().get("directAccess", True) is not False
+        )
+
+    @public
+    def set_direct_access(self, enabled: bool) -> bool:
+        """Switch direct access on or off for the whole project.
+
+        While it is off, the deployments the LLM gateway serves answer only through it.
+        No deployment restarts.
+        Requires the data owner role in the project.
+        When the backend stores the switch but cannot apply it yet, it applies it within a minute and the call logs this at INFO level.
+
+        Parameters:
+            enabled: Whether the deployments of the project accept direct calls.
+
+        Returns:
+            The switch as stored by the backend.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example: Allow only the LLM gateway to reach the deployments
+            ```python
+            project.get_model_serving().set_direct_access(False)
+            ```
+        """
+        state = self._serving_api._set_project_direct_access(enabled)
+        return enabled if not state else state["enabled"]
+
     def _resolve_project_namespace(self) -> str:
         """Return the project's Kubernetes namespace.
 
