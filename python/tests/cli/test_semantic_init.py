@@ -560,7 +560,7 @@ def datasets(mock_project):
         uploaded["parent"] = upload_path
         uploaded["name"] = root.name
         uploaded["files"] = {
-            str(f.relative_to(root)): f.read_text()
+            f.relative_to(root).as_posix(): f.read_text()
             for f in root.rglob("*")
             if f.is_file()
         }
@@ -860,7 +860,7 @@ class FakeShell:
         if args[:3] == ["gh", "repo", "create"]:
             root = Path(cwd)
             self.pushed_files = sorted(
-                str(f.relative_to(root)) for f in root.rglob("*") if f.is_file()
+                f.relative_to(root).as_posix() for f in root.rglob("*") if f.is_file()
             )
         return self._done(args, 0)
 
