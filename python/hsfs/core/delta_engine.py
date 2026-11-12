@@ -543,7 +543,7 @@ class DeltaEngine:
         else:
             self._check_writer_epoch(fg_source_table, epoch)
             fg_source_table.merge(
-                source=delete_df,
+                source=self._prepare_df_for_delta(delete_df),
                 predicate=merge_query_str,
                 source_alias=updates_alias,
                 target_alias=source_alias,
