@@ -58,8 +58,9 @@ starts the run, tells the user the scores will show in the panel, waits once wit
 Hopsworks that does not keep them is refused and nothing starts. Hopsworks then refuses a
 second execution (HTTP 409) while one runs, and the verb prints that refusal with the stop command. The job is in the `scoring`
 platform class (`platformClass` in its config); when that class is full, Hopsworks answers
-HTTP 429 and nothing starts: the verb says so with the retry time and exits non-zero. Do not
-retry in a loop: tell the user, and run it again after that time. `--schedule daily` or
+HTTP 429 and nothing starts. The verb waits out a Retry-After of at most 30 s itself (up to 60 s
+in all); past that it says so with the retry time and exits non-zero. Do not retry in a loop:
+tell the user, and run it again after that time. `--schedule daily` or
 `--schedule hourly` sets the job's schedule; the minute comes from the project and the name, so
 systems do not all fire at once. A daily run's hour comes from them too, or from `--at <0-23>`.
 No cron expression is accepted.

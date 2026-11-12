@@ -7,6 +7,7 @@ and the --wait polling run against the cluster in tests/live/test_score.py.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import click
 import pandas as pd
@@ -523,6 +524,95 @@ def test_the_409_wording_prefers_the_user_message_then_the_error_message():
     )
     assert _refusal(500, both) is None
     assert score.run_refusal(click.ClickException("x"), "deals") is None
+
+
+def _rest(status, headers=None):
+    return RestAPIError(
+        "http://hopsworks/jobs/executions", _response(status, {}, headers)
+    )
+
+
+def _answering_job(answers):
+    """A job whose run() gives the next answer: raises an exception, returns anything else."""
+    answers = iter(answers)
+
+    def run(await_termination):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    return SimpleNamespace(name="kumo-score-deals", run=run)
+
+
+def test_a_start_refused_with_a_short_retry_after_waits_and_starts(monkeypatch):
+    from hopsworks.cli.commands import job as job_cmd
+
+    monkeypatch.setattr(job_cmd, "_report_run", lambda *a, **k: None)
+    slept = []
+    job = _answering_job(
+        [
+            _rest(429, {"Retry-After": "2"}),
+            _rest(429, {"Retry-After": "1"}),
+            "execution",
+        ]
+    )
+
+    assert (
+        score._start(job, "deals", sleep=slept.append, jitter=lambda: 0.5)
+        == "execution"
+    )
+    assert slept == [2.5, 1.5]
+
+
+@pytest.mark.parametrize("retry_after", ["31", "60", None, "soon"])
+def test_a_start_refused_with_a_long_or_unreadable_retry_after_is_not_resent(
+    retry_after,
+):
+    slept = []
+    headers = {"Retry-After": retry_after} if retry_after else None
+    with pytest.raises(click.ClickException, match="scoring capacity is full"):
+        score._start(_answering_job([_rest(429, headers)]), "deals", sleep=slept.append)
+    assert slept == []
+
+
+def test_a_start_stops_resending_at_its_send_and_wait_budgets():
+    slept = []
+    refusals = [_rest(429, {"Retry-After": "1"}) for _ in range(score.START_SENDS)]
+    with pytest.raises(click.ClickException, match="Retry in 1 s"):
+        score._start(
+            _answering_job(refusals),
+            "deals",
+            sleep=slept.append,
+            jitter=lambda: 0,
+        )
+    assert slept == [1] * (score.START_SENDS - 1)
+
+    slept.clear()
+    refusals = [_rest(429, {"Retry-After": "30"}) for _ in range(3)]
+    with pytest.raises(click.ClickException, match="Retry in 30 s"):
+        score._start(
+            _answering_job(refusals),
+            "deals",
+            sleep=slept.append,
+            jitter=lambda: 0,
+        )
+    assert slept == [30, 30]
+
+
+def test_a_conflict_or_another_failure_is_never_resent():
+    slept = []
+    with pytest.raises(click.ClickException, match="already running"):
+        score._start(_answering_job([_rest(409)]), "deals", sleep=slept.append)
+    with pytest.raises(
+        click.ClickException, match="Could not run job 'kumo-score-deals'"
+    ):
+        score._start(
+            _answering_job([_rest(500, {"Retry-After": "1"})]),
+            "deals",
+            sleep=slept.append,
+        )
+    assert slept == []
 
 
 def test_the_poll_interval_stays_within_ten_to_twelve_seconds():

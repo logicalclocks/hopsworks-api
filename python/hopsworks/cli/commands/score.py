@@ -451,6 +451,76 @@ def _job_name(name: str) -> str:
     return f"kumo-score-{name}"
 
 
+# A start refused with a Retry-After of at most START_WAIT_MAX_S is sent again, within
+# START_SENDS sends and START_WAIT_BUDGET_S of waiting per command. The scoring class's
+# capacity refusals ask for seconds.
+START_WAIT_MAX_S = 30
+START_SENDS = 5
+START_WAIT_BUDGET_S = 60
+
+
+def _rest_error(exc: BaseException | None) -> Any:
+    """The server's answer behind a failure, or None."""
+    from hopsworks_common.client.exceptions import (  # noqa: PLC0415 - SDK loaded on use
+        RestAPIError,
+    )
+
+    while exc is not None and not isinstance(exc, RestAPIError):
+        exc = exc.__cause__
+    return exc
+
+
+def short_wait(exc: BaseException) -> int | None:
+    """Seconds a refused start asks to wait, when a resend is worth it; None otherwise.
+
+    Only a 429 whose Retry-After is a number of at most START_WAIT_MAX_S: a refused
+    start started nothing, so sending it again cannot start two.
+    """
+    cause = _rest_error(exc)
+    if cause is None or cause.response.status_code != 429:
+        return None
+    after = (cause.response.headers.get("Retry-After") or "").strip()
+    if not after.isdigit() or int(after) > START_WAIT_MAX_S:
+        return None
+    return int(after)
+
+
+def _start(
+    job: Any,
+    name: str,
+    sleep: Any = time.sleep,
+    jitter: Any = random.random,
+) -> Any:
+    """One execution of the scoring job.
+
+    A capacity refusal with a short Retry-After is waited out and sent again, with up
+    to 1 s of jitter so commands refused together do not return together. Any other
+    refusal, or one past the budget, exits non-zero.
+    """
+    from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
+
+    waited = 0
+    for send in range(1, START_SENDS + 1):
+        try:
+            return job_cmd._run(job, _job_name(name), False, "run")
+        except click.ClickException as exc:
+            wait = short_wait(exc)
+            if (
+                wait is not None
+                and send < START_SENDS
+                and waited + wait <= START_WAIT_BUDGET_S
+            ):
+                output.info("scoring is at capacity; waiting %d s", wait)
+                waited += wait
+                sleep(wait + jitter())
+                continue
+            refusal = run_refusal(exc, name)
+            if refusal is None:
+                raise
+            raise _fail(refusal) from exc
+    raise AssertionError("unreachable: the last send returns or raises")
+
+
 def run_refusal(exc: BaseException, name: str) -> ScoreRefused | None:
     """The refusal of a start, from the server's answer.
 
@@ -461,9 +531,7 @@ def run_refusal(exc: BaseException, name: str) -> ScoreRefused | None:
         RestAPIError,
     )
 
-    cause = exc
-    while cause is not None and not isinstance(cause, RestAPIError):
-        cause = cause.__cause__
+    cause = _rest_error(exc)
     if cause is None:
         return None
     status = cause.response.status_code
@@ -1001,8 +1069,6 @@ def _run_and_report(
     wait=False,
     timeout=WAIT_TIMEOUT,
 ) -> None:
-    from hopsworks.cli.commands import job as job_cmd  # noqa: PLC0415 - job imports fg
-
     job_name = _job_name(name)
     job = admit_job(api, job, name)
     if cron:
@@ -1013,13 +1079,7 @@ def _run_and_report(
                 f"Could not schedule job '{job_name}': {exc}"
             ) from exc
         output.success("✓ Scheduled %s (%s)", job_name, cron)
-    try:
-        execution = job_cmd._run(job, job_name, False, "run")
-    except click.ClickException as exc:
-        refusal = run_refusal(exc, name)
-        if refusal is None:
-            raise
-        raise _fail(refusal) from exc
+    execution = _start(job, name)
     if execution is None:
         return
     if wait:
