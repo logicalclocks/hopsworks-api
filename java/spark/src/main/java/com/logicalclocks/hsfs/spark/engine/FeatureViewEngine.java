@@ -40,6 +40,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
 
 import java.io.IOException;
+import java.security.SecureRandom;
 import java.text.ParseException;
 import java.util.Date;
 import java.util.List;
@@ -83,8 +84,12 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
     Query query = getBatchQuery(featureView, trainingDataset.getEventStartTime(),
         trainingDataset.getEventEndTime(), true, trainingDataset.getVersion(), Query.class);
     Dataset<Row>[] datasets = SparkEngine.getInstance().write(trainingDataset, query, Maps.newHashMap(),
-        writeOptions, SaveMode.Overwrite);
-    computeStatistics(featureView, trainingDataset, datasets);
+        writeOptions, SaveMode.Overwrite, featureView.getFeatures());
+    try {
+      computeStatistics(featureView, trainingDataset, datasets);
+    } finally {
+      HashSplit.unpersist(datasets);
+    }
   }
 
   public TrainingDatasetBundle getTrainingDataset(
@@ -165,11 +170,11 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
         Query query = getBatchQuery(featureView, trainingDataset.getEventStartTime(), trainingDataset.getEventEndTime(),
             true, trainingDataset.getVersion(), Query.class);
         Dataset<Row>[] datasets = SparkEngine.getInstance().splitDataset(trainingDatasetUpdated, query,
-            userReadOptions);
+            userReadOptions, featureView.getFeatures());
         trainingDatasetBundle = new TrainingDatasetBundle(trainingDatasetUpdated.getVersion(),
             convertSplitDatasetsToMap(trainingDatasetUpdated.getSplits(), datasets),
             featureView.getLabels());
-        computeStatistics(featureView, trainingDatasetUpdated, datasets);
+        computeStatisticsOrRelease(featureView, trainingDatasetUpdated, datasets);
       } else {
         Dataset<Row> dataset = readDataset(featureView, trainingDatasetUpdated, userReadOptions);
         trainingDatasetBundle = new TrainingDatasetBundle(trainingDatasetUpdated.getVersion(), dataset,
@@ -189,9 +194,28 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
     }
   }
 
+  // A new training dataset with random splits is split by the keyed hash of each row, which the seed salts, so
+  // every read of the version gives the same split.
+  static void assignSeed(TrainingDataset trainingDataset) throws FeatureStoreException {
+    if (trainingDataset.getSplits() != null && trainingDataset.getSplits().stream()
+        .anyMatch(split -> !Split.SplitType.TIME_SERIES_SPLIT.equals(split.getSplitType()))) {
+      trainingDataset.setSplitMethod(HashSplit.METHOD);
+    }
+    if (trainingDataset.getSeed() != null) {
+      if (trainingDataset.getSeed() < 0) {
+        throw new FeatureStoreException(
+            "The training dataset seed must be an integer from 0 to 2^63 - 1, got " + trainingDataset.getSeed() + ".");
+      }
+    } else if (trainingDataset.getSplits() != null && trainingDataset.getSplits().stream()
+        .anyMatch(split -> !Split.SplitType.TIME_SERIES_SPLIT.equals(split.getSplitType()))) {
+      trainingDataset.setSeed((long) new SecureRandom().nextInt(Integer.MAX_VALUE));
+    }
+  }
+
   private TrainingDataset createTrainingDataMetadata(
       FeatureView featureView, TrainingDataset trainingDataset) throws IOException, FeatureStoreException {
     setEventTime(featureView, trainingDataset);
+    assignSeed(trainingDataset);
     return (TrainingDataset) featureViewApi.createTrainingData(
         featureView.getName(), featureView.getVersion(), trainingDataset, TrainingDataset.class);
   }
@@ -200,6 +224,21 @@ public class FeatureViewEngine extends FeatureViewEngineBase<Query, FeatureView,
       FeatureView featureView, Integer trainingDatasetVersion) throws IOException, FeatureStoreException {
     return (TrainingDataset) featureViewApi.getTrainingData(featureView.getFeatureStore(), featureView.getName(),
         featureView.getVersion(), trainingDatasetVersion, TrainingDataset.class);
+  }
+
+  // The in-memory splits are cached and nothing else holds them until the bundle reaches the caller.
+  Statistics computeStatisticsOrRelease(FeatureView featureView, TrainingDataset trainingDataset,
+                                        Dataset<Row>[] datasets) throws FeatureStoreException, IOException {
+    boolean done = false;
+    try {
+      Statistics statistics = computeStatistics(featureView, trainingDataset, datasets);
+      done = true;
+      return statistics;
+    } finally {
+      if (!done) {
+        HashSplit.unpersist(datasets);
+      }
+    }
   }
 
   public Statistics computeStatistics(FeatureView featureView, TrainingDataset trainingDataset,

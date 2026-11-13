@@ -67,6 +67,7 @@ from hopsworks_common.util import _generate_fully_qualified_feature_name
 from hsfs import (
     feature,
     feature_view,
+    training_dataset_split,
     util,
 )
 from hsfs import feature_group as fg_mod
@@ -1620,9 +1621,20 @@ class Engine:
                     event_time,
                 )
         else:
+            if (
+                training_dataset_obj.split_method
+                == training_dataset_split.HASH_SPLIT_METHOD
+            ):
+                # The hash needs integers above 2^53 exactly as stored.
+                read_option = dict(read_option or {})
+                read_option["arrow_flight_config"] = {
+                    **(read_option.get("arrow_flight_config") or {}),
+                    "exact_integers": True,
+                }
             result_dfs = self._random_split(
                 query_obj.read(read_options=read_option, dataframe_type=dataframe_type),
                 training_dataset_obj,
+                feature_view_obj,
             )
 
         # Statistics are always refit (training_dataset_version not passed): an
@@ -1639,6 +1651,7 @@ class Engine:
         self,
         df: pd.DataFrame | pl.DataFrame,
         training_dataset_obj: TrainingDataset,
+        feature_view_obj: feature_view.FeatureView | None = None,
     ) -> dict[str, pd.DataFrame | pl.DataFrame]:
         split_column = f"_SPLIT_INDEX_{uuid.uuid1()}"
         result_dfs = {}
@@ -1654,26 +1667,50 @@ class Engine:
                 "Sum of split ratios should be 1 and each values should be in range (0, 1)"
             )
 
-        df_size = len(df)
-        groups = []
-        for i, split in enumerate(splits):
-            groups += [i] * int(df_size * split.percentage)
-        groups += [len(splits) - 1] * (df_size - len(groups))
-        # Honor the user-provided seed so random splits are reproducible across
-        # runs, mirroring the Spark engine (randomSplit(..., seed)). A private
-        # generator avoids touching the process-global random module; seed=None
-        # falls back to entropy seeding, preserving the previous behaviour.
-        random.Random(training_dataset_obj.seed).shuffle(groups)
-        if HAS_POLARS and (
-            isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
+        is_polars = HAS_POLARS and isinstance(
+            df, (pl.DataFrame, pl.dataframe.frame.DataFrame)
+        )
+        # Integer columns the pandas read rounded, as stored; never part of the returned splits.
+        exact = (
+            {}
+            if is_polars
+            else df.attrs.pop(training_dataset_split.EXACT_COLUMNS_ATTR, {})
+        )
+        if (
+            training_dataset_obj.split_method
+            == training_dataset_split.HASH_SPLIT_METHOD
         ):
-            df = df.with_columns(pl.Series(name=split_column, values=groups))
+            columns = training_dataset_split._split_columns(
+                feature_view_obj, list(df.columns)
+            )
+            groups = training_dataset_split._split_indexes(
+                [
+                    exact[name]
+                    if name in exact
+                    else df.get_column(name).to_list()
+                    if is_polars
+                    else df[name].tolist()
+                    for name, _ in columns
+                ],
+                [offline_type for _, offline_type in columns],
+                training_dataset_split._split_salt(training_dataset_obj),
+                [(split.name, split.percentage) for split in splits],
+            )
+        else:
+            # Created before split methods: keep the split it was created with.
+            groups = []
+            for i, split in enumerate(splits):
+                groups += [i] * int(len(df) * split.percentage)
+            groups += [len(splits) - 1] * (len(df) - len(groups))
+            random.Random(training_dataset_obj.seed).shuffle(groups)
+        if is_polars:
+            df = df.with_columns(
+                pl.Series(name=split_column, values=groups, dtype=pl.Int64)
+            )
         else:
             df[split_column] = groups
         for i, split in enumerate(splits):
-            if HAS_POLARS and (
-                isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
-            ):
+            if is_polars:
                 split_df = df.filter(pl.col(split_column) == i).drop(split_column)
             else:
                 split_df = df[df[split_column] == i].drop(split_column, axis=1)

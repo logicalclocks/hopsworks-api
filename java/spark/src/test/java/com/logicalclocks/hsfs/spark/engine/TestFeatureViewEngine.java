@@ -21,7 +21,9 @@ import com.google.common.collect.Lists;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.spark.FeatureGroup;
 import com.logicalclocks.hsfs.FeatureStoreException;
+import com.logicalclocks.hsfs.Split;
 import com.logicalclocks.hsfs.TrainingDatasetFeature;
+import com.logicalclocks.hsfs.spark.TrainingDataset;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -177,4 +179,30 @@ class TestFeatureViewEngine {
     Assertions.assertEquals(labelFeature.getName(), label);
   }
 
+
+  @Test
+  void assignSeed_randomSplitWithoutSeed_generatesSeed() throws Exception {
+    TrainingDataset trainingDataset = new TrainingDataset();
+    trainingDataset.setSplits(Lists.newArrayList(new Split("train", 0.8f), new Split("test", 0.2f)));
+    FeatureViewEngine.assignSeed(trainingDataset);
+    Assertions.assertNotNull(trainingDataset.getSeed());
+    Assertions.assertTrue(trainingDataset.getSeed() >= 0 && trainingDataset.getSeed() < (1L << 31));
+  }
+
+  @Test
+  void assignSeed_userSeed_kept() throws Exception {
+    TrainingDataset trainingDataset = new TrainingDataset();
+    trainingDataset.setSplits(Lists.newArrayList(new Split("train", 0.8f), new Split("test", 0.2f)));
+    trainingDataset.setSeed(Long.MAX_VALUE);
+    FeatureViewEngine.assignSeed(trainingDataset);
+    Assertions.assertEquals(Long.MAX_VALUE, trainingDataset.getSeed());
+  }
+
+  @Test
+  void assignSeed_negativeSeed_throws() {
+    TrainingDataset trainingDataset = new TrainingDataset();
+    trainingDataset.setSplits(Lists.newArrayList(new Split("train", 0.8f), new Split("test", 0.2f)));
+    trainingDataset.setSeed(-1L);
+    Assertions.assertThrows(FeatureStoreException.class, () -> FeatureViewEngine.assignSeed(trainingDataset));
+  }
 }
