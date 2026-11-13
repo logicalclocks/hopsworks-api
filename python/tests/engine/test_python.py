@@ -2522,7 +2522,18 @@ class TestPython:
         for name in ("train", "test"):
             assert first[name]["col"].tolist() == second[name]["col"].tolist()
 
-    @pytest.mark.parametrize("frame", ["pandas", "polars"])
+    @pytest.mark.parametrize(
+        "frame",
+        [
+            "pandas",
+            pytest.param(
+                "polars",
+                marks=pytest.mark.skipif(
+                    not HAS_POLARS, reason="Polars is not installed."
+                ),
+            ),
+        ],
+    )
     def test_a_seeded_split_ignores_the_read_order(self, mocker, frame):
         # Arrow Flight returns rows in no fixed order between reads.
         mocker.patch("hopsworks_common.client._get_instance")
