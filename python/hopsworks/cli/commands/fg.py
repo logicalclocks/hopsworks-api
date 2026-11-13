@@ -643,6 +643,11 @@ def fg_create_external(
     """
     if query and path:
         raise click.UsageError("Pass either --query or --path, not both.")
+    if path == "":
+        raise click.UsageError(
+            "--path is empty: name a file or folder under the connector's path. "
+            f"List them with `hops datasource tables {connector_name}`."
+        )
     if not query and not path and not table:
         raise click.UsageError(
             "Provide one of --query (SQL sources), --path + --data-format "
