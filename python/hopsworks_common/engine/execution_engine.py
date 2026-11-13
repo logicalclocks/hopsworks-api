@@ -169,7 +169,7 @@ class ExecutionEngine:
 
         MAX_LAG = 3.0
 
-        is_yarn_job = job.job_type is not None and (
+        is_spark_job = job.job_type is not None and (
             job.job_type.lower() == "spark" or job.job_type.lower() == "pyspark"
         )
 
@@ -182,7 +182,7 @@ class ExecutionEngine:
             time.sleep(MAX_LAG)
             updated_execution = self._execution_api._get(job, execution.id)
             if execution_state != updated_execution.state:
-                if is_yarn_job:
+                if is_spark_job:
                     self._log.info(
                         f"Waiting for execution to finish. Current state: {updated_execution.state}. Final status: {updated_execution.final_status}"
                     )
@@ -216,7 +216,7 @@ class ExecutionEngine:
             time.sleep(5)  # Helps for log aggregation to flush to filesystem
 
         if updated_execution.success is False:
-            if is_yarn_job:
+            if is_spark_job:
                 status = updated_execution.final_status
             else:
                 status = updated_execution.state

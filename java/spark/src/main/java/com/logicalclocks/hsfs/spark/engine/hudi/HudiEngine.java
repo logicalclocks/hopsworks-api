@@ -163,7 +163,6 @@ public class HudiEngine {
   protected static final String DELTA_SOURCE_ORDERING_FIELD_OPT_KEY = "sourceOrderingField";
 
   protected static final String MIN_SYNC_INTERVAL_SECONDS = "minSyncIntervalSeconds";
-  protected static final String SPARK_MASTER = "yarn";
   protected static final String PROJECT_ID = "projectId";
   protected static final String FEATURE_STORE_NAME = "featureStoreName";
   protected static final String SUBJECT_ID = "subjectId";

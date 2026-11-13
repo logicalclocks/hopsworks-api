@@ -241,7 +241,7 @@ class TestJob:
     def test_run_await_termination_pyspark_raises_on_failed(
         self, mocker, backend_fixtures
     ):
-        # Arrange — PYSPARK (YARN) jobs report failure via final_status, state stays FINISHED
+        # Arrange — PYSPARK jobs report failure via final_status, state stays FINISHED
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.execution.Execution.get_url")
         mock_execution_api = mocker.patch(
@@ -278,7 +278,7 @@ class TestJob:
     def test_run_await_termination_pyspark_raises_on_framework_failure(
         self, mocker, backend_fixtures
     ):
-        # Arrange — PYSPARK (YARN) jobs report framework failure via final_status
+        # Arrange — PYSPARK jobs report framework failure via final_status
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.execution.Execution.get_url")
         mock_execution_api = mocker.patch(
@@ -318,7 +318,7 @@ class TestJob:
     def test_run_await_termination_pyspark_raises_on_killed(
         self, mocker, backend_fixtures
     ):
-        # Arrange — PYSPARK (YARN) jobs report killed via final_status
+        # Arrange — PYSPARK jobs report killed via final_status
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.execution.Execution.get_url")
         mock_execution_api = mocker.patch(
@@ -352,7 +352,7 @@ class TestJob:
     def test_run_await_termination_python_raises_on_failed(
         self, mocker, backend_fixtures
     ):
-        # Arrange — PYTHON (non-YARN) jobs report failure via state
+        # Arrange — PYTHON jobs report failure via state
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.execution.Execution.get_url")
         mock_execution_api = mocker.patch(
@@ -389,7 +389,7 @@ class TestJob:
     def test_run_await_termination_python_raises_on_killed(
         self, mocker, backend_fixtures
     ):
-        # Arrange — PYTHON (non-YARN) jobs report killed via state
+        # Arrange — PYTHON jobs report killed via state
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.execution.Execution.get_url")
         mock_execution_api = mocker.patch(
