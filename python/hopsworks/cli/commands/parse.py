@@ -116,8 +116,10 @@ def fg_parse(
 
     A rerun parses only files whose content changed and deletes the rows of
     files no longer under PATH. A group parses one PATH: parse another path
-    into another group. A run stops on the cluster's caps (file size, pages,
-    minutes per run) and names what it did not parse; the next run goes on.
+    into another group. A run parses up to the cluster's caps (pages and
+    minutes per run, a PDF counting its pages and any other file one page)
+    and names what it left; the next run goes on. A file over the size cap,
+    or one that stops two runs, is skipped and named.
 
     \f
     Args:
@@ -409,6 +411,7 @@ def fg_parse_delete(
         timeout: Seconds to wait for the deletion execution.
         in_job: Run the deletion in this process.
     """
+    group = group.lower()
     project = session.get_project(ctx)
     fs = session.get_feature_store(ctx)
     try:

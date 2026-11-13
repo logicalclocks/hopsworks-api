@@ -78,7 +78,7 @@ def description(path: str, group: str) -> str:
 
 
 _DESCRIBED = re.compile(
-    re.escape(PATH) + r"(?P<path>\S+) " + re.escape(OWNER) + r"(?P<owner>\S+)$"
+    re.escape(PATH) + r"(?P<path>.+) " + re.escape(OWNER) + r"(?P<owner>\S+)$"
 )
 
 
@@ -106,7 +106,18 @@ def list_files(mount: Path, root: str) -> dict[str, int]:
     if base.is_file():
         found = [base]
     elif base.is_dir():
-        found = [Path(d) / f for d, _, files in os.walk(base) for f in files]
+
+        def unreadable(exc: OSError) -> None:
+            # A folder left out would read as files removed, and their rows would be deleted.
+            raise ParseError(
+                f"Could not list {exc.filename}: {exc.strerror}. Nothing was written."
+            ) from exc
+
+        found = [
+            Path(d) / f
+            for d, _, files in os.walk(base, onerror=unreadable)
+            for f in files
+        ]
     else:
         raise ParseError(f"{root} is not in the project. Nothing was written.")
     out = {}
@@ -134,15 +145,19 @@ class Plan:
     skipped: dict[str, str] = field(default_factory=dict)
 
 
-def plan(files: dict[str, str], held: dict[str, str], stops: dict[str, int]) -> Plan:
-    """Files to parse, unchanged and removed, from {path: sha256} on HopsFS and in the group.
+def plan(
+    files: dict[str, str], held: dict[str, set[str]], stops: dict[str, int]
+) -> Plan:
+    """Files to parse, unchanged and removed, from {path: sha256} on HopsFS and {path: sha256s} in the group.
 
-    A file that stopped STOPS_BEFORE_SKIP runs is skipped while its content is
-    the one that stopped them; a new content is parsed again.
+    A path whose rows hold more than one sha256 (an upsert whose delete
+    failed) is parsed again. A file that stopped STOPS_BEFORE_SKIP runs is
+    skipped while its content is the one that stopped them; a new content is
+    parsed again.
     """
     out = Plan(parse=[], unchanged=[], removed=sorted(set(held) - set(files)))
     for path, digest in files.items():
-        if held.get(path) == digest:
+        if held.get(path) == {digest}:
             out.unchanged.append(path)
         elif stops.get(f"{path}@{digest}", 0) >= STOPS_BEFORE_SKIP:
             out.skipped[path] = (
@@ -232,7 +247,7 @@ def pdf_pages(file: Path) -> tuple[int, bool]:
 
 
 def pages_of(file: Path) -> int:
-    """Pages a file counts for the page cap: a PDF its pages, any other file 1."""
+    """Pages a file counts for the page cap: a PDF its pages, any other file (read whole) 1."""
     return pdf_pages(file)[0] if file.suffix.lower() in PAGED else 1
 
 
@@ -360,41 +375,60 @@ def run(
     log: Callable[..., None],
     clock: Callable[[], float] = time.monotonic,
 ) -> Outcome:
-    """Converge `fg` onto the files under `root`."""
-    deadline = clock() + max_minutes * 60
+    """Converge `fg` onto the files under `root`; rows under any other path are left alone."""
+    budget_s = max_minutes * 60
+    run_start = clock()
+    deadline = run_start + budget_s
     sizes = list_files(mount, root)
-    over = [p for p, n in sizes.items() if n > max_file_mb * 1_000_000]
-    if over:
-        raise ParseError(
-            f"{', '.join(over)} {'is' if len(over) == 1 else 'are'} over {max_file_mb} MB, "
-            "the file size cap of this cluster. Nothing was written."
-        )
     state = State(mount, group)
     stopped = state.take_over()
     if stopped:
         log("The last run stopped inside %s", stopped)
-    held_rows = _held(fg)
-    held = {p: d for (p, _), d in held_rows.items()}
-    digests = {p: sha256(mount / p) for p in sizes}
+    held_rows = {k: d for k, d in _held(fg).items() if under(k[0], root)}
+    held: dict[str, set[str]] = {}
+    for (path, _), digest in held_rows.items():
+        held.setdefault(path, set()).add(digest)
+    over = {p for p, n in sizes.items() if n > max_file_mb * 1_000_000}
+    digests = {p: sha256(mount / p) for p in sizes if p not in over}
     todo = plan(digests, held, state.data["stops"])
-    pages = sum(pages_of(mount / p) for p in todo.parse)
-    if pages > max_pages:
-        raise ParseError(
-            f"{len(todo.parse)} files to parse have {pages} pages, over the {max_pages} pages a run may "
-            "parse on this cluster: parse a smaller folder, or ask an admin. Nothing was written."
-        )
     out = Outcome(
         unchanged=len(todo.unchanged), removed=todo.removed, skipped=todo.skipped
     )
+    for path in sorted(over):
+        out.skipped[path] = (
+            f"is over {max_file_mb} MB, the file size cap of this cluster"
+        )
     at = datetime.now(timezone.utc)
     rows, gone = [], [k for k in held_rows if k[0] in todo.removed]
+    pages_left = max_pages
     for i, path in enumerate(todo.parse):
         if clock() >= deadline:
             out.left = todo.parse[i:]
             out.stopped_by = f"the {max_minutes} min budget of a run"
             break
         digest = digests[path]
-        started = clock()
+        file_start = clock()
+        # Counting pages opens the file: a kill there counts as a stop of this file too.
+        state.at(path, digest, 0, 0)
+        try:
+            pages = pages_of(mount / path)
+        except Exception as exc:  # noqa: BLE001 - one bad file does not stop the others
+            state.done(path, digest)
+            out.skipped[path] = f"could not be read: {exc}"
+            continue
+        if pages > max_pages:
+            state.done(path, digest)
+            out.skipped[path] = (
+                f"has {pages} pages, over the {max_pages} pages a run may parse on this cluster; "
+                "split it, or ask an admin"
+            )
+            continue
+        if pages > pages_left:
+            state.done(path, digest)
+            out.left = todo.parse[i:]
+            out.stopped_by = f"the {max_pages} pages a run may parse"
+            break
+        pages_left -= pages
 
         def on_range(first: int, last: int, path=path, digest=digest) -> None:
             state.at(path, digest, first, last)
@@ -408,23 +442,25 @@ def run(
         except OutOfTime:
             state.done(path, digest)
             out.stopped_by = f"the {max_minutes} min budget of a run"
-            if out.parsed:
-                out.left = todo.parse[i:]
-            else:
-                # It had the whole budget to itself: the next run would stop the same way.
+            if file_start - run_start <= budget_s / 10:
+                # It had (nearly) the whole budget: the next run would stop the same way.
                 state.never(path, digest)
                 out.skipped[path] = (
                     f"does not finish within the {max_minutes} min budget of a run; "
                     "split it, or ask an admin for a longer budget"
                 )
                 out.left = todo.parse[i + 1 :]
+            else:
+                out.left = todo.parse[i:]
             break
         except Exception as exc:  # noqa: BLE001 - one bad file does not stop the others
             state.done(path, digest)
             out.skipped[path] = f"Docling could not read it: {exc}"
             continue
         state.done(path, digest)
-        log("%s: %d pages in %.0f s", path, len(converted), clock() - started)
+        # A file with no text keeps one empty row, so its sha256 is held and it is not parsed again.
+        converted = converted or [(0, "")]
+        log("%s: %d pages in %.0f s", path, len(converted), clock() - file_start)
         out.parsed.append(path)
         kept = {page for page, _ in converted}
         gone += [k for k in held_rows if k[0] == path and k[1] not in kept]
