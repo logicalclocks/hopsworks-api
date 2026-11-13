@@ -1425,6 +1425,21 @@ class TestGoogleSheetsConnector:
 
 
 class TestBigQueryConnector:
+    def test_spark_options_impersonated_names_the_query_service(self):
+        # Arrange
+        sc = storage_connector.BigQueryConnector(
+            id=1,
+            name="test_big_query",
+            featurestore_id=67,
+            parent_project="test_parent_project",
+            dataset="test_dataset",
+            impersonate_sa="hb-0123456789abcdef@hopsable-connect.iam.gserviceaccount.com",
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="only the query service uses"):
+            sc.spark_options()
+
     def test_from_response_json(self, backend_fixtures):
         # Arrange
         json = backend_fixtures["storage_connector"]["get_big_query_table"]["response"]
