@@ -17,7 +17,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 import click
-from hopsworks.cli import config, output
+from hopsworks.cli import config, output, scaffold
 
 
 if TYPE_CHECKING:
@@ -281,7 +281,9 @@ class LazyGroup(click.Group):
     lazy_subcommands=_LAZY_SUBCOMMANDS,
     help=(
         "Hopsworks CLI — for humans and LLMs.\n\n"
-        "Run `hops setup` to authenticate on a new machine."
+        "Run `hops setup` to authenticate on a new machine.\n\n"
+        f"Docs: {scaffold.DOCS_URL}, also served to agents by the MCP "
+        f"server {scaffold.DOCS_MCP_URL}."
     ),
     context_settings={"help_option_names": ["-h", "--help"]},
 )
