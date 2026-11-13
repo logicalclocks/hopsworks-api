@@ -279,7 +279,7 @@ class SemanticExport:
     `schedule` is a Quartz cron expression, `None` to run only through [`SemanticProject.run_export`][hopsworks_common.semantic_layer.SemanticProject.run_export].
     `lookback`, such as `7 days`, makes each run replace only the rows whose `metric_time` is at or after the run's logical time minus the lookback, truncated to the `metric_time` grain; without it a run replaces every row.
     Either way the run computes the whole saved query and replaces the rows in one commit, keeping the feature group and its id.
-    `last_status` is `NEVER_RUN`, `RUNNING`, `SUCCEEDED`, `FAILED`, `TRUNCATED` (the result reached the gateway's row cap, so it may be incomplete and nothing was written), `TARGET_EXISTS`, `OWNER_NOT_DATA_OWNER` (the semantic project's creator is not a Data Owner, or their project role does not allow Semantic layer: Run exports, so the export has no job), `JOB_ERROR` or `DISABLED`, and `last_message` says more.
+    `last_status` is `NEVER_RUN`, `RUNNING`, `SUCCEEDED`, `FAILED`, `TRUNCATED` (the result reached the gateway's row cap, so it may be incomplete and nothing was written), `TARGET_EXISTS`, `OWNER_NOT_DATA_OWNER` (the semantic project has no owner, or its owner is not a Data Owner or has a project role that does not allow Semantic layer: Run exports, so the export has no job), `JOB_ERROR` or `DISABLED`, and `last_message` says more.
     `last_rows` is the number of rows the last run wrote.
     """
 
@@ -411,6 +411,7 @@ class SemanticProject:
         current_build_id: int | None = None,
         latest_build: dict[str, Any] | SemanticBuild | None = None,
         creator: str | None = None,
+        owner: str | None = None,
         created: str | None = None,
         missing_mandatory_tags: list[dict[str, Any] | str] | None = None,
         tags: list[dict[str, Any]] | None = None,
@@ -432,6 +433,7 @@ class SemanticProject:
             else latest_build
         )
         self._creator = creator
+        self._owner = owner
         self._created = created
         self._missing_mandatory_tags = [
             tag["name"] if isinstance(tag, dict) else tag
@@ -473,6 +475,7 @@ class SemanticProject:
             if self._latest_build
             else None,
             "creator": self._creator,
+            "owner": self._owner,
             "created": self._created,
             "missing_mandatory_tags": self._missing_mandatory_tags,
             **({"tags": self._tags} if self._tags is not None else {}),
@@ -550,8 +553,17 @@ class SemanticProject:
     @public
     @property
     def creator(self) -> str | None:
-        """Username of the member who registered the semantic project."""
+        """Username of the member who registered the semantic project, and its first owner."""
         return self._creator
+
+    @public
+    @property
+    def owner(self) -> str | None:
+        """Username of the member the export jobs run as, or `None` when that member's account no longer exists.
+
+        Hand it to another Data Owner with [`transfer_ownership`][hopsworks_common.semantic_layer.SemanticProject.transfer_ownership].
+        """
+        return self._owner
 
     @public
     @property
@@ -703,6 +715,37 @@ class SemanticProject:
             )
         return self.update_from_response_json(
             self._semantic_layer_api._update(self, root_path, format, deployment_mode)
+        )
+
+    @public
+    @usage._method_logger
+    def transfer_ownership(self, email: str) -> SemanticProject:
+        """Hand the semantic project over to another Data Owner of the Hopsworks project.
+
+        The export jobs run as the owner, so they run as the new owner from then on.
+        The caller must be a Data Owner whose project role allows Semantic layer: Create & edit, and need not be the current owner, so a semantic project whose owner left the project can still be handed over.
+        Removing the owner from the project with [`Project.remove_member`][hopsworks_common.project.Project.remove_member] hands their semantic projects over as part of the removal.
+        `creator` keeps naming the member who registered the semantic project.
+        This object is updated in place.
+
+        Example:
+            ```python
+            sales = project.get_semantic_layer_api().get_project("sales")
+            sales.transfer_ownership("carol@example.com")
+            print(sales.owner)
+            ```
+
+        Parameters:
+            email: Email address of the Data Owner who becomes the owner; their project role must allow Semantic layer: Run exports.
+
+        Returns:
+            This semantic project, with its new `owner`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the caller may not hand the semantic project over, the new owner is not a Data Owner of the project who may run exports, in which case the message gives the reason, or the backend encounters another error.
+        """
+        return self.update_from_response_json(
+            self._semantic_layer_api._transfer_ownership(self, email)
         )
 
     # endregion
@@ -1187,7 +1230,7 @@ class SemanticProject:
     def run_export(self, name: str, wait: bool = False) -> Execution:
         """Run an export now, outside its schedule, through its job.
 
-        The job runs as the semantic project's creator and records its outcome in the export's `last_status`; runs of one export never overlap, so starting a run while another is going is refused.
+        The job runs as the semantic project's [`owner`][hopsworks_common.semantic_layer.SemanticProject.owner] and records its outcome in the export's `last_status`; runs of one export never overlap, so starting a run while another is going is refused.
         Only a Data Owner of the project can start one.
 
         Parameters:

@@ -385,6 +385,17 @@ class SemanticLayerApi:
             data=json.dumps(body),
         )
 
+    def _transfer_ownership(
+        self, sp: semantic_layer.SemanticProject, email: str
+    ) -> dict[str, Any]:
+        _client = client._get_instance()
+        return _client._send_request(
+            "PUT",
+            self._path(sp.id, "owner"),
+            headers={"content-type": _JSON},
+            data=json.dumps({"email": email}),
+        )
+
     def _promote(
         self, sp: semantic_layer.SemanticProject, build_id: int
     ) -> dict[str, Any]:

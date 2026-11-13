@@ -282,6 +282,7 @@ hops semantic query <name> --metrics a,b [...same flags] [--output table|json|cs
 hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset dashboard on your own connection to the semantic project; prints its URL
 hops semantic export list <name>                            # exports of saved queries into feature groups, with each one's last run
 hops semantic export run <name> <export> [--wait]           # run an export's job now (Data Owner)
+hops semantic transfer-ownership <name> <email> [--yes]     # hand the semantic project, as whose owner its exports run, to another Data Owner
 hops semantic connect <name>                                # URLs and export lines for dbt-sl-sdk; eval "$(hops semantic connect <name>)"
 hops semantic time-spine create --start D --end D [--grain day] [--custom NAME=FREQ]   # feature group time_spine_<grain>
 hops semantic delete <name> --yes

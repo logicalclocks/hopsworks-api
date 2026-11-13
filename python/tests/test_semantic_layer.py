@@ -257,6 +257,23 @@ class TestModels:
         assert sp.missing_mandatory_tags == []
         assert SemanticProject.from_response_json(None) is None
 
+    def test_project_reads_its_owner_and_keeps_its_creator(self):
+        sp = SemanticProject.from_response_json(
+            {"id": 7, "name": "sales", "creator": "meb10000", "owner": "meb10001"}
+        )
+
+        assert (sp.creator, sp.owner) == ("meb10000", "meb10001")
+        assert sp.to_dict()["owner"] == "meb10001"
+        assert sp.to_dict()["creator"] == "meb10000"
+
+    def test_a_project_without_an_owner(self):
+        sp = SemanticProject.from_response_json(
+            {"id": 7, "name": "sales", "creator": "meb10000", "owner": None}
+        )
+
+        assert sp.owner is None
+        assert sp.to_dict()["owner"] is None
+
     def test_missing_mandatory_tags_are_their_names(self):
         sp = SemanticProject.from_response_json(
             {"id": 7, "name": "sales", "missingMandatoryTags": [{"name": "owner"}]}

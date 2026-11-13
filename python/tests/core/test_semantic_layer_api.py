@@ -54,6 +54,7 @@ SP_JSON = {
     "currentBuildId": 12,
     "latestBuild": {"id": 12, "semanticProjectId": 7, "status": "VALID"},
     "creator": "meb10000",
+    "owner": "meb10000",
     "created": "2026-11-03T18:00:00Z",
 }
 
@@ -338,6 +339,37 @@ class TestControlPlane:
             ["project", 119, "semantic", "projects", 7, "builds", 9, "promote"],
         )
         assert sales.current_build_id == 9
+
+    def test_transfer_ownership_puts_the_email_and_updates_the_project_in_place(
+        self, http, sales
+    ):
+        http._send_request.return_value = {**SP_JSON, "owner": "meb10001"}
+
+        assert sales.transfer_ownership("carol@example.com") is sales
+
+        call = http._send_request.call_args
+        assert call.args == (
+            "PUT",
+            ["project", 119, "semantic", "projects", 7, "owner"],
+        )
+        assert json.loads(call.kwargs["data"]) == {"email": "carol@example.com"}
+        assert call.kwargs["headers"] == {"content-type": "application/json"}
+        assert (sales.owner, sales.creator) == ("meb10001", "meb10000")
+
+    def test_a_refused_transfer_leaves_the_owner(self, http, sales):
+        http._send_request.side_effect = RestAPIError(
+            "url",
+            _response(
+                status=400,
+                body={"errorCode": 600020, "errorMsg": "not a Data Owner"},
+                reason="Bad Request",
+            ),
+        )
+
+        with pytest.raises(RestAPIError):
+            sales.transfer_ownership("dave@example.com")
+
+        assert sales.owner == "meb10000"
 
     def test_update_puts_only_the_given_settings_with_an_absolute_root(
         self, http, sales

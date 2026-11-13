@@ -48,7 +48,9 @@ Compile errors: `EXPORT_AS` (not `table`), `EXPORT_TARGET` (an invalid or duplic
    Groups that vanished from the window are removed, rows before it are kept, and an empty result empties the window.
    A `metric_time` at a custom granularity cannot be truncated, so such a run replaces every row and says so.
 
-The job runs as the semantic project's creator, who must be a Data Owner of the project whose project role allows Semantic layer: Run exports; otherwise the export is `OWNER_NOT_DATA_OWNER` and has no job.
+The job runs as the semantic project's owner, who must be a Data Owner of the project whose project role allows Semantic layer: Run exports; otherwise the export is `OWNER_NOT_DATA_OWNER` and has no job.
+The owner is the member who created the semantic project until a Data Owner hands it over with `hops semantic transfer-ownership <name> <email>` (`sales.transfer_ownership(email)`); the jobs follow at once.
+Removing the owner from the project hands their semantic projects to the Data Owner who takes over their files, or to the Data Owner doing the removal, and is refused when neither may run exports.
 Runs of one export never overlap.
 
 ## Answered from the export
@@ -67,6 +69,8 @@ The history's `served_from` shows it on every surface. `"useExports": false` in 
 ```bash
 hops semantic export list sales                                   # schedule, lookback, last status, run, rows and message
 hops semantic export run sales revenue_by_country_daily --wait    # run now (Data Owner), then print the outcome
+hops semantic show sales                                          # owner: the member the export jobs run as
+hops semantic transfer-ownership sales carol@example.com --yes    # hand the semantic project to another Data Owner
 ```
 
 ```python
@@ -80,6 +84,6 @@ execution = sales.run_export("revenue_by_country_daily", wait=True)
 | `FAILED` | The query or the write failed; `last_message` has the error | Fix the cause, run again |
 | `TRUNCATED` | The result reached the gateway's row cap | Fewer group-bys, a coarser grain, or a filter |
 | `TARGET_EXISTS` | Another feature group has the target name and version | Delete it, or change `alias` or `version` |
-| `OWNER_NOT_DATA_OWNER` | The semantic project's creator is not a Data Owner, or their custom project role removes Semantic layer: Run exports | Give them a role that allows it, or recreate the project as such a Data Owner |
+| `OWNER_NOT_DATA_OWNER` | The semantic project has no owner, or its owner is not a Data Owner or has a custom project role that removes Semantic layer: Run exports | `hops semantic transfer-ownership <name> <email>` to a Data Owner who may run exports, or give the owner such a role |
 | `JOB_ERROR` | Hopsworks could not create or update the export's job | `last_message` |
 | `DISABLED` | `enabled: false` | |

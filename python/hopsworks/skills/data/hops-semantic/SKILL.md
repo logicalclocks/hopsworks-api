@@ -240,6 +240,7 @@ The YAML, the lookback window, and the statuses (`TRUNCATED`, `TARGET_EXISTS`, `
 ```bash
 hops semantic export list sales                                   # last status, run, rows and message of each export
 hops semantic export run sales revenue_by_country_daily --wait    # run now; needs the Data Owner role
+hops semantic transfer-ownership sales carol@example.com --yes    # the export jobs run as the owner: hand it to another Data Owner
 ```
 
 While an export without `lookback` holds the exact rows of a query (same metrics, group-bys, grains, filters and time range, plus at most HAVING, ORDER BY and LIMIT), on unchanged Delta sources and an unchanged export feature group, the gateway reads them from the export's feature group: the REST answer carries `X-Semantic-Served-From: export:<name>`, and the history records `served_from`. Any write to a source, another write to the export, a changed definition or an access rule ends that until the next run. `"useExports": false` in a REST body skips it: [references/exports.md](references/exports.md).

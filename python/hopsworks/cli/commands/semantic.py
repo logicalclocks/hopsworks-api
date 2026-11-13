@@ -8,6 +8,7 @@ runs a saved query instead of ``--metrics``.
 ``init`` scaffolds a dbt project over feature groups, optionally in a new private GitHub repository cloned through Hopsworks git.
 ``time-spine create`` writes the time spine feature group that cumulative metrics and offsets join to.
 ``export list|run`` shows and runs the exports that write saved queries into feature groups, and ``connect`` prints what a dbt Semantic Layer client needs.
+``transfer-ownership`` hands a semantic project, and so the identity its export jobs run as, to another Data Owner.
 ``history`` lists the queries run on a semantic project over every API.
 """
 
@@ -283,6 +284,7 @@ def show_cmd(ctx: click.Context, name: str) -> None:
             ["git repository", sp.git_repository_id or "-"],
             ["format", sp.format],
             ["mode", sp.deployment_mode],
+            ["owner", sp.owner or "-"],
             ["current build", sp.current_build_id or "-"],
             ["latest build", _build_label(sp.latest_build)],
             ["gateway serves", served],
@@ -346,6 +348,39 @@ def update_cmd(
         output.info(
             "It compiles again; follow it with `hops semantic builds %s`.", sp.name
         )
+
+
+@semantic_group.command("transfer-ownership")
+@click.argument("name")
+@click.argument("email")
+@click.option("--yes", is_flag=True, help="Skip confirmation.")
+@click.pass_context
+def transfer_ownership_cmd(
+    ctx: click.Context, name: str, email: str, yes: bool
+) -> None:
+    """Hand a semantic project over to another Data Owner, as whom its export jobs then run.
+
+    You must be a Data Owner whose project role allows Semantic layer: Create & edit;
+    the new owner must be a Data Owner whose role allows Semantic layer: Run exports.
+
+    Args:
+        ctx: Click context.
+        name: Semantic project name.
+        email: Email address of the Data Owner who becomes the owner.
+        yes: Skip confirmation when True.
+    """
+    sp = _semantic_project(ctx, name)
+    if not yes and not output.JSON_MODE:
+        click.confirm(
+            f"Hand semantic project {name} over from {sp.owner or 'no owner'} to "
+            f"{email}? Its export jobs will run as {email}.",
+            abort=True,
+        )
+    sp = sp.transfer_ownership(email)
+    if output.JSON_MODE:
+        output.print_json(sp.to_dict())
+        return
+    output.success("Semantic project %s is now owned by %s.", sp.name, sp.owner)
 
 
 @semantic_group.command(

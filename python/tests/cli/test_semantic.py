@@ -348,6 +348,53 @@ class TestProjects:
         assert result.exit_code == 0, result.output
         sl.delete_project.assert_called_once_with("sales")
 
+    def test_transfer_ownership_with_yes_names_the_new_owner(self, sales):
+        sales.owner = "meb10000"
+        sales.transfer_ownership.return_value = mock.MagicMock(
+            name="sp", owner="meb10001"
+        )
+        sales.transfer_ownership.return_value.name = "sales"
+
+        result = _run("transfer-ownership", "sales", "carol@example.com", "--yes")
+
+        assert result.exit_code == 0, result.output
+        sales.transfer_ownership.assert_called_once_with("carol@example.com")
+        assert "sales is now owned by meb10001" in result.output
+
+    def test_transfer_ownership_asks_first_and_a_no_changes_nothing(self, sales):
+        sales.owner = "meb10000"
+
+        result = CliRunner().invoke(
+            cli,
+            ["semantic", "transfer-ownership", "sales", "carol@example.com"],
+            input="n\n",
+        )
+
+        assert result.exit_code == 1
+        assert "from meb10000 to carol@example.com" in result.output
+        sales.transfer_ownership.assert_not_called()
+
+    def test_transfer_ownership_in_json_mode_prints_the_project(self, sales):
+        sales.transfer_ownership.return_value.to_dict.return_value = {
+            "name": "sales",
+            "owner": "meb10001",
+        }
+
+        result = _run("--json", "transfer-ownership", "sales", "carol@example.com")
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["owner"] == "meb10001"
+
+    def test_show_names_the_owner(self, sales):
+        sales.owner = "meb10001"
+
+        result = _run("show", "sales")
+
+        assert result.exit_code == 0, result.output
+        assert ["owner", "meb10001"] in [
+            line.split() for line in result.output.splitlines()
+        ]
+
     def test_promote_takes_an_integer_build(self, sales):
         sales.promote.return_value = sales
 

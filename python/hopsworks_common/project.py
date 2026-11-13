@@ -491,9 +491,11 @@ class Project:
             delete_home_dir: Whether to also delete the member's home directory in the project.
             new_file_owner: Email address of the data owner that takes over the removed member's home directory.
                 Defaults to the data owner who has been in the project longest.
+                The semantic projects the member owns go to this data owner too, or to the caller when none is given or this one may not run their exports.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a data scientist tries to remove someone other than themselves.
+                The removal is also refused when the member owns semantic projects that neither `new_file_owner` nor the caller can take over; the message names them, and [`SemanticProject.transfer_ownership`][hopsworks_common.semantic_layer.SemanticProject.transfer_ownership] hands them to another data owner first.
         """
         self._project_members_api.remove_member(
             email, delete_home_dir=delete_home_dir, new_file_owner=new_file_owner
