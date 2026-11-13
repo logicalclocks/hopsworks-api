@@ -434,7 +434,7 @@ python ~/dashboards/customers-overview.py --delete   # after confirming the exac
 hops superset dashboard list                         # confirm
 # from an external client: the same program as a job
 hops job deploy customers-overview-dashboard dashboards/customers-overview.py \
-  --env python-feature-pipeline --upload-dir Users/<user>/dashboards --overwrite --run --wait
+  --env python-feature-pipeline --overwrite --run --wait
 hops job logs customers-overview-dashboard --stdout                 # the URL, or the --list JSON
 ```
 
