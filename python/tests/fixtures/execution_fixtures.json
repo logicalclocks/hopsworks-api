@@ -29,5 +29,88 @@
       "count": 0,
       "items": []
     }
+  },
+  "get_python_failed": {
+    "response": {
+      "href": "http://10.113.154.130/hopsworks-api/api/project/2167/jobs/umami-sync/executions/20074",
+      "id": 20074,
+      "submissionTime": "2026-10-19T02:00:01.000Z",
+      "state": "FAILED",
+      "stdoutPath": "/Projects/blah/Logs/Python/umami-sync/20074/stdout.log",
+      "stderrPath": "/Projects/blah/Logs/Python/umami-sync/20074/stderr.log",
+      "hdfsUser": "blah__meb10000",
+      "args": "-start_time 2026-10-19T02:00:00Z",
+      "finalStatus": "FAILED",
+      "progress": 1.0,
+      "user": {
+        "href": "http://10.113.154.130/hopsworks-api/api/users/10000"
+      },
+      "filesToRemove": [],
+      "duration": 44006376,
+      "resourceManager": "KUBERNETES",
+      "monitoring": {},
+      "queued": 0,
+      "kubeMonitor": {
+        "job": {}
+      },
+      "rerunCount": 0,
+      "logicalDate": "2026-10-18T02:00:00.000Z",
+      "dataIntervalEnd": "2026-10-19T02:00:00.000Z"
+    }
+  },
+  "get_python_finished": {
+    "response": {
+      "href": "http://10.113.154.130/hopsworks-api/api/project/2167/jobs/deal-win-scoring-data/executions/22652",
+      "id": 22652,
+      "submissionTime": "2026-10-20T01:00:02.000Z",
+      "state": "FINISHED",
+      "stdoutPath": "/Projects/blah/Logs/Python/deal-win-scoring-data/22652/stdout.log",
+      "stderrPath": "/Projects/blah/Logs/Python/deal-win-scoring-data/22652/stderr.log",
+      "hdfsUser": "blah__meb10000",
+      "args": "--bundle Resources/deal-win-scoring/runs/data-backfill-1/bundle.tar.gz --mode backfill --from 2023-01-01T00:00:00Z --to 2026-10-08T13:34:00Z -start_time 2026-10-20T01:00:00Z",
+      "finalStatus": "SUCCEEDED",
+      "progress": 1.0,
+      "user": {
+        "href": "http://10.113.154.130/hopsworks-api/api/users/10000"
+      },
+      "filesToRemove": [],
+      "duration": 94329,
+      "resourceManager": "KUBERNETES",
+      "monitoring": {},
+      "queued": 0,
+      "kubeMonitor": {},
+      "rerunCount": 0,
+      "logicalDate": "2026-10-19T01:00:00.000Z",
+      "dataIntervalEnd": "2026-10-20T01:00:00.000Z"
+    }
+  },
+  "get_spark_finished": {
+    "response": {
+      "href": "http://10.113.154.130/hopsworks-api/api/project/2167/jobs/umami_session_1_compute_stats/executions/16481",
+      "id": 16481,
+      "submissionTime": "2026-10-16T02:00:51.000Z",
+      "state": "FINISHED",
+      "stdoutPath": "/Projects/blah/Logs/PySpark/meb10000-2c573ab4-2eec-4f3e-a784-e66ec2f35770/stdout.log",
+      "stderrPath": "/Projects/blah/Logs/PySpark/meb10000-2c573ab4-2eec-4f3e-a784-e66ec2f35770/stderr.log",
+      "appId": "meb10000-2c573ab4-2eec-4f3e-a784-e66ec2f35770",
+      "hdfsUser": "blah__meb10000",
+      "args": "-op run_fm -path hdfs:///Projects/blah/Resources/jobs/umami_session_1_compute_stats/config.json -end_commit_time 1792116049677",
+      "finalStatus": "SUCCEEDED",
+      "progress": 0.0,
+      "user": {
+        "href": "http://10.113.154.130/hopsworks-api/api/users/10000"
+      },
+      "filesToRemove": [],
+      "duration": 142593,
+      "resourceManager": "KUBERNETES",
+      "historyServerApplicationId": "spark-1bd25189758c4999b67574cb59755dbe",
+      "monitoring": {
+        "grafanaUrl": "grafana/d/spark/spark?var-applicationId=spark-1bd25189758c4999b67574cb59755dbe",
+        "sparkUrl": "sparkhistoryserver/https://sparkhistoryserver.service.consul:18080/history/spark-1bd25189758c4999b67574cb59755dbe"
+      },
+      "queued": 0,
+      "kubeMonitor": {},
+      "rerunCount": 0
+    }
   }
 }
