@@ -25,7 +25,7 @@ hops agent logs my_agent         # startup and request errors land here
 ## Ask the user (only when state is ambiguous)
 - **Framework.** `langgraph`, `llamaindex`, `openai_agents`, `claude_agents` or `custom`: picks the tracing instrumentation.
   It goes in two places: `AgentApp(framework=...)` in the code and the deployment's config (see **Framework and chat contract** below).
-- **Memory.** Working memory only, plus a short-term rolling summary, plus long-term memory across conversations (the summary needs a summariser key; long-term memory needs the *client* to say who the user is — see **Who long-term memory belongs to**).
+- **Memory.** Working memory only, plus a short-term rolling summary, plus long-term memory across conversations (the summary needs a summariser key; long-term memory needs the *client* to say who the user is — see references/memory.md, **Who long-term memory belongs to**).
 - **Source.** A local script uploaded to HopsFS, or a Git repository (branch, and whether to auto-redeploy on push).
 - **Evaluation.** Whether the agent will be evaluated against a sandboxed suite while serving customers (`eval_per_request=True` and tools that check `in_evaluation()`), or in a deployment of its own (`EVAL_MODE=true`).
 
@@ -81,44 +81,7 @@ What matters in the handler:
 
 For an action that needs a person's approval (a refund, a deletion, sending an email), call `answer = ctx.interrupt("Refund 40 EUR?", key="refund-42", response_schema={...})` before the action. The run pauses with an AG-UI interrupt; the chat panel shows the question and the person's answer resumes the turn, which runs again from the start and gets `answer` (`answer.cancelled`, `answer.payload`). Everything before the call runs twice, so it must not act. In evaluation, the task context's `interrupt_answers` (question id to payload) answers on the trial's behalf; unanswered questions are cancelled. See the protocol README's human-in-the-loop section.
 
-## Who long-term memory belongs to
-
-`user`-scope memory is keyed by the request's **subject**, and the subject is whatever the client asserted — `agent.chat(..., subject="marcus@example.com")`, the chat panel's signed-in user, or your own application calling `ctx.rebind_subject(key)` after it has verified the person. That is what makes a second conversation start knowing them.
-
-**Asking the user who they are does not do this.** The `identify` tool (from `identity_tools`) calls `ctx.record_subject(..., source="model")`, which *labels* the conversation for traces and failure analysis and nothing more. It deliberately does not rebind: rebinding decides whose durable memory a conversation may read, and the caller there is a model acting on text a user typed, so an agent could be talked into reading someone else's facts. With `identify` alone, every `remember(..., scope="user")` is owned by the conversation id, and the next conversation — same email, same person — knows nothing.
-
-So, when you design an agent with long-term memory:
-
-- a real deployment has a login: the app asserts `subject` per request and nobody is asked anything;
-- a demo without one either passes `subject=` from the client, or calls `ctx.rebind_subject` in app code after the email is given — and should say in its own README why that is acceptable only for a demo;
-- `ctx.has_subject` is true exactly when the turn has a real identity, and `ctx.subject_source` says how it was known: `"client"` (asserted on the request), `"app"` (bound this turn with `rebind_subject`) or `"conversation"` (bound on an earlier turn of this conversation and read back by the SDK — what every turn after the binding reports). The per-conversation fallback is the one case with `has_subject` false. Check `has_subject`, not a list of sources: an agent that only trusted `"client"`/`"app"` never told the model it was identified on turn three, and the model called `identify` again.
-- a trace's `subject_source` (the traces table) can also read `"model"`: a label from `identify` on a conversation nobody bound. A model's label never replaces a binding, and `identify` on a bound conversation answers that it is already identified.
-- the traces table's subject is the **conversation's**, as it stands now, on every row of it — the first turn of a conversation shows the address given on the second. Which turn identified the person is not readable there; the `identify` call in that turn's `trace.tool_calls` is.
-- an **evaluation trial** with a subject reads that person's memory and never writes it: `remember`/`forget` under `user` scope land under the trial's own conversation, and its messages stay out of the person's history. That is what lets a regression replay a customer's turn as them (see **hops-agent-evals**) without the suite changing what is stored about them.
-
-**Reading back what an agent remembers.** From its memory feature groups, so the agent need not be running:
-
-```python
-agent.memory_conversations(subject="dana@example.com")   # what it stored, newest first
-agent.memory_transcript(conversation_id)                  # messages, summary, and whose it is
-agent.memory_facts("dana@example.com")                    # the person's user-scope facts
-```
-
-**Searching earlier conversations by meaning.** `agent.memory_search("what do they eat?", subject=..., conversation_id=..., k=5)` runs a similarity search on the deployment's memory feature group, `agent_memory_<deployment id>`, with the filters the agent's own `search` tool uses; the agent need not be running. The query must be embedded by the model that embedded the messages: it is read off the feature group's description and loaded with sentence-transformers by default (install it), or pass `embedder=` for another model, which is refused when its `model_id` differs. Without semantic search the agent has no such feature group and the result is `[]`.
-
-Those read the groups below for you. Reading them by hand:
-
-```python
-fs = project.get_feature_store()
-facts = fs.get_feature_group("agent_memory_facts", 1).read(online=True)
-facts[facts.deployment_id.astype(str) == str(agent.id)][["owner", "scope", "state_key", "value"]]
-```
-
-`deployment_id` is **text** in the memory groups (`agent_memory_facts`, `_messages`, `_conversations`) and a number in the others: the memory store runs outside Hopsworks too, where a deployment id is any name, so compare it as a string — `== agent.id` silently matches nothing.
-
-Online, not offline: the offline Delta table has no commits until a materialisation runs, so `hops sql` / Trino answers `DELTA_LAKE_INVALID_SCHEMA ... has no commits`. `owner` is the subject for `user` scope — an email where the client asserted one, a conversation id where it did not, which is the quickest way to see whether the paragraph above is biting. The other columns are `id, source_ref, written_by, updated_at, expires_at` (`fg.columns`; `fg.features` is deprecated). An evaluation trial's `user`-scope facts have the **trial's** conversation id as `owner` (`<run>/<task>/…`), never the person's — that is how to confirm a replay did not write into a real user's memory.
-
-Streaming, multimodal content, memory tiers, progress events and the structure graph are in the protocol README: `python/hopsworks_agents/protocol/README.md`.
+Long-term memory and whose it is (the request's subject, `rebind_subject`, why `identify` does not bind, `has_subject`), reading back what an agent remembers and searching its memory: `hops skills info hops-agent-deployment references/memory.md`. Streaming, multimodal content, progress events and the structure graph: the protocol README, `python/hopsworks_agents/protocol/README.md`.
 
 ## Deploy — CLI (preferred for local sources)
 
@@ -161,22 +124,9 @@ agents.deploy_agent(
 - an agent with several models — a cheap router and an expensive writer, or a judge of its own — bills at whichever one runs, so price the one that does the volume and say so in a comment;
 - a provider-prefixed name (`anthropic/claude-sonnet-4-5`) is LiteLLM routing to that provider, and the price is that provider's.
 
-**Then check against a real trace, because the source can be wrong.** The spans say which model actually answered, and a framework default beats anything the README claims:
-
-```python
-from collections import Counter
-trace = agent.trace(agent.traces(limit=1)[0].trace_id)
-print(Counter(s["attributes"].get("llm.model_name") for s in trace.spans
-               if s["attributes"].get("openinference.span.kind") == "LLM"))
-```
-
-One chat after deploying settles it in a second, and it is the only way to catch an agent priced for the model its docstring names while the SDK runs its own default.
-
 Prices change, so write them where the model is chosen and say when they were taken. A deployment whose model changed and whose prices did not is worse than an unpriced one: it reports a number that is confidently wrong.
 
-**Where the cost shows.** A trace: `trace.total_input_tokens` / `total_output_tokens` and `trace.total_input_cost` / `total_output_cost` (there is no `total_cost` or `estimated_cost` on a trace). The totals are the sum over the trace's **model calls** — `llm.token_count.prompt` / `completion` on each LLM span, the turn's own figure only when no model call was traced — and cached prompt tokens are counted and priced at the full input price, so the cost is an upper bound for a provider that discounts cache reads. A run: `estimated_cost` and `costed_trial_rate` on its metrics, suite runs and monitor samples alike. A window: `agent.llm_metrics()` → `estimated_cost_usd` per model.
-
-The two keys are per deployment, so two agents on different models each cost correctly, and re-deploying with new prices is what changes them — they are read per turn, not baked into old traces. Re-reading an old window after a price change does not re-cost it.
+Checking the price against the model a real trace shows, and where the cost shows on a trace, a run and a window: `hops skills info hops-agent-deployment references/pricing.md`.
 
 **A trace is not readable the instant the reply is.** The spans are exported after the answer and land over a second or two, so a read straight after `chat()` either raises `AgentServingError: Trace not found` or — worse — returns the trace **without its model calls**: no LLM span, zero tokens, zero cost, a turn that reads as free. Ask it to wait for the turn to close:
 
@@ -186,16 +136,7 @@ trace = agent.trace(reply.trace_id, wait=10)   # until the turn span has landed,
 
 It polls until the turn span carries its response id, which the agent SDK stamps last. An agent not built on the Hopsworks agent SDK never stamps it, so `wait` costs it the full time.
 
-**When every chat fails.** A running agent whose handler raises answers `/v1/chat` with a 500 whose body says why (`detail.code` `agent_error`, the exception in `detail.message`), and the traceback is in `hops agent logs`; an agent built on an older image returns a bare `500 Internal Server Error`, and then the log is the only place the reason is. A frequent cause after changing the model is a setting the new model refuses: gpt-6 and the o-series fix their own sampling and reject `temperature`, so leave it out for them.
-
-**When a start takes too long, or says nothing.** A first start on a node that has not pulled the agent image can take ten minutes or more, and `start(await_running=...)` giving up does **not** stop the deployment — it usually comes up shortly after. When `hops agent info` shows an empty status and `hops agent logs` prints only `[failed to read pod logs]`, the container never started, so there are no logs to read: look at the pod instead.
-
-```bash
-kubectl get pods -n <project> | grep <name>-predictor    # ImagePullBackOff, Pending, OOMKilled
-kubectl describe pod -n <project> <pod>                  # Events says which
-```
-
-See **hops-kubectl-debug**. `Pending` with no events is usually resources; `ImagePullBackOff` on a first deploy is the image still being pulled or missing from the cluster's registry.
+Every chat answers 500, or a start takes long or prints no logs: `hops skills info hops-agent-deployment references/troubleshooting.md`.
 
 **Confirm before deleting.** `hops agent delete` tears down the served agent irreversibly; confirm the exact name with the user, and never tear down an agent you created as a side effect (temp or test ones included) unless they asked. From Python it is `agent.delete(force=True)`, or `agent.stop()` and then `agent.delete()` — a plain `delete()` on a running agent raises `ModelServingException: Deployment not stopped`.
 
@@ -244,25 +185,7 @@ Check with `hops agent info my_agent` (the **Framework** and **Chat contract** r
 
 An agent scales like a model deployment: pass `scaling_configuration=PredictorScalingConfig(...)` to `deploy_agent` (instances, the metric and its target; `min_instances=0` rests at zero when idle and wakes on the first request, the SDK's default minimum being 1). The choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
 
-### Git-backed agents
-
-When the source lives in Git, give the repository instead of a local path. The repository is cloned on each start, so a restart or redeploy picks up new commits. Providers: `GitHub`, `GitLab`, `BitBucket`; a private repository needs the user's git provider configured in Hopsworks.
-
-```python
-agent = agents.deploy_agent(
-    entry="agent.py",                    # repo-relative
-    name="my_agent",
-    git_url="https://github.com/acme/my-agent-repo.git",
-    git_provider="GitHub",
-    git_branch="main",
-    git_auto_redeploy=True,              # roll to branch HEAD on every new commit
-    environment="my_agent",
-    framework="langgraph",               # not read from a git source: always pass it
-    chat_config="hopsworks",
-)
-```
-
-`hops agent info` shows the git source, the resolved branch and the commit the deployment is running.
+Source in a Git repository (cloned on each start, auto-redeploy on push): `hops skills info hops-agent-deployment references/git.md`.
 
 ## Talk to the agent — SDK
 
@@ -287,33 +210,11 @@ agent.manifest()                               # what the agent advertises
 
 **A turn the application answers itself has no model call.** When the app replies without running the model (an agent that asks who you are before doing anything else, say), the trace is one agent span: no LLM span, zero tokens, no cost, and `trace(wait=)` returns as soon as the turn closes. `wait` also covers the trace reaching the tracing store, which can take a few seconds after the reply on a busy cluster.
 
-**What `manifest()` returns** is the protocol document, not a flat summary: the agent's own fields are under `agent` (`name`, `description`, `version`, `framework`), the routes under `endpoints`, the UI hints under `ui`, and `capabilities` is AG-UI's `AgentCapabilities` with what only Hopsworks reads (streaming, memory tiers, trace correlation, evaluation mode) under `capabilities["custom"]["hopsworks"]`. `manifest()["agent"]["framework"]`, not `manifest()["framework"]` — the latter is `None` for every agent.
-
-**Tool events pair by id.** Each tool call yields more than one event, `status` going `running` then `done`, matched on the id. The closing event is named for the event, not for the tool — an agent that emits `ctx.emit_event("tool", status="done")` ends with `name == "tool"` — so follow the id rather than the name.
-
-They arrive in two shapes, which is worth knowing before writing the loop. `stream.tool_events` are `ToolEvent` **objects** — `.id`, `.name`, `.status`, `.message`, `.data`, `.raw`; the field is `id`, not `event_id`, and `json.dumps(event)` raises. On a non-streamed `agent.chat()` the same events ride on `reply.metadata["tool_events"]` as plain dicts with the same keys:
-
-```python
-for event in stream.tool_events:
-    print(event.id, event.name, event.status)                  # objects
-for event in reply.metadata.get("tool_events", []):
-    print(event["id"], event["name"], event["status"])         # dicts, same fields
-```
-
-**Don't emit your own when `tool_events=True`.** The flag bridges the framework's tool spans to events by itself, which is the point of it: no code in the agent. An agent that also calls `ctx.emit_event` for the same tool used to produce two chips per call under two id spaces — the framework's call id and the span id. The automatic emitter now stays off any tool the handler reports itself, so either style works and mixing them is harmless; a tool you never claim is still reported for you.
-
-**Reading a conversation back.** `agent.traces()` lists conversations, one row per session; `agent.session(session_id)` gives that conversation's turns and `agent.conversation(session_id)` pairs them as `{trace_id, user, assistant}` — `role`/`content` is the shape of the messages inside a turn, not of these.
-
 Messages go through the cluster's inference gateway, the route the chat panel uses; the logged-in user's credential is accepted there. From outside Hopsworks, log in with an API key.
 
 **A ready-made chat app for people outside Hopsworks**: `app = agent.create_chat_app()` (or `deploy_agent(..., chat_app=True)`, or "Create chat app" on the deployment page) creates and starts a Hopsworks app named `<agent>_chat` that speaks AG-UI to the agent: streaming, tool calls, attachments, the agent's questions, and thumbs up or down. Members open it with their Hopsworks login and chat as their Hopsworks user (the same subject, and memory, as the chat panel); turning on the app's public link shares it, and public visitors are anonymous with their own memory. The app sets the subject either way, and no serving key reaches the browser. Its thumbs up and down reach the Feedback tab marked "via chat app" (`Feedback.given_via == "chat-app"`). App variables change it: `CHAT_TITLE`, `CHAT_WELCOME`, `CHAT_SHOW_TOOL_CALLS`, `CHAT_ACCENT_COLOR`, `CHAT_LOGO_URL`, and `CHAT_THEME_DIR`, a project folder such as `Resources/chat-theme` with a `theme.css` and a `logo.svg`/`.png`. `agent.chat_app()` returns it, and it is deleted with the agent. To change more than the variables allow (its page, layout, components, routes of its own), `app = agent.customize_chat_app()` runs it from the project folder `Resources/chat-apps/<app>`: the app copies its template there (a `server.mjs` on `@hopsworks/agent-chat`, a React page in `web/`, a `theme.css`) and runs it; read that folder's `AGENTS.md` before changing anything, keep the chat's identity and safety to the package as it says, and `app.redeploy()` then `app.get_logs()` to try a change (a folder that fails to build falls back to the default page, logged).
 
-**A custom chat UI** talks to `agent.url` directly with the serving credential: `POST /v1/chat`
-with `{"message": {"role": "user", "content": [{"type": "text", "text": "..."}]}}`, and its users
-rate a reply with `POST /v1/feedback` `{"trace_id": reply.metadata.trace_id, "verdict":
-"negative", "subject": "<who>"}`. The agent relays the verdict to Hopsworks itself, filed under
-`user:<subject>`; the end user needs no Hopsworks account and the UI never learns the Hopsworks
-address. See "End-user feedback" in `python/hopsworks_agents/protocol/README.md`.
+`manifest()`'s shape, tool events by id and their two shapes, reading a conversation back, and a custom chat UI over `agent.url`: `hops skills info hops-agent-deployment references/chat-client.md`.
 
 ## Next Steps
 
