@@ -253,6 +253,21 @@ class TestModels:
             id=1, status="COMPILING", git_commit="a1b2c3d"
         )
         assert sp.to_dict()["latest_build"]["git_commit"] == "a1b2c3d"
+        assert list(sp.to_dict()) == [
+            "id",
+            "project_id",
+            "name",
+            "root_path",
+            "git_repository_id",
+            "format",
+            "deployment_mode",
+            "current_build_id",
+            "latest_build",
+            "creator",
+            "owner",
+            "created",
+            "missing_mandatory_tags",
+        ]
         assert sp.current_build_id is None
         assert sp.missing_mandatory_tags == []
         assert SemanticProject.from_response_json(None) is None

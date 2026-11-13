@@ -1036,7 +1036,6 @@ class TestHistory:
                     "execution_id": "3f8c2a52-0000-4000-8000-000000000001",
                     "user": "meb10000",
                     "surface": "FLIGHT",
-                    "engine": "TRINO",
                     "build_id": 12,
                     "status": "FAILED",
                     "error": "unknown metric 'nope'\nmore",

@@ -73,7 +73,6 @@ _HISTORY_COLUMNS = {
     "executionId": "execution_id",
     "user": "user",
     "surface": "surface",
-    "engine": "engine",
     "buildId": "build_id",
     "status": "status",
     "error": "error",
@@ -406,7 +405,6 @@ class SemanticProject:
         root_path: str | None = None,
         git_repository_id: int | None = None,
         format: str | None = None,
-        sql_engine: str | None = None,
         deployment_mode: str | None = None,
         current_build_id: int | None = None,
         latest_build: dict[str, Any] | SemanticBuild | None = None,
@@ -424,7 +422,6 @@ class SemanticProject:
         self._root_path = root_path
         self._git_repository_id = git_repository_id
         self._format = format
-        self._sql_engine = sql_engine
         self._deployment_mode = deployment_mode
         self._current_build_id = current_build_id
         self._latest_build = (
@@ -468,7 +465,6 @@ class SemanticProject:
             "root_path": self._root_path,
             "git_repository_id": self._git_repository_id,
             "format": self._format,
-            "sql_engine": self._sql_engine,
             "deployment_mode": self._deployment_mode,
             "current_build_id": self._current_build_id,
             "latest_build": self._latest_build.to_dict()
@@ -525,12 +521,6 @@ class SemanticProject:
     def format(self) -> str | None:
         """Format of the definitions: `DBT`, `NATIVE`, `MANIFEST_JSON`, or `AUTO` to detect it from the files under `root_path`."""
         return self._format
-
-    @public
-    @property
-    def sql_engine(self) -> str | None:
-        """Query engine the generated SQL runs on."""
-        return self._sql_engine
 
     @public
     @property
@@ -1271,7 +1261,7 @@ class SemanticProject:
             user: User name whose queries to return; only Data Owners can read other users' queries.
 
         Returns:
-            One row per query with columns `execution_id`, `user`, `surface`, `engine`, `build_id`, `status`, `error`, `rows`, `started_at`, `finished_at`, `duration_ms`, `cache`, `served_from`, `trino_query_id`, `request` and `sql`; `started_at` and `finished_at` are UTC timestamps.
+            One row per query with columns `execution_id`, `user`, `surface`, `build_id`, `status`, `error`, `rows`, `started_at`, `finished_at`, `duration_ms`, `cache`, `served_from`, `trino_query_id`, `request` and `sql`; `started_at` and `finished_at` are UTC timestamps.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If a filter is invalid or the backend encounters an error when handling the request.
