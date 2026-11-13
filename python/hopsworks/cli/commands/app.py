@@ -681,7 +681,7 @@ def app_deploy(
         for relative in files:
             parent = f"{remote_dir}/{os.path.dirname(relative)}".rstrip("/")
             dataset_api.upload(
-                local_path=os.path.join(local_dir, relative),
+                local_path=os.path.join(local_dir, *relative.split("/")),
                 upload_path=parent,
                 overwrite=True,
             )
