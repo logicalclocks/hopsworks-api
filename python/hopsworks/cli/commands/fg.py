@@ -20,6 +20,7 @@ from typing import Any
 import click
 from hopsworks.cli import joinspec, lineage, output, session, versions
 from hopsworks.cli.commands.embed import fg_embed_group
+from hopsworks.cli.commands.parse import fg_parse_group
 
 
 @click.group("fg")
@@ -28,6 +29,7 @@ def fg_group() -> None:
 
 
 fg_group.add_command(fg_embed_group)
+fg_group.add_command(fg_parse_group)
 
 
 @fg_group.command("list")

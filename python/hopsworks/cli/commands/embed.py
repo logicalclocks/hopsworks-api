@@ -458,19 +458,25 @@ def _intervals() -> set[int]:
     }
 
 
-def schedule_cron(every: str, project_id: Any, group: str) -> str:
+def schedule_cron(
+    every: str,
+    project_id: Any,
+    group: str,
+    floor_variable: str = embed_run.VAR_MIN_INTERVAL,
+) -> str:
     """The Quartz cron of `--schedule`.
 
     Daily by default. The minute, and the hour of a daily or multi-hour build, come
     from a stable hash of the project id and the group name, so groups do not all fire
     at once. An interval below a day must reach the floor an admin grants in the
-    Hopsworks variable platform_jobs_embed_min_interval_minutes; with none set, a day
-    is the floor.
+    Hopsworks variable `floor_variable` (platform_jobs_embed_min_interval_minutes for
+    embed); with none set, a day is the floor.
 
     Args:
         every: The `--schedule` value: `daily`, `hourly`, or a number of minutes.
         project_id: Id of the project, hashed into the minute and hour.
         group: Name of the feature group, hashed into the minute and hour.
+        floor_variable: Hopsworks variable that holds the shortest interval an admin grants.
 
     Returns:
         The Quartz cron expression.
@@ -487,7 +493,7 @@ def schedule_cron(every: str, project_id: Any, group: str) -> str:
         )
     if minutes < DAY_MINUTES:
         try:
-            floor = embed_run.variable_int(embed_run.VAR_MIN_INTERVAL, DAY_MINUTES)
+            floor = embed_run.variable_int(floor_variable, DAY_MINUTES)
         except embed_run.EmbedError as exc:
             raise click.ClickException(str(exc)) from exc
         if minutes < floor:
@@ -560,7 +566,7 @@ def _save_job(project, api, existing, group, src, text, args, environment) -> An
         ) from exc
 
 
-def start_refusal(exc: BaseException, group: str) -> str | None:
+def start_refusal(exc: BaseException, group: str, kind: str = "embed") -> str | None:
     """The refusal of an execution start, from the server's answer; None for any other failure.
 
     429: the platform's embed capacity (start rate or inventory) is full. 409:
@@ -586,13 +592,13 @@ def start_refusal(exc: BaseException, group: str) -> str | None:
         if str(cause.error_code) == JOB_DELETING:
             return (
                 f"{group} is being deleted; nothing was started; "
-                f"run hops fg embed delete {group} again to finish it"
+                f"run hops fg {kind} delete {group} again to finish it"
             )
         return f"a build of {group} is already running"
     if status == 429:
         after = (cause.response.headers.get("Retry-After") or "").strip()
         when = f"{after} s" if after.isdigit() else "a while"
-        return f"embed jobs are at capacity; nothing was started; retry after {when}"
+        return f"{kind} jobs are at capacity; nothing was started; retry after {when}"
     return None
 
 
@@ -634,6 +640,7 @@ def _start(
     group: str,
     sleep: Any = time.sleep,
     jitter: Any = random.random,
+    kind: str = "embed",
 ) -> Any:
     """One execution of the job.
 
@@ -653,11 +660,11 @@ def _start(
                 and send < START_SENDS
                 and waited + wait <= START_WAIT_BUDGET_S
             ):
-                output.info("embed jobs are at capacity; waiting %d s", wait)
+                output.info("%s jobs are at capacity; waiting %d s", kind, wait)
                 waited += wait
                 sleep(wait + jitter())
                 continue
-            refusal = start_refusal(exc, group)
+            refusal = start_refusal(exc, group, kind)
             if refusal is not None:
                 raise click.ClickException(refusal) from exc
             raise click.ClickException(
@@ -828,7 +835,7 @@ def _final(execution: Any) -> bool:
     return str(getattr(execution, "final_status", "") or "UNDEFINED") != "UNDEFINED"
 
 
-def _run_deletion(job: Any, group: str, timeout_s: int) -> int:
+def _run_deletion(job: Any, group: str, timeout_s: int, kind: str = "embed") -> int:
     """The id of the deletion execution D once it succeeded: the latest one, else a new one.
 
     D is started with deletion=true: the backend sets the job's deleting flag
@@ -847,11 +854,11 @@ def _run_deletion(job: Any, group: str, timeout_s: int) -> int:
         try:
             latest = executions_api._start(
                 job,
-                args=shlex.join(["fg", "embed", "delete", group, IN_JOB]),
+                args=shlex.join(["fg", kind, "delete", group, IN_JOB]),
                 deletion=True,
             )
         except Exception as exc:  # noqa: BLE001
-            refusal = start_refusal(exc, group)
+            refusal = start_refusal(exc, group, kind)
             if refusal is not None and "already running" in refusal:
                 refusal = (
                     f"a build of {group} is running and the job now starts no other; "
