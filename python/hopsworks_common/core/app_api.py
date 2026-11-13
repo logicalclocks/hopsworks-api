@@ -141,6 +141,7 @@ class AppApi:
         idle_cooldown_seconds: int | None = None,
         cold_start_timeout_seconds: int | None = None,
         agent: Any | None = None,
+        sign_identity: bool = False,
     ) -> app.App:
         """Create a new app.
 
@@ -217,6 +218,11 @@ class AppApi:
                 The app is then started as the agent's chat app is: with the agent's in-cluster address in `CHAT_AGENT_URL` (and `CHAT_AGENT_HOST`) and the key in `HOPSWORKS_APP_IDENTITY_KEY` that Hopsworks signs its members' names with, so the chat server the app runs (`hopsworks-agent-chat`, from the `@hopsworks/agent-chat` package in `python-app-pipeline`) knows who is chatting.
                 Off by default: an app without an agent gets neither.
                 For the ready-made chat page, use `Agent.create_chat_app()` instead.
+            sign_identity: Tell the app which project member sends each request, for an app that enforces project roles itself.
+                The proxy then forwards every member's request with `X-Hopsworks-User`, `X-Hopsworks-User-Time` (epoch seconds) and `X-Hopsworks-User-Signature`, the hex HMAC-SHA256 of the username and the time joined by a newline, under the key in the app's `HOPSWORKS_APP_IDENTITY_KEY`.
+                A public-link visitor is signed with an empty username.
+                The app should refuse a request whose signature does not verify or whose time is more than a few minutes old.
+                An app created with `agent` is signed regardless.
 
         Returns:
             The created App object.
@@ -346,6 +352,9 @@ class AppApi:
                 config["coldStartTimeoutSeconds"] = int(cold_start_timeout_seconds)
         if agent is not None:
             config["agentDeploymentId"] = int(getattr(agent, "id", agent))
+        # Left out when off, so a backend without the field still accepts the request.
+        if sign_identity:
+            config["signIdentity"] = True
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}

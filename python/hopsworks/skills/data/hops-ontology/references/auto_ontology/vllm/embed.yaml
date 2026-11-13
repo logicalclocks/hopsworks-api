@@ -1,0 +1,10 @@
+# vLLM engine arguments for the nemotronembed deployment, passed to `vllm serve --config`.
+# Hopsworks adds --served-model-name (the deployment name), the model path and the port.
+# The GPU is time-sliced with nemotronllm, which takes 0.80 of its memory.
+runner: pooling
+pooler-config: '{"task": "embed", "pooling_type": "MEAN", "use_activation": true}'
+dtype: bfloat16
+gpu-memory-utilization: 0.12
+max-model-len: 8192
+# The model card's server setting: chat-template messages carry the query: and passage: prefixes.
+chat-template-content-format: openai

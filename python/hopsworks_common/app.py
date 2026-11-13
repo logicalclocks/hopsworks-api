@@ -96,6 +96,7 @@ class App:
         cold_start_timeout_seconds=None,
         agent_deployment_id=None,
         agent_chat_app=None,
+        sign_identity=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -141,6 +142,7 @@ class App:
         self._cold_start_timeout_seconds = cold_start_timeout_seconds
         self._agent_deployment_id = agent_deployment_id
         self._agent_chat_app = bool(agent_chat_app)
+        self._sign_identity = bool(sign_identity)
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -459,6 +461,15 @@ class App:
 
     @public
     @property
+    def sign_identity(self) -> bool:
+        """Whether the proxy signs the name of the project member behind each request it forwards to the app (`AppApi.create_app(sign_identity=True)`).
+
+        An app that reaches an agent is signed whatever this says.
+        """
+        return self._sign_identity
+
+    @public
+    @property
     def public_url(self) -> str | None:
         """Public share URL.
 
@@ -734,6 +745,9 @@ class App:
         self._idle_scale_to_zero = updated._idle_scale_to_zero
         self._idle_cooldown_seconds = updated._idle_cooldown_seconds
         self._cold_start_timeout_seconds = updated._cold_start_timeout_seconds
+        self._agent_deployment_id = updated._agent_deployment_id
+        self._agent_chat_app = updated._agent_chat_app
+        self._sign_identity = updated._sign_identity
         return self
 
     def _wait_for_serving(self) -> App:
