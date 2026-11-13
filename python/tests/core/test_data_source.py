@@ -349,6 +349,58 @@ class TestDataSourceApiInferMetadata:
         assert [f.name for f in preview_data.features] == ["col_a", "col_b"]
         assert [f.type for f in preview_data.features] == ["string", "bigint"]
 
+    def test_data_source_data_warns_once_for_renamed_source_columns(self):
+        import warnings
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            preview_data = dsd.DataSourceData.from_response_json(
+                {
+                    "features": [
+                        {"name": "Id", "type": "string"},
+                        {"name": "AccountNumber", "type": "string"},
+                        {"name": "Billing City", "type": "string"},
+                        {"name": "amount", "type": "double"},
+                    ],
+                    "preview": [],
+                }
+            )
+
+        assert [str(w.message) for w in caught] == [
+            "Feature names are sanitized to lower case with underscores in the"
+            " feature store; these source columns are renamed: Id, AccountNumber,"
+            " Billing City."
+        ]
+        assert [f.name for f in preview_data.features] == [
+            "id",
+            "accountnumber",
+            "billing_city",
+            "amount",
+        ]
+        assert [f.original_name for f in preview_data.features] == [
+            "Id",
+            "AccountNumber",
+            "Billing City",
+            "amount",
+        ]
+        assert [f.column_name for f in preview_data.features] == [
+            "Id",
+            "AccountNumber",
+            "Billing City",
+            "amount",
+        ]
+
+    def test_data_source_data_lower_case_columns_warn_nothing(self):
+        import warnings
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            dsd.DataSourceData.from_response_json(
+                {"features": [{"name": "id", "type": "bigint"}], "preview": []}
+            )
+
+        assert caught == []
+
     def test_infer_metadata_handles_data_source_data_from_response_json(self):
         # Regression for the infer_metadata break (HWORKS-2876, d830e12f6):
         # _infer_metadata reads feature.name / feature.type, which raised
