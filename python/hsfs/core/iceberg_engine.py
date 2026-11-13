@@ -1027,7 +1027,7 @@ class IcebergEngine:
                     iceberg_options[key] = read_options[key]
 
         _logger.debug(
-            f"Iceberg read options for feature group {self._feature_group.name} v{self._feature_group.version}: {iceberg_options}"
+            f"Iceberg read options for feature group {self._feature_group.name} v{self._feature_group.version}: {sorted(iceberg_options)}"
         )
 
         return iceberg_options

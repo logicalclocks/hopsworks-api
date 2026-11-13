@@ -13,6 +13,8 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import logging
+
 import pytest
 from furl import furl
 from hopsworks_common.client import exceptions, online_store_rest_client
@@ -86,3 +88,49 @@ class TestOnlineStoreRestClient:
         )
         assert online_store_rest_client_instance._auth._token == "provided_api_key"
         assert ping_rdrs_mock.call_count == 1
+
+    def test_optional_config_api_key_is_not_logged(self, mocker, caplog):
+        # Arrange
+        online_store_rest_client._online_store_rest_client = None
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_service_discovery_domain",
+            return_value="consul",
+        )
+        mocker.patch(
+            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton._is_connected",
+        )
+        caplog.set_level(logging.DEBUG)
+
+        # Act
+        online_store_rest_client._init_or_reset_online_store_rest_client(
+            optional_config={"api_key": "sentinel-api-key"}
+        )
+        online_store_rest_client._init_or_reset_online_store_rest_client(
+            optional_config={"api_key": "sentinel-api-key"}, reset_client=True
+        )
+
+        # Assert
+        assert "api_key" in caplog.text
+        assert "sentinel-api-key" not in caplog.text
+
+    def test_init_without_optional_config_at_debug(self, mocker, caplog):
+        # Arrange
+        online_store_rest_client._online_store_rest_client = None
+        mocker.patch("hopsworks_common.client._is_external", return_value=True)
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_loadbalancer_external_domain",
+            return_value="eu-west.cloud.hopsworks.ai",
+        )
+        mocker.patch(
+            "hopsworks_common.client.online_store_rest_client.OnlineStoreRestClientSingleton._is_connected",
+        )
+        caplog.set_level(logging.DEBUG)
+
+        # Act
+        online_store_rest_client._init_or_reset_online_store_rest_client()
+
+        # Assert
+        assert online_store_rest_client._get_instance() is not None
