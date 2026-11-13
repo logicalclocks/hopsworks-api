@@ -2,7 +2,8 @@
 
 Markdown playbooks (`SKILL.md`) that drive an agent through Hopsworks workflows.
 The **live, canonical list is `hops skills list`** (read one with
-`hops skills show <name>`); this file is a static index for browsing.
+`hops skills info <name>`, and a file it names with
+`hops skills info <name> references/<file>`); this file is a static index for browsing.
 
 Skills are routed by their **directory name** (e.g. `hops-fg`). They are grouped
 into bucket folders:
@@ -32,6 +33,7 @@ into bucket folders:
 - [hops-transformations](ml/hops-transformations/SKILL.md) — built-in/custom/on-demand transforms + transformation store.
 - [hops-train](ml/hops-train/SKILL.md) — train + register a model.
 - [hops-batch-inference](ml/hops-batch-inference/SKILL.md) — batch scoring + prediction logging.
+- [hops-score](ml/hops-score/SKILL.md) — score or rank rows over connected data with `hops score`.
 - [hops-online-inference](ml/hops-online-inference/SKILL.md) — KServe model deployment.
 - [hops-monitoring](ml/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
 
@@ -43,6 +45,7 @@ into bucket folders:
 
 ## dashboards/ — apps and BI
 - [hops-app](dashboards/hops-app/SKILL.md) — Python app deployments (Streamlit + custom apps).
+- [hops-design](dashboards/hops-design/SKILL.md): the Hopsworks look and layout rules for apps, dashboards, tables and charts.
 - [hops-app-db](dashboards/hops-app-db/SKILL.md) — app / agent access to the project's online database (`db_access`) and, via Trino, the offline feature groups (Python, SQL, Node.js with `@hopsworks/app`).
 - [hops-superset](dashboards/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
 
@@ -51,6 +54,7 @@ into bucket folders:
 
 ## platform/ — cross-cutting platform knowledge and compute
 - [hops-job](platform/hops-job/SKILL.md) — jobs and Airflow DAGs.
+- [hops-notebook](platform/hops-notebook/SKILL.md) — notebooks written and run on the user's Jupyter kernel.
 - [hops-environments](platform/hops-environments/SKILL.md) — clone a Python env, install custom libs.
 - [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
 - [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, per-namespace compute cost, and feature store/dataset sharing.

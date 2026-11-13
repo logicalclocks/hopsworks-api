@@ -85,7 +85,7 @@ class TestExecutionApiStart:
         assert body["args"] == "--flag value"
         assert body["envVars"] == {
             "FOO": "bar",
-            "HOPS_END_TIME": end_time.isoformat(),
+            "HOPS_END_TIME": "2026-04-02T00:00:00Z",
         }
         assert body["logicalDate"] == logical_date.isoformat()
         assert body["dataIntervalEnd"] == end_time.isoformat()

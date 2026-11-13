@@ -105,7 +105,7 @@ integrity hash: the app serves everything the page loads. Then deploy `app/` as
 ```bash
 hops app create <slug>-app --path /Projects/<project>/Users/<user>/<slug>/app/app.py \
   --app-kind custom --entrypoint-command "python app.py" --app-port 8080 \
-  --readiness-probe-path /health --environment python-agent-pipeline --cores 0.5 --memory 1024 --start
+  --readiness-probe-path /health --env python-agent-pipeline --cores 0.5 --memory 1024 --start
 ```
 
 The page is the game; *Let Kumo Tabular fly* (`?pilot=kumo`) hands it to the

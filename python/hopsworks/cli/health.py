@@ -387,18 +387,22 @@ h2 { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
 .page { display: flex; flex-direction: column; gap: 20px; }
 .muted { color: var(--muted-foreground); } .xs { font-size: 12px; } .grow { flex: 1; min-width: 0; }
 .head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-/* Card: rounded-lg border border-border bg-card shadow-sm */
-.card { background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); padding: 16px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-.stat .v { font-size: 24px; font-weight: 600; line-height: 1.2; } .stat .l { color: var(--muted-foreground); font-size: 12px; }
-/* Badge: h-5 rounded-4xl px-2 text-xs font-medium, variants success/notice/fail */
-.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 26px; font-size: 12px; font-weight: 500; white-space: nowrap; }
-.badge.success, .badge.healthy { background: color-mix(in oklab, var(--quartz-primary) 10%, transparent); color: var(--quartz-primary); }
-.badge.notice, .badge.degraded { background: color-mix(in oklab, var(--quartz-label-orange) 10%, transparent); color: var(--quartz-label-orange); }
-.badge.fail, .badge.failing { background: color-mix(in oklab, var(--destructive) 10%, transparent); color: var(--destructive); }
-.badge.info { background: color-mix(in oklab, var(--quartz-label-blue) 10%, transparent); color: var(--quartz-label-blue); }
-/* Table: wrapper rounded-md border; head h-9 px-3 text-xs font-bold muted-foreground on bg-muted/50; rows border-b hover:bg-accent */
-.table { width: 100%; overflow: auto; border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px); }
+/* Sections are grouped by spacing and a hairline (hops-design): no box, no shadow. */
+.page > section { border-top: 1px solid var(--border); padding-top: 20px; }
+/* Key figures in one row divided by hairlines: each stat draws its left rule, and the
+   row, pulled left by one padding, clips the first rule on every line. */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); margin-left: -16px; overflow: hidden; }
+.stat { min-width: 0; padding: 2px 16px; box-shadow: -1px 0 0 var(--border); }
+.stat .v { font-size: 24px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .stat .l { color: var(--muted-foreground); font-size: 12px; }
+/* Status: a dot and a word, never color alone */
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--quartz-gray); }
+.status.success::before, .status.healthy::before { background: var(--quartz-primary); }
+.status.notice::before, .status.degraded::before { background: var(--quartz-label-orange); }
+.status.fail::before, .status.failing::before { background: var(--destructive); }
+.status.info::before { background: var(--quartz-label-blue); }
+/* Table: no frame, the row rules group it; head text-xs font-bold muted-foreground; rows border-b hover:bg-accent */
+.table { width: 100%; overflow: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 thead { background: color-mix(in oklab, var(--muted) 50%, transparent); }
 th { height: 36px; padding: 0 12px; text-align: left; font-size: 12px; font-weight: 700; color: var(--muted-foreground); white-space: nowrap; }
@@ -442,7 +446,7 @@ const ago = (iso) => { const s = (Date.now() - new Date(iso)) / 1000;
 const dur = (s) => s >= 3600 ? `${(s / 3600).toFixed(1)} h` : s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`;
 const failedRun = (r) => ['FAILED', 'KILLED'].includes(r.final_status);
 const healthyState = (s) => ['RUNNING', 'IDLE'].includes(String(s.state).toUpperCase());
-const badge = (variant, text) => el('span', { class: `badge ${variant}` }, text);
+const statusLabel = (variant, text) => el('span', { class: `status ${variant}` }, text);
 const table = (heads, rows) => el('div', { class: 'table' }, el('table', {}, el('thead', {}, el('tr', {}, heads.map((h) => el('th', {}, h)))), el('tbody', {}, rows)));
 let onlyProblems = false;
 // The report's window as the user picked it: whole days in days, otherwise hours.
@@ -473,23 +477,23 @@ function jobsSection() {
       el('td', {}, el('div', { class: 'runs' }, j.runs.slice().reverse().map((r) => el('span', { class: `run ${r.final_status} ${r.final_status === 'UNDEFINED' ? 'running' : ''}`, title: `${r.id} ${r.final_status} ${ago(r.submitted)}` })))),
       el('td', {}, `${j.runs.filter((r) => r.final_status === 'SUCCEEDED').length}/${j.runs.length}`),
       el('td', {}, last ? `${ago(last.submitted)} · ${dur(last.duration_s)}` : el('span', { class: 'muted' }, j.error || 'no runs')),
-      el('td', { style: 'text-align:right' }, toggle || (j.missing || j.error ? badge('fail', 'missing') : j.runs.length ? badge('success', 'healthy') : badge('info', 'idle')))));
+      el('td', { style: 'text-align:right' }, toggle || (j.missing || j.error ? statusLabel('fail', 'missing') : j.runs.length ? statusLabel('success', 'healthy') : statusLabel('info', 'idle')))));
     body.push(detail);
   }
-  return el('section', { class: 'card' }, el('h2', {}, `Jobs, last ${period}`),
+  return el('section', {}, el('h2', {}, `Jobs, last ${period}`),
     rows.length ? table(['Job', 'Runs', 'Succeeded', 'Last run', ''], body)
       : el('p', { class: 'muted' }, onlyProblems ? 'No job has a failed run.' : 'No jobs.'));
 }
 
 function servicesSection() {
   const title = el('h2', {}, 'Deployments and apps');
-  if (!facts.services.length) return el('section', { class: 'card' }, title, el('p', { class: 'muted' }, 'This system has no deployment or app.'));
+  if (!facts.services.length) return el('section', {}, title, el('p', { class: 'muted' }, 'This system has no deployment or app.'));
   const rows = facts.services.filter((s) => !onlyProblems || s.pods.some((p) => p.restarts || p.phase !== 'Running') || !healthyState(s));
-  if (!rows.length) return el('section', { class: 'card' }, title, el('p', { class: 'muted' }, 'Every deployment and app is healthy.'));
-  return el('section', { class: 'card' }, title,
+  if (!rows.length) return el('section', {}, title, el('p', { class: 'muted' }, 'Every deployment and app is healthy.'));
+  return el('section', {}, title,
     rows.map((s) => el('div', { class: 'service' },
       el('div', { class: 'service-head' }, el('span', { style: 'font-weight:500' }, s.name), el('span', { class: 'muted' }, s.kind),
-        badge(healthyState(s) ? 'success' : 'fail', s.state)),
+        statusLabel(healthyState(s) ? 'success' : 'fail', s.state)),
       s.pods.length ? table(['Pod', 'Ready', 'Restarts', 'CPU (mCPU)', 'Memory (MiB)'],
         s.pods.map((p) => el('tr', {},
           el('td', {}, el('code', {}, p.pod), p.last_terminations.map((t) => el('div', { class: 'fail-text xs' }, `${t.container}: ${t.reason} (exit ${t.exit_code})`))),
@@ -505,7 +509,7 @@ function tablesSection() {
   const rows = all.filter((t) => !onlyProblems || (t.problems || []).length);
   // An unpartitioned table reads as one partition; only more is worth saying.
   const files = (l) => [`${l.active_files} file${l.active_files === 1 ? '' : 's'}`, l.total_bytes ? size(l.total_bytes) : '', l.partitions > 1 ? `${l.partitions} partitions` : ''].filter(Boolean).join(', ');
-  return el('section', { class: 'card' }, el('h2', {}, 'Tables'),
+  return el('section', {}, el('h2', {}, 'Tables'),
     rows.length ? table(['Table', 'Rows', 'Last write', 'Files', ''],
       rows.map((t) => { const l = t.layout || {}; const p = t.problems || [];
         return el('tr', {},
@@ -514,7 +518,7 @@ function tablesSection() {
           el('td', {}, t.rows == null ? el('span', { class: 'muted' }, 'n/a') : t.rows.toLocaleString()),
           el('td', {}, t.last_write ? `${ago(t.last_write)}${t.max_age_hours ? ` · target ${t.max_age_hours} h` : ''}` : el('span', { class: 'muted' }, 'never')),
           el('td', {}, l.active_files != null ? files(l) : el('span', { class: 'muted' }, 'n/a')),
-          el('td', { style: 'text-align:right' }, p.length ? badge('fail', 'problem') : badge('success', 'healthy'))); }))
+          el('td', { style: 'text-align:right' }, p.length ? statusLabel('fail', 'problem') : statusLabel('success', 'healthy'))); }))
       : el('p', { class: 'muted' }, onlyProblems ? 'No table has a problem.' : 'No tables yet.'));
 }
 
@@ -545,7 +549,7 @@ function missingData(o) {
 function pipelinesSection() {
   const all = facts.pipelines || [];
   const rows = all.filter((p) => !onlyProblems || p.problems.length);
-  if (!rows.length) return [el('section', { class: 'card' }, el('h2', {}, `Data, last ${period}`), el('p', { class: 'muted' }, 'No pipeline has a problem.'))];
+  if (!rows.length) return [el('section', {}, el('h2', {}, `Data, last ${period}`), el('p', { class: 'muted' }, 'No pipeline has a problem.'))];
   return rows.map((p) => {
     const ratio = p.rows_in && p.rows_out ? ` · ${(p.rows_out / p.rows_in).toFixed(2)} rows out per row in` : '';
     const flow = p.rows_in || p.rows_out
@@ -557,8 +561,8 @@ function pipelinesSection() {
         el('td', {}, written(d)),
         el('td', {}, d.last_write ? ago(d.last_write) : el('span', { class: 'muted' }, d.kind === 'data source' ? '' : 'never')),
         el('td', {}, dir === 'out' ? missingData(d) : ''),
-        el('td', { style: 'text-align:right' }, dir === 'in' ? '' : probs.length ? badge('fail', 'problem') : badge('success', 'healthy'))); };
-    return el('section', { class: 'card' },
+        el('td', { style: 'text-align:right' }, dir === 'in' ? '' : probs.length ? statusLabel('fail', 'problem') : statusLabel('success', 'healthy'))); };
+    return el('section', {},
       el('h2', {}, `Data, last ${period}: ${p.name}${p.engine ? ` (${p.engine})` : ''}`),
       el('p', { class: 'muted', style: 'margin:0 0 12px' }, flow),
       (p.flow_problems || []).map((m) => el('p', { class: 'fail-text', style: 'margin:0 0 12px' }, m)),
@@ -573,14 +577,14 @@ function draw() {
     el('div', { class: 'head' },
       el('div', { class: 'grow' }, el('h1', {}, facts.system.name), el('div', { class: 'muted xs' }, `${facts.system.type ?? ''} system ${facts.system.slug} · report of ${new Date(facts.generated).toLocaleString()}`)),
       el('label', { class: 'filter' }, el('input', { type: 'checkbox', ...(onlyProblems ? { checked: '' } : {}), onchange: (e) => { onlyProblems = e.target.checked; draw(); } }), 'Only problems'),
-      badge(facts.overall, facts.overall)),
-    el('div', { class: 'cards' },
+      statusLabel(facts.overall, facts.overall)),
+    el('div', { class: 'stats' },
       (facts.tables ? [[c.runs, `job runs in the last ${period}`], [c.failed_runs, 'failed runs'], [c.tables, 'tables'], [c.table_problems, 'tables with problems']]
         : (facts.pipelines || []).length && !facts.services.length ? [[c.runs, `job runs in the last ${period}`], [c.failed_runs, 'failed runs'],
           [facts.pipelines.reduce((n, p) => n + p.rows_out, 0).toLocaleString(), `rows written in the last ${period}`], [c.pipeline_problems, 'pipelines with problems']]
         : [[c.runs, `job runs in the last ${period}`], [c.failed_runs, 'failed runs'], [c.services, 'deployments and apps'], [c.unhealthy_services, 'unhealthy']]).map(([v, l], i) =>
-        el('div', { class: 'card stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v && v !== '0' ? 'fail-text' : ''}` }, String(v)), el('div', { class: 'l' }, l)))),
-    summary ? (() => { const s = el('section', { class: 'card summary' }, el('h2', {}, 'Summary')); const d = el('div'); d.innerHTML = summary; s.append(d); return s; })() : '',
+        el('div', { class: 'stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v && v !== '0' ? 'fail-text' : ''}`, title: String(v) }, String(v)), el('div', { class: 'l' }, l)))),
+    summary ? (() => { const s = el('section', { class: 'summary' }, el('h2', {}, 'Summary')); const d = el('div'); d.innerHTML = summary; s.append(d); return s; })() : '',
     jobsSection(), ...((facts.pipelines || []).length ? pipelinesSection() : []),
     facts.tables ? tablesSection() : facts.services.length || !(facts.pipelines || []).length ? servicesSection() : '');
 }

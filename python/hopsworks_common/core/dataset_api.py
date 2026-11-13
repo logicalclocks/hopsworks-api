@@ -151,6 +151,7 @@ class DatasetApi:
                     total=file_size,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
                     desc="Downloading",
+                    disable=util._progress_disabled(),
                 )
             except Exception:
                 self._log.exception("Failed to initialize progress bar.")
@@ -319,6 +320,7 @@ class DatasetApi:
                     total=file_size,
                     bar_format="{desc}: {percentage:.3f}%|{bar}| {n_fmt}/{total_fmt} elapsed<{elapsed} remaining<{remaining}",
                     desc=f"Uploading {local_path}",
+                    disable=util._progress_disabled(),
                 )
             except Exception:
                 self._log.exception("Failed to initialize progress bar.")
@@ -964,7 +966,7 @@ class DatasetApi:
         """Read the content of a file.
 
         Parameters:
-            path: The path to the file to read.
+            path: The path to the file to read, absolute or relative to the project.
             dataset_type:
                 The type of dataset, can be `DATASET` or `HIVEDB`; defaults to `DATASET`.
                 `HIVEDB` type is used to read files from Apache Hive.
@@ -980,7 +982,7 @@ class DatasetApi:
             "dataset",
             "download",
             "with_auth",
-            path[1:],
+            path.lstrip("/"),
         ]
 
         query_params = {

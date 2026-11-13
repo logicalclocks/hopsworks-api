@@ -22,7 +22,7 @@ schedule are batch inference: the job embeds the model and needs no deployment (
 
 ## Smoke-test (cheap pre/post-flight)
 
-`hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with `hops deployment status <name>` (its own command) or the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
+`hops deployment list` / `hops deployment info <name>` / `hops deployment logs <name>` exist, but `list`/`info` currently render a blank Status even for a RUNNING deployment — confirm state with `hops deployment info <name>` (its own command) or the Python `deployment.is_running()` instead. `hops deployment delete <name>` prompts; pass `--yes` for non-interactive cleanup. The CLI `hops deployment predict --data` wants the KServe v2 shape `{"instances": [[...]]}`, not the Python `inputs=[{...}]` dict.
 
 The whole deploy→serve→smoke loop runs from the CLI — this is what the terminal
 kickoff flow uses. The model must already be registered (`hops model list`):
@@ -31,7 +31,7 @@ kickoff flow uses. The model must already be registered (`hops model list`):
 hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline \
   [--cores 2] [--memory 2048]                                  # limits per instance; default 1 core, 1024 MB
 hops deployment start <name>
-hops deployment status <name>                                   # poll until READY
+hops deployment info <name>                                   # poll until READY
 hops deployment predict <name> --data '{"instances": [{ <one known-good row> }]}'
 hops deployment delete <name> --yes --force                    # delete prompts; --force skips the running check
 ```

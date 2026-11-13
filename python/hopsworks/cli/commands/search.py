@@ -96,14 +96,15 @@ def search_cmd(
 ) -> None:
     """Search for entities matching TERM.
 
+    \f
     Args:
         ctx: Click context.
-        term: Search string. May be omitted if ``--keyword`` or ``--tag``
+        term: Search string. May be omitted if `--keyword` or `--tag`
             is given (the SDK requires at least one of the three).
         global_search: When True, search across all projects.
-        doc_type: One of the ``--type`` choices.
-        keywords: Repeatable ``--keyword`` filter.
-        tags: Repeatable ``--tag name:key=value`` filter.
+        doc_type: One of the `--type` choices.
+        keywords: Repeatable `--keyword` filter.
+        tags: Repeatable `--tag name:key=value` filter.
         limit: Page size cap.
     """
     if not term and not keywords and not tags:
@@ -126,7 +127,7 @@ def search_cmd(
             global_search=global_search,
         )
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Search failed: {exc}") from exc
+        raise click.ClickException(f"Could not search for '{term}': {exc}") from exc
 
     rows = [
         _row(kind, item)

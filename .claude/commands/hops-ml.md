@@ -40,6 +40,10 @@ first question below whose answer is not yet recorded.
 
 ## The interview
 
+A request to score, rank or give the chance of an outcome over connected data, with no model to
+train or system to keep, is not this interview: reply with one line that `hops score` does it
+(skill hops-score), and stop.
+
 **1. What do you want to build?** Use the arguments when they say what to predict. Otherwise ask
 with exactly two options:
 
@@ -57,8 +61,11 @@ python <skills>/hops-reqs/references/new_system.py <slug>      # <skills>: .clau
 python <slug>/set.py 'schema_version=1' 'system.name=<short title>' 'system.slug=<slug>' \
   'system.target={cluster: <Host>, project: <Project>, stage: development}' 'system.version=0.1.0' 'system.status=draft' \
   'requirements.status=pending' 'requirements.description=<the problem in the user words>'
-hops factory system register <slug> --name '<short title>'   # lists it in the project's ML systems
 ```
+
+In a Hopsworks terminal (`$HOPSFS_USER_HOME_DIR` set), also list it in the project's ML systems:
+`hops factory system register <slug> --name '<short title>'`. Elsewhere the code has no home yet
+(no HopsFS mount, no repository until *Where the code goes*), so `/hops-build` registers it.
 
 **2. What type of system?** Recommend from the problem: **batch** when predictions are used on a
 schedule (lists, reports, dashboards); **real-time** when each prediction answers a request as it
@@ -101,12 +108,17 @@ independent.
 
 ### Data sources
 
-Show the feature groups listed above that fit the problem and ask, multi-select: use these
-(recommended when they fit), **add a new data source**, **upload files**, or **generate synthetic
-data** (when there is no data yet). Record one `requirements.data_sources+=` entry per source, as
+Show the feature groups listed above that fit the problem and ask, multi-select, with the four
+options that fit of: use these (recommended when they fit), **start from an existing feature view
+or model** (only when `hops fv list` or `hops model list` shows one that fits), **add a new data
+source**, **upload files**, or **generate synthetic data** (when there is no data yet). Record one `requirements.data_sources+=` entry per source, as
 `hops-reqs/references/data-sources.md` describes:
 
 - existing feature group: `{name, kind: feature_group, version, status: present}`;
+- an existing feature view or model (one `/hops` built on its own): not a data source. Name it in
+  the problem, `requirements.description+=' Starts from feature view <name>:<version>.'` (or
+  model), and record the feature groups it reads as sources; `/hops-build` records it in its
+  phase's block and skips that phase;
 - file: ask the path; upload it with `hops files upload <path> Resources/<slug>/data/`; record
   `{name, kind: file, location, status: present}`;
 - synthetic: ask the shape (batch tables or a stream of events) and the story in one sentence;
@@ -149,8 +161,9 @@ example's own slug, which writes its whole `system.yaml`, then record the target
 ```bash
 python <skills>/hops-reqs/references/new_system.py <example> --example <example>
 python <example>/set.py 'system.target={cluster: <Host>, project: <Project>, stage: development}'
-hops factory system register <example>
 ```
+
+Register it as above: `hops factory system register <example>` in a Hopsworks terminal only.
 
 The agentic example still needs its LLM: ask the *Which LLM?* question of the Agentic branch, and
 nothing else. Then ask *Where the code goes* and *Finish*.

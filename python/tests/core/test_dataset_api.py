@@ -368,3 +368,34 @@ class TestDatasetApiShare:
             api.unshare("Resources/my_dir", "")
 
         client_instance._send_request.assert_not_called()
+
+
+class TestDatasetApiReadContent:
+    @pytest.mark.parametrize(
+        "path, expected",
+        [
+            ("/Projects/p/Users/u/app.py", "Projects/p/Users/u/app.py"),
+            ("Users/u/app.py", "Users/u/app.py"),
+        ],
+    )
+    def test_read_content_takes_absolute_and_project_relative_paths(
+        self, mocker, path, expected
+    ):
+        client_instance = MagicMock()
+        client_instance._project_id = 1
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.client._get_instance",
+            return_value=client_instance,
+        )
+
+        DatasetApi().read_content(path)
+
+        path_params = client_instance._send_request.call_args.args[1]
+        assert path_params == [
+            "project",
+            1,
+            "dataset",
+            "download",
+            "with_auth",
+            expected,
+        ]

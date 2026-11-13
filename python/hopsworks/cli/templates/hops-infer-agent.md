@@ -50,7 +50,7 @@ breakdown predicts.
 4. **SLA holds:** write or update `tests/unit/test_inference.py` and the integration tests
    (for realtime, `tests/integration/test_parity.py` and a short-duration benchmark call), run
    them, record `inference.tests.last_run`. Leave the job scheduled or the deployment running,
-   verify with `hops job schedule-info` or `hops deployment status`, build what
+   verify with `hops job schedule info` or `hops deployment info`, build what
    `requirements.monitoring` asks (see Monitoring), set `status: met`, commit.
 5. **SLA misses and attempts remain:** change one thing and go to 3. The levers, roughly in
    order: replicas and per-replica concurrency; batched lookups above 50 qps; moving on-demand

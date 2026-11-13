@@ -18,7 +18,7 @@ A project's data owners add its own: written from scratch, cloned from any facto
 ## Commands
 ```bash
 hops factory list                                  # built-in and project factories, version, systems
-hops factory get <name> [--version N]              # the definition
+hops factory info <name> [--version N]              # the definition
 hops factory export <name> [-o file.yaml]
 hops factory validate file.yaml                    # offline check, no cluster needed
 hops factory import file.yaml [--name new] [--yes] # create; --update saves a new version

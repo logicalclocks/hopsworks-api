@@ -23,6 +23,7 @@ from hopsworks.cli.commands import skills as skills_cmd
 def context_cmd(ctx: click.Context) -> None:
     """Emit a Markdown or JSON summary of the active project.
 
+    \f
     Args:
         ctx: Click context.
     """
@@ -166,10 +167,11 @@ def _render_guidance(out: Any) -> None:
     """
     out("## Working in this project\n\n")
     out(
-        "Primary interface: the `hops` CLI — explore and operate with it. Write "
+        "Primary interface: the `hops` CLI, to explore and operate. Write "
         "Python with the `hopsworks` SDK for pipeline scripts that run as jobs or "
         "deployments. Load the matching skill for SDK-heavy steps; list them with "
-        "`hops skills list` or read one with `hops skills show <name>`.\n\n"
+        "`hops skills list` or read one with `hops skills info <name>`, and a file it "
+        "names with `hops skills info <name> references/<file>`.\n\n"
     )
 
     skills_dir = skills_cmd._skills_dir()

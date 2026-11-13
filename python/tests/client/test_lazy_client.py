@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import warnings
 from unittest import mock
 
 import hopsworks_common.client as client
@@ -100,6 +101,19 @@ def test_check_compatibility_uses_cached_version():
     conn._variable_api = mock.MagicMock()
     conn._check_compatibility()
     conn._variable_api._get_version.assert_not_called()
+
+
+def test_a_filtered_version_warning_prints_nothing(capsys):
+    conn = Connection.__new__(Connection)
+    conn._connected = True
+    conn._backend_version = "1.0.0"
+    conn._variable_api = mock.MagicMock()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        conn._check_compatibility()
+    assert capsys.readouterr().err == ""
+    with pytest.warns(UserWarning, match="may not be compatible"):
+        conn._check_compatibility()
 
 
 def test_engine_type_known_before_engine_is_built(monkeypatch):

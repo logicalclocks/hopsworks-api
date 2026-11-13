@@ -56,6 +56,25 @@ def test_list_reads_the_flat_layout(tmp_path, monkeypatch):
     assert skills[0]["bucket"] == ""
 
 
+def test_info_prints_a_file_of_the_skill(tmp_path, monkeypatch):
+    _write(tmp_path, "data/hops-demo/SKILL.md")
+    _write(tmp_path, "data/hops-demo/references/part.md", "The part.\n")
+    _write(tmp_path, "data/secret.md", "Outside the skill.\n")
+    monkeypatch.setenv("HOPS_SKILLS_DIR", str(tmp_path))
+
+    done = CliRunner().invoke(
+        cli, ["skills", "info", "hops-demo", "references/part.md"]
+    )
+    assert done.exit_code == 0, done.output
+    assert "The part." in done.output and "Body." not in done.output
+
+    for wrong in ("references/none.md", "../secret.md"):
+        done = CliRunner().invoke(cli, ["skills", "info", "hops-demo", wrong])
+        assert done.exit_code != 0
+        assert "it has references/part.md" in done.output
+        assert "Outside" not in done.output
+
+
 @pytest.mark.parametrize(
     "skill_md", sorted(SKILLS_ROOT.glob("*/*/SKILL.md")), ids=lambda p: p.parent.name
 )
@@ -95,3 +114,16 @@ def test_shipped_skill_frontmatter_loads_in_every_agent(skill_md):
         f"{skill_md} declares name={fields['name']!r} but lives in "
         f"{skill_md.parent.name!r}"
     )
+
+
+def test_every_skill_file_a_playbook_cites_exists():
+    cite = re.compile(r"hops skills info (hops-[a-z-]+) (references/[\w./-]+)")
+    texts = [
+        *(SKILLS_ROOT.parent / "cli" / "templates").glob("*.md"),
+        *SKILLS_ROOT.rglob("*.md"),
+    ]
+    cited = {m.groups() for p in texts for m in cite.finditer(p.read_text("utf-8"))}
+    assert cited
+    folders = {p.parent.name: p.parent for p in SKILLS_ROOT.glob("*/*/SKILL.md")}
+    missing = [(s, f) for s, f in cited if not (folders[s] / f).is_file()]
+    assert not missing

@@ -95,7 +95,7 @@ def test_alert_create_rejects_bad_status(mock_project):
 def test_alert_get_not_found(mock_project):
     aa = mock_project.get_alerts_api.return_value
     aa.get_alert.return_value = None
-    result = CliRunner().invoke(cli, ["alert", "get", "99"])
+    result = CliRunner().invoke(cli, ["alert", "info", "99"])
     assert result.exit_code != 0
     assert "not found" in result.output
 
@@ -123,8 +123,8 @@ def test_job_alert_create_passes_args(mock_project):
     result = CliRunner().invoke(
         cli,
         [
-            "alert",
             "job",
+            "alert",
             "create",
             "flaky42",
             "--receiver",
@@ -144,7 +144,7 @@ def test_job_alert_create_passes_args(mock_project):
 def test_job_alert_list(mock_project):
     aa = mock_project.get_alerts_api.return_value
     aa.get_job_alerts.return_value = [_alert(id=1, job_name="flaky42", status="FAILED")]
-    result = CliRunner().invoke(cli, ["alert", "job", "list", "flaky42"])
+    result = CliRunner().invoke(cli, ["job", "alert", "list", "flaky42"])
     assert result.exit_code == 0, result.output
     aa.get_job_alerts.assert_called_once_with("flaky42")
     assert "flaky42" in result.output
@@ -200,8 +200,8 @@ def test_fg_alert_create_resolves_ids(mock_project):
     result = CliRunner().invoke(
         cli,
         [
-            "alert",
             "fg",
+            "alert",
             "create",
             "txn",
             "--receiver",

@@ -50,7 +50,7 @@ fg = fs.get_or_create_feature_group(
 
 The bare-grain form `partitioned_by=["year", "month", "day"]` was **removed** and is now rejected with a migration hint. Write transforms on the event-time column instead: `["year(event_ts)", "month(event_ts)", "day(event_ts)"]`. A feature group created with the old form can still be read but cannot be written by a current client. `partitioned_by` requires `event_time` and an offline (non-stream) FG; `hour` needs a `timestamp` event_time, not a `date`.
 
-**Hidden partitioning is invisible in the schema.** On Iceberg the partition field (`event_timestamp_day`) lives in the partition spec, not the column list — so `hops fg features <name>` shows a blank PARTITION column and the UI shows no partition key even though the table *is* partitioned. Do not conclude the partitioning failed; ask the table:
+**Hidden partitioning is invisible in the schema.** On Iceberg the partition field (`event_timestamp_day`) lives in the partition spec, not the column list — so `hops fg feature list <name>` shows a blank PARTITION column and the UI shows no partition key even though the table *is* partitioned. Do not conclude the partitioning failed; ask the table:
 
 ```python
 fg.get_partition_spec()   # ['event_timestamp_day: day(event_timestamp)']

@@ -1,0 +1,119 @@
+{
+  "deployment": {
+    "name": "jupyter-blah--hopsabl2",
+    "namespace": "blah",
+    "desiredReplicas": 1,
+    "availableReplicas": 1,
+    "readyReplicas": 1,
+    "unavailableReplicas": 0,
+    "updatedReplicas": 1,
+    "rollingOut": false,
+    "lastCondition": {
+      "type": "Available",
+      "reason": "MinimumReplicasAvailable",
+      "lastUpdateTime": "2026-10-20T12:39:22Z",
+      "lastTransitionTime": "2026-10-20T12:39:22Z",
+      "message": "Deployment has minimum availability.",
+      "age": "5m36s"
+    },
+    "events": {
+      "items": [
+        {
+          "type": "Normal",
+          "reason": "ScalingReplicaSet",
+          "age": "5m50s",
+          "from": "deployment-controller",
+          "message": "Scaled up replica set jupyter-blah--hopsabl2-c8cd5bb76 from 0 to 1"
+        }
+      ]
+    },
+    "pods": {
+      "items": [
+        {
+          "name": "jupyter-blah--hopsabl2-c8cd5bb76-vd6c7",
+          "status": "Running",
+          "ready": true,
+          "lastCondition": {
+            "type": "ContainersReady",
+            "lastTransitionTime": "2026-10-20T12:39:22Z",
+            "age": "5m36s"
+          },
+          "events": {
+            "items": [
+              {
+                "type": "Normal",
+                "reason": "Scheduled",
+                "age": "5m49s",
+                "message": "Successfully assigned blah/jupyter-blah--hopsabl2-c8cd5bb76-vd6c7 to lex-worker-5"
+              },
+              {
+                "type": "Normal",
+                "reason": "Pulling",
+                "age": "5m49s",
+                "from": "kubelet",
+                "message": "Pulling image \"docker.hops.works/hopsworks/hopsfs-csi:0.2.0-SNAPSHOT\""
+              },
+              {
+                "type": "Normal",
+                "reason": "Pulled",
+                "age": "5m49s",
+                "from": "kubelet",
+                "message": "Successfully pulled image \"docker.hops.works/hopsworks/hopsfs-csi:0.2.0-SNAPSHOT\" in 528ms (528ms including waiting). Image size: 124614049 bytes."
+              },
+              {
+                "type": "Normal",
+                "reason": "Created",
+                "age": "5m49s",
+                "from": "kubelet",
+                "message": "Created container: hopsfs-fuse"
+              },
+              {
+                "type": "Normal",
+                "reason": "Started",
+                "age": "5m49s",
+                "from": "kubelet",
+                "message": "Started container hopsfs-fuse"
+              },
+              {
+                "type": "Normal",
+                "reason": "Pulling",
+                "age": "5m49s",
+                "from": "kubelet",
+                "message": "Pulling image \"registry.service.consul:30443/hopsworks-base:pandas-training-pipeline-5.3.0-SNAPSHOT\""
+              },
+              {
+                "type": "Normal",
+                "reason": "Pulled",
+                "age": "5m49s",
+                "from": "kubelet",
+                "message": "Successfully pulled image \"registry.service.consul:30443/hopsworks-base:pandas-training-pipeline-5.3.0-SNAPSHOT\" in 38ms (38ms including waiting). Image size: 1727556345 bytes."
+              },
+              {
+                "type": "Normal",
+                "reason": "Created",
+                "age": "5m47s",
+                "from": "kubelet",
+                "message": "Created container: jupyter"
+              },
+              {
+                "type": "Normal",
+                "reason": "Started",
+                "age": "5m47s",
+                "from": "kubelet",
+                "message": "Started container jupyter"
+              },
+              {
+                "type": "Warning",
+                "reason": "Unhealthy",
+                "age": "5m46s",
+                "from": "kubelet",
+                "message": "Readiness probe failed: Get \"http://10.244.5.231:8888/hopsworks-api/jupyter/jupyter-blah--hopsabl2.blah.svc.cluster.local:8888/api/status?token=<redacted>\": dial tcp 10.244.5.231:8888: connect: connection refused"
+              }
+            ]
+          }
+        }
+      ],
+      "count": 1
+    }
+  }
+}

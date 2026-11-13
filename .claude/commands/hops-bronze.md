@@ -11,6 +11,8 @@ Already known, no need to look again before the first question:
 - Feature groups: !`hops fg list 2>&1 | head -40`
 - Python environments: !`hops env list 2>&1 | head -20`
 
+An existing feature group needs no bronze layer: a silver layer reads it as it is (hops-analytics, An existing table as bronze).
+
 ## Dispatch
 
 | First word | Do |
@@ -55,14 +57,14 @@ Create the GitHub repository, as the rules say, and commit.
 Deploy the backfill job and run it once, waiting for it: `hops job deploy <slug>-backfill <generator.program> --env <generator.environment> --args "<generator.backfill.args>" --run --wait`.
 It creates the feature groups in `tables` (offline, Delta), writes the history up to the last midnight (UTC), adds each feature's description and tags each `analytics_table` `{"layer": "bronze", "lifecycle": "<layer.lifecycle>"}`.
 A scheduled run appends `-start_time <fire instant>` to the program's arguments, which the program accepts and ignores (**hops-job**, Windows and backfill).
-When it fails, read its log (`hops job logs <slug>-backfill --stdout --tail 200`, and `--stderr`), fix the cause, and run it again; a rerun rewrites the same rows.
-Check each table: its rows against `tables[].rows` (`hops trino query --catalog delta --schema <project>_featurestore "SELECT count(*) FROM <table>_1"`, the project name lowercased), that it is offline and Delta (`hops fg info <name>`), and its tag (`hops fg tags <name>`).
+When it fails, read its log (`hops job logs <slug>-backfill --stdout --tail 200`, which prints stdout and stderr), fix the cause, and run it again; a rerun rewrites the same rows.
+Check each table: its rows against `tables[].rows` (`hops trino query --catalog delta --schema <project>_featurestore "SELECT count(*) FROM <table>_1"`, the project name lowercased), that it is offline and Delta (`hops fg info <name>`), and its tag (`hops fg tag list <name>`; the job's log says `not tagged` when the cluster has no `analytics_table` tag schema: record that in `decisions` and say once that an admin installs it).
 Record each in `outputs.tables` (`name`, `version`, `cadence`, `primary_key`, `event_time`, `rows`), the job in `outputs.jobs` (`{name, environment, tables}`, no cadence), and the backfill's end in `decisions`.
 
 ### schedule
 
 For each cadence in `schedule.cadences`, deploy its job: `hops job deploy <slug>-<cadence> <generator.program> --env <generator.environment> --args "<its args>"`.
-Schedule it from the backfill's end, with catch-up, so the windows continue from the history: `hops job schedule <slug>-<cadence> "<its cron>" --start-time <the backfill's end> --catchup --max-catchup-runs <its max_catchup_runs>`.
+Schedule it from the backfill's end, with catch-up, so the windows continue from the history: `hops job schedule set <slug>-<cadence> "<its cron>" --start-time <the backfill's end> --catchup --max-catchup-runs <its max_catchup_runs>`.
 The hourly job's catch-up then writes today's hours so far, one run each; the daily job first runs at the next midnight.
 Record each in `outputs.jobs` (`{name, cadence, cron, environment, tables}`).
 

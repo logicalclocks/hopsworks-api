@@ -306,7 +306,7 @@ def require_data_owner(project: Any) -> None:
     )
     if role != "Data owner":
         raise click.ClickException(
-            f"only a Data owner of {getattr(project, 'name', 'the project')} can delete a "
+            f"Only a data owner of {getattr(project, 'name', 'the project')} can delete a "
             f"system's assets, and your role is {role or 'unknown'}; ask a data owner to delete it"
         )
 

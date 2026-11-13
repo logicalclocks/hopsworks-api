@@ -69,3 +69,4 @@ template's `training_pipeline.short_checks` implements them.
 ## Next Steps
 - Select features and build the view: **hops-fv**. Then train: **hops-train**.
 - Inspect raw data first: **hops-data-discovery**, **hops-trino-sql**.
+- Charts of the profile (distributions, correlations, label balance): **hops-design**.

@@ -94,6 +94,17 @@ AGENTS = {
     # Spawned from /hops, which runs on Haiku: inheriting would build on Haiku too.
     "hops-dashboard-builder": "opus",
     "hops-app-builder": "opus",
+    "hops-data-builder": "opus",
+    "hops-features-builder": "opus",
+    "hops-model-builder": "opus",
+    "hops-infer-builder": "opus",
+}
+# Spawned by /hops for one piece built outside an ML system; /hops-build builds its own.
+ONE_PIECE = {
+    "hops-data-builder",
+    "hops-features-builder",
+    "hops-model-builder",
+    "hops-infer-builder",
 }
 
 
@@ -139,6 +150,9 @@ def test_the_menu_runs_on_haiku_and_hands_every_build_to_a_stronger_agent():
     for section in ("## Explore", "## Status", "## Dashboard", "## App"):
         assert section in text
     assert "hops-dashboard-builder" in text and "hops-app-builder" in text
+    assert "## Pieces" in text
+    for agent in ONE_PIECE:
+        assert agent in text
     assert "`/hops-ml`" in text
     # The menu carries no build instructions of its own.
     for build_step in ("hops app create", "dashboard_program.py", "system_template"):
@@ -184,8 +198,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
     for slug in labels:
         assert f"`{slug}`" in text
     assert "--example <example>" in text
-    build = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
-    assert "`app.wanted` is recorded, never ask" in build
+    assert "`app.wanted` is recorded, never ask" in _build_text()
 
 
 def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
@@ -241,24 +254,40 @@ def test_every_example_creates_a_valid_system(tmp_path, example):
     assert doc["app"]["wanted"] is True
 
 
+def _build_text() -> str:
+    """/hops-build: its command and the parts it reads from hops-reqs/references."""
+    parts = sorted(REQS.glob("build-*.md"))
+    return "\n".join(
+        p.read_text(encoding="utf-8") for p in [TEMPLATES / "hops-build.md", *parts]
+    )
+
+
+def test_the_build_names_each_part_where_it_is_read():
+    core = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
+    parts = sorted(p.name for p in REQS.glob("build-*.md"))
+    assert parts == ["build-edits.md", "build-phases.md", "build-reqs.md"]
+    for part in parts:
+        assert f"read `hops-reqs/references/{part}`" in core, part
+
+
 def test_the_builder_runs_on_the_session_model():
     front = _front("hops-build.md")
-    text = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
+    text = _build_text()
     assert "model" not in front
     assert "argument-hint" in front
     for phase in (
-        "### reqs",
-        "### data",
-        "### features",
-        "### train",
-        "### infer",
-        "### app",
+        "## reqs",
+        "## data",
+        "## features",
+        "## train",
+        "## infer",
+        "## app",
         "### verify",
         "### stop",
         "### Finishing",
     ):
         assert phase in text
-    for agent in AGENTS:
+    for agent in set(AGENTS) - ONE_PIECE:
         assert agent in text
     assert "!`hops fg list" in text and "*/system.yaml 2>/dev/null" in text
 
@@ -807,7 +836,36 @@ def _new_system(tmp_path: Path) -> Path:
     (target / "system.yaml").write_text(
         EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8"
     )
+    for phase in new_system.PHASES:
+        new_system.add_phase(target, phase)
     return target
+
+
+def test_each_phase_brings_its_own_stubs(tmp_path):
+    new_system = _load(REQS / "new_system.py")
+    target = new_system.create(tmp_path / "telco-churn")
+    package = target / "src" / "telco_churn"
+    assert (package / "__init__.py").is_file() and (target / "status.py").is_file()
+    assert not (package / "feature_pipeline.py").exists()
+    assert not (target / "benchmarks").exists()
+    with pytest.raises(SystemExit, match="no system.yaml"):
+        new_system.add_phase(target, "train")
+
+    (target / "system.yaml").write_text("schema_version: 1\n", encoding="utf-8")
+    created = new_system.add_phase(target, "train")
+    assert sorted(p.name for p in created) == [
+        "charts.py",
+        "evaluate.py",
+        "test_training.py",
+        "training_pipeline.py",
+    ]
+    assert (
+        "slug_pkg" not in (target / "tests" / "unit" / "test_training.py").read_text()
+    )
+    (package / "evaluate.py").write_text("# the phase's work\n", encoding="utf-8")
+    assert new_system.add_phase(target, "train") == []
+    assert (package / "evaluate.py").read_text() == "# the phase's work\n"
+    assert not (package / "predictor.py").exists()
 
 
 def test_new_system_names_the_package_after_the_slug(tmp_path):
@@ -1499,6 +1557,11 @@ def test_the_app_skeleton_serves_health_the_page_and_its_assets():
     assert page.status_code == 200 and "static/app.js" in page.text
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/static/app.css").status_code == 200
+    assert client.get("/static/chart-theme.js").status_code == 200
+    chart = client.get("/static/vendor/chart.umd.min.js")
+    # Vendored, so the app runs without the network; the MIT header stays with it.
+    assert chart.status_code == 200 and "Released under the MIT License" in chart.text
+    assert (APP / "static" / "vendor" / "chart.js.LICENSE.md").is_file()
 
 
 def test_the_app_skeleton_uses_only_relative_urls():
@@ -1861,3 +1924,58 @@ def test_the_template_metrics_handle_ties_and_probabilities():
     assert evaluate.roc_auc([1, 0, 1, 0], [0.9, 0.5, 0.1, 0.3]) == 0.5
     assert evaluate.accuracy([0, 1], [0.1, 0.9]) == 1.0
     assert evaluate.accuracy(["a", "b"], ["a", "c"]) == 0.5
+
+
+def test_the_app_skeleton_aggregates_in_the_query_engine(monkeypatch):
+    pytest.importorskip("fastapi")
+    from starlette.testclient import TestClient
+
+    app = _load(APP / "app.py", "app_skeleton_charts")
+    app._cache.clear()
+    executed = []
+
+    class _Cursor:
+        def execute(self, sql, params):
+            executed.append((sql, params))
+
+        def fetchall(self):
+            if "date_trunc" in executed[-1][0]:
+                return [("2026-10-01", 0.25), ("2026-10-02", 0.5)]
+            return [("high", 3), ("low", 7)]
+
+    monkeypatch.setattr(app, "_connection", lambda: SimpleNamespace(cursor=_Cursor))
+    client = TestClient(app.app)
+    assert client.get("/api/trend").json() == [
+        {"day": "2026-10-01", "score": 0.25},
+        {"day": "2026-10-02", "score": 0.5},
+    ]
+    sql, params = executed[0]
+    assert "GROUP BY 1" in sql and params == (app.TREND_DAYS,)
+    # Every band is listed, an empty one with zero customers.
+    assert client.get("/api/bands").json() == [
+        {"band": "high", "customers": 3},
+        {"band": "mid", "customers": 0},
+        {"band": "low", "customers": 7},
+    ]
+    sql, params = executed[1]
+    assert "ROW_NUMBER() OVER (PARTITION BY customer_id" in sql and params == (0.6, 0.3)
+
+
+def test_every_piece_has_an_exit_check_the_cli_can_run():
+    import click
+    from hopsworks.cli.main import cli
+
+    text = (TEMPLATES / "hops.md").read_text(encoding="utf-8")
+    table = text.split("## Pieces", 1)[1].split("\n1. ", 1)[0]
+    rows = [r for r in table.splitlines() if r.startswith("| ") and "---" not in r][1:]
+    assert len(rows) >= 7
+    ctx = click.Context(cli)
+    for row in rows:
+        check = row.split(" | ")[3]
+        for command in re.findall(r"`hops ([a-z ]+)", check):
+            cmd = cli
+            for word in command.split():
+                if not isinstance(cmd, click.Group):
+                    break
+                cmd = cmd.get_command(ctx, word) or cmd
+            assert not isinstance(cmd, click.Group), (row, command)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest import mock
 
 import click
+from click.testing import CliRunner
 from hopsworks.cli import config, session
 from hopsworks.cli.commands import trino
 from hopsworks.cli.main import cli
@@ -42,3 +43,20 @@ def test_explicit_catalog_and_schema_win():
     kwargs = _connect_kwargs(catalog="iceberg", schema="other")
     assert kwargs["catalog"] == "iceberg"
     assert kwargs["schema"] == "other"
+
+
+def test_a_rejected_query_is_one_error_line(mock_project):
+    cursor = mock.MagicMock()
+    cursor.execute.side_effect = RuntimeError(
+        "error 401: b'Access Denied: Invalid credentials'"
+    )
+    connection = mock.MagicMock()
+    connection.cursor.return_value = cursor
+    with mock.patch.object(trino, "_connect", return_value=connection):
+        result = CliRunner().invoke(cli, ["sql", "SELECT 1"])
+    assert result.exit_code == 1
+    assert result.output.strip() == (
+        "Error: Could not run the query: error 401: "
+        "b'Access Denied: Invalid credentials'"
+    )
+    connection.close.assert_called_once()

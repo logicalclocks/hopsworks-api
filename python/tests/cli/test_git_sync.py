@@ -358,6 +358,9 @@ def test_stage_key_uploads_key_and_pub_when_absent(tmp_path, monkeypatch):
         def list(self, path):
             return []
 
+        def exists(self, path):
+            return True
+
         def mkdir(self, path):
             pass
 

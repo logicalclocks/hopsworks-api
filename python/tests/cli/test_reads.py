@@ -84,6 +84,64 @@ def test_fg_info_renders_fields(mock_project):
     assert "id" in result.output
 
 
+def test_fg_info_shows_table_format_and_offline_size(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("orders")
+    fg.time_travel_format = "DELTA"
+    fg.location = (
+        "hopsfs://namenode:8020/apps/hive/warehouse/demo_featurestore.db/orders_1"
+    )
+    fs.get_feature_group.return_value = fg
+
+    def entry(name, size=None, is_dir=False):
+        e = mock.MagicMock()
+        e.name, e.size, e.dir = name, size, is_dir
+        e.path = f"/apps/hive/warehouse/demo_featurestore.db/orders_1/{name}"
+        return e
+
+    listings = {
+        "/apps/hive/warehouse/demo_featurestore.db/orders_1": [
+            entry("part-0.parquet", 1_000_000),
+            entry("_delta_log", is_dir=True),
+        ],
+        "/apps/hive/warehouse/demo_featurestore.db/orders_1/_delta_log": [
+            entry("00000.json", 2048)
+        ],
+    }
+    dataset_api = mock_project.get_dataset_api.return_value
+    dataset_api._list_dataset_path.side_effect = lambda path, cls, offset=0: (
+        len(listings[path]),
+        listings[path][offset:],
+    )
+    result = CliRunner().invoke(cli, ["fg", "info", "orders"])
+    assert result.exit_code == 0, result.output
+    assert "DELTA" in result.output
+    assert "978.6 KB (2 files)" in result.output
+
+    result = CliRunner().invoke(cli, ["--json", "fg", "info", "orders"])
+    payload = json.loads(result.stdout)
+    assert payload["table_format"] == "DELTA"
+    assert payload["offline_size_bytes"] == 1_002_048
+
+
+def test_fg_info_without_offline_table_shows_a_dash(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("orders")
+    fg.location = (
+        "hopsfs://namenode:8020/apps/hive/warehouse/demo_featurestore.db/orders_1"
+    )
+    fs.get_feature_group.return_value = fg
+    mock_project.get_dataset_api.return_value._list_dataset_path.side_effect = (
+        RuntimeError("not found")
+    )
+    result = CliRunner().invoke(cli, ["fg", "info", "orders"])
+    assert result.exit_code == 0, result.output
+    assert any(
+        line.split()[:3] == ["Offline", "size", "-"]
+        for line in result.output.splitlines()
+    )
+
+
 def test_fg_info_not_found(mock_project):
     fs = mock_project.get_feature_store.return_value
     fs.get_feature_group.side_effect = RuntimeError("missing")
@@ -101,7 +159,7 @@ def test_fg_features_table(mock_project):
             _feature("amount", "double"),
         ],
     )
-    result = CliRunner().invoke(cli, ["fg", "features", "transactions"])
+    result = CliRunner().invoke(cli, ["fg", "feature", "list", "transactions"])
     assert result.exit_code == 0, result.output
     assert "id" in result.output
     assert "amount" in result.output
@@ -114,7 +172,7 @@ def test_fg_preview(mock_project):
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
     fg.select_all.return_value.show.return_value = pd.DataFrame({"id": [1, 2, 3]})
     fs.get_feature_group.return_value = fg
-    result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--n", "3"])
+    result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--limit", "3"])
     assert result.exit_code == 0, result.output
     # A bounded read: the limit goes to the query, never a whole-table read.
     fg.select_all.return_value.show.assert_called_with(3, online=False)
@@ -402,6 +460,19 @@ def test_model_info_specific_version(mock_project):
     mr.get_model.assert_called_with("fraud_detector", version=2)
 
 
+def test_model_info_prints_every_metric(mock_project):
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.name, model.version, model.framework = "deal_model", 1, "sklearn"
+    model.training_metrics = {"auc": 0.9, "f1": 0.8, "recall": 0.7, "test_pr_auc": 0.6}
+    model.created, model.description = "2026-04-01", ""
+    mr.get_model.return_value = model
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(cli, ["model", "info", "deal_model", "--version", "1"])
+    assert result.exit_code == 0, result.output
+    assert "test_pr_auc=0.6" in result.output
+
+
 # --- deployment ------------------------------------------------------------
 
 
@@ -487,24 +558,46 @@ def test_job_info_not_found(mock_project):
 # Group was renamed from ``dataset`` to ``files``.
 
 
-def test_files_list_strings(mock_project):
+def test_files_list_root_lists_datasets(mock_project):
+    from hopsworks_common.core import dataset
+
     api = mock.MagicMock()
-    api.list.return_value = ["Resources", "Jupyter"]
+    api._list_dataset_path.return_value = (
+        1,
+        [dataset.Dataset(1, "Resources", "DATASET", {"path": "/Projects/p/Resources"})],
+    )
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(cli, ["files", "list"])
     assert result.exit_code == 0, result.output
+    assert api._list_dataset_path.call_args.args == ("", dataset.Dataset)
     assert "Resources" in result.output
+    assert "dataset" in result.output
 
 
-def test_files_list_inodes(mock_project):
+def test_files_list_shows_kind_and_size(mock_project):
+    from hopsworks_common.core import inode
+
     api = mock.MagicMock()
-    inode = mock.MagicMock()
-    inode.name, inode.dir, inode.size = "train.parquet", False, 1024
-    api.list.return_value = [inode]
+    api._list_dataset_path.return_value = (
+        2,
+        [
+            inode.Inode({"name": "train.parquet", "dir": False, "size": 1024}),
+            inode.Inode({"name": "static", "dir": True, "size": 0}),
+        ],
+    )
     mock_project.get_dataset_api.return_value = api
     result = CliRunner().invoke(cli, ["files", "list", "Resources"])
     assert result.exit_code == 0, result.output
-    assert "train.parquet" in result.output
+    assert api._list_dataset_path.call_args.args == ("Resources", inode.Inode)
+    lines = result.output.splitlines()
+    assert next(line for line in lines if "train.parquet" in line).split()[1:] == [
+        "file",
+        "1024",
+    ]
+    assert next(line for line in lines if "static" in line).split()[1:] == [
+        "dir",
+        "-",
+    ]
 
 
 # --- context ---------------------------------------------------------------
@@ -553,16 +646,6 @@ def test_unauthenticated_command_suggests_setup(tmp_home):
 
 
 # --- trino ----------------------------------------------------------------
-
-
-def test_trino_sql_alias_registered():
-    # `hops trino sql ...` is a natural guess; without the alias it failed with
-    # a bare "No such command 'sql'" (#3). Both names must resolve.
-    from hopsworks.cli.commands.trino import trino_group
-
-    assert "sql" in trino_group.commands
-    assert "query" in trino_group.commands
-    assert trino_group.commands["sql"] is trino_group.commands["query"]
 
 
 # --- stdout hygiene -------------------------------------------------------
