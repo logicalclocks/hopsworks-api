@@ -14,9 +14,12 @@
 #   limitations under the License.
 #
 
+import warnings
 
+import pytest
 from hsfs import feature_group as feature_group_mod
 from hsfs import feature_store as feature_store_mod
+from hsfs import storage_connector
 
 
 class TestFeatureStore:
@@ -517,3 +520,88 @@ class TestFeatureStore:
 
         # Assert
         assert fv_res is None
+
+
+class TestFeatureStoreDataSourceMandatoryTags:
+    @staticmethod
+    def _fs(mocker, backend_fixtures):
+        mocker.patch("hopsworks_common.client._get_instance")
+        return feature_store_mod.FeatureStore.from_response_json(
+            backend_fixtures["feature_store"]["get"]["response"]
+        )
+
+    @staticmethod
+    def _connector(backend_fixtures, missing):
+        return storage_connector.StorageConnector.from_response_json(
+            {
+                **backend_fixtures["storage_connector"]["get_s3"]["response"],
+                "missingMandatoryTags": missing,
+            }
+        )
+
+    def test_get_data_source_warns_on_missing_mandatory_tags(
+        self, mocker, backend_fixtures
+    ):
+        fs = self._fs(mocker, backend_fixtures)
+        get = mocker.patch.object(
+            fs._storage_connector_api,
+            "_get",
+            return_value=self._connector(backend_fixtures, [{"name": "owner"}]),
+        )
+
+        with pytest.warns(UserWarning, match=r"Missing mandatory tags: \['owner'\]"):
+            fs.get_data_source("test_s3")
+
+        get.assert_called_once_with(fs._id, "test_s3", with_mandatory_tags=True)
+
+    def test_get_storage_connector_warns_on_missing_mandatory_tags(
+        self, mocker, backend_fixtures
+    ):
+        fs = self._fs(mocker, backend_fixtures)
+        mocker.patch.object(
+            fs._storage_connector_api,
+            "_get",
+            return_value=self._connector(backend_fixtures, [{"name": "owner"}]),
+        )
+
+        with pytest.warns(UserWarning, match="Missing mandatory tags"):
+            fs.get_storage_connector("test_s3")
+
+    def test_get_data_source_is_silent_when_nothing_is_missing(
+        self, mocker, backend_fixtures
+    ):
+        fs = self._fs(mocker, backend_fixtures)
+        mocker.patch.object(
+            fs._storage_connector_api,
+            "_get",
+            return_value=self._connector(backend_fixtures, []),
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            fs.get_data_source("test_s3")
+
+        assert not [w for w in caught if "Missing mandatory tags" in str(w.message)]
+
+    def test_get_data_source_not_found_does_not_warn(self, mocker, backend_fixtures):
+        fs = self._fs(mocker, backend_fixtures)
+        mocker.patch.object(fs._storage_connector_api, "_get", return_value=None)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            data_source = fs.get_data_source("missing")
+
+        assert data_source.storage_connector is None
+        assert len(caught) == 0
+
+    def test_create_data_source_passes_tags(self, mocker, backend_fixtures):
+        fs = self._fs(mocker, backend_fixtures)
+        connector = self._connector(backend_fixtures, [])
+        create = mocker.patch.object(
+            fs._storage_connector_api, "_create", return_value=connector
+        )
+        tags = [{"name": "owner", "value": "risk"}]
+
+        fs.create_data_source(connector, tags=tags)
+
+        create.assert_called_once_with(connector, tags)
