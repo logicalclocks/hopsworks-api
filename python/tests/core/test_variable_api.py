@@ -75,3 +75,54 @@ class TestVariableApi:
         with pytest.raises(RestAPIError) as e:
             VariableApi()._get_loadbalancer_external_domain("datanode")
         assert e.value is error
+
+    def test_get_loadbalancer_external_port(self, mocker):
+        # Arrange
+        send_request = _patch_send_request(mocker)
+        send_request.return_value = {"successMessage": "8020"}
+
+        # Act
+        port = VariableApi()._get_loadbalancer_external_port("namenode")
+
+        # Assert
+        assert port == 8020
+        send_request.assert_called_once_with(
+            "GET", ["variables", "loadbalancer_external_port_namenode"]
+        )
+
+    def test_get_loadbalancer_external_port_not_found(self, mocker):
+        # Arrange
+        error = _rest_api_error(mocker, RestAPIError.STATUS_CODE_NOT_FOUND)
+        _patch_send_request(mocker).side_effect = error
+
+        # Act & Assert
+        assert VariableApi()._get_loadbalancer_external_port("namenode") is None
+
+    def test_get_loadbalancer_external_port_not_a_number(self, mocker):
+        # Arrange
+        _patch_send_request(mocker).return_value = {"successMessage": ""}
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException) as e:
+            VariableApi()._get_loadbalancer_external_port("namenode")
+        assert "loadbalancer_external_port_namenode" in str(e.value)
+
+    @pytest.mark.parametrize(
+        "status_code",
+        [
+            RestAPIError.STATUS_CODE_UNAUTHORIZED,
+            RestAPIError.STATUS_CODE_FORBIDDEN,
+            RestAPIError.STATUS_CODE_INTERNAL_SERVER_ERROR,
+        ],
+    )
+    def test_get_loadbalancer_external_port_other_error_propagates(
+        self, mocker, status_code
+    ):
+        # Arrange
+        error = _rest_api_error(mocker, status_code)
+        _patch_send_request(mocker).side_effect = error
+
+        # Act & Assert
+        with pytest.raises(RestAPIError) as e:
+            VariableApi()._get_loadbalancer_external_port("namenode")
+        assert e.value is error
