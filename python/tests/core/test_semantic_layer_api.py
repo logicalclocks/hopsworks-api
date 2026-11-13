@@ -18,6 +18,8 @@ import datetime
 import json
 import logging
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -70,6 +72,7 @@ def _response(
     if content is None:
         content = b"" if body is None else json.dumps(body).encode()
     response._content = content
+    response._content_consumed = True
     response.headers["Content-Type"] = content_type
     response.headers.update(headers or {})
     return response
@@ -105,6 +108,92 @@ def http(mocker):
 @pytest.fixture
 def sales(http):
     return SemanticLayerApi().get_project("sales")
+
+
+ARROW = "application/vnd.apache.arrow.stream"
+# The frame the gateway writes when a query fails after its headers: a metadata length of 2147483647.
+FAILED_FRAME = b"\xff\xff\xff\xff\xff\xff\xff\x7f"
+
+
+def _arrow_batches(table, rows):
+    """An Arrow stream of `table` in batches of `rows` rows, and the offset each batch ends at."""
+    sink = pa.BufferOutputStream()
+    ends = []
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        for batch in table.to_batches(max_chunksize=rows):
+            writer.write_batch(batch)
+            ends.append(sink.tell())
+    return sink.getvalue().to_pybytes(), ends
+
+
+class _GatewayHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def do_GET(self):
+        body = json.dumps(self.server.saved_queries).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.send_response(200)
+        self.send_header("Content-Type", ARROW)
+        self.send_header("Transfer-Encoding", "chunked")
+        for name, value in self.server.headers.items():
+            self.send_header(name, value)
+        self.end_headers()
+        for chunk in self.server.chunks:
+            self.wfile.write(b"%x\r\n%b\r\n" % (len(chunk), chunk))
+        if self.server.ends_body:
+            self.wfile.write(b"0\r\n\r\n")
+        else:
+            self.close_connection = True
+
+    def log_message(self, format, *args):
+        pass
+
+
+@pytest.fixture
+def gateway(http, monkeypatch):
+    """A local HTTP server in the gateway's place, reached through a real requests session.
+
+    A query is answered with `chunks` as a chunked Arrow body, which `ends_body` ends with its last chunk or drops the connection instead.
+    """
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _GatewayHandler)
+    server.chunks, server.ends_body, server.headers = [], True, {}
+    server.saved_queries = {"savedQueries": []}
+    threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    ).start()
+    monkeypatch.setenv(
+        "HOPSWORKS_SEMANTIC_LAYER_URL", f"http://127.0.0.1:{server.server_port}"
+    )
+    http._session = requests.Session()
+    http._session.trust_env = False
+    yield server
+    http._session.close()
+    server.shutdown()
+    server.server_close()
+
+
+TEN_ROWS = pa.table({"revenue": [float(i) for i in range(10)]})
+# Answers that stop after two of the four batches of TEN_ROWS: (chunks, ends_body).
+_STREAM, _ENDS = _arrow_batches(TEN_ROWS, 3)
+CUT_ANSWERS = {
+    "body_ended_between_two_batches": ([_STREAM[: _ENDS[1]]], True),
+    "connection_dropped_between_two_batches": ([_STREAM[: _ENDS[1]]], False),
+    "connection_dropped_inside_a_batch": ([_STREAM[: _ENDS[1] + 20]], False),
+    "failed_frame_then_connection_dropped": (
+        [_STREAM[: _ENDS[1]], FAILED_FRAME],
+        False,
+    ),
+    "failed_frame_then_body_ended": ([_STREAM[: _ENDS[1]], FAILED_FRAME], True),
+    "failed_frame_alone": ([FAILED_FRAME], True),
+    "empty_body": ([], True),
+}
 
 
 def _gateway_call(http, index=-1):
@@ -1192,6 +1281,51 @@ class TestQuery:
         assert bodies[1] == {"metrics": ["revenue"], "cache": False}
 
 
+class TestArrowAnswerRead:
+    def test_a_complete_answer_in_several_chunks_returns_every_row(
+        self, gateway, sales
+    ):
+        gateway.chunks = [_STREAM[:100], _STREAM[100 : _ENDS[2]], _STREAM[_ENDS[2] :]]
+
+        table = sales.query(["revenue"], dataframe_type="pyarrow")
+
+        assert table == TEN_ROWS
+
+    def test_a_complete_answer_without_rows_is_empty(self, gateway, sales):
+        gateway.chunks = [_arrow_stream(TEN_ROWS.slice(0, 0))]
+
+        table = sales.query(["revenue"], dataframe_type="pyarrow")
+
+        assert (table.num_rows, table.column_names) == (0, ["revenue"])
+
+    @pytest.mark.parametrize("answer", CUT_ANSWERS.values(), ids=CUT_ANSWERS.keys())
+    def test_an_answer_that_stops_before_its_end_raises_and_returns_no_rows(
+        self, gateway, sales, answer
+    ):
+        gateway.chunks, gateway.ends_body = answer
+
+        with pytest.raises(SemanticLayerException, match="cut off") as err:
+            sales.query(["revenue"], dataframe_type="pyarrow")
+
+        assert "'sales'" in str(err.value)
+        assert "run it again" in str(err.value)
+
+    def test_a_batch_ending_in_the_marker_bytes_is_not_taken_for_the_end(
+        self, http, sales
+    ):
+        # 4294967295 as a 64-bit integer is the eight bytes of the end-of-stream marker.
+        batch = pa.record_batch({"orders": pa.array([1, 4294967295], pa.int64())})
+        stream, ends = _arrow_batches(pa.Table.from_batches([batch, batch]), 2)
+        stream = stream[: ends[0]]
+        assert stream.endswith(b"\xff\xff\xff\xff\x00\x00\x00\x00")
+        http._session.request.return_value = _response(
+            content=stream, content_type=ARROW
+        )
+
+        with pytest.raises(SemanticLayerException, match="cut off"):
+            sales.query(["orders"])
+
+
 class TestTimeSpine:
     @pytest.fixture
     def connection(self, http, mocker):
@@ -1766,6 +1900,33 @@ class TestExportJob:
         assert err.value.error_code == "TRUNCATED"
         job.fs.get_or_create_feature_group.assert_not_called()
         assert [(r["status"], r["rows"]) for r in job.reports] == [("TRUNCATED", None)]
+
+    @pytest.mark.parametrize("answer", CUT_ANSWERS.values(), ids=CUT_ANSWERS.keys())
+    def test_an_answer_that_stops_before_its_end_fails_the_run_and_writes_nothing(
+        self, job, gateway, answer
+    ):
+        gateway.saved_queries = {"savedQueries": [self.SAVED_QUERY], "buildId": 12}
+        gateway.headers = job.headers
+        gateway.chunks, gateway.ends_body = answer
+
+        with pytest.raises(SemanticLayerException, match="cut off"):
+            semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        job.fs.get_or_create_feature_group.assert_not_called()
+        job.fg.insert.assert_not_called()
+        assert [(r["status"], r["rows"]) for r in job.reports] == [("FAILED", None)]
+        assert "cut off" in job.reports[0]["message"]
+        assert "materialization" not in job.reports[0]
+
+    def test_a_complete_answer_from_the_gateway_is_written(self, job, gateway):
+        gateway.saved_queries = {"savedQueries": [self.SAVED_QUERY], "buildId": 12}
+        gateway.headers = job.headers
+        stream = _arrow_stream(self.ROWS)
+        gateway.chunks = [stream[:200], stream[200:]]
+
+        report = semantic_layer_api._run_export(7, "revenue_daily", 3)
+
+        assert (report["status"], report["rows"]) == ("SUCCEEDED", 3)
 
     def test_a_result_below_the_cap_is_written(self, job):
         job.headers = {"X-Semantic-Truncated": "false", "X-Semantic-Max-Rows": "4"}

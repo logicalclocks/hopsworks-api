@@ -60,6 +60,8 @@ _JSON = "application/json"
 # The most query history records the control plane answers in one page.
 _HISTORY_PAGE = 1000
 _ARROW_STREAM = "application/vnd.apache.arrow.stream"
+# The end-of-stream marker of the Arrow IPC streaming format, which only a complete stream ends with.
+_ARROW_END_OF_STREAM = b"\xff\xff\xff\xff\x00\x00\x00\x00"
 # The gateway sends nothing until its answer is ready, so the read timeout bounds a whole query.
 # 330 s outlasts the gateway's QUERY_TIMEOUT_SECONDS and the ingress proxy timeout, both 300 s
 # by default, so the gateway's own 504 arrives first.
@@ -603,6 +605,9 @@ class SemanticLayerApi:
                 auth=_client._auth,
                 verify=_client._verify,
                 timeout=_GATEWAY_TIMEOUT,
+                # The body of an Arrow answer is read by _read_arrow_stream, which tells
+                # a failure after the headers from one before them.
+                stream=accept == _ARROW_STREAM,
             )
 
         response = send()
@@ -613,6 +618,7 @@ class SemanticLayerApi:
         ):
             # A pod's JWT is rotated on disk; base.Client._retry_token_expired re-reads it the same way.
             _client._auth = auth.BearerAuth(_client._read_jwt())
+            response.close()
             response = send()
         if response.status_code // 100 != 2:
             raise _semantic_layer_error(sp, response)
@@ -705,7 +711,7 @@ class SemanticLayerApi:
                 response.headers.get("X-Semantic-Stale"),
                 response.headers.get("X-Semantic-Build"),
             )
-            table = _read_arrow_stream(response.content)
+            table = _read_arrow_stream(sp, response)
             # An Arrow stream cannot flag truncation, so a result that fills the cap may have been cut.
             # An older gateway sends no cap.
             max_rows = response.headers.get("X-Semantic-Max-Rows")
@@ -830,10 +836,43 @@ def _time_spine_frame(
 
 
 @_uses_pyarrow
-def _read_arrow_stream(content: bytes) -> pa.Table:
+def _read_arrow_stream(
+    sp: semantic_layer.SemanticProject, response: requests.Response
+) -> pa.Table:
+    """The table of an Arrow answer, which raises unless the body is read whole and ends with the end-of-stream marker.
+
+    The gateway sends its headers before the first batch, so a query that fails later can only end the body early.
+    pyarrow reads a stream that stops between two batches as a complete one, so the marker is checked here.
+    """
     import pyarrow as pa
 
-    return pa.ipc.open_stream(content).read_all()
+    try:
+        content = response.content
+        source = pa.BufferReader(content)
+        reader = pa.ipc.open_stream(source)
+        batches = []
+        end = source.tell()
+        while True:
+            try:
+                batches.append(reader.read_next_batch())
+            except StopIteration:
+                break
+            end = source.tell()
+        complete = content[end:].endswith(_ARROW_END_OF_STREAM)
+    # requests' errors are OSErrors too.
+    except (pa.ArrowInvalid, OSError) as err:
+        raise _cut_off(sp, str(err)) from err
+    if not complete:
+        raise _cut_off(sp, "the Arrow stream has no end-of-stream marker")
+    return pa.Table.from_batches(batches, schema=reader.schema)
+
+
+def _cut_off(sp: semantic_layer.SemanticProject, cause: str) -> SemanticLayerException:
+    return SemanticLayerException(
+        f"The result of the query on semantic project '{sp.name}' was cut off before "
+        f"its end, so no rows are returned: {cause}. The query failed on the query "
+        "engine or the connection to the gateway broke; run it again."
+    )
 
 
 # region Export job
@@ -846,6 +885,7 @@ def _run_export(
 
     The saved query runs in full, past the gateway's result cache.
     A result the gateway's row cap cut ends the run as `TRUNCATED`, and a target feature group the export did not create as `TARGET_EXISTS`, both before anything is written.
+    A result that stops before its end fails the run, also before anything is written.
     Otherwise the first run creates the Delta feature group and fills it; a later run replaces every row, or with a lookback the rows from the window start on, in one commit that keeps the feature group's id.
     The window starts at the execution's logical date, `HOPS_LOGICAL_DATE` (the start of a scheduled run's interval, now for a run without one), minus the lookback, truncated to the `metric_time` grain.
 
@@ -1127,7 +1167,7 @@ def _complete_result(
         raise SemanticLayerException(
             f"The gateway answered saved query '{saved_query}' without an Arrow stream."
         )
-    table = _read_arrow_stream(response.content)
+    table = _read_arrow_stream(sp, response)
     max_rows = response.headers.get("X-Semantic-Max-Rows")
     flagged = response.headers.get("X-Semantic-Truncated", "").lower() == "true"
     # The gateway streams Arrow, so its headers go out before it knows whether the cap

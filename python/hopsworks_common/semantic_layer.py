@@ -1082,7 +1082,7 @@ class SemanticProject:
         Raises:
             ValueError: For an unknown `dataframe_type` or `engine`, or if both `metrics` and `saved_query` are given.
             ModuleNotFoundError: When `dataframe_type` is `polars` or `pyarrow` and that package is not installed.
-            hopsworks.client.exceptions.SemanticLayerException: If the gateway refuses the query or the query engine fails to run it.
+            hopsworks.client.exceptions.SemanticLayerException: If the gateway refuses the query, the query engine fails to run it, or the result stops before its end, in which case no rows are returned and the query can be run again.
             hopsworks.client.exceptions.FeatureStoreException: With `engine="spark"`, when the session is not the hsfs engine's or not in UTC, or a feature group is neither Delta nor, on classic Spark, Hudi.
         """
         if engine not in ("trino", "spark"):
