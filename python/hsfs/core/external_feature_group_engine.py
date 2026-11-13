@@ -47,6 +47,9 @@ class ExternalFeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngin
                 or feature_group.data_source.query
             ) and arrow_flight_client._supports([feature_group]):
                 # If the user provided a data source, we can use it to infer the schema
+                if feature_group.data_format and not feature_group.data_source.format:
+                    # Without it the files are read as parquet, whatever they hold.
+                    feature_group.data_source.format = feature_group.data_format
                 data = feature_group.data_source.get_data()
                 source = feature_group.data_source._describe() or "the data source"
                 # Taking an empty schema as the answer left the failure to surface further down
