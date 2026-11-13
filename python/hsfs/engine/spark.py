@@ -21,6 +21,7 @@ import json
 import os
 import re
 import shutil
+import urllib.parse
 import uuid
 import warnings
 from datetime import date, datetime, timezone
@@ -144,6 +145,18 @@ if HAS_AVRO:
 
 _logger = logging.getLogger(__name__)
 
+# Bucket name to the endpoint of the store this process uses it with, None for AWS S3.
+# Kept for the process rather than per Engine: reconnecting builds a new Engine, while the Spark
+# application and s3a's filesystem cache live on.
+_S3_BUCKET_STORES: dict[str, str | None] = {}
+
+
+def _s3_path_bucket(path):
+    if not path:
+        return None
+    parts = urllib.parse.urlsplit(path)
+    return parts.netloc if parts.scheme in ("s3", "s3a") else None
+
 
 class Engine:
     HIVE_FORMAT = "hive"
@@ -183,8 +196,6 @@ class Engine:
         self._spark_session.conf.set("spark.sql.hive.convertMetastoreParquet", "false")
         self._spark_session.conf.set("spark.sql.session.timeZone", "UTC")
         self._dataset_api = dataset_api.DatasetApi()
-        # Bucket name to the endpoint of the store this session uses it with, None for AWS S3.
-        self._s3_bucket_stores = {}
 
         # Stage metrics: enabled by default in Connect mode, can be overridden
         self._metrics = None
@@ -2027,6 +2038,12 @@ class Engine:
     def _setup_s3_hadoop_conf(self, storage_connector, path):
         FS_S3_GLOBAL_CONF = "fs.s3a.global-conf"
 
+        # Before any configuration changes, so a refused data source leaves the session as it was.
+        # A Glue data source has no bucket of its own; the path names the bucket it reads.
+        bucket = storage_connector.bucket or _s3_path_bucket(path)
+        if bucket:
+            self._claim_s3_bucket(storage_connector, bucket)
+
         # The argument arrive here as strings
         if storage_connector.arguments.get(FS_S3_GLOBAL_CONF, "True").lower() == "true":
             # For legacy behaviour set the S3 values at global level
@@ -2037,7 +2054,6 @@ class Engine:
         # bucket (e.g. Glue, where the bucket is part of the table location)
         # only configure the global level.
         if storage_connector.bucket:
-            self._claim_s3_bucket(storage_connector)
             self._set_s3_hadoop_conf(
                 storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
             )
@@ -2046,18 +2062,17 @@ class Engine:
             )
         return path.replace("s3://", "s3a://", 1) if path is not None else None
 
-    def _claim_s3_bucket(self, storage_connector):
-        """Record which store this session uses the data source's bucket name with.
+    def _claim_s3_bucket(self, storage_connector, bucket):
+        """Record which store this application uses the bucket name with.
 
         s3a keeps one filesystem per bucket name for the life of the application, so a second store under the same
         bucket name would silently read and write the first one.
 
         Raises:
-            FeatureStoreException: The session already uses the bucket name with another store.
+            FeatureStoreException: The application already uses the bucket name with another store.
         """
-        bucket = storage_connector.bucket
         endpoint = getattr(storage_connector, "endpoint", None) or None
-        known = self._s3_bucket_stores.setdefault(bucket, endpoint)
+        known = _S3_BUCKET_STORES.setdefault(bucket, endpoint)
         if known != endpoint:
             raise FeatureStoreException(
                 f"Data source '{storage_connector.name}' uses bucket '{bucket}' on {endpoint or 'AWS S3'}, "

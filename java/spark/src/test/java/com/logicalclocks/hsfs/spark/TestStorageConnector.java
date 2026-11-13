@@ -54,6 +54,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -574,6 +575,45 @@ public class TestStorageConnector {
           sc.hadoopConfiguration().get(Constants.S3_CREDENTIAL_PROVIDER_ENV));
       Assertions.assertEquals(Constants.S3_SIMPLE_CREDENTIAL_PROVIDER,
           sc.hadoopConfiguration().get("fs.s3a.bucket.ecs-own-provider.aws.credentials.provider"));
+    }
+
+    @Test
+    void testS3EndpointBucketTakesTheProviderItNames() throws IOException, FeatureStoreException {
+      StorageConnector.S3Connector connector = endpointConnector("ecs-named-provider", "https://s3.example.com:9021");
+      connector.setArguments(Collections.singletonList(
+          new Option(Constants.S3_CREDENTIAL_PROVIDER_ENV, "com.example.Provider")));
+
+      SparkEngine.getInstance().setupConnectorHadoopConf(connector);
+
+      SparkContext sc = SparkEngine.getInstance().getSparkSession().sparkContext();
+      Assertions.assertEquals("com.example.Provider",
+          sc.hadoopConfiguration().get("fs.s3a.bucket.ecs-named-provider.aws.credentials.provider"));
+    }
+
+    @Test
+    void testGlueClaimsTheBucketOfItsLocation() throws IOException, FeatureStoreException {
+      SparkEngine engine = SparkEngine.getInstance();
+      engine.setupConnectorHadoopConf(endpointConnector("glue-after", "https://s3.example.com:9021"));
+      Assertions.assertThrows(FeatureStoreException.class,
+          () -> engine.setupConnectorHadoopConf(glueConnector(), "s3://glue-after/db/table"));
+
+      engine.setupConnectorHadoopConf(glueConnector(), "s3a://glue-before/db/table");
+      Assertions.assertThrows(FeatureStoreException.class,
+          () -> engine.setupConnectorHadoopConf(endpointConnector("glue-before", "https://s3.example.com:9021")));
+
+      engine.setupConnectorHadoopConf(glueConnector(), "s3://glue-aws/db/table");
+      engine.setupConnectorHadoopConf(endpointConnector("glue-aws", null));
+      engine.setupConnectorHadoopConf(glueConnector(), null);
+    }
+
+    private StorageConnector.GlueConnector glueConnector() {
+      StorageConnector.GlueConnector connector = new StorageConnector.GlueConnector();
+      connector.setStorageConnectorType(StorageConnectorType.GLUE);
+      connector.setName("glue_source");
+      connector.setRegion("eu-north-1");
+      connector.setAccessKey("ak");
+      connector.setSecretKey("sk");
+      return connector;
     }
 
     @Test
