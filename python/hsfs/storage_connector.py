@@ -1550,6 +1550,9 @@ class S3Connector(StorageConnector):
 
         Returns:
             `DataFrame`.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: With the Spark engine, if the data source has an endpoint and `path` is in another bucket, or if the Spark application already uses the bucket name with another store.
         """
         if path is None:
             path = ""
