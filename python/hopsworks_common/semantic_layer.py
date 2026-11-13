@@ -1217,7 +1217,7 @@ class SemanticProject:
     ) -> pd.DataFrame:
         """The most recent queries run on this semantic project, newest first, one row per execution attempt.
 
-        Every query the gateway runs over REST, GraphQL, Arrow Flight or the BI tables is recorded, failed and cancelled ones included; listings of metrics and requests that only compile SQL are not.
+        Every query the gateway runs over REST, Arrow Flight SQL or the BI tables is recorded, failed and cancelled ones included; listings of metrics and requests that only compile SQL are not.
         Members see their own queries; Data Owners see every member's, and can narrow them to one with `user`.
         History is best effort and is kept for `semantic_query_delete_after_days` (30 by default); the request, SQL and error of a query are dropped after `semantic_query_strip_details_after_days` (7 by default).
 
@@ -1259,6 +1259,8 @@ class SemanticProject:
         """What a dbt Semantic Layer client needs to reach this semantic project, apart from an API key.
 
         `dbt-sl-sdk` takes the Hopsworks host, an API key and `environment_id`, with the `env` variables set; the Arrow Flight SQL JDBC driver takes `jdbc_url` and the API key as `token`.
+        GraphQL at `graphql_url` serves metadata (metrics, dimensions, measures, entities, saved queries, granularities) and `compileSql`; queries run over Arrow Flight SQL at `adbc_url` or `jdbc_url`, or over REST.
+        So `dbt-sl-sdk`'s `metrics()`, `dimensions()`, `compile_sql()`, `query()` and `dimension_values()` work, the last two over ADBC, and a query sent as a GraphQL operation is refused.
         When the cluster's certificates come from a private CA, the CA is written to `ca_path`, and `env` also points `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` at it.
 
         Example: Query the semantic project with dbt-sl-sdk

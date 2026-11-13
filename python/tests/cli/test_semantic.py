@@ -977,7 +977,7 @@ class TestHistory:
                 {
                     "execution_id": "3f8c2a52-0000-4000-8000-000000000001",
                     "user": "meb10000",
-                    "surface": "GRAPHQL",
+                    "surface": "FLIGHT",
                     "engine": "TRINO",
                     "build_id": 12,
                     "status": "FAILED",
@@ -1026,7 +1026,7 @@ class TestHistory:
         assert lines[2].split() == [
             "2026-11-08T10:00:00.123000+00:00",
             "meb10000",
-            "GRAPHQL",
+            "FLIGHT",
             "FAILED",
             "77",
             "-",
@@ -1167,6 +1167,8 @@ class TestConnect:
             "export SSL_CERT_FILE='/tmp/ca dir/ca.pem'",
         ]
         assert "Environment id: 7" in result.stderr
+        assert "GraphQL (metadata, compileSql): https://hopsworks" in result.stderr
+        assert "ADBC (queries): grpc+tls://flight.example.com:18446" in result.stderr
         assert "CA certificate: /tmp/ca dir/ca.pem" in result.stderr
 
     def test_json_is_the_connection_info(self, sales):

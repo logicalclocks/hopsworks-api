@@ -304,7 +304,7 @@ class SemanticLayerTools:
             ctx: The MCP context, provided automatically.
 
         Returns:
-            CSV with the columns started_at, user, surface (REST, GRAPHQL, FLIGHT or BI), status, duration_ms, rows, cache (hit, miss or bypass), error, request (the normalized query as JSON, empty once the history has dropped it) and execution_id.
+            CSV with the columns started_at, user, surface (REST, FLIGHT or BI), status, duration_ms, rows, cache (hit, miss or bypass), error, request (the normalized query as JSON, empty once the history has dropped it) and execution_id.
         """
         if ctx:
             await ctx.info(f"Listing the query history of {semantic_project}...")

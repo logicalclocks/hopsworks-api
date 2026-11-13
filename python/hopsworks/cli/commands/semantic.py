@@ -1508,6 +1508,7 @@ def connect_cmd(ctx: click.Context, name: str, ca_path: str | None) -> None:
     The export lines go to stdout and the rest to stderr, so
     `eval "$(hops semantic connect sales)"` sets the variables. The client also needs
     the Hopsworks host and an API key with the FEATURESTORE and TRINO scopes.
+    GraphQL serves metadata and compileSql; queries run over Arrow Flight SQL (ADBC, JDBC).
 
     Args:
         ctx: Click context.
@@ -1519,9 +1520,9 @@ def connect_cmd(ctx: click.Context, name: str, ca_path: str | None) -> None:
         output.print_json(info)
         return
     output.info("Environment id: %s", info["environment_id"])
-    output.info("GraphQL:        %s", info["graphql_url"])
-    output.info("ADBC:           %s", info["adbc_url"])
-    output.info("JDBC:           %s", info["jdbc_url"])
+    output.info("GraphQL (metadata, compileSql): %s", info["graphql_url"])
+    output.info("ADBC (queries): %s", info["adbc_url"])
+    output.info("JDBC (queries): %s", info["jdbc_url"])
     if info["ca_path"]:
         output.info("CA certificate: %s", info["ca_path"])
     for key, value in info["env"].items():

@@ -246,7 +246,7 @@ While an export without `lookback` holds the exact rows of a query (same metrics
 
 ## Query history
 
-Every query run over REST, GraphQL, Arrow Flight or the BI tables is recorded, failed and cancelled ones included; members see their own, Data Owners everyone's.
+Every query run over REST, Arrow Flight SQL or the BI tables is recorded, failed and cancelled ones included; members see their own, Data Owners everyone's.
 Kept 30 days (`semantic_query_delete_after_days`); the request, SQL and error go after 7 (`semantic_query_strip_details_after_days`).
 Best effort, not an audit log: a record can be lost (full queue, expired credential). Metadata listings and `sql`/`--explain` are not recorded.
 Use it to find why a dashboard or BI tool query failed (`--status FAILED`, the `error` column) or which surface and cache outcome a query had.
@@ -262,7 +262,7 @@ df = sales.query_history(limit=100, status="FAILED")                # pandas, on
 
 ## dbt Semantic Layer clients
 
-`dbt-sl-sdk` (GraphQL and ADBC) and the Arrow Flight SQL JDBC driver, with dbt's `{{ semantic_layer.query(...) }}` syntax, reach a semantic project with the Hopsworks host, an API key with the `FEATURESTORE` and `TRINO` scopes, and the semantic project's id as the environment id:
+`dbt-sl-sdk` and the Arrow Flight SQL JDBC driver, with dbt's `{{ semantic_layer.query(...) }}` syntax, reach a semantic project with the Hopsworks host, an API key with the `FEATURESTORE` and `TRINO` scopes, and the semantic project's id as the environment id:
 
 ```bash
 eval "$(hops semantic connect sales)"   # DBT_SL_GRAPHQL_URL_FORMAT, DBT_SL_ADBC_URL_FORMAT and, with a private CA, SSL_CERT_FILE; URLs on stderr
@@ -271,6 +271,9 @@ eval "$(hops semantic connect sales)"   # DBT_SL_GRAPHQL_URL_FORMAT, DBT_SL_ADBC
 ```python
 info = sales.connection_info()          # environment_id, graphql_url, adbc_url, jdbc_url, env and ca_path
 ```
+
+- **GraphQL** (`graphql_url`) serves metadata and `compileSql` only: `metrics`, `dimensions`, `measures`, `entities`, `savedQueries`, their paginated forms, `queryableGranularities` and `environmentInfo`.
+- **Queries** run over Arrow Flight SQL (`adbc_url`, `jdbc_url`) or REST. `dbt-sl-sdk`'s `client.query()` and `client.dimension_values()` use ADBC and work; a query sent as a GraphQL operation (`createQuery`, `query`, `createDimensionValuesQuery`) is refused with a GraphQL validation error.
 
 ### BI tools (experimental)
 
