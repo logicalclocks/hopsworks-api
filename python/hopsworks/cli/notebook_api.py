@@ -475,9 +475,12 @@ class Jupyter:
         from websockets.sync.client import connect as ws_connect  # noqa: PLC0415
 
         kernel_id = session["kernel"]["id"]
+        # Jupyter uses the socket's session id as a ZeroMQ identity at the kernel, where an id still
+        # held by the previous connection of this notebook gets no reply. Each connection takes its own.
+        ws_session = uuid.uuid4().hex
         url = (
             re.sub(r"^http", "ws", self.base_url)
-            + f"/api/kernels/{kernel_id}/channels?session_id={session['id']}"
+            + f"/api/kernels/{kernel_id}/channels?session_id={ws_session}"
             # The token goes in the query too: Jupyter reads it there on a WebSocket handshake
             # whatever headers the Hopsworks proxy forwards.
             + f"&token={self.token}"
@@ -496,7 +499,7 @@ class Jupyter:
                 "msg_id": msg_id,
                 "msg_type": "execute_request",
                 "username": "hops",
-                "session": session["id"],
+                "session": ws_session,
                 "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "version": "5.3",
             },
@@ -529,7 +532,7 @@ class Jupyter:
             ) as ws:
                 # A kernel still starting may close the socket. Its kernel_info reply shows it
                 # takes requests on this socket, so a close before the cell is sent ran nothing.
-                _kernel_info(ws, session["id"])
+                _kernel_info(ws, ws_session)
                 sent = True
                 ws.send(json.dumps(request))
                 deadline = time.monotonic() + timeout
