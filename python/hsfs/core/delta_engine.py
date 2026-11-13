@@ -429,7 +429,9 @@ class DeltaEngine:
                 # its history() is already on the in-commit clock
                 from deltalake import DeltaTable as DeltaRsTable
 
-                history = DeltaRsTable(location, storage_options={}).history()
+                history = DeltaRsTable(
+                    location, storage_options=self._get_delta_rs_storage_options()
+                ).history()
                 commits = [
                     (
                         int(commit["version"]),
@@ -833,6 +835,19 @@ class DeltaEngine:
                 opts["AWS_SESSION_TOKEN"] = connector.session_token
             if connector.region:
                 opts["AWS_REGION"] = connector.region
+            if connector.endpoint:
+                parts = urlparse(connector.endpoint)
+                if connector.path_style_access:
+                    opts["AWS_ENDPOINT_URL"] = connector.endpoint
+                    opts["AWS_VIRTUAL_HOSTED_STYLE_REQUEST"] = "false"
+                else:
+                    # object_store uses a virtual-hosted endpoint as given, so it has to name the bucket.
+                    opts["AWS_ENDPOINT_URL"] = (
+                        f"{parts.scheme}://{connector.bucket}.{parts.netloc}"
+                    )
+                    opts["AWS_VIRTUAL_HOSTED_STYLE_REQUEST"] = "true"
+                if parts.scheme == "http":
+                    opts["AWS_ALLOW_HTTP"] = "true"
             return opts
         if connector.type == sc.StorageConnector.ADLS:
             opts = {}

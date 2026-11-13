@@ -92,6 +92,8 @@ class TestS3Connector:
         assert sc.session_token == "test_session_token"
         assert sc.iam_role == "test_iam_role"
         assert sc.arguments == {"test_name": "test_value"}
+        assert sc.endpoint == "https://s3.example.com:9021"
+        assert sc.path_style_access is True
 
     def test_from_response_json_basic_info(self, backend_fixtures):
         # Arrange
@@ -113,6 +115,173 @@ class TestS3Connector:
         assert sc.session_token is None
         assert sc.iam_role is None
         assert sc.arguments == {}
+        assert sc.endpoint is None
+        assert sc.path_style_access is None
+
+    def test_round_trip_keeps_endpoint_and_path_style(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_s3"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        again = storage_connector.StorageConnector.from_response_json(sc.to_dict())
+
+        assert again.endpoint == "https://s3.example.com:9021"
+        assert again.path_style_access is True
+
+    def test_connector_options_with_endpoint(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            region="us-east-1",
+            access_key="ak",
+            secret_key="sk",
+            endpoint="https://s3.example.com:9021",
+            path_style_access=True,
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "s3.example.com:9021"
+        assert options["use_ssl"] is True
+        assert options["url_style"] == "path"
+        assert options["region"] == "us-east-1"
+
+    def test_connector_options_with_http_endpoint_and_virtual_hosts(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="minio",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="http://minio.example.com:9000",
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "minio.example.com:9000"
+        assert options["use_ssl"] is False
+        assert options["url_style"] == "vhost"
+
+    @pytest.mark.parametrize(
+        ("ssl", "path_style", "use_ssl", "url_style"),
+        [
+            ("true", "true", True, "path"),
+            ("false", "false", False, "vhost"),
+            ("False", "TRUE", False, "path"),
+        ],
+    )
+    def test_connector_options_from_spark_options(
+        self, mocker, ssl, path_style, use_ssl, url_style
+    ):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="legacy",
+            featurestore_id=1,
+            bucket="landing",
+            arguments=[
+                {"name": "fs.s3a.endpoint", "value": "minio:9000"},
+                {"name": "fs.s3a.connection.ssl.enabled", "value": ssl},
+                {"name": "fs.s3a.path.style.access", "value": path_style},
+            ],
+        )
+
+        options = sc.connector_options()
+
+        assert options["endpoint"] == "minio:9000"
+        assert options["use_ssl"] is use_ssl
+        assert options["url_style"] == url_style
+
+    def test_connector_options_without_endpoint_or_spark_options(self, mocker):
+        mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
+        sc = storage_connector.S3Connector(
+            id=1, name="aws", featurestore_id=1, bucket="landing", region="eu-north-1"
+        )
+
+        options = sc.connector_options()
+
+        assert "endpoint" not in options
+        assert "use_ssl" not in options
+        assert "url_style" not in options
+
+    def test_save_refuses_a_response_without_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=storage_connector.S3Connector(
+                id=1, name="ecs", featurestore_id=1, bucket="landing"
+            ),
+        )
+
+        with pytest.raises(FeatureStoreException, match="saved without its endpoint"):
+            sc.save()
+
+    def test_save_with_tags_sends_them_and_keeps_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        stored = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+        tags = [{"name": "data_owner", "value": "platform"}]
+        create = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=stored,
+        )
+
+        assert sc.save(tags=tags) is stored
+        create.assert_called_once_with(sc, tags)
+
+    def test_update_refuses_a_response_without_the_endpoint(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=1,
+            name="ecs",
+            featurestore_id=1,
+            bucket="landing",
+            endpoint="https://s3.example.com:9021",
+        )
+
+        def drop_endpoint(instance):
+            instance._endpoint = None
+            return instance
+
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._update",
+            side_effect=drop_endpoint,
+        )
+
+        with pytest.raises(FeatureStoreException, match="saved without its endpoint"):
+            sc.update()
+
+    def test_save_without_endpoint_accepts_any_response(self, mocker):
+        sc = storage_connector.S3Connector(
+            id=None, name="aws", featurestore_id=1, bucket="landing"
+        )
+        stored = storage_connector.S3Connector(
+            id=1, name="aws", featurestore_id=1, bucket="landing"
+        )
+        mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi._create",
+            return_value=stored,
+        )
+
+        assert sc.save() is stored
 
     def test_default_path(self, mocker):
         mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
@@ -3042,6 +3211,8 @@ class TestStorageConnectorToDict:
         assert d["sessionToken"] == "test_session_token"
         assert d["iamRole"] == "test_iam_role"
         assert d["arguments"] == [{"name": "test_name", "value": "test_value"}]
+        assert d["endpoint"] == "https://s3.example.com:9021"
+        assert d["pathStyleAccess"] is True
 
     def test_s3_to_dict_minimal(self):
         sc = storage_connector.S3Connector(
@@ -3059,6 +3230,8 @@ class TestStorageConnectorToDict:
         assert d["bucket"] == "my-bucket"
         assert d["region"] == "eu-north-1"
         assert d["arguments"] == []
+        assert d["endpoint"] is None
+        assert d["pathStyleAccess"] is None
 
     def test_redshift_to_dict(self, backend_fixtures):
         json = backend_fixtures["storage_connector"]["get_redshift"]["response"]

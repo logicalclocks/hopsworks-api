@@ -61,7 +61,9 @@
             "bucket": "test_bucket",
             "session_token": "test_session_token",
             "iam_role": "test_iam_role",
-            "arguments": [{"name":"test_name", "value":"test_value"}]
+            "arguments": [{"name":"test_name", "value":"test_value"}],
+            "endpoint": "https://s3.example.com:9021",
+            "pathStyleAccess": true
         },
         "method": "GET",
         "path_params": [
