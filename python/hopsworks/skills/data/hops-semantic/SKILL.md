@@ -1,6 +1,6 @@
 ---
 name: hops-semantic
-description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Scaffold a semantic project from feature groups (`hops semantic init`, in HopsFS or a new GitHub repository), write semantic YAML and the time spine, compile, validate and test metrics, tag semantic projects and metrics, list metrics and dimensions, query metrics or saved queries on Trino or Spark (`engine="spark"`), export saved queries into feature groups, read the query history, connect dbt Semantic Layer clients and BI tools over Arrow Flight SQL, edit the YAML in the UI editor, and build Superset dashboards of metrics, from the CLI, the SDK or the MCP agent tools. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input feature groups or a dbt project over them; output a compiled semantic project and metric query results.
+description: Use whenever metrics, a semantic layer, MetricFlow, dbt semantic models or dbt metrics are involved on Hopsworks. Scaffold a semantic project from feature groups (`hops semantic init`, in HopsFS or a new GitHub repository), write semantic YAML and the time spine, compile, validate and test metrics, tag semantic projects and metrics, list metrics and dimensions, query metrics or saved queries, export saved queries into feature groups, read the query history, connect dbt Semantic Layer clients and BI tools over Arrow Flight SQL, edit the YAML in the UI editor, and build Superset dashboards of metrics, from the CLI, the SDK or the MCP agent tools. Auto-invoke when the user wants to define a metric once and query it by dimension and time grain, or asks for `hops semantic` or `project.get_semantic_layer_api()`. Input feature groups or a dbt project over them; output a compiled semantic project and metric query results.
 ---
 
 # Semantic Layer on Hopsworks
@@ -232,22 +232,6 @@ df = sales.query(saved_query="revenue_by_country", limit=10)   # its own metrics
 - A repeated query may come from the gateway's result cache, which drops a result once a feature group it reads has a new commit; access changes reach it within a minute. `--no-cache` (`read_cache=False`) runs it on Trino.
 - It works from outside the cluster with an API key, through the same host as `hopsworks.login()`.
 
-### On Spark
-
-In a Spark job or notebook, `engine="spark"` runs the same query on the caller's Spark session and returns a lazy PySpark DataFrame:
-
-```python
-df = sales.query(metrics=["revenue"], group_by=["metric_time__month"], engine="spark")
-df.write.mode("overwrite").saveAsTable("monthly_revenue")   # any Spark transformation
-sales.drop_views(df)                                        # the temporary views sl_<8 hex>_<fg id> this call registered
-```
-
-- `spark.sql.session.timeZone` must already be `UTC` (set it in the job's Spark config); the client checks it, never changes it.
-- Delta feature groups on classic Spark and Spark Connect, Hudi on classic Spark only.
-- Each view reads its feature group whole at its latest commit: `HOPS_START_TIME`/`HOPS_END_TIME` of a scheduled job do not filter it.
-- Refused (use Trino instead): a feature group shared with only some features or with a Trino row filter or column mask, approximate percentiles, conversion metrics grouped by other than their agg time, filters calling `DAY_OF_WEEK`, `JSON_EXTRACT_SCALAR` or `DATE_FORMAT`.
-- No result cache, no answers from exports, no query history record: those are Trino's.
-
 ## Exports
 
 A saved query's `exports:` writes its rows into a Delta feature group that a job refreshes on a schedule or on demand, keeping the feature group's id; every group-by but `metric_time` is its primary key and `metric_time` its event time.
@@ -264,7 +248,7 @@ While an export without `lookback` holds the exact rows of a query (same metrics
 
 Every query run over REST, GraphQL, Arrow Flight or the BI tables is recorded, failed and cancelled ones included; members see their own, Data Owners everyone's.
 Kept 30 days (`semantic_query_delete_after_days`); the request, SQL and error go after 7 (`semantic_query_strip_details_after_days`).
-Best effort, not an audit log: a record can be lost (full queue, expired credential). Metadata listings, `sql`/`--explain` and `engine="spark"` runs are not recorded.
+Best effort, not an audit log: a record can be lost (full queue, expired credential). Metadata listings and `sql`/`--explain` are not recorded.
 Use it to find why a dashboard or BI tool query failed (`--status FAILED`, the `error` column) or which surface and cache outcome a query had.
 
 ```bash
@@ -335,7 +319,6 @@ Answer metric questions with these tools rather than SQL over feature groups: th
 | `SEMANTIC_LAYER_EXECUTION_FAILED` (502) | Trino rejected the generated SQL; its message follows | Check the FG data and column types; `hops semantic sql` shows the SQL |
 | `SEMANTIC_LAYER_FORBIDDEN` (403) | Not a project member, or the API key lacks `FEATURESTORE` or `TRINO` | Add the scope or the member |
 | `SemanticBuildException` | `compile(wait=True)` ended `INVALID` or `FAILED` | Read `err.issues` (file, line, rule, message) |
-| `FeatureStoreException` with `engine="spark"` | Not a Spark engine, another Spark session than hsfs's, a session not in UTC, or a Hudi feature group on Spark Connect | Run in a Spark job with `spark.sql.session.timeZone=UTC` |
 | `TIME_SPINE` build issue | A metric needs a time spine and none is bound | `hops semantic time-spine create`, then a time spine model ([references/metric-types.md](references/metric-types.md)) |
 | `METRIC_TAG_*` build issue | A metric's tag names no schema, does not match it, or a mandatory metric tag is missing | Fix `config.meta.hopsworks.tags` on that metric |
 

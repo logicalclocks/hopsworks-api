@@ -689,11 +689,8 @@ class SemanticLayerApi:
         result = self._gateway_json("POST", sp, "dimension-values", body=request)
         return result.get("values") or []
 
-    def _sql(
-        self, sp: semantic_layer.SemanticProject, request: dict[str, Any]
-    ) -> dict[str, Any]:
-        """The gateway's whole `sql` answer: `sql`, and with `"engine": "SPARK"` the `views` it reads."""
-        return self._gateway_json("POST", sp, "sql", body=request)
+    def _sql(self, sp: semantic_layer.SemanticProject, request: dict[str, Any]) -> str:
+        return self._gateway_json("POST", sp, "sql", body=request)["sql"]
 
     def _query(
         self,

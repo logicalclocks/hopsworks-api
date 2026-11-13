@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
     import pyarrow as pa
-    import pyspark.sql
     from hopsworks_common.core.semantic_layer_api import SemanticLayerApi
     from hopsworks_common.execution import Execution
 
@@ -1007,7 +1006,7 @@ class SemanticProject:
                 group_limit=group_limit,
                 saved_query=saved_query,
             ),
-        )["sql"]
+        )
 
     @public
     @usage._method_logger
@@ -1026,19 +1025,10 @@ class SemanticProject:
         dataframe_type: Literal["pandas", "polars", "pyarrow", "python"] = "pandas",
         saved_query: str | None = None,
         read_cache: bool = True,
-        engine: Literal["trino", "spark"] = "trino",
-        spark: pyspark.sql.SparkSession | None = None,
-    ) -> (
-        pd.DataFrame
-        | pl.DataFrame
-        | pa.Table
-        | list[dict[str, Any]]
-        | pyspark.sql.DataFrame
-    ):
+    ) -> pd.DataFrame | pl.DataFrame | pa.Table | list[dict[str, Any]]:
         """Run a metric query on the query engine, as the caller, and return its rows.
 
         The arguments are those of [`sql`][hopsworks_common.semantic_layer.SemanticProject.sql], including how they refine a saved query.
-        With `engine="spark"` the query runs on the caller's Spark session instead, and the result is a lazy `pyspark.sql.DataFrame`; `dataframe_type` and `read_cache` do not apply.
         Results come back as an Arrow stream when `pyarrow` is installed, which keeps column types, and as JSON otherwise.
         The gateway caps the number of rows it returns, and a result that may have been cut by the cap logs a warning.
         The gateway may answer a repeated query from its result cache, which drops a result once a feature group the query reads has a new commit; a change of the caller's access reaches the cache within a minute.
@@ -1065,28 +1055,15 @@ class SemanticProject:
             dataframe_type: `pandas`, `polars`, `pyarrow`, or `python` for a list of rows, each a dict keyed by column name.
             saved_query: Name of a saved query to run, from [`list_saved_queries`][hopsworks_common.semantic_layer.SemanticProject.list_saved_queries].
             read_cache: Whether the gateway may answer from its result cache; `False` always runs the query on the engine.
-            engine:
-                `trino` runs the query on Trino through the gateway.
-                `spark` registers each feature group the query reads, time spines included, as a temporary view of this call, `sl_<8 hex digits>_<feature group id>`, read whole at its latest version, and runs the SQL on `spark`.
-                The views are read raw, so the scheduler's `HOPS_START_TIME` and `HOPS_END_TIME` do not filter them.
-                They live as long as the session; [`drop_views`][hopsworks_common.semantic_layer.SemanticProject.drop_views] drops them.
-                Delta feature groups are read on classic Spark and Spark Connect, Hudi ones on classic Spark only.
-                The gateway refuses a feature group shared with only some of its features, one a Trino row filter, column mask or denied column applies to, and a query outside the cases supported on Spark, naming it.
-            spark:
-                The Spark session, for `engine="spark"`; by default the active one.
-                It must be the session the hsfs engine holds, and its `spark.sql.session.timeZone` must already be UTC: it is checked, never changed.
 
         Returns:
             The rows, one column per group-by and metric.
 
         Raises:
-            ValueError: For an unknown `dataframe_type` or `engine`, or if both `metrics` and `saved_query` are given.
+            ValueError: For an unknown `dataframe_type`, or if both `metrics` and `saved_query` are given.
             ModuleNotFoundError: When `dataframe_type` is `polars` or `pyarrow` and that package is not installed.
             hopsworks.client.exceptions.SemanticLayerException: If the gateway refuses the query, the query engine fails to run it, or the result stops before its end, in which case no rows are returned and the query can be run again.
-            hopsworks.client.exceptions.FeatureStoreException: With `engine="spark"`, when the session is not the hsfs engine's or not in UTC, or a feature group is neither Delta nor, on classic Spark, Hudi.
         """
-        if engine not in ("trino", "spark"):
-            raise ValueError(f"engine {engine!r} is not one of trino, spark.")
         if dataframe_type not in _DATAFRAME_TYPES:
             raise ValueError(
                 f"dataframe_type {dataframe_type!r} is not one of {', '.join(_DATAFRAME_TYPES)}."
@@ -1104,31 +1081,10 @@ class SemanticProject:
             group_limit=group_limit,
             saved_query=saved_query,
         )
-        if engine == "spark":
-            from hsfs.core import semantic_spark
-
-            answer = self._semantic_layer_api._sql(self, {**request, "engine": "SPARK"})
-            return semantic_spark._query(answer, spark)
         if not read_cache:
             request["cache"] = False
         result = self._semantic_layer_api._query(self, request, arrow=HAS_PYARROW)
         return _to_dataframe(result, dataframe_type)
-
-    @public
-    def drop_views(self, df: pyspark.sql.DataFrame) -> None:
-        """Drop the temporary views a [`query`][hopsworks_common.semantic_layer.SemanticProject.query] with `engine="spark"` registered for `df`.
-
-        The views are not dropped otherwise until the Spark session ends; `df` and every DataFrame derived from it cannot be read after.
-
-        Parameters:
-            df: The DataFrame the query returned.
-
-        Raises:
-            ValueError: If `df` did not come from a query with `engine="spark"`.
-        """
-        from hsfs.core import semantic_spark
-
-        semantic_spark._drop_views(df)
 
     # endregion
 

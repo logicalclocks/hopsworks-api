@@ -59,7 +59,7 @@ The gateway reads a query's rows from the export's feature group, instead of com
 - every source, time spine included, is a Delta feature group at the commit the last run read, and the export feature group at the commit it wrote;
 - the saved query's definition is the one the run read, no Trino row filter or column mask applies, and no source is shared with only some of its features.
 
-REST answers carry `X-Semantic-Served-From: export:<name>`, `X-Semantic-Export-Feature-Group` and `X-Semantic-Source-Versions`; Flight and GraphQL are served without headers; BI table SQL and `engine="spark"` never are.
+REST answers carry `X-Semantic-Served-From: export:<name>`, `X-Semantic-Export-Feature-Group` and `X-Semantic-Source-Versions`; Flight is served without headers; BI table SQL never is.
 The history's `served_from` shows it on every surface. `"useExports": false` in a REST query body computes from the sources.
 
 ## Commands
