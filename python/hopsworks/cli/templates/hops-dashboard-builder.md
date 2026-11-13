@@ -12,7 +12,8 @@ real ambiguity ends the run with one line saying what is missing.
 Load **hops-superset** (`.claude/skills/hops-superset/` in the repository, else
 `~/.claude/skills/hops-superset/`): its "Dashboard programs" section and
 `references/dashboard_program.py`, the skeleton every program is filled from, with the chart
-params in `references/chart_params.md`.
+params in `references/chart_params.md`. Load **hops-design** the same way and follow its
+look (the "Look" section of hops-superset applies it to Superset).
 
 ## Where the program runs
 
