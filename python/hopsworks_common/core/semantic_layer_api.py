@@ -532,10 +532,17 @@ class SemanticLayerApi:
             data=json.dumps(report),
         )
 
-    def _session(self, sp: semantic_layer.SemanticProject) -> dict[str, Any]:
-        """The caller's gateway session on the semantic project, which lists its exports and the Trino rules revision."""
+    def _export_rules(
+        self, sp: semantic_layer.SemanticProject, export_name: str
+    ) -> tuple[str | None, bool]:
+        """The Trino rules revision of the caller's gateway session and whether it lists the export as policy-free; nothing else of the session is returned."""
         _client = client._get_instance()
-        return _client._send_request("GET", ["semantic", "sessions", sp.id]) or {}
+        session = _client._send_request("GET", ["semantic", "sessions", sp.id]) or {}
+        entry = next(
+            (e for e in session.get("exports") or [] if e.get("name") == export_name),
+            {},
+        )
+        return session.get("rulesRevision"), entry.get("policyFree") is True
 
     def _query_history(
         self,
@@ -965,7 +972,7 @@ def _rules_at_start(
 ) -> tuple[str | None, bool]:
     """The Trino rules revision at the run's start and whether the session lists the export as policy-free; `(None, False)` when the session cannot be read."""
     try:
-        session = api._session(sp)
+        return api._export_rules(sp, export_name)
     except Exception as err:
         _logger.warning(
             "Export %s of %s records no materialisation: the session cannot be read: %s",
@@ -974,11 +981,6 @@ def _rules_at_start(
             err,
         )
         return None, False
-    entry = next(
-        (e for e in session.get("exports") or [] if e.get("name") == export_name),
-        {},
-    )
-    return session.get("rulesRevision"), entry.get("policyFree") is True
 
 
 def _write_export(

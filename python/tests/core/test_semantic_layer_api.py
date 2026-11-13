@@ -1630,6 +1630,24 @@ class TestExports:
 
         assert sales.exports() == []
 
+    def test_export_rules_are_the_sessions_revision_and_the_exports_flag(
+        self, http, sales
+    ):
+        http._send_request.return_value = {
+            "buildId": 12,
+            "rulesRevision": "b" * 64,
+            "exports": [
+                {"name": "other", "policyFree": False},
+                {"name": "revenue_daily", "policyFree": True},
+            ],
+        }
+        api = SemanticLayerApi()
+
+        assert api._export_rules(sales, "revenue_daily") == ("b" * 64, True)
+        assert api._export_rules(sales, "other") == ("b" * 64, False)
+        assert api._export_rules(sales, "unlisted") == ("b" * 64, False)
+        assert http._send_request.call_args.args == ("GET", ["semantic", "sessions", 7])
+
     @pytest.mark.parametrize("wait", [False, True])
     def test_run_export_starts_the_job_and_returns_its_execution(
         self, http, sales, mocker, wait
