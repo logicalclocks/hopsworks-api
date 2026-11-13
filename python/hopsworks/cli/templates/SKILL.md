@@ -279,7 +279,7 @@ hops semantic dimension-values <name> <dimension> [--metrics a,b] [--limit N]
 hops semantic saved-queries <name>                          # sql, query, dashboard take --saved-query q for --metrics
 hops semantic sql <name> --metrics a,b [--group-by metric_time__month,customer__country] [--where "..."] [--order-by -a] [--limit N]
 hops semantic query <name> --metrics a,b [...same flags] [--output table|json|csv] [--explain] [--no-cache]   # --explain prints the SQL; --no-cache skips the gateway's result cache
-hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset dashboard on your own connection to the semantic project; prints its URL
+hops semantic dashboard <name> --metrics a,b [--group-by customer__country] [--title T]   # Superset dashboard on your own semantic connection; prints its URL
 hops semantic export list <name>                            # exports of saved queries into feature groups, with each one's last run
 hops semantic export run <name> <export> [--wait]           # run an export's job now (Data Owner)
 hops semantic transfer-ownership <name> <email> [--yes]     # hand the semantic project, as whose owner its exports run, to another Data Owner

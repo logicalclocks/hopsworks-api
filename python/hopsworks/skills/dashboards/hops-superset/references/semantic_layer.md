@@ -1,6 +1,6 @@
 # Metrics from the semantic layer in Superset
 
-How a chart reads a metric that a semantic project ([hops-semantic](../../../data/hops-semantic/SKILL.md)) defines: through the caller's own Superset database connection to the semantic project, or, where Superset has none, through a dataset over the metric's SQL on the Trino connection.
+How a chart reads a metric that a semantic project ([hops-semantic](../../../data/hops-semantic/SKILL.md)) defines: through the caller's own semantic connection in Superset, or, where Superset has none, through a dataset over the metric's SQL on the Trino connection.
 The parent skill's "Metrics from the semantic layer" section says when; this file is the detail.
 
 ```bash
@@ -10,26 +10,21 @@ hops semantic dimensions sales --metrics revenue  # what they can be grouped by
 
 ## Which path
 
-Each Data owner and Data scientist of a project with Superset has one connection per semantic project, `Semantic_<semantic project>__<superset user>`, where the Superset user is `<project>__<username>_superset`.
+Each Data owner and Data scientist of a project with Superset has one semantic connection in Superset for the whole Hopsworks project.
 A query on it runs on Trino as the member's own Trino user, so it reads only what the member can read.
-The connection shows the semantic project as tables over Arrow Flight SQL, in the schema named by the semantic project's id: `metrics`, and one table per saved query.
+The connection shows each semantic project of the Hopsworks project as a schema over Arrow Flight SQL, named by the semantic project's name, with the table `metrics` and one table per saved query.
+Creating, renaming or deleting a semantic project adds, renames or removes its schema; the connection stays as it is.
+A statement names its tables with their schema, `"sales".metrics`, and reads one schema.
 
-Look for the connection; only its absence selects datasets over metric SQL:
-
-- no database of that name among those the caller sees, in a Hopsworks terminal or job;
-- from an external client, which cannot reach Superset, `hops semantic dashboard` (or `create_dashboard`) failing with code 600014, `SEMANTIC_LAYER_DASHBOARDS_DISABLED` (HTTP 503): Superset without the Hopsworks image's driver, `superset_semantic_enabled` off, or the project without the Superset service.
-
-An authentication failure, any other 4xx or 5xx, and 600015, `SEMANTIC_LAYER_SUPERSET_ERROR` (Superset did not answer), are errors to report: retry or fix them, and never fall back on them.
+Ask Hopsworks whether the connection is there; do not look a database up by name:
 
 ```python
-def semantic_connection_id(api, semantic_project: str) -> int | None:
-    """The caller's own Superset connection to a semantic project; None when Superset has none."""
-    me = api._request("GET", "/api/v1/me/")["result"]["username"]  # <project>__<username>_superset
-    name = f"Semantic_{semantic_project}__{me}"
-    return next((db["id"] for db in list_all(api, "database") if db.get("database_name") == name), None)
+sales = project.get_semantic_layer_api().get_project("sales")
+sales.explore_url("revenue")   # works from a terminal, a job and an external client
 ```
 
-`list_all` is the paging helper of the dashboard program (SKILL.md §7).
+Only code 600014, `SEMANTIC_LAYER_DASHBOARDS_DISABLED` (HTTP 503), from `explore_url`, `create_dashboard` or `hops semantic dashboard` selects datasets over metric SQL: Superset without the Hopsworks image's driver, `superset_semantic_enabled` off, or the project without the Superset service.
+An authentication failure, any other 4xx or 5xx, and 600015, `SEMANTIC_LAYER_SUPERSET_ERROR` (Superset did not answer), are errors to report: retry or fix them, and never fall back on them.
 
 ## Your connection: datasets of the semantic project's tables
 
@@ -51,7 +46,7 @@ sales.create_dashboard(saved_query="revenue_by_country")   # on the saved query'
 sales.explore_url("revenue")   # Explore, the metric over metric_time, nothing saved
 ```
 
-- It reads a dataset of the `metrics` table (or the saved query's table) on the caller's connection, which it creates the first time and reuses.
+- It reads a dataset of the `metrics` table (or the saved query's table) in the semantic project's schema on the caller's connection, which it creates the first time and reuses.
 - It holds a line chart per metric over `metric_time`, a big number for the first metric, a table broken down by the group-by (by default the first categorical dimension the metrics share) and native filters.
 - The caller owns it, and a rerun with the same title updates it in place, keeping its id and URL.
 - A 503 with 600014 means semantic dashboards are not available, as above.
@@ -64,7 +59,8 @@ They go in a dashboard program (SKILL.md §7): list the table in `SEMANTIC_DATAS
 SEMANTIC_DATASETS = [{"name": "sales_metrics", "semantic_project": "sales", "metric": "revenue"}]
 ```
 
-The program gets the dataset of the `metrics` table from Hopsworks, which creates it on the caller's connection, with each metric as a saved metric of the dataset and the time columns marked temporal, when it makes an Explore link of the entry's `metric`.
+The program gets the dataset of the `metrics` table from Hopsworks, which creates it on the caller's connection, in the semantic project's schema, with each metric as a saved metric of the dataset and the time columns marked temporal, when it makes an Explore link of the entry's `metric`; the link names the dataset.
+Without a semantic connection the program stops with `use METRIC_DATASETS instead`, before it changes anything.
 A saved query's table gets its dataset with the saved query's dashboard, `create_dashboard(saved_query=...)`; a program charts the same metrics and group-bys on `metrics`.
 A chart on it:
 

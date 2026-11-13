@@ -6,7 +6,7 @@ description: Use when creating or reshaping a semantic view on Hopsworks, the se
 # Semantic Views on Hopsworks
 
 A semantic view is one semantic project: the semantic models, metrics and saved queries that one set of questions needs.
-Hopsworks serves it to agents through the `hops semantic` CLI and the MCP tools, and to Superset as each member's own database connection to the semantic project, with a `metrics` table and one table per saved query.
+Hopsworks serves it to agents through the `hops semantic` CLI and the MCP tools, and to Superset as a schema of each member's own semantic connection, with a `metrics` table and one table per saved query.
 The YAML format, compiling and querying are in [hops-semantic](../hops-semantic/SKILL.md); this skill covers what goes in a view and how large it may get.
 
 ## Contract

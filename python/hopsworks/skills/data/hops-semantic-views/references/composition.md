@@ -132,7 +132,7 @@ hops semantic query sales --saved-query revenue_by_country --group-by metric_tim
 - **Metric filters.** `{{ Metric('<metric>', group_by=['<entity>']) }}` filters on a metric's value per entity, in a query's `where` or a metric's `filter`; a metric filter grouped by several entities is refused.
 - **Saved queries name a composition** (metrics, group-bys, filters, order and limit) once.
   At query time `--group-by`, `--order-by` and `--limit` replace the saved ones, `--where` is added to the saved filters, and `--group-by ""` asks for totals.
-  Agents run one with `query_saved_query`, and Superset shows each as its own table on the semantic project's connection.
+  Agents run one with `query_saved_query`, and Superset shows each as its own table in the semantic project's schema.
 - **No query reads another query's results.** A query composes metrics, never the output of another query.
 
 ## Reusing results as input

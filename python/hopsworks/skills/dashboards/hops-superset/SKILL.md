@@ -249,9 +249,10 @@ When a semantic project ([hops-semantic](../../data/hops-semantic/SKILL.md))
 defines the metric a chart shows, chart it from the semantic layer instead of deriving it
 again from the feature group: the definition holds the joins, filters and
 aggregation its owners agreed on, so every dashboard shows the same number.
-Each Data owner and Data scientist has their own Superset connection to each semantic
-project: `hops semantic dashboard` builds a dashboard of metrics on it, and other charts
-read a dataset of its `metrics` table. Where Superset has no such connection, a chart reads
+Each Data owner and Data scientist has one semantic connection of their own in Superset
+per Hopsworks project, with each semantic project as a schema of it: `hops semantic dashboard`
+builds a dashboard of metrics on it, and other charts read a dataset of the semantic
+project's `metrics` table. Where Superset has no such connection, a chart reads
 a dataset over the metric's SQL. How to tell, and the rules for each, are in
 [references/semantic_layer.md](references/semantic_layer.md).
 

@@ -21,6 +21,7 @@ import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import click
 import numpy as np
@@ -1340,8 +1341,6 @@ class FakeSuperset:
         self.next_id = 100
         self.databases = [{"id": 3, "database_name": "Trino"}]
         self.datasets, self.charts, self.dashboards = {}, {}, {}
-        # The Superset user the program runs as, <project>__<username>_superset.
-        self.me = "p__alice_superset"
         self.refreshed = []
         # Superset 6 served dashboards under /superset/dashboard/.
         self.dashboard_route = "/dashboard/"
@@ -1351,8 +1350,6 @@ class FakeSuperset:
         return self.next_id
 
     def _request(self, method, path):
-        if path == "/api/v1/me/":
-            return {"result": {"username": self.me}}
         if method == "PUT":
             self.refreshed.append(
                 int(re.match(r"/api/v1/dataset/(\d+)/refresh", path)[1])
@@ -1515,6 +1512,7 @@ class FakeSemanticLayer:
         self.compiled = "SELECT revenue FROM build_1"
         self.calls = []
         self.explored = []
+        self.error = None
 
     def get_project(self, name):
         if name != "sales":
@@ -1531,7 +1529,14 @@ class FakeSemanticLayer:
             def explore_url(self, metric):
                 # Hopsworks creates or refreshes the caller's dataset of the metrics table here.
                 layer.explored.append(metric)
-                return f"https://host/explore/{metric}"
+                if layer.error is not None:
+                    raise layer.error
+                form_data = {"datasource": "51__table", "viz_type": "line"}
+                return (
+                    "https://host/hopsworks-api/superset/explore/?form_data="
+                    + quote(json.dumps(form_data))
+                    + "&projectId=119"
+                )
 
         return Project()
 
@@ -1625,29 +1630,17 @@ def _revenue_chart():
     }
 
 
-def _semantic_connections(api):
-    # Alice's connection to the sales semantic project (id 7), and Bob's, which an admin sees too.
-    api.databases += [
-        {"id": 9, "database_name": "Semantic_sales__p__alice_superset"},
-        {"id": 10, "database_name": "Semantic_sales__p__bob_superset"},
-    ]
-    api.datasets[50] = {
-        "id": 50,
-        "table_name": "metrics",
-        "schema": "7",
-        "database": {"id": 10},
-    }
-    api.datasets[51] = {
-        "id": 51,
-        "table_name": "metrics",
-        "schema": "7",
-        "database": {"id": 9},
-    }
+class _Refused(Exception):
+    def __init__(self, error_code):
+        super().__init__(f"refused with {error_code}")
+        self.error_code = error_code
 
 
-def test_a_chart_of_metrics_reads_the_callers_dataset_on_their_own_connection():
+def test_a_chart_of_metrics_reads_the_dataset_hopsworks_names_in_its_explore_link():
     program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
-    _semantic_connections(api)
+    # The caller's dataset of sales' metrics table, which Hopsworks made, and another member's.
+    api.datasets[50] = {"id": 50, "table_name": "metrics", "schema": "sales"}
+    api.datasets[51] = {"id": 51, "table_name": "metrics", "schema": "sales"}
     program.SEMANTIC_DATASETS = [SALES_METRICS]
     program.CHARTS = [program.CHARTS[0], _revenue_chart()]
 
@@ -1664,17 +1657,30 @@ def test_a_chart_of_metrics_reads_the_callers_dataset_on_their_own_connection():
 
 
 def test_without_a_semantic_connection_the_dashboard_is_left_as_it_was():
-    program, api = _dashboard_program(), FakeSuperset()
+    program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
     dashboard = program.build(api, "p")
     charts = set(api.charts)
     program.SEMANTIC_DATASETS = [SALES_METRICS]
     program.CHARTS = [*program.CHARTS, _revenue_chart()]
+    semantic.error = _Refused(600014)
 
-    with pytest.raises(RuntimeError, match="No Superset connection of yours to sales"):
-        program.build(api, "p", FakeSemanticLayer())
+    with pytest.raises(RuntimeError, match="use METRIC_DATASETS instead"):
+        program.build(api, "p", semantic)
 
     assert set(api.charts) == charts
     assert set(api.dashboards) == {dashboard}
+
+
+def test_another_superset_failure_is_raised_as_it_is():
+    program, api, semantic = _dashboard_program(), FakeSuperset(), FakeSemanticLayer()
+    program.SEMANTIC_DATASETS = [SALES_METRICS]
+    program.CHARTS = [_revenue_chart()]
+    semantic.error = _Refused(600015)
+
+    with pytest.raises(_Refused):
+        program.build(api, "p", semantic)
+
+    assert not api.charts and not api.dashboards
 
 
 @pytest.mark.parametrize(
