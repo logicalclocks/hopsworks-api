@@ -1263,7 +1263,7 @@ class SemanticProject:
 
         Every query the gateway runs over REST, Arrow Flight SQL or the BI tables is recorded, failed and cancelled ones included; listings of metrics and requests that only compile SQL are not.
         Members see their own queries; Data Owners see every member's, and can narrow them to one with `user`.
-        History is best effort and is kept for `semantic_query_delete_after_days` (30 by default); the request, SQL and error of a query are dropped after `semantic_query_strip_details_after_days` (7 by default).
+        History is best effort and is kept for 30 days; the request, SQL and error of a query are dropped after `semantic_query_strip_details_after_days` (7 by default).
 
         Parameters:
             limit: Maximum number of queries returned.

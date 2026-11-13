@@ -248,7 +248,7 @@ While an export without `lookback` holds the exact rows of a query (same metrics
 ## Query history
 
 Every query run over REST, Arrow Flight SQL or the BI tables is recorded, failed and cancelled ones included; members see their own, Data Owners everyone's.
-Kept 30 days (`semantic_query_delete_after_days`); the request, SQL and error go after 7 (`semantic_query_strip_details_after_days`).
+Kept 30 days; the request, SQL and error go after 7 (`semantic_query_strip_details_after_days`).
 Best effort, not an audit log: a record can be lost (full queue, expired credential). Metadata listings and `sql`/`--explain` are not recorded.
 Use it to find why a dashboard or BI tool query failed (`--status FAILED`, the `error` column) or which surface and cache outcome a query had.
 
