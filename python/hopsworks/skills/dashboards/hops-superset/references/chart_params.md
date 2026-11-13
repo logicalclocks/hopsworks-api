@@ -55,7 +55,8 @@ params = {
 params = {
     "viz_type": "big_number",
     "metric": COUNT_METRIC,
-    "granularity_sqla": "created_at",     # temporal column
+    "x_axis": "created_at",               # temporal column
+    "time_grain_sqla": "P1D",
     "time_range": "No filter",
     "adhoc_filters": [],
     "compare_lag": "1",
@@ -198,14 +199,15 @@ params = {
 ```python
 params = {
     "viz_type": "bubble_v2",
-    "x_axis": {"expressionType": "SIMPLE",
-               "column": {"column_name": "feature_x", "type": "DOUBLE"},
-               "aggregate": "AVG", "label": "x"},
-    "y_axis": {"expressionType": "SIMPLE",
-               "column": {"column_name": "feature_y", "type": "DOUBLE"},
-               "aggregate": "AVG", "label": "y"},
+    "x": {"expressionType": "SIMPLE",     # metric on the x axis, NOT `x_axis`
+          "column": {"column_name": "feature_x", "type": "DOUBLE"},
+          "aggregate": "AVG", "label": "x"},
+    "y": {"expressionType": "SIMPLE",     # metric on the y axis, NOT `y_axis`
+          "column": {"column_name": "feature_y", "type": "DOUBLE"},
+          "aggregate": "AVG", "label": "y"},
     "size": COUNT_METRIC,
-    "entity": "group_col",
+    "entity": "group_col",                # one bubble per value
+    "series": "series_col",               # optional: one color per value
     "adhoc_filters": [],
     "row_limit": 1000,
 }
@@ -216,13 +218,12 @@ params = {
 ```python
 params = {
     "viz_type": "box_plot",
-    "x_axis": "category_col",
-    "x_axis_force_categorical": True,
+    "columns": ["category_col"],          # distribute across: one sample per value, NOT `x_axis`
+    "groupby": [],                        # one box per value of these columns
     "metrics": [SUM_AMOUNT],              # numeric metric(s) to summarize
-    "groupby": [],
     "adhoc_filters": [],
     "row_limit": 10000,
-    "whiskerOptions": "Tukey",            # or "Min/max", "2/98 percentiles", etc.
+    "whiskerOptions": "Tukey",            # or "Min/max (no outliers)", "2/98 percentiles", "5/95 percentiles"
 }
 ```
 

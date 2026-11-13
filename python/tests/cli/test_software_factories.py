@@ -21,6 +21,7 @@ import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import click
 import numpy as np
@@ -1429,6 +1430,46 @@ def test_the_dashboard_program_creates_then_updates_in_place():
     layout = json.loads(api.dashboards[first]["position_json"])
     for row in layout["GRID_ID"]["children"]:
         assert sum(layout[c]["meta"]["width"] for c in layout[row]["children"]) <= 12
+
+
+def test_the_dashboard_program_links_charts_without_touching_their_query(mocker):
+    """Its dashboards-only chart updates are one PUT each: no read, no new query context."""
+    from hopsworks_common.core.superset_api import SupersetApi
+
+    mocker.patch("hopsworks_common.core.superset_api.VariableApi")
+    mocker.patch(
+        "hopsworks_common.core.superset_api.client._is_external", return_value=False
+    )
+    api = SupersetApi(project=SimpleNamespace(id=1))
+    charts = {11: [{"id": 8}, {"id": 9}], 12: [{"id": 9}]}
+
+    def answer(method, path, json_data=None):
+        if path.startswith("/api/v1/chart/?q="):
+            return {"result": [{"id": i, "slice_name": "x"} for i in charts]}
+        if method == "GET":
+            return {"result": {"dashboards": charts[int(path.rsplit("/", 1)[1])]}}
+        return {"id": 9}
+
+    api._request = Mock(side_effect=answer)
+    program = _dashboard_program()
+
+    def chart_writes():
+        return [
+            (c.args, c.kwargs.get("json_data"))
+            for c in api._request.call_args_list
+            if c.args[0] == "PUT" and c.args[1].startswith("/api/v1/chart/")
+        ]
+
+    assert program.owned_charts(api, 9) == [12]
+    assert chart_writes() == [(("PUT", "/api/v1/chart/11"), {"dashboards": [8]})]
+    api._request.reset_mock()
+    chart_ids = [20 + i for i in range(len(program.CHARTS))]
+    program.ensure_dashboard(api, None, chart_ids)
+    chart_calls = [c for c in api._request.call_args_list if "/chart/" in c.args[1]]
+    assert chart_calls == [
+        mocker.call("PUT", f"/api/v1/chart/{i}", json_data={"dashboards": [9]})
+        for i in chart_ids
+    ]
 
 
 def test_an_edit_that_drops_a_chart_leaves_no_trace_of_it():

@@ -1,0 +1,4557 @@
+{
+  "big_number_total": {
+    "viz_type": "big_number_total",
+    "params": {
+      "viz_type": "big_number_total",
+      "metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "adhoc_filters": [],
+      "y_axis_format": "SMART_NUMBER",
+      "subheader": "Total customers"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {}
+        }
+      ],
+      "form_data": {
+        "viz_type": "big_number_total",
+        "metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "adhoc_filters": [],
+        "y_axis_format": "SMART_NUMBER",
+        "subheader": "Total customers",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "big_number": {
+    "viz_type": "big_number",
+    "params": {
+      "viz_type": "big_number",
+      "metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "x_axis": "created_at",
+      "time_grain_sqla": "P1D",
+      "time_range": "No filter",
+      "adhoc_filters": [],
+      "compare_lag": "1",
+      "compare_suffix": "vs prev",
+      "y_axis_format": "SMART_NUMBER"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "time_range": "No filter",
+          "filters": [],
+          "extras": {
+            "time_grain_sqla": "P1D",
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "timeGrain": "P1D",
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "created_at",
+              "label": "created_at",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            }
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "created_at"
+                ],
+                "columns": [],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "big_number",
+        "metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "x_axis": "created_at",
+        "time_grain_sqla": "P1D",
+        "time_range": "No filter",
+        "adhoc_filters": [],
+        "compare_lag": "1",
+        "compare_suffix": "vs prev",
+        "y_axis_format": "SMART_NUMBER",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "big_number__granularity_rolling": {
+    "viz_type": "big_number",
+    "params": {
+      "viz_type": "big_number",
+      "metric": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "amount",
+          "type": "DOUBLE"
+        },
+        "aggregate": "SUM",
+        "label": "total_amount",
+        "optionName": "metric_sum_amount",
+        "hasCustomLabel": true
+      },
+      "granularity_sqla": "created_at",
+      "rolling_type": "cumsum",
+      "resample_method": "zerofill",
+      "resample_rule": "1D",
+      "adhoc_filters": [
+        {
+          "expressionType": "SIMPLE",
+          "subject": "country",
+          "operator": "==",
+          "comparator": "US",
+          "clause": "WHERE"
+        }
+      ]
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "granularity": "created_at",
+          "filters": [
+            {
+              "col": "country",
+              "op": "==",
+              "val": "US"
+            }
+          ],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [],
+          "metrics": [
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "is_timeseries": true,
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "__timestamp"
+                ],
+                "columns": [],
+                "aggregates": {
+                  "total_amount": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "cum",
+              "options": {
+                "operator": "sum",
+                "columns": {
+                  "total_amount": "total_amount"
+                }
+              }
+            },
+            {
+              "operation": "resample",
+              "options": {
+                "method": "asfreq",
+                "rule": "1D",
+                "fill_value": 0
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "big_number",
+        "metric": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        },
+        "granularity_sqla": "created_at",
+        "rolling_type": "cumsum",
+        "resample_method": "zerofill",
+        "resample_rule": "1D",
+        "adhoc_filters": [
+          {
+            "expressionType": "SIMPLE",
+            "subject": "country",
+            "operator": "==",
+            "comparator": "US",
+            "clause": "WHERE"
+          }
+        ],
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "big_number__raw_rolling": {
+    "viz_type": "big_number",
+    "params": {
+      "viz_type": "big_number",
+      "metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "x_axis": "created_at",
+      "aggregation": "raw",
+      "rolling_type": "mean",
+      "rolling_periods": "7",
+      "min_periods": 2,
+      "adhoc_filters": []
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "created_at",
+              "label": "created_at",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            }
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "created_at"
+                ],
+                "columns": [],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "rolling",
+              "options": {
+                "rolling_type": "mean",
+                "window": 7,
+                "min_periods": 2,
+                "columns": {
+                  "count": "count"
+                }
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        },
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "is_timeseries": false,
+          "post_processing": []
+        }
+      ],
+      "form_data": {
+        "viz_type": "big_number",
+        "metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "x_axis": "created_at",
+        "aggregation": "raw",
+        "rolling_type": "mean",
+        "rolling_periods": "7",
+        "min_periods": 2,
+        "adhoc_filters": [],
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "pie": {
+    "viz_type": "pie",
+    "params": {
+      "viz_type": "pie",
+      "groupby": [
+        "category_col"
+      ],
+      "metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "adhoc_filters": [],
+      "row_limit": 100,
+      "sort_by_metric": true,
+      "show_legend": true,
+      "label_type": "key_percent",
+      "donut": false,
+      "innerRadius": 30,
+      "outerRadius": 70
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "category_col"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 100,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "contribution",
+              "options": {
+                "columns": [
+                  "count"
+                ],
+                "rename_columns": [
+                  "count__contribution"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "pie",
+        "groupby": [
+          "category_col"
+        ],
+        "metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "adhoc_filters": [],
+        "row_limit": 100,
+        "sort_by_metric": true,
+        "show_legend": true,
+        "label_type": "key_percent",
+        "donut": false,
+        "innerRadius": 30,
+        "outerRadius": 70,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_bar": {
+    "viz_type": "echarts_timeseries_bar",
+    "params": {
+      "viz_type": "echarts_timeseries_bar",
+      "x_axis": "some_category_col",
+      "x_axis_force_categorical": true,
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [],
+      "adhoc_filters": [],
+      "row_limit": 100,
+      "orientation": "vertical",
+      "order_desc": true,
+      "timeseries_limit_metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "x_axis_sort": "count",
+      "x_axis_sort_asc": false,
+      "show_legend": false,
+      "y_axis_format": "SMART_NUMBER"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "some_category_col",
+              "label": "some_category_col",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            }
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 100,
+          "series_columns": [],
+          "series_limit": 0,
+          "series_limit_metric": {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          },
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "some_category_col"
+                ],
+                "columns": [],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "sort",
+              "options": {
+                "by": "count",
+                "ascending": false
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_bar",
+        "x_axis": "some_category_col",
+        "x_axis_force_categorical": true,
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [],
+        "adhoc_filters": [],
+        "row_limit": 100,
+        "orientation": "vertical",
+        "order_desc": true,
+        "timeseries_limit_metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "x_axis_sort": "count",
+        "x_axis_sort_asc": false,
+        "show_legend": false,
+        "y_axis_format": "SMART_NUMBER",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_bar__extra_sort_metric": {
+    "viz_type": "echarts_timeseries_bar",
+    "params": {
+      "viz_type": "echarts_timeseries_bar",
+      "x_axis": "some_category_col",
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [],
+      "timeseries_limit_metric": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "amount",
+          "type": "DOUBLE"
+        },
+        "aggregate": "SUM",
+        "label": "total_amount",
+        "optionName": "metric_sum_amount",
+        "hasCustomLabel": true
+      },
+      "x_axis_sort": "total_amount",
+      "x_axis_sort_asc": true,
+      "row_limit": 10
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "some_category_col",
+              "label": "some_category_col",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            }
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            },
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SIMPLE",
+                "column": {
+                  "column_name": "amount",
+                  "type": "DOUBLE"
+                },
+                "aggregate": "SUM",
+                "label": "total_amount",
+                "optionName": "metric_sum_amount",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 10,
+          "series_columns": [],
+          "series_limit": 0,
+          "series_limit_metric": {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          },
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "some_category_col"
+                ],
+                "columns": [],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  },
+                  "total_amount": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "sort",
+              "options": {
+                "by": "total_amount",
+                "ascending": true
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_bar",
+        "x_axis": "some_category_col",
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [],
+        "timeseries_limit_metric": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        },
+        "x_axis_sort": "total_amount",
+        "x_axis_sort_asc": true,
+        "row_limit": 10,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_bar__sort_by_x_axis": {
+    "viz_type": "echarts_timeseries_bar",
+    "params": {
+      "viz_type": "echarts_timeseries_bar",
+      "x_axis": "some_category_col",
+      "x_axis_force_categorical": true,
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [],
+      "x_axis_sort": "some_category_col",
+      "x_axis_sort_asc": true
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "some_category_col",
+              "label": "some_category_col",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            }
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "series_columns": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "some_category_col"
+                ],
+                "columns": [],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "sort",
+              "options": {
+                "is_sort_index": true,
+                "ascending": true
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_bar",
+        "x_axis": "some_category_col",
+        "x_axis_force_categorical": true,
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [],
+        "x_axis_sort": "some_category_col",
+        "x_axis_sort_asc": true,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_line": {
+    "viz_type": "echarts_timeseries_line",
+    "params": {
+      "viz_type": "echarts_timeseries_line",
+      "x_axis": "event_ts",
+      "time_grain_sqla": "P1D",
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [],
+      "adhoc_filters": [],
+      "row_limit": 10000,
+      "show_legend": true,
+      "markerEnabled": false,
+      "y_axis_format": "SMART_NUMBER"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "time_grain_sqla": "P1D",
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "timeGrain": "P1D",
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "event_ts",
+              "label": "event_ts",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            }
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 10000,
+          "series_columns": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "event_ts"
+                ],
+                "columns": [],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_line",
+        "x_axis": "event_ts",
+        "time_grain_sqla": "P1D",
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [],
+        "adhoc_filters": [],
+        "row_limit": 10000,
+        "show_legend": true,
+        "markerEnabled": false,
+        "y_axis_format": "SMART_NUMBER",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_line__compare_difference": {
+    "viz_type": "echarts_timeseries_line",
+    "params": {
+      "viz_type": "echarts_timeseries_line",
+      "x_axis": "event_ts",
+      "time_grain_sqla": "P1W",
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [
+        "country"
+      ],
+      "time_compare": [
+        "1 week ago"
+      ],
+      "comparison_type": "difference",
+      "rolling_type": "mean",
+      "rolling_periods": 7,
+      "resample_method": "zerofill",
+      "resample_rule": "1D",
+      "contributionMode": "row",
+      "truncate_metric": true,
+      "limit": 5,
+      "timeseries_limit_metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "order_desc": false,
+      "adhoc_filters": [
+        {
+          "expressionType": "SIMPLE",
+          "subject": "country",
+          "operator": "==",
+          "comparator": "US",
+          "clause": "WHERE"
+        },
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "amount > 100 -- big",
+          "clause": "WHERE"
+        },
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*) > 1",
+          "clause": "HAVING"
+        },
+        {
+          "expressionType": "SIMPLE",
+          "subject": "region",
+          "operator": "IS NOT NULL",
+          "clause": "WHERE"
+        },
+        {
+          "expressionType": "SIMPLE",
+          "subject": "country",
+          "operator": "IN",
+          "comparator": [
+            "US",
+            "FR"
+          ],
+          "clause": "WHERE"
+        }
+      ],
+      "time_range": "Last year"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "time_range": "Last year",
+          "filters": [
+            {
+              "col": "country",
+              "op": "==",
+              "val": "US"
+            },
+            {
+              "col": "region",
+              "op": "IS NOT NULL"
+            },
+            {
+              "col": "country",
+              "op": "IN",
+              "val": [
+                "US",
+                "FR"
+              ]
+            }
+          ],
+          "extras": {
+            "time_grain_sqla": "P1W",
+            "having": "(COUNT(*) > 1)",
+            "where": "(amount > 100 -- big\n)"
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "timeGrain": "P1W",
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "event_ts",
+              "label": "event_ts",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            },
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            },
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              true
+            ]
+          ],
+          "annotation_layers": [],
+          "series_columns": [
+            "country"
+          ],
+          "series_limit": 5,
+          "series_limit_metric": {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          },
+          "group_others_when_limit_reached": false,
+          "order_desc": false,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [
+            "1 week ago"
+          ],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "event_ts"
+                ],
+                "columns": [
+                  "country"
+                ],
+                "drop_missing_columns": true,
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  },
+                  "total_amount": {
+                    "operator": "mean"
+                  },
+                  "count__1 week ago": {
+                    "operator": "mean"
+                  },
+                  "total_amount__1 week ago": {
+                    "operator": "mean"
+                  }
+                }
+              }
+            },
+            {
+              "operation": "rolling",
+              "options": {
+                "rolling_type": "mean",
+                "window": 7,
+                "min_periods": 0,
+                "columns": {
+                  "count": "count",
+                  "total_amount": "total_amount",
+                  "count__1 week ago": "count__1 week ago",
+                  "total_amount__1 week ago": "total_amount__1 week ago"
+                }
+              }
+            },
+            {
+              "operation": "compare",
+              "options": {
+                "source_columns": [
+                  "count",
+                  "total_amount"
+                ],
+                "compare_columns": [
+                  "count__1 week ago",
+                  "total_amount__1 week ago"
+                ],
+                "compare_type": "difference",
+                "drop_original_columns": true
+              }
+            },
+            {
+              "operation": "resample",
+              "options": {
+                "method": "asfreq",
+                "rule": "1D",
+                "fill_value": 0
+              }
+            },
+            {
+              "operation": "rename",
+              "options": {
+                "columns": {
+                  "difference__count__count__1 week ago": "count, 1 week ago",
+                  "difference__total_amount__total_amount__1 week ago": "total_amount, 1 week ago"
+                },
+                "level": 0,
+                "inplace": true
+              }
+            },
+            {
+              "operation": "contribution",
+              "options": {
+                "orientation": "row",
+                "time_shifts": [
+                  "1 week ago"
+                ]
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_line",
+        "x_axis": "event_ts",
+        "time_grain_sqla": "P1W",
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          },
+          {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [
+          "country"
+        ],
+        "time_compare": [
+          "1 week ago"
+        ],
+        "comparison_type": "difference",
+        "rolling_type": "mean",
+        "rolling_periods": 7,
+        "resample_method": "zerofill",
+        "resample_rule": "1D",
+        "contributionMode": "row",
+        "truncate_metric": true,
+        "limit": 5,
+        "timeseries_limit_metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "order_desc": false,
+        "adhoc_filters": [
+          {
+            "expressionType": "SIMPLE",
+            "subject": "country",
+            "operator": "==",
+            "comparator": "US",
+            "clause": "WHERE"
+          },
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "amount > 100 -- big",
+            "clause": "WHERE"
+          },
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*) > 1",
+            "clause": "HAVING"
+          },
+          {
+            "expressionType": "SIMPLE",
+            "subject": "region",
+            "operator": "IS NOT NULL",
+            "clause": "WHERE"
+          },
+          {
+            "expressionType": "SIMPLE",
+            "subject": "country",
+            "operator": "IN",
+            "comparator": [
+              "US",
+              "FR"
+            ],
+            "clause": "WHERE"
+          }
+        ],
+        "time_range": "Last year",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_line__compare_values_adhoc_axis": {
+    "viz_type": "echarts_timeseries_line",
+    "params": {
+      "viz_type": "echarts_timeseries_line",
+      "x_axis": {
+        "label": "day",
+        "sqlExpression": "DATE(event_ts)",
+        "expressionType": "SQL"
+      },
+      "time_grain_sqla": "P1D",
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [
+        "country"
+      ],
+      "time_compare": [
+        "1 year ago",
+        "2 years ago"
+      ],
+      "comparison_type": "values",
+      "truncate_metric": true,
+      "show_empty_columns": true,
+      "forecastEnabled": true,
+      "forecastPeriods": "10",
+      "forecastInterval": "0.8",
+      "extra_form_data": {
+        "filters": [
+          {
+            "col": "region",
+            "op": "IN",
+            "val": [
+              "EU"
+            ]
+          }
+        ],
+        "time_range": "Last month",
+        "time_grain_sqla": "P1M"
+      },
+      "extra_filters": [
+        {
+          "col": "__time_range",
+          "val": "Last week"
+        },
+        {
+          "col": "city",
+          "op": "==",
+          "val": "Paris"
+        }
+      ],
+      "where": "1 = 1"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "time_range": "Last month",
+          "filters": [
+            {
+              "col": "city",
+              "op": "==",
+              "val": "Paris"
+            },
+            {
+              "col": "region",
+              "op": "IN",
+              "val": [
+                "EU"
+              ]
+            }
+          ],
+          "extras": {
+            "time_grain_sqla": "P1M",
+            "having": "",
+            "where": "(1 = 1)"
+          },
+          "applied_time_extras": {
+            "__time_range": "Last week"
+          },
+          "columns": [
+            {
+              "timeGrain": "P1M",
+              "columnType": "BASE_AXIS",
+              "label": "day",
+              "sqlExpression": "DATE(event_ts)",
+              "expressionType": "SQL"
+            },
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "series_columns": [
+            "country"
+          ],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [
+            "1 year ago",
+            "2 years ago"
+          ],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "day"
+                ],
+                "columns": [
+                  "country"
+                ],
+                "drop_missing_columns": false,
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  },
+                  "count__1 year ago": {
+                    "operator": "mean"
+                  },
+                  "count__2 years ago": {
+                    "operator": "mean"
+                  }
+                }
+              }
+            },
+            {
+              "operation": "rename",
+              "options": {
+                "columns": {
+                  "count__1 year ago": "1 year ago",
+                  "count__2 years ago": "2 years ago"
+                },
+                "level": 0,
+                "inplace": true
+              }
+            },
+            {
+              "operation": "flatten"
+            },
+            {
+              "operation": "prophet",
+              "options": {
+                "time_grain": "P1D",
+                "periods": 10,
+                "confidence_interval": 0.8,
+                "index": "day"
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_line",
+        "x_axis": {
+          "label": "day",
+          "sqlExpression": "DATE(event_ts)",
+          "expressionType": "SQL"
+        },
+        "time_grain_sqla": "P1D",
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [
+          "country"
+        ],
+        "time_compare": [
+          "1 year ago",
+          "2 years ago"
+        ],
+        "comparison_type": "values",
+        "truncate_metric": true,
+        "show_empty_columns": true,
+        "forecastEnabled": true,
+        "forecastPeriods": "10",
+        "forecastInterval": "0.8",
+        "extra_form_data": {
+          "filters": [
+            {
+              "col": "region",
+              "op": "IN",
+              "val": [
+                "EU"
+              ]
+            }
+          ],
+          "time_range": "Last month",
+          "time_grain_sqla": "P1M"
+        },
+        "extra_filters": [
+          {
+            "col": "__time_range",
+            "val": "Last week"
+          },
+          {
+            "col": "city",
+            "op": "==",
+            "val": "Paris"
+          }
+        ],
+        "where": "1 = 1",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_line__truncate_one_metric": {
+    "viz_type": "echarts_timeseries_line",
+    "params": {
+      "viz_type": "echarts_timeseries_line",
+      "x_axis": "event_ts",
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [
+        "country"
+      ],
+      "truncate_metric": true,
+      "x_axis_sort": "event_ts",
+      "x_axis_sort_asc": true
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "event_ts",
+              "label": "event_ts",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            },
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "series_columns": [
+            "country"
+          ],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "event_ts"
+                ],
+                "columns": [
+                  "country"
+                ],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "rename",
+              "options": {
+                "columns": {
+                  "count": null
+                },
+                "level": 0,
+                "inplace": true
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_line",
+        "x_axis": "event_ts",
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [
+          "country"
+        ],
+        "truncate_metric": true,
+        "x_axis_sort": "event_ts",
+        "x_axis_sort_asc": true,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_line__truncate_two_metrics": {
+    "viz_type": "echarts_timeseries_line",
+    "params": {
+      "viz_type": "echarts_timeseries_line",
+      "x_axis": "event_ts",
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [
+        "country"
+      ],
+      "truncate_metric": true,
+      "rolling_type": "sum",
+      "rolling_periods": "3"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "event_ts",
+              "label": "event_ts",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            },
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            },
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "series_columns": [
+            "country"
+          ],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "event_ts"
+                ],
+                "columns": [
+                  "country"
+                ],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  },
+                  "total_amount": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "rolling",
+              "options": {
+                "rolling_type": "sum",
+                "window": 3,
+                "min_periods": 0,
+                "columns": {
+                  "count": "count",
+                  "total_amount": "total_amount"
+                }
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_line",
+        "x_axis": "event_ts",
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          },
+          {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [
+          "country"
+        ],
+        "truncate_metric": true,
+        "rolling_type": "sum",
+        "rolling_periods": "3",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "echarts_timeseries_line__explicit_orderby": {
+    "viz_type": "echarts_timeseries_line",
+    "params": {
+      "viz_type": "echarts_timeseries_line",
+      "x_axis": "event_ts",
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [
+        "country"
+      ],
+      "orderby": [
+        [
+          {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          },
+          false
+        ]
+      ],
+      "order_desc": false,
+      "timeseries_limit_metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "limit": 5
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "event_ts",
+              "label": "event_ts",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            },
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SIMPLE",
+                "column": {
+                  "column_name": "amount",
+                  "type": "DOUBLE"
+                },
+                "aggregate": "SUM",
+                "label": "total_amount",
+                "optionName": "metric_sum_amount",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "series_columns": [
+            "country"
+          ],
+          "series_limit": 5,
+          "series_limit_metric": {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          },
+          "group_others_when_limit_reached": false,
+          "order_desc": false,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "time_offsets": [],
+          "post_processing": [
+            {
+              "operation": "pivot",
+              "options": {
+                "index": [
+                  "event_ts"
+                ],
+                "columns": [
+                  "country"
+                ],
+                "aggregates": {
+                  "count": {
+                    "operator": "mean"
+                  }
+                },
+                "drop_missing_columns": true
+              }
+            },
+            {
+              "operation": "flatten"
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_timeseries_line",
+        "x_axis": "event_ts",
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [
+          "country"
+        ],
+        "orderby": [
+          [
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            },
+            false
+          ]
+        ],
+        "order_desc": false,
+        "timeseries_limit_metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "limit": 5,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "histogram_v2": {
+    "viz_type": "histogram_v2",
+    "params": {
+      "viz_type": "histogram_v2",
+      "column": "numeric_col",
+      "groupby": [],
+      "adhoc_filters": [],
+      "row_limit": 50000,
+      "bins": 20,
+      "normalize": false,
+      "cumulative": false,
+      "x_axis_title": "Value",
+      "y_axis_title": "Count",
+      "x_axis_format": "SMART_NUMBER",
+      "y_axis_format": "SMART_NUMBER"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "numeric_col"
+          ],
+          "annotation_layers": [],
+          "row_limit": 50000,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "histogram",
+              "options": {
+                "column": "numeric_col",
+                "groupby": [],
+                "bins": 20,
+                "cumulative": false,
+                "normalize": false
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "histogram_v2",
+        "column": "numeric_col",
+        "groupby": [],
+        "adhoc_filters": [],
+        "row_limit": 50000,
+        "bins": 20,
+        "normalize": false,
+        "cumulative": false,
+        "x_axis_title": "Value",
+        "y_axis_title": "Count",
+        "x_axis_format": "SMART_NUMBER",
+        "y_axis_format": "SMART_NUMBER",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "histogram_v2__groupby_default_bins": {
+    "viz_type": "histogram_v2",
+    "params": {
+      "viz_type": "histogram_v2",
+      "column": "numeric_col",
+      "groupby": [
+        "country"
+      ],
+      "row_limit": "500"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "country",
+            "numeric_col"
+          ],
+          "annotation_layers": [],
+          "row_limit": 500,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "histogram",
+              "options": {
+                "column": "numeric_col",
+                "groupby": [
+                  "country"
+                ],
+                "bins": 5
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "histogram_v2",
+        "column": "numeric_col",
+        "groupby": [
+          "country"
+        ],
+        "row_limit": "500",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "table": {
+    "viz_type": "table",
+    "params": {
+      "viz_type": "table",
+      "query_mode": "aggregate",
+      "groupby": [
+        "col1",
+        "col2"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "adhoc_filters": [],
+      "row_limit": 100,
+      "order_by_cols": [
+        "[\"count\", false]"
+      ],
+      "show_cell_bars": true,
+      "table_timestamp_format": "smart_date"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "col1",
+            "col2"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 100,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [],
+          "time_offsets": []
+        }
+      ],
+      "form_data": {
+        "viz_type": "table",
+        "query_mode": "aggregate",
+        "groupby": [
+          "col1",
+          "col2"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "adhoc_filters": [],
+        "row_limit": 100,
+        "order_by_cols": [
+          "[\"count\", false]"
+        ],
+        "show_cell_bars": true,
+        "table_timestamp_format": "smart_date",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "table__raw": {
+    "viz_type": "table",
+    "params": {
+      "viz_type": "table",
+      "query_mode": "raw",
+      "all_columns": [
+        "col1",
+        "col2"
+      ],
+      "groupby": [
+        "ignored"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "order_by_cols": [
+        "[\"col1\", true]"
+      ],
+      "row_limit": 50,
+      "adhoc_filters": [
+        {
+          "expressionType": "SIMPLE",
+          "subject": "country",
+          "operator": "==",
+          "comparator": "US",
+          "clause": "WHERE"
+        }
+      ]
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [
+            {
+              "col": "country",
+              "op": "==",
+              "val": "US"
+            }
+          ],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "col1",
+            "col2"
+          ],
+          "orderby": [
+            [
+              "col1",
+              true
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 50,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [],
+          "time_offsets": []
+        }
+      ],
+      "form_data": {
+        "viz_type": "table",
+        "query_mode": "raw",
+        "all_columns": [
+          "col1",
+          "col2"
+        ],
+        "groupby": [
+          "ignored"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "order_by_cols": [
+          "[\"col1\", true]"
+        ],
+        "row_limit": 50,
+        "adhoc_filters": [
+          {
+            "expressionType": "SIMPLE",
+            "subject": "country",
+            "operator": "==",
+            "comparator": "US",
+            "clause": "WHERE"
+          }
+        ],
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full",
+        "include_time": false
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "table__percent_totals_temporal": {
+    "viz_type": "table",
+    "params": {
+      "viz_type": "table",
+      "groupby": [
+        "created_at",
+        "country"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "percent_metrics": [
+        {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        }
+      ],
+      "percent_metric_calculation": "all_records",
+      "show_totals": true,
+      "time_grain_sqla": "P1M",
+      "temporal_columns_lookup": {
+        "created_at": true
+      },
+      "timeseries_limit_metric": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "amount",
+          "type": "DOUBLE"
+        },
+        "aggregate": "SUM",
+        "label": "total_amount",
+        "optionName": "metric_sum_amount",
+        "hasCustomLabel": true
+      },
+      "order_desc": true,
+      "row_limit": 1000
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "time_grain_sqla": "P1M",
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "timeGrain": "P1M",
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "created_at",
+              "label": "created_at",
+              "expressionType": "SQL"
+            },
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            },
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SIMPLE",
+                "column": {
+                  "column_name": "amount",
+                  "type": "DOUBLE"
+                },
+                "aggregate": "SUM",
+                "label": "total_amount",
+                "optionName": "metric_sum_amount",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 1000,
+          "series_limit": 0,
+          "series_limit_metric": {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          },
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "contribution",
+              "options": {
+                "columns": [
+                  "total_amount"
+                ],
+                "rename_columns": [
+                  "%total_amount"
+                ]
+              }
+            }
+          ],
+          "time_offsets": []
+        },
+        {
+          "filters": [],
+          "extras": {
+            "time_grain_sqla": "P1M",
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [],
+          "metrics": [
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [],
+          "annotation_layers": [],
+          "row_limit": 0,
+          "row_offset": 0,
+          "series_limit": 0,
+          "series_limit_metric": {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          },
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [],
+          "time_offsets": [],
+          "is_timeseries": false
+        },
+        {
+          "filters": [],
+          "extras": {
+            "time_grain_sqla": "P1M",
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            },
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "row_limit": 0,
+          "row_offset": 0,
+          "series_limit": 0,
+          "series_limit_metric": {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          },
+          "group_others_when_limit_reached": false,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [],
+          "time_offsets": []
+        }
+      ],
+      "form_data": {
+        "viz_type": "table",
+        "groupby": [
+          "created_at",
+          "country"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "percent_metrics": [
+          {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          }
+        ],
+        "percent_metric_calculation": "all_records",
+        "show_totals": true,
+        "time_grain_sqla": "P1M",
+        "temporal_columns_lookup": {
+          "created_at": true
+        },
+        "timeseries_limit_metric": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        },
+        "order_desc": true,
+        "row_limit": 1000,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "table__server_pagination_compare": {
+    "viz_type": "table",
+    "params": {
+      "viz_type": "table",
+      "groupby": [
+        "country"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "percent_metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "server_pagination": true,
+      "server_page_length": 10,
+      "row_limit": 100,
+      "time_compare": [
+        "1 year ago",
+        "custom"
+      ],
+      "start_date_offset": "2024-01-01",
+      "comparison_type": "values",
+      "extra_form_data": {
+        "interactive_groupby": [
+          "region"
+        ]
+      }
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "country",
+            "region"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 10,
+          "row_offset": 0,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "contribution",
+              "options": {
+                "columns": [
+                  "count",
+                  "count__1 year ago",
+                  "count__2024-01-01"
+                ],
+                "rename_columns": [
+                  "%count",
+                  "%count__1 year ago",
+                  "%count__2024-01-01"
+                ]
+              }
+            }
+          ],
+          "time_offsets": [
+            "1 year ago",
+            "2024-01-01"
+          ]
+        },
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "country",
+            "region"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 100,
+          "row_offset": 0,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [],
+          "time_offsets": [],
+          "is_rowcount": true
+        }
+      ],
+      "form_data": {
+        "viz_type": "table",
+        "groupby": [
+          "country"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "percent_metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "server_pagination": true,
+        "server_page_length": 10,
+        "row_limit": 100,
+        "time_compare": [
+          "1 year ago",
+          "custom"
+        ],
+        "start_date_offset": "2024-01-01",
+        "comparison_type": "values",
+        "extra_form_data": {
+          "interactive_groupby": [
+            "region"
+          ]
+        },
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "pivot_table_v2": {
+    "viz_type": "pivot_table_v2",
+    "params": {
+      "viz_type": "pivot_table_v2",
+      "groupbyRows": [
+        "row_col"
+      ],
+      "groupbyColumns": [
+        "pivot_col"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "adhoc_filters": [],
+      "row_limit": 10000,
+      "aggregateFunction": "Sum",
+      "rowTotals": true,
+      "colTotals": true
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "pivot_col",
+            "row_col"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 10000,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {}
+        }
+      ],
+      "form_data": {
+        "viz_type": "pivot_table_v2",
+        "groupbyRows": [
+          "row_col"
+        ],
+        "groupbyColumns": [
+          "pivot_col"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "adhoc_filters": [],
+        "row_limit": 10000,
+        "aggregateFunction": "Sum",
+        "rowTotals": true,
+        "colTotals": true,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "pivot_table_v2__temporal_limit_metric": {
+    "viz_type": "pivot_table_v2",
+    "params": {
+      "viz_type": "pivot_table_v2",
+      "groupbyRows": [
+        "created_at",
+        "row_col"
+      ],
+      "groupbyColumns": [
+        "row_col"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        }
+      ],
+      "series_limit_metric": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "amount",
+          "type": "DOUBLE"
+        },
+        "aggregate": "SUM",
+        "label": "total_amount",
+        "optionName": "metric_sum_amount",
+        "hasCustomLabel": true
+      },
+      "order_desc": false,
+      "time_grain_sqla": "P1M",
+      "granularity_sqla": "created_at",
+      "series_limit": 10
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "granularity": "created_at",
+          "filters": [],
+          "extras": {
+            "time_grain_sqla": "P1M",
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "row_col",
+            {
+              "timeGrain": "P1M",
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "created_at",
+              "label": "created_at",
+              "expressionType": "SQL"
+            }
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            },
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SIMPLE",
+                "column": {
+                  "column_name": "amount",
+                  "type": "DOUBLE"
+                },
+                "aggregate": "SUM",
+                "label": "total_amount",
+                "optionName": "metric_sum_amount",
+                "hasCustomLabel": true
+              },
+              true
+            ]
+          ],
+          "annotation_layers": [],
+          "series_limit": 10,
+          "series_limit_metric": {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          },
+          "group_others_when_limit_reached": false,
+          "order_desc": false,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {}
+        }
+      ],
+      "form_data": {
+        "viz_type": "pivot_table_v2",
+        "groupbyRows": [
+          "created_at",
+          "row_col"
+        ],
+        "groupbyColumns": [
+          "row_col"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          },
+          {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          }
+        ],
+        "series_limit_metric": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        },
+        "order_desc": false,
+        "time_grain_sqla": "P1M",
+        "granularity_sqla": "created_at",
+        "series_limit": 10,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "heatmap_v2": {
+    "viz_type": "heatmap_v2",
+    "params": {
+      "viz_type": "heatmap_v2",
+      "x_axis": "x_col",
+      "groupby": "y_col",
+      "metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "adhoc_filters": [],
+      "row_limit": 10000,
+      "normalize_across": "heatmap",
+      "linear_color_scheme": "schemeBlues"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "x_col",
+              "label": "x_col",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            },
+            "y_col"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [],
+          "annotation_layers": [],
+          "row_limit": 10000,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "rank",
+              "options": {
+                "metric": "count"
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "heatmap_v2",
+        "x_axis": "x_col",
+        "groupby": "y_col",
+        "metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "adhoc_filters": [],
+        "row_limit": 10000,
+        "normalize_across": "heatmap",
+        "linear_color_scheme": "schemeBlues",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "heatmap_v2__sorted_normalized": {
+    "viz_type": "heatmap_v2",
+    "params": {
+      "viz_type": "heatmap_v2",
+      "x_axis": "x_col",
+      "groupby": "y_col",
+      "metric": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "amount",
+          "type": "DOUBLE"
+        },
+        "aggregate": "SUM",
+        "label": "total_amount",
+        "optionName": "metric_sum_amount",
+        "hasCustomLabel": true
+      },
+      "sort_x_axis": "value_asc",
+      "sort_y_axis": "alpha_desc",
+      "normalize_across": "y",
+      "time_grain_sqla": "P1D"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "time_grain_sqla": "P1D",
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "timeGrain": "P1D",
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "x_col",
+              "label": "x_col",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            },
+            "y_col"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              "total_amount",
+              true
+            ],
+            [
+              "y_col",
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "rank",
+              "options": {
+                "metric": "total_amount",
+                "group_by": "y_col"
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "heatmap_v2",
+        "x_axis": "x_col",
+        "groupby": "y_col",
+        "metric": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        },
+        "sort_x_axis": "value_asc",
+        "sort_y_axis": "alpha_desc",
+        "normalize_across": "y",
+        "time_grain_sqla": "P1D",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "heatmap_v2__normalize_x": {
+    "viz_type": "heatmap_v2",
+    "params": {
+      "viz_type": "heatmap_v2",
+      "x_axis": "x_col",
+      "groupby": "y_col",
+      "metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "normalize_across": "x",
+      "sort_x_axis": "alpha_asc"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "x_col",
+              "label": "x_col",
+              "expressionType": "SQL",
+              "isColumnReference": true
+            },
+            "y_col"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              "x_col",
+              true
+            ]
+          ],
+          "annotation_layers": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "rank",
+              "options": {
+                "metric": "count",
+                "group_by": "x_col"
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "heatmap_v2",
+        "x_axis": "x_col",
+        "groupby": "y_col",
+        "metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "normalize_across": "x",
+        "sort_x_axis": "alpha_asc",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "bubble_v2": {
+    "viz_type": "bubble_v2",
+    "params": {
+      "viz_type": "bubble_v2",
+      "x": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "feature_x",
+          "type": "DOUBLE"
+        },
+        "aggregate": "AVG",
+        "label": "x"
+      },
+      "y": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "feature_y",
+          "type": "DOUBLE"
+        },
+        "aggregate": "AVG",
+        "label": "y"
+      },
+      "size": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "entity": "group_col",
+      "adhoc_filters": [],
+      "row_limit": 1000
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "group_col"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "feature_x",
+                "type": "DOUBLE"
+              },
+              "aggregate": "AVG",
+              "label": "x"
+            },
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "feature_y",
+                "type": "DOUBLE"
+              },
+              "aggregate": "AVG",
+              "label": "y"
+            },
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "row_limit": 1000,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {}
+        }
+      ],
+      "form_data": {
+        "viz_type": "bubble_v2",
+        "x": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "feature_x",
+            "type": "DOUBLE"
+          },
+          "aggregate": "AVG",
+          "label": "x"
+        },
+        "y": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "feature_y",
+            "type": "DOUBLE"
+          },
+          "aggregate": "AVG",
+          "label": "y"
+        },
+        "size": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "entity": "group_col",
+        "adhoc_filters": [],
+        "row_limit": 1000,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "bubble_v2__series_orderby": {
+    "viz_type": "bubble_v2",
+    "params": {
+      "viz_type": "bubble_v2",
+      "x": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "feature_x",
+          "type": "DOUBLE"
+        },
+        "aggregate": "AVG"
+      },
+      "y": {
+        "expressionType": "SIMPLE",
+        "column": {
+          "column_name": "amount",
+          "type": "DOUBLE"
+        },
+        "aggregate": "SUM",
+        "label": "total_amount",
+        "optionName": "metric_sum_amount",
+        "hasCustomLabel": true
+      },
+      "size": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "entity": "group_col",
+      "series": "country",
+      "orderby": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "order_desc": false,
+      "row_limit": 100
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "group_col",
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "feature_x",
+                "type": "DOUBLE"
+              },
+              "aggregate": "AVG"
+            },
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            },
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              true
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 100,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": false,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {}
+        }
+      ],
+      "form_data": {
+        "viz_type": "bubble_v2",
+        "x": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "feature_x",
+            "type": "DOUBLE"
+          },
+          "aggregate": "AVG"
+        },
+        "y": {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        },
+        "size": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "entity": "group_col",
+        "series": "country",
+        "orderby": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "order_desc": false,
+        "row_limit": 100,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "box_plot": {
+    "viz_type": "box_plot",
+    "params": {
+      "viz_type": "box_plot",
+      "columns": [
+        "category_col"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [],
+      "adhoc_filters": [],
+      "row_limit": 10000,
+      "whiskerOptions": "Tukey"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "category_col"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "row_limit": 10000,
+          "series_columns": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "boxplot",
+              "options": {
+                "whisker_type": "tukey",
+                "groupby": [],
+                "metrics": [
+                  "total_amount"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "box_plot",
+        "columns": [
+          "category_col"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [],
+        "adhoc_filters": [],
+        "row_limit": 10000,
+        "whiskerOptions": "Tukey",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "box_plot__percentile_temporal": {
+    "viz_type": "box_plot",
+    "params": {
+      "viz_type": "box_plot",
+      "columns": [
+        "created_at"
+      ],
+      "groupby": [
+        "country"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "amount",
+            "type": "DOUBLE"
+          },
+          "aggregate": "SUM",
+          "label": "total_amount",
+          "optionName": "metric_sum_amount",
+          "hasCustomLabel": true
+        },
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "time_grain_sqla": "P1W",
+      "temporal_columns_lookup": {
+        "created_at": true
+      },
+      "whiskerOptions": "5/95 percentiles"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "time_grain_sqla": "P1W",
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            {
+              "timeGrain": "P1W",
+              "columnType": "BASE_AXIS",
+              "sqlExpression": "created_at",
+              "label": "created_at",
+              "expressionType": "SQL"
+            },
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SIMPLE",
+              "column": {
+                "column_name": "amount",
+                "type": "DOUBLE"
+              },
+              "aggregate": "SUM",
+              "label": "total_amount",
+              "optionName": "metric_sum_amount",
+              "hasCustomLabel": true
+            },
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "series_columns": [
+            "country"
+          ],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "boxplot",
+              "options": {
+                "whisker_type": "percentile",
+                "percentiles": [
+                  5,
+                  95
+                ],
+                "groupby": [
+                  "country"
+                ],
+                "metrics": [
+                  "total_amount",
+                  "count"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "box_plot",
+        "columns": [
+          "created_at"
+        ],
+        "groupby": [
+          "country"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "amount",
+              "type": "DOUBLE"
+            },
+            "aggregate": "SUM",
+            "label": "total_amount",
+            "optionName": "metric_sum_amount",
+            "hasCustomLabel": true
+          },
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "time_grain_sqla": "P1W",
+        "temporal_columns_lookup": {
+          "created_at": true
+        },
+        "whiskerOptions": "5/95 percentiles",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "box_plot__granularity_minmax": {
+    "viz_type": "box_plot",
+    "params": {
+      "viz_type": "box_plot",
+      "granularity_sqla": "created_at",
+      "groupby": [
+        "country"
+      ],
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "whiskerOptions": "Min/max (no outliers)"
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "granularity": "created_at",
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "created_at",
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "series_columns": [
+            "country"
+          ],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {},
+          "post_processing": [
+            {
+              "operation": "boxplot",
+              "options": {
+                "whisker_type": "min/max",
+                "groupby": [
+                  "country"
+                ],
+                "metrics": [
+                  "count"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "form_data": {
+        "viz_type": "box_plot",
+        "granularity_sqla": "created_at",
+        "groupby": [
+          "country"
+        ],
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "whiskerOptions": "Min/max (no outliers)",
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "funnel": {
+    "viz_type": "funnel",
+    "params": {
+      "viz_type": "funnel",
+      "groupby": [
+        "stage_col"
+      ],
+      "metric": {
+        "expressionType": "SQL",
+        "sqlExpression": "COUNT(*)",
+        "label": "count",
+        "optionName": "metric_count",
+        "hasCustomLabel": true
+      },
+      "adhoc_filters": [],
+      "row_limit": 10,
+      "sort_by_metric": true
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "stage_col"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "orderby": [
+            [
+              {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "label": "count",
+                "optionName": "metric_count",
+                "hasCustomLabel": true
+              },
+              false
+            ]
+          ],
+          "annotation_layers": [],
+          "row_limit": 10,
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {}
+        }
+      ],
+      "form_data": {
+        "viz_type": "funnel",
+        "groupby": [
+          "stage_col"
+        ],
+        "metric": {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        },
+        "adhoc_filters": [],
+        "row_limit": 10,
+        "sort_by_metric": true,
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  },
+  "unknown__echarts_area": {
+    "viz_type": "echarts_area",
+    "params": {
+      "viz_type": "echarts_area",
+      "x_axis": "event_ts",
+      "metrics": [
+        {
+          "expressionType": "SQL",
+          "sqlExpression": "COUNT(*)",
+          "label": "count",
+          "optionName": "metric_count",
+          "hasCustomLabel": true
+        }
+      ],
+      "groupby": [
+        "country"
+      ]
+    },
+    "query_context": {
+      "datasource": {
+        "id": 7,
+        "type": "table"
+      },
+      "force": false,
+      "queries": [
+        {
+          "filters": [],
+          "extras": {
+            "having": "",
+            "where": ""
+          },
+          "applied_time_extras": {},
+          "columns": [
+            "country"
+          ],
+          "metrics": [
+            {
+              "expressionType": "SQL",
+              "sqlExpression": "COUNT(*)",
+              "label": "count",
+              "optionName": "metric_count",
+              "hasCustomLabel": true
+            }
+          ],
+          "annotation_layers": [],
+          "series_limit": 0,
+          "group_others_when_limit_reached": false,
+          "order_desc": true,
+          "url_params": {},
+          "custom_params": {},
+          "custom_form_data": {}
+        }
+      ],
+      "form_data": {
+        "viz_type": "echarts_area",
+        "x_axis": "event_ts",
+        "metrics": [
+          {
+            "expressionType": "SQL",
+            "sqlExpression": "COUNT(*)",
+            "label": "count",
+            "optionName": "metric_count",
+            "hasCustomLabel": true
+          }
+        ],
+        "groupby": [
+          "country"
+        ],
+        "datasource": "7__table",
+        "force": false,
+        "result_format": "json",
+        "result_type": "full"
+      },
+      "result_format": "json",
+      "result_type": "full"
+    }
+  }
+}
