@@ -27,7 +27,7 @@ from hopsworks_apigen import public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.constants import PREDICTOR, PREDICTOR_STATE
+from hopsworks_common.constants import MODEL_SERVING, PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.core import dataset_api as _dataset_api
 from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
@@ -680,6 +680,7 @@ class ModelServing:
         memory: DeploymentMemoryConfig | dict | None = None,
         framework: str | None = None,
         chat_config: dict[str, Any] | str | None = None,
+        env_vars: dict[str, str] | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -747,6 +748,9 @@ class ModelServing:
                 Chat contract of the agent, telling the chat panel and chat clients how to talk to it.
                 A protocol name (`"hopsworks"`, `"openai"`) or a dict with `protocol` and, for a custom endpoint (`simple`/`generic`), `path`, `message_field_in` and `message_field_name`.
                 When omitted, a new agent whose local entry builds an `AgentApp` gets `"hopsworks"`, and an existing agent keeps its contract.
+            env_vars:
+                Environment variables of the agent's predictor.
+                A redeploy adds or replaces these keys and keeps the others.
 
         Returns:
             The deployment metadata object.
@@ -866,6 +870,7 @@ class ModelServing:
             git_branch=git_branch if git_backed else None,
             git_auto_redeploy=git_auto_redeploy if git_backed else False,
             knative_mode=knative_mode,
+            env_vars=env_vars,
         )
 
         existing = self.get_deployment(name)
@@ -889,6 +894,17 @@ class ModelServing:
             # already preserved by the backend.
             if framework is None:
                 predictor._agent_framework = existing.predictor.agent_framework
+            # A redeploy keeps the agent's other variables; the keys passed here win. The ones Hopsworks
+            # sets itself are read back with them and are not sent again.
+            if existing.predictor.env_vars:
+                predictor._env_vars = {
+                    **{
+                        key: value
+                        for key, value in existing.predictor.env_vars.items()
+                        if key not in MODEL_SERVING.RESERVED_ENV_VARS
+                    },
+                    **(env_vars or {}),
+                }
             existing.predictor = predictor
             existing.description = description
             existing.save()

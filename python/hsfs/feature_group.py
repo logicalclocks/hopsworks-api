@@ -3596,6 +3596,7 @@ class FeatureGroup(FeatureGroupBase):
         clustered_by: list[str] | None = None,
         bucket_index: dict[str, Any] | None = None,
         sort_order: list[str] | None = None,
+        writer_job_id: int | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3663,6 +3664,8 @@ class FeatureGroup(FeatureGroupBase):
             None if sort_order is None else list(sort_order)
         )
         self._online_partition_columns: bool = bool(online_partition_columns)
+        # The job whose executions may claim a fenced group for writing; set with a fenced embedding index.
+        self._writer_job_id: int | None = writer_job_id
 
         self._materialization_job: Job = None
 
@@ -5972,6 +5975,8 @@ class FeatureGroup(FeatureGroupBase):
             fg_meta_dict["onlineConfig"] = self._online_config.to_dict()
         if self.embedding_index:
             fg_meta_dict["embeddingIndex"] = self.embedding_index.to_dict()
+        if self._writer_job_id is not None:
+            fg_meta_dict["writerJobId"] = self._writer_job_id
         if self._stream:
             fg_meta_dict["deltaStreamerJobConf"] = self._deltastreamer_jobconf
         tags_dict = tag.Tag._tags_to_dict(self._tags)
@@ -6166,6 +6171,16 @@ class FeatureGroup(FeatureGroupBase):
         storage and the online ingestion path filters them out.
         """
         return self._online_partition_columns
+
+    @public
+    @property
+    def writer_job_id(self) -> int | None:
+        """The job whose executions may claim this feature group for writing; set on a fenced feature group only."""
+        return self._writer_job_id
+
+    @writer_job_id.setter
+    def writer_job_id(self, writer_job_id: int | None) -> None:
+        self._writer_job_id = writer_job_id
 
     @public
     @property

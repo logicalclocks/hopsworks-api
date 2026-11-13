@@ -33,12 +33,15 @@ class ExecutionApi:
         end_time: datetime = None,
         logical_date: datetime = None,
         env_vars: dict = None,
+        deletion: bool = False,
     ):
         """Start an execution.
 
         If any of start_time/end_time/logical_date/env_vars is provided, POSTs a JSON body
         (endpoint accepts `application/json`); otherwise falls back to the original plain-text
         args body for backwards compatibility.
+        `deletion` starts the job's deletion execution: it sets the job's deleting flag, after
+        which the backend admits no other start of the job.
         """
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
@@ -48,6 +51,7 @@ class ExecutionApi:
             or end_time is not None
             or logical_date is not None
             or env_vars is not None
+            or deletion
         )
         if not use_json:
             # The backend has two @POST handlers on this path (text/plain for legacy
@@ -77,6 +81,8 @@ class ExecutionApi:
         if end_time is not None:
             # data interval end mirrors HOPS_END_TIME for a one-shot backfill run.
             body["dataIntervalEnd"] = _to_iso(end_time)
+        if deletion:
+            body["deletion"] = True
 
         headers = {"content-type": "application/json"}
         return execution.Execution.from_response_json(

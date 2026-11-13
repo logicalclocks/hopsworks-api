@@ -1262,3 +1262,42 @@ class TestKafkaEngine:
         ]
 
         assert decoded == [True, None, False]
+
+
+# --- writer fence --------------------------------------------------------------
+
+
+def _offline_fg():
+    """A feature group with no online store, so building headers makes no REST call."""
+    from types import SimpleNamespace
+
+    fg = feature_group.FeatureGroup(
+        id=111, name="test", version=1, featurestore_id=99, online_enabled=False
+    )
+    fg.feature_store = SimpleNamespace(project_id=234)
+    fg._subject = {"id": 823}
+    return fg
+
+
+def test_a_fenced_write_carries_its_epoch_on_every_record():
+    headers = kafka_engine._get_headers(
+        _offline_fg(), options={"writer_epoch": 7}, storage="online"
+    )
+    assert headers["writerEpoch"] == b"7"
+    assert "writerEpoch" not in kafka_engine._get_headers(_offline_fg(), options={})
+
+
+def test_a_fence_record_names_its_group_epoch_and_kind():
+    assert kafka_engine._fence_headers(_offline_fg(), 12) == {
+        "type": b"fence",
+        "writerEpoch": b"12",
+        "featureGroupId": b"111",
+        "projectId": b"234",
+        "storage": b"online",
+    }
+
+
+@pytest.mark.parametrize("bad", [0, -1, True, "5", 2.5])
+def test_a_writer_epoch_must_be_a_positive_integer(bad):
+    with pytest.raises(FeatureStoreException, match="writer_epoch"):
+        kafka_engine._writer_epoch({"writer_epoch": bad})

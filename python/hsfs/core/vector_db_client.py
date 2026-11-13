@@ -46,6 +46,19 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+#: Marks a tombstone: the document OnlineFS leaves for a deleted key of a fenced group, with only its key fields.
+DELETED_FIELD = "_deleted"
+#: Added to each row `_read_many(versions=True)` returns: the document's version, the epoch of its writer.
+VERSION_FIELD = "_version"
+
+
+def _not_deleted(embedding_index) -> dict[str, Any]:
+    """The `must_not` of a bool query that leaves out tombstones; empty for an unfenced group, which has none."""
+    if getattr(embedding_index, "fenced", False) is True:
+        return {"must_not": [{"term": {DELETED_FIELD: True}}]}
+    return {}
+
+
 class VectorDbClient:
     _filter_map = {
         Filter.GT: "gt",
@@ -161,6 +174,7 @@ class VectorDbClient:
         opensearch_client = OpenSearchClientSingleton(
             feature_store_id=embedding_feature.feature_group.feature_store_id
         )
+        not_deleted = _not_deleted(embedding_feature.embedding_index)
         body = {
             "size": k,
             "_source": list(
@@ -180,6 +194,7 @@ class VectorDbClient:
                 filter_clauses,
                 body,
                 options,
+                not_deleted,
             )
 
         results = search(k)
@@ -237,8 +252,11 @@ class VectorDbClient:
         filter_clauses: list[dict[str, Any]],
         body: dict[str, Any],
         options: dict[str, Any] | None,
+        not_deleted: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Run a k-NN search of `col_name`, with the filters inside the knn clause where its engine takes them.
+
+        `not_deleted` is the `must_not` that leaves out a fenced group's tombstones, next to the filters.
 
         OpenSearch 1.x cannot parse a filter inside the knn clause, yet a Hopsworks 5.1 central cluster creates faiss fields on the OpenSearch 1.3 of a 5.0 satellite cluster.
         A search refused for that is run again with the filters outside the clause, as are the searches of the field for the next few minutes.
@@ -258,7 +276,7 @@ class VectorDbClient:
                 body={
                     **body,
                     "query": self._knn_query(
-                        col_name, knn, filter_clauses, filter_inside
+                        col_name, knn, filter_clauses, filter_inside, not_deleted
                     ),
                 },
                 index=index_name,
@@ -281,7 +299,9 @@ class VectorDbClient:
         return opensearch_client._search(
             body={
                 **body,
-                "query": self._knn_query(col_name, knn, filter_clauses, False),
+                "query": self._knn_query(
+                    col_name, knn, filter_clauses, False, not_deleted
+                ),
             },
             index=index_name,
             options=options,
@@ -293,14 +313,27 @@ class VectorDbClient:
         knn: dict[str, Any],
         filter_clauses: list[dict[str, Any]],
         filter_inside: bool,
+        not_deleted: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        not_deleted = not_deleted or {}
         if filter_inside:
             return {
-                "knn": {col_name: {**knn, "filter": {"bool": {"must": filter_clauses}}}}
+                "knn": {
+                    col_name: {
+                        **knn,
+                        "filter": {"bool": {"must": filter_clauses, **not_deleted}},
+                    }
+                }
             }
         # The filters apply to the k nearest, so fewer than k can match.
         # In filter context they do not add to the score, which the returned distance is computed from.
-        return {"bool": {"must": [{"knn": {col_name: knn}}], "filter": filter_clauses}}
+        return {
+            "bool": {
+                "must": [{"knn": {col_name: knn}}],
+                "filter": filter_clauses,
+                **not_deleted,
+            }
+        }
 
     @staticmethod
     def _is_knn_filter_refusal(exception: VectorDatabaseException) -> bool:
@@ -535,6 +568,7 @@ class VectorDbClient:
         schema,
         key_sets: list[dict],
         index_name=None,
+        versions: bool = False,
     ) -> list[list[dict]]:
         """Read one exact-key result set per entry, in one round trip.
 
@@ -542,6 +576,9 @@ class VectorDbClient:
         at a time, sent together and answered in order, so the results line up
         with `key_sets` by position and nothing about the matching changes. An
         entry that matched nothing keeps its place as an empty list.
+
+        A fenced group's tombstones are left out, unless `versions` is set: then every document is
+        returned, each row with `_version` (its writer's epoch) and `_deleted` (whether it is a tombstone).
         """
         if not key_sets:
             return []
@@ -555,37 +592,51 @@ class VectorDbClient:
             ].feature_group.feature_store_id
         )
         source = list(self._fg_vdb_col_fg_col_map.get(fg_id).keys())
+        not_deleted = {}
+        if versions:
+            source.append(DELETED_FIELD)
+        else:
+            not_deleted = _not_deleted(self._fg_embedding_map[fg_id])
         body = []
         for keys in key_sets:
             body.append({"index": index_name})
-            body.append(
-                {
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {"match": {key: value}}
-                                for key, value in self._rewrite_result_key(
-                                    keys, self._fg_col_vdb_col_map[fg_id]
-                                ).items()
-                            ]
-                        }
-                    },
-                    "_source": source,
-                }
-            )
+            search = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"match": {key: value}}
+                            for key, value in self._rewrite_result_key(
+                                keys, self._fg_col_vdb_col_map[fg_id]
+                            ).items()
+                        ],
+                        **not_deleted,
+                    }
+                },
+                "_source": source,
+            }
+            if versions:
+                search["version"] = True
+            body.append(search)
         responses = opensearch_client._multi_search(body=body)["responses"]
         return [
             [
-                self._convert_to_pandas_type(
-                    schema,
-                    self._rewrite_result_key(
-                        item["_source"], self._fg_vdb_col_td_col_map[fg_id]
-                    ),
-                )
+                self._document(schema, fg_id, item, versions)
                 for item in response.get("hits", {}).get("hits", [])
             ]
             for response in responses
         ]
+
+    def _document(self, schema, fg_id, item: dict, versions: bool) -> dict:
+        """One search hit as a row of the group's columns, with its version and tombstone mark when asked."""
+        source = dict(item["_source"])
+        deleted = bool(source.pop(DELETED_FIELD, False))
+        row = self._convert_to_pandas_type(
+            schema, self._rewrite_result_key(source, self._fg_vdb_col_td_col_map[fg_id])
+        )
+        if versions:
+            row[DELETED_FIELD] = deleted
+            row[VERSION_FIELD] = item.get(VERSION_FIELD)
+        return row
 
     def _read(
         self,
@@ -606,6 +657,7 @@ class VectorDbClient:
                 fg_id
             ].feature_group.feature_store_id
         )
+        not_deleted = _not_deleted(self._fg_embedding_map[fg_id])
         if keys:
             # Do not add filter query to keys match query
             query = {
@@ -616,7 +668,8 @@ class VectorDbClient:
                             for key, value in self._rewrite_result_key(
                                 keys, self._fg_col_vdb_col_map[fg_id]
                             ).items()
-                        ]
+                        ],
+                        **not_deleted,
                     }
                 },
             }
@@ -635,7 +688,12 @@ class VectorDbClient:
             else:
                 filter_query = []
             query = {
-                "query": {"bool": {"must": [{"exists": {"field": pk}}] + filter_query}},
+                "query": {
+                    "bool": {
+                        "must": [{"exists": {"field": pk}}] + filter_query,
+                        **not_deleted,
+                    }
+                },
                 "size": n,
             }
             if n is None:
@@ -698,7 +756,8 @@ class VectorDbClient:
         query = {
             "query": {
                 "bool": {
-                    "must": [{"exists": {"field": self._fg_id_to_vdb_pks[fg.id][0]}}]
+                    "must": [{"exists": {"field": self._fg_id_to_vdb_pks[fg.id][0]}}],
+                    **_not_deleted(fg.embedding_index),
                 }
             },
         }
