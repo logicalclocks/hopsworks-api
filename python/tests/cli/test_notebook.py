@@ -85,6 +85,15 @@ def test_an_error_comes_back_as_an_error_output(jupyter, path):
     assert "ZeroDivisionError" in notebook_api.describe(run.outputs, 2000)
 
 
+# The kernels hops notebook interrupts run in the project's Jupyter on Linux. A kernel started on a
+# Windows runner keeps running time.sleep through Jupyter Server's interrupt.
+_skip_on_windows = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="a local Windows kernel does not stop a sleeping cell on a Jupyter interrupt",
+)
+
+
+@_skip_on_windows
 def test_a_cell_past_its_timeout_is_interrupted_and_the_kernel_lives_on(jupyter, path):
     session = jupyter.session(path)
     started = time.monotonic()
@@ -96,6 +105,7 @@ def test_a_cell_past_its_timeout_is_interrupted_and_the_kernel_lives_on(jupyter,
     assert after.outputs[0]["text"] == "still alive\n"
 
 
+@_skip_on_windows
 def test_an_interrupt_the_cell_did_not_take_is_sent_again(jupyter, path):
     session = jupyter.session(path)
     cell = (
