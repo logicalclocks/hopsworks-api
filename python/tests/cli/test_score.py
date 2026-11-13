@@ -722,7 +722,7 @@ def _group(name, description):
         primary_key=["id"],
         features=[Feature("id", "bigint")],
         partition_key=[],
-        time_travel_format="DELTA",
+        time_travel_format=None,
     )
 
 
@@ -862,7 +862,7 @@ def _fg(name, version, cols):
         primary_key=["id"],
         partition_key=[],
         features=[Feature(c, "bigint") for c in cols],
-        time_travel_format="DELTA",
+        time_travel_format=None,
     )
 
 
