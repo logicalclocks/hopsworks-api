@@ -146,7 +146,10 @@ class Plan:
 
 
 def plan(
-    files: dict[str, str], held: dict[str, set[str]], stops: dict[str, int]
+    files: dict[str, str],
+    held: dict[str, set[str]],
+    stops: dict[str, int],
+    listed: set[str] | None = None,
 ) -> Plan:
     """Files to parse, unchanged and removed, from {path: sha256} on HopsFS and {path: sha256s} in the group.
 
@@ -155,7 +158,10 @@ def plan(
     skipped while its content is the one that stopped them; a new content is
     parsed again.
     """
-    out = Plan(parse=[], unchanged=[], removed=sorted(set(held) - set(files)))
+    # Removed means not under the path at all: a listed file left out of `files`
+    # (over a cap, unreadable) keeps its rows.
+    present = set(files) if listed is None else listed
+    out = Plan(parse=[], unchanged=[], removed=sorted(set(held) - present))
     for path, digest in files.items():
         if held.get(path) == {digest}:
             out.unchanged.append(path)
@@ -388,16 +394,23 @@ def run(
     held: dict[str, set[str]] = {}
     for (path, _), digest in held_rows.items():
         held.setdefault(path, set()).add(digest)
-    over = {p for p, n in sizes.items() if n > max_file_mb * 1_000_000}
-    digests = {p: sha256(mount / p) for p in sizes if p not in over}
-    todo = plan(digests, held, state.data["stops"])
+    skipped = {}
+    digests = {}
+    for path, size in sizes.items():
+        if size > max_file_mb * 1_000_000:
+            skipped[path] = (
+                f"is over {max_file_mb} MB, the file size cap of this cluster"
+            )
+            continue
+        try:
+            digests[path] = sha256(mount / path)
+        except OSError as exc:
+            skipped[path] = f"could not be read: {exc}"
+    todo = plan(digests, held, state.data["stops"], listed=set(sizes))
     out = Outcome(
         unchanged=len(todo.unchanged), removed=todo.removed, skipped=todo.skipped
     )
-    for path in sorted(over):
-        out.skipped[path] = (
-            f"is over {max_file_mb} MB, the file size cap of this cluster"
-        )
+    out.skipped.update(skipped)
     at = datetime.now(timezone.utc)
     rows, gone = [], [k for k in held_rows if k[0] in todo.removed]
     pages_left = max_pages

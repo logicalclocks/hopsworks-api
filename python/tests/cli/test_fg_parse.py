@@ -337,12 +337,34 @@ def test_an_unreadable_file_is_skipped_and_the_others_still_converge(
     assert parse_run.State(tmp_path, "g_pages").take_over() is None
 
 
-def test_a_file_over_the_size_cap_is_skipped_and_named(tmp_path, monkeypatch):
+def test_a_file_over_the_size_cap_is_skipped_and_keeps_its_rows(tmp_path, monkeypatch):
     _docs(tmp_path, **{"big.pdf": b"x" * 2_000_001, "small.pdf": b"s"})
-    fg = _Group()
+    # big.pdf was parsed under a higher cap; the cap was lowered since.
+    fg = _Group(
+        [("Resources/docs/big.pdf", 1, "earlier"), ("Resources/docs/gone.pdf", 1, "x")]
+    )
     outcome, calls = _run(tmp_path, fg, monkeypatch, {"small.pdf": 1}, max_file_mb=2)
     assert "over 2 MB" in outcome.skipped["Resources/docs/big.pdf"]
     assert [c[0] for c in calls] == ["small.pdf"]
+    assert outcome.removed == ["Resources/docs/gone.pdf"]
+    assert list(map(tuple, fg.removed.values.tolist())) == [
+        ("Resources/docs/gone.pdf", 1)
+    ]
+
+
+def test_a_file_that_cannot_be_read_is_skipped_and_keeps_its_rows(
+    tmp_path, monkeypatch
+):
+    docs = _docs(tmp_path, **{"locked.pdf": b"l", "fine.pdf": b"f"})
+    fg = _Group([("Resources/docs/locked.pdf", 1, "earlier")])
+    (docs / "locked.pdf").chmod(0)
+    try:
+        outcome, _ = _run(tmp_path, fg, monkeypatch, {"fine.pdf": 1})
+    finally:
+        (docs / "locked.pdf").chmod(0o644)
+    assert "could not be read" in outcome.skipped["Resources/docs/locked.pdf"]
+    assert outcome.parsed == ["Resources/docs/fine.pdf"]
+    assert outcome.removed == [] and fg.removed is None
 
 
 def test_the_page_cap_leaves_the_rest_for_the_next_run_and_skips_a_file_over_it(
