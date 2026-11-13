@@ -41,7 +41,7 @@ class _ParseGroup(click.Group):
 
 @click.group("parse", cls=_ParseGroup)
 def fg_parse_group() -> None:
-    """Parse documents (PDF, DOCX, PPTX, images) into a feature group of Markdown pages."""
+    """Parse documents into a feature group of Markdown pages."""
 
 
 @fg_parse_group.command(_RUN, cls=embed._RunCommand, hidden=True)

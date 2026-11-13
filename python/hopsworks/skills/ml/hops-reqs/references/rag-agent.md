@@ -26,12 +26,12 @@ Create the docs directory without asking: `hops files mkdir <data.docs.path>`
 Then ask with `AskUserQuestion`, printing where and what:
 
 > Upload the help desk documents to `Resources/helpdesk-docs` (in the Hopsworks
-> file browser: Resources, then helpdesk-docs, then drag the files in). PDF, TXT,
-> Markdown, Word (.docx) and OpenDocument (.odt) files are read.
+> file browser: Resources, then helpdesk-docs, then drag the files in). PDF
+> (scans too), Word, PowerPoint, Excel, HTML, Markdown, text and image files are read.
 
 with the options "Uploaded", "Use the sample documents" (copy
 `rag_agent/sample_docs/*` there with `hops files upload`) and "Later"
-(continue with the sample documents and say the ingestion job is run again
+(continue with the sample documents and say `hops fg parse` and the ingestion job run again
 after an upload). Count the files with `hops files list`; `data.docs.files` records
 the count and `data.docs.status: present` when there is at least one.
 
@@ -85,10 +85,12 @@ registered and leaves it.
 
 ## features: the chunk embeddings
 
+First the documents become pages: `hops fg parse <data.docs.path> --to <slug>_doc_pages`,
+then `hops job wait <slug>_doc_pages_parse --execution <id> --timeout 3600`. Then
 `ingest_docs.py` as the job `<slug>-ingest-docs`, in `<slug>-jobs-env`
 (`hops job deploy <slug>-ingest-docs src/<slug_pkg>/ingest_docs.py --env <slug>-jobs-env
---args "--docs <data.docs.path> --fg <name> --model <embedding_model.name>" --run --wait`). It reads
-every document in the directory, cuts each page into chunks of paragraphs
+--args "--docs <data.docs.path> --pages <slug>_doc_pages --fg <name> --model <embedding_model.name>" --run --wait`). It reads
+every document's pages from that group, cuts each page into chunks of paragraphs
 (400 to 1200 characters, never across a page), embeds each chunk, and writes
 `chunk_id, doc_name, path, url, page, offset, text, embedding` into an
 online feature group with an `EmbeddingIndex` on `embedding` (cosine, the
@@ -96,8 +98,8 @@ model's dimension). `url` opens the document's folder in the file browser,
 relative to the UI's origin; `page` is 1-based, `offset` the 0-based paragraph
 in the page. A re-run overwrites the chunks of each document and deletes those of
 documents that were removed, so **the job is the command that reads all the
-documents**: run it again (`hops job run <slug>-ingest-docs --wait`) after
-uploading more. Record the pipeline with its job; `met` when the group has rows
+documents**: after uploading more, run `hops fg parse <data.docs.path> --to <slug>_doc_pages`
+again, wait for it, then `hops job run <slug>-ingest-docs --wait`. Record the pipeline with its job; `met` when the group has rows
 for every readable document and `find_neighbors` returns hits for a sample
 question.
 

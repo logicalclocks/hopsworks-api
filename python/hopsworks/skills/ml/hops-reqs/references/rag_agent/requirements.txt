@@ -4,9 +4,6 @@
 # embedded by the same library versions. Both bases ship torch, transformers,
 # langgraph and langchain-core 1.6.3.
 sentence-transformers==6.1.0
-pypdf==6.19.0
-python-docx==1.2.0
-odfpy==1.4.1
 # The one python-agent-pipeline ships, which matches langchain-core 1.6.3.
 langchain-openai==1.6.2
 # Traces for the deployment's Metrics and Traces panels: the pod's collector

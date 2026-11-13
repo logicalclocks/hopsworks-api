@@ -39,19 +39,50 @@ agent = _load(RAG / "agent.py", "rag_agent_module")
 # region Chunks
 
 
-def test_a_text_document_is_cut_into_pages_and_paragraphs(tmp_path):
-    doc = tmp_path / "faq.txt"
-    doc.write_text("Returns take 30 days.\n\nRefunds take 5 days.\f\nPage two.\n")
-    chunks = ingest.chunk_document(doc)
+class _PagesFs:
+    """A feature store holding one hops fg parse group with real rows."""
+
+    def __init__(self, rows):
+        frame = pd.DataFrame(rows, columns=["path", "page", "text"])
+        group = SimpleNamespace(
+            version=1, select=lambda cols: SimpleNamespace(read=lambda: frame[cols])
+        )
+        self.groups = {"docs_pages": [group]}
+
+    def get_feature_groups(self, name):
+        return self.groups.get(name, [])
+
+
+def test_the_parse_group_is_read_as_pages_and_paragraphs_per_document():
+    fs = _PagesFs([
+        ("Resources/docs/faq.pdf", 2, "Page two."),
+        ("Resources/docs/faq.pdf", 1, "Returns take 30 days.\n\nRefunds take 5 days."),
+        ("Resources/docs/sub/terms.docx", 0, "| a | b |\n|---|---|\n| 1 | 2 |"),
+    ])  # fmt: skip
+    docs = ingest.read_pages(fs, "docs_pages", "Resources/docs/")
+    assert docs == {
+        "faq.pdf": [
+            (1, ["Returns take 30 days.", "Refunds take 5 days."]),
+            (2, ["Page two."]),
+        ],
+        "sub/terms.docx": [(1, ["| a | b |\n|---|---|\n| 1 | 2 |"])],
+    }
+    chunks = ingest.chunk_pages("faq.pdf", docs["faq.pdf"])
     assert [(c.page, c.offset) for c in chunks] == [(1, 0), (2, 0)]
     assert chunks[0].text == "Returns take 30 days.\n\nRefunds take 5 days."
-    assert chunks[0].doc_name == "faq.txt"
+
+
+def test_a_missing_parse_group_names_the_command_that_makes_it():
+    with pytest.raises(
+        SystemExit, match="hops fg parse Resources/docs --to other_pages"
+    ):
+        ingest.read_pages(_PagesFs([]), "other_pages", "Resources/docs")
 
 
 def test_short_paragraphs_join_and_long_ones_split_at_sentences():
     short = [f"Paragraph {i} is short." for i in range(40)]
     long = " ".join(f"Sentence {i} of a long paragraph." for i in range(80))
-    chunks = ingest.chunk_pages("doc.md", [short, [long]])
+    chunks = ingest.chunk_pages("doc.md", [(1, short), (2, [long])])
     first_page = [c for c in chunks if c.page == 1]
     assert all(len(c.text) >= ingest.MIN_CHARS for c in first_page[:-1])
     # Each chunk starts at the paragraph it cites.
@@ -64,24 +95,9 @@ def test_short_paragraphs_join_and_long_ones_split_at_sentences():
 
 
 def test_chunk_ids_are_stable_and_distinct():
-    a, b = ingest.chunk_pages("x.md", [["one " * 120, "two " * 120]])
+    a, b = ingest.chunk_pages("x.md", [(1, ["one " * 120, "two " * 120])])
     assert a.chunk_id == ingest.Chunk("x.md", a.page, a.offset, "other").chunk_id
     assert a.chunk_id != b.chunk_id
-
-
-def test_the_sample_documents_are_read(tmp_path):
-    samples = sorted((RAG / "sample_docs").iterdir())
-    assert {p.suffix for p in samples} <= set(ingest.SUFFIXES)
-    for path in samples:
-        chunks = ingest.chunk_document(path)
-        assert chunks and all(c.page == 1 for c in chunks), path.name
-
-
-def test_an_unsupported_file_is_refused(tmp_path):
-    path = tmp_path / "notes.rtf"
-    path.write_text("x")
-    with pytest.raises(ValueError, match="only"):
-        ingest.read_pages(path)
 
 
 # endregion
