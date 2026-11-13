@@ -162,8 +162,51 @@ class TagSchemasApi:
             raise
 
     @public
+    def usage(self, name: str) -> dict[str, Any]:
+        """Show what still refers to a tag schema, and whether it can be deleted.
+
+        Requires **HOPS_ADMIN**.
+
+        Example:
+            ```python
+            usage = TagSchemasApi().usage("ownership")
+            if not usage["deletable"]:
+                print(usage["reason"])
+            print(usage["mandatoryIn"])  # e.g. ["feature store, every project"]
+            ```
+
+        Parameters:
+            name: Schema name.
+
+        Returns:
+            The number of tags created from the schema per kind of artifact
+            (`featureStoreTags`, `modelRegistryTags`, `jobTags`, `datasetTags`),
+            its `archivedValues` in the tag history, where it is mandatory
+            (`mandatoryIn`), `deletable`, and the `reason` it is not.
+
+        Raises:
+            PermissionError: If the caller lacks ``HOPS_ADMIN``.
+            hopsworks.client.exceptions.RestAPIError: If the schema does
+                not exist.
+        """
+        if not name:
+            raise ValueError("name must be a non-empty schema name")
+        _client = client._get_instance()
+        try:
+            return _client._send_request("GET", self._path() + [name, "usage"])
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 403:
+                raise PermissionError(_ADMIN_HINT) from e
+            raise
+
+    @public
     def delete(self, name: str) -> None:
         """Remove a tag schema from the registry.
+
+        Only a schema that no tag is created from and that has no archived
+        values in the tag history can be deleted; `usage` shows what still
+        refers to it. A mandatory schema can be deleted, and stops being
+        mandatory. Deleting a schema that does not exist does nothing.
 
         Requires **HOPS_ADMIN**. Project-level Data Owner is **not**
         sufficient.
@@ -173,8 +216,9 @@ class TagSchemasApi:
 
         Raises:
             PermissionError: If the caller lacks ``HOPS_ADMIN``.
-            hopsworks.client.exceptions.RestAPIError: If the schema does
-                not exist or the backend otherwise rejects the request.
+            hopsworks.client.exceptions.RestAPIError: If tags or archived
+                values still refer to the schema (409, the message says
+                which), or the backend otherwise rejects the request.
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
