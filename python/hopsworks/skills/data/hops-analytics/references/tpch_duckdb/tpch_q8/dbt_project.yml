@@ -1,0 +1,27 @@
+# TPC-H Q8 (national market share) as the DAG of dbt models in DuckDB: the
+# staging models select the columns of the TPC-H tables dbgen writes, the
+# market_share models are the DAG's nodes, and brazil_volume_by_year is its
+# final output. Views all the way down, so DuckDB plans the whole query at once
+# and holds no intermediate table; only the outputs are tables.
+name: tpch_q8
+version: "1.0.0"
+config-version: 2
+profile: tpch_q8
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+vars:
+  # The DAG's inputs: the window of order dates and the part type (TPC-H Q8's defaults).
+  start_date: "1995-01-01"
+  end_date: "1996-12-31"
+  p_type: "ECONOMY ANODIZED STEEL"
+
+models:
+  tpch_q8:
+    +materialized: view
+    market_share:
+      brazil_volume_by_year:
+        +materialized: table
+      america_volume_by_nation_year:
+        +materialized: table

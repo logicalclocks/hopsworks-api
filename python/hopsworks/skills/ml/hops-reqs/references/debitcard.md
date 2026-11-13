@@ -27,7 +27,12 @@ Copy the code into the system and change nothing else: it is tested as it is.
 
 ```bash
 cp -r <this directory>/debitcard <slug>/debitcard
+mv <slug>/debitcard/benchmark_requests.py <slug>/src/<slug_pkg>/
 ```
+
+`benchmark_requests.py` gives `benchmarks/benchmark_inference.py` this
+deployment's request shape, one card number per row, so the benchmark runs
+unedited.
 
 The scripts import each other by module name from their directory, so a job
 runs its script in place from HopsFS rather than uploaded on its own: pass
@@ -37,34 +42,52 @@ never the local file, which `hops job deploy` would upload alone to
 `Resources/jobs/<name>`. The app reads the deployment's name from `DEPLOYMENT` and
 the streaming jobs' from `JOBS`; its defaults are this example's names.
 The feature group, feature view and model names are fixed and read by the
-deployment and the app, so a project holds one debit card example.
+deployment and the app, so a project holds one debit card example. Every job
+takes `--system <slug>`, which starts each description it writes: deleting the
+system with its assets deletes only the assets whose description names it.
 
 ## The environments
 
 ```bash
 hops env clone <slug>-jobs-env --from python-feature-pipeline          # generator, stream, training
 hops env install <slug>-jobs-env -f debitcard/requirements.txt
-hops env clone <slug>-inference-env --from minimal-inference-pipeline  # the deployment
-hops env install <slug>-inference-env -f debitcard/inference-requirements.txt
-hops env clone <slug>-app-env --from python-agent-pipeline             # the console
-hops env install <slug>-app-env -f debitcard/app-requirements.txt
+( export HOPSWORKS_CERT_FOLDER=$(mktemp -d) \
+  && hops env clone <slug>-inference-env --from minimal-inference-pipeline \
+  && hops env install <slug>-inference-env -f debitcard/inference-requirements.txt \
+  && hops env clone <slug>-app-env --from python-agent-pipeline \
+  && hops env install <slug>-app-env -f debitcard/app-requirements.txt ) > <log dir>/envs.log 2>&1 &
 ```
+
+The generator and the stream need the jobs environment, so it is built first.
+The deployment's and the console's environments, needed only at `infer`, are
+built in the background, one after the other, while the data and feature jobs
+run, with their own `HOPSWORKS_CERT_FOLDER` (every `hops` call writes the
+client's certificates there).
 
 The dbt job runs in the stock `dbt-pipeline` environment, which ships dbt-core,
 dbt-trino and `dbt_run_graph`; the streaming job in `spark-feature-pipeline`.
 scikit-learn is pinned to the same version in the three files, since the
-deployment and the app unpickle the model training saved. Clone one environment
-at a time.
+deployment and the app unpickle the model training saved.
 
-## data: the history
+## data: the history, and the live stream with it
 
-Give `<slug>-data` 8192 MB, as **hops-job** says: the generator holds the
-year's keys and the fraud plan in memory.
+Give `<slug>-data` and `<slug>-batch-features` 8192 MB, as **hops-job** says:
+the generator holds the year's keys and the fraud plan in memory, and the batch
+job each model's rows, which it writes in one insert. The live stream rebuilds
+the history's cards from the same seed and reads nothing the history writes, so
+start it and the streaming job right after the data job: their windows fill
+while the history and the batch features are written, and training finds them
+ready.
 
 ```bash
 P=hdfs:///Projects/<project>/<system dir>/debitcard
-hops job deploy <slug>-data $P/generate_data.py --env <slug>-jobs-env --run --wait
+hops job deploy <slug>-data $P/generate_data.py --env <slug>-jobs-env --args "--system <slug>" --run
+hops job deploy <slug>-transactions $P/transaction_stream.py --env <slug>-jobs-env --args "--system <slug>" --run
+hops job deploy <slug>-streaming-features $P/streaming_features.py --type pyspark \
+  --env spark-feature-pipeline --args "--system <slug> --window-minutes 60" --run
 ```
+
+Wait for `<slug>-data` to succeed before the batch features.
 
 It writes 1,000,000 authorisations on 10,000 cards over the year to
 2026-03-31, about 0.3% of them fraud on 5% of the cards, each from one of eight schemes: velocity
@@ -82,25 +105,22 @@ in `data.<source>.writes`.
 Load **hops-dbt** and **hops-spark**.
 
 ```bash
-hops job deploy <slug>-batch-features $P/batch_features.py --env dbt-pipeline --run --wait
+hops job deploy <slug>-batch-features $P/batch_features.py --env dbt-pipeline --args "--system <slug>" --run --wait
 hops job schedule <slug>-batch-features "0 0 3 * * ?"     # daily, after the day closes
-hops job deploy <slug>-transactions $P/transaction_stream.py --env <slug>-jobs-env --run
-hops job deploy <slug>-streaming-features $P/streaming_features.py --type pyspark \
-  --env spark-feature-pipeline --args "--window-minutes 60" --run
 ```
 
 The batch job runs `dbt compile` and `dbt build` (the models' data tests), then
-streams each model from Trino into its feature group: `card_daily_features`
+writes each model from Trino into its feature group: `card_daily_features`
 offline, one row per card and active day with trailing 7 and 30 active days and
 the next active day's fraud label, and `card_spending_baselines` online and
 offline, each card's latest 30-active-day baseline, which the deployment reads.
 Its dbt artifacts and the execution graph the Jobs UI shows land in
-`Resources/dbt_runs/<job>/<execution>`. Then two jobs run until stopped: the
-transaction stream writes 5 authorisations a second on the history's cards,
+`Resources/dbt_runs/<job>/<execution>`. The two jobs started with the data run
+until stopped: the transaction stream writes 5 authorisations a second on the history's cards,
 with fraud bursts, to the online stream feature group
 `card_authorisations_live`, and the streaming job reads its Kafka topic and
 upserts each card's current 60-minute tumbling window into
-`card_window_aggregates` online. Start the stream before the streaming job,
+`card_window_aggregates` online. Submit the stream before the streaming job,
 which waits up to three minutes for the feature group the stream creates. The
 streaming job keeps its state in 4 shuffle partitions, fixed when its
 checkpoint is first written. Record the pipelines and the two running jobs in
@@ -108,11 +128,17 @@ checkpoint is first written. Record the pipelines and the two running jobs in
 
 ## train
 
-Wait until the streaming job has windows for at least 100 cards (about 5
-minutes at 5 a second; `hops fg preview card_window_aggregates --online`), then:
+Train once the batch features are written and the streaming job has windows
+for at least 100 cards (`hops fg preview card_window_aggregates --online`).
+The windows are clock hours, so the first one holds only the minutes since the
+stream started: `train.py` reads when the running `<slug>-transactions`
+execution was submitted, counts the first window from then on, and keeps that
+time in the model so serving counts it the same way. It also waits until the
+current window is 10 minutes old (a few minutes, when submitted after the batch
+features), since a younger window is noise:
 
 ```bash
-hops job deploy <slug>-train $P/train.py --env <slug>-jobs-env --run --wait
+hops job deploy <slug>-train $P/train.py --env <slug>-jobs-env --args "--system <slug>" --run --wait
 ```
 
 It creates `card_fraud_fv`, the windows left-joined with the baselines on
@@ -122,20 +148,30 @@ with an open window and registers `card_fraud_model` with `training_cards`,
 every card should have a baseline: fewer means the stream's cards are not the
 history's (another `--rows` or `--seed`). Retrain as the windows change; there
 is no label to target, so `requirements.targets` records the flagged fraction.
+The Isolation Forest flags `--contamination` of the training cards by
+construction, rounded up to a whole card, so set the target half a point above
+it (`metric: flagged_fraction`, `target: 0.025`, `direction: min`); a target of
+0.02 fails on that rounding alone.
 
 ## infer: the deployment
 
 ```bash
 hops deployment create card_fraud_model --name <alnum slug> --script <slug>/debitcard/predictor.py \
   --env <slug>-inference-env --no-default-predictor
+python -c "import hopsworks; d = hopsworks.login().get_model_serving().get_deployment('<alnum slug>'); \
+  d.predictor.scaling_configuration.max_instances = <requirements.budget.inference.max_replicas>; d.save()"
 hops deployment start <alnum slug>
 hops deployment predict <alnum slug> --data '{"inputs": [["<a card_number>"]]}'
 ```
 
 The request is one card number per row and the reply, per card, its `risk`
 (0-1), `fraud` (risk at or over the Isolation Forest's own boundary),
-`anomaly_score`, and whether it had a window and a baseline. `measured` gets the
-p99 of 50 requests over random cards against `requirements.sla.realtime`.
+`anomaly_score`, and whether it had a window and a baseline. The replicas are
+capped at the budget's before the deployment starts, since the autoscaler
+otherwise scales out under the benchmark (**hops-autoscaling**). `measured` gets
+the template's `benchmarks/benchmark_inference.py` over the cards with an open
+window against `requirements.sla.realtime`: one replica serves 10 requests a
+second at a p99 of about 200 ms.
 
 ## app: the fraud console
 
@@ -160,3 +196,10 @@ typing its number, asks the deployment about it and shows its risk as a gauge,
 the round trip, and its window against its baseline: the hour's spend and
 authorisations against a usual day, the furthest merchant and the decline ratio
 against its last 30 active days.
+
+A Terminal cannot `kubectl exec` into the app or read a running app's logs; check
+its API through its service instead:
+
+```bash
+curl -s http://$(kubectl get svc pythonapp-<project>--<slug>-app-svc -o jsonpath='{.spec.clusterIP}'):8080/api/status
+```

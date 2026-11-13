@@ -1,7 +1,8 @@
 # ruff: noqa: INP001
 """The recommender's ranking stage: a CatBoost classifier over customer and article features.
 
-Run as the job `<slug>-train-ranker` in `<slug>-jobs-env`, after `<slug>-features`:
+Run as the job `<slug>-train-ranker` in `<slug>-jobs-env`, after `<slug>-features` and
+beside `<slug>-train-retrieval`, whose outputs it does not read:
 
     hops job deploy <slug>-train-ranker src/<slug_pkg>/train_ranker.py \
         --env <slug>-jobs-env --run --wait
@@ -18,6 +19,7 @@ and `features.json` naming its inputs in order.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import tempfile
@@ -210,7 +212,17 @@ def train(pairs: pl.DataFrame, seed: int = 27):
     return model, evaluate(test_df["label"].to_numpy(), scores)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Train the ranking model.")
+    # Every asset's description starts with the system's slug, which is how deleting the
+    # system with its assets tells its own from another's.
+    parser.add_argument("--system", default="recs-example", help="the system's slug")
+    # A scheduled run appends -start_time <fire instant> (and may append -end_time);
+    # they are accepted and ignored.
+    parser.add_argument("-start_time", dest="_fired_at", help=argparse.SUPPRESS)
+    parser.add_argument("-end_time", dest="_fired_end", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+
     import hopsworks
 
     project = hopsworks.login()
@@ -243,7 +255,7 @@ def main() -> int:
         registered = project.get_model_registry().python.create_model(
             name="ranking_model",
             metrics=metrics,
-            description="CatBoost purchase probability of a customer for a candidate article",
+            description=f"{args.system}: CatBoost purchase probability of a customer for a candidate article",
         )
         registered.save(str(directory))
     return 0

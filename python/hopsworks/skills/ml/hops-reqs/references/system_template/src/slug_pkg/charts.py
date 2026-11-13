@@ -36,6 +36,8 @@ def _curves(y: np.ndarray, s: np.ndarray) -> tuple[np.ndarray, ...]:
 
 
 def _importance(model: Any, features: list[str]) -> tuple[list[str], np.ndarray] | None:
+    # A scikit-learn pipeline's last step is the estimator.
+    model = getattr(model, "steps", [(None, model)])[-1][1]
     values = getattr(model, "feature_importances_", None)
     if values is None and getattr(model, "coef_", None) is not None:
         values = np.abs(np.asarray(model.coef_)).ravel()

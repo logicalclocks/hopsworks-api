@@ -184,3 +184,30 @@ def test_the_model_reads_what_the_streaming_job_and_the_baselines_write():
     ).read_text()
     for name in re.findall(r'"(\w+)"', baseline):
         assert name in baselines_sql
+
+
+def test_the_first_window_counts_from_when_the_stream_started():
+    pytest.importorskip("sklearn")
+    pd = pytest.importorskip("pandas")
+    sys.path.insert(0, str(DEBITCARD))
+    try:
+        import model
+    finally:
+        sys.path.remove(str(DEBITCARD))
+        sys.modules.pop("model", None)
+    window = pd.DataFrame(
+        {"window_end": [pd.Timestamp("2026-10-25 16:00")], "window_seconds": [3600]}
+    )
+    now = pd.Timestamp("2026-10-25 15:55", tz="UTC")
+    assert model.elapsed_hours(window, now)[0] == pytest.approx(55 / 60)
+    assert model.elapsed_hours(window, now, "2026-10-25T15:40:00+00:00")[
+        0
+    ] == pytest.approx(15 / 60)
+    # The next hour's window opened after the stream started, so `since` leaves it alone.
+    later = pd.DataFrame(
+        {"window_end": [pd.Timestamp("2026-10-25 17:00")], "window_seconds": [3600]}
+    )
+    at = pd.Timestamp("2026-10-25 16:30", tz="UTC")
+    assert model.elapsed_hours(later, at, "2026-10-25T15:40:00+00:00")[
+        0
+    ] == pytest.approx(0.5)

@@ -1,4 +1,6 @@
 # Installed into <slug>-inference-env, a clone of minimal-inference-pipeline: the
-# versions the pipeline was trained with in <slug>-jobs-env.
+# versions the pipeline was trained with in <slug>-jobs-env, and geoip2, which the
+# feature view's on-demand transformation imports at request time.
 scikit-learn==1.6.1
 xgboost==2.1.4
+geoip2==5.2.0

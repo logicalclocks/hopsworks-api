@@ -26,11 +26,14 @@ BUILTINS = (
     "ml-realtime",
     "ml-streaming",
     "ml-agent",
+    "ml-finetune",
+    "ml-rag",
     "analytics-bronze",
     "analytics-silver",
     "analytics-gold",
     "analytics-pipeline",
     "analytics-ingestion",
+    "custom-factory",
 )
 # The builds a factory can hand its answers to instead of writing its own instructions.
 BUILTIN_BUILDS = ("mlsystem", "analytics-bronze", "analytics-silver", "analytics-gold")
@@ -48,6 +51,7 @@ FIELD_TYPES = (
     "account_env",
     "secrets",
     "datetime",
+    "directories",
     "entry",
     "repository",
 )
@@ -621,6 +625,23 @@ def utc_instant(value: Any) -> str | None:
     return moment.strftime("%Y-%m-%dT%H:%MZ")
 
 
+def project_directory(value: Any) -> bool:
+    """Whether `value` names a directory relative to the project root, such as `Resources/docs`.
+
+    Args:
+        value: The answer to check.
+
+    Returns:
+        True for a non-empty relative path with no `..` part.
+    """
+    return (
+        isinstance(value, str)
+        and bool(value.strip("/"))
+        and not value.startswith("/")
+        and ".." not in value.split("/")
+    )
+
+
 def _field_problems(field: dict, value: Any, label: str) -> list[str]:
     kind = field["type"]
     if _empty(value):
@@ -656,6 +677,12 @@ def _field_problems(field: dict, value: Any, label: str) -> list[str]:
         and all(isinstance(v, dict) and v.get("name") for v in value)
     ):
         return [f"{label} must be a list of feature groups."]
+    if kind == "directories" and not (
+        isinstance(value, list) and all(project_directory(v) for v in value)
+    ):
+        return [
+            f"{label} must be a list of directories in the project, such as Resources/docs."
+        ]
     if kind == "repository":
         return repository_problems(value, label)
     if kind == "secrets":

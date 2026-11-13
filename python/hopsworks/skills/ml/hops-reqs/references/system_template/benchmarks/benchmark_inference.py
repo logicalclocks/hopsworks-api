@@ -12,7 +12,8 @@ realtime: closed-loop load at `offered_qps` with fixed `concurrency`, after
 `warmup_s`, for `duration_s` and at least `min_requests`; a request that times
 out or fails counts as an error and as the maximum latency, never dropped.
 batch: times reading, scoring and writing one window into a throwaway feature
-group it deletes afterwards (`kind: full_window`, or `kind: sample`).
+group it deletes afterwards (`kind: full_window`, or `kind: sample`), for `verify
+benchmark`; during the build the inference job's first full-window run is the measurement.
 `--record` writes result.json; the orchestrator imports it as one `measured` line.
 """
 
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import threading
@@ -210,24 +212,6 @@ def meets_realtime(summary: dict, sla: dict) -> bool:
     )
 
 
-def batch_budget_s(cron: str, must_finish_by: str, features_s: float = 0.0) -> float | None:
-    """Seconds a scoring run has between its cron fire and `must_finish_by`.
-
-    Reads the hour and minute of a Quartz cron (`sec min hour ...`) and a
-    `HH:MM` deadline on the same day, less the measured feature job when it runs
-    in the same window. None when the cron fires at no fixed time of day.
-    """
-    fields = cron.split()
-    if len(fields) < 3 or not (fields[1].isdigit() and fields[2].isdigit()):
-        return None
-    fire = int(fields[2]) * 3600 + int(fields[1]) * 60
-    hour, minute = must_finish_by.split()[0].split(":")
-    deadline = int(hour) * 3600 + int(minute) * 60
-    if deadline <= fire:
-        deadline += 24 * 3600
-    return deadline - fire - features_s
-
-
 def deployment_config(deployment: Any) -> str:
     """A hash of what the deployment runs, so verify can tell a redeploy from the measured one."""
     config = deployment.to_dict()
@@ -237,24 +221,34 @@ def deployment_config(deployment: Any) -> str:
 
 
 def run_realtime(system: dict, protocol: dict, params: dict) -> dict:
-    """Load the deployment with real entity keys and summarize against the SLA."""
+    """Load the deployment with real requests and summarize against the SLA.
+
+    A request is `[{entity: key}]` over real entity keys, unless the system's package
+    has a `benchmark_requests` module, whose `requests(project, n)` returns the `inputs`
+    of `n` requests in the deployment's own shape.
+    """
     import hopsworks
 
     project = hopsworks.login()
     realtime = system["inference"]["realtime"]
     deployment = project.get_model_serving().get_deployment(realtime["deployment"])
-    entity = system["requirements"]["problem"]["entity"]
-    source = next(
-        s for s in system["requirements"]["data_sources"] if s.get("entity", entity) == entity
-    )
-    fg = project.get_feature_store().get_feature_group(
-        source["name"], version=source.get("version", 1)
-    )
-    keys = list(fg.select([entity]).show(int(params.get("entities", 500)))[entity])
+    n = int(params.get("entities", 500))
+    pkg = system["system"]["slug"].replace("-", "_")
+    if importlib.util.find_spec(f"{pkg}.benchmark_requests"):
+        requests = importlib.import_module(f"{pkg}.benchmark_requests").requests(project, n)
+    else:
+        entity = system["requirements"]["problem"]["entity"]
+        source = next(
+            s for s in system["requirements"]["data_sources"] if s.get("entity", entity) == entity
+        )
+        fg = project.get_feature_store().get_feature_group(
+            source["name"], version=source.get("version", 1)
+        )
+        requests = [[{entity: key}] for key in fg.select([entity]).show(n)[entity]]
 
     summary = closed_loop(
-        lambda key: deployment.predict(inputs=[{entity: key}]),
-        keys,
+        lambda inputs: deployment.predict(inputs=inputs),
+        requests,
         offered_qps=params.get("qps", protocol["offered_qps"]),
         concurrency=protocol["concurrency"],
         duration_s=params.get("duration_s", protocol["duration_s"]),
@@ -274,12 +268,11 @@ def run_realtime(system: dict, protocol: dict, params: dict) -> dict:
 
 def run_batch(system: dict, params: dict, run_id: str) -> dict:
     """Time one window end to end into a throwaway prediction group, then delete it."""
-    import importlib
-
     import hopsworks
 
     pkg = system["system"]["slug"].replace("-", "_")
     evaluate = importlib.import_module(f"{pkg}.evaluate")
+    pipeline = importlib.import_module(f"{pkg}.inference_pipeline")
     project = hopsworks.login()
     fs = project.get_feature_store()
     training = system["training"]
@@ -311,29 +304,9 @@ def run_batch(system: dict, params: dict, run_id: str) -> dict:
         window_s = time.monotonic() - started
     finally:
         sink.delete()
-    sla = system["requirements"]["sla"]["batch"]
-    cron = system["inference"]["batch"]["job"]["schedule"]["cron"]
-    features_s = max(
-        (
-            ((p.get("benchmark") or {}).get("last_run") or {}).get("full_window_s", 0)
-            for p in (system.get("features") or {}).get("pipelines") or []
-        ),
-        default=0,
-    )
-    budget_s = batch_budget_s(cron, sla["must_finish_by"], features_s)
-    kind = params.get("kind", "full_window")
-    rows = len(batch)
-    fits = budget_s is not None and window_s <= budget_s
     return {
-        "kind": kind,
-        "rows": rows,
-        "window_s": round(window_s, 1),
-        "rows_per_s": round(rows / window_s, 1) if window_s else 0.0,
-        "budget_s": budget_s,
+        **pipeline.batch_verdict(system, len(batch), window_s, params.get("kind", "full_window")),
         "model_version": training["model"]["version"],
-        "fits_window": fits,
-        # A sample is a screening estimate and never the basis of met.
-        "met": fits and kind == "full_window",
     }
 
 
