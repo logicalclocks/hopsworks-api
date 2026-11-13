@@ -823,7 +823,8 @@ public class SparkEngine extends EngineBase {
    *
    * @param storageConnector the data source's connector; null does nothing
    * @param location the path read or written, which names the bucket of a Glue data source; may be null
-   * @throws FeatureStoreException the application already uses the bucket name with another store
+   * @throws FeatureStoreException the application already uses the bucket name with another store, or a data
+   *     source with an endpoint is given a location in another bucket
    */
   public void setupConnectorHadoopConf(StorageConnector storageConnector, String location)
       throws IOException, FeatureStoreException {
@@ -833,6 +834,7 @@ public class SparkEngine extends EngineBase {
 
     switch (storageConnector.getStorageConnectorType()) {
       case S3:
+        refuseEndpointLocationInAnotherBucket((StorageConnector.S3Connector) storageConnector, location);
         setupS3ConnectorHadoopConf((StorageConnector.S3Connector) storageConnector);
         break;
       case GLUE:
@@ -933,6 +935,17 @@ public class SparkEngine extends EngineBase {
     return endpoint.isEmpty() ? "AWS S3" : endpoint;
   }
 
+  // The endpoint is set for the data source's own bucket only, so another bucket would reach AWS or another store.
+  private static void refuseEndpointLocationInAnotherBucket(StorageConnector.S3Connector storageConnector,
+      String location) throws FeatureStoreException {
+    String bucket = s3PathBucket(location);
+    if (!Strings.isNullOrEmpty(storageConnector.getEndpoint()) && bucket != null
+        && !bucket.equals(storageConnector.getBucket())) {
+      throw new FeatureStoreException("Data source '" + storageConnector.getName() + "' uses its endpoint for bucket '"
+          + storageConnector.getBucket() + "' only, so it cannot use " + location + " in bucket '" + bucket + "'.");
+    }
+  }
+
   private static String s3PathBucket(String location) {
     if (Strings.isNullOrEmpty(location)) {
       return null;
@@ -966,12 +979,12 @@ public class SparkEngine extends EngineBase {
     }
     // Without a provider of its own the bucket inherits the global temporary-credentials provider and session token
     // an IAM-role data source set earlier in the session, and would send that token to this store.
-    if (!Strings.isNullOrEmpty(storageConnector.getSessionToken())) {
-      conf.set(prefix + "aws.credentials.provider", Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER);
+    boolean hasSessionToken = !Strings.isNullOrEmpty(storageConnector.getSessionToken());
+    conf.set(prefix + "aws.credentials.provider", storageConnector.sparkOptions().getOrDefault(
+        Constants.S3_CREDENTIAL_PROVIDER_ENV,
+        hasSessionToken ? Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER : Constants.S3_SIMPLE_CREDENTIAL_PROVIDER));
+    if (hasSessionToken) {
       conf.set(prefix + "session.token", storageConnector.getSessionToken());
-    } else {
-      conf.set(prefix + "aws.credentials.provider", storageConnector.sparkOptions()
-          .getOrDefault(Constants.S3_CREDENTIAL_PROVIDER_ENV, Constants.S3_SIMPLE_CREDENTIAL_PROVIDER));
     }
   }
 

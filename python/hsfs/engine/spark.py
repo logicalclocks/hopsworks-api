@@ -2039,8 +2039,21 @@ class Engine:
         FS_S3_GLOBAL_CONF = "fs.s3a.global-conf"
 
         # Before any configuration changes, so a refused data source leaves the session as it was.
+        path_bucket = _s3_path_bucket(path)
+        endpoint = getattr(storage_connector, "endpoint", None)
+        # The endpoint is set for the data source's own bucket only, so another bucket would reach AWS or another store.
+        if (
+            endpoint
+            and path_bucket
+            and storage_connector.bucket
+            and path_bucket != storage_connector.bucket
+        ):
+            raise FeatureStoreException(
+                f"Data source '{storage_connector.name}' uses its endpoint for bucket '{storage_connector.bucket}' only, "
+                f"so it cannot use {path} in bucket '{path_bucket}'."
+            )
         # A Glue data source has no bucket of its own; the path names the bucket it reads.
-        bucket = storage_connector.bucket or _s3_path_bucket(path)
+        bucket = storage_connector.bucket or path_bucket
         if bucket:
             self._claim_s3_bucket(storage_connector, bucket)
 

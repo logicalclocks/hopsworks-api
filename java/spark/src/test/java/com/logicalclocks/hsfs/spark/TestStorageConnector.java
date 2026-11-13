@@ -591,6 +591,40 @@ public class TestStorageConnector {
     }
 
     @Test
+    void testS3EndpointBucketWithASessionToken() throws IOException, FeatureStoreException {
+      StorageConnector.S3Connector temporary = endpointConnector("ecs-token", "https://s3.example.com:9021");
+      temporary.setSessionToken("token");
+      StorageConnector.S3Connector named = endpointConnector("ecs-token-named", "https://s3.example.com:9021");
+      named.setSessionToken("token");
+      named.setArguments(Collections.singletonList(
+          new Option(Constants.S3_CREDENTIAL_PROVIDER_ENV, "com.example.Provider")));
+
+      SparkEngine.getInstance().setupConnectorHadoopConf(temporary);
+      SparkEngine.getInstance().setupConnectorHadoopConf(named);
+
+      SparkContext sc = SparkEngine.getInstance().getSparkSession().sparkContext();
+      Assertions.assertEquals(Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER,
+          sc.hadoopConfiguration().get("fs.s3a.bucket.ecs-token.aws.credentials.provider"));
+      Assertions.assertEquals("com.example.Provider",
+          sc.hadoopConfiguration().get("fs.s3a.bucket.ecs-token-named.aws.credentials.provider"));
+      Assertions.assertEquals("token", sc.hadoopConfiguration().get("fs.s3a.bucket.ecs-token-named.session.token"));
+    }
+
+    @Test
+    void testS3EndpointRefusesALocationInAnotherBucket() throws IOException, FeatureStoreException {
+      SparkEngine engine = SparkEngine.getInstance();
+      StorageConnector.S3Connector connector = endpointConnector("ecs-home", "https://s3.example.com:9021");
+
+      Assertions.assertThrows(FeatureStoreException.class,
+          () -> engine.setupConnectorHadoopConf(connector, "s3://ecs-elsewhere/data"));
+      SparkContext sc = engine.getSparkSession().sparkContext();
+      Assertions.assertNull(sc.hadoopConfiguration().get("fs.s3a.bucket.ecs-home.endpoint"));
+
+      engine.setupConnectorHadoopConf(connector, "s3a://ecs-home/data");
+      engine.setupConnectorHadoopConf(endpointConnector("aws-home", null), "s3://aws-elsewhere/data");
+    }
+
+    @Test
     void testGlueClaimsTheBucketOfItsLocation() throws IOException, FeatureStoreException {
       SparkEngine engine = SparkEngine.getInstance();
       engine.setupConnectorHadoopConf(endpointConnector("glue-after", "https://s3.example.com:9021"));
