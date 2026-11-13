@@ -53,6 +53,10 @@ class Unreached(RuntimeError):
 # How long a kernel still starting may take to answer the kernel_info request sent before a cell.
 _KERNEL_INFO_SECONDS = 60
 
+# The kernel ignores an interrupt that lands while it runs no handler, so one that arrives before
+# the cell starts is lost. A cell still running this long after an interrupt gets another.
+_INTERRUPT_RESEND_SECONDS = 5
+
 
 def server(project_id: int) -> dict | None:
     """The caller's running Jupyter server in this project (host, port, token), or None.
@@ -522,6 +526,7 @@ class Jupyter:
         execution: dict[str, str] = {}
         idle = False
         sent = False
+        give_up = 0.0
         try:
             with ws_connect(
                 url,
@@ -541,15 +546,18 @@ class Jupyter:
                     if idle and (left <= 0 or "shell.execute_reply" in execution):
                         return Run(outputs, count, finished, execution, msg_id)
                     if left <= 0:
-                        if not finished:
+                        now = time.monotonic()
+                        if not finished and now >= give_up:
                             raise TimeoutError(
                                 "The kernel did not stop the cell after an interrupt."
                             )
                         # Wait for the interrupted cell to end: a cell sent while the kernel is still
                         # handling the interrupt is aborted with it.
                         self.interrupt(kernel_id)
+                        if finished:
+                            give_up = now + 30
                         finished = False
-                        deadline = time.monotonic() + 30
+                        deadline = min(now + _INTERRUPT_RESEND_SECONDS, give_up)
                         continue
                     try:
                         message = json.loads(ws.recv(timeout=left))

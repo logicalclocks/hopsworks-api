@@ -96,6 +96,24 @@ def test_a_cell_past_its_timeout_is_interrupted_and_the_kernel_lives_on(jupyter,
     assert after.outputs[0]["text"] == "still alive\n"
 
 
+def test_an_interrupt_the_cell_did_not_take_is_sent_again(jupyter, path):
+    session = jupyter.session(path)
+    cell = (
+        "import time\n"
+        "try:\n"
+        "    time.sleep(60)\n"
+        "except KeyboardInterrupt:\n"
+        "    time.sleep(60)\n"
+    )
+    started = time.monotonic()
+    run = jupyter.execute(session, "c1", cell, 1)
+    assert not run.finished
+    assert time.monotonic() - started < 30
+    assert run.outputs[-1]["ename"] == "KeyboardInterrupt"
+    after = jupyter.execute(session, "c2", "print('still alive')", 60)
+    assert after.outputs[0]["text"] == "still alive\n"
+
+
 def test_another_client_of_the_kernel_sees_the_outputs_by_cell_id(jupyter, path):
     """A watcher on the kernel (Hopsable's notebook view) maps outputs to cells by message id."""
     session = jupyter.session(path)
