@@ -723,31 +723,29 @@ def _render_build(build: SemanticBuild) -> None:
 
 @semantic_group.command("compile")
 @click.argument("name")
-@click.option("--wait", is_flag=True, help="Wait for the compile and show its issues.")
 @click.option(
+    "--wait",
     "--fail-on-error",
+    "wait",
     is_flag=True,
-    help="Exit 1 when the build is INVALID or FAILED, for CI. Implies --wait.",
+    help="Wait for the compile, show its issues, and exit 1 when the build is "
+    "INVALID or FAILED. --fail-on-error is the same flag.",
 )
 @click.pass_context
-def compile_cmd(ctx: click.Context, name: str, wait: bool, fail_on_error: bool) -> None:
+def compile_cmd(ctx: click.Context, name: str, wait: bool) -> None:
     """Compile a semantic project's definitions into a new build.
 
     Args:
         ctx: Click context.
         name: Semantic project name.
-        wait: Block until the compile ends.
-        fail_on_error: Exit 1 on an INVALID or FAILED build.
+        wait: Block until the compile ends, and exit 1 unless the build is VALID.
     """
     sp = _semantic_project(ctx, name)
-    wait = wait or fail_on_error
     try:
         build = sp.compile(wait=wait)
     except SemanticBuildException as exc:
         _render_build(exc.build)
-        if fail_on_error:
-            ctx.exit(1)
-        return
+        ctx.exit(1)
     if wait and build.warning_count and build.issues is None:
         build = sp.get_build(build.id)
     _render_build(build)

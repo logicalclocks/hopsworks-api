@@ -267,7 +267,7 @@ hops semantic init <name> [--from-fg <fg>[:<version>] ...] [--path <dir>] [--rep
 hops semantic create <name> --path <dbt project dir> [--format AUTO|DBT|NATIVE|MANIFEST_JSON] [--mode FOLLOW|PINNED] [--tag NAME=VALUE]
 hops semantic show <name>                                   # settings, the build queries use, and whether it is stale
 hops semantic update <name> [--path <dir>] [--format ...] [--mode FOLLOW|PINNED]
-hops semantic compile <name> [--wait] [--fail-on-error]     # --fail-on-error exits 1 on errors, for CI
+hops semantic compile <name> [--wait]                       # --wait shows the issues and exits 1 on an INVALID or FAILED build
 hops semantic test <name> [--metrics a,b] [--no-compile]    # compile, then run each metric once on Trino; exit 1 on any failure
 hops semantic builds <name>
 hops semantic build <name> <build id>                       # one build with its issues at file:line

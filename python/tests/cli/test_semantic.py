@@ -279,26 +279,37 @@ class TestCompile:
         sales.compile.assert_called_once_with(wait=False)
         assert "Build 13: COMPILING" in result.output
 
-    def test_an_invalid_build_exits_zero_without_fail_on_error(self, sales):
+    @pytest.mark.parametrize("flag", ["--wait", "--fail-on-error"])
+    def test_a_waited_compile_exits_one_on_an_invalid_build(self, sales, flag):
         sales.compile.side_effect = SemanticBuildException("sales", _invalid_build())
 
-        result = _run("compile", "sales", "--wait")
-
-        assert result.exit_code == 0
-        sales.compile.assert_called_once_with(wait=True)
-        assert "UNIQUE_NAMES" in result.output
-        assert "models/semantic.yml:12:5" in result.output
-
-    def test_fail_on_error_implies_wait_and_exits_one(self, sales):
-        sales.compile.side_effect = SemanticBuildException("sales", _invalid_build())
-
-        result = _run("compile", "sales", "--fail-on-error")
+        result = _run("compile", "sales", flag)
 
         assert result.exit_code == 1
         sales.compile.assert_called_once_with(wait=True)
         assert "Build 13: INVALID (1 errors, 0 warnings)" in result.output
+        assert "UNIQUE_NAMES" in result.output
+        assert "models/semantic.yml:12:5" in result.output
 
-    def test_fail_on_error_passes_on_a_valid_build_and_shows_warnings(self, sales):
+    def test_a_waited_compile_exits_one_on_a_failed_build(self, sales):
+        sales.compile.side_effect = SemanticBuildException(
+            "sales", SemanticBuild(id=13, status="FAILED")
+        )
+
+        result = _run("compile", "sales", "--wait")
+
+        assert result.exit_code == 1
+        assert "Build 13: FAILED" in result.output
+
+    def test_an_invalid_build_in_json_mode_prints_the_build_and_exits_one(self, sales):
+        sales.compile.side_effect = SemanticBuildException("sales", _invalid_build())
+
+        result = _run("--json", "compile", "sales", "--wait")
+
+        assert result.exit_code == 1
+        assert json.loads(result.output)["status"] == "INVALID"
+
+    def test_a_waited_compile_passes_on_a_valid_build_and_shows_warnings(self, sales):
         sales.compile.return_value = SemanticBuild(
             id=14, status="VALID", warning_count=1
         )
@@ -309,7 +320,7 @@ class TestCompile:
             issues=[SemanticIssue(level="WARNING", rule="PRIMARY_KEY", message="m")],
         )
 
-        result = _run("compile", "sales", "--fail-on-error", "--json")
+        result = _run("compile", "sales", "--wait", "--json")
 
         assert result.exit_code == 0, result.output
         sales.get_build.assert_called_once_with(14)

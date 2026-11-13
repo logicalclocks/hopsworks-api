@@ -17,7 +17,7 @@ Hopsworks compiles the YAML (dbt or MetricFlow format) into a build, and a gatew
 ```bash
 hops semantic list                                   # semantic projects, current and newest build
 hops semantic init <name> --from-fg <fg>             # a new project: one semantic model per feature group
-hops semantic compile <name> --wait                  # status plus every error and warning, with file:line
+hops semantic compile <name> --wait                  # status plus every error and warning, with file:line; exit 1 unless VALID
 hops semantic metrics <name>                         # what the current build serves
 hops semantic sql <name> --metrics <m> --group-by metric_time__month   # SQL only, nothing runs
 ```
@@ -147,8 +147,7 @@ Rules that keep a compile valid:
 ```bash
 hops semantic create sales --path Jupyter/analytics/dbt        # register; the first compile starts in the background
 hops semantic create sales --path Jupyter/analytics/dbt --tag ownership='{"owner": "finance"}'   # with the mandatory tags
-hops semantic compile sales --wait                             # see errors and warnings now
-hops semantic compile sales --fail-on-error                    # CI: exit 1 on an INVALID or FAILED build
+hops semantic compile sales --wait                             # see errors and warnings now; exit 1 on an INVALID or FAILED build
 hops semantic test sales                                       # CI: compile, then run every metric once on Trino (by metric_time if it requires it); exit 1 on any failure
 hops semantic test sales --no-compile                          # PINNED: test the promoted build; a plain test exits 1 on an unpromoted build
 hops semantic builds sales                                     # * marks the build answering queries
