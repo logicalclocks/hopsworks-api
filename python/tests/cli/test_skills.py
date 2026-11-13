@@ -95,3 +95,22 @@ def test_shipped_skill_frontmatter_loads_in_every_agent(skill_md):
         f"{skill_md} declares name={fields['name']!r} but lives in "
         f"{skill_md.parent.name!r}"
     )
+
+
+# An agent reads a skill file or a playbook whole, in one tool call. Agent hosts cut long tool
+# output (Hopsable keeps the first 8,000 and the last 24,000 characters), so each file stays at
+# 24,000 characters or less, which leaves room for another command's output in the same call.
+READ_WHOLE_BUDGET = 24_000
+
+
+def test_every_skill_file_and_playbook_is_read_whole():
+    templates = SKILLS_ROOT.parent / "cli" / "templates"
+    files = [*SKILLS_ROOT.rglob("*.md"), *templates.glob("*.md")]
+    over = {
+        str(p.relative_to(SKILLS_ROOT.parent)): n
+        for p in files
+        if (n := len(p.read_text("utf-8"))) > READ_WHOLE_BUDGET
+    }
+    assert not over, (
+        f"over {READ_WHOLE_BUDGET} characters, move detail into references/: {over}"
+    )

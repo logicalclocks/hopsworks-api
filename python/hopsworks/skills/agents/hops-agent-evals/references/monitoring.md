@@ -1,0 +1,71 @@
+# Online sampling and the evaluation job: more rules
+
+The calls are in SKILL.md, section 2.
+
+**A generic judge does not know your agent.** The installed defaults see the request, the reply and the tools — not the system prompt. An agent designed to ask for an email before answering gets failed by *Answer relevance* for doing exactly that, and one that identifies a user across conversations gets failed by *Hallucination* for a claim its own design makes true. Prefer a judge written for the agent, and before trusting a monitor, read a sample of its failures and record what you find with `run.review_trial(...)` — judge agreement per evaluator is built from those.
+
+**A memory-backed answer looks invented to a judge.** What the agent recalled reaches the model in its system prompt; the judge sees the request, the reply and the tool results, so "you told me you are aggressive and short-term" has no visible source and *Hallucination* fails it. Any agent with long-term memory will be marked down for using it. Either say so in the judge's criteria (*facts about the user may come from stored memory and are not inventions*), or have the agent recall through a **tool** rather than through the prompt, so the recalled value is in the trace where a judge can see it.
+
+**One form for both jobs, one model for both.** `judge_model` on the evaluation job is what any check that names no model of its own judges with, *and* what the failure analysis uses — a judge used to be configured inside every check and again on the analysis job. `ensure_eval_job(...)` creates the analysis job with the evaluation's own environment, resources and model, and the evaluation triggers it. **It is on by default** — a failure nobody explains is one somebody reads twice — so pass `analyse_failures=False` for a deployment that should not spend model calls on it, and `judge_model=` to name the model. The provider is guessed from the agent's framework when you name none: the OpenAI Agents SDK implies OpenAI, the Claude SDK implies Anthropic, everything else keeps the default — no schedule of its own. It starts when an execution's last run finishes, if a suite produced a **new failure or a regression** (the same failures again need no second explanation) or a monitor failed a conversation it graded. It reads only verdicts since its previous run, so an hourly monitor failing on the same kind of turn does not pay twice, and `agent.analyse()` starts one by hand. Its advanced settings (sources, source code, auto-promotion thresholds) stay on the analysis job itself.
+
+**The evaluation starts analyses on its own,** whenever a run produces a new failure or a regression, so the clusters can change between two of your scripts' calls. A "since the last run" analysis never starts twice at once — asking while one is going returns that run — but read `agent.clusters()` once and work from that list, or check `agents.runs.list(agent.id)` for a `FEEDBACK_REVIEW` still `RUNNING` first. An open cluster whose verdicts a later analysis re-filed elsewhere is left off the list.
+
+**Check the pair matches before you rely on automatic analysis.** The two jobs hold the judge separately, and they can drift — a deployment recreated under a new id got the framework's default provider on its analysis job while keeping the evaluation's model, leaving `provider=anthropic, model=gpt-5.6-terra`, an impossible pair. Every analysis the evaluation triggered then failed with *"no API key: set the environment variable ANTHROPIC_API_KEY"*, and nothing said so except the run's own status. One line settles it:
+
+```python
+job, review = agent.eval_job(), agent.review_job()
+assert (review.provider, review.model) == (job.judge_provider, job.judge_model)
+```
+
+If they disagree, re-saving the evaluation's judge re-syncs the analysis job: `agents.jobs.update_eval_job(job.name, judge_provider=..., judge_model=...)`.
+
+**An agent gets its evaluation job with it**, empty — no suites, no monitors, nothing scheduled — so configuring evaluation starts from a form with the deployment's defaults rather than from a page asking you to create something first.
+
+**The jobs go with the deployment.** Deleting an agent deletes its evaluation and analysis jobs. A job holding the default name that a deployment deleted earlier left behind is taken over by the new agent of that name, starting from what you pass rather than from the dead agent's suites and evaluators; one a live deployment still owns is refused, so pass `name=`.
+
+**One job per deployment, one execution at a time.** `ensure_eval_job` returns the deployment's job whatever name is asked for — what used to be a second job is this one's suites, its monitors and its schedule — and configures it with whatever you pass, leaving unsaid settings alone. `ensure_eval_job(agent.id)` on its own therefore changes nothing, and `update_eval_job(job.name, ...)` is the same partial update by name. An empty list clears a list; only an omitted argument is left as it was. A run asked for while one is going is queued — recorded, `PENDING`, with no execution — and starts when the current one finishes, with everything else waiting folded into the same execution. `update_eval_job(name, parallel_runs=2)` lifts that for a deployment that can take two evaluations at once.
+
+The evaluation job is a Hopsworks job named after the agent; schedule it like any job (**hops-job**). `monitor=True` samples traffic with the listed evaluators on every run. A **scheduled** fire grades live traffic only — the suites are the same frozen tasks every fire, at a model call per task — unless `suites_on_schedule=True`. Running the job yourself always runs everything it names.
+
+Each sample grades at most `sample_ceiling` conversations of its window (default 500, max 10000), because every one of them costs a judge call per evaluator. When the window holds more: `sample_strategy="random"` (the default) grades a spread of the whole window and moves on, keeping the cost fixed — the run records `window_conversations` and `sampled_fraction`, so its pass rate reads as a sample rather than a census. `sample_strategy="oldest"` grades the oldest of them and closes the window there, so the next run continues from where this one stopped and nothing is skipped — exhaustive, but on an agent whose traffic outpaces the ceiling it measures an older and older slice while the backlog grows.
+
+Every evaluator of one execution grades the **same** conversations: the random draw is seeded from the window they share, which is what makes "the hallucination judge passed this one and the helpfulness judge failed it" a question you can ask (and makes a re-run of a window grade what it graded before). `shared_sample=False` gives each its own draw.
+
+**A sample grades one turn of a conversation.** A sampled conversation is one trial, graded on its **last** exchange: `user_request` and `agent_response` are the final turn's. An earlier turn that went wrong is not graded, so a monitor over multi-turn traffic measures how conversations end. Suites are where a specific turn is pinned down.
+
+**So only a turn-invariant criterion belongs in a monitor.** "Introduced itself and showed the disclaimer" is about the *first* turn; pointed at a six-turn conversation it grades the last one and scores 1/6, and the agent looks broken when the evaluator was. The test: could this be true of any single exchange, read on its own? *Answer relevance*, *was the tool's result used*, *did the reply carry the disclaimer it needed* — yes. *Introduced itself*, *asked who it is talking to*, *ran the steps in order* — no; those are suite tasks, where the turn is pinned down.
+
+Write the criterion so that "this did not come up" is a pass rather than a miss, too. A judge told "advice must carry the disclaimer" fails every turn that gave no advice: say *when the reply gives advice, it carries the disclaimer; a reply that gives none passes*. Otherwise a correct agent reads as failing most of its traffic, and the failure clusters fill with an evaluator's own wording.
+
+**A monitor grades every turn in its window,** evaluation traffic aside, including one the application answered itself with no model call (a greeting that asks who you are, say). A generic judge grades the application's text like the model's, and it sees no system prompt: a fixed greeting that names example data, or states what the agent can do ("I'll remember you next time"), reads to it as an invented fact. Word such text as what it does now, or leave the generic *Hallucination* judge out of the monitors of an agent that has its own faithfulness judge.
+
+**"Since the last sample" is the job's watermark, not yours.** `agent.sample(evaluator=...)` with no window continues from where the last sample of that evaluator stopped. Pass `since=`/`until=` — which is what a hand-run script usually does — and you grade that window whatever the job has already graded, so a `--since 24h` sample run right after the job re-grades the same conversations. The run says so: `window_conversations` and `sampled_fraction` are on its metrics.
+
+**The judge's key.** A sample run reads the key from the account's environment variables: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` by provider, or `EVAL_JUDGE_API_KEY` for whichever provider the judge names. Set one of those on the *job's* environment, not only in your shell — a judge with no key fails every trial as ungradable, and ungradable is not a failing score (see **A trial nobody could grade**). A key whose account runs out of credits does the same from the call it ran out on: `429 insufficient_quota` on the trial's `reason`, the run's `ungradable_rate` rising. Top up, then re-run the window with `agents.jobs.run_eval_job(job.name, since=..., until=...)`; the draw is seeded by the window, so the same conversations are graded.
+
+**A sample can fail for the platform's reasons, not the agent's.** Twelve monitors of one execution start together, and under that load a run can come back `FAILED` with `trials=0` and the HTTP error on `run.error_message` — a 500 listing the window or reading the trials feature group. The jobs retry such a failure twice before giving up, and the SDK retries a read (`run.metrics()` included) on a 5xx, so this is rare; when it happens, re-run the execution over the same window — `agents.jobs.run_eval_job(job.name, since=..., until=...)` — and, the draw being seeded by the window, every evaluator grades the same conversations again.
+
+**Reading the run list.** `agents.runs.list(agent.id)` returns suite runs and online samples together — filter on `run.run_type` (`"ONLINE_SAMPLE"`, `"SUITE"`, `"FEEDBACK_REVIEW"`), and `run.sample_source` names the evaluator a sample graded with. `run_eval_job` returns a list of runs, one per monitor, all sharing one `execution_id` — once the job has picked them up; at creation it is `None`. One execution at a time: a run started while the job is busy sits `PENDING` until the execution ahead of it finishes, which for twelve monitors over a few conversations is about ten minutes, so give a poll that long. A sample run's `estimated_cost` is the cost of the **traffic** it graded (the conversations' own tokens), not of the judge calls, which no run reports.
+
+**The analysis job.** `analyse_failures` creates a job named `<agent>_feedback_review`, which `agent.review_job()` reads back and configures: its provider and model, whether it reads the agent's source, which sources it triages (feedback, errors, judge) and its call budget.
+
+`run_eval_job` takes `since`, `until`, `sample` and `strategy` for one execution's monitors, which is how you try an evaluator out on a window you choose without changing what every scheduled fire does (the UI's Run button asks for the same four). Runs list with `agents.runs.list(agent.id)`; `agents.runs.trend(agent.id)` gives the pass-rate trend.
+
+**Which failures are new.** `run.changes()` — or `agents.runs.failure_history(agent.id)` for every suite's latest run — classifies each task against the run before it, the way a build view does. Both return a `list[SuiteFailureHistory]`, one per suite, with **counts** `new_failures`, `regressions`, `fixed`, `persistent`, `unanswered`, `passing` and a `tasks` list of `TaskFailure`:
+
+```python
+for suite in run.changes():
+    print(suite.suite_name, suite.regressions, "regressed,", suite.fixed, "fixed")
+    for task in suite.tasks:
+        print(" ", task.task_id, task.status)
+```
+
+Read from the trials as stored, so it needs no job to have processed anything. This is the **Changes** dialog on a run in the Jobs tab.
+
+For a task-by-task diff of two particular runs, `previous.compare_to(latest)` (or `agents.runs.compare(previous, latest)`) returns a comparison with `.same_suite` and `.unchanged` / changed lists of `TaskDiff(before=..., after=..., change=..., question=...)`.
+
+**Comparing two runs.** `agents.runs.compare(previous, latest)` (or `previous.compare_to(latest)`) diffs them task by task and returns `.regressed`, `.fixed`, `.added`, `.removed`, `.ungraded` and `.unchanged` — the list a release gate reads. A task counts as passed only when *every* gradable trial of it passed (`pass^k`, not `pass@k`), the ungraded statuses (`INFRA_ERROR`, `EVALUATOR_ERROR`, `TRACE_MISSING`, `AWAITING_REVIEW`) are left out of the verdict, and a task present in one run only is reported as added or removed rather than as unchanged. `.same_suite` is False when the two runs ran different suites (then everything reads as added or removed) and `.partial` is True when one of them failed and may have graded only part of its suite. A running evaluation is stopped from the UI's Stop button (there is no client call yet).
+
+**A trial may take ten minutes by default.** Set `trial_timeout_s` on the evaluation job (`ensure_eval_job` or `update_eval_job`, at most an hour) for an agent whose turn takes longer, such as one running an analyst pipeline with web search. A trial that hits the limit is `TIMEOUT`, and its conversation still finishes in the pod.
+
+**An analysis started while the backend was down** ends `FAILED` with "the job execution ended as Failed without reporting a result". Nothing is lost: once the backend is back, start it again with `agent.analyse()`.

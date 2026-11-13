@@ -415,7 +415,7 @@ def test_the_data_sources_table_names_every_required_option():
 
 
 def test_the_schema_block_parses_as_yaml():
-    text = (REQS / "system-yaml.md").read_text(encoding="utf-8")
+    text = (REQS / "system-yaml-schema.md").read_text(encoding="utf-8")
     schema = re.search(r"## Schema\n\n```yaml\n(.*?)```", text, re.DOTALL).group(1)
     doc = yaml.safe_load(schema)
     for block in (

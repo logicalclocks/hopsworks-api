@@ -51,7 +51,7 @@ suite = agents.suites.create(
     ],
     tags=[agent.name, "regression"],         # the agent's name first: see "Tag with the agent" below
     execution_mode="read_only",             # or "sandboxed" for tasks that make the agent write
-                                            # (see "Sandboxed suites" below for what accepts one)
+                                            # (references/suites.md, "Sandboxed suites", says what accepts one)
     gate_metric="pass_rate", gate_threshold=0.9,
 )
 suite.add_task("Refund order 42", expectations={"quality": "Confirms the refund and its amount.",
@@ -92,12 +92,6 @@ Check kinds, their configuration keys and how each reads a task's expectation ar
 
 When no built-in kind says what correct means, write your own: functions decorated with `@check` in a file the project owns (uploaded with `agents.checks.upload(path)`, or in the agent's git repository). A suite names the file as one `python` row and every check it declares runs, each reported under its own name; try one locally with `run_check(...)` first. How to write, try and place one is in [references/custom-checks.md](references/custom-checks.md).
 
-**A multi-turn task's trajectory checks grade the last turn.** `tool_call`, `tool_order`, `tool_arguments` and the rest read the trace of the final turn, because that is the trace the trial records. A judge gets the whole transcript — as **context**: it grades the final reply (`<agent_answer>`), and a criterion written as "the reply …" is graded on that turn alone. A behaviour that belongs to an earlier turn — an introduction, a disclaimer shown once, an email asked for at the start — must say so: *"in this reply or an earlier one in the conversation"* is graded across every reply. Otherwise the second turn of `["dana@example.com", "What can you do?"]` fails for not repeating what the first turn already did. A pipeline that spans turns — analyse, then propose, then plan — cannot be checked with one `tool_order` over the lot: give each step its own task, or ask a judge.
-
-**Sandboxed suites.** A suite with `execution_mode="sandboxed"` is accepted against a deployment whose manifest advertises per-request evaluation (`AgentApp(eval_per_request=True)`) or that runs with `EVAL_MODE=true`. Otherwise the runner refuses it. A red-team suite therefore needs no separate deployment if the agent already honours per-request eval.
-
-**Several runs at once.** `agent.run(...)` runs are concurrent — the one-execution-at-a-time rule belongs to the evaluation *job*, not to runs started by hand. A run is recorded `PENDING` and takes up to a minute before its first trial, so a loop that starts five suites gets five runs that all begin shortly after.
-
 **Reading `run.metrics()`.** It returns a row per scope, not a summary: `run`, `evaluator`, `evaluator_family`, `task` and `score_bucket`, which on a six-task suite is about fifty rows. Start from the run scope:
 
 ```python
@@ -115,13 +109,7 @@ declared a `gate_metric` and `gate_threshold`, each with `passed`, plus `has_evi
 deployment: a gating suite that has never run against it counts as no evidence rather than as a
 pass. Gates are advisory — they report, they do not block a deploy.
 
-**Draft vs published.** A draft is editable and cannot run; publishing freezes it. Deleting a suite with runs needs `force=True`.
-
-**A version is a row.** `agents.suites.list()` lists every version of every suite, because a run records the version it executed; `list(latest=True)` is one row per suite, the newest. `suites.delete(s, force=True)` deletes one version — `delete(s, force=True, all_versions=True)` tears the whole suite down.
-
-`suite.new_version()` copies a published suite's **checks** into a new draft — **not its tasks**. The draft comes back with `task_count` 0 and you re-add them, which is the point: a new version usually exists because the tasks are changing. Copy them across yourself if you only meant to change a check.
-
-**Human review of a judge.** `run.review_trial(trial, passed=..., reason=..., evaluator="quality")` records a person's verdict per judge; the UI shows judge agreement per evaluator from these.
+More on suites (multi-turn trajectory checks, sandboxed suites, concurrent runs, drafts and versions, human review of a judge): `hops skills info hops-agent-evals references/suites.md`.
 
 ## 2. Online sampling and the evaluation job
 
@@ -156,77 +144,11 @@ agents.evaluators.save("answered the question", checks=[check(
 
 Every offending evaluator is named at once when the job is configured, so you do not find them one failed call at a time.
 
-**A generic judge does not know your agent.** The installed defaults see the request, the reply and the tools — not the system prompt. An agent designed to ask for an email before answering gets failed by *Answer relevance* for doing exactly that, and one that identifies a user across conversations gets failed by *Hallucination* for a claim its own design makes true. Prefer a judge written for the agent, and before trusting a monitor, read a sample of its failures and record what you find with `run.review_trial(...)` — judge agreement per evaluator is built from those.
-
-**A memory-backed answer looks invented to a judge.** What the agent recalled reaches the model in its system prompt; the judge sees the request, the reply and the tool results, so "you told me you are aggressive and short-term" has no visible source and *Hallucination* fails it. Any agent with long-term memory will be marked down for using it. Either say so in the judge's criteria (*facts about the user may come from stored memory and are not inventions*), or have the agent recall through a **tool** rather than through the prompt, so the recalled value is in the trace where a judge can see it.
-
-**One form for both jobs, one model for both.** `judge_model` on the evaluation job is what any check that names no model of its own judges with, *and* what the failure analysis uses — a judge used to be configured inside every check and again on the analysis job. `ensure_eval_job(...)` creates the analysis job with the evaluation's own environment, resources and model, and the evaluation triggers it. **It is on by default** — a failure nobody explains is one somebody reads twice — so pass `analyse_failures=False` for a deployment that should not spend model calls on it, and `judge_model=` to name the model. The provider is guessed from the agent's framework when you name none: the OpenAI Agents SDK implies OpenAI, the Claude SDK implies Anthropic, everything else keeps the default — no schedule of its own. It starts when an execution's last run finishes, if a suite produced a **new failure or a regression** (the same failures again need no second explanation) or a monitor failed a conversation it graded. It reads only verdicts since its previous run, so an hourly monitor failing on the same kind of turn does not pay twice, and `agent.analyse()` starts one by hand. Its advanced settings (sources, source code, auto-promotion thresholds) stay on the analysis job itself.
-
-**The evaluation starts analyses on its own,** whenever a run produces a new failure or a regression, so the clusters can change between two of your scripts' calls. A "since the last run" analysis never starts twice at once — asking while one is going returns that run — but read `agent.clusters()` once and work from that list, or check `agents.runs.list(agent.id)` for a `FEEDBACK_REVIEW` still `RUNNING` first. An open cluster whose verdicts a later analysis re-filed elsewhere is left off the list.
-
-**Check the pair matches before you rely on automatic analysis.** The two jobs hold the judge separately, and they can drift — a deployment recreated under a new id got the framework's default provider on its analysis job while keeping the evaluation's model, leaving `provider=anthropic, model=gpt-5.6-terra`, an impossible pair. Every analysis the evaluation triggered then failed with *"no API key: set the environment variable ANTHROPIC_API_KEY"*, and nothing said so except the run's own status. One line settles it:
-
-```python
-job, review = agent.eval_job(), agent.review_job()
-assert (review.provider, review.model) == (job.judge_provider, job.judge_model)
-```
-
-If they disagree, re-saving the evaluation's judge re-syncs the analysis job: `agents.jobs.update_eval_job(job.name, judge_provider=..., judge_model=...)`.
-
-**An agent gets its evaluation job with it**, empty — no suites, no monitors, nothing scheduled — so configuring evaluation starts from a form with the deployment's defaults rather than from a page asking you to create something first.
-
-**The jobs go with the deployment.** Deleting an agent deletes its evaluation and analysis jobs. A job holding the default name that a deployment deleted earlier left behind is taken over by the new agent of that name, starting from what you pass rather than from the dead agent's suites and evaluators; one a live deployment still owns is refused, so pass `name=`.
-
-**One job per deployment, one execution at a time.** `ensure_eval_job` returns the deployment's job whatever name is asked for — what used to be a second job is this one's suites, its monitors and its schedule — and configures it with whatever you pass, leaving unsaid settings alone. `ensure_eval_job(agent.id)` on its own therefore changes nothing, and `update_eval_job(job.name, ...)` is the same partial update by name. An empty list clears a list; only an omitted argument is left as it was. A run asked for while one is going is queued — recorded, `PENDING`, with no execution — and starts when the current one finishes, with everything else waiting folded into the same execution. `update_eval_job(name, parallel_runs=2)` lifts that for a deployment that can take two evaluations at once.
-
-The evaluation job is a Hopsworks job named after the agent; schedule it like any job (**hops-job**). `monitor=True` samples traffic with the listed evaluators on every run. A **scheduled** fire grades live traffic only — the suites are the same frozen tasks every fire, at a model call per task — unless `suites_on_schedule=True`. Running the job yourself always runs everything it names.
-
-Each sample grades at most `sample_ceiling` conversations of its window (default 500, max 10000), because every one of them costs a judge call per evaluator. When the window holds more: `sample_strategy="random"` (the default) grades a spread of the whole window and moves on, keeping the cost fixed — the run records `window_conversations` and `sampled_fraction`, so its pass rate reads as a sample rather than a census. `sample_strategy="oldest"` grades the oldest of them and closes the window there, so the next run continues from where this one stopped and nothing is skipped — exhaustive, but on an agent whose traffic outpaces the ceiling it measures an older and older slice while the backlog grows.
-
-Every evaluator of one execution grades the **same** conversations: the random draw is seeded from the window they share, which is what makes "the hallucination judge passed this one and the helpfulness judge failed it" a question you can ask (and makes a re-run of a window grade what it graded before). `shared_sample=False` gives each its own draw.
-
-**A sample grades one turn of a conversation.** A sampled conversation is one trial, graded on its **last** exchange: `user_request` and `agent_response` are the final turn's. An earlier turn that went wrong is not graded, so a monitor over multi-turn traffic measures how conversations end. Suites are where a specific turn is pinned down.
-
-**So only a turn-invariant criterion belongs in a monitor.** "Introduced itself and showed the disclaimer" is about the *first* turn; pointed at a six-turn conversation it grades the last one and scores 1/6, and the agent looks broken when the evaluator was. The test: could this be true of any single exchange, read on its own? *Answer relevance*, *was the tool's result used*, *did the reply carry the disclaimer it needed* — yes. *Introduced itself*, *asked who it is talking to*, *ran the steps in order* — no; those are suite tasks, where the turn is pinned down.
-
-Write the criterion so that "this did not come up" is a pass rather than a miss, too. A judge told "advice must carry the disclaimer" fails every turn that gave no advice: say *when the reply gives advice, it carries the disclaimer; a reply that gives none passes*. Otherwise a correct agent reads as failing most of its traffic, and the failure clusters fill with an evaluator's own wording.
-
-**A monitor grades every turn in its window,** evaluation traffic aside, including one the application answered itself with no model call (a greeting that asks who you are, say). A generic judge grades the application's text like the model's, and it sees no system prompt: a fixed greeting that names example data, or states what the agent can do ("I'll remember you next time"), reads to it as an invented fact. Word such text as what it does now, or leave the generic *Hallucination* judge out of the monitors of an agent that has its own faithfulness judge.
-
-**"Since the last sample" is the job's watermark, not yours.** `agent.sample(evaluator=...)` with no window continues from where the last sample of that evaluator stopped. Pass `since=`/`until=` — which is what a hand-run script usually does — and you grade that window whatever the job has already graded, so a `--since 24h` sample run right after the job re-grades the same conversations. The run says so: `window_conversations` and `sampled_fraction` are on its metrics.
-
-**The judge's key.** A sample run reads the key from the account's environment variables: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` by provider, or `EVAL_JUDGE_API_KEY` for whichever provider the judge names. Set one of those on the *job's* environment, not only in your shell — a judge with no key fails every trial as ungradable, and ungradable is not a failing score (see **A trial nobody could grade**). A key whose account runs out of credits does the same from the call it ran out on: `429 insufficient_quota` on the trial's `reason`, the run's `ungradable_rate` rising. Top up, then re-run the window with `agents.jobs.run_eval_job(job.name, since=..., until=...)`; the draw is seeded by the window, so the same conversations are graded.
-
-**A sample can fail for the platform's reasons, not the agent's.** Twelve monitors of one execution start together, and under that load a run can come back `FAILED` with `trials=0` and the HTTP error on `run.error_message` — a 500 listing the window or reading the trials feature group. The jobs retry such a failure twice before giving up, and the SDK retries a read (`run.metrics()` included) on a 5xx, so this is rare; when it happens, re-run the execution over the same window — `agents.jobs.run_eval_job(job.name, since=..., until=...)` — and, the draw being seeded by the window, every evaluator grades the same conversations again.
-
-**Reading the run list.** `agents.runs.list(agent.id)` returns suite runs and online samples together — filter on `run.run_type` (`"ONLINE_SAMPLE"`, `"SUITE"`, `"FEEDBACK_REVIEW"`), and `run.sample_source` names the evaluator a sample graded with. `run_eval_job` returns a list of runs, one per monitor, all sharing one `execution_id` — once the job has picked them up; at creation it is `None`. One execution at a time: a run started while the job is busy sits `PENDING` until the execution ahead of it finishes, which for twelve monitors over a few conversations is about ten minutes, so give a poll that long. A sample run's `estimated_cost` is the cost of the **traffic** it graded (the conversations' own tokens), not of the judge calls, which no run reports.
-
-**The analysis job.** `analyse_failures` creates a job named `<agent>_feedback_review`, which `agent.review_job()` reads back and configures: its provider and model, whether it reads the agent's source, which sources it triages (feedback, errors, judge) and its call budget.
-
-`run_eval_job` takes `since`, `until`, `sample` and `strategy` for one execution's monitors, which is how you try an evaluator out on a window you choose without changing what every scheduled fire does (the UI's Run button asks for the same four). Runs list with `agents.runs.list(agent.id)`; `agents.runs.trend(agent.id)` gives the pass-rate trend.
-
-**Which failures are new.** `run.changes()` — or `agents.runs.failure_history(agent.id)` for every suite's latest run — classifies each task against the run before it, the way a build view does. Both return a `list[SuiteFailureHistory]`, one per suite, with **counts** `new_failures`, `regressions`, `fixed`, `persistent`, `unanswered`, `passing` and a `tasks` list of `TaskFailure`:
-
-```python
-for suite in run.changes():
-    print(suite.suite_name, suite.regressions, "regressed,", suite.fixed, "fixed")
-    for task in suite.tasks:
-        print(" ", task.task_id, task.status)
-```
-
-Read from the trials as stored, so it needs no job to have processed anything. This is the **Changes** dialog on a run in the Jobs tab.
-
-For a task-by-task diff of two particular runs, `previous.compare_to(latest)` (or `agents.runs.compare(previous, latest)`) returns a comparison with `.same_suite` and `.unchanged` / changed lists of `TaskDiff(before=..., after=..., change=..., question=...)`.
-
-**Comparing two runs.** `agents.runs.compare(previous, latest)` (or `previous.compare_to(latest)`) diffs them task by task and returns `.regressed`, `.fixed`, `.added`, `.removed`, `.ungraded` and `.unchanged` — the list a release gate reads. A task counts as passed only when *every* gradable trial of it passed (`pass^k`, not `pass@k`), the ungraded statuses (`INFRA_ERROR`, `EVALUATOR_ERROR`, `TRACE_MISSING`, `AWAITING_REVIEW`) are left out of the verdict, and a task present in one run only is reported as added or removed rather than as unchanged. `.same_suite` is False when the two runs ran different suites (then everything reads as added or removed) and `.partial` is True when one of them failed and may have graded only part of its suite. A running evaluation is stopped from the UI's Stop button (there is no client call yet).
+The judge's key, judges written for the agent, the analysis job beside the evaluation job, one job per deployment, sampling ceilings and strategies, turn-invariant monitor criteria, the run list, which failures are new, comparing runs, trial timeouts: `hops skills info hops-agent-evals references/monitoring.md`.
 
 **A trial nobody could grade.** Four statuses say the harness, not the agent, has no verdict: `INFRA_ERROR` (the request never reached the agent, or a 4xx from the harness), `EVALUATOR_ERROR` (the trace was there and no evaluator reached a verdict, such as a judge whose provider refused the call), `TRACE_MISSING` (no trace to grade) and `AWAITING_REVIEW` (a person has not answered yet). They are left out of every pass rate. A run that graded nothing records no `pass_rate` at all, and a gate reads that as missing evidence; `ungradable_rate` at run scope says how much of a run is in these statuses.
 
 **An agent that did not answer is not an agent that answered wrongly.** `AGENT_ERROR` is the agent itself failing, such as a 500, a crash, or a model refusing every request (read the message in `trial.error_message`, then `hops agent logs`). `TIMEOUT` is a turn that took longer than the trial may take. Both count as failures, since nobody got an answer, so the gates fail. But `agent_error_rate` and `timeout_rate` at run scope say which it was: a `pass_rate` of 0.0 with `agent_error_rate` 1.0 and zero latency is an agent that was down. `changes()` reports such tasks as `unanswered`, not as new failures, and never uses a run the agent answered nothing in as the baseline, so the run after an outage is not credited with fixing everything.
-
-**A trial may take ten minutes by default.** Set `trial_timeout_s` on the evaluation job (`ensure_eval_job` or `update_eval_job`, at most an hour) for an agent whose turn takes longer, such as one running an analyst pipeline with web search. A trial that hits the limit is `TIMEOUT`, and its conversation still finishes in the pod.
-
-**An analysis started while the backend was down** ends `FAILED` with "the job execution ended as Failed without reporting a result". Nothing is lost: once the backend is back, start it again with `agent.analyse()`.
 
 ## 3. Traces, feedback and failure analysis
 
@@ -265,46 +187,7 @@ agents.jobs.run_regressions(agent.id, n_trials=3)    # a failure that happens so
 # confirm a promoted task into it first"
 ```
 
-**`agent.regressions()` is not a `Suite`.** It returns a `RegressionSuite`: a status report on the standing suite — `exists`, `suite_id`, `name`, `version`, `published_version`, `task_count`, `published_task_count`, `unpublished_task_count`, `judge_check` — with no `.tasks()` and no `.checks`. It answers "is there anything waiting to be published", which is what you want before a release. For the suite itself, `agents.suites.get(reg.suite_id)`.
-
-**`agent.traces()` lists conversations, not turns.** Each row is a session's latest turn, so a six-turn conversation is one row; `agent.session(trace.session_id)` opens the turns.
-
-**A promotion carries the conversation.** The task takes every user turn up to the one the verdict is about, because a failure on the fourth turn cannot be reproduced by asking the fourth question of a fresh agent. `promote_feedback(row, conversation=False)` takes that turn alone when it stands on its own. `feedback.promoted_task_id` says whether a verdict already became a task.
-
-**…and the person it happened to.** A promoted task is asked as whoever the original turn ran as — `task.subject`, sent as the request's `subject` on every turn — with the request `context` the client sent (`task.request_context`). Both are read off the trace's turn span, for every way of promoting: a trace, a verdict, a cluster. Without them a memory or personalisation failure cannot be a regression at all: "what do you already know about me?" answered "nothing" is a *correct* answer to a stranger, so asked anonymously the regression passes every time.
-
-```python
-task = agent.promote_feedback(row)                    # asked as the turn's subject
-task = agent.promote_feedback(row, subject="")        # asked anonymously
-task = agent.promote_feedback(row, subject="test-user@example.com")   # a test user with the same profile
-task.confirm_redaction(subject="test-user@example.com")               # or change it in review
-agents.tasks.create("What do you know about me?", subject="marcus@example.com", context={"plan": "pro"})
-suite.add_task("What do you know about me?", subject="marcus@example.com")   # straight into a suite
-```
-
-**The regression suite is for promoted tasks.** `add_to_regressions` needs a task promoted from a deployment's trace — that is how it knows which deployment's standing suite to join — and refuses a hand-written one ("was not promoted from a deployment's trace"). Put a hand-written memory test in an ordinary suite with `suite.add_task(..., subject=...)`.
-
-The subject is a customer's address copied out of a trace, so it is part of what the redaction review checks, and the Promotion queue shows it ("as marcus@example.com"). A multi-turn trial without a `subject=` keeps the person the app bound on its first turn for the turns after it, as a conversation does. That binding is held by the agent's process, so on a deployment scaled to several replicas a later turn can arrive unbound; `subject=` never does. **A trial reads that person's memory and never writes it**: under evaluation, `user`-scope writes go under the trial's own conversation and reads look there first, and the trial's messages are not filed in the person's conversation history — so a nightly regression run cannot rewrite a customer's stored profile. The same question asked as two people is two cases, for import dedup and for `changes()`.
-
-**A replay reads that memory as it is now, not as it was.** A failure that happened *because* the person had not yet told the agent something — the first conversation, before a profile existed — replays differently once they have: the agent now knows the profile and takes another path, and the judge grades a different reply. Promote such a failure with `subject=""` or a fresh test subject, so the replay starts from the same empty memory. And a failure that happens only some of the time wants `run_regressions(..., n_trials=3)`: one trial passes it as often as not.
-
-**Judges are told who a request was for.** A task's `subject`, and a sampled turn's (from its trace), reaches the judge as a `<user>` section: the agent need not ask who they are, and what it says about them from memory is not invented. Without it *Asked who it is talking to* failed every client-identified turn, and *Hallucination* called the person's own name invented.
-
-**Reading a trace.** Everything that says what a span *did* is an attribute: `openinference.span.kind` (`AGENT`, `LLM`, `TOOL`, `RETRIEVER`), `llm.model_name`, `input.value`, `output.value`, the token counts. The span itself carries little more than its name and its timestamps. Each span and each event is handed back with its own attributes as a dict, and the flat per-trace lists are there too — `trace.span_attributes` / `trace.event_attributes`, with `trace.attributes_of(span_id)` giving the same dict:
-
-```python
-for span in sorted(trace.spans, key=lambda s: s.get("startTimeNs") or 0):
-    attrs = span["attributes"]
-    print(attrs.get("openinference.span.kind"), span["name"], attrs.get("llm.model_name", ""))
-```
-
-`trace.tool_calls` is the tool spans already unpacked into `{name, arguments, result, status, span_id}`, which is what most trace-reading actually wants.
-
-**Write the correction as the reply, not as a rule.** The standing regression suite grades with `matches_correction`, which reads the `corrected_answer` as the expected answer verbatim. Its first criterion is whether the reply *does what the correction does*, weighted above the rest and with a floor of 4: when the correction asks for the email address first, a reply that asks scores 5 though it answers nothing yet, and a full answer that skips the question fails however good it is. The other two criteria, no contradiction and safety, defer to the correction, so asking what the correction asks is never a safety fault. "Strategies must carry the disclaimer" grades the agent on vagueness; the reply it should have given grades it on the thing you meant. Put the rule in `note` or `expected_tool_behavior`. The judge is shown the agent's tool calls beside the reply, and the verdict's `expected_tool_behavior` is part of the expected answer, so a failure about tools ("propose_strategies only" answered by three analysts) fails its regression even when the reply reads well.
-
-The analysis files its own feedback rows (`detector:*`, `judge:*`) at run start, skips traces a person already judged, and never looks at evaluation traffic on its own. A person's verdict on an evaluation trial's trace is accepted, though: `agent.give_feedback(trial.trace_id, "negative", corrected_answer=...)`, then `promote_feedback(row, conversation=False)`, is how a suite failure becomes a standing regression. With `read_source_code=True` it clones the agent's source at the deployed commit (the deployment's git source, or the script on HopsFS; private repositories through the user's git provider) and cites file and line in its findings. `dismiss_cluster(cluster, reason)` closes one as `working_as_intended`, `duplicate_of`, `cannot_reproduce` or `out_of_scope`.
-
-Metrics for dashboards: `agent.trace_metrics()`, `agent.llm_metrics()` (calls, tokens, cost), `agent.tool_metrics()` (calls, errors, latency per tool), each over `since`/`until`.
+Regression suites, promotion with the conversation and its subject, judges told who a request was for, reading a trace's spans, writing a correction, the analysis job's own rows, metrics for dashboards: `hops skills info hops-agent-evals references/traces.md`.
 
 ## Toolset
 - **SDK:** `project.get_agent_serving()` → `AgentServing` (`suites`, `tasks`, `evaluators`, `runs`, `jobs`, `get_agent`) and `Agent` (`run`, `canary`, `sample`, `traces`, `feedback`, `triage`, `clusters`, `analyse`, `gates`, metrics). Import `check` from `hopsworks_agents.eval.sdk`.

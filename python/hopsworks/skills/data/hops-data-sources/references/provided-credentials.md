@@ -123,3 +123,30 @@ A read in `NO_ACCESS` still goes to the database and fails there with the databa
 | Test access on a feature group the member can see | yes | yes | yes | no |
 
 A Data owner who creates a `PROVIDED` data source adds their own credentials before browsing its tables or mounting feature groups, since both run as the caller.
+
+## Provided credentials (Oracle)
+
+A data source has a credentials mode.
+`SHARED` (the default) stores one username and password on the data source and every member reads with them.
+`PROVIDED` stores only host, port and service name; each member adds their own credentials, which live in that member's account and are used whenever that member reads through the data source or an external feature group mounted from it.
+Only Oracle supports `PROVIDED` today, and the mode cannot be changed after creation.
+
+```bash
+hops datasource create sql oracle_sales --database-type ORACLE --credentials-mode provided --host H --port 1522 --database SVC   # no --user, no --password
+hops datasource credentials set oracle_sales --user SCOTT --password - < pw.txt     # validates, then saves to your account
+HOPSWORKS_DS_CREDENTIALS_WALLET_PASSWORD=... hops datasource credentials set oracle_sales --user SCOTT --password - --wallet ./Wallet_db.zip < pw.txt   # only one secret per call can come from stdin
+hops datasource credentials set oracle_sales --password - < new_pw.txt            # rotate the password; the bound username and wallet stay
+hops datasource credentials show oracle_sales                                       # status and the names of your secret and env var, never values
+hops datasource list                                                                 # CREDENTIALS column: shared, provided: yours set, provided: missing
+hops fg list                                                                         # ACCESS column per mounted table: ok, no_credentials, invalid_credentials, no_access, error
+hops fg test-access sales_external                                                   # re-check your access to one mounted table now
+```
+
+Reading a `PROVIDED` data source before adding your credentials fails with a message naming `set_credentials`; run `hops datasource credentials set` first.
+A Data owner who creates a `PROVIDED` data source must add their own credentials before `hops datasource tables` or mounting a feature group, since both run as the caller.
+A mounted table a member cannot read shows `no_access` in `hops fg list`; their database account lacks a grant the Data owner's has.
+Fetching a `PROVIDED` data source never returns credential values, only the names of your secrets and env var; the SDK reads the values from your account when it connects.
+Inside Hopsworks runtimes your credentials are also available as `HOPS_DS_<NAME>_USER`, `HOPS_DS_<NAME>_PASSWORD`, `HOPS_DS_<NAME>_WALLET_PATH` and `HOPS_DS_<NAME>_WALLET_PASSWORD`, with `HOPS_DS_<NAME>_CONNECTOR_ID` naming the data source they belong to.
+A Trino catalog on a `PROVIDED` data source is private to the member who creates it (`_<username>__<name>`), so each member creates their own with `sc.create_trino_catalog()`.
+It reads the data source with the owner's own login from every Trino client, Superset included.
+SDK equivalents, the naming rules and the access states are above.
