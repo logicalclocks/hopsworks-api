@@ -32,6 +32,7 @@ import static org.apache.spark.sql.functions.struct;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -506,7 +507,7 @@ public class SparkEngine extends EngineBase {
       throw new FeatureStoreException("dataFormat is not specified.");
     }
 
-    setupConnectorHadoopConf(storageConnector);
+    setupConnectorHadoopConf(storageConnector, location);
 
     // Table formats that handle their own directory layout/partitioning are read from the
     // location directly; appending a /** glob would make the reader look for a non-existent
@@ -814,6 +815,18 @@ public class SparkEngine extends EngineBase {
 
   public void setupConnectorHadoopConf(StorageConnector storageConnector)
       throws IOException, FeatureStoreException {
+    setupConnectorHadoopConf(storageConnector, null);
+  }
+
+  /**
+   * Set up the Hadoop configuration for a data source, before reading or writing {@code location}.
+   *
+   * @param storageConnector the data source's connector; null does nothing
+   * @param location the path read or written, which names the bucket of a Glue data source; may be null
+   * @throws FeatureStoreException the application already uses the bucket name with another store
+   */
+  public void setupConnectorHadoopConf(StorageConnector storageConnector, String location)
+      throws IOException, FeatureStoreException {
     if (storageConnector == null) {
       return;
     }
@@ -823,6 +836,10 @@ public class SparkEngine extends EngineBase {
         setupS3ConnectorHadoopConf((StorageConnector.S3Connector) storageConnector);
         break;
       case GLUE:
+        String bucket = s3PathBucket(location);
+        if (bucket != null) {
+          claimS3Bucket(storageConnector.getName(), bucket, null);
+        }
         setupGlueConnectorHadoopConf((StorageConnector.GlueConnector) storageConnector);
         break;
       case ADLS:
@@ -849,7 +866,7 @@ public class SparkEngine extends EngineBase {
   private void setupS3ConnectorHadoopConf(StorageConnector.S3Connector storageConnector)
       throws IOException, FeatureStoreException {
     if (!Strings.isNullOrEmpty(storageConnector.getBucket())) {
-      claimS3Bucket(storageConnector);
+      claimS3Bucket(storageConnector.getName(), storageConnector.getBucket(), storageConnector.getEndpoint());
     }
     if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
       sparkSession.sparkContext().hadoopConfiguration()
@@ -893,18 +910,19 @@ public class SparkEngine extends EngineBase {
   }
 
   /**
-   * Record which store this session uses the data source's bucket name with. s3a keeps one filesystem per bucket name
-   * for the life of the application, so a second store under the same bucket name would silently read and write the
-   * first one.
+   * Record which store this application uses a bucket name with. s3a keeps one filesystem per bucket name for the
+   * life of the application, so a second store under the same bucket name would silently read and write the first
+   * one.
    *
-   * @throws FeatureStoreException the session already uses the bucket name with another store
+   * @param endpoint the store's endpoint, null or empty for AWS S3
+   * @throws FeatureStoreException the application already uses the bucket name with another store
    */
-  private void claimS3Bucket(StorageConnector.S3Connector storageConnector) throws FeatureStoreException {
-    String endpoint = Strings.nullToEmpty(storageConnector.getEndpoint());
-    String known = s3BucketStores.putIfAbsent(storageConnector.getBucket(), endpoint);
+  private void claimS3Bucket(String dataSourceName, String bucket, String endpoint) throws FeatureStoreException {
+    endpoint = Strings.nullToEmpty(endpoint);
+    String known = s3BucketStores.putIfAbsent(bucket, endpoint);
     if (known != null && !known.equals(endpoint)) {
-      throw new FeatureStoreException("Data source '" + storageConnector.getName() + "' uses bucket '"
-          + storageConnector.getBucket() + "' on " + storeName(endpoint)
+      throw new FeatureStoreException("Data source '" + dataSourceName + "' uses bucket '"
+          + bucket + "' on " + storeName(endpoint)
           + ", but this Spark application already uses that bucket name on " + storeName(known)
           + ". Spark keeps one S3 client per bucket name for the life of the application, "
           + "so use this data source in a new Spark application.");
@@ -913,6 +931,15 @@ public class SparkEngine extends EngineBase {
 
   private static String storeName(String endpoint) {
     return endpoint.isEmpty() ? "AWS S3" : endpoint;
+  }
+
+  private static String s3PathBucket(String location) {
+    if (Strings.isNullOrEmpty(location)) {
+      return null;
+    }
+    URI uri = new Path(location).toUri();
+    boolean s3 = "s3".equals(uri.getScheme()) || "s3a".equals(uri.getScheme());
+    return s3 ? uri.getAuthority() : null;
   }
 
   // Bucket scope only, with the keys and region beside it: the settings above are global, so a later data source
@@ -942,8 +969,9 @@ public class SparkEngine extends EngineBase {
     if (!Strings.isNullOrEmpty(storageConnector.getSessionToken())) {
       conf.set(prefix + "aws.credentials.provider", Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER);
       conf.set(prefix + "session.token", storageConnector.getSessionToken());
-    } else if (!storageConnector.sparkOptions().containsKey(Constants.S3_CREDENTIAL_PROVIDER_ENV)) {
-      conf.set(prefix + "aws.credentials.provider", Constants.S3_SIMPLE_CREDENTIAL_PROVIDER);
+    } else {
+      conf.set(prefix + "aws.credentials.provider", storageConnector.sparkOptions()
+          .getOrDefault(Constants.S3_CREDENTIAL_PROVIDER_ENV, Constants.S3_SIMPLE_CREDENTIAL_PROVIDER));
     }
   }
 
