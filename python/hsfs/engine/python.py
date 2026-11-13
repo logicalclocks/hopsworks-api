@@ -1687,7 +1687,11 @@ class Engine:
 
     @staticmethod
     def _by_row_hash(df: pd.DataFrame | pl.DataFrame, groups: list[int]) -> list[int]:
-        """`groups` reordered so the i-th smallest row hash gets `groups[i]`."""
+        """`groups` reordered so the i-th smallest row hash gets `groups[i]`.
+
+        polars row hashes differ between polars versions, so a seed gives the same
+        split only on one polars version.
+        """
         if HAS_POLARS and isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame)):
             try:
                 hashes = df.hash_rows(seed=0).to_list()
