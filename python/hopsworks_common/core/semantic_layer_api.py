@@ -328,6 +328,20 @@ class SemanticLayerApi:
         )
         return semantic_layer.SemanticBuild.from_response_json(response)
 
+    def _validate(
+        self, sp: semantic_layer.SemanticProject
+    ) -> semantic_layer.SemanticBuild:
+        """Check the definitions under the root path as a compile would, storing nothing: the result has a status and issues, and no id."""
+        _client = client._get_instance()
+        response = _client._send_request(
+            "POST",
+            self._path(sp.id, "validate"),
+            headers={"content-type": _JSON},
+            # No unsaved files to lay over the stored ones.
+            data=json.dumps({"files": {}}),
+        )
+        return semantic_layer.SemanticBuild.from_response_json(response)
+
     def _get_builds(
         self, sp: semantic_layer.SemanticProject
     ) -> list[semantic_layer.SemanticBuild]:

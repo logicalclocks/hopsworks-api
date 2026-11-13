@@ -86,7 +86,7 @@ def test_every_tool_registers_with_the_semantic_layer_tag():
     tags = [call.kwargs["tags"] for call in mcp.tool.call_args_list]
     assert len(tags) == 15
     assert all("semantic_layer" in t for t in tags)
-    assert sum("write" in t for t in tags) == 3
+    assert sum("write" in t for t in tags) == 2
     tools = [call.args[0].__name__ for call in mcp.tool.return_value.call_args_list]
     registered = dict(zip(tools, tags, strict=True))
     assert {"write", "stateful"} <= set(registered["create_dashboard_from_metrics"])
@@ -95,6 +95,7 @@ def test_every_tool_registers_with_the_semantic_layer_tag():
         "query_saved_query",
         "list_exports",
         "list_query_history",
+        "validate_semantic_project",
     ):
         assert set(registered[tool]) == {"semantic_layer", "read", "stateful"}
 
@@ -467,9 +468,8 @@ def test_get_semantic_project_tags(tools, sl, sales):
     ]
 
 
-def test_validate_reports_the_issues_of_an_invalid_build(tools, sl, sales):
-    build = SemanticBuild(
-        id=13,
+def test_validate_reports_the_issues_without_compiling(tools, sl, sales):
+    sales._semantic_layer_api._validate.return_value = SemanticBuild(
         status="INVALID",
         error_count=1,
         warning_count=0,
@@ -484,14 +484,30 @@ def test_validate_reports_the_issues_of_an_invalid_build(tools, sl, sales):
             )
         ],
     )
-    sales.compile.side_effect = SemanticBuildException("sales", build)
 
     result = _call(tools.validate_semantic_project("sales"))
 
-    sales.compile.assert_called_once_with(wait=True)
-    assert result.build_id == 13
+    sales._semantic_layer_api._validate.assert_called_once_with(sales)
+    sales.compile.assert_not_called()
+    assert result.build_id is None
     assert result.status == "INVALID"
     assert result.issues[0].rule == "METRIC_TAG_UNKNOWN_SCHEMA"
+    assert result.issues[0].line == 40
+
+
+def test_compile_reports_the_issues_of_an_invalid_build(tools, sl, sales):
+    build = SemanticBuild(
+        id=13,
+        status="INVALID",
+        error_count=1,
+        issues=[SemanticIssue(level="ERROR", rule="METRIC", message="m", line=40)],
+    )
+    sales.compile.side_effect = SemanticBuildException("sales", build)
+
+    result = _call(tools.compile_semantic_project("sales"))
+
+    sales.compile.assert_called_once_with(wait=True)
+    assert (result.build_id, result.status) == (13, "INVALID")
     assert result.issues[0].line == 40
 
 

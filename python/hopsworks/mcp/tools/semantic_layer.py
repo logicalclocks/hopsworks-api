@@ -119,6 +119,10 @@ def _build(sp: semantic_layer.SemanticProject) -> SemanticBuild:
         build = exc.build
     if build.warning_count and build.issues is None:
         build = sp.get_build(build.id)
+    return _build_model(build)
+
+
+def _build_model(build: semantic_layer.SemanticBuild) -> SemanticBuild:
     return SemanticBuild(
         build_id=build.id,
         status=build.status,
@@ -173,10 +177,10 @@ class SemanticLayerTools:
             self.query_saved_query,
             self.get_metrics_compiled_sql,
             self.get_semantic_project_tags,
+            self.validate_semantic_project,
         ):
             self.mcp.tool(tags=[TAGS.SEMANTIC_LAYER, TAGS.READ, TAGS.STATEFUL])(tool)
         for tool in (
-            self.validate_semantic_project,
             self.compile_semantic_project,
             self.create_dashboard_from_metrics,
         ):
@@ -551,18 +555,23 @@ class SemanticLayerTools:
     ) -> SemanticBuild:
         """Check a semantic project's definitions, as they are in HopsFS now, and report every error and warning at its file and line.
 
-        It compiles, as compile_semantic_project does: definitions that changed become a new build, and unchanged ones reuse theirs. In FOLLOW mode a VALID build then answers queries, which undoes a promote of an older build; PINNED mode serves only promoted builds.
+        It checks them as a compile would and stores nothing: no build is made, and the build that answers queries stays the one it was. Use compile_semantic_project to make the definitions a build.
 
         Parameters:
             semantic_project: Name of the semantic project.
             ctx: The MCP context, provided automatically.
 
         Returns:
-            The build's status, VALID, INVALID or FAILED, and its issues.
+            The status the definitions would compile to, VALID or INVALID, and their issues; there is no build id.
         """
         if ctx:
             await ctx.info(f"Validating {semantic_project}...")
-        return await run_sdk(lambda: _build(_semantic_project(semantic_project)))
+
+        def validate() -> SemanticBuild:
+            sp = _semantic_project(semantic_project)
+            return _build_model(sp._semantic_layer_api._validate(sp))
+
+        return await run_sdk(validate)
 
     async def compile_semantic_project(
         self, semantic_project: str, ctx: Context | None = None

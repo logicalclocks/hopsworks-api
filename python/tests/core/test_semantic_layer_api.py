@@ -390,6 +390,28 @@ class TestControlPlane:
         with pytest.raises(ValueError):
             sales.update()
 
+    def test_validate_posts_no_files_and_reads_the_status_and_issues(self, http, sales):
+        http._send_request.return_value = {
+            "revision": None,
+            "status": "INVALID",
+            "errorCount": 1,
+            "warningCount": 0,
+            "issues": [
+                {"level": "ERROR", "rule": "METRIC", "file": "m.yml", "line": 4}
+            ],
+        }
+
+        checked = SemanticLayerApi()._validate(sales)
+
+        call = http._send_request.call_args
+        assert call.args == (
+            "POST",
+            ["project", 119, "semantic", "projects", 7, "validate"],
+        )
+        assert json.loads(call.kwargs["data"]) == {"files": {}}
+        assert (checked.id, checked.status, checked.error_count) == (None, "INVALID", 1)
+        assert (checked.issues[0].rule, checked.issues[0].line) == ("METRIC", 4)
+
     def test_get_builds_newest_first_without_issues(self, http, sales):
         http._send_request.return_value = {
             "count": 2,
